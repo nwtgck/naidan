@@ -1,3 +1,6 @@
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';

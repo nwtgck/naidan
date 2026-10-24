@@ -1,4 +1,4 @@
-import { markRaw, nextTick, type ShallowRef } from 'vue';
+import { markRaw, nextTick, watch, type Component, type ShallowRef } from 'vue';
 import type { Router } from 'vue-router';
 import type { useSettings } from '@/composables/useSettings';
 import type { StartupState } from '@/logic/startup/types';
@@ -9,8 +9,11 @@ import {
 import { debugRecordFileProtocolStandaloneStartupCheckpoint } from '@/features/file-protocol-standalone/debug/startup';
 import type { InitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
-import { isOnboardingExcludedPath } from '@/logic/onboarding-route-policy';
+import { hasModelEntryQuery, hasSelectedGlobalChatModel, resolveAppEntryKind, shouldDeferInitialModelRefresh } from '@/logic/startup/entry-intent';
+import { currentLocale, prepareLocale } from '@/strings';
+import { getActiveAppEntry } from '@/composables/useAppEntry';
 import { startRpcAutomaticConnections } from '@/features/naidan-rpc-integration/runtime/feature';
+import { storageService } from '@/00-storage/service';
 import {
   readFirstQueryValue,
   resolveInitialRoute,
@@ -26,13 +29,15 @@ export async function startApp({ startupState, settingsStore, router, navigation
   window: Window,
 }): Promise<() => void> {
   const initialRoute = resolveInitialRoute({ router });
-  const storageTypeOverride = readFirstQueryValue({
+  const modelEntry = hasModelEntryQuery({ query: initialRoute.query });
+  const storageTypeOverride = modelEntry ? undefined : readFirstQueryValue({
     value: initialRoute.query['storage-type'],
   });
 
-  let dataZipBase64 = readFirstQueryValue({
+  let dataZipBase64 = modelEntry ? undefined : readFirstQueryValue({
     value: initialRoute.query['data-zip'],
   });
+  const acceptedDataZip = dataZipBase64 ? { fullPath: initialRoute.fullPath, value: dataZipBase64 } : undefined;
 
   debugRecordFileProtocolStandaloneStartupCheckpoint({
     checkpoint: 'initializing-settings',
@@ -44,39 +49,101 @@ export async function startApp({ startupState, settingsStore, router, navigation
   await settingsStore.init({
     storageTypeOverride,
     dataZipBase64,
+    modelRefresh: shouldDeferInitialModelRefresh({ route: initialRoute }) ? 'deferred' : 'background',
   });
   dataZipBase64 = undefined;
 
   const initialGlobalSettingsFingerprint = await applyInitialGlobalSettingsQuery({
-    query: initialRoute.query,
+    query: resolveInitialRoute({ router }).query,
     settingsStore,
   });
 
-  startupState.value = {
-    kind: 'starting-main',
-  };
+  const entryKind = resolveAppEntryKind({ route: resolveInitialRoute({ router }), initialized: true });
+  const initialHome = (() => {
+    switch (entryKind) {
+    case 'home': return true;
+    case 'model-preview':
+    case 'pending':
+    case 'ordinary': return false;
+    default: {
+      const exhaustive: never = entryKind;
+      throw new Error(`Unhandled initial history entry: ${String(exhaustive)}`);
+    }
+    }
+  })();
+  let initialSidebarCurrent = true;
+  const stopInitialSidebarWatch = initialHome ? storageService.subscribeToChanges({
+    listener: ({ event }) => {
+      if (event.type === 'chat_meta_and_chat_group' || event.type === 'migration') {
+        initialSidebarCurrent = false;
+      }
+    },
+  }) : () => {};
+  let entrySurface: Component | undefined;
+  let chatStartupModule: typeof import('@/composables/chat/ui/useChatBootstrap');
+  try {
+    // Read metadata only; do not evaluate the chat runtime before the initial
+    // dialog's paint. Reuse this sidebar snapshot during the later bootstrap.
+    const initialSidebar = initialHome ? await storageService.getSidebarStructure() : undefined;
+    getActiveAppEntry()?.initializeHomePresentation({ empty: initialSidebar?.length === 0 });
 
-  if (!settingsStore.isOnboardingDismissed.value && !isOnboardingExcludedPath({ path: initialRoute.path })) {
+    startupState.value = {
+      kind: 'starting-main',
+    };
+
+    switch (entryKind) {
+    case 'home': {
+      if (initialSidebar?.length !== 0) {
+        settingsStore.resumeModelRefresh();
+        break;
+      }
+      settingsStore.deferModelRefresh();
+      // App synchronously owns the initial dialog and cards. Give their strings,
+      // DOM and paint priority before importing chat bootstrap or MainApp.
+      await prepareLocale({ locale: currentLocale.value });
+      debugRecordFileProtocolStandaloneStartupCheckpoint({ checkpoint: 'painting-onboarding', details: undefined });
+      await nextTick();
+      await waitForPresentationPaint({ window });
+      break;
+    }
+    case 'model-preview': {
+      settingsStore.deferModelRefresh();
+      const module = await import('@/components/AppEntrySurface.vue');
+      await prepareLocale({ locale: currentLocale.value });
+      entrySurface = markRaw(module.default);
+      startupState.value = { kind: 'starting-main', entrySurface };
+      debugRecordFileProtocolStandaloneStartupCheckpoint({
+        checkpoint: 'painting-onboarding',
+        details: undefined,
+      });
+
+      /**
+       * Paint the passive entry before evaluating the main chat graph. Interaction
+       * still follows the normal startup gate; no early action is queued.
+       */
+      await nextTick();
+      await waitForPresentationPaint({ window });
+      break;
+    }
+    case 'pending':
+    case 'ordinary':
+      settingsStore.resumeModelRefresh();
+      break;
+    default: {
+      const _ex: never = entryKind;
+      throw new Error(`Unhandled startup entry: ${String(_ex)}`);
+    }
+    }
+
     debugRecordFileProtocolStandaloneStartupCheckpoint({
-      checkpoint: 'painting-onboarding',
+      checkpoint: 'loading-chats',
       details: undefined,
     });
-
-    /**
-     * WHY: Onboarding is a presentation interruption, not a startup gate. Give
-     * its DOM one paint of priority, then continue the exact same main startup
-     * path while the modal remains visible.
-     */
-    await nextTick();
-    await waitForPresentationPaint({ window });
+    chatStartupModule = await import('@/composables/chat/ui/useChatBootstrap');
+    await chatStartupModule.loadChatsForAppStartup({ initialSidebar: initialSidebarCurrent ? initialSidebar : undefined });
+  } finally {
+    stopInitialSidebarWatch();
   }
-
-  debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'loading-chats',
-    details: undefined,
-  });
-  const chatStartupModule = await import('@/composables/chat/ui/useChatBootstrap');
-  await chatStartupModule.loadChatsForAppStartup();
 
   debugRecordFileProtocolStandaloneStartupCheckpoint({
     checkpoint: 'loading-main-app',
@@ -88,6 +155,7 @@ export async function startApp({ startupState, settingsStore, router, navigation
   startupState.value = {
     kind: 'rendering-main',
     mainApp,
+    ...(entrySurface === undefined ? {} : { entrySurface }),
   };
 
   /**
@@ -113,10 +181,12 @@ export async function startApp({ startupState, settingsStore, router, navigation
   });
 
   const dataZipQuery = router.currentRoute.value.query['data-zip'];
-  if (readFirstQueryValue({ value: dataZipQuery }) !== undefined) {
+  if (acceptedDataZip !== undefined && router.currentRoute.value.fullPath === acceptedDataZip.fullPath
+    && !hasModelEntryQuery({ query: router.currentRoute.value.query })
+    && readFirstQueryValue({ value: dataZipQuery }) === acceptedDataZip.value) {
     const query = { ...router.currentRoute.value.query };
     delete query['data-zip'];
-    void router.replace({ query });
+    await router.replace({ query });
   }
 
   startupState.value = {
@@ -127,9 +197,31 @@ export async function startApp({ startupState, settingsStore, router, navigation
     checkpoint: 'app-ready',
     details: undefined,
   });
-  const disposeRpcAutomaticConnections = startRpcAutomaticConnections();
+  let disposeRpcAutomaticConnections: (() => void) | undefined;
+  const appEntry = getActiveAppEntry();
+  const disposeAutomaticActivity = watch(
+    () => appEntry?.automaticActivity.value ?? (hasModelEntryQuery({ query: router.currentRoute.value.query })
+      || (router.currentRoute.value.path === '/' && entryKind === 'home' && !hasSelectedGlobalChatModel({ settings: settingsStore.settings.value })) ? 'deferred' : 'ordinary'),
+    activity => {
+      switch (activity) {
+      case 'deferred':
+        settingsStore.deferModelRefresh();
+        return;
+      case 'ordinary':
+        settingsStore.resumeModelRefresh();
+        disposeRpcAutomaticConnections ??= startRpcAutomaticConnections();
+        return;
+      default: {
+        const _ex: never = activity;
+        throw new Error(`Unhandled automatic activity: ${String(_ex)}`);
+      }
+      }
+    },
+    { immediate: true, flush: 'sync' },
+  );
   return () => {
-    disposeRpcAutomaticConnections();
+    disposeAutomaticActivity();
+    disposeRpcAutomaticConnections?.();
     disposeGlobalSettingsQuerySync();
   };
 }

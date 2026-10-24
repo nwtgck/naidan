@@ -189,6 +189,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     vi.doMock('./useSettings', () => ({
       useSettings: () => ({
+        synchronizeModelBindingSettings: async () => 'synchronized',
         settings: { value: JSON.parse(JSON.stringify(getShared().settings)) },
         setIsOnboardingDismissed: vi.fn(),
         setOnboardingDraft: vi.fn(),

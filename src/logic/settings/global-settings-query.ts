@@ -3,6 +3,7 @@ import type { LocationQuery, LocationQueryValue, Router } from 'vue-router';
 import { z } from 'zod';
 import type { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/01-models/types';
+import { hasModelEntryQuery } from '@/logic/startup/entry-intent';
 
 const EndpointTypeQuerySchema = z.enum(['openai', 'ollama']);
 
@@ -30,6 +31,9 @@ type ParsedGlobalSettingsQuery =
 function parseGlobalSettingsQuery({ query }: {
   query: LocationQuery,
 }): ParsedGlobalSettingsQuery {
+  if (hasModelEntryQuery({ query })) {
+    return { kind: 'no-settings', fingerprint: 'model-preview' };
+  }
   const endpointTypeValue = readOptionalSingleQueryValue({
     value: query['global-endpoint-type'],
   });
@@ -122,6 +126,9 @@ export function installGlobalSettingsQuerySync({ router, settingsStore, initialF
           // A failed URL-driven update must not permanently block later navigations.
         })
         .then(async () => {
+          if (parseGlobalSettingsQuery({ query: router.currentRoute.value.query }).fingerprint !== parsed.fingerprint) {
+            return;
+          }
           await applyParsedGlobalSettingsQuery({ parsed, settingsStore });
         })
         .catch((error: unknown) => {

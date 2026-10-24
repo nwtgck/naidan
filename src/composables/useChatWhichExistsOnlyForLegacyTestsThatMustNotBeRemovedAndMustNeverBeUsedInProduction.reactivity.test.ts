@@ -33,6 +33,7 @@ vi.mock('../00-storage/service', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'gpt-4', titleGeneration: 'disabled' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },

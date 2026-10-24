@@ -248,6 +248,8 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
 
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
   locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
+  chatBrowserModelPickerTab: missingAsUndefined(dtozod.enum(['files', 'linked-folders', 'hugging-face', 'saved'])),
+  modelDiscoveryTab: missingAsUndefined(dtozod.enum(['candidates', 'hugging_face', 'local_files'])),
   markdownRendering: missingAsUndefined(dtozod.union([
     dtozod.literal('block_markdown'),
     dtozod.literal('monolithic_html'),

@@ -35,6 +35,7 @@ import {
   updateChatContent,
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
+import { captureChatContentWrite, beginChatModelBindingGeneration, getKnownChatModelBindingMessages, synchronizeChatModelBindingAdmission, withChatModelBindingOperation } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
 
 export type CompactCurrentBranchResult =
   | {
@@ -100,12 +101,32 @@ export async function runCompactCurrentBranchForChat({
   keepRecentMessages: number,
   instructionOverride: string | undefined,
 }): Promise<CompactCurrentBranchResult> {
+  return await withChatModelBindingOperation({ chatId, operation: () => runCompactBranchWithBinding({ chatId, keepRecentMessages, instructionOverride }) });
+}
+
+async function runCompactBranchWithBinding({ chatId, keepRecentMessages, instructionOverride }: {
+  chatId: ChatId, keepRecentMessages: number, instructionOverride: string | undefined,
+}): Promise<CompactCurrentBranchResult> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return { status: 'skipped', reason: 'no_current_chat' };
   }
-
+  if (isProcessing({ chatId })) {
+    return { status: 'skipped', reason: 'already_processing' };
+  }
+  const synchronized = await synchronizeChatModelBindingAdmission({ chatId });
+  switch (synchronized) {
+  case 'changed':
+    useGlobalEvents().addErrorEvent({ source: 'chat-compact-flow:model-binding', message: await ensureStrings.LlamaCppBrowserModelLaunch__chat_settings_changed() });
+    return { status: 'aborted' };
+  case 'synchronized': break;
+  default: {
+    const exhaustive: never = synchronized;
+    throw new Error(String(exhaustive));
+  }
+  }
   const mutableChat = getLiveChat({ chat: targetChat });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
   if (isProcessing({ chatId: mutableChat.id })) {
     return { status: 'skipped', reason: 'already_processing' };
   }
@@ -176,6 +197,8 @@ export async function runCompactCurrentBranchForChat({
       });
       return { status: 'skipped', reason: 'missing_model_or_endpoint' };
     }
+    const bindingGeneration = beginChatModelBindingGeneration({ chatId, endpoint: resolved.endpoint, modelId: resolvedModel });
+    const knownMessages = new Set(getKnownChatModelBindingMessages({ chatId, modelId: resolvedModel }));
 
     const promptMode = resolveCompactPromptMode({
       accessScope: getNaidanSysfsAccessScope({ chatId: mutableChat.id }),
@@ -322,14 +345,23 @@ export async function runCompactCurrentBranchForChat({
       createMessageId: () => generateId<MessageId>(),
       now: () => Date.now(),
     });
-
     mutableChat.root.items.push(branchResult.compactNode);
+    bindingGeneration.recordAssistant({ messageId: branchResult.compactNode.id });
+    // The compaction helper copies this linear suffix in exactly the supplied order.
+    let copied = branchResult.copiedSuffixHead;
+    for (const original of split.suffix) {
+      if (copied && knownMessages.has(original.id)) {
+        bindingGeneration.recordAssistant({ messageId: copied.id });
+      }
+      copied = copied?.replies.items[0];
+    }
+
     mutableChat.currentLeafId = branchResult.currentLeafId;
     mutableChat.updatedAt = Date.now();
 
     await updateChatContent({
       id: mutableChat.id,
-
+      write,
       updater: ({ current }) => ({
         ...current,
         root: mutableChat.root,
@@ -338,6 +370,7 @@ export async function runCompactCurrentBranchForChat({
     });
     await updateChatMeta({
       id: mutableChat.id,
+      write,
 
       updater: ({ current }) => {
         if (current === null) {
@@ -352,6 +385,7 @@ export async function runCompactCurrentBranchForChat({
       },
     });
     notifyChatChanged({ chatId: mutableChat.id });
+    bindingGeneration.finish({ persisted: true });
 
     contextCompactRuntime.setProgress({
       chatId: mutableChat.id,

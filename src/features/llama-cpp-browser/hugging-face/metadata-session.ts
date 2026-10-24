@@ -1,8 +1,11 @@
 import { discoverRepository, parseRepository, type RepositoryCatalog } from './catalog';
 
 /**
- * Explicit-action-only, serialized metadata access. Constructing this session
- * does no I/O. Expiration is checked on request, never by a background timer.
+ * Caller-authorized, serialized metadata access. The dedicated root page at
+ * #/?llama-cpp-browser-model=... authorizes its repository metadata read on
+ * entry; other views require an explicit action. Neither case authorizes
+ * model file downloads. Constructing this session does no I/O. Expiration is
+ * checked on request, never by a timer.
  */
 export function createMetadataSession({ discover, now }: { discover: typeof discoverRepository, now: () => number }) {
   const cache = new Map<string, { catalog: RepositoryCatalog, checkedAt: number }>();

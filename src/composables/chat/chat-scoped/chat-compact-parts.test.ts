@@ -1,3 +1,4 @@
+import { createChatContentWrite, readChatContentWrite, chatContentFingerprint, type ChatContentModelBinding } from '@/00-storage/service/chat-content-binding';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatGenerationItem, ChatGenerationResult, LmProvider } from '@/01-models/lm';
 import type { Chat, ChatContent, ChatMeta, MessageNode } from '@/01-models/types';
@@ -10,6 +11,7 @@ const state = vi.hoisted(() => ({
   request: undefined as Parameters<LmProvider['chat']>[0] | undefined,
   progress: vi.fn(),
   save: vi.fn(),
+  captureWrite: vi.fn(),
   meta: vi.fn(),
   active: undefined as AbortController | undefined,
   generate: undefined as (() => AsyncIterable<ChatGenerationItem>) | undefined,
@@ -24,6 +26,8 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   triggerCurrentChat: vi.fn(),
   updateChatContent: state.save,
   updateChatMeta: state.meta,
+  loadData: vi.fn(),
+  synchronizeModelBindingContent: async () => 'synchronized',
   chatRuntimeStore: { startTask: vi.fn(), finishTask: vi.fn() },
   contextCompactRuntime: {
     setProgress: state.progress,
@@ -49,11 +53,11 @@ vi.mock('@/logic/context-compact', async importOriginal => {
     }),
   };
 });
-vi.mock('@/logic/chat-settings-resolver', () => ({ resolveChatSettings: () => ({ modelId: 'm', endpoint: { type: 'openai', url: 'https://example.invalid', httpHeaders: [] }, lmParameters: EMPTY_LM_PARAMETERS }) }));
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: {} } }) }));
+vi.mock('@/logic/chat-settings-resolver', () => ({ resolveChatSettings: () => ({ modelId: 'm', endpoint: { type: 'openai', url: 'https://example.invalid', httpHeaders: [] }, lmParameters: EMPTY_LM_PARAMETERS, sources: { endpoint: 'global', modelId: 'global' } }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: {} }, synchronizeModelBindingSettings: async () => 'synchronized' }) }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));
 vi.mock('@/features/tools/composables/useChatWeshPreferences', () => ({ useChatWeshPreferences: () => ({ getNaidanSysfsAccessScope: () => 'none' }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn() } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn(), createChatContentWrite: state.captureWrite, captureSettingsStorage: () => () => true, loadChatContentWithoutAttachments: async () => null, subscribeToChanges: () => () => {} } }));
 import { runCompactCurrentBranchForChat } from './chat-compact-flow';
 
 function makeChat(): Chat {
@@ -82,11 +86,29 @@ beforeEach(async () => {
   state.active = undefined;
   state.generate = () => generate({ result: { type: 'finished', next: 'user' } });
   state.request = undefined;
-  state.save.mockImplementation(async ({ updater }: { updater: ({ current }: { current: ChatContent }) => ChatContent }) => updater({ current: state.chat! }));
+  state.captureWrite.mockImplementation(({ id, content, binding }: { id: Chat['id'], content: import('@/01-models/types').ChatContent | undefined, binding: ChatContentModelBinding | undefined }) => createChatContentWrite({ id, content, binding, isCurrent: () => true }));
+  state.save.mockImplementation(async ({ updater }: { updater: ({ current }: { current: ChatContent }) => ChatContent }) => {
+    const next = updater({ current: state.chat! });
+    Object.assign(state.chat!, next);
+    return next;
+  });
   state.meta.mockImplementation(async ({ updater }: { updater: ({ current }: { current: ChatMeta }) => ChatMeta }) => updater({ current: state.chat! }));
 });
 
 describe('context compaction generation', () => {
+  it('retains the admitted write while awaiting the compact response', async () => {
+    const chat = state.chat!;
+    const originalContent = chatContentFingerprint({ content: chat });
+    state.generate = () => {
+      chat.modelId = 'user/new-live-model';
+      return generate({ result: { type: 'finished', next: 'user' } });
+    };
+    await runCompactCurrentBranchForChat({ chatId: chat.id, keepRecentMessages: 1, instructionOverride: undefined });
+    const write = state.captureWrite.mock.results[0]!.value;
+    expect(state.save.mock.calls[0]![0].write).toBe(write);
+    expect(readChatContentWrite({ write, id: chat.id })).toMatchObject({ baseline: originalContent, binding: { modelId: 'm' } });
+  });
+
   it('drains all children, stores raw summary text and preserves the source branch', async () => {
     const chat = state.chat!;
     const original = JSON.stringify(chat.root);

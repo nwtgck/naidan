@@ -1,31 +1,17 @@
 import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { Endpoint } from '@/01-models/types';
-import type { SettingsSource } from '@/logic/settings-labels';
 
-export type ChatTextSubmissionAction = 'send' | 'open-onboarding' | 'blocked';
+export type ChatTextSubmissionAction = 'send' | 'select-model' | 'blocked';
 
-/** Missing inherited chat setup is recoverable through global onboarding.
- * A broken chat/group override must not open a global-only editor. */
-export function resolveChatTextSubmissionAction({
-  endpoint,
-  modelId,
-  endpointSource,
-  modelSource,
-  globalSetupIncomplete,
-  canSubmit,
-}: {
+/** Model selection writes a chat override, regardless of which inherited
+ * setting is incomplete. The existing resolver remains the source of truth. */
+export function resolveChatTextSubmissionAction({ endpoint, modelId, canSubmit }: {
   endpoint: Endpoint,
   modelId: string,
-  endpointSource: SettingsSource,
-  modelSource: SettingsSource,
-  globalSetupIncomplete: boolean,
   canSubmit: boolean,
 }): ChatTextSubmissionAction {
-  if (!isConfiguredEndpoint({ endpoint })) {
-    return globalSetupIncomplete && endpointSource === 'global' ? 'open-onboarding' : 'blocked';
-  }
-  if (!modelId) {
-    return globalSetupIncomplete && modelSource === 'global' ? 'open-onboarding' : 'blocked';
+  if (!isConfiguredEndpoint({ endpoint }) || !modelId) {
+    return 'select-model';
   }
   return canSubmit ? 'send' : 'blocked';
 }

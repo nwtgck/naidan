@@ -1,20 +1,15 @@
 <script setup lang="ts">
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
-import { localModelChatGroupName } from '@/features/llama-cpp-browser/chat-group-name';
-import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
-import { idToRaw, type ChatGroupId, type ChatId } from '@/01-models/ids';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { ref, watch, computed, nextTick, defineAsyncComponent, onUnmounted } from 'vue';
-import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
 import { useToast } from '@/composables/useToast';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
-import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
-import { storageService } from '@/00-storage/service';
+import { useLocalModelStart } from '@/composables/useLocalModelStart';
 import type { Settings } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatGroupRecipe } from '@/features/recipes/logic/recipe';
@@ -25,6 +20,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeImportTab.vue') });
 const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
 const LlamaCppBrowserManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue') });
+const LlamaCppBrowserPerformanceEntry = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceEntry.vue'));
 const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsManager.vue') });
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
@@ -50,7 +46,20 @@ const props = defineProps<{
   suspended?: boolean,
   performanceLoading?: boolean,
   performanceError?: string,
+  navigation?: 'route' | 'local',
+  requestedTab?: string,
 }>();
+const usesLocalNavigation = computed(() => {
+  const navigation = props.navigation;
+  switch (navigation) {
+  case 'local': return true;
+  case 'route': case undefined: return false;
+  default: {
+    const exhaustive: never = navigation;
+    return exhaustive;
+  }
+  }
+});
 
 const emit = defineEmits<{
   (e: 'close'): void,
@@ -62,25 +71,12 @@ const { settings, updateGlobalModelAndEndpoint, availableModels: rawAvailableMod
 const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
 
 const chatOrganization = useChatOrganization();
-const chatLifecycle = useChatLifecycle();
+const { startLocalModel } = useLocalModelStart();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
 const { isFeatureEnabled } = useFeatureFlags();
 provideHuggingFaceSession();
-const modelPresetState = useModelPreset();
-const modelPreset = computed(() => {
-  const preset = modelPresetState?.value;
-  const target = preset?.target;
-  switch (target) {
-  case 'settings': return preset;
-  case undefined: case 'onboarding': return undefined;
-  default: {
-    const exhaustive: never = target;
-    throw new Error(String(exhaustive));
-  }
-  }
-});
 const route = useRoute();
 const router = useRouter();
 
@@ -129,16 +125,15 @@ const hasUnsavedConnectionChanges = computed(() => {
   return JSON.stringify(current) !== JSON.stringify(initial);
 });
 
-// Retain only confirmed successes so a failed next step can be retried without
-// creating another group or chat. The storage operations are not a transaction.
-const pendingLocalChatGroups = new Map<string, { chatGroupId: ChatGroupId, chatId: ChatId | undefined }>();
-let localChatGroupRequestVersion = 0;
 let creatingLocalChatGroup = false;
+let localModelController: AbortController | undefined;
+let modalRequestVersion = 0;
 watch([() => props.isOpen, () => props.suspended, () => route.fullPath], () => {
-  localChatGroupRequestVersion++;
+  modalRequestVersion++;
 }, { flush: 'sync' });
 onUnmounted(() => {
-  localChatGroupRequestVersion++;
+  modalRequestVersion++;
+  localModelController?.abort();
 });
 
 async function createLocalModelChatGroup({ model, signal }: { model: LocalModel, signal: AbortSignal }): Promise<void> {
@@ -146,79 +141,21 @@ async function createLocalModelChatGroup({ model, signal }: { model: LocalModel,
     return;
   }
   creatingLocalChatGroup = true;
-  const version = localChatGroupRequestVersion;
-  const isCurrent = () => version === localChatGroupRequestVersion && props.isOpen && !props.suspended && !signal.aborted;
+  const controller = new AbortController();
+  localModelController = controller;
+  const abort = () => controller.abort();
+  signal.addEventListener('abort', abort, { once: true });
+  const stop = watch([() => props.isOpen, () => props.suspended, () => route.fullPath], abort, { flush: 'sync' });
+  const isCurrent = () => !controller.signal.aborted && props.isOpen && !props.suspended;
   try {
     if (!await confirmDiscardConnectionChanges({ isCurrent }) || !isCurrent()) {
       return;
     }
-    // Check after the discard dialog: the selected file may have disappeared
-    // while the user was deciding. Listing never initializes or downloads it.
-    const models = await llamaCppBrowserService.listModelEntries({ signal });
-    if (!isCurrent()) {
-      return;
-    }
-    const available = models.find(entry => entry.modelId === model.modelId);
-    if (!available) {
-      throw new Error('Local model unavailable');
-    }
-    let pendingChatGroup = pendingLocalChatGroups.get(model.modelId);
-    if (pendingChatGroup) {
-      const chatGroupId = pendingChatGroup.chatGroupId;
-      const chatGroup = await storageService.loadChatGroup({ id: chatGroupId });
-      const hierarchy = await storageService.loadHierarchy();
-      if (!isCurrent()) {
-        return;
-      }
-      const hierarchyChatGroup = hierarchy.items.filter(item => item.type === 'chat_group').find(item => item.id === chatGroupId);
-      if (!chatGroup || chatGroup.endpoint?.type !== 'llama_cpp_browser' || chatGroup.modelId !== available.modelId || !hierarchyChatGroup || (pendingChatGroup.chatId !== undefined && !hierarchyChatGroup.chat_ids.includes(pendingChatGroup.chatId))) {
-        pendingLocalChatGroups.delete(model.modelId);
-        throw new Error('Previously created chat group changed');
-      }
-      if (pendingChatGroup.chatId) {
-        const chat = await storageService.loadChat({ id: pendingChatGroup.chatId });
-        if (!isCurrent()) {
-          return;
-        }
-        if (!chat || chat.groupId !== pendingChatGroup.chatGroupId || chat.endpoint !== undefined || chat.modelId !== undefined) {
-          pendingLocalChatGroups.delete(model.modelId);
-          throw new Error('Previously created chat changed');
-        }
-      }
-    }
-    if (!pendingChatGroup) {
-      const chatGroupId = await chatOrganization.createChatGroup({
-        name: localModelChatGroupName({ model: available }),
-        options: { endpoint: { type: 'llama_cpp_browser' }, modelId: available.modelId },
-      });
-      pendingChatGroup = { chatGroupId, chatId: undefined };
-      pendingLocalChatGroups.set(model.modelId, pendingChatGroup);
-    }
-    if (!isCurrent()) {
-      return;
-    }
-    if (!pendingChatGroup.chatId) {
-      const chat = await chatLifecycle.createChatWithoutSelecting({ groupId: pendingChatGroup.chatGroupId, modelId: undefined, systemPrompt: undefined });
-      if (!chat) {
-        throw new Error('Chat creation is already in progress');
-      }
-      pendingChatGroup.chatId = chat.id;
-    }
-    if (!isCurrent()) {
-      return;
-    }
-    // The chat route selects it and closes Settings. Do not also emit close,
-    // which would start a second navigation back to the previous screen.
-    const failure = await router.push(`/chat/${idToRaw({ id: pendingChatGroup.chatId })}`);
-    if (failure) {
-      throw new Error('Could not open the created chat');
-    }
-    pendingLocalChatGroups.delete(model.modelId);
-  } catch (error) {
-    if (isCurrent()) {
-      throw error;
-    }
+    await startLocalModel({ model, signal: controller.signal });
   } finally {
+    stop();
+    signal.removeEventListener('abort', abort);
+    localModelController = undefined;
     creatingLocalChatGroup = false;
   }
 }
@@ -256,8 +193,29 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string, ma
 // Tab State
 const isRpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const isVolumesFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'volume' }));
+const localTab = ref<Tab>('connection');
+
+function resolveLocalTab({ value }: { value: string | undefined }): Tab {
+  switch (value) {
+  case 'profiles': case 'provider-profiles': return 'profiles';
+  case 'transformers_js': case 'transformers-js': return 'transformers_js';
+  case 'llama_cpp_browser': case 'llama-cpp-browser': return 'llama_cpp_browser';
+  case 'binary_objects': case 'binary-objects': return 'binary_objects';
+  case 'naidan_rpc': case 'naidan-rpc': return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
+  case 'volumes': return isVolumesFeatureEnabled.value ? 'volumes' : 'connection';
+  case 'tools': case 'recipes': case 'storage': case 'developer': case 'about': return value;
+  default: return 'connection';
+  }
+}
+
+watch(() => props.requestedTab, value => {
+  localTab.value = resolveLocalTab({ value });
+}, { immediate: true });
 const activeTab = computed({
   get: () => {
+    if (usesLocalNavigation.value) {
+      return resolveLocalTab({ value: localTab.value });
+    }
     const queryTab = route.query.settings as string;
     if (queryTab) {
       if (queryTab === 'naidan-rpc' || queryTab === 'naidan_rpc') {
@@ -302,6 +260,10 @@ const activeTab = computed({
     return (tab as Tab) || 'connection';
   },
   set: (val) => {
+    if (usesLocalNavigation.value) {
+      localTab.value = val;
+      return;
+    }
     const pathMap: Record<string, string> = {
       naidan_rpc: 'naidan-rpc',
       profiles: 'provider-profiles',
@@ -332,8 +294,8 @@ async function confirmDiscardConnectionChanges({ isCurrent }: { isCurrent: () =>
 }
 
 async function handleCancel() {
-  const version = localChatGroupRequestVersion;
-  const isCurrent = () => props.isOpen && version === localChatGroupRequestVersion;
+  const version = modalRequestVersion;
+  const isCurrent = () => props.isOpen && version === modalRequestVersion;
   if (await confirmDiscardConnectionChanges({ isCurrent }) && isCurrent()) {
     emit('close');
   }
@@ -422,14 +384,8 @@ defineExpose({
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
-                <LlamaCppBrowserManager :suspended="props.suspended" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
-                <section tw-class="mt-8 space-y-3 border-t border-gray-200 pt-6 dark:border-gray-800">
-                  <h3 tw-class="text-sm font-bold">{{ lazyStrings.llamaCppPerformance__speed_investigation() }}</h3>
-                  <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__measure_saved_models() }}</p>
-                  <button type="button" data-testid="open-llama-cpp-performance"
-                          :disabled="props.performanceLoading" tw-class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" @click="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)">{{ lazyStrings.llamaCppPerformance__open_speed_investigation() }}</button>
-                  <p v-if="props.performanceError" role="alert" tw-class="break-words text-xs text-red-700 dark:text-red-300">{{ props.performanceError }}</p>
-                </section>
+                <LlamaCppBrowserManager :suspended="props.suspended" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
+                <LlamaCppBrowserPerformanceEntry :loading="props.performanceLoading === true" :error="props.performanceError" tw-class="mt-5" @open="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)" />
               </div>
 
               <!-- Recipes Tab -->

@@ -53,6 +53,14 @@ beforeEach(() => {
 });
 
 describe('document metadata ownership', () => {
+  it('uses the homepage metadata while the root introduction is visible', async () => {
+    const router = routerForPages();
+    await router.push('/');
+    using _owner = mountOwner({ router, introduction: presentationTestOnly.createHomeIntroduction({ router }), content: defineComponent({ template: '<div />' }) });
+    await nextTick();
+    expectHead({ page: HOME_METADATA, documentTitle: HOME_METADATA.title });
+  });
+
   it('matches the same routed page with a trailing slash for both page and loading sources', async () => {
     const router = routerForPages();
     await router.push('/chat/one/');
@@ -223,7 +231,7 @@ describe('document metadata ownership', () => {
     expectHead({ page: AUDIO_METADATA, documentTitle: AUDIO_METADATA.title });
   });
 
-  it('keeps the homepage introduction through automatic navigation and ends it only on application use', async () => {
+  it('releases the homepage introduction and accepts progress titles after navigation to a chat', async () => {
     const router = routerForPages();
     await router.push('/');
     const introduction = presentationTestOnly.createHomeIntroduction({ router });
@@ -238,15 +246,13 @@ describe('document metadata ownership', () => {
         },
       }),
     });
-    introduction.continueHomeIntroduction({ routePath: '/chat/automatic' });
     await router.push('/chat/automatic');
     progress.value = 'Loading 90%';
     await flushPromises();
-    expectHead({ page: HOME_METADATA, documentTitle: HOME_METADATA.title });
+    expectHead({ page: APPLICATION_METADATA, documentTitle: 'Loading 90%' });
     introduction.finishHomeIntroduction();
     await nextTick();
     expect(document.title).toBe('Loading 90%');
-    introduction.continueHomeIntroduction({ routePath: '/chat/late-result' });
     expect(introduction.homeIntroduction.value.kind).toBe('inactive');
     await router.push('/chat/late-result');
     expectHead({ page: APPLICATION_METADATA, documentTitle: 'Naidan' });

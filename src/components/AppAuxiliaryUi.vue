@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { type Component, computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue';
-import { useModelPresetCoordinator } from '@/features/llama-cpp-browser/model-preset';
-import { resolveInitialRoute } from '@/logic/startup/startup-route';
-import { START_LOCATION, useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
+import { loadModelDiscoveryPanel, useAppEntry } from '@/composables/useAppEntry';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useLayout } from '@/composables/useLayout';
+import { useSettings } from '@/composables/useSettings';
+import { provideModelDiscoveryTab } from '@/composables/useModelDiscoveryTab';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { isModelSupportInvestigationAvailable, loadModelSupportInvestigationModal } from '@/features/transformers-js/model-support-investigation';
@@ -13,9 +15,11 @@ import { transformersJsService } from '@/features/transformers-js';
 import { downloadTimingSnapshotSchema, parseDownloadTiming, type DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
+defineProps<{ pwaActivation: 'active' | 'deferred' }>();
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
 const LlamaCppBrowserPerformanceModal = shallowRef<Component>();
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'));
+const ModelDiscoveryPanel = defineAsyncComponent(loadModelDiscoveryPanel);
 const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue'));
 const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
@@ -29,26 +33,39 @@ const PWAManager = __BUILD_MODE_IS_HOSTED__
 
 const router = useRouter();
 const route = useRoute();
+const appEntry = useAppEntry();
+provideModelDiscoveryTab({ source: useSettings() });
+const { resolvedSettings } = useCurrentChatState();
+const discoveryCurrentModelId = computed(() => {
+  const settings = resolvedSettings.value;
+  const type = settings?.endpoint.type;
+  switch (type) {
+  case 'llama_cpp_browser': return settings?.modelId;
+  case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case 'naidan_rpc': case 'unsupported_experimental_endpoint': case undefined: return undefined;
+  default: {
+    const exhaustive: never = type;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
 const { isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
 const { isFileExplorerOpen } = useFileExplorerModal();
 const { isSearchOpen } = useGlobalSearch();
 const { isRecentOpen } = useRecentChats();
 const { activePrintMode } = usePrint();
-const modelPreset = useModelPresetCoordinator();
-watch(() => modelPreset?.value, preset => {
-  const target = preset?.target;
-  switch (target) {
-  case undefined: case 'onboarding': return;
-  case 'settings': break;
-  default: {
-    const exhaustive: never = target;
-    throw new Error(String(exhaustive));
+const isModelPreview = computed(() => appEntry.intent.value.kind === 'model-preview'
+  || route.query['llama-cpp-browser-model'] !== undefined);
+const isSettingsOpen = computed(() => appEntry.settingsOverlay.value !== undefined
+  || (!isModelPreview.value && (route.path.startsWith('/settings') || !!route.query.settings)));
+const discoveryMounted = ref(false);
+const discoveryTab = ref<'candidates' | 'hugging-face' | 'local-files'>();
+watch(appEntry.discovery, discovery => {
+  if (discovery === undefined) {
+    return;
   }
-  }
-  const destination = router.currentRoute.value === START_LOCATION ? resolveInitialRoute({ router }) : route;
-  void router.replace({ path: destination.path, query: { ...destination.query, settings: 'llama-cpp-browser' }, hash: destination.hash });
+  discoveryTab.value = discovery.tab;
+  discoveryMounted.value = true;
 }, { immediate: true });
-const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
 const modelSupportInvestigationModelId = ref<string | undefined>(undefined);
 const llamaPerformanceOpened = ref(false);
 const llamaPerformanceVisible = ref(false);
@@ -139,6 +156,10 @@ function closeModelSupportInvestigation(): void {
 }
 
 function closeSettings(): void {
+  if (appEntry.settingsOverlay.value !== undefined) {
+    appEntry.closeSettings();
+    return;
+  }
   if (route.query.settings) {
     const query = { ...route.query };
     delete query.settings;
@@ -172,6 +193,8 @@ defineExpose({
   >
     <SettingsModal
       :is-open="true"
+      :navigation="appEntry.settingsOverlay.value === undefined ? 'route' : 'local'"
+      :requested-tab="appEntry.settingsOverlay.value?.tab"
       :suspended="llamaPerformanceVisible"
       :performance-loading="llamaPerformanceLoading"
       :performance-error="llamaPerformanceLoadError"
@@ -180,6 +203,16 @@ defineExpose({
       @open-model-support-investigation="openModelSupportInvestigation({ modelId: $event })"
     />
   </div>
+
+  <ModelDiscoveryPanel
+    v-if="discoveryMounted"
+    :visibility="appEntry.discovery.value === undefined ? 'closed' : 'open'"
+    :tab="discoveryTab"
+    :interaction="appEntry.interaction.value"
+    :current-model-id="discoveryCurrentModelId"
+    :selection-target="appEntry.modelSelection.value?.target.kind === 'chat' ? 'chat' : undefined"
+    @close="appEntry.closeDiscovery()"
+  />
 
   <LlamaCppBrowserPerformanceModal
     v-if="llamaPerformanceOpened"
@@ -203,7 +236,7 @@ defineExpose({
 
   <GlobalSearchModal v-if="isSearchOpen" />
   <RecentChatsModal v-if="isRecentOpen" />
-  <PWAManager v-if="PWAManager" />
+  <PWAManager v-if="PWAManager && pwaActivation === 'active'" />
   <FileExplorerModal v-if="isFileExplorerOpen" />
 
   <PrintView v-if="activePrintMode !== undefined">

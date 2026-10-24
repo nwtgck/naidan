@@ -3,7 +3,9 @@ import { defineComponent, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { useSettings } from '@/composables/useSettings';
-import type { Settings } from '@/01-models/types';
+import type { ChangeListener } from '@/00-storage/service/synchronizer';
+import { DEFAULT_SETTINGS, type Settings, type SidebarItem } from '@/01-models/types';
+import { toChatId } from '@/01-models/ids';
 import type { StartupState } from '@/logic/startup/types';
 import { createInitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { startApp } from './app-startup';
@@ -12,10 +14,27 @@ const MainApp = defineComponent({
   template: '<div />',
 });
 const loadChatsForAppStartup = vi.hoisted(() => vi.fn(async () => {}));
+const loadInitialSidebar = vi.hoisted(() => vi.fn<() => Promise<SidebarItem[]>>());
+const initialSidebarListener = vi.hoisted(() => vi.fn<(listener: ChangeListener) => void>());
+const stopInitialSidebarWatch = vi.hoisted(() => vi.fn());
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    getSidebarStructure: loadInitialSidebar,
+    subscribeToChanges: ({ listener }: { listener: ChangeListener }) => {
+      initialSidebarListener(listener);
+      return stopInitialSidebarWatch;
+    },
+  },
+}));
 const activateChatBootstrap = vi.hoisted(() => vi.fn());
 const disposeRpcAutomaticConnections = vi.hoisted(() => vi.fn());
 const startRpcAutomaticConnections = vi.hoisted(() => vi.fn(() => disposeRpcAutomaticConnections));
 vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ startRpcAutomaticConnections }));
+
+vi.mock('@/composables/useAppEntry', () => ({ getActiveAppEntry: () => undefined }));
+const EntrySurface = defineComponent({ template: '<div />' });
+const savedSidebar: SidebarItem[] = [{ type: 'chat', id: 'chat:saved', chat: { id: toChatId({ raw: 'saved' }), title: 'Saved', updatedAt: 1, groupId: undefined } }];
+vi.mock('@/components/AppEntrySurface.vue', () => ({ default: EntrySurface }));
 
 vi.mock('@/MainApp.vue', () => ({
   default: MainApp,
@@ -43,10 +62,14 @@ function createSettingsStore({ onboardingDismissed }: {
   onboardingDismissed: boolean,
 }) {
   const isOnboardingDismissed = ref(onboardingDismissed);
+  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: onboardingDismissed ? { type: 'llama_cpp_browser' } : { type: 'openai', url: '' }, defaultModelId: onboardingDismissed ? 'selected-model' : undefined });
   const init = vi.fn(async () => {});
+  const deferModelRefresh = vi.fn();
+  const resumeModelRefresh = vi.fn();
   const save = vi.fn(async ({ patch }: {
     patch: Partial<Settings>,
   }) => {
+    settings.value = { ...settings.value, ...patch };
     if (patch.endpoint !== undefined && patch.defaultModelId !== undefined) {
       isOnboardingDismissed.value = true;
     }
@@ -58,6 +81,9 @@ function createSettingsStore({ onboardingDismissed }: {
     save,
     settingsStore: {
       init,
+      settings,
+      deferModelRefresh,
+      resumeModelRefresh,
       isOnboardingDismissed,
       save,
     } as unknown as SettingsStore,
@@ -127,6 +153,9 @@ function flushPresentationPaint({ callbacks }: {
 
 describe('app startup', () => {
   beforeEach(() => {
+    loadInitialSidebar.mockReset().mockResolvedValue([]);
+    initialSidebarListener.mockClear();
+    stopInitialSidebarWatch.mockClear();
     loadChatsForAppStartup.mockClear();
     activateChatBootstrap.mockClear();
     startRpcAutomaticConnections.mockClear();
@@ -134,6 +163,7 @@ describe('app startup', () => {
   });
 
   it('uses the normal main startup path for an already configured user', async () => {
+    loadInitialSidebar.mockResolvedValue(savedSidebar);
     const settings = createSettingsStore({ onboardingDismissed: true });
     const harness = createStartupHarness();
 
@@ -148,6 +178,9 @@ describe('app startup', () => {
 
     expect(settings.init).toHaveBeenCalledOnce();
     expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
+    expect(loadChatsForAppStartup).toHaveBeenCalledWith({ initialSidebar: savedSidebar });
+    expect(loadInitialSidebar).toHaveBeenCalledOnce();
+    expect(stopInitialSidebarWatch).toHaveBeenCalledOnce();
     expect(harness.startupState.value).toEqual({
       kind: 'rendering-main',
       mainApp: MainApp,
@@ -199,8 +232,8 @@ describe('app startup', () => {
     dispose();
   });
 
-  it('gives onboarding one paint and then renders the real app before dismissal', async () => {
-    const settings = createSettingsStore({ onboardingDismissed: false });
+  it.each([false, true])('gives an empty history dialog paint priority before chat bootstrap, regardless of configured global settings: %s', async configured => {
+    const settings = createSettingsStore({ onboardingDismissed: configured });
     const harness = createStartupHarness();
 
     const startup = startApp({
@@ -221,8 +254,11 @@ describe('app startup', () => {
     flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
     await flushPromises();
 
-    expect(settings.isOnboardingDismissed.value).toBe(false);
+    expect(settings.isOnboardingDismissed.value).toBe(configured);
     expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
+    expect(loadChatsForAppStartup).toHaveBeenCalledWith({ initialSidebar: [] });
+    expect(loadInitialSidebar).toHaveBeenCalledOnce();
+    expect(stopInitialSidebarWatch).toHaveBeenCalledOnce();
     expect(harness.startupState.value).toEqual({
       kind: 'rendering-main',
       mainApp: MainApp,
@@ -232,7 +268,7 @@ describe('app startup', () => {
     flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
     const dispose = await startup;
 
-    expect(settings.isOnboardingDismissed.value).toBe(false);
+    expect(settings.isOnboardingDismissed.value).toBe(configured);
     expect(activateChatBootstrap).toHaveBeenCalledOnce();
     expect(harness.loadRouteComponent).toHaveBeenCalledOnce();
     expect(harness.startupState.value).toEqual({
@@ -243,7 +279,37 @@ describe('app startup', () => {
     dispose();
   });
 
+  it.each(['chat_meta_and_chat_group', 'migration'] as const)('discards the early sidebar snapshot after %s changes while the dialog paints', async type => {
+    const settings = createSettingsStore({ onboardingDismissed: false });
+    const harness = createStartupHarness();
+    const startup = startApp({ startupState: harness.startupState, settingsStore: settings.settingsStore, router: harness.router, navigationGate: harness.navigationGate, window: harness.window });
+    await flushPromises();
+    const listener = initialSidebarListener.mock.calls[0]?.[0];
+    expect(listener).toBeDefined();
+    await listener!({ event: { type, timestamp: 1 } });
+    expect(loadChatsForAppStartup).not.toHaveBeenCalled();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    await flushPromises();
+    expect(loadChatsForAppStartup).toHaveBeenCalledWith({ initialSidebar: undefined });
+    expect(stopInitialSidebarWatch).toHaveBeenCalledOnce();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    using _startup = { [Symbol.dispose]: dispose };
+  });
+
+  it('releases the initial metadata listener if the saved history cannot be read', async () => {
+    const failure = new Error('Storage permission unavailable');
+    loadInitialSidebar.mockRejectedValue(failure);
+    const settings = createSettingsStore({ onboardingDismissed: false });
+    const harness = createStartupHarness();
+    await expect(startApp({ startupState: harness.startupState, settingsStore: settings.settingsStore, router: harness.router, navigationGate: harness.navigationGate, window: harness.window })).rejects.toBe(failure);
+    expect(stopInitialSidebarWatch).toHaveBeenCalledOnce();
+    expect(loadChatsForAppStartup).not.toHaveBeenCalled();
+    expect(harness.loadRouteComponent).not.toHaveBeenCalled();
+  });
+
   it('passes startup storage data once and removes only the transient data zip query', async () => {
+    loadInitialSidebar.mockResolvedValue(savedSidebar);
     const settings = createSettingsStore({ onboardingDismissed: true });
     const harness = createStartupHarness({
       path: '/?storage-type=opfs&data-zip=encoded-state',
@@ -264,6 +330,7 @@ describe('app startup', () => {
     expect(settings.init).toHaveBeenCalledWith({
       storageTypeOverride: 'opfs',
       dataZipBase64: 'encoded-state',
+      modelRefresh: 'deferred',
     });
     expect(harness.router.currentRoute.value.query['data-zip']).toBeUndefined();
     expect(harness.router.currentRoute.value.query['storage-type']).toBe('opfs');
@@ -299,7 +366,8 @@ describe('app startup', () => {
     dispose();
   });
 
-  it('applies initial URL settings before deciding whether onboarding needs paint priority', async () => {
+  it('applies initial URL settings before deciding whether the passive entry needs paint priority', async () => {
+    loadInitialSidebar.mockResolvedValue(savedSidebar);
     const settings = createSettingsStore({ onboardingDismissed: false });
     const harness = createStartupHarness({
       path: '/?global-endpoint-type=ollama&global-endpoint-url=http%3A%2F%2Flocalhost%3A11434&global-model=llama3',
@@ -329,5 +397,40 @@ describe('app startup', () => {
     expect(harness.startupState.value.kind).toBe('ready');
 
     dispose();
+  });
+
+  it.each(['owner/repo', '', 'owner/a&llama-cpp-browser-model=owner/b'])('keeps a model preview URL unchanged and suppresses every other startup query: %s', async input => {
+    const settings = createSettingsStore({ onboardingDismissed: true });
+    const harness = createStartupHarness({ path: `/chat/existing?llama-cpp-browser-model=${input}&storage-type=memory&data-zip=ignored&global-model=ignored&settings=storage&q=ignored` });
+    const expectedPath = harness.router.resolve(harness.router.options.history.location).fullPath;
+    const replace = vi.spyOn(harness.router, 'replace');
+    const startup = startApp({ startupState: harness.startupState, settingsStore: settings.settingsStore, router: harness.router, navigationGate: harness.navigationGate, window: harness.window });
+    await flushPromises();
+    expect(loadChatsForAppStartup).not.toHaveBeenCalled();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    await flushPromises();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    using _startup = { [Symbol.dispose]: dispose };
+    expect(settings.init).toHaveBeenCalledWith({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'deferred' });
+    expect(settings.save).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+    expect(harness.router.currentRoute.value.fullPath).toBe(expectedPath);
+    expect(startRpcAutomaticConnections).not.toHaveBeenCalled();
+  });
+
+  it('never removes data belonging to a newer navigation from an older startup cleanup', async () => {
+    loadInitialSidebar.mockResolvedValue(savedSidebar);
+    const settings = createSettingsStore({ onboardingDismissed: true });
+    const harness = createStartupHarness({ path: '/?data-zip=accepted' });
+    const startup = startApp({ startupState: harness.startupState, settingsStore: settings.settingsStore, router: harness.router, navigationGate: harness.navigationGate, window: harness.window });
+    const navigation = harness.router.push('/chat/other?data-zip=unprocessed');
+    await flushPromises();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    using _startup = { [Symbol.dispose]: dispose };
+    await navigation;
+    expect(harness.router.currentRoute.value.path).toBe('/chat/other');
+    expect(harness.router.currentRoute.value.query['data-zip']).toBe('unprocessed');
   });
 });

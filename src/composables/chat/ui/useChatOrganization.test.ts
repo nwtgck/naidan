@@ -36,6 +36,9 @@ describe('chat group creation', () => {
     expect(secondChatGroupId).not.toBe(firstChatGroupId);
     const firstChatGroup = await vi.mocked(storageService.updateChatGroup).mock.calls[0]![0].updater({ current: null });
     const secondChatGroup = await vi.mocked(storageService.updateChatGroup).mock.calls[1]![0].updater({ current: null });
+    if (!firstChatGroup || !secondChatGroup) {
+      throw new Error('Expected created chat groups');
+    }
     expect([firstChatGroup.name, secondChatGroup.name]).toEqual(['Model-Q4_K_M', 'Model-Q4_K_M']);
     expect([firstChatGroup.id, secondChatGroup.id]).toEqual([firstChatGroupId, secondChatGroupId]);
   });
@@ -47,6 +50,9 @@ describe('chat group creation', () => {
     });
     const call = vi.mocked(storageService.updateChatGroup).mock.calls[0]![0];
     const chatGroup = await call.updater({ current: null });
+    if (!chatGroup) {
+      throw new Error('Expected created chat group');
+    }
     expect(chatGroup).toMatchObject({ id: chatGroupId, name: 'Local model', endpoint: { type: 'llama_cpp_browser' }, modelId: 'local-model-name', items: [] });
     const hierarchy = { items: [] };
     await vi.mocked(storageService.updateHierarchy).mock.calls[0]![0].updater({ current: hierarchy });
@@ -71,6 +77,9 @@ describe('chat group creation', () => {
   it('keeps endpoint inheritance when no endpoint override is supplied', async () => {
     await useChatOrganization().createChatGroup({ name: 'Inherited group', options: { modelId: 'custom-model' } });
     const chatGroup = await vi.mocked(storageService.updateChatGroup).mock.calls[0]![0].updater({ current: null });
+    if (!chatGroup) {
+      throw new Error('Expected created chat group');
+    }
     expect(chatGroup.endpoint).toBeUndefined();
     expect(chatGroup.modelId).toBe('custom-model');
   });

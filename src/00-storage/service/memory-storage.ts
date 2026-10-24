@@ -155,23 +155,19 @@ export class MemoryStorageProvider extends IStorageProvider {
       return null;
     }
 
-    try {
-      const meta = ChatMetaSchemaDto.parse(rawMeta);
-      const content = ChatContentSchemaDto.parse(rawContent);
-      const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
+    const meta = ChatMetaSchemaDto.parse(rawMeta);
+    const content = ChatContentSchemaDto.parse(rawContent);
+    const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
-      // Resolve groupId from hierarchy
-      const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) {
-        chat.groupId = toChatGroupId({ raw: group.id });
-      }
-
-      this.restoreBlobs({ nodes: chat.root.items });
-
-      return chat;
-    } catch {
-      return null;
+    // Resolve groupId from hierarchy
+    const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
+    if (group) {
+      chat.groupId = toChatGroupId({ raw: group.id });
     }
+
+    this.restoreBlobs({ nodes: chat.root.items });
+
+    return chat;
   }
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
@@ -222,12 +218,8 @@ export class MemoryStorageProvider extends IStorageProvider {
     if (!raw) {
       return null;
     }
-    try {
-      const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-      return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
-    } catch {
-      return null;
-    }
+    const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
+    return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {

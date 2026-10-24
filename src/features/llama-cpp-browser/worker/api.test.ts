@@ -23,7 +23,8 @@ const result = { content: '', reasoningContent: '', toolCalls: [], finishReason:
 
 const completed = () => ({ ...result, toolCalls: [] });
 
-const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), mutation: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+vi.mock('@/features/llama-cpp-browser/runtime/model-mutation-lock', () => ({ withModelMutationLock: calls.mutation }));
 vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
 vi.mock("./audio-generation", () => ({ generateAudio: calls.audio }));
@@ -68,6 +69,7 @@ beforeEach(() => {
   calls.list.mockResolvedValue([]);
   calls.remove.mockResolvedValue(undefined);
   calls.release.mockResolvedValue(undefined);
+  calls.mutation.mockImplementation(async ({ operation }: { operation: () => Promise<unknown> }) => operation());
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -206,6 +208,7 @@ describe("generation RPC lifecycle", () => {
     const plan: DeletionPlan = { target: { kind: 'model', modelId: 'user/local-GGUF', location: { kind: 'opfs-user', rootName: 'local-GGUF' } }, folder, parent, rootName: 'local-GGUF', selectedRelativePaths: [], sharedProjector: undefined, files: [] };
     await api.removeModel({ plan });
     expect(order).toEqual(["release", "remove"]);
+    expect(calls.mutation).toHaveBeenCalledOnce();
     expect(calls.release).toHaveBeenCalledWith({ modelId: "user/local-GGUF" });
     await expect(api.removeModel({ plan: { ...plan, selectedRelativePaths: ["../unsafe"] } })).rejects.toThrow();
     expect(calls.remove).toHaveBeenCalledOnce();

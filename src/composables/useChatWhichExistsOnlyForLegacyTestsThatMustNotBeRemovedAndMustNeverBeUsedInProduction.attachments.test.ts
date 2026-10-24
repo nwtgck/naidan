@@ -17,6 +17,7 @@ let hierarchy = { items: [] as any[] };
 
 vi.mock('./useSettings', () => ({
   useSettings: vi.fn().mockReturnValue({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: {
       value: {
         endpoint: {
@@ -41,7 +42,7 @@ vi.mock('../00-storage/service', () => ({
       return Promise.resolve();
     }),
     updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
-      const existing = chats.get(id) || { id, root: { items: [] } };
+      const existing = chats.get(id) ?? null;
       const updated = updater({ current: existing });
       const merged = { ...existing, ...updated };
       chats.set(id, merged);
@@ -129,6 +130,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
     chats.clear();
     hierarchy = { items: [] };
     settings = ref({
@@ -143,6 +145,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       providerProfiles: [],
     });
     (useSettings as any).mockReturnValue({
+      synchronizeModelBindingSettings: async () => 'synchronized',
       settings,
       isOnboardingDismissed: ref(true),
       onboardingDraft: ref({}),

@@ -71,14 +71,15 @@ it('keeps unsupported linking dimmed but selectable even while the editor disabl
   const link = wrapper.get<HTMLButtonElement>('[data-testid="image-import-mode-host"]');
   expect(link.element.disabled).toBe(false);
   expect(link.classes()).toContain('opacity-50');
-  expect(link.text()).toContain('Unavailable');
+  expect(link.text()).toBe('Link folder');
+  expect(link.attributes('aria-describedby')).toBeUndefined();
   await link.trigger('click');
   expect(link.attributes('aria-pressed')).toBe('true');
   expect(wrapper.find('input[type="file"]').exists()).toBe(false);
   expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('owner/');
   expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('subdir/');
   expect(wrapper.get<HTMLButtonElement>('[data-testid="linked-add-model-directory"]').element.disabled).toBe(true);
-  expect(wrapper.get('[data-testid="linked-host-folders-unavailable"]').text()).toContain('unavailable');
+  expect(wrapper.get('[data-testid="linked-host-folders-unavailable"]').text()).toBe('Linking folders on your device is not available in this environment.');
   await wrapper.get('[data-testid="image-import-mode-temp"]').trigger('click');
   expect(wrapper.find('input[webkitdirectory]').exists()).toBe(true);
   expect(wrapper.get<HTMLInputElement>('input[accept=".gguf,.safetensors,.sft"]').element.disabled).toBe(true);

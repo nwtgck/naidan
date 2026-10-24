@@ -13,6 +13,9 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
 import ImageGenerationResults from './components/ImageGenerationResults.vue';
 import ImageGenerationProgress from './components/ImageGenerationProgress.vue';
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 const rpcMocks = vi.hoisted(() => ({ manager: vi.fn() }));
 vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ getRpcManager: rpcMocks.manager, subscribeRpcState: () => () => {} }));
 const mocks = vi.hoisted(() => {

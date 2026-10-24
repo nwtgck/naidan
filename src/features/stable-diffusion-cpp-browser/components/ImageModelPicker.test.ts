@@ -138,6 +138,23 @@ it('ignores composition Enter, closes on Escape/Tab, and does not trap tab navig
   expect(document.querySelector('[data-testid="image-model-picker-popup"]')).toBeNull();
 });
 
+it('removes a closed menu immediately and keeps a rapid reopen interactive', async () => {
+  const wrapper = create({ props: {} });
+  const menu = await open({ wrapper });
+  await menu.get('[data-testid="image-model-picker-search"]').trigger('keydown', { key: 'Escape' });
+  expect(menu.element.isConnected).toBe(false);
+  await menu.get('[data-value="unknown"]').trigger('click');
+  expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+
+  const reopened = await open({ wrapper });
+  expect(reopened.element).not.toBe(menu.element);
+  expect(reopened.element.hasAttribute('inert')).toBe(false);
+  expect(reopened.attributes('aria-hidden')).not.toBe('true');
+  expect(document.activeElement).toBe(reopened.get('[data-testid="image-model-picker-search"]').element);
+  await reopened.get('[data-value="unknown"]').trigger('click');
+  expect(wrapper.emitted('update:modelValue')).toEqual([['unknown']]);
+});
+
 it('removes the teleported menu when its pane becomes inactive and never moves focus into the hidden pane', async () => {
   const wrapper = create({ props: {} });
   await open({ wrapper });

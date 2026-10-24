@@ -11,7 +11,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 
 import { setupScrollToMock } from '@/utils/utils.test-support';
-import type { Attachment, LmParameters } from '@/01-models/types';
+import type { Attachment, Chat, LmParameters } from '@/01-models/types';
 
 
 
@@ -287,8 +287,12 @@ describe('ChatPane Group Inheritance UI', () => {
       id: toChatId({ raw: 'chat-1' }),
       title: 'Test Chat',
       modelId: undefined, // Inheriting
-      groupId: null,
-    };
+      groupId: undefined,
+      root: { items: [] },
+      createdAt: 1,
+      updatedAt: 1,
+      debugEnabled: false,
+    } satisfies Chat;
     mockChatGroups.value = [];
 
     // Default resolution (Global)

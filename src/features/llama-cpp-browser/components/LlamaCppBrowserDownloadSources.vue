@@ -7,7 +7,7 @@ import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/d
 import { selectionSchema } from '@/features/llama-cpp-browser/hugging-face/types';
 import type { DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 
-const props = defineProps<{ job: DownloadJob }>();
+const props = defineProps<{ job: DownloadJob, appearance?: 'default' | 'quiet' }>();
 const open = ref(false);
 const trigger = ref<HTMLButtonElement>();
 const panelId = useId();
@@ -60,10 +60,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <div v-if="selection" data-testid="model-download-sources" tw-class="min-w-0 text-left" @keydown.esc.stop.prevent="close()">
-    <button ref="trigger" :id="triggerId" type="button" :aria-expanded="open" :aria-controls="panelId" data-testid="model-download-sources-toggle" @click="open = !open" tw-class="min-h-11 inline-flex max-w-full items-center gap-2 rounded-lg px-2 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none">
-      <LinkIcon aria-hidden="true" tw-class="w-3.5 h-3.5 shrink-0" />
-      <span>{{ lazyStrings.LlamaCppBrowserDownloadSources__files_and_sources() }}</span>
-      <ChevronDownIcon aria-hidden="true" :tw-class="['w-3.5 h-3.5 shrink-0 transition-transform duration-150 motion-reduce:transition-none', open ? 'rotate-180' : '']" />
+    <button ref="trigger" :id="triggerId" type="button" :aria-expanded="open" :aria-controls="panelId" data-testid="model-download-sources-toggle" :aria-label="lazyStrings.LlamaCppBrowserDownloadSources__files_and_sources()" :title="lazyStrings.LlamaCppBrowserDownloadSources__files_and_sources()" @click="open = !open" :tw-class="['min-h-11 inline-flex max-w-full items-center rounded-lg text-gray-500 dark:text-gray-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none', appearance === 'quiet' ? 'gap-1 px-0 text-[11px] hover:text-gray-700 dark:hover:text-gray-200' : 'gap-2 px-2 text-xs hover:text-blue-600 dark:hover:text-blue-400']">
+      <LinkIcon v-if="appearance !== 'quiet'" aria-hidden="true" tw-class="w-3.5 h-3.5 shrink-0" />
+      <span>{{ appearance === 'quiet' ? lazyStrings.llamaCppBrowserDownloads__details() : lazyStrings.LlamaCppBrowserDownloadSources__files_and_sources() }}</span>
+      <ChevronDownIcon aria-hidden="true" :tw-class="['shrink-0 transition-transform duration-150 motion-reduce:transition-none', appearance === 'quiet' ? 'w-3 h-3 text-gray-400 dark:text-gray-500' : 'w-3.5 h-3.5', open ? 'rotate-180' : '']" />
     </button>
     <Transition name="sources">
       <section v-if="open" :id="panelId" :aria-labelledby="triggerId" data-testid="model-download-sources-panel" tw-class="mt-1 min-w-0 space-y-3 border-l-2 border-blue-100 dark:border-blue-900/50 pl-3 sm:pl-4 py-2">

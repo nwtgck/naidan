@@ -26,8 +26,18 @@ function quantizationFirstLabel({ variant, quantization }: { variant: string, qu
 }
 
 export function matchesQuantizationChoice({ choice, variant }: { choice: QuantizationChoice, variant: string }): boolean {
-  // Previously displayed labels were also accepted as explicit input.
-  return choice.label === variant || quantizationFirstLabel({ variant: choice.label, quantization: choice.quantization }) === variant;
+  // The metadata picker submits an exact path. Previously displayed labels
+  // remain accepted as explicit input too.
+  return choice.primaryRelativePath === variant || choice.label === variant || quantizationFirstLabel({ variant: choice.label, quantization: choice.quantization }) === variant;
+}
+
+export function selectedQuantizationChoice({ choices, variant }: { choices: readonly QuantizationChoice[], variant: string | undefined }): QuantizationChoice | undefined {
+  if (variant === undefined) {
+    return undefined;
+  }
+  const exact = choices.filter(choice => matchesQuantizationChoice({ choice, variant }));
+  const matching = exact.length > 0 ? exact : choices.filter(choice => choice.quantization === variant.toUpperCase());
+  return matching.length === 1 ? matching[0] : undefined;
 }
 
 export function quantizationChoices({ repository, models }: { repository: string, models: ModelCandidate[] }): QuantizationChoice[] {
@@ -91,6 +101,19 @@ export function preferredProjector({ files }: { files: RepositoryFile[] }): Repo
     return undefined;
   }
   return ranked[0]?.file;
+}
+
+export function formatDownloadBytes({ bytes }: { bytes: number }): string {
+  if (bytes < 1024) {
+    return `${Math.max(0, Math.round(bytes))} B`;
+  }
+  if (bytes < 1024 ** 2) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  if (bytes < 1024 ** 3) {
+    return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+  }
+  return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
 
 export const TEST_ONLY = {

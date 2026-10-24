@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import { computed, onMounted, onScopeDispose, ref, shallowRef } from 'vue';
 import { NetworkIcon, PlusIcon, RefreshCwIcon, SaveIcon, ShieldCheckIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
@@ -360,7 +361,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     </label>
                   </span>
                 </template>
-                <label v-for="name in group.names" :key="name" tw-class="flex min-w-0 items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><input type="checkbox" :checked="methods.includes(name)" @change="toggleMethod({ name, enabled: ($event.target as HTMLInputElement).checked })" :data-testid="`rpc-method-${name}`" tw-class="h-4 w-4 shrink-0 accent-blue-600 disabled:opacity-40" /><code tw-class="min-w-0 break-all">{{ name }}</code></label>
+                <label v-for="name in group.names" :key="name" tw-class="flex min-w-0 items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="methods.includes(name)" @change="toggleMethod({ name, enabled: ($event.target as HTMLInputElement).checked })" :data-testid="`rpc-method-${name}`" /></SettingsChoiceControl><code tw-class="min-w-0 break-all">{{ name }}</code></label>
               </ImageSettingsSection>
             </fieldset>
             <p v-if="!current.access.effective.length" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.naidanRpc__methods_empty() }}</p>

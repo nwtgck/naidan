@@ -74,6 +74,21 @@ describe('ModelSelector.vue', () => {
     });
 
     expect(wrapper.text()).toContain('model-a');
+    expect(wrapper.get('[data-testid="model-selector-trigger"]').attributes('aria-describedby')).toBeUndefined();
+    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
+  });
+
+  it('describes the closed trigger with optional detail even when the model has no namespace or inheritance metadata', () => {
+    const wrapper = mount(ModelSelector, {
+      props: { modelValue: 'model-a', surface: 'composer', chevronVisibility: 'hidden' },
+      slots: { 'trigger-detail': '<span>Think High</span>' },
+    });
+    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+    const metadata = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+    expect(metadata.text()).toBe('Think High');
+    expect(metadata.get('[id]').attributes('id')).toBe(trigger.attributes('aria-describedby'));
+    expect(trigger.text()).toContain('model-a');
+    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
   });
 
   it('toggles dropdown when clicked', async () => {
@@ -984,5 +999,51 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
     expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
     expect(document.querySelector('[data-testid="model-selector-clear-metadata"]')).toBeNull();
+  });
+
+  it('keeps an inline popup inside its modal and handles each navigation key once', async () => {
+    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: 'model-a', models: ['model-a', 'model-b', 'model-c'], surface: 'settings', popupPresentation: 'inline' } });
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    const dropdown = wrapper.get<HTMLElement>('[data-testid="model-selector-dropdown"]');
+    expect(wrapper.element.contains(dropdown.element)).toBe(true);
+    expect(dropdown.element.style.position).toBe('');
+    const filter = wrapper.get<HTMLInputElement>('[data-testid="model-selector-filter"]');
+    expect(document.activeElement).toBe(filter.element);
+    await filter.trigger('keydown', { key: 'ArrowDown' });
+    await filter.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('update:modelValue')).toEqual([['model-b']]);
+    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+  });
+
+  it.each([false, true])('closes its popup before an enclosing dialog on Escape (inline=%s)', async inline => {
+    const escaped = vi.fn();
+    const host = document.createElement('section');
+    document.body.append(host);
+    const wrapper = mount(ModelSelector, { attachTo: host, props: { modelValue: 'model-a', models: ['model-a'], surface: 'settings', popupPresentation: inline ? 'inline' : 'floating' } });
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
+    host.addEventListener('keydown', escaped);
+    await trigger.trigger('click');
+    // Escape can originate at the trigger as well as the focused popup filter.
+    trigger.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+    expect(escaped).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(trigger.element);
+    trigger.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    expect(escaped).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])('returns focus from an inline menu on Tab without blocking native focus navigation (shift=%s)', async shiftKey => {
+    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: 'model-a', models: ['model-a'], surface: 'settings', popupPresentation: 'inline' } });
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
+    wrapper.get('[data-testid="model-selector-filter"]').element.dispatchEvent(tab);
+    await nextTick();
+    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+    expect(tab.defaultPrevented).toBe(false);
   });
 });

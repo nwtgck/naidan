@@ -8,6 +8,7 @@ export type HfRepositoryEntry = {
 // older repositories and sitemap quantizations when recommendations change.
 // This is bundled data only; reading it must never inspect upstream repositories.
 export const hfRepositories = [
+  { hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF', sitemapQuantizations: ['Q4_K_M'] },
   { hfRepository: 'ggml-org/gpt-oss-20b-GGUF', sitemapQuantizations: ['MXFP4'] },
   { hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF', sitemapQuantizations: ['Q4_K_M'] },
   { hfRepository: 'ggml-org/Qwen3.8-27B-GGUF', sitemapQuantizations: ['Q4_K_M'] },

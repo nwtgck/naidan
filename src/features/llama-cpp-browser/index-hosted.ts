@@ -1,19 +1,15 @@
-import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
-import { directoryForModelFile } from '@/features/llama-cpp-browser/runtime/model-directory-input';
+import { llamaCppBrowserModelFiles } from './model-files';
 import { captureChatOptions, capturePerformanceOptions } from './runtime/chat-options';
 import { promiseAllKeyed } from '@/utils/promise';
 import { resolveModel } from './runtime/model-resolution';
 import type { ResolvedModel } from './runtime/model-directory';
-import { storageService } from '@/00-storage/service';
-import { listHostStoredModels, recordOpfsInventoryIssue } from './runtime/host-model-store';
 import { resolveRuntimeProfile } from './runtime/detect-profile';
 import { audioGenerationInputSchema } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema, resolveProfilePreference, type ProfileCapabilities, type ProfileState } from './runtime/profile-capabilities';
 import { defaultRuntimeOptions, parseRuntimeOptions } from '@/features/llama-cpp-browser/runtime/profile-policy';
-import { listStoredModels, removeStoredModel, withModelMutationLock } from './runtime/model-store';
 import { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
 import type { AcceptedGenerateInput, LlamaCppWorkerClient } from './worker/types';
-import { errorCode, generateInputSchema, LlamaCppBrowserError, type LocalModel, type EngineState, type Progress, type RuntimeOptions, type GenerateInput, type GenerationResult } from './types';
+import { errorCode, generateInputSchema, LlamaCppBrowserError, type EngineState, type Progress, type RuntimeOptions, type GenerateInput, type GenerationResult } from './types';
 import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from './service-contract';
 import { logDiagnostic, logFailure } from './debug-log';
 
@@ -149,7 +145,6 @@ let laneReservations = 0;
 // Reserve before the first await, including while the Worker is being acquired.
 let readOnlyReservations = 0;
 const listeners = new Set<({ state }: { state: EngineState }) => void>();
-const modelListeners = new Set<() => void>();
 
 function publish({ next }: { next: EngineState }): void {
   state = next;
@@ -475,126 +470,12 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       listeners.delete(listener);
     };
   },
-  subscribeModelList({ listener }) {
-    modelListeners.add(listener);
-    const unsubscribeTemporary = temporaryModels.subscribe({ listener });
-    return () => {
-      modelListeners.delete(listener);
-      unsubscribeTemporary();
-    };
-  },
-  async listModelEntries({ signal }) {
-    signal?.throwIfAborted();
-    await temporaryModels.ensure({ signal });
-    const temporary = temporaryModels.list();
-    // The page-local inventory also works when browser persistence is unavailable.
-    const directories = await storageService.loadHostModelDirectories().catch(error => {
-      if (!temporary.length) {
-        throw error;
-      }
-      return [];
-    });
-    let models: LocalModel[];
-    let opfsFailure: { error: unknown } | undefined;
-    try {
-      models = await listStoredModels();
-    } catch (error) {
-      // An unavailable browser store must not hide usable linked folders.
-      if (!directories.length && !temporary.length) {
-        throw error;
-      }
-      models = [];
-      opfsFailure = { error };
-    }
-    models.push(...await listHostStoredModels({ directories, signal }), ...temporary);
-    if (opfsFailure) {
-      recordOpfsInventoryIssue(opfsFailure);
-    }
-    signal?.throwIfAborted();
-    return models.sort((a, b) => a.modelId.localeCompare(b.modelId));
-  },
-  async importModel({ file, signal, storage }) {
-    switch (storage) {
-    case 'temp':
-      await temporaryModels.registerDirectory({ directory: directoryForModelFile({ file }), signal });
-      return;
-    case 'opfs': case undefined: break;
-    default: {
-      const exhaustive: never = storage;
-      throw new Error(String(exhaustive));
-    }
-    }
-    return run({
-      ready: undefined,
-      kind: 'operation',
-      owner: undefined,
-      signal,
-      operation: async ({ worker, signal }) => {
-        progress({ progress: { phase: 'importing', completed: 0, total: file.size } });
-        await worker.importModel({ file, onProgress: progress, signal });
-        for (const listener of modelListeners) {
-          try {
-            listener();
-          } catch {
-            logDiagnostic({ diagnostic: { event: 'failed' } });
-          }
-        }
-      },
-    });
-  },
-  async importDirectory({ directory, signal, storage }) {
-    switch (storage) {
-    case 'temp':
-      await temporaryModels.registerDirectory({ directory, signal });
-      return;
-    case 'opfs': case undefined: break;
-    default: {
-      const exhaustive: never = storage;
-      throw new Error(String(exhaustive));
-    }
-    }
-    return run({
-      ready: undefined,
-      kind: 'operation',
-      owner: undefined,
-      signal,
-      operation: async ({ worker, signal }) => {
-        progress({ progress: { phase: 'importing', completed: 0, total: directory.files.reduce((total, entry) => total + entry.file.size, 0) } });
-        await worker.importDirectory({ directory, onProgress: progress, signal });
-        for (const listener of modelListeners) {
-          try {
-            listener();
-          } catch {
-            logDiagnostic({ diagnostic: { event: 'failed' } });
-          }
-        }
-      },
-    });
-  },
-  async removeTemporaryModel({ modelId, signal }) {
-    signal?.throwIfAborted();
-    temporaryModels.removeModel({ modelId });
-  },
-  async removeModel({ plan, signal }) {
-    // Deletion is deliberately optimistic: it does not wait for chats or keep a
-    // usage registry. Active readers may fail normally; the next request checks
-    // the actual file identities before reusing resident native state.
-    signal?.throwIfAborted();
-    const result = await withModelMutationLock({
-      operation: () => {
-        signal?.throwIfAborted();
-        return removeStoredModel({ plan });
-      },
-    });
-    for (const listener of modelListeners) {
-      try {
-        listener();
-      } catch {
-        logDiagnostic({ diagnostic: { event: 'failed' } });
-      }
-    }
-    return result;
-  },
+  subscribeModelList: llamaCppBrowserModelFiles.subscribeModelList,
+  listModelEntries: llamaCppBrowserModelFiles.listModelEntries,
+  importModel: llamaCppBrowserModelFiles.importModel,
+  importDirectory: llamaCppBrowserModelFiles.importDirectory,
+  removeTemporaryModel: llamaCppBrowserModelFiles.removeTemporaryModel,
+  removeModel: llamaCppBrowserModelFiles.removeModel,
   generate({ input, onEvent, signal }) {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
     const initialRequest = acceptChatRequest({ request: generateInputSchema.parse({ ...input, options: { ...options } }), signal });

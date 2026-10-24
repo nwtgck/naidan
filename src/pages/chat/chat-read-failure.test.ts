@@ -20,6 +20,7 @@ const { mockLoadChat, mockSetCurrentChatId, mockUpdateContent, mockUpdateMeta, m
 vi.mock('@/00-storage/service', () => ({
   storageService: {
     loadChat: mockLoadChat,
+    captureSettingsStorage: () => () => true,
     updateChatContent: mockUpdateContent,
     updateChatMeta: mockUpdateMeta,
     subscribeToChanges: vi.fn(() => () => undefined),
@@ -47,6 +48,15 @@ vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({ currentChatId: computed(() => store.currentChatRef.value?.id) }),
 }));
 vi.mock('vue-router', () => ({ useRouter: () => router }));
+vi.mock('@/composables/useAppEntry', () => ({
+  useAppEntry: () => ({
+    recoverNotFound: async ({ isCurrent }: { isCurrent(): boolean }) => {
+      if (isCurrent()) {
+        await router.replace({ path: '/', query: {}, hash: '' });
+      }
+    },
+  }),
+}));
 vi.mock('@/components/UnselectedChatPane.vue', () => ({
   default: { template: '<div data-testid="unselected-chat"></div>' },
 }));
@@ -74,11 +84,11 @@ let store: ReturnType<typeof createChatDataStore>;
 let scope: ReturnType<typeof effectScope>;
 let wrapper: VueWrapper | undefined;
 let provider: LocalStorageProvider;
-const route = ref<{ params: { id: string }, query: Record<string, string> }>({ params: { id: 'a' }, query: {} });
+const route = ref<{ path?: string, params: { id: string }, query: Record<string, string> }>({ params: { id: 'a' }, query: {} });
 const router = {
   currentRoute: route,
-  replace: vi.fn(({ query }: { query: Record<string, string> }) => {
-    route.value = { ...route.value, query };
+  replace: vi.fn(({ path, query }: { path?: string, query: Record<string, string>, hash?: string }) => {
+    route.value = { path: path ?? route.value.path, params: path === '/' ? { id: '' } : route.value.params, query };
   }),
 };
 
@@ -198,7 +208,9 @@ describe('chat route read failures', () => {
     route.value = { params: { id: 'missing' }, query: { q: 'Do not send anywhere else' } };
     await flushPromises();
     expect(store.currentChatRef.value).toBeNull();
-    expect(wrapper!.find('[data-testid="unselected-chat"]').exists()).toBe(true);
+    expect(router.replace).toHaveBeenLastCalledWith({ path: '/', query: {}, hash: '' });
+    expect(route.value.path).toBe('/');
+    expect(route.value.query).toEqual({});
     expect(wrapper!.find('[data-testid="chat-load-error"]').exists()).toBe(false);
     expect(mockSetCurrentChatId).toHaveBeenLastCalledWith({ chatId: null });
     expect(mockSend).not.toHaveBeenCalled();

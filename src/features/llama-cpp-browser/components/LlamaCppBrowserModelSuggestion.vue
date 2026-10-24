@@ -3,7 +3,8 @@ import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact
 import { quantizationName } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { computed, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
+import { AlertCircleIcon, ArrowRightIcon, BrainCircuitIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon, RefreshCcwIcon, SearchIcon } from 'lucide-vue-next';
+import SettingsSelect from '@/components/SettingsSelect.vue';
 import { lazyStrings } from '@/strings';
 import type { AuthorizedModelDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { destinationKey, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
@@ -19,6 +20,7 @@ import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/d
 import { repositoryUrlPath, type DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 import LlamaCppBrowserDefaultModelAction from './LlamaCppBrowserDefaultModelAction.vue';
 import LlamaCppBrowserModelAction from './LlamaCppBrowserModelAction.vue';
+import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles.vue';
 const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select', destination?: ModelDestination, destinationUnavailable?: boolean, destinationRevision?: number, destinationLabel?: ({ destination }: { destination: ModelDestination }) => string, authorizeDestination?: ({ destination }: { destination: ModelDestination }) => Promise<AuthorizedModelDestination>, createChatGroup?: ({ model }: { model: LocalModel }) => Promise<void>, creatingChatGroupModelId?: string }>();
@@ -48,6 +50,11 @@ const multimodal = computed<MultimodalDownload>({
 });
 const quantizationId = ref(preferredQuantizationHint({ suggestion: props.suggestion }).id);
 const quantization = computed(() => props.suggestion.quantizationHints.find(choice => choice.id === quantizationId.value) ?? preferredQuantizationHint({ suggestion: props.suggestion }));
+const quantizationOptions = computed(() => props.suggestion.quantizationHints.map(choice => ({ value: choice.id, label: suggestedQuantizationLabel({ quantization: choice }) })));
+const quantizationLabel = computed(() => {
+  const label = lazyStrings.LlamaCppBrowserHuggingFaceManager__quantization();
+  return label === undefined ? undefined : `${props.suggestion.name} · ${label}`;
+});
 const detailsOpen = ref(false);
 // Preview snapshots belong to a repository, not a row. Switching to a different
 // source must not expose or download the previous source's files/projector.
@@ -200,14 +207,9 @@ async function handleCreateChatGroup(): Promise<void> {
   await props.createChatGroup({ model: installed.value });
 }
 
-function selectQuantization({ event }: { event: Event }): void {
-  const target = event.target;
-  if (!(target instanceof HTMLSelectElement)) {
-    return;
-  }
-  const choice = props.suggestion.quantizationHints.find(entry => entry.id === target.value);
+function selectQuantization({ value }: { value: string }): void {
+  const choice = props.suggestion.quantizationHints.find(entry => entry.id === value);
   if (optionsLocked.value || !choice) {
-    target.value = quantization.value.id;
     return;
   }
   quantizationId.value = choice.id;
@@ -334,60 +336,57 @@ onUnmounted(() => {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <article :data-testid="`llama-suggestion-${suggestion.id}`" tw-class="min-w-0 py-3">
-    <div tw-class="flex flex-wrap items-center justify-between gap-2" data-testid="llama-suggestion-heading">
-      <div tw-class="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1" data-testid="llama-suggestion-title-options">
-        <h4 :id="`${id}-name`" tw-class="min-w-0 break-words text-sm font-bold text-gray-800 dark:text-gray-100">{{ suggestion.name }}</h4>
-        <!-- Inline selects create a baseline line box in a plain wrapper, shifting
-             the control away from the title/chevron center. Keep both boxes explicit. -->
-        <div tw-class="relative flex max-w-full items-center">
+  <article :data-testid="`llama-suggestion-${suggestion.id}`" tw-class="group/suggestion min-w-0 rounded-xl border border-gray-200/70 bg-white/60 p-3 transition-[background-color,border-color] duration-200 hover:border-gray-300/80 hover:bg-gray-50/80 focus-within:border-blue-300/70 dark:border-gray-800/80 dark:bg-gray-900/20 dark:hover:border-gray-700/80 dark:hover:bg-gray-800/30 dark:focus-within:border-blue-500/30 motion-reduce:transition-none">
+    <div tw-class="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="llama-suggestion-heading">
+      <div tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50/60 text-blue-400 transition-colors duration-200 group-hover/suggestion:bg-blue-100/70 group-hover/suggestion:text-blue-600 group-focus-within/suggestion:text-blue-600 dark:bg-blue-500/5 dark:text-blue-400 dark:group-hover/suggestion:bg-blue-500/15 dark:group-hover/suggestion:text-blue-300 dark:group-focus-within/suggestion:text-blue-300 motion-reduce:transition-none"><BrainCircuitIcon aria-hidden="true" tw-class="h-4 w-4" /></div>
+      <div tw-class="flex min-w-0 max-w-full flex-[1_1_10rem] flex-wrap items-center gap-x-2 gap-y-1" data-testid="llama-suggestion-title-options">
+        <h4 :id="`${id}-name`" tw-class="min-w-0 break-words text-sm font-semibold leading-5 text-gray-800 dark:text-gray-100">{{ suggestion.name }}</h4>
+        <div tw-class="min-w-0 max-w-full">
           <label :id="`${id}-quantization-label`" :for="`${id}-quantization`" tw-class="sr-only">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__quantization() }}</label>
-          <select
+          <SettingsSelect
             :id="`${id}-quantization`"
-            :value="quantization.id"
-            :aria-labelledby="`${id}-name ${id}-quantization-label`"
+            :model-value="quantization.id"
+            :options="quantizationOptions"
+            :label="quantizationLabel"
             :disabled="optionsLocked || suggestion.quantizationHints.length === 1"
             data-testid="llama-suggestion-quantization"
-            tw-class="block h-6 max-w-full appearance-none rounded-md border border-transparent bg-transparent py-0 pl-1.5 pr-5 text-[11px] leading-4 font-normal text-gray-500 dark:text-gray-400 enabled:hover:border-gray-200 dark:enabled:hover:border-gray-700 enabled:hover:bg-gray-100/70 dark:enabled:hover:bg-gray-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            @change="selectQuantization({ event: $event })"
-          >
-            <option v-for="choice in suggestion.quantizationHints" :key="choice.id" :value="choice.id" tw-class="bg-white text-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ suggestedQuantizationLabel({ quantization: choice }) }}</option>
-          </select>
-          <ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute inset-y-0 right-1 my-auto w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
+            size="compact"
+            presentation="inline"
+            @update:model-value="selectQuantization({ value: $event })"
+          />
         </div>
       </div>
-      <button v-if="installed && !busy && selectionAction === 'select'" type="button" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
+      <LlamaCppBrowserModelActionButton v-if="installed && !busy && selectionAction === 'select'" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}<ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 transition-transform duration-200 group-hover:translate-x-0.5 dark:text-blue-400 motion-reduce:transform-none" /></LlamaCppBrowserModelActionButton>
       <LlamaCppBrowserModelAction v-else-if="installed && !busy && props.createChatGroup" :key="installed.modelId" :model="installed" :current="defaultModel" :disabled="optionsLocked || checkingLocal || localError || destinationUnavailable === true" :default-action-disabled="defaultActionDisabled" :creating="creatingChatGroupModelId === installed.modelId" tw-class="ml-auto" @create-chat-group="handleCreateChatGroup" @select-default="emit('selectDefault', $event)" />
       <LlamaCppBrowserDefaultModelAction v-else-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
-      <button
+      <LlamaCppBrowserModelActionButton
         v-else-if="!busy && job?.status !== 'paused' && job?.status !== 'failed'"
-        type="button"
         data-testid="llama-suggestion-download"
-        :disabled="disabled || destinationUnavailable || authorizing || checkingLocal || inspecting !== undefined || localError"
-        tw-class="ml-auto inline-flex max-w-full items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
+        :disabled="disabled || destinationUnavailable === true || authorizing || checkingLocal || inspecting !== undefined || localError"
+        tw-class="ml-auto"
         @click="download"
       >
-        <Loader2Icon v-if="checkingLocal || authorizing" tw-class="w-3.5 h-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
-        <DownloadIcon v-else tw-class="w-3.5 h-3.5 shrink-0" />
+        <Loader2Icon v-if="checkingLocal || authorizing" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500 dark:text-blue-400 motion-reduce:animate-none" />
+        <DownloadIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
         {{ lazyStrings.llamaCppBrowserDownloads__download() }}
-      </button>
+      </LlamaCppBrowserModelActionButton>
     </div>
     <!-- Keep options and Details together instead of allocating a row to each.
          Wrap the metadata first on narrow panels or in longer translations. -->
-    <div tw-class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="llama-suggestion-metadata">
+    <div tw-class="ml-11 mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="llama-suggestion-metadata">
       <p tw-class="min-w-0 break-words text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">{{ suggestion.developer }} · {{ totalLabel }}</p>
       <div tw-class="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1" data-testid="llama-suggestion-options">
-        <span v-if="companionRequired" data-testid="llama-suggestion-companion-required" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__required_companion_included() }}</span>
+        <span v-if="companionRequired" data-testid="llama-suggestion-companion-required" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__required_companion_included() }}</span>
         <div v-else-if="quantization.approximateMultimodalBytes !== undefined || canUseMultimodal || multimodal === 'on'" tw-class="flex items-center gap-2">
-          <span :id="`${id}-multimodal`" tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__multimodal_support() }}</span>
-          <button type="button" role="switch" :aria-checked="multimodal === 'on'" :aria-labelledby="`${id}-multimodal`" data-testid="llama-suggestion-multimodal" :disabled="optionsLocked || (!canUseMultimodal && multimodal === 'off')" :tw-class="['relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed', multimodal === 'on' ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700']" @click="multimodal = multimodal === 'off' ? 'on' : 'off'"><span :tw-class="['inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 mt-0.5 motion-reduce:transition-none', multimodal === 'on' ? 'translate-x-4' : 'translate-x-0.5']" /></button>
+          <span :id="`${id}-multimodal`" tw-class="text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__multimodal_support() }}</span>
+          <button type="button" role="switch" :aria-checked="multimodal === 'on'" :aria-labelledby="`${id}-multimodal`" data-testid="llama-suggestion-multimodal" :disabled="optionsLocked || (!canUseMultimodal && multimodal === 'off')" :tw-class="['relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed motion-reduce:transition-none', multimodal === 'on' ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700']" @click="multimodal = multimodal === 'off' ? 'on' : 'off'"><span :tw-class="['h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 motion-reduce:transition-none', multimodal === 'on' ? 'translate-x-[18px]' : 'translate-x-[3px]']" /></button>
         </div>
         <button
           type="button"
           :aria-expanded="detailsOpen"
           :aria-controls="`${id}-details`"
           data-testid="llama-suggestion-details-toggle"
-          tw-class="inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
+          tw-class="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-gray-500 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200 motion-reduce:transition-none"
           @click="detailsOpen = !detailsOpen"
         >
           {{ lazyStrings.llamaCppBrowserDownloads__details() }}
@@ -406,20 +405,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
          its plan, but inert removes hidden links/buttons from keyboard focus. -->
     <div :id="`${id}-details`" class="suggestion-details" :class="{ 'suggestion-details-open': detailsOpen }" :inert="detailsOpen ? undefined : true" :aria-hidden="!detailsOpen" data-testid="llama-suggestion-details">
       <div class="suggestion-details-inner">
-        <div tw-class="pt-2 space-y-2 text-xs text-gray-500 dark:text-gray-400">
+        <div tw-class="mt-3 space-y-3 border-t border-gray-200/70 pt-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
           <!-- A dedicated row keeps long repository names separate from actions. -->
           <div tw-class="min-w-0" data-testid="llama-suggestion-repository-row">
-            <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: quantization.hfRepository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestion-repository" tw-class="flex w-fit max-w-full min-w-0 items-start gap-1.5 rounded-sm text-blue-600 dark:text-blue-400 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: quantization.hfRepository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestion-repository" tw-class="flex w-fit max-w-full min-w-0 items-start gap-1.5 rounded-sm text-[11px] text-gray-500 transition-colors hover:text-blue-600 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-400 dark:hover:text-blue-400">
               <span tw-class="min-w-0 break-all leading-relaxed">Hugging Face · {{ quantization.hfRepository }}</span>
               <ExternalLinkIcon aria-hidden="true" tw-class="mt-0.5 w-3 h-3 shrink-0" />
             </a>
           </div>
           <div tw-class="flex flex-wrap items-center justify-between gap-2" data-testid="llama-suggestion-plan-toolbar">
-            <h5 tw-class="font-medium">{{ lazyStrings.llamaCppBrowserDownloads__download_contents() }}</h5>
-            <button type="button" data-testid="llama-suggestion-check" :disabled="optionsLocked" tw-class="inline-flex max-w-full items-center justify-center gap-1.5 rounded-md px-1 py-1 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors" @click="checkContents">
-              <Loader2Icon v-if="inspecting" tw-class="w-3 h-3 shrink-0 animate-spin motion-reduce:animate-none" />
+            <h5 tw-class="font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.llamaCppBrowserDownloads__download_contents() }}</h5>
+            <LlamaCppBrowserModelActionButton data-testid="llama-suggestion-check" :disabled="optionsLocked" @click="checkContents">
+              <Loader2Icon v-if="inspecting" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500 dark:text-blue-400 motion-reduce:animate-none" /><RefreshCcwIcon v-else-if="plan" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><SearchIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
               {{ inspecting ? lazyStrings.llamaCppBrowserDownloads__checking_hugging_face() : plan ? lazyStrings.llamaCppBrowserDownloads__refresh_download_contents() : lazyStrings.llamaCppBrowserDownloads__check_download_contents() }}
-            </button>
+            </LlamaCppBrowserModelActionButton>
           </div>
           <template v-if="plan">
             <LlamaCppBrowserDownloadPlanFiles :repository="plan.repository" :revision="plan.revision" :files="plan.files" />

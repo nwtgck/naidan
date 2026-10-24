@@ -4,7 +4,7 @@ export type PageMetadata = Readonly<{
 }>;
 
 export type HomeIntroduction =
-  | Readonly<{ kind: 'active', routePaths: readonly string[] }>
+  | Readonly<{ kind: 'active' }>
   | Readonly<{ kind: 'inactive' }>;
 
 export type DocumentMetadataRoute = Readonly<{
@@ -51,8 +51,7 @@ export function isHomeIntroductionActive({ introduction, route }: {
 }): boolean {
   switch (introduction.kind) {
   case 'inactive': return false;
-  case 'active': return route !== undefined && introduction.routePaths.includes(route.path)
-    && route.query['llama-cpp-browser-model'] === undefined && route.query.q === undefined && route.query.settings === undefined;
+  case 'active': return route !== undefined && isHomepageIntroductionRoute({ route });
   default: {
     const _ex: never = introduction;
     return _ex;

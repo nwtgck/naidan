@@ -24,7 +24,7 @@ vi.mock('../00-storage/service', () => ({
     updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const curr = chats.get(id) || null;
       return Promise.resolve(updater({ current: curr })).then(updated => {
-        chats.set(id, JSON.parse(JSON.stringify(updated)));
+        chats.set(id, { ...curr, ...JSON.parse(JSON.stringify(updated)) });
       });
     }),
     loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id))),
@@ -51,6 +51,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: ref({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'm1' }),
     isOnboardingDismissed: ref(true),
     onboardingDraft: ref(null),
@@ -79,6 +80,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   beforeEach(() => {
     vi.clearAllMocks();
     chats.clear();
+    useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().TEST_ONLY.clearLiveChatRegistry();
     mockLmChat.mockReset().mockImplementation(({ signal }) => createChatGenerationStream({
       signal,
       run: async () => ({ type: 'finished', next: 'user' }),

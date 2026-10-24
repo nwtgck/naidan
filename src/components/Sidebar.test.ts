@@ -7,6 +7,8 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, StorageType, LmParameters, Endpoint } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+const entryCommands = vi.hoisted(() => ({ openSettings: vi.fn(), openDiscovery: vi.fn(), openHome: vi.fn() }));
+vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => ({ ...entryCommands, effectiveRoute: ref(undefined) }) }));
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -312,6 +314,20 @@ describe('Sidebar Logic Stability', () => {
   });
 
   describe('Default Model Selector', () => {
+    it('opens model discovery and settings explicitly without changing the default model', async () => {
+      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+      const discovery = wrapper.get('[data-testid="sidebar-model-catalog-button"]');
+      expect(discovery.attributes('aria-label')).toBe('Find models');
+      expect(discovery.text()).toBe('');
+      await discovery.trigger('click');
+      expect(entryCommands.openDiscovery).toHaveBeenCalledExactlyOnceWith({ tab: undefined });
+      await wrapper.get('[data-testid="sidebar-settings-button"]').trigger('click');
+      expect(entryCommands.openSettings).toHaveBeenCalledExactlyOnceWith({ tab: 'connection', opener: expect.any(HTMLElement) });
+      expect(mockSettings.value.defaultModelId).toBe('llama3');
+      expect(mockUpdateGlobalModel).not.toHaveBeenCalled();
+      wrapper.unmount();
+    });
+
     it('renders the model selector when endpoint is configured', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },

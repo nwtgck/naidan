@@ -41,7 +41,7 @@ describe('Transformers.js title ownership', () => {
     });
     const wrapper = mount(defineComponent({
       setup() {
-        provideDocumentMetadata({ router, document, homeIntroduction: ref({ kind: 'inactive' }), continueHomeIntroduction: () => {}, finishHomeIntroduction: () => {} });
+        provideDocumentMetadata({ router, document, homeIntroduction: ref({ kind: 'inactive' }), finishHomeIntroduction: () => {} });
         return () => h(Client);
       },
     }), { global: { plugins: [router] } });

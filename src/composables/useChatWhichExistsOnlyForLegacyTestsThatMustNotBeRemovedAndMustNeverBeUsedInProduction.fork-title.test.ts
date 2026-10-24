@@ -52,6 +52,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction().TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should use "Fork of New Chat" when the original chat title is null', async () => {
@@ -84,9 +85,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(updaterCall).toBeDefined();
 
     const metaUpdater = updaterCall![0].updater;
-    const resultMeta = await (metaUpdater as any)({ current: {} });
+    const resultMeta = await metaUpdater({ current: null });
 
-    expect(resultMeta.title).toBe('Fork of New Chat');
+    expect(resultMeta?.title).toBe('Fork of New Chat');
   });
 
   it('should still use the original title when it is present', async () => {
@@ -114,8 +115,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call) => idToRaw({ id: call[0].id }) === newId);
     const metaUpdater = updaterCall![0].updater;
-    const resultMeta = await (metaUpdater as any)({ current: {} });
+    const resultMeta = await metaUpdater({ current: null });
 
-    expect(resultMeta.title).toBe('Fork of Original Title');
+    expect(resultMeta?.title).toBe('Fork of Original Title');
   });
 });

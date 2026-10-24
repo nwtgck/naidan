@@ -17,6 +17,7 @@ interface	user interface,software interface,LM interface	インターフェー�
 mapper	mapping component,data mapper	マッパー	
 memory	system memory,video memory,in-memory storage	メモリ	
 parameter	LM parameter,query parameter,configuration parameter	パラメータ	
+portable HTML edition	file protocol standalone distribution,ZIP download	ポータブルHTML版	ZIPを展開し、index.htmlをブラウザで直接開いて使える版。HTTPサーバーは不要。
 profile	provider profile,connection configuration,saved configuration,browser profile	プロファイル	
 profile	person profile,self introduction,public identity	プロフィール	
 provider	LM provider,service provider,provider implementation	プロバイダー	

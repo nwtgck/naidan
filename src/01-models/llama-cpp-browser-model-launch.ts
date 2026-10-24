@@ -1,10 +1,15 @@
 import { z } from 'zod';
 import type { ChatGroupId } from './ids';
+import type { DownloadDestination } from './download';
+import type { SettingsTitleGeneration } from './types';
+import { cloneDownloadDestination } from './download';
+import { cloneSettingsTitleGeneration } from './title-generation';
+import { exactObject } from '@/utils/exact-object';
 import { formatHuggingFaceModelId, isModelSourceSegment } from './llama-cpp-browser-model-id';
 export { isModelSourceSegment } from './llama-cpp-browser-model-id';
 
 // These source descriptors contain no model bytes or credentials. They are
-// used by the session-local launch flow and the Hugging Face download boundary.
+// used by page-local launch receipts and the Hugging Face download boundary.
 export const modelSourceRepositorySchema = z.string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/)
   .refine(value => value.split('/').every(name => isModelSourceSegment({ name })));
@@ -36,17 +41,46 @@ export const modelLaunchTargetSchema = z.object({
   }
 });
 export type ModelLaunchTarget = z.infer<typeof modelLaunchTargetSchema>;
-export const modelLaunchPhaseSchema = z.enum(['reserved', 'active', 'detached']);
-export type ModelLaunchPhase = z.infer<typeof modelLaunchPhaseSchema>;
+export type ModelLaunchPhase = 'reserved' | 'active' | 'detached';
 
 export type ChatModelLaunch = {
-  version: 1,
   input: string,
   requestedVariant: string | undefined,
   target: ModelLaunchTarget,
+  destination: DownloadDestination,
+  effectiveModelId: string,
   chatGroupId: ChatGroupId,
+  previousChatGroupId?: ChatGroupId,
+  chatGroupName: string,
+  titleGeneration: SettingsTitleGeneration,
   phase: ModelLaunchPhase,
 };
+
+export function cloneModelLaunchTarget({ target }: { target: ModelLaunchTarget }): ModelLaunchTarget {
+  const { selection, mainFilePath, modelId, ...unhandled } = target;
+  unhandled satisfies Record<PropertyKey, never>;
+  const { repository, revision, files, ...unhandledSelection } = selection;
+  unhandledSelection satisfies Record<PropertyKey, never>;
+  return exactObject<ModelLaunchTarget>()({
+    selection: exactObject<ModelLaunchTarget['selection']>()({
+      repository,
+      revision,
+      files: files.map(file => {
+        const { path, size, ...unhandledFile } = file;
+    unhandledFile satisfies Record<PropertyKey, never>;
+    return exactObject<ModelLaunchTarget['selection']['files'][number]>()({ path, size });
+      }),
+    }),
+    mainFilePath,
+    modelId,
+  });
+}
+
+export function cloneChatModelLaunch({ launch }: { launch: ChatModelLaunch }): ChatModelLaunch {
+  const { input, requestedVariant, target, destination, effectiveModelId, chatGroupId, previousChatGroupId, chatGroupName, titleGeneration, phase, ...unhandled } = launch;
+  unhandled satisfies Record<PropertyKey, never>;
+  return exactObject<ChatModelLaunch>()({ input, requestedVariant, target: cloneModelLaunchTarget({ target }), destination: cloneDownloadDestination({ destination }), effectiveModelId, chatGroupId, previousChatGroupId, chatGroupName, titleGeneration: cloneSettingsTitleGeneration({ source: titleGeneration }), phase });
+}
 
 export async function modelLaunchChatGroupPrefix({ modelId }: { modelId: string }): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(modelId));

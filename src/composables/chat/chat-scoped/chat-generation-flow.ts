@@ -1,5 +1,7 @@
+import type { ChatContentWrite } from '@/00-storage/service';
 import { getImageGenerationToolsForChat } from '@/features/image-generation/session/assistant-registry';
 import { assertModelLaunchReady } from '@/features/llama-cpp-browser/model-launch/readiness';
+import { assertLocalModelLaunchReady } from '@/features/llama-cpp-browser/composables/local-model-launch-session';
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
 import type { AssistantMessageNode, Attachment, Chat, ChatGroup, Endpoint, EndpointType, LmParameters, MessageNode, Settings, ToolMessageNode, UserMessageNode } from '@/01-models/types';
@@ -37,6 +39,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
+import { requestAppSettings } from '@/composables/useAppEntry';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useToast } from '@/composables/useToast';
 import { useApproval } from '@/features/tools/composables/useApproval';
@@ -78,6 +81,7 @@ import { idToRaw } from '@/01-models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';
+import { captureChatContentWrite, captureChatLocalModelAdmission, hasChatLocalModelPreparation, acquireChatModelBindingOperation, beginChatModelBindingGeneration, synchronizeChatModelBindingAdmission, type ChatModelBindingOperation } from './chat-model-binding-operations';
 
 type PersistedToolContent =
   | { type: 'text', text: string }
@@ -199,6 +203,38 @@ export async function sendMessageToTargetChat({
   if (targetChat === null) {
     return false;
   }
+  if (hasChatLocalModelPreparation({ chatId: targetChat.id })) {
+    return false;
+  }
+  const preparationAdmission = captureChatLocalModelAdmission({ chatId: targetChat.id });
+  const bindingOperation = await acquireChatModelBindingOperation({ chatId: targetChat.id });
+  try {
+    preparationAdmission.assertCurrent();
+    if (isProcessing({ chatId: targetChat.id })) {
+      return false;
+    }
+    const synchronized = await synchronizeChatModelBindingAdmission({ chatId: targetChat.id });
+    switch (synchronized) {
+    case 'changed': await showChatModelBindingChanged();
+      return false;
+    case 'synchronized': break;
+    default: {
+      const exhaustive: never = synchronized;
+      throw new Error(String(exhaustive));
+    }
+    }
+    preparationAdmission.assertCurrent();
+    return await sendMessageWithBindingOperation({ targetChat, content, parentId, attachments, lmParameters, bindingOperation, preparationAdmission });
+  } finally {
+    bindingOperation.release();
+  }
+}
+
+async function sendMessageWithBindingOperation({ targetChat, content, parentId, attachments, lmParameters, bindingOperation, preparationAdmission }: {
+  targetChat: Chat | Readonly<Chat>, content: string, parentId: MessageId | null | undefined, attachments: Attachment[] | undefined,
+  lmParameters: LmParameters | undefined, bindingOperation: ChatModelBindingOperation,
+  preparationAdmission: { assertCurrent(): void },
+}): Promise<boolean> {
 
   if (isProcessing({ chatId: targetChat.id })) {
     return false;
@@ -206,6 +242,7 @@ export async function sendMessageToTargetChat({
 
   const normalizedAttachments = attachments ?? [];
   const mutableChat = getLiveChat({ chat: targetChat });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
   chatRuntimeStore.startTask({ key: { kind: 'process', chatId: mutableChat.id } });
   registerLiveInstance({ chat: mutableChat });
 
@@ -214,9 +251,9 @@ export async function sendMessageToTargetChat({
       chat: mutableChat,
     });
     const endpoint = resolved.endpoint;
-    const { hasReachableEndpoint, url, type }: {
+    const localLaunchPreparation = assertLocalModelLaunchReady({ chat: mutableChat, endpoint, modelId: resolved.modelId });
+    const { hasReachableEndpoint, type }: {
       hasReachableEndpoint: boolean,
-      url: string | undefined,
       type: EndpointType | undefined,
     } = (() => {
       switch (endpoint.type) {
@@ -224,23 +261,20 @@ export async function sendMessageToTargetChat({
       case 'ollama':
         return {
           hasReachableEndpoint: endpoint.url !== '',
-          url: endpoint.url,
           type: endpoint.type,
         };
       case 'naidan_rpc':
-        return { hasReachableEndpoint: endpoint.registrationId !== undefined, url: undefined, type: endpoint.type };
+        return { hasReachableEndpoint: endpoint.registrationId !== undefined, type: endpoint.type };
       case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':
         return {
           hasReachableEndpoint: true,
-          url: undefined,
           type: endpoint.type,
         };
       case 'unsupported_experimental_endpoint':
         return {
           hasReachableEndpoint: false,
-          url: undefined,
           type: undefined,
         };
       default: {
@@ -257,7 +291,7 @@ export async function sendMessageToTargetChat({
       })
       : [];
     const pinnedTarget = await assertModelLaunchReady({ chat: mutableChat, endpoint, modelId: resolved.modelId });
-    const resolvedModel = pinnedTarget?.modelId ?? resolveGenerationModel({
+    const resolvedModel = pinnedTarget?.effectiveModelId ?? resolveGenerationModel({
       endpointType: type,
       assistantModelId: mutableChat.modelId,
       resolvedModelId: resolved.modelId,
@@ -265,16 +299,7 @@ export async function sendMessageToTargetChat({
     });
 
     if (!hasReachableEndpoint || !resolvedModel) {
-      if (type !== undefined) {
-        showOnboardingDraft({
-          url,
-          type,
-          models: await fetchAvailableModelsForChat({
-            chatId: mutableChat.id,
-            errorSource: 'chat-generation-flow:show-onboarding',
-          }),
-        });
-      }
+      requestAppSettings({ tab: 'connection', opener: undefined });
       return false;
     }
 
@@ -329,14 +354,25 @@ export async function sendMessageToTargetChat({
       }) + content;
     }
 
-    if (pinnedTarget !== undefined) {
+    switch (endpoint.type) {
+    case 'llama_cpp_browser': {
       const current = resolveGenerationSettings({ chat: mutableChat });
-      if (current.endpoint.type !== 'llama_cpp_browser' || current.modelId !== pinnedTarget.modelId
-        || storageService.getModelLaunch({ chatId: mutableChat.id })?.target.modelId !== pinnedTarget.modelId) {
+      if (current.endpoint.type !== 'llama_cpp_browser' || current.modelId !== resolved.modelId
+        || (pinnedTarget !== undefined && storageService.getModelLaunch({ chatId: mutableChat.id })?.effectiveModelId !== pinnedTarget.effectiveModelId)) {
         throw new Error(await ensureStrings.LlamaCppBrowserModelLaunch__chat_settings_changed());
       }
       await assertModelLaunchReady({ chat: mutableChat, endpoint: current.endpoint, modelId: current.modelId });
+      break;
     }
+    case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case 'naidan_rpc': case 'unsupported_experimental_endpoint': break;
+    default: {
+      const exhaustive: never = endpoint;
+      throw new Error(String(exhaustive));
+    }
+    }
+
+    localLaunchPreparation?.assertCurrent();
+    preparationAdmission.assertCurrent();
 
     const userMessage: UserMessageNode = {
       id: generateId<MessageId>(),
@@ -385,7 +421,7 @@ export async function sendMessageToTargetChat({
     notifyChatChanged({ chatId: mutableChat.id });
     await updateChatContent({
       id: mutableChat.id,
-
+      write,
       updater: ({ current }) => ({
         ...(current || {}),
         root: mutableChat.root,
@@ -394,6 +430,7 @@ export async function sendMessageToTargetChat({
     });
     await updateChatMeta({
       id: mutableChat.id,
+      write,
 
       updater: ({ current }) => {
         if (current === null) {
@@ -408,15 +445,18 @@ export async function sendMessageToTargetChat({
     const generationReady = new Promise<void>((resolve) => {
       markGenerationReady = resolve;
     });
-    generateResponseForAssistant({
+    const generationOperation = bindingOperation.retain();
+    generateResponseWithContentWrite({
       chat: mutableChat,
       assistantId: assistantMessage.id,
       lmParameters: effectiveLmParameters,
+      target: { ...resolved, endpoint, modelId: resolvedModel, lmParameters: effectiveLmParameters || resolved.lmParameters },
+      write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }),
       onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
-    }).catch((error) => {
+    }).finally(() => generationOperation.release()).catch((error) => {
       markGenerationReady?.();
       markGenerationReady = undefined;
       console.error('Background generation failed:', error);
@@ -438,6 +478,37 @@ export async function generateResponseForAssistant({
   assistantId: MessageId,
   lmParameters: LmParameters | undefined,
   onReady: (() => void) | undefined,
+}): Promise<void> {
+  const preparationAdmission = captureChatLocalModelAdmission({ chatId: chat.id });
+  const bindingOperation = await acquireChatModelBindingOperation({ chatId: chat.id });
+  try {
+    preparationAdmission.assertCurrent();
+    if (chatRuntimeStore.getActiveGeneration({ chatId: chat.id }) !== undefined) {
+      throw new Error('This chat already owns an active generation.');
+    }
+    const synchronized = await synchronizeChatModelBindingAdmission({ chatId: chat.id });
+    switch (synchronized) {
+    case 'changed': await showChatModelBindingChanged();
+      onReady?.();
+      return;
+    case 'synchronized': break;
+    default: {
+      const exhaustive: never = synchronized;
+      throw new Error(String(exhaustive));
+    }
+    }
+    const mutableChat = getLiveChat({ chat });
+    preparationAdmission.assertCurrent();
+    await generateResponseWithContentWrite({ chat: mutableChat, assistantId, lmParameters, onReady, target: undefined, write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }) });
+  } finally {
+    bindingOperation.release();
+  }
+}
+
+async function generateResponseWithContentWrite({ chat, assistantId, lmParameters, onReady, write, target }: {
+  chat: Chat | Readonly<Chat>, assistantId: MessageId, lmParameters: LmParameters | undefined,
+  onReady: (() => void) | undefined, write: ChatContentWrite,
+  target: ReturnType<typeof resolveGenerationSettings> | undefined,
 }): Promise<void> {
   let didSignalReady = false;
   const signalReady = () => {
@@ -490,11 +561,13 @@ export async function generateResponseForAssistant({
   const currentGenerationToolCallIds = new Set<ToolCallId>();
   const draftMessages = new Set<MessageId>();
   let persistenceFailure: unknown;
+  let bindingGeneration: ReturnType<typeof beginChatModelBindingGeneration> | undefined;
   let lastSave = 0;
   async function saveContent(): Promise<void> {
     try {
       await updateChatContent({
         id: mutableChat.id,
+        write,
         updater: ({ current }) => ({ ...(current || {}), root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
       });
       lastSave = Date.now();
@@ -526,19 +599,23 @@ export async function generateResponseForAssistant({
   }
 
   try {
-    const resolved = resolveGenerationSettings({ chat: mutableChat });
+    // A started turn retains its endpoint/model/parameters. A later settings
+    // change affects the next turn, not persistence of this answer.
+    const resolved = target ?? resolveGenerationSettings({ chat: mutableChat });
     const usesBrowserProvidedLm = isBrowserProvidedLmEndpoint({ endpoint: resolved.endpoint });
-    const availableGenerationModels = await fetchAvailableModelsForChat({
+    const availableGenerationModels = target === undefined ? await fetchAvailableModelsForChat({
       chatId: mutableChat.id,
       errorSource: 'chat-generation-flow:resolve-regeneration-model',
-    });
+    }) : [];
     const pinnedTarget = await assertModelLaunchReady({ chat: mutableChat, endpoint: resolved.endpoint, modelId: assistantNode.modelId || resolved.modelId });
-    const resolvedModel = pinnedTarget?.modelId ?? resolveGenerationModel({
+    const resolvedModel = target?.modelId ?? pinnedTarget?.effectiveModelId ?? resolveGenerationModel({
       endpointType: getSupportedEndpointType({ endpoint: resolved.endpoint }),
       assistantModelId: assistantNode.modelId,
       resolvedModelId: resolved.modelId,
       availableModels: availableGenerationModels,
     });
+    bindingGeneration = beginChatModelBindingGeneration({ chatId: mutableChat.id, endpoint: resolved.endpoint, modelId: resolvedModel });
+    bindingGeneration.recordAssistant({ messageId: assistantId });
     const finalLmParameters = usesBrowserProvidedLm
       ? undefined
       : (lmParameters || resolved.lmParameters);
@@ -597,6 +674,7 @@ export async function generateResponseForAssistant({
         images,
         model,
         signal: controller.signal,
+        write,
       });
       return;
     }
@@ -653,6 +731,7 @@ export async function generateResponseForAssistant({
           ownedLeaf = node;
           activeAssistant = node;
           mutableChat.currentLeafId = node.id;
+          bindingGeneration?.recordAssistant({ messageId: node.id });
           notifyChatChanged({ chatId: mutableChat.id });
           return node;
         },
@@ -791,17 +870,16 @@ export async function generateResponseForAssistant({
       // A failed content write must not be followed by a reload that replaces
       // the accepted in-memory answer with an older persisted snapshot.
       if (persistenceFailure === undefined) {
-        updateChatMeta({
+        await updateChatMeta({
           id: mutableChat.id,
+          write,
           updater: ({ current }) => {
             if (current === null) {
               return mutableChat;
             }
             return { ...current, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
           },
-        }).then(async () => {
-          await loadData();
-        }).catch(() => {});
+        }).then(() => loadData()).catch(() => {});
       }
 
       const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
@@ -810,6 +888,7 @@ export async function generateResponseForAssistant({
         useStoragePersistence().requestPersistence();
       }
     }
+    bindingGeneration?.finish({ persisted: persistenceFailure === undefined });
   }
 }
 
@@ -854,6 +933,7 @@ async function regenerateMessageForTarget({
   failedMessageId: MessageId,
 }): Promise<void> {
   const chatId = targetChat.id;
+  const preparationAdmission = captureChatLocalModelAdmission({ chatId });
   if (isProcessing({ chatId })) {
     abortProcessingForChat({ chatId });
     while (isProcessing({ chatId })) {
@@ -861,7 +941,32 @@ async function regenerateMessageForTarget({
     }
   }
 
+  const bindingOperation = await acquireChatModelBindingOperation({ chatId });
+  try {
+    preparationAdmission.assertCurrent();
+    const synchronized = await synchronizeChatModelBindingAdmission({ chatId });
+    switch (synchronized) {
+    case 'changed': await showChatModelBindingChanged();
+      return;
+    case 'synchronized': break;
+    default: {
+      const exhaustive: never = synchronized;
+      throw new Error(String(exhaustive));
+    }
+    }
+    preparationAdmission.assertCurrent();
+    await regenerateMessageWithBindingOperation({ targetChat, failedMessageId, bindingOperation });
+  } finally {
+    bindingOperation.release();
+  }
+}
+
+async function regenerateMessageWithBindingOperation({ targetChat, failedMessageId, bindingOperation }: {
+  targetChat: Chat | Readonly<Chat>, failedMessageId: MessageId, bindingOperation: ChatModelBindingOperation,
+}): Promise<void> {
+
   const mutableChat = getLiveChat({ chat: targetChat });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
   chatRuntimeStore.startTask({ key: { kind: 'process', chatId: mutableChat.id } });
   registerLiveInstance({ chat: mutableChat });
 
@@ -920,11 +1025,12 @@ async function regenerateMessageForTarget({
 
     await updateChatContent({
       id: mutableChat.id,
-
+      write,
       updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
     });
     await updateChatMeta({
       id: mutableChat.id,
+      write,
 
       updater: ({ current }) => {
         if (current === null) {
@@ -938,15 +1044,18 @@ async function regenerateMessageForTarget({
     const generationReady = new Promise<void>((resolve) => {
       markGenerationReady = resolve;
     });
-    generateResponseForAssistant({
+    const generationOperation = bindingOperation.retain();
+    generateResponseWithContentWrite({
       chat: mutableChat,
       assistantId: newAssistantMessage.id,
       lmParameters: failedNode.lmParameters,
+      target: undefined,
+      write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }),
       onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
-    }).catch((error) => {
+    }).finally(() => generationOperation.release()).catch((error) => {
       markGenerationReady?.();
       markGenerationReady = undefined;
       console.error('Background generation failed:', error);
@@ -1036,20 +1145,8 @@ async function persistAttachment({
   }
 }
 
-function showOnboardingDraft({
-  url,
-  type,
-  models,
-}: {
-  url: string | undefined,
-  type: EndpointType,
-  models: string[],
-}): void {
-  const settings = useSettings();
-  settings.setOnboardingDraft?.({
-    draft: { url: url || '', type, models, selectedModel: models[0] || '' },
-  });
-  settings.setIsOnboardingDismissed?.({ dismissed: false });
+async function showChatModelBindingChanged(): Promise<void> {
+  useGlobalEvents().addErrorEvent({ source: 'chat-generation-flow:model-binding', message: await ensureStrings.LlamaCppBrowserModelLaunch__chat_settings_changed() });
 }
 
 async function loadGenerationProvider({
@@ -1141,6 +1238,7 @@ async function handleImageGenerationWithDefaults({
   images,
   model,
   signal,
+  write,
 }: {
   chatId: ChatId,
   assistantId: MessageId,
@@ -1154,6 +1252,7 @@ async function handleImageGenerationWithDefaults({
   images: { blob: Blob }[],
   model: string | undefined,
   signal: AbortSignal | undefined,
+  write: ChatContentWrite,
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -1188,6 +1287,7 @@ async function handleImageGenerationWithDefaults({
     updateChatContent: async ({ chatId: contentChatId, updater }) => {
       await updateChatContent({
         id: contentChatId,
+        write,
         updater: ({ current }) => {
           if (current === null) {
             throw new Error('Chat content not found');

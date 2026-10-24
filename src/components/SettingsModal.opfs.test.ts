@@ -106,6 +106,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     currentRoute.query = {};
 
     (useRouter as any).mockReturnValue({
+      currentRoute: ref(currentRoute),
       push: vi.fn((p) => {
         if (typeof p === 'string') {
           currentRoute.path = p;

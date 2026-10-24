@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, useId } from 'vue';
+import { computed, ref, useId } from 'vue';
+import { FolderIcon, FolderPlusIcon, HardDriveIcon } from 'lucide-vue-next';
 import LinkedModelDirectories from '@/components/LinkedModelDirectories.vue';
-import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
+import SettingsSelect from '@/components/SettingsSelect.vue';
 import { hostModelDirectoryLabel } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { lazyStrings } from '@/strings';
 import type { HostModelDirectoriesView } from '@/composables/useHostModelDirectories';
@@ -9,13 +10,12 @@ import type { HostModelDirectoriesView } from '@/composables/useHostModelDirecto
 const props = defineProps<{
   view: HostModelDirectoriesView,
   disabled: boolean,
-  management?: 'inline' | 'hidden',
   layoutFile?: { repository: string, path: string },
 }>();
 const id = useId();
-const missingApis = computed(() => missingHostModelDirectoryApis());
+const managementOpen = ref(false);
 const { supported, entries, busy, destination } = props.view;
-const unavailableReason = computed(() => !supported.value ? lazyStrings.SHARED__model_folders_linked_folders_unavailable({ apis: missingApis.value.join(', ') }) : undefined);
+const unavailableReason = computed(() => !supported.value ? lazyStrings.SHARED__model_folders_linked_folders_unavailable() : undefined);
 const destinationKind = computed(() => props.view.destinationKind?.value ?? (destination.value === 'opfs' ? 'opfs' : 'host'));
 
 function hostChoiceValue({ id }: { id: string }): string {
@@ -56,11 +56,50 @@ const missingDestination = computed(() => {
   }
 });
 
-function selectDestination({ event }: { event: Event }): void {
-  if (props.disabled || busy.value || !(event.target instanceof HTMLSelectElement)) {
+const choices = computed(() => {
+  const linkedFolder = lazyStrings.LlamaCppBrowserDownloadDestination__linked_folder();
+  return [
+    ...(missingDestination.value ? [{
+      value: selectedValue.value,
+      label: linkedFolder === undefined ? undefined : `${linkedFolder} (${destination.value})`,
+      detail: lazyStrings.SHARED__model_folders_folder_access({ access: 'missing' }),
+      disabled: true,
+    }] : []),
+    { value: 'opfs', label: lazyStrings.LlamaCppBrowserDownloadDestination__browser_storage(), detail: undefined, disabled: false },
+    ...(!entries.value.length ? [{
+      value: '',
+      label: linkedFolder,
+      detail: supported.value ? lazyStrings.LlamaCppBrowserDownloadDestination__not_linked() : lazyStrings.SHARED__model_import_unavailable(),
+      disabled: true,
+    }] : []),
+    ...entries.value.map(entry => {
+      const access = entry.access;
+      let detail: string | undefined;
+      switch (access) {
+      case 'readwrite': break;
+      case 'read': case 'prompt': case 'missing': case 'error': case 'unsupported':
+        detail = lazyStrings.SHARED__model_folders_folder_access({ access });
+        break;
+      default: {
+        const exhaustive: never = access;
+        throw new Error(String(exhaustive));
+      }
+      }
+      return {
+        value: hostChoiceValue({ id: entry.id }),
+        label: hostModelDirectoryLabel({ id: entry.id, name: entry.name, entries: entries.value }),
+        detail,
+        disabled: !supported.value || ['missing', 'error', 'unsupported'].includes(access),
+      };
+    }),
+  ];
+});
+const selectedNeedsAttention = computed(() => destinationKind.value === 'host' && (!supported.value || selected.value?.access !== 'readwrite'));
+
+function selectDestination({ value }: { value: string }): void {
+  if (props.disabled || busy.value || !choices.value.some(choice => choice.value === value && !choice.disabled)) {
     return;
   }
-  const value = event.target.value;
   if (value === 'opfs') {
     props.view.selectDestination({ id: 'opfs', kind: 'opfs' });
     return;
@@ -75,18 +114,53 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div data-testid="llama-host-model-directories" tw-class="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-    <label :for="id + '-destination'" tw-class="font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserDownloadDestination__download_to() }}</label>
-    <select :id="id + '-destination'" :value="selectedValue" :disabled="disabled || busy" :title="unavailableReason" @change="selectDestination({ event: $event })" data-testid="llama-download-destination" tw-class="min-w-0 max-w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-[11px] text-gray-600 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
-      <option v-if="missingDestination" :value="selectedValue" disabled data-testid="llama-missing-download-destination">{{ lazyStrings.LlamaCppBrowserDownloadDestination__linked_folder() }} ({{ destination }}) · {{ lazyStrings.SHARED__model_folders_folder_access({ access: 'missing' }) }}</option>
-      <option value="opfs">{{ lazyStrings.LlamaCppBrowserDownloadDestination__browser_storage() }}</option>
-      <option v-if="!entries.length" value="" disabled>{{ lazyStrings.LlamaCppBrowserDownloadDestination__linked_folder() }} · {{ supported ? lazyStrings.LlamaCppBrowserDownloadDestination__not_linked() : lazyStrings.SHARED__model_import_unavailable() }}</option>
-      <option v-for="entry in entries" :key="entry.id" :value="hostChoiceValue({ id: entry.id })" :disabled="!supported || ['missing', 'error', 'unsupported'].includes(entry.access)">{{ hostModelDirectoryLabel({ id: entry.id, name: entry.name, entries }) }}{{ entry.access === 'readwrite' ? '' : ' · ' + lazyStrings.SHARED__model_folders_folder_access({ access: entry.access }) }}</option>
-    </select>
-    <!-- Management stays collapsed so onboarding's first actions remain above the fold. -->
-    <details v-if="management !== 'hidden'" data-testid="llama-model-directory-registrations" tw-class="max-w-full">
-      <summary data-testid="llama-manage-model-directories" :title="unavailableReason" tw-class="cursor-pointer text-[11px] font-medium text-blue-600 dark:text-blue-400">{{ lazyStrings.SHARED__model_import_link_folder() }}</summary>
-      <LinkedModelDirectories :view="view" :disabled="disabled" :layout-file="layoutFile" />
-    </details>
+  <!-- The containing toolbar is a grid: controls share its heading row, while
+       the management panel spans the following row without moving the heading. -->
+  <div data-testid="llama-host-model-directories" tw-class="contents">
+    <div tw-class="flex w-fit min-w-0 max-w-full items-center justify-self-end gap-2 sm:col-start-2">
+      <label :for="`${id}-destination`" tw-class="shrink-0 whitespace-nowrap text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserDownloadDestination__download_to() }}</label>
+      <div tw-class="flex min-w-0 max-w-full items-stretch rounded-lg border border-gray-200/80 bg-white/70 dark:border-gray-700/70 dark:bg-gray-800/50">
+        <div tw-class="flex w-40 min-w-0 max-w-full overflow-hidden rounded-l-lg">
+          <SettingsSelect :id="`${id}-destination`" :model-value="selectedValue" :options="choices" :label="lazyStrings.LlamaCppBrowserDownloadDestination__download_to()" :disabled="disabled || busy" surface="embedded" presentation="toolbar" size="compact" :menu-width-rem="21" data-testid="llama-download-destination" @update:model-value="selectDestination({ value: $event })">
+            <template #leading="{ option }"><HardDriveIcon v-if="option?.value === 'opfs'" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><FolderIcon v-else aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0', selectedNeedsAttention ? 'text-amber-500 dark:text-amber-400' : 'text-blue-500 dark:text-blue-400']" /></template>
+            <template #option="{ option }">
+              <span tw-class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-50/70 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><HardDriveIcon v-if="option.value === 'opfs'" aria-hidden="true" tw-class="h-3.5 w-3.5" /><FolderIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5" /></span>
+              <span tw-class="min-w-0 flex-1"><span tw-class="block break-words text-xs font-medium leading-5">{{ option.label }}</span><span v-if="option.detail" tw-class="mt-0.5 block break-words text-[11px] leading-4 text-gray-500 dark:text-gray-400">{{ option.detail }}</span></span>
+            </template>
+          </SettingsSelect>
+        </div>
+        <button type="button" :aria-expanded="managementOpen" :aria-controls="`${id}-registrations`" :title="unavailableReason" data-testid="llama-manage-model-directories" :tw-class="['flex min-h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-r-lg border-l border-gray-200/80 px-2 py-1.5 text-[11px] font-medium text-gray-600 transition-colors duration-200 hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:border-gray-700/70 dark:text-gray-300 dark:hover:bg-blue-500/10 motion-reduce:transition-none', managementOpen && 'bg-blue-50/60 dark:bg-blue-500/10']" @click="managementOpen = !managementOpen"><FolderPlusIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.SHARED__model_import_link_folder() }}</button>
+      </div>
+    </div>
+    <!-- Folder access remains available beside every download selector. Opening
+         this panel only reveals controls; linking requires its own action. -->
+    <div :id="`${id}-registrations`" class="destination-management" :class="{ 'destination-management-open': managementOpen }" :inert="managementOpen ? undefined : true" :aria-hidden="!managementOpen" data-testid="llama-model-directory-registrations" tw-class="col-span-full min-w-0">
+      <div class="destination-management-inner"><LinkedModelDirectories :view="view" :disabled="disabled" :layout-file="layoutFile" /></div>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.destination-management {
+  /* Let the compact toolbar determine width, even when the retained panel's
+     folder names and layout example need more inline space. */
+  contain: inline-size;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms ease, opacity 180ms ease;
+}
+.destination-management-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.destination-management-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .destination-management {
+    transition: none;
+  }
+}
+</style>

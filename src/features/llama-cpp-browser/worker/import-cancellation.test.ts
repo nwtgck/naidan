@@ -3,12 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { memoryDirectory, ggufBytes } from '@/features/llama-cpp-browser/hugging-face/test-opfs';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser/index-hosted';
+import { TEST_ONLY as modelFileTest } from '@/features/llama-cpp-browser/model-files';
 import { createWorkerApi } from './api';
 import type { LlamaCppWorkerApi } from './types';
 
-// Keep the real service, session client, Worker API and importer connected. Only
-// Worker transport and storage are in-memory: this catches cancellation wiring
-// regressions that a manager test with a mocked importModel() cannot observe.
+// Keep the real public service and stream importer connected. Local file
+// operations must not create an inference Worker or mutate its EngineState.
 const transport = vi.hoisted(() => ({ remote: undefined as WorkerServerApi<LlamaCppWorkerApi> | undefined, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({
   ...await importOriginal<typeof import('@/utils/worker-transport')>(),
@@ -30,13 +30,30 @@ class TestWorker extends EventTarget {
 }
 let root: ReturnType<typeof memoryDirectory>;
 
-function modelFile({ name }: { name: string }): File {
+function modelFile({ name, beforeComplete }: { name: string, beforeComplete: (() => void) | undefined }): File {
   // Preserve jsdom's File identity for the real wire schemas, while supplying
   // the Blob streaming methods that jsdom does not implement.
   const file = new File([ggufBytes()], name);
   const source = new NodeFile([ggufBytes()], name);
   Object.defineProperties(file, {
-    stream: { value: () => source.stream() },
+    stream: {
+      value: () => {
+        const stream = source.stream();
+        const reader = stream.getReader();
+        const read = reader.read.bind(reader);
+        Object.defineProperty(reader, 'read', {
+          value: async () => {
+            const next = await read();
+            if (next.done) {
+              beforeComplete?.();
+            }
+            return next;
+          },
+        });
+        Object.defineProperty(stream, 'getReader', { value: () => reader });
+        return stream;
+      },
+    },
     slice: { value: source.slice.bind(source) },
     arrayBuffer: { value: () => source.arrayBuffer() },
   });
@@ -49,10 +66,31 @@ async function userFolder() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  modelFileTest.resetPublications();
   TestWorker.instances = [];
   root = memoryDirectory({ name: '' });
   vi.stubGlobal('Worker', TestWorker);
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, operation: () => Promise<unknown>) => operation() } });
+  let lockTail = Promise.resolve();
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => root },
+    locks: {
+      request: async (name: string, optionsOrOperation: LockOptions | ((lock: Lock) => Promise<unknown>), operation?: (lock: Lock) => Promise<unknown>) => {
+        const callback = typeof optionsOrOperation === 'function' ? optionsOrOperation : operation;
+        if (!callback) {
+          throw new Error('Missing lock callback');
+        }
+        const previous = lockTail;
+        const released = Promise.withResolvers<void>();
+        lockTail = released.promise;
+        await previous;
+        try {
+          return await callback({ name, mode: 'exclusive' } as Lock);
+        } finally {
+          released.resolve();
+        }
+      },
+    },
+  });
   vi.spyOn(console, 'log').mockImplementation(() => {});
   transport.remote = createWorkerApi();
 });
@@ -63,19 +101,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('local import cancellation through service and Worker boundaries', () => {
+describe('local import cancellation through the public file service', () => {
   it.each(['file', 'folder'] as const)('cancels a %s copy, removes partial data, and imports the identical selection again', async kind => {
-    const file = modelFile({ name: 'same.gguf' });
     const controller = new AbortController();
+    const file = modelFile({ name: 'same.gguf', beforeComplete: () => controller.abort() });
     const imported = vi.fn();
     const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: imported });
-    const unsubscribe = llamaCppBrowserService.subscribe({
-      listener: ({ state }) => {
-        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) {
-          controller.abort();
-        }
-      },
-    });
+    const stateChanged = vi.fn();
+    const unsubscribe = llamaCppBrowserService.subscribe({ listener: stateChanged });
+    stateChanged.mockClear();
     const copy = ({ signal }: { signal: AbortSignal | undefined }) => {
       switch (kind) {
       case 'file': return llamaCppBrowserService.importModel({ file, signal });
@@ -97,18 +131,19 @@ describe('local import cancellation through service and Worker boundaries', () =
     expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toEqual([]);
     expect(llamaCppBrowserService.getState()).toEqual({ status: 'idle' });
     expect(imported).not.toHaveBeenCalled();
-    expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    expect(TestWorker.instances).toHaveLength(0);
+    expect(stateChanged).not.toHaveBeenCalled();
     await copy({ signal: undefined });
     expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toEqual([
       { modelId: 'user/same-GGUF', size: file.size, importedAt: 123 },
     ]);
     expect(imported).toHaveBeenCalledOnce();
-    expect(TestWorker.instances).toHaveLength(1);
+    expect(TestWorker.instances).toHaveLength(0);
   });
 
   it('keeps a second import queued until the cancelled copy has finished deleting its destination', async () => {
-    const file = modelFile({ name: 'same.gguf' });
     const controller = new AbortController();
+    const file = modelFile({ name: 'same.gguf', beforeComplete: () => controller.abort() });
     const user = await userFolder();
     const rollback = Promise.withResolvers<void>();
     const entered = Promise.withResolvers<void>();
@@ -118,17 +153,9 @@ describe('local import cancellation through service and Worker boundaries', () =
       await rollback.promise;
       await remove(name, options);
     });
-    const unsubscribe = llamaCppBrowserService.subscribe({
-      listener: ({ state }) => {
-        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) {
-          controller.abort();
-        }
-      },
-    });
     using _cleanupResource = {
       [Symbol.dispose]() {
         rollback.resolve();
-        unsubscribe();
       },
     };
     let settled = false;
@@ -141,16 +168,16 @@ describe('local import cancellation through service and Worker boundaries', () =
     await Promise.resolve();
     expect(settled).toBe(false);
     expect(user.children.has('same-GGUF')).toBe(true);
-    expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    expect(TestWorker.instances).toHaveLength(0);
     rollback.resolve();
     await rejected;
     await second;
     expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toHaveLength(1);
-    expect(TestWorker.instances).toHaveLength(1);
+    expect(TestWorker.instances).toHaveLength(0);
   });
 
   it('retries an empty single-file placeholder left by the previous forced-termination implementation', async () => {
-    const file = modelFile({ name: 'same.gguf' });
+    const file = modelFile({ name: 'same.gguf', beforeComplete: undefined });
     const user = await userFolder();
     const folder = await user.getDirectoryHandle('same-GGUF', { create: true });
     await folder.getFileHandle('.llama-cpp-import-pending', { create: true });

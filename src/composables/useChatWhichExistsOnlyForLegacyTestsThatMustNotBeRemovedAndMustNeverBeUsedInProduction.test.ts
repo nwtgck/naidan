@@ -67,6 +67,7 @@ vi.mock('../00-storage/service', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: mocks.settings },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
@@ -121,6 +122,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
     __testOnlySetCurrentChat({ chat: null });
     rootItems.value = [];
     mockRootItems.length = 0;
@@ -284,11 +286,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const newId = await forkChat({ messageId: 'm1' });
 
     expect(newId).toBeDefined();
-    expect(storageService.updateChatMeta).toHaveBeenCalledWith({ id: newId, updater: expect.any(Function) });
-    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => idToRaw({ id: c[0].id }) === newId)![0].updater;
-    const result = await (updater as any)({});
-    expect(result.title).toBe('Fork of Original');
-    expect(idToRaw({ id: result.currentLeafId })).toBe('m1');
+    expect(storageService.updateChatMeta).toHaveBeenCalledWith({ id: newId, write: expect.any(Object), updater: expect.any(Function) });
+    const metadataWrite = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => idToRaw({ id: c[0].id }) === newId)![0];
+    const result = await metadataWrite.updater({ current: null });
+    expect(result?.title).toBe('Fork of Original');
+    const contentWrite = vi.mocked(storageService.updateChatContent).mock.calls.find(c => idToRaw({ id: c[0].id }) === newId)![0];
+    expect(metadataWrite.write).toBe(contentWrite.write);
+    const savedContent = await contentWrite.updater({ current: null });
+    expect(savedContent.currentLeafId).toBe('m1');
     expect(storageService.updateHierarchy).toHaveBeenCalled();
   });
 
@@ -395,14 +400,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId);
     const contentUpdater = updaterCall?.[0].updater;
-    const savedContent = await (contentUpdater as any)(null);
+    const savedContent = await contentUpdater!({ current: null });
     const clonedNode = savedContent?.root.items[0];
     expect(clonedNode?.parts.filter((part: { type: string }) => part.type === 'attachment')).toEqual([
       { type: 'attachment', attachment: att },
     ]);
 
     const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId)?.[0].updater;
-    const savedMeta = await (updater as any)({});
+    const savedMeta = await updater!({ current: null });
     expect(savedMeta?.modelId).toBe('special-model');
     expect(savedMeta?.toolConfigs).toEqual(mockChat.toolConfigs);
     expect(savedMeta?.toolConfigs).not.toBe(mockChat.toolConfigs);
@@ -560,13 +565,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
     }));
     await regenerateMessage({ failedMessageId: idToRaw({ id: firstAssistantMsg!.id }) });
-    await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2);
+    await vi.waitUntil(() => (currentChat.value?.root.items[0]?.replies.items.length ?? 0) >= 2);
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: currentChat.value!.id })); // Also wait for content to be fully there
     triggerRef(currentChat);
 
     // 3. Verify branching
-    expect(userMsg?.replies.items).toHaveLength(2);
-    const secondAssistantMsg = userMsg?.replies.items[1];
+    const regeneratedUserMsg = currentChat.value?.root.items[0];
+    expect(regeneratedUserMsg?.replies.items).toHaveLength(2);
+    const secondAssistantMsg = regeneratedUserMsg?.replies.items[1];
     expect(getMessageText({ message: secondAssistantMsg! })).toBe('Second Response');
     expect(secondAssistantMsg?.id).not.toBe(firstAssistantMsg?.id);
 
@@ -581,6 +587,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(getMessageText({ message: activeMessages.value[1]! })).toBe('First Response');
     expect(storageService.updateChatContent).toHaveBeenCalledWith({
       id: 'regen-test',
+      write: expect.anything(),
       updater: expect.any(Function),
     });
   });
@@ -1022,8 +1029,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       // Verify persistence call
       expect(storageService.updateChatMeta).toHaveBeenCalledWith({
         id: chat!.id,
+        write: expect.any(Object),
         updater: expect.any(Function),
       });
+      const metadataWrite = vi.mocked(storageService.updateChatMeta).mock.calls.find(([input]) => input.id === chat!.id)![0];
+      const contentWrite = vi.mocked(storageService.updateChatContent).mock.calls.find(([input]) => input.id === chat!.id)![0];
+      expect(metadataWrite.write).toBe(contentWrite.write);
     });
 
     it('should insert before the first chat even if groups exist later in the list', async () => {
@@ -1377,7 +1388,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(currentChat.value).toBeNull();
   });
 
-  it('should open a message-id link without persisting the selected current leaf', async () => {
+  it('should persist a message-link selection and preserve unsaved edits when another selection conflicts', async () => {
     const { openChatAtMessage, currentChat, activeMessages } = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
     const mockChat: Chat = {
       id: toChatId({ raw: 'message-link-chat' }),
@@ -1456,7 +1467,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     expect(idToRaw({ id: currentChat.value!.currentLeafId! })).toBe('target-leaf');
     expect(activeMessages.value.map(message => idToRaw({ id: message.id }))).toContain('assistant-1');
-    expect(storageService.updateChatContent).not.toHaveBeenCalled();
+    expect(storageService.updateChatContent).toHaveBeenCalledOnce();
+    const writes = vi.mocked(storageService.updateChatContent).mock.calls.length;
+    const part = chatStore.getLiveChat({ chat: currentChat.value! }).root.items[0]!.parts[0];
+    if (part?.type !== 'text') {
+      throw new Error('Expected the saved user text');
+    }
+    part.text = 'Unsaved local edit';
+    await expect(openChatAtMessage({ chatId: 'message-link-chat', messageId: 'assistant-2' })).rejects.toThrow('The chat model binding changed');
+    expect(currentChat.value!.currentLeafId).toBe('target-leaf');
+    expect(part.text).toBe('Unsaved local edit');
+    expect(vi.mocked(storageService.updateChatContent).mock.calls).toHaveLength(writes);
   });
 
   it('should clear chat modelId if it is not in the newly fetched models in fetchAvailableModels', async () => {

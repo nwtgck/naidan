@@ -9,6 +9,7 @@ import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
+import { withModelMutationLock } from './model-mutation-lock';
 
 const pendingName = modelImportPendingName;
 export type { ModelFile, StoredModelFile } from '@/logic/model-file-system';
@@ -175,7 +176,24 @@ async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal
 }
 
 /** A source-neutral import boundary shared by dropped folders and future downloads. */
+export type CapturedModelImport = { model: LocalModel, parent: FileSystemDirectoryHandle, folder: FileSystemDirectoryHandle, directory: ModelDirectory };
+
 export async function importModelDirectory({ directory, onProgress, signal }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
+  return (await importCapturedModelDirectory({ directory, onProgress, signal, collision: 'reject' })).model;
+}
+
+export async function importCapturedModelDirectory({ directory, onProgress, signal, collision, onCommitted }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, collision: 'reject' | 'rename', onProgress: ({ progress }: { progress: Progress }) => void, onCommitted?: ({ captured }: { captured: CapturedModelImport }) => void }): Promise<CapturedModelImport> {
+  return withModelMutationLock({
+    signal,
+    operation: async () => {
+      const captured = await writeModelDirectory({ directory, onProgress, signal, collision });
+      onCommitted?.({ captured });
+      return captured;
+    },
+  });
+}
+
+async function writeModelDirectory({ directory, onProgress, signal, collision }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, collision: 'reject' | 'rename', onProgress: ({ progress }: { progress: Progress }) => void }): Promise<CapturedModelImport> {
   const checkCancelled = (): void => {
     if (signal?.aborted) {
       throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -183,7 +201,7 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
   };
   checkCancelled();
   directory = normalizeModelDirectoryInput({ directory });
-  const rootName = directory.rootName;
+  let rootName = directory.rootName;
   const paths = new Set(directory.files.map(entry => entry.relativePath));
   const ggufs = directory.files.filter(entry => /\.gguf$/i.test(entry.relativePath));
   try {
@@ -199,6 +217,30 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
   }
   checkCancelled();
   const parent = await userModelDirectory();
+  switch (collision) {
+  case 'rename': {
+    const occupied = new Set<string>();
+    for await (const [name] of parent.entries()) {
+      checkCancelled();
+      occupied.add(name);
+    }
+    const base = rootName;
+    for (let suffix = 2; occupied.has(rootName); suffix++) {
+      const ending = `-${suffix}`;
+      const characters = Array.from(base);
+      while (new TextEncoder().encode(characters.join('') + ending).length > 255) {
+        characters.pop();
+      }
+      rootName = characters.join('') + ending;
+    }
+    break;
+  }
+  case 'reject': break;
+  default: {
+    const exhaustive: never = collision;
+    throw new Error(String(exhaustive));
+  }
+  }
   for await (const [name, entry] of parent.entries()) {
     if (name !== rootName) {
       continue;
@@ -273,9 +315,10 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     // Only the transient pending marker guards publication; each load resolves the files anew.
     checkCancelled();
     await folder.removeEntry(pendingName);
-    const model = describeDirectory({ directory: await resolveDirectory({ folder, signal }), modelId: `user/${rootName}` });
+    const capturedDirectory = await resolveDirectory({ folder, signal });
+    const model = describeDirectory({ directory: capturedDirectory, modelId: `user/${rootName}` });
     checkCancelled();
-    return model;
+    return { model, parent, folder, directory: capturedDirectory };
   } catch (error) {
     await parent.removeEntry(rootName, { recursive: true }).catch(() => {});
     throw error;

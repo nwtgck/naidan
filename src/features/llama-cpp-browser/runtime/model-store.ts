@@ -12,9 +12,10 @@ import { pendingName, type DownloadJournal } from '@/features/llama-cpp-browser/
 import { allowedModelDirectory, describeDirectory, opfsRoot, resolveDirectory, importModelDirectory, existingUserModelDirectory, type ModelDirectory, type ModelRootLocation } from './model-directory';
 import { LlamaCppBrowserError, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
+import { withModelMutationLock } from './model-mutation-lock';
+export { withModelMutationLock } from './model-mutation-lock';
 
 const lockName = "naidan-llama-cpp-browser-model-store";
-const mutationLockName = "naidan-llama-cpp-browser-model-mutation";
 
 function isMissing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && (error.name === "NotFoundError" || error.name === "TypeMismatchError");
@@ -25,13 +26,6 @@ export async function withModelStoreLock<T>({ operation }: { operation: () => Pr
     throw new LlamaCppBrowserError({ code: "unavailable" });
   }
   return navigator.locks.request(lockName, operation);
-}
-
-export async function withModelMutationLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
-  if (!navigator.locks) {
-    throw new LlamaCppBrowserError({ code: 'unavailable' });
-  }
-  return navigator.locks.request(mutationLockName, operation);
 }
 
 export async function listStoredModels(): Promise<LocalModel[]> {

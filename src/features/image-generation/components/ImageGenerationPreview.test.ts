@@ -1,3 +1,6 @@
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, ref, watch } from 'vue';
 import { createImageGallery } from '@/features/image-generation/image-gallery';

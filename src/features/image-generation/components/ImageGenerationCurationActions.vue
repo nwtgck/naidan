@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import { ref } from 'vue';
 import { idToRaw, type ImageGenerationTagId } from '@/01-models/ids';
-import { ArchiveIcon, ArchiveRestoreIcon, ChevronDownIcon, StarIcon, Trash2Icon, TagsIcon } from 'lucide-vue-next';
+import { ArchiveIcon, ArchiveRestoreIcon, StarIcon, Trash2Icon, TagsIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { ImageGenerationTile, ImageGenerationWorkspaceView } from '@/features/image-generation/composables/use-image-generation-workspace';
@@ -10,11 +11,7 @@ const { showConfirm } = useConfirm();
 const selectedTagId = ref<ImageGenerationTagId>();
 const tagsOpen = ref(false);
 
-function chooseTag({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) {
-    return;
-  }
-  const raw = event.target.value;
+function chooseTag({ value: raw }: { value: string }): void {
   selectedTagId.value = props.view.userTags.value.find(tag => idToRaw({ id: tag.id }) === raw)?.id;
 }
 
@@ -54,7 +51,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <div v-if="items.length > 1 && tagsOpen" data-testid="workspace-bulk-tags-panel" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs">
       <div tw-class="flex flex-wrap items-center gap-2">
-        <span tw-class="relative min-w-40 flex-1"><select :value="selectedTagId ? idToRaw({ id: selectedTagId }) : ''" @change="chooseTag({ event: $event })" :aria-label="lazyStrings.imageGeneration__tags()" data-testid="workspace-bulk-tag-choice" :disabled="view.mutation.value" tw-class="appearance-none w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"><option value="">{{ lazyStrings.imageGeneration__tags() }}</option><option v-for="tag in view.userTags.value" :key="idToRaw({ id: tag.id })" :value="idToRaw({ id: tag.id })">{{ tag.name }}</option></select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-3 top-2.5 w-4 h-4 text-gray-400" /></span>
+        <span tw-class="relative min-w-40 flex-1"><SettingsFormSelect :model-value="selectedTagId ? idToRaw({ id: selectedTagId }) : ''" @update:model-value="chooseTag({ value: $event })" :aria-label="lazyStrings.imageGeneration__tags()" data-testid="workspace-bulk-tag-choice" :disabled="view.mutation.value" :label="lazyStrings.imageGeneration__tags()" :options="[{ value: '', label: lazyStrings.imageGeneration__tags() }, ...view.userTags.value.map(tag => ({ value: idToRaw({ id: tag.id }), label: tag.name }))]" /></span>
         <button type="button" @click="tagImages({ assignment: 'add' })" :disabled="!selectedTagId || view.mutation.value" data-testid="workspace-bulk-tag-add" tw-class="min-h-8 rounded-lg px-2.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__add_tag() }}</button>
         <button type="button" @click="tagImages({ assignment: 'remove' })" :disabled="!selectedTagId || view.mutation.value" data-testid="workspace-bulk-tag-remove" tw-class="min-h-8 rounded-lg px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__remove_tag() }}</button>
       </div>

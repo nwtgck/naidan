@@ -1,7 +1,7 @@
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { describe, expect, it } from 'vitest';
 import { groupModelFiles } from './catalog';
-import { modelSuggestions, preferredQuantizationHint, matchesMemoryHint, suggestedMemoryFilters, moreGgufModelsUrl } from './model-suggestions';
+import { modelSuggestions, preferredQuantizationHint, matchesMemoryHint, suggestedMemoryFilters } from './model-suggestions';
 import { resolveSuggestionPlan, findLocalSuggestedModel, SuggestionPlanError } from './suggestion-plan';
 import { artifactRole } from './artifact-role';
 import { quantizationName, quantizationChoices } from './presentation';
@@ -18,12 +18,11 @@ function catalog({ paths }: { paths: string[] }) {
 
 describe('bundled suggestions and exact download plans', () => {
   it('keeps the agreed developer order, small models and only the requested memory chips', () => {
-    expect(modelSuggestions.map(entry => entry.developer)).toEqual(['Google', 'Google', 'Google', 'OpenAI', 'Qwen', 'Qwen', 'Qwen', 'Liquid AI', 'Liquid AI', 'Meta', 'Hugging Face']);
+    expect(modelSuggestions.map(entry => entry.developer)).toEqual(['Google', 'Google', 'Google', 'OpenAI', 'Qwen', 'Qwen', 'Qwen', 'Qwen', 'Liquid AI', 'Liquid AI', 'Meta', 'Hugging Face']);
     expect(modelSuggestions.map(entry => entry.id)).toContain('lfm-2-5-230m');
     expect(modelSuggestions.at(-1)?.id).toBe('smollm2-135m');
     expect(new Set(modelSuggestions.map(entry => entry.id)).size).toBe(modelSuggestions.length);
     expect(suggestedMemoryFilters).toEqual(['all', 8, 16, 32]);
-    expect(moreGgufModelsUrl).toBe('https://huggingface.co/models?library=gguf');
     expect(matchesMemoryHint({ quantization, memory: 16, multimodal: 'off' })).toBe(false);
     expect(matchesMemoryHint({ quantization, memory: 32, multimodal: 'off' })).toBe(true);
     expect(matchesMemoryHint({ quantization, memory: 'all', multimodal: 'on' })).toBe(true);

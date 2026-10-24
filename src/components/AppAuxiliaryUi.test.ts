@@ -1,6 +1,5 @@
-import { START_LOCATION } from 'vue-router';
 import { shallowRef } from 'vue';
-import { TEST_ONLY as modelPresetTestOnly, type ModelPreset } from '@/features/llama-cpp-browser/model-preset';
+import type { AppEntrySettingsOverlay, AppEntryDiscoveryTab } from '@/composables/useAppEntry';
 import { flushPromises, mount } from '@vue/test-utils';
 import { reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +8,41 @@ import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
 import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
 const timingMocks = vi.hoisted(() => ({ snapshot: vi.fn() }));
+vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({ useCurrentChatState: () => ({ resolvedSettings: ref(null) }) }));
+const entryIntent = shallowRef({ kind: 'ordinary' });
+const settingsOverlay = shallowRef<AppEntrySettingsOverlay>();
+const discovery = shallowRef<{ owner: symbol, tab: AppEntryDiscoveryTab }>();
+const closeEntrySettings = vi.fn(() => {
+  settingsOverlay.value = undefined;
+});
+const discoveryMounts = vi.hoisted(() => ({ count: 0 }));
+vi.mock('@/composables/useAppEntry', () => ({
+  loadModelDiscoveryPanel: () => import('@/components/ModelDiscoveryPanel.vue'),
+  useAppEntry: () => ({
+    intent: entryIntent,
+    interaction: ref('ready'),
+    settingsOverlay,
+    discovery,
+    modelSelection: ref(undefined),
+    closeSettings: closeEntrySettings,
+    closeDiscovery: () => {
+      discovery.value = undefined;
+    },
+  }),
+}));
+vi.mock('@/components/ModelDiscoveryPanel.vue', () => ({
+  __esModule: true,
+  __isTeleport: false,
+  default: {
+    name: 'ModelDiscoveryPanel',
+    props: ['visibility', 'tab', 'interaction'],
+    emits: ['close'],
+    setup() {
+      discoveryMounts.count++;
+    },
+    template: '<div data-testid="model-discovery" :data-visibility="visibility" :data-tab="tab"><button @click="$emit(\'close\')">close</button></div>',
+  },
+}));
 vi.mock('@/features/transformers-js', () => ({ transformersJsService: { getDownloadTimingSnapshot: timingMocks.snapshot } }));
 
 function timingSnapshot(): DownloadTimingSnapshot {
@@ -99,7 +133,7 @@ vi.mock('@/components/SettingsModal.vue', () => ({
   __isTeleport: false,
   default: {
     name: 'SettingsModal',
-    props: ['isOpen'],
+    props: ['isOpen', 'navigation', 'requestedTab'],
     emits: ['close', 'openModelSupportInvestigation'],
     template: '<div v-if="isOpen" data-testid="settings-modal"><button data-testid="settings-open-model-support-investigation-stub" @click="$emit(\'openModelSupportInvestigation\', \'\')">open</button></div>',
   },
@@ -155,6 +189,11 @@ describe('AppAuxiliaryUi', () => {
     route.query = {};
     push.mockClear();
     replace.mockClear();
+    entryIntent.value = { kind: 'ordinary' };
+    settingsOverlay.value = undefined;
+    discovery.value = undefined;
+    closeEntrySettings.mockClear();
+    discoveryMounts.count = 0;
     timingMocks.snapshot.mockReset().mockReturnValue(undefined);
     isSearchOpen.value = false;
     isRecentOpen.value = false;
@@ -164,7 +203,7 @@ describe('AppAuxiliaryUi', () => {
 
   it('opens performance inside Settings, restores the origin and retains the mounted results host', async () => {
     route.query = { settings: 'llama-cpp-browser' };
-    const wrapper = mount(AppAuxiliaryUi, { attachTo: document.body });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' }, attachTo: document.body });
     await flushPromises();
     const button = wrapper.get<HTMLButtonElement>('[data-testid="settings-open-model-support-investigation-stub"]');
     button.element.focus();
@@ -183,53 +222,72 @@ describe('AppAuxiliaryUi', () => {
     wrapper.unmount();
   });
 
-  it('opens the preset settings tab once while preserving unrelated query state', async () => {
-    route.query = { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', leaf: 'message-1' };
-    const preset = shallowRef<ModelPreset>({ input: route.query['llama-cpp-browser-model']!, target: 'settings', claim: () => true });
-    const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
+  it.each(['/', '/chat/chat-1', '/settings/connection'])('keeps model previews at %s free of URL-driven settings and navigation', async path => {
+    route.path = path;
+    route.query = { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', settings: 'llama-cpp-browser', q: 'hello' };
+    const original = { ...route.query };
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
     await flushPromises();
-    expect(replace).toHaveBeenCalledWith({ path: '/', query: { ...route.query, settings: 'llama-cpp-browser' }, hash: undefined });
-    route.query = { ...route.query, settings: 'llama-cpp-browser' };
-    await flushPromises();
-    wrapper.vm.TEST_ONLY.closeSettings();
-    expect(push).toHaveBeenCalledWith({ path: '/', query: { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', leaf: 'message-1' } });
-    delete route.query.settings;
-    await flushPromises();
-    expect(replace).toHaveBeenCalledTimes(1);
-    preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'settings', claim: () => true };
-    await flushPromises();
-    expect(replace).toHaveBeenCalledTimes(2);
-    wrapper.unmount();
-  });
-
-  it('preserves the pending cold-link path and query before initial navigation settles', async () => {
-    const pendingRoute = { path: '/chat/chat-1', query: { leaf: 'message-2', 'llama-cpp-browser-model': 'hf.co/owner/repo' }, hash: '' };
-    vi.mocked(useRouter).mockReturnValue({ push, replace, currentRoute: shallowRef(START_LOCATION), options: { history: { location: '/chat/chat-1?leaf=message-2' } }, resolve: vi.fn().mockReturnValue(pendingRoute) } as unknown as ReturnType<typeof useRouter>);
-    const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo', target: 'settings', claim: () => true });
-    const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
-    await flushPromises();
-    expect(replace).toHaveBeenCalledWith({ ...pendingRoute, query: { ...pendingRoute.query, settings: 'llama-cpp-browser' } });
-    wrapper.unmount();
-  });
-
-  it('does not open settings for a preset assigned to ordinary onboarding', async () => {
-    const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo', target: 'onboarding', claim: () => true });
-    const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
-    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     expect(replace).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(route.query).toEqual(original);
+    wrapper.unmount();
+  });
+
+  it('opens and closes explicitly requested settings above a model preview without changing its URL', async () => {
+    route.path = '/settings/developer';
+    route.query = { 'llama-cpp-browser-model': 'owner/repo:Q4_K_M', settings: 'developer', q: 'hello' };
+    entryIntent.value = { kind: 'model-preview' };
+    const original = { ...route.query };
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
+    settingsOverlay.value = { owner: Symbol('entry'), tab: 'connection', opener: undefined };
+    await flushPromises();
+    const modal = wrapper.getComponent({ name: 'SettingsModal' });
+    expect(modal.props('navigation')).toBe('local');
+    expect(modal.props('requestedTab')).toBe('connection');
+    wrapper.vm.TEST_ONLY.closeSettings();
+    await flushPromises();
+    expect(closeEntrySettings).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
+    expect(route.query).toEqual(original);
+    expect(replace).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
   it('does not mount closed auxiliary overlays', async () => {
-    const wrapper = mount(AppAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-discovery"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('mounts model discovery only on first open and retains its instance between visits', async () => {
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    await flushPromises();
+    expect(discoveryMounts.count).toBe(0);
+    const owner = Symbol('entry');
+    discovery.value = { owner, tab: 'candidates' };
+    await flushPromises();
+    expect(discoveryMounts.count).toBe(1);
+    expect(wrapper.get('[data-testid="model-discovery"]').attributes('data-visibility')).toBe('open');
+    await wrapper.get('[data-testid="model-discovery"] button').trigger('click');
+    expect(wrapper.get('[data-testid="model-discovery"]').attributes('data-visibility')).toBe('closed');
+    discovery.value = { owner, tab: 'hugging-face' };
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-discovery"]').attributes('data-tab')).toBe('hugging-face');
+    expect(discoveryMounts.count).toBe(1);
+    wrapper.unmount();
   });
 
   it('opens settings after post-startup UI is activated', async () => {
     route.query = { settings: '1' };
-    const wrapper = mount(AppAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
@@ -238,7 +296,7 @@ describe('AppAuxiliaryUi', () => {
   it('hands model support investigation off to the app-level host without destroying settings state', async () => {
     route.query = { settings: 'developer' };
     route.fullPath = '/?settings=developer';
-    const wrapper = mount(AppAuxiliaryUi, { attachTo: document.body });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' }, attachTo: document.body });
     await flushPromises();
 
     const settingsHost = wrapper.get('[data-testid="settings-modal-host"]');
@@ -272,7 +330,7 @@ describe('AppAuxiliaryUi', () => {
   it('preserves the complete initial non-settings location for path-based settings close', () => {
     route.path = '/chat/chat-1';
     route.fullPath = '/chat/chat-1?leaf=message-1';
-    const wrapper = mount(AppAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
 
     (wrapper.vm as unknown as { TEST_ONLY: { closeSettings(): void } }).TEST_ONLY.closeSettings();
 
@@ -283,7 +341,7 @@ describe('AppAuxiliaryUi', () => {
     route.query = { settings: 'developer' };
     const source = timingSnapshot();
     timingMocks.snapshot.mockReturnValue(source);
-    const wrapper = mount(AppAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
     await flushPromises();
     await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');
     await flushPromises();
@@ -304,7 +362,7 @@ describe('AppAuxiliaryUi', () => {
     } else {
       timingMocks.snapshot.mockReturnValue({ format: 'invalid' });
     }
-    const wrapper = mount(AppAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
     await flushPromises();
     await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');
     await flushPromises();

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue';
-import { MicIcon, UploadIcon, Loader2Icon } from 'lucide-vue-next';
+import { ChevronDownIcon, MicIcon, UploadIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useAudioReferences } from '@/features/audio-generation/composables/useAudioReferences';
 import { useReferenceRecording } from '@/features/audio-generation/composables/useReferenceRecording';
@@ -114,21 +114,21 @@ async function prepare({ signal }: { signal: AbortSignal }): Promise<Blob | unde
 defineExpose({ prepare, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <section tw-class="space-y-3" data-testid="audio-reference-library" data-audio-field="reference" :aria-invalid="invalid || undefined" :aria-labelledby="`${id}-label`">
+  <section tw-class="space-y-3 rounded-2xl border border-gray-200/70 bg-white/70 p-4 sm:p-5 dark:border-gray-800/80 dark:bg-gray-900/40" data-testid="audio-reference-library" data-audio-field="reference" :aria-invalid="invalid || undefined" :aria-labelledby="`${id}-label`">
     <h2 :id="`${id}-label`" tw-class="text-sm font-medium">{{ lazyStrings.audioGeneration__reference_voice() }}</h2>
-    <div @dragover.prevent.stop @dragenter.prevent.stop="dragDepth++" @dragleave.prevent.stop="dragDepth = Math.max(0, dragDepth - 1)" @drop.prevent.stop="drop({ event: $event })" data-testid="audio-reference-drop" :tw-class="['flex flex-wrap items-center gap-2 rounded-xl border border-dashed px-3 py-2.5', !locked && dragDepth > 0 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600', { 'opacity-60': locked }]">
+    <div @dragover.prevent.stop @dragenter.prevent.stop="dragDepth++" @dragleave.prevent.stop="dragDepth = Math.max(0, dragDepth - 1)" @drop.prevent.stop="drop({ event: $event })" data-testid="audio-reference-drop" :tw-class="['flex flex-wrap items-center gap-3 rounded-xl border border-dashed bg-gray-50/40 px-3.5 py-4 transition-colors dark:bg-gray-800/20', !locked && dragDepth > 0 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700/70', { 'opacity-60': locked }]">
       <div tw-class="flex min-w-0 grow basis-48 items-center gap-2">
         <UploadIcon tw-class="h-4 w-4 shrink-0 text-blue-500" />
         <p tw-class="min-w-0 flex-1 text-xs">{{ lazyStrings.audioGeneration__drop_reference_audio() }}</p>
       </div>
       <label :for="`${id}-files`" tw-class="sr-only">{{ lazyStrings.audioGeneration__add_reference_files() }}</label>
-      <input :id="`${id}-files`" ref="fileInput" type="file" accept="audio/*,.wav,.mp3,.flac,.webm,.ogg,.m4a,.mp4" multiple :disabled="locked" :aria-invalid="invalid || undefined" data-testid="audio-reference" tw-class="sr-only" @change="choose({ event: $event })" />
-      <button type="button" :disabled="locked" @click="fileInput?.click()" data-testid="audio-reference-browse" tw-class="shrink-0 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__add_reference_files() }}</button>
+      <input :id="`${id}-files`" ref="fileInput" type="file" tabindex="-1" accept="audio/*,.wav,.mp3,.flac,.webm,.ogg,.m4a,.mp4" multiple :disabled="locked" :aria-invalid="invalid || undefined" data-testid="audio-reference" tw-class="sr-only" @change="choose({ event: $event })" />
+      <button type="button" :disabled="locked" @click="fileInput?.click()" data-testid="audio-reference-browse" tw-class="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-45 dark:border-gray-700/70 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10">{{ lazyStrings.audioGeneration__add_reference_files() }}</button>
     </div>
     <div tw-class="flex flex-wrap items-center gap-2">
-      <button type="button" :disabled="locked || !recordingSupported" @click="recordingTrimmed = false; recording.start()" data-testid="audio-reference-record" tw-class="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm disabled:opacity-50"><MicIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__record_reference() }}</button>
-      <button v-if="recordingStatus === 'recording'" type="button" @click="recording.stop" data-testid="audio-reference-record-stop" tw-class="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white">{{ lazyStrings.audioGeneration__stop_and_use_recording() }}</button>
-      <button v-if="recordingStatus !== 'idle'" type="button" @click="recording.cancel" data-testid="audio-reference-record-cancel" tw-class="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm">{{ lazyStrings.audioGeneration__discard_recording() }}</button>
+      <button type="button" :disabled="locked || !recordingSupported" @click="recordingTrimmed = false; recording.start()" data-testid="audio-reference-record" tw-class="inline-flex min-h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-45 dark:border-gray-700/70 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:bg-gray-800"><MicIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__record_reference() }}</button>
+      <button v-if="recordingStatus === 'recording'" type="button" @click="recording.stop" data-testid="audio-reference-record-stop" tw-class="min-h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:border-blue-900 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20">{{ lazyStrings.audioGeneration__stop_and_use_recording() }}</button>
+      <button v-if="recordingStatus !== 'idle'" type="button" @click="recording.cancel" data-testid="audio-reference-record-cancel" tw-class="min-h-9 rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:text-gray-400 dark:hover:bg-gray-800">{{ lazyStrings.audioGeneration__discard_recording() }}</button>
     </div>
     <p v-if="!recordingSupported" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__recording_unavailable() }}</p>
     <p v-if="recordingStatus !== 'idle'" role="status" data-testid="audio-recording-status" tw-class="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
@@ -155,8 +155,8 @@ defineExpose({ prepare, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
       </div>
       <p v-if="selected.size === 0" data-testid="audio-reference-none" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_reference_selected() }}</p>
     </div>
-    <details tw-class="text-xs text-gray-500 dark:text-gray-400" data-testid="audio-reference-notes">
-      <summary tw-class="cursor-pointer">{{ lazyStrings.audioGeneration__reference_usage_notes() }}</summary>
+    <details tw-class="group/audio-reference-notes rounded-lg bg-gray-50/70 px-3 py-2.5 text-xs text-gray-500 dark:bg-gray-800/30 dark:text-gray-400" data-testid="audio-reference-notes">
+      <summary tw-class="flex min-h-6 cursor-pointer list-none items-center justify-between gap-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/30 [&::-webkit-details-marker]:hidden">{{ lazyStrings.audioGeneration__reference_usage_notes() }}<ChevronDownIcon aria-hidden="true" tw-class="h-3 w-3 shrink-0 text-gray-400 transition-transform group-open/audio-reference-notes:rotate-180 motion-reduce:transition-none" /></summary>
       <div tw-class="mt-2 space-y-2 leading-relaxed">
         <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reference_collection_help() }}</p>
         <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reference_help() }}</p>

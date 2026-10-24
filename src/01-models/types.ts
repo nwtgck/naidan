@@ -496,6 +496,8 @@ export interface Settings {
   lmParameters?: LmParameters,
   experimental?: {
     locale?: UiLocale,
+    chatBrowserModelPickerTab?: 'files' | 'linked-folders' | 'hugging-face' | 'saved',
+    modelDiscoveryTab?: 'candidates' | 'hugging_face' | 'local_files',
     markdownRendering?: 'block_markdown' | 'monolithic_html',
     /**
      * Controls whether tool configuration changes are persisted.

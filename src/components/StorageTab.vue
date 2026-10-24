@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
@@ -211,16 +212,16 @@ defineExpose({
 </script>
 
 <template>
-  <div data-testid="storage-section" class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-8 duration-400">
-    <section tw-class="space-y-6">
-      <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <ShieldCheckIcon tw-class="w-5 h-5 text-blue-500" />
-        <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__data_durability() }}</h2>
+  <div data-testid="storage-section" class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-7 duration-300 motion-reduce:animate-none">
+    <section tw-class="space-y-3">
+      <div tw-class="flex items-center gap-3 pb-1">
+        <span tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50/80 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><ShieldCheckIcon aria-hidden="true" tw-class="h-4 w-4" /></span>
+        <h2 tw-class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__data_durability() }}</h2>
       </div>
 
-      <div tw-class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
-        <div tw-class="space-y-1">
-          <h4 tw-class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+      <div tw-class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-gray-200/70 bg-white/60 p-4 dark:border-gray-800/80 dark:bg-gray-900/20">
+        <div tw-class="min-w-0 flex-[1_1_15rem] space-y-1.5">
+          <h4 tw-class="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
             {{ lazyStrings.StorageTab__persistent_storage() }}
             <span v-if="storagePersistenceStatus === 'persisted'" tw-class="text-[9px] px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg font-bold uppercase tracking-wider border border-green-100 dark:border-green-900/30">{{ lazyStrings.StorageTab__active() }}</span>
             <span v-else-if="storagePersistenceStatus === 'not-persisted'" tw-class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">{{ lazyStrings.StorageTab__best_effort() }}</span>
@@ -233,10 +234,10 @@ defineExpose({
         <button
           v-if="storagePersistenceStatus !== 'persisted'"
           @click="handleEnablePersistence"
-          tw-class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+          tw-class="group ml-auto inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-200 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10"
           data-testid="setting-enable-persistence-button"
         >
-          <ShieldCheckIcon tw-class="w-4 h-4" />
+          <ShieldCheckIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
           {{ lazyStrings.StorageTab__enable() }}
         </button>
         <div v-else tw-class="flex items-center gap-2 px-4 py-2 text-green-600 dark:text-green-400 text-xs font-bold">
@@ -246,15 +247,15 @@ defineExpose({
       </div>
     </section>
 
-    <section tw-class="space-y-6">
-      <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <FileArchiveIcon tw-class="w-5 h-5 text-blue-500" />
-        <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__backup_and_restore() }}</h2>
+    <section tw-class="space-y-3">
+      <div tw-class="flex items-center gap-3 pb-1">
+        <span tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50/80 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><FileArchiveIcon aria-hidden="true" tw-class="h-4 w-4" /></span>
+        <h2 tw-class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__backup_and_restore() }}</h2>
       </div>
 
-      <div tw-class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
-        <div tw-class="space-y-1">
-          <h4 tw-class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+      <div tw-class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-gray-200/70 bg-white/60 p-4 dark:border-gray-800/80 dark:bg-gray-900/20">
+        <div tw-class="min-w-0 flex-[1_1_15rem] space-y-1.5">
+          <h4 tw-class="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
             {{ lazyStrings.StorageTab__export_import() }}
             <span tw-class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">{{ lazyStrings.StorageTab__experimental() }}</span>
           </h4>
@@ -264,159 +265,156 @@ defineExpose({
         </div>
         <button
           @click="showImportExportModal = true"
-          tw-class="shrink-0 flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+          tw-class="ml-auto inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-200 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10"
           data-testid="setting-import-export-button"
         >
-          <FileArchiveIcon tw-class="w-4 h-4" />
+          <FileArchiveIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
           {{ lazyStrings.StorageTab__manage_data() }}
         </button>
       </div>
 
-      <div tw-class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
-        <div tw-class="space-y-1">
-          <h4 tw-class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+      <div tw-class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-gray-200/70 bg-white/60 p-4 dark:border-gray-800/80 dark:bg-gray-900/20">
+        <div tw-class="min-w-0 flex-[1_1_15rem] space-y-1.5">
+          <h4 tw-class="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
             {{ lazyStrings.StorageTab__share_via_url() }}
           </h4>
           <p tw-class="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
             {{ lazyStrings.StorageTab__share_url_description() }}
-            <span tw-class="block mt-1 text-gray-400 dark:text-gray-500 italic">{{ lazyStrings.StorageTab__large_storage_link_warning() }}</span>
+            <span tw-class="mt-1 block text-gray-400 dark:text-gray-500">{{ lazyStrings.StorageTab__large_storage_link_warning() }}</span>
           </p>
 
           <div tw-class="mt-4 flex flex-wrap gap-4">
             <label tw-class="flex items-center gap-2 cursor-pointer group">
-              <input
+              <SettingsChoiceControl presentation="checkbox"><input
                 type="checkbox"
                 v-model="excludeChats"
                 data-testid="setting-exclude-chats-checkbox"
-                tw-class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
-              />
-              <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_chats() }}</span>
+              /></SettingsChoiceControl>
+              <span tw-class="text-xs font-medium text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_chats() }}</span>
             </label>
             <label
               :tw-class="['flex items-center gap-2 group', excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer']"
             >
-              <input
+              <SettingsChoiceControl presentation="checkbox"><input
                 type="checkbox"
                 v-model="excludeChatHistory"
                 :disabled="excludeChatHistoryDisabled"
                 data-testid="setting-exclude-chat-history-checkbox"
-                tw-class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 disabled:cursor-not-allowed"
-              />
-              <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_chat_history() }}</span>
+              /></SettingsChoiceControl>
+              <span tw-class="text-xs font-medium text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_chat_history() }}</span>
             </label>
             <label tw-class="flex items-center gap-2 cursor-pointer group">
-              <input
+              <SettingsChoiceControl presentation="checkbox"><input
                 type="checkbox"
                 v-model="excludeAttachments"
                 data-testid="setting-exclude-attachments-checkbox"
-                tw-class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
-              />
-              <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_attachments() }}</span>
+              /></SettingsChoiceControl>
+              <span tw-class="text-xs font-medium text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_attachments() }}</span>
             </label>
           </div>
         </div>
         <button
           @click="handleCopyExportURL"
           :disabled="isExportingURL"
-          tw-class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          tw-class="ml-auto inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-200 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10"
           data-testid="setting-copy-export-url-button"
         >
           <Loader2Icon v-if="isExportingURL" tw-class="w-4 h-4 animate-spin" />
-          <LinkIcon v-else tw-class="w-4 h-4" />
+          <LinkIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
           <span v-if="isExportingURL">{{ lazyStrings.StorageTab__generating() }}</span>
           <span v-else>{{ lazyStrings.StorageTab__copy_link() }}</span>
         </button>
       </div>
     </section>
 
-    <section tw-class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
-      <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <DatabaseIcon tw-class="w-5 h-5 text-blue-500" />
-        <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__storage_management() }}</h2>
+    <section tw-class="space-y-3">
+      <div tw-class="flex items-center gap-3 pb-1">
+        <span tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50/80 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><DatabaseIcon aria-hidden="true" tw-class="h-4 w-4" /></span>
+        <h2 tw-class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__storage_management() }}</h2>
       </div>
 
-      <div tw-class="space-y-6">
-        <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.StorageTab__active_storage_provider() }}</label>
-        <div tw-class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div tw-class="space-y-3">
+        <label tw-class="ml-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.StorageTab__active_storage_provider() }}</label>
+        <div tw-class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <button
             @click="handleStorageChange({ targetType: 'opfs' })"
             type="button"
             :disabled="!isOPFSSupported"
-            :tw-class="['text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3',
-                        storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700',
+            :tw-class="['flex flex-col gap-3 rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40',
+                        storageType === 'opfs' ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-500/8' : 'border-gray-200/70 bg-white/60 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800/80 dark:bg-gray-900/20 dark:hover:border-gray-700 dark:hover:bg-gray-800/50',
                         !isOPFSSupported ? 'opacity-50 cursor-not-allowed grayscale' : ''
             ]"
             data-testid="storage-opfs"
           >
             <div tw-class="flex items-center justify-between">
-              <div tw-class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <HardDriveIcon tw-class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              <div tw-class="rounded-lg bg-gray-100/80 p-2 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                <HardDriveIcon tw-class="h-4 w-4 text-gray-500 dark:text-gray-400" />
               </div>
               <span v-if="isOPFSSupported" tw-class="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600/80 dark:text-green-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">{{ lazyStrings.StorageTab__recommended() }}</span>
               <span v-else tw-class="text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600/80 dark:text-red-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">{{ lazyStrings.StorageTab__unsupported() }}</span>
             </div>
             <div>
-              <div tw-class="font-bold text-base mb-1 text-gray-800 dark:text-white">{{ lazyStrings.StorageTab__origin_private_file_system() }}</div>
-              <div tw-class="text-xs font-medium text-gray-500 leading-relaxed">{{ lazyStrings.StorageTab__opfs_description() }}</div>
+              <div tw-class="mb-1.5 text-sm font-semibold leading-5 text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__origin_private_file_system() }}</div>
+              <div tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.StorageTab__opfs_description() }}</div>
             </div>
           </button>
           <button
             @click="handleStorageChange({ targetType: 'local' })"
             type="button"
-            :tw-class="['text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3', storageType === 'local' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700']"
+            :tw-class="['flex flex-col gap-3 rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40', storageType === 'local' ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-500/8' : 'border-gray-200/70 bg-white/60 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800/80 dark:bg-gray-900/20 dark:hover:border-gray-700 dark:hover:bg-gray-800/50']"
             data-testid="storage-local"
           >
             <div tw-class="flex items-center justify-between">
-              <div tw-class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <HardDriveIcon tw-class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              <div tw-class="rounded-lg bg-gray-100/80 p-2 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                <HardDriveIcon tw-class="h-4 w-4 text-gray-500 dark:text-gray-400" />
               </div>
             </div>
             <div>
-              <div tw-class="font-bold text-base mb-1 text-gray-800 dark:text-white">{{ lazyStrings.StorageTab__local_storage() }}</div>
-              <div tw-class="text-xs font-medium text-gray-500 leading-relaxed">{{ lazyStrings.StorageTab__local_storage_description() }}</div>
+              <div tw-class="mb-1.5 text-sm font-semibold leading-5 text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__local_storage() }}</div>
+              <div tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.StorageTab__local_storage_description() }}</div>
             </div>
           </button>
           <button
             @click="handleStorageChange({ targetType: 'memory' })"
             type="button"
-            :tw-class="['text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3', storageType === 'memory' ? 'border-purple-500 bg-purple-50/50 dark:bg-purple-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700']"
+            :tw-class="['flex flex-col gap-3 rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/40', storageType === 'memory' ? 'border-purple-500 bg-purple-50/40 dark:bg-purple-500/8' : 'border-gray-200/70 bg-white/60 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800/80 dark:bg-gray-900/20 dark:hover:border-gray-700 dark:hover:bg-gray-800/50']"
             data-testid="storage-memory"
           >
             <div tw-class="flex items-center justify-between">
-              <div tw-class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <GhostIcon tw-class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              <div tw-class="rounded-lg bg-gray-100/80 p-2 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                <GhostIcon tw-class="h-4 w-4 text-gray-500 dark:text-gray-400" />
               </div>
             </div>
             <div>
-              <div tw-class="font-bold text-base mb-1 text-gray-800 dark:text-white">{{ lazyStrings.StorageTab__ephemeral() }}</div>
-              <div tw-class="text-xs font-medium text-gray-500 leading-relaxed">{{ lazyStrings.StorageTab__ephemeral_description() }}</div>
+              <div tw-class="mb-1.5 text-sm font-semibold leading-5 text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__ephemeral() }}</div>
+              <div tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.StorageTab__ephemeral_description() }}</div>
             </div>
           </button>
         </div>
 
-        <div tw-class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
-          <InfoIcon tw-class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
+        <div tw-class="flex items-start gap-2.5 rounded-xl bg-blue-50/50 px-3.5 py-3 text-[11px] text-gray-500 dark:bg-blue-500/5 dark:text-gray-400">
+          <InfoIcon aria-hidden="true" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
           <p tw-class="leading-relaxed">{{ lazyStrings.StorageTab__storage_migration_description() }}</p>
         </div>
       </div>
     </section>
 
-    <section tw-class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
-      <div tw-class="flex items-center gap-2 pb-3">
-        <Trash2Icon tw-class="w-5 h-5 text-red-500" />
-        <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__data_cleanup() }}</h2>
+    <section tw-class="space-y-3 border-t border-gray-100 pt-5 dark:border-gray-800">
+      <div tw-class="flex items-center gap-3 pb-1">
+        <span tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><Trash2Icon aria-hidden="true" tw-class="h-4 w-4" /></span>
+        <h2 tw-class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__data_cleanup() }}</h2>
       </div>
 
-      <div tw-class="p-6 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
+      <div tw-class="space-y-4 rounded-xl border border-gray-200/70 bg-white/60 p-4 dark:border-gray-800/80 dark:bg-gray-900/20">
         <div>
-          <h4 tw-class="font-bold text-red-800 dark:text-red-400 text-sm">{{ lazyStrings.StorageTab__clear_conversation_history() }}</h4>
-          <p tw-class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
+          <h4 tw-class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ lazyStrings.StorageTab__clear_conversation_history() }}</h4>
+          <p tw-class="mt-1.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
             {{ lazyStrings.StorageTab__clear_history_description() }}
           </p>
         </div>
         <button
           @click="handleDeleteAllHistory"
-          tw-class="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
+          tw-class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-red-200/70 bg-red-50/40 px-4 py-2 text-xs font-medium text-red-600 transition-colors hover:border-red-300 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 dark:border-red-900/50 dark:bg-red-500/5 dark:text-red-400 dark:hover:border-red-800 dark:hover:bg-red-500/10"
           data-testid="setting-clear-history-button"
         >
           <Trash2Icon tw-class="w-4 h-4" />

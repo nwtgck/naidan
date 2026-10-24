@@ -1,10 +1,10 @@
 import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
-import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '@/01-models/types';
+import type { Chat, SidebarItem, ChatSummary, Hierarchy, MessageNode } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { nextTick, reactive, toRaw } from 'vue';
-import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 // --- Mocks ---
 
@@ -75,6 +75,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', titleGeneration: 'disabled', defaultModelId: 'gpt-4', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } }, providerProfiles: [] } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
@@ -165,7 +166,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     const updatedChat = JSON.parse(JSON.stringify(chat));
-    updatedChat.root.items.push({ id: 'msg-ext', role: 'user', content: 'Ext', timestamp: Date.now(), replies: { items: [] } });
+    updatedChat.root.items.push({ id: toMessageId({ raw: 'msg-ext' }), role: 'user', modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'Ext', completeness: 'complete' }], createdAt: Date.now(), replies: { items: [] } } satisfies MessageNode);
     mocks.mockChatStorage.set(idToRaw({ id: chatId }), updatedChat);
     await simulateExternalEvent({ type: 'chat_content', id: idToRaw({ id: chatId }) });
 
@@ -181,7 +182,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatId = chat!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     const updatedChat = JSON.parse(JSON.stringify(chat));
-    updatedChat.root.items.push({ id: 'msg-ext', role: 'user', content: 'Ext', timestamp: Date.now(), replies: { items: [] } });
+    updatedChat.root.items.push({ id: toMessageId({ raw: 'msg-ext' }), role: 'user', modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'Ext', completeness: 'complete' }], createdAt: Date.now(), replies: { items: [] } } satisfies MessageNode);
     mocks.mockChatStorage.set(idToRaw({ id: chatId }), updatedChat);
     await simulateExternalEvent({ type: 'chat_content', id: idToRaw({ id: chatId }) });
 

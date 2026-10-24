@@ -7,6 +7,7 @@ type MemoryDirectory = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Preserves the native OPFS argument tuple.
   getFileHandle: FileSystemDirectoryHandle['getFileHandle'] extends (...args: infer Args) => unknown ? (...args: Args) => Promise<ReturnType<typeof memoryFile>> : never,
   removeEntry: FileSystemDirectoryHandle['removeEntry'],
+  isSameEntry: FileSystemDirectoryHandle['isSameEntry'],
   entries: () => AsyncGenerator<[string, MemoryDirectory | ReturnType<typeof memoryFile>]>,
 };
 
@@ -16,6 +17,10 @@ export function memoryDirectory({ name }: { name: string }): MemoryDirectory {
     kind: 'directory' as const,
     name,
     children,
+
+    async isSameEntry(other: unknown): Promise<boolean> {
+      return other === this;
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Test implementation of the native OPFS API.
     async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<ReturnType<typeof memoryDirectory>> {
       let entry = children.get(name);
@@ -76,6 +81,10 @@ function memoryFile({ name }: { name: string }) {
   return {
     kind: 'file' as const,
     name,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Test implementation of the native File System API.
+    async isSameEntry(other: unknown): Promise<boolean> {
+      return other === this;
+    },
     async getFile() {
       return new NodeFile([bytes], name, { lastModified: 123 });
     },

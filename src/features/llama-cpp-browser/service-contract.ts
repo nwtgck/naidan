@@ -5,6 +5,7 @@ import type { AudioGenerationInput, AudioGenerationResult } from '@/features/aud
 import type { ProfileCapabilities, ProfileState } from './runtime/profile-capabilities';
 import type { DeletionPlan, DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult, GenerationCallback, LocalModel, RuntimeOptions, Progress } from './types';
+import type { ModelImportReceipt } from './model-files';
 
 export interface LlamaCppBrowserService {
   /** Best-effort preparation: never queues behind an existing operation. */
@@ -20,8 +21,8 @@ export interface LlamaCppBrowserService {
   subscribe({ listener }: { listener: ({ state }: { state: EngineState }) => void }): () => void;
   subscribeModelList({ listener }: { listener: () => void }): () => void;
   listModelEntries({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
-  importModel({ file, signal, storage }: { file: File, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<void>;
-  importDirectory({ directory, signal, storage }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<void>;
+  importModel({ file, signal, storage }: { file: File, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<ModelImportReceipt>;
+  importDirectory({ directory, signal, storage }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<ModelImportReceipt>;
   removeTemporaryModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<void>;
   removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
   generate({ input, onEvent, signal }: {

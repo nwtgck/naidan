@@ -4,6 +4,9 @@ import { computed, ref } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { HostModelDirectoriesView, HostModelDirectoryChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageHostModelDirectories from './ImageHostModelDirectories.vue';
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 
 let wrapper: VueWrapper | undefined;
 
@@ -92,7 +95,7 @@ it('shows an unregistered restored destination instead of silently selecting OPF
   wrapper = mount(ImageHostModelDirectories, { props: { view, opfsSupported: true, disabled: false, mutationDisabled: false, downloading: false, layoutFile: undefined } });
   const select = wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]');
   expect(select.element.value).toBe('removed-a');
-  const missing = wrapper.get<HTMLOptionElement>('[data-testid="image-missing-download-destination"]');
+  const missing = select.get<HTMLOptionElement>('option[value="removed-a"]');
   expect(missing.element.disabled).toBe(true);
   expect(missing.text()).toContain('removed-a');
   expect(missing.text()).toContain('Folder unavailable');
@@ -100,7 +103,7 @@ it('shows an unregistered restored destination instead of silently selecting OPF
   expect(view.selectDestination).not.toHaveBeenCalled();
   await select.setValue('opfs');
   expect(view.selectDestination).toHaveBeenLastCalledWith({ id: 'opfs' });
-  expect(wrapper.find('[data-testid="image-missing-download-destination"]').exists()).toBe(false);
+  expect(select.find('option[value="removed-a"]').exists()).toBe(false);
   view.destination.value = 'removed-a';
   await wrapper.vm.$nextTick();
   expect(select.element.value).toBe('removed-a');

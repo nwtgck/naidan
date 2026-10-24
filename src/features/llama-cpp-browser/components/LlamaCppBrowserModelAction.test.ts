@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('local model split action', () => {
-  it('exposes only the active label and keeps the main button text-only while busy', async () => {
+  it('exposes only the active label and retains the action icon while busy', async () => {
     const wrapper = render();
     const main = wrapper.get('[data-testid="llama-model-action-main"]');
     const labels = wrapper.get('[data-testid="llama-model-action-labels"]');
@@ -50,7 +50,7 @@ describe('local model split action', () => {
     expect(candidates.map(candidate => candidate.text())).toEqual(['Create chat group', 'Set as default', 'In use']);
     expect(candidates.map(candidate => candidate.attributes('aria-hidden'))).toEqual(['false', 'true', 'true']);
     expect(candidates.map(candidate => candidate.classes().includes('invisible'))).toEqual([false, true, true]);
-    expect(main.find('svg').exists()).toBe(false);
+    expect(main.get('svg').attributes('aria-hidden')).toBe('true');
 
     await wrapper.get('[data-testid="llama-model-action-options"]').trigger('click');
     await option({ testId: 'llama-model-action-set-default' }).trigger('click');
@@ -60,10 +60,12 @@ describe('local model split action', () => {
     expect(candidates.map(candidate => candidate.attributes('aria-hidden'))).toEqual(['true', 'true', 'false']);
     expect(candidates.map(candidate => candidate.classes().includes('invisible'))).toEqual([true, true, false]);
     expect(main.attributes('aria-label')).toBe('In use');
-    expect(main.find('svg').exists()).toBe(false);
+    expect(main.findAll('svg')).toHaveLength(1);
+    const actionIcon = main.get('svg').element;
 
     await wrapper.setProps({ creating: true });
-    expect(main.find('svg').exists()).toBe(false);
+    expect(main.get('svg').element).toBe(actionIcon);
+    expect(main.find('svg.animate-spin').exists()).toBe(false);
     expect(main.attributes('aria-busy')).toBe('true');
     const options = wrapper.get('[data-testid="llama-model-action-options"]');
     expect(options.find('svg.animate-spin').exists()).toBe(true);

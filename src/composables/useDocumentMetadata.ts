@@ -6,11 +6,10 @@ import { resolveInitialRoute } from '@/logic/startup/startup-route';
 type ScopedPageMetadata = Readonly<{ routePath: string, metadata: PageMetadata }>;
 type ScopedTitle = Readonly<{ routePath: string, title: string }>;
 
-function createDocumentMetadata({ router, document, homeIntroduction, continueHomeIntroduction, finishHomeIntroduction }: {
+function createDocumentMetadata({ router, document, homeIntroduction, finishHomeIntroduction }: {
   router: Router | undefined,
   document: Document,
   homeIntroduction: Readonly<Ref<HomeIntroduction>>,
-  continueHomeIntroduction: ({ routePath }: { routePath: string }) => void,
   finishHomeIntroduction: () => void,
 }) {
   const pages = shallowReactive(new Map<symbol, ComputedRef<ScopedPageMetadata | undefined>>());
@@ -90,20 +89,19 @@ function createDocumentMetadata({ router, document, homeIntroduction, continueHo
     }
   }
 
-  return { registerPage, registerLoadingTitle, withPrintTitle, continueHomeIntroduction, finishHomeIntroduction };
+  return { registerPage, registerLoadingTitle, withPrintTitle, finishHomeIntroduction };
 }
 
 type DocumentMetadata = ReturnType<typeof createDocumentMetadata>;
 const metadataKey: InjectionKey<DocumentMetadata> = Symbol('document-metadata');
 
-export function provideDocumentMetadata({ router, document, homeIntroduction, continueHomeIntroduction, finishHomeIntroduction }: {
+export function provideDocumentMetadata({ router, document, homeIntroduction, finishHomeIntroduction }: {
   router: Router | undefined,
   document: Document,
   homeIntroduction: Readonly<Ref<HomeIntroduction>>,
-  continueHomeIntroduction: ({ routePath }: { routePath: string }) => void,
   finishHomeIntroduction: () => void,
 }): void {
-  provide(metadataKey, createDocumentMetadata({ router, document, homeIntroduction, continueHomeIntroduction, finishHomeIntroduction }));
+  provide(metadataKey, createDocumentMetadata({ router, document, homeIntroduction, finishHomeIntroduction }));
 }
 
 export function useDocumentMetadata(): DocumentMetadata | undefined {

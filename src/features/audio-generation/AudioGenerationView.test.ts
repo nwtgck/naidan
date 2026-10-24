@@ -1,4 +1,8 @@
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
+import { downloadDestinationControl } from '@/features/llama-cpp-browser/components/model-configuration.test-support';
 import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
@@ -143,7 +147,8 @@ describe('independent audio generation screen', () => {
     const select = view.get<HTMLSelectElement>('[data-testid="audio-language"]');
     // Emulate a stale/different caller that can supply a no-longer-offered value.
     select.element.add(new Option('Retired automatic language', 'auto'));
-    await select.setValue('auto');
+    view.findAllComponents({ name: 'SettingsFormSelect' }).find(choice => choice.attributes('data-testid') === 'audio-language')!.vm.$emit('update:modelValue', 'auto');
+    await nextTick();
     await submit({ view });
     expect(service.generateAudio).not.toHaveBeenCalled();
     expect(view.get('[data-testid="audio-error"]').text()).toContain('Language');
@@ -600,7 +605,8 @@ describe('catalog placement and continuing previews', () => {
     expect(catalog.exists()).toBe(true);
     expect(catalog.props('suggestions')).toEqual(audioModelCatalog);
     expect(catalog.props('selectionAction')).toBe('select');
-    expect(catalog.get<HTMLSelectElement>('[data-testid="llama-download-destination"]').element.value).toBe('opfs');
+    expect(downloadDestinationControl({ view: catalog }).props('modelValue')).toBe('opfs');
+    expect(catalog.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
     expect(catalog.element.closest('[data-testid="audio-model-manager"]')).toBeNull();
     expect(view.get('[data-testid="audio-model-manager"]').findComponent(LlamaCppBrowserModelSuggestions).exists()).toBe(false);
     expect(view.find('[data-testid="llama-repository-catalog"]').exists()).toBe(false);
