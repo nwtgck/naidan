@@ -1,3 +1,8 @@
+import { runInNewContext } from 'node:vm';
+import { parse } from '@babel/parser';
+import { transformSync } from '@babel/core';
+import { minify } from 'rolldown/utils';
+import { babelTransformModulesSystemjsPlugin, babelTraverse } from './file-protocol-standalone/babel-runtime';
 import { describe, expect, it } from 'vitest';
 
 import type { BuildLicenseDependency } from './license-dependencies';
@@ -138,5 +143,47 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 
     expect(evaluateLicenseExpression({ expression })).toEqual(dependencies);
     expect(Buffer.byteLength(expression, 'utf8')).toBeLessThan(Buffer.byteLength(JSON.stringify(dependencies), 'utf8'));
+  });
+
+  it.each([false, true])('keeps highly fragmented notices parseable through SystemJS conversion with minify=%s', async shouldMinify => {
+    const sharedNotice = 'Shared native notice: redistribution conditions and disclaimer must remain unchanged.\r\n';
+    const licenseText = Array.from({ length: 6000 }, (_, index) => (
+      `Copyright ${index} "quoted" \\ 😀\r${sharedNotice}`
+    )).join('');
+    const dependencies = [createDependency({ name: 'fragmented-native-notices', license: 'Custom', licenseText })];
+    const expression = serializeLicenseDependencies({ dependencies });
+    expect(evaluateLicenseExpression({ expression })).toEqual(dependencies);
+    expect(Buffer.byteLength(expression)).toBeLessThan(Buffer.byteLength(JSON.stringify(dependencies)));
+
+    // A Function-only round trip does not exercise Babel's recursive parser and
+    // traversal, which inspect the emitted module during standalone packaging.
+    const source = `export default ${expression};`;
+    const transformed = transformSync(source, {
+      babelrc: false,
+      configFile: false,
+      plugins: [babelTransformModulesSystemjsPlugin],
+    });
+    if (typeof transformed?.code !== 'string') {
+      throw new Error('Expected transformed SystemJS license module');
+    }
+    const code = shouldMinify
+      ? (await minify('native-licenses.js', transformed.code, { compress: true, mangle: true })).code
+      : transformed.code;
+    const ast = parse(code, { sourceType: 'module', plugins: ['typescript', 'jsx'] });
+    babelTraverse(ast, {});
+
+    let restored: unknown;
+    runInNewContext(code, {
+      System: {
+        register(imports: unknown[], declare: (publish: (name: string, value: unknown) => void) => { execute(): void }) {
+          expect(imports).toEqual([]);
+          declare((name, value) => {
+            expect(name).toBe('default');
+            restored = value;
+          }).execute();
+        },
+      },
+    });
+    expect(restored).toEqual(dependencies);
   });
 });

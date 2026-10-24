@@ -1,3 +1,4 @@
+import path from "node:path";
 import { JSDOM } from "jsdom";
 import type { OutputAsset, OutputChunk, RolldownOutput } from "rolldown";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -216,7 +217,11 @@ describe("file-protocol standalone representative artifact contract", () => {
       expect(Object.keys(workerChunk.modules).some(moduleId => moduleId.endsWith(workerSourceSuffix))).toBe(true);
       expect(entryChunk.code).toContain(basename({ fileName: workerChunk.fileName }));
     }
-    expect(entryChunk.code).toContain("assets/file-protocol-standalone/system.min.js");
+    const runtimeFileName = "assets/file-protocol-standalone/system.min.js";
+    expect(requireOutputItem({ output, fileName: runtimeFileName }).type).toBe("asset");
+    // Worker URLs are relative to the emitted chunk, not to index.html.
+    const runtimeReference = path.posix.relative(path.posix.dirname(entryChunk.fileName), runtimeFileName);
+    expect(entryChunk.code).toContain(`new URL(${JSON.stringify(runtimeReference)},_context.meta.url)`);
     expect(entryChunk.code).toContain("URL.createObjectURL");
     expect(entryChunk.code).toContain("new Worker");
     expect(entryChunk.code).toContain("__representativeWorkerFactories");

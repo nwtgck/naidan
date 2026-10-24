@@ -15,7 +15,8 @@ import type { NaidanLicense } from '../src/01-models/naidan-license';
  * normalized, and every candidate is accepted only when the complete emitted
  * JavaScript becomes smaller in UTF-8 bytes.
  *
- * The result reconstructs text with direct `"..." + d[index]` expressions.
+ * Short texts use direct `"..." + d[index]` expressions. Highly fragmented
+ * texts use a flat array join to bound syntax-tree depth for parsers and minifiers.
  * There is no generic runtime decoder or compressed public data shape, keeping
  * the generated virtual module portable and its default export unchanged.
  */
@@ -509,7 +510,12 @@ function serializeLicenseTextExpression({ text, selectedOccurrences }: {
   if (offset < text.length) {
     parts.push(JSON.stringify(text.slice(offset)));
   }
-  return parts.length === 0 ? JSON.stringify('') : parts.join('+');
+  // A long left-associative + chain overflows recursive parsers/traversals.
+  // Parenthesizing a balanced sum is not sufficient: minifiers may flatten it
+  // again. A flat array keeps the tree shallow through subsequent transforms.
+  // All parts are strings, so joining preserves every original code unit.
+  // The compression planner measures this exact expression, including overhead.
+  return parts.length <= 32 ? parts.join('+') : `[${parts.join(',')}].join("")`;
 }
 
 function getAdditionalDictionaryBytes({ dictionary, candidateText }: {
@@ -623,7 +629,7 @@ export function serializeLicenseDependencies({ dependencies }: {
     return licenseArray;
   }
 
-  // Emit normal JavaScript concatenations instead of a generic runtime decoder.
+  // Emit ordinary JavaScript string assembly instead of a generic runtime decoder.
   // The generated virtual module is therefore portable and self-contained: it
   // needs only its local dictionary, evaluates directly to NaidanLicense[], and
   // exposes no compression format or reconstruction helper to application code.
