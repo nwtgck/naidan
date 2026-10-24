@@ -5,6 +5,8 @@ import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { DEFAULT_SETTINGS, type Chat, type Settings, type SidebarItem } from '@/01-models/types';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
+import type { ModelLaunchDestinationAuthorization } from '@/features/llama-cpp-browser/model-launch/entry-state';
+import type { DownloadDestination } from '@/01-models/download';
 import type { LocalModel, ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
@@ -309,7 +311,7 @@ it('shares admission with another pane and accepts only one input per chat', asy
 it('uses an installed HF selection without enqueuing any download', async () => {
   mocks.installed.mockResolvedValue({ ...model, modelId: target.modelId });
   const { command } = render({ binding: 'empty-chat' });
-  await command.useRepositoryModel({ target });
+  await command.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
   expect(mocks.enqueue).not.toHaveBeenCalled();
   expect(mocks.chat!.value?.modelId).toBe(target.modelId);
 });
@@ -319,7 +321,7 @@ it('keeps old settings while downloading and applies only after complete files e
   mocks.installed.mockResolvedValueOnce(undefined).mockResolvedValue({ ...model, modelId: target.modelId });
   mocks.enqueue.mockReturnValue({ id: 3, done: done.promise });
   const { command } = render({ binding: 'empty-chat' });
-  const pending = command.useRepositoryModel({ target });
+  const pending = command.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
   await vi.waitFor(() => expect(command.operation.value?.phase).toBe('downloading'));
   expect(mocks.chat!.value?.modelId).toBeUndefined();
   command.pauseDownload();
@@ -333,7 +335,7 @@ it.each(['failed', 'paused', 'cancelled'])('does not apply a %s download', async
   mocks.installed.mockResolvedValue(undefined);
   mocks.enqueue.mockReturnValue({ id: 3, done: Promise.resolve({ status }) });
   const { command } = render({ binding: 'empty-chat' });
-  await command.useRepositoryModel({ target });
+  await command.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
   expect(mocks.apply).not.toHaveBeenCalled();
   expect(command.operation.value?.phase).toBe('error');
 });
@@ -343,12 +345,122 @@ it('leaving the picker cancels its wait without cancelling the shared download',
   const done = Promise.withResolvers<unknown>();
   mocks.enqueue.mockReturnValue({ id: 3, done: done.promise });
   const { command, scope } = render({ binding: 'empty-chat' });
-  const pending = command.useRepositoryModel({ target });
+  const pending = command.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
   await vi.waitFor(() => expect(command.operation.value?.phase).toBe('downloading'));
   scope.stop();
   await pending;
   expect(mocks.pause).not.toHaveBeenCalled();
   expect(mocks.apply).not.toHaveBeenCalled();
+});
+
+it.each(['empty-chat', 'chat'] as const)('downloads to the captured host folder and applies its returned model for %s', async binding => {
+  const permission = Promise.withResolvers<ModelLaunchDestinationAuthorization>();
+  const expectedRoot = { name: 'Original models' } as FileSystemDirectoryHandle;
+  const destination: DownloadDestination = { kind: 'host', directoryId: 'root-a' };
+  const requested = structuredClone(target);
+  const hostModel = { ...model, modelId: 'host/Models/owner/model:Q4' };
+  const authorizeDestination = vi.fn(() => permission.promise);
+  mocks.installed.mockResolvedValueOnce(undefined).mockResolvedValue(hostModel);
+  mocks.enqueue.mockReturnValue({ id: 4, done: Promise.resolve({ status: 'complete' }) });
+  const chat = mocks.chat!.value!;
+  chat.titleGeneration = 'disabled';
+  mocks.applyChat.mockImplementation(async ({ changes }: { changes: readonly ScopedSettingChange[] }) => {
+    Object.assign(chat, applyScopedSettingChangesToChat({ current: chat, changes, updatedAt: 2 }));
+  });
+  const { command } = render({ binding });
+  const pending = command.useRepositoryModel({ target: requested, destination, authorizeDestination });
+  // Authorization must begin in the action, before any import or file check.
+  expect(authorizeDestination).toHaveBeenCalledExactlyOnceWith({ destination: { kind: 'host', directoryId: 'root-a' } });
+  expect(command.maySend.value).toBe(false);
+  expect(mocks.installed).not.toHaveBeenCalled();
+  destination.directoryId = 'root-b';
+  requested.selection.files[0]!.path = 'another.gguf';
+  permission.resolve({ destination: { kind: 'host', directoryId: 'root-a' }, expectedRoot });
+  await pending;
+  expect(mocks.installed).toHaveBeenCalledTimes(2);
+  for (const [check] of mocks.installed.mock.calls) {
+    expect(check).toEqual({ selection: target.selection, destination: { kind: 'host', directoryId: 'root-a' }, expectedRoot });
+  }
+  expect(mocks.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ destination: { kind: 'host', directoryId: 'root-a' }, expectedRoot }));
+  expect(await mocks.enqueue.mock.calls[0]![0].prepare()).toEqual(target.selection);
+  expect(chat.modelId).toBe(hostModel.modelId);
+  expect(chat.endpoint).toEqual({ type: 'llama_cpp_browser' });
+  expect(chat.titleGeneration).toBe('disabled');
+  expect(mocks.settings!.value.defaultModelId).toBe('remote');
+  expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ model: hostModel }));
+  expect(mocks.offer).not.toHaveBeenCalled();
+});
+
+it('retries host permission from a fresh explicit action without falling back to OPFS', async () => {
+  const destination: DownloadDestination = { kind: 'host', directoryId: 'root-a' };
+  const expectedRoot = { name: 'Models' } as FileSystemDirectoryHandle;
+  const authorizeDestination = vi.fn().mockRejectedValueOnce(new DOMException('Permission denied', 'NotAllowedError')).mockResolvedValue({ destination, expectedRoot });
+  const hostModel = { ...model, modelId: 'host/Models/owner/model:Q4' };
+  mocks.installed.mockResolvedValueOnce(undefined).mockResolvedValue(hostModel);
+  mocks.enqueue.mockReturnValue({ id: 4, done: Promise.resolve({ status: 'complete' }) });
+  const { command } = render({ binding: 'empty-chat' });
+  await command.useRepositoryModel({ target, destination, authorizeDestination });
+  expect(command.operation.value?.phase).toBe('error');
+  expect(mocks.installed).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(mocks.apply).not.toHaveBeenCalled();
+  const retry = command.retry();
+  expect(authorizeDestination).toHaveBeenCalledTimes(2);
+  await retry;
+  expect(mocks.chat!.value?.modelId).toBe(hostModel.modelId);
+  expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ destination, expectedRoot }));
+});
+
+it.each(['cancel', 'chat-change', 'dispose', 'storage-change'] as const)('does not enqueue or apply a late host permission result after %s', async interruption => {
+  const permission = Promise.withResolvers<ModelLaunchDestinationAuthorization>();
+  const destination: DownloadDestination = { kind: 'host', directoryId: 'root-a' };
+  const { command, scope, selected } = render({ binding: 'empty-chat' });
+  const pending = command.useRepositoryModel({ target, destination, authorizeDestination: () => permission.promise });
+  switch (interruption) {
+  case 'cancel': await command.cancel();
+    break;
+  case 'chat-change': selected.value = toChatId({ raw: 'next-chat' });
+    break;
+  case 'dispose': scope.stop();
+    break;
+  case 'storage-change': mocks.storageCurrent = false;
+    break;
+  default: {
+    const exhaustive: never = interruption;
+    throw new Error(exhaustive);
+  }
+  }
+  permission.resolve({ destination, expectedRoot: { name: 'Models' } as FileSystemDirectoryHandle });
+  await pending;
+  expect(mocks.installed).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(mocks.apply).not.toHaveBeenCalled();
+  expect(mocks.register).not.toHaveBeenCalled();
+});
+
+it('rejects an unauthorised host download without silently using browser storage', async () => {
+  const { command } = render({ binding: 'empty-chat' });
+  await command.useRepositoryModel({ target, destination: { kind: 'host', directoryId: 'root-a' }, authorizeDestination: undefined });
+  expect(command.operation.value).toMatchObject({ phase: 'error', error: 'storage-error' });
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(mocks.installed).not.toHaveBeenCalled();
+});
+
+it.each(['before-download', 'after-download'] as const)('does not apply a model when its captured root fails the %s check', async phase => {
+  const expectedRoot = { name: 'Original models' } as FileSystemDirectoryHandle;
+  const destination: DownloadDestination = { kind: 'host', directoryId: 'root-a' };
+  if (phase === 'after-download') {
+    mocks.installed.mockResolvedValueOnce(undefined);
+  }
+  mocks.installed.mockRejectedValue(new Error('Linked folder changed'));
+  mocks.enqueue.mockReturnValue({ id: 4, done: Promise.resolve({ status: 'complete' }) });
+  const { command } = render({ binding: 'empty-chat' });
+  await command.useRepositoryModel({ target, destination, authorizeDestination: async () => ({ destination, expectedRoot }) });
+  expect(mocks.installed).toHaveBeenLastCalledWith({ selection: target.selection, destination, expectedRoot });
+  expect(mocks.apply).not.toHaveBeenCalled();
+  expect(mocks.register).not.toHaveBeenCalled();
+  expect(command.operation.value?.phase).toBe('error');
+  expect(mocks.enqueue).toHaveBeenCalledTimes(phase === 'before-download' ? 0 : 1);
 });
 
 it.each(['chat', 'chat_group'] as const)('replaces only the selected chat binding inherited from %s when choosing GGUF', async scope => {

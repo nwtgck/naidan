@@ -10,6 +10,7 @@ import type { HostModelDirectoriesView } from '@/composables/useHostModelDirecto
 const props = defineProps<{
   view: HostModelDirectoriesView,
   disabled: boolean,
+  layout?: 'toolbar' | 'field',
   layoutFile?: { repository: string, path: string },
 }>();
 const id = useId();
@@ -117,10 +118,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <!-- The containing toolbar is a grid: controls share its heading row, while
        the management panel spans the following row without moving the heading. -->
   <div data-testid="llama-host-model-directories" tw-class="contents">
-    <div tw-class="flex w-fit min-w-0 max-w-full items-center justify-self-end gap-2 sm:col-start-2">
+    <div :tw-class="['flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1', layout === 'field' ? 'w-full' : 'w-fit justify-end justify-self-end sm:col-start-2']">
       <label :for="`${id}-destination`" tw-class="shrink-0 whitespace-nowrap text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserDownloadDestination__download_to() }}</label>
-      <div tw-class="flex min-w-0 max-w-full items-stretch rounded-lg border border-gray-200/80 bg-white/70 dark:border-gray-700/70 dark:bg-gray-800/50">
-        <div tw-class="flex w-40 min-w-0 max-w-full overflow-hidden rounded-l-lg">
+      <div :tw-class="['flex min-w-0 max-w-full items-stretch rounded-lg border border-gray-200/80 bg-white/70 dark:border-gray-700/70 dark:bg-gray-800/50', layout === 'field' && 'flex-1']">
+        <div :tw-class="['flex min-w-0 max-w-full overflow-hidden rounded-l-lg', layout === 'field' ? 'flex-1' : 'w-40']">
           <SettingsSelect :id="`${id}-destination`" :model-value="selectedValue" :options="choices" :label="lazyStrings.LlamaCppBrowserDownloadDestination__download_to()" :disabled="disabled || busy" surface="embedded" presentation="toolbar" size="compact" :menu-width-rem="21" data-testid="llama-download-destination" @update:model-value="selectDestination({ value: $event })">
             <template #leading="{ option }"><HardDriveIcon v-if="option?.value === 'opfs'" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><FolderIcon v-else aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0', selectedNeedsAttention ? 'text-amber-500 dark:text-amber-400' : 'text-blue-500 dark:text-blue-400']" /></template>
             <template #option="{ option }">

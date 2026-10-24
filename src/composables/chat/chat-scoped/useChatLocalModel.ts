@@ -1,7 +1,9 @@
 import { computed, onScopeDispose, shallowReactive, shallowRef, watch, type Ref } from 'vue';
 import type { ChatId } from '@/01-models/ids';
 import type { SettingsTitleGeneration } from '@/01-models/types';
-import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
+import { cloneModelLaunchTarget, type ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
+import { cloneDownloadDestination, type DownloadDestination } from '@/01-models/download';
+import type { AuthorizeModelLaunchDestination } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import { retargetTitleGenerationToSameScope } from '@/01-models/title-generation';
 import { storageService } from '@/00-storage/service';
 import { getLiveChatById, rootItems, updateChatScopedSettings, updateEmptyChatScopedSettings } from '@/composables/chat/global/chat-core-singletons';
@@ -166,7 +168,9 @@ async function applyModel({ input, model }: { input: ChatLocalModelInput, model:
 }
 
 async function run({ input }: { input: ChatLocalModelInput }): Promise<void> {
-  const pending = Promise.resolve().then(() => input.run()).catch(error => {
+  // Start inside the explicit action so host permission requests precede any
+  // lazy imports. The async boundary still catches synchronous failures.
+  const pending = (async () => input.run())().catch(error => {
     if (current({ input })) {
       input.state.error ??= errorCode({ error });
       input.state.phase = 'error';
@@ -266,21 +270,35 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
     input.run = () => applyModel({ input, model });
     return run({ input });
   }
-  function useRepositoryModel({ target }: { target: ModelLaunchTarget }): Promise<void> {
+  function useRepositoryModel({ target, destination, authorizeDestination }: { target: ModelLaunchTarget, destination: DownloadDestination, authorizeDestination: AuthorizeModelLaunchDestination | undefined }): Promise<void> {
     const input = begin({ controller: new AbortController() });
     if (input === undefined) {
       return Promise.resolve();
     }
+    const requestedTarget = cloneModelLaunchTarget({ target });
+    const requestedDestination = cloneDownloadDestination({ destination });
     input.run = async () => {
+      assertCurrent({ input });
+      if (requestedDestination.kind === 'host' && authorizeDestination === undefined) {
+        throw new LlamaCppBrowserError({ code: 'storage-error' });
+      }
+      // Invoke before awaiting/importing; retry is another explicit action and
+      // must obtain fresh permission for this captured destination as well.
+      const authorization = authorizeDestination?.({ destination: requestedDestination });
+      const authorized = authorization === undefined ? { destination: requestedDestination, expectedRoot: undefined }
+        : await awaitInspection({ task: authorization, signal: input.controller.signal });
+      assertCurrent({ input });
       const { installedSelection } = await import('@/features/llama-cpp-browser/hugging-face/storage');
-      let model = await installedSelection({ selection: target.selection, destination: { kind: 'opfs' } });
+      assertCurrent({ input });
+      let model = await installedSelection({ selection: requestedTarget.selection, destination: authorized.destination, expectedRoot: authorized.expectedRoot });
       assertCurrent({ input });
       if (model === undefined) {
         const { getDownloadQueue } = await import('@/features/llama-cpp-browser/hugging-face/download-queue');
         const { selectionKey } = await import('@/features/llama-cpp-browser/hugging-face/download-plan');
         const queue = getDownloadQueue();
         downloadQueue.value = queue;
-        const download = queue.enqueue({ key: selectionKey({ selection: target.selection }), repository: target.selection.repository, source: 'repository', destination: { kind: 'opfs' }, expectedRoot: undefined, prepare: async () => target.selection });
+        assertCurrent({ input });
+        const download = queue.enqueue({ key: selectionKey({ selection: requestedTarget.selection }), repository: requestedTarget.selection.repository, source: 'repository', destination: authorized.destination, expectedRoot: authorized.expectedRoot, prepare: async () => requestedTarget.selection });
         input.state.downloadJobId = download.id;
         input.state.phase = 'downloading';
         const result = await awaitInspection({ task: download.done, signal: input.controller.signal });
@@ -293,7 +311,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
           throw new Error(String(exhaustive));
         }
         }
-        model = await installedSelection({ selection: target.selection, destination: { kind: 'opfs' } });
+        model = await installedSelection({ selection: requestedTarget.selection, destination: authorized.destination, expectedRoot: authorized.expectedRoot });
       }
       assertCurrent({ input });
       if (model === undefined) {

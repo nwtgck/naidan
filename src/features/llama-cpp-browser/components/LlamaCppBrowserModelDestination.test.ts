@@ -17,6 +17,7 @@ import { hostModelRoot, type ModelDestination } from '@/features/llama-cpp-brows
 import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
 import LlamaCppBrowserModelSuggestions from './LlamaCppBrowserModelSuggestions.vue';
 import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManager.vue';
+import LlamaCppBrowserRepositoryPicker from './LlamaCppBrowserRepositoryPicker.vue';
 import { downloadDestinationControl } from './model-configuration.test-support';
 
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async original => ({ ...await original<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
@@ -161,10 +162,13 @@ describe('destination-bound model downloads', () => {
     expect(wrapper.get('[data-testid="llama-suggestion-destination-error"]').text()).toBeTruthy();
   });
 
-  it('shares the repository and catalog destination choice through settings', async () => {
+  it('shares the chat picker, repository and catalog destination choice through settings', async () => {
     const repository = mount(LlamaCppBrowserHuggingFaceManager, { props: { disabled: false } });
     const catalogView = mount(LlamaCppBrowserModelSuggestions, { props: { models: [], disabled: false, defaultModel: undefined, defaultActionDisabled: false, suggestions: [suggestion] } });
-    wrappers.push(repository, catalogView);
+    const chatPicker = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false } });
+    wrappers.push(repository, catalogView, chatPicker);
+    await chatPicker.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
+    await chatPicker.get('[data-testid="chat-model-repository-check"]').trigger('click');
     await flushPromises();
     expect(repository.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
     expect(catalogView.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
@@ -173,10 +177,17 @@ describe('destination-bound model downloads', () => {
     await downloadDestinationControl({ view: repository }).setValue('host:root-a');
     await flushPromises();
     expect(downloadDestinationControl({ view: catalogView }).props('modelValue')).toBe('host:root-a');
+    expect(downloadDestinationControl({ view: chatPicker }).props('modelValue')).toBe('host:root-a');
     await downloadDestinationControl({ view: catalogView }).setValue('host:root-b');
     await flushPromises();
     expect(downloadDestinationControl({ view: repository }).props('modelValue')).toBe('host:root-b');
+    expect(downloadDestinationControl({ view: chatPicker }).props('modelValue')).toBe('host:root-b');
     expect(settings.value.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'root-b' });
-    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(discoverRepository).toHaveBeenCalledOnce();
+    await downloadDestinationControl({ view: chatPicker }).setValue('opfs');
+    await flushPromises();
+    expect(downloadDestinationControl({ view: repository }).props('modelValue')).toBe('opfs');
+    expect(downloadDestinationControl({ view: catalogView }).props('modelValue')).toBe('opfs');
+    expect(discoverRepository).toHaveBeenCalledOnce();
   });
 });

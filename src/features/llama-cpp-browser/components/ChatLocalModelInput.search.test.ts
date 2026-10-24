@@ -41,7 +41,7 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-function renderPicker() {
+function renderPicker({ layout }: { layout: 'welcome' | 'embedded' }) {
   const state = {
     operation: computed(() => undefined),
     downloadJob: computed(() => undefined),
@@ -55,7 +55,7 @@ function renderPicker() {
     cancel: vi.fn(async () => {}),
     TEST_ONLY: {},
   } satisfies ChatLocalModelUi;
-  const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'closed', availability: 'available' } });
+  const wrapper = mount(ChatLocalModelInput, { props: { layout, scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'closed', availability: 'available' } });
   return {
     wrapper,
     state,
@@ -66,7 +66,10 @@ function renderPicker() {
 }
 
 async function openSearch({ wrapper }: { wrapper: VueWrapper }): Promise<void> {
-  await wrapper.get('[data-testid="chat-open-local-model"]').trigger('click');
+  const opener = wrapper.find('[data-testid="chat-open-local-model"]');
+  if (opener.exists()) {
+    await opener.trigger('click');
+  }
   await wrapper.setProps({ expansion: 'open' });
   await vi.dynamicImportSettled();
   await flushPromises();
@@ -79,7 +82,7 @@ async function submitSearch({ wrapper }: { wrapper: VueWrapper }): Promise<void>
 }
 
 it('gives the real search chain one scrolling parent while keeping tabs and the disclosure outside it', async () => {
-  using view = renderPicker();
+  using view = renderPicker({ layout: 'welcome' });
   expect(view.wrapper.findComponent(LlamaCppBrowserRepositoryPicker).exists()).toBe(false);
   await openSearch({ wrapper: view.wrapper });
   const search = view.wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch);
@@ -127,7 +130,7 @@ it('gives the real search chain one scrolling parent while keeping tabs and the 
 });
 
 it('keeps the same list and scroll position through explicit paging, failure, and retry', async () => {
-  using view = renderPicker();
+  using view = renderPicker({ layout: 'welcome' });
   await openSearch({ wrapper: view.wrapper });
   await submitSearch({ wrapper: view.wrapper });
   const search = view.wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch).element;
@@ -165,7 +168,7 @@ it('keeps the same list and scroll position through explicit paging, failure, an
 });
 
 it('opens configuration at the top and restores the search position and results on return', async () => {
-  using view = renderPicker();
+  using view = renderPicker({ layout: 'welcome' });
   await openSearch({ wrapper: view.wrapper });
   await submitSearch({ wrapper: view.wrapper });
   const tab = view.wrapper.get('[data-testid="chat-model-tab-hugging-face"]');
@@ -177,7 +180,7 @@ it('opens configuration at the top and restores the search position and results 
   expect(view.wrapper.find('[data-testid="chat-model-configuration"]').exists()).toBe(true);
   expect(pane.scrollTop).toBe(0);
   await view.wrapper.get('[data-testid="chat-use-repository-model"]').trigger('click');
-  expect(view.state.useRepositoryModel).toHaveBeenCalledExactlyOnceWith({ target: expect.objectContaining({ selection: expect.objectContaining({ repository: catalog.repository }) }) });
+  expect(view.state.useRepositoryModel).toHaveBeenCalledExactlyOnceWith({ target: expect.objectContaining({ selection: expect.objectContaining({ repository: catalog.repository }) }), destination: { kind: 'opfs' }, authorizeDestination: expect.any(Function) });
   await view.wrapper.get('[data-testid="chat-model-back-to-search"]').trigger('click');
   await flushPromises();
   expect(pane.scrollTop).toBe(320);
@@ -189,7 +192,7 @@ it('opens configuration at the top and restores the search position and results 
 });
 
 it('prepares the real inactive pickers without network access, inventory scans, or model changes', async () => {
-  using view = renderPicker();
+  using view = renderPicker({ layout: 'welcome' });
   using fetch = vi.spyOn(globalThis, 'fetch');
   await openSearch({ wrapper: view.wrapper });
   for (let index = 0; index < 3; index++) {
@@ -208,4 +211,18 @@ it('prepares the real inactive pickers without network access, inventory scans, 
   await view.wrapper.get('[data-testid=chat-model-tab-saved]').trigger('click');
   await flushPromises();
   expect(listModelInventory).toHaveBeenCalledOnce();
+});
+
+it.each(['welcome', 'embedded'] as const)('uses the shared saved-model action from the repository picker in the %s layout', async layout => {
+  const model = { modelId: 'hf.co/owner/model-0:Q4_K_M', size: 256, importedAt: 1 };
+  metadata.installed.mockResolvedValue(model);
+  using view = renderPicker({ layout });
+  await openSearch({ wrapper: view.wrapper });
+  await view.wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
+  await view.wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await flushPromises();
+  await view.wrapper.get('[data-testid="chat-use-repository-model"]').trigger('click');
+  expect(view.state.useModel).toHaveBeenCalledExactlyOnceWith({ model });
+  expect(view.state.useRepositoryModel).not.toHaveBeenCalled();
+  expect(metadata.inspect).toHaveBeenCalledOnce();
 });

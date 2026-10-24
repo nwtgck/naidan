@@ -49,6 +49,33 @@ async function finish({ writer, index }: { writer: ReturnType<typeof createDownl
 }
 
 describe('direct linked-folder model storage', () => {
+  it('rejects an installed copy in a replacement root instead of bypassing the captured folder identity', async () => {
+    const expectedRoot = root as unknown as FileSystemDirectoryHandle;
+    root = new MemoryDirectory('models');
+    vi.mocked(hostModelHandles.get).mockResolvedValue(root as unknown as HostModelDirectoryHandle);
+    const writer = createDownloadWriter();
+    await writer.begin({ selection, destination });
+    await finish({ writer, index: 0 });
+    await writer.finish();
+    expect(await installedSelection({ selection, destination })).toBeDefined();
+    await expect(installedSelection({ selection, destination, expectedRoot })).rejects.toThrow('storage-error');
+    expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
+  });
+
+  it('rejects relinking while an installed model is being checked', async () => {
+    const expectedRoot = root as unknown as FileSystemDirectoryHandle;
+    const writer = createDownloadWriter();
+    await writer.begin({ selection, destination });
+    await finish({ writer, index: 0 });
+    await writer.finish();
+    expect(await installedSelection({ selection, destination, expectedRoot })).toBeDefined();
+    vi.mocked(storageService.loadHostModelDirectories).mockImplementationOnce(async () => {
+      vi.mocked(hostModelHandles.get).mockResolvedValue(new MemoryDirectory('models') as unknown as HostModelDirectoryHandle);
+      return directories;
+    });
+    await expect(installedSelection({ selection, destination, expectedRoot })).rejects.toThrow('storage-error');
+  });
+
   it('downloads directly to root/owner/repository/subdirectories and resolves the same native handles', async () => {
     const sync = vi.spyOn(MemoryFile.prototype, 'createSyncAccessHandle').mockRejectedValue(new Error('OPFS only'));
     const writer = createDownloadWriter();
