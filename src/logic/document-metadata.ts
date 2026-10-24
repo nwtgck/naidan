@@ -20,7 +20,7 @@ export const SITE_METADATA = {
   description: 'A privacy-focused, local-first AI app. Run models on your device, directly in your browser, or connect to OpenAI-compatible APIs and Ollama.',
 } as const;
 
-// Public introduction copy intentionally uses English, including before UI strings load.
+// Initial HTML and unresolved runtime translations use this English introduction.
 export const HOME_METADATA: PageMetadata = {
   title: 'Naidan | Run AI on your device, directly in your browser',
   description: SITE_METADATA.description,

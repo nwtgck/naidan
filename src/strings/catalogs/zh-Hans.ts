@@ -2291,6 +2291,7 @@ import { dataDeletion__not_available_in_this_runtime } from '@/strings/messages/
 import { dataDeletion__preview_entries } from '@/strings/messages/dataDeletion__preview_entries/zh-Hans';
 import { dataDeletion__scanning_storage } from '@/strings/messages/dataDeletion__scanning_storage/zh-Hans';
 import { dataDeletion__select_at_least_one_deletion_selector } from '@/strings/messages/dataDeletion__select_at_least_one_deletion_selector/zh-Hans';
+import { documentTitle__run_ai_on_your_device_directly_in_your_browser } from '@/strings/messages/documentTitle__run_ai_on_your_device_directly_in_your_browser/zh-Hans';
 import { endpointTypeDescription__connect_to_an_ollama_server } from '@/strings/messages/endpointTypeDescription__connect_to_an_ollama_server/zh-Hans';
 import { endpointTypeDescription__connect_to_an_openai_compatible_api } from '@/strings/messages/endpointTypeDescription__connect_to_an_openai_compatible_api/zh-Hans';
 import { endpointTypeDescription__run_gguf_models_in_this_browser } from '@/strings/messages/endpointTypeDescription__run_gguf_models_in_this_browser/zh-Hans';
@@ -5397,6 +5398,7 @@ export const catalog = {
   dataDeletion__preview_entries,
   dataDeletion__scanning_storage,
   dataDeletion__select_at_least_one_deletion_selector,
+  documentTitle__run_ai_on_your_device_directly_in_your_browser,
   endpointTypeDescription__connect_to_an_ollama_server,
   endpointTypeDescription__connect_to_an_openai_compatible_api,
   endpointTypeDescription__run_gguf_models_in_this_browser,
