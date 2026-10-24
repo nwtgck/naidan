@@ -9,6 +9,7 @@ import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api/constants';
 import { browserModelShowcaseIds, browserModelSuggestionSelection, type ModelDiscoveryTab, type BrowserModelLocalInput, type BrowserModelSelection, type BrowserModelShowcaseItem, type BrowserModelShowcasePosition } from './browser-model-presentation';
 import BrowserModelShowcaseCard from './BrowserModelShowcaseCard.vue';
 import LanguageSelector from './LanguageSelector.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import Logo from './Logo.vue';
 import WelcomeScreenFrame from './layout/WelcomeScreenFrame.vue';
 
@@ -414,7 +415,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <WelcomeScreenFrame class="browser-model-welcome" placement="contained" :inert="interaction === 'blocked' || undefined" data-testid="browser-model-welcome" @keydown.capture="compatibilityKeydown({ event: $event })">
     <template #default>
       <section class="onboarding-content" tw-class="pointer-events-auto mx-auto flex w-full max-w-3xl flex-col">
-        <div class="onboarding-language" tw-class="absolute right-4 top-4 z-20 pointer-events-auto sm:right-6 sm:top-6"><LanguageSelector /></div>
+        <div class="onboarding-language" data-testid="onboarding-display-controls" tw-class="absolute right-4 top-4 z-20 flex items-center gap-2 pointer-events-auto sm:right-6 sm:top-6">
+          <div tw-class="w-24 shrink-0 sm:w-28"><ThemeToggle /></div>
+          <LanguageSelector />
+        </div>
         <div class="onboarding-intro" tw-class="mx-auto max-w-2xl space-y-2 [container-type:inline-size]">
           <div class="onboarding-brand" data-testid="onboarding-brand" tw-class="flex items-center justify-center gap-2.5">
             <div tw-class="relative isolate"><span aria-hidden="true" tw-class="pointer-events-none absolute -inset-2 -z-10 rounded-full bg-blue-400/20 blur-xl dark:bg-blue-400/15" /><Logo :size="32" /></div>

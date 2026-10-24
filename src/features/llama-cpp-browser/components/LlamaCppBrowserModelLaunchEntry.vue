@@ -13,6 +13,7 @@ import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact
 import LlamaCppBrowserQuantizationPicker from './LlamaCppBrowserQuantizationPicker.vue';
 import WelcomeScreenFrame from '@/components/layout/WelcomeScreenFrame.vue';
 import LanguageSelector from '@/components/LanguageSelector.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { browserModelRepositoryPresentation } from '@/components/browser-model-presentation';
 import BrowserModelPreparation from '@/components/BrowserModelPreparation.vue';
 
@@ -248,7 +249,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div data-testid="model-launch-entry" tw-class="relative flex-1 min-h-0 overflow-y-auto overscroll-contain bg-[#fcfcfd] dark:bg-gray-900">
-    <div :inert="interaction !== 'ready' || undefined" data-testid="model-entry-language" tw-class="absolute right-4 top-4 z-20 pointer-events-auto sm:right-6 sm:top-6"><LanguageSelector /></div>
+    <div :inert="interaction !== 'ready' || undefined" data-testid="model-entry-language" tw-class="absolute right-4 top-4 z-20 flex items-center gap-2 pointer-events-auto sm:right-6 sm:top-6">
+      <div tw-class="w-24 shrink-0 sm:w-28"><ThemeToggle /></div>
+      <LanguageSelector />
+    </div>
     <WelcomeScreenFrame class="model-url-entry-welcome" placement="contained">
       <div tw-class="w-full max-w-lg space-y-5">
         <section v-if="originalPresentation === undefined" :inert="interaction === 'blocked' || undefined" data-testid="model-link-repair" tw-class="space-y-3 text-left pointer-events-auto">
