@@ -1270,7 +1270,7 @@ defineExpose({
           :aria-label="lazyStrings.Sidebar__find_models()"
           :title="lazyStrings.Sidebar__find_models()"
           tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none"
-          @click="appEntry.openDiscovery({ tab: 'candidates' })"
+          @click="appEntry.openDiscovery({ tab: undefined })"
         >
           <LibraryBigIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />
         </button>

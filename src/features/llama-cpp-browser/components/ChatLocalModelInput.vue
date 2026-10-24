@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, ref, shallowRef, useId, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { ChevronDownIcon, CpuIcon, FolderPlusIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { createModuleLoader } from '@/utils/module-loader';
+import { scheduleIdleTask, type ScheduledIdleTask } from '@/utils/idle-task';
 import type { ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
 import { localModelDisplayName } from '@/components/browser-model-presentation';
 import { captureDroppedLocalModels, localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
@@ -11,9 +14,20 @@ import LlamaCppBrowserDownloadProgress from './LlamaCppBrowserDownloadProgress.v
 import LlamaCppBrowserModelImportModes from './LlamaCppBrowserModelImportModes.vue';
 import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
 import { useChatBrowserModelPickerTab, type ChatBrowserModelPickerTab } from '@/features/llama-cpp-browser/composables/useChatBrowserModelPickerTab';
-const RepositoryPicker = defineAsyncComponent(() => import('./LlamaCppBrowserRepositoryPicker.vue'));
-const SavedModelPicker = defineAsyncComponent(() => import('./LlamaCppBrowserSavedModelPicker.vue'));
-const LinkedFolders = defineAsyncComponent(() => import('./LlamaCppBrowserModelImportLinkedFolders.vue'));
+// Code prefetch follows Naidan's shared async-component policy. Actual hidden
+// UI preparation remains scoped to an open panel, without authorizing actions.
+const repositoryLoader = createModuleLoader({ importModule: () => import('./LlamaCppBrowserRepositoryPicker.vue'), onPrefetchError: () => {} });
+const savedLoader = createModuleLoader({ importModule: () => import('./LlamaCppBrowserSavedModelPicker.vue'), onPrefetchError: () => {} });
+const linkedLoader = createModuleLoader({ importModule: () => import('./LlamaCppBrowserModelImportLinkedFolders.vue'), onPrefetchError: () => {} });
+const RepositoryPicker = defineAsyncComponentAndLoadOnMounted({ loader: repositoryLoader.load });
+const SavedModelPicker = defineAsyncComponentAndLoadOnMounted({ loader: savedLoader.load });
+const LinkedFolders = defineAsyncComponentAndLoadOnMounted({ loader: linkedLoader.load });
+const preparedTabs = shallowRef(new Set<ChatBrowserModelPickerTab>());
+const mountedTabs = ref(new Set<ChatBrowserModelPickerTab>());
+const tabLoadError = ref(false);
+const loadingTabs = new Map<ChatBrowserModelPickerTab, { session: object, promise: Promise<void> }>();
+let preparationSession: object | undefined;
+let scheduledPreparation: ScheduledIdleTask | undefined;
 
 const props = defineProps<{
   state: ChatLocalModelUi, expansion: 'closed' | 'open', availability: 'available' | 'unavailable',
@@ -95,7 +109,6 @@ const fileModes = computed(() => [
   { mode: 'temp' as const, label: lazyStrings.ChatLocalModelInput__load_model(), availability: 'available' as const },
   { mode: 'host' as const, label: lazyStrings.SHARED__model_import_link_folder(), availability: linkSupported ? 'available' as const : 'unavailable' as const },
 ]);
-const visited = shallowRef(new Set<ChatBrowserModelPickerTab>());
 const visibleTab = computed(() => {
   switch (props.expansion) {
   case 'open': return activeTab.value;
@@ -123,7 +136,9 @@ const currentTab = computed(() => {
   }
 });
 const disabled = computed(() => props.availability === 'unavailable' || props.state.operation.value !== undefined);
-watch(() => props.expansion, expansion => {
+watch(() => props.expansion, async expansion => {
+  scheduledPreparation?.cancel();
+  preparationSession = undefined;
   switch (expansion) {
   case 'open': {
     const remembered = preference.remembered.value;
@@ -137,7 +152,13 @@ watch(() => props.expansion, expansion => {
       throw new Error(String(exhaustive));
     }
     }
-    visited.value = new Set(visited.value).add(activeTab.value);
+    const session = {};
+    preparationSession = session;
+    await loadActiveTab();
+    await nextTick();
+    if (props.expansion === 'open' && preparationSession === session) {
+      scheduleTabPreparation({ session, tabs: ['hugging-face', 'saved', 'linked-folders'] });
+    }
     break;
   }
   case 'closed': break;
@@ -147,6 +168,97 @@ watch(() => props.expansion, expansion => {
   }
   }
 }, { immediate: true });
+
+async function prepareTab({ tab, session }: { tab: ChatBrowserModelPickerTab, session: object }): Promise<void> {
+  if (props.expansion !== 'open' || preparationSession !== session) {
+    return;
+  }
+  switch (tab) {
+  case 'files': return;
+  case 'hugging-face': case 'saved': case 'linked-folders': break;
+  default: {
+    const exhaustive: never = tab;
+    throw new Error(String(exhaustive));
+  }
+  }
+  if (preparedTabs.value.has(tab)) {
+    return;
+  }
+  const prior = loadingTabs.get(tab);
+  if (prior?.session === session) {
+    return prior.promise;
+  }
+  const pending = (async () => {
+    try {
+      switch (tab) {
+      case 'hugging-face': await repositoryLoader.load();
+        break;
+      case 'saved': await savedLoader.load();
+        break;
+      case 'linked-folders': await linkedLoader.load();
+        break;
+      default: {
+        const exhaustive: never = tab;
+        throw new Error(String(exhaustive));
+      }
+      }
+      // Imports cannot be cancelled. Only this open session may mount late UI.
+      if (props.expansion !== 'open' || preparationSession !== session) {
+        return;
+      }
+      preparedTabs.value = new Set(preparedTabs.value).add(tab);
+    } catch {
+      if (props.expansion === 'open' && preparationSession === session && activeTab.value === tab) {
+        tabLoadError.value = true;
+      }
+    } finally {
+      if (loadingTabs.get(tab)?.session === session) {
+        loadingTabs.delete(tab);
+      }
+    }
+  })();
+  loadingTabs.set(tab, { session, promise: pending });
+  await pending;
+}
+
+function markTabMounted({ tab }: { tab: ChatBrowserModelPickerTab }): void {
+  mountedTabs.value.add(tab);
+}
+
+async function loadActiveTab(): Promise<void> {
+  tabLoadError.value = false;
+  if (preparationSession !== undefined) {
+    await prepareTab({ tab: activeTab.value, session: preparationSession });
+  }
+}
+
+function scheduleTabPreparation({ session, tabs }: { session: object, tabs: ChatBrowserModelPickerTab[] }): void {
+  scheduledPreparation = scheduleIdleTask({
+    timeoutMs: 1500,
+    fallbackDelayMs: 120,
+    task: async () => {
+      if (props.expansion !== 'open' || preparationSession !== session) {
+        return;
+      }
+      const [tab, ...remaining] = tabs;
+      if (tab === undefined) {
+        return;
+      }
+      // Prepare strings and disabled UI only. Hidden search and inventory pickers
+      // do no network/file scans; linked folders only inspect saved handle state.
+      await prepareTab({ tab, session });
+      await nextTick();
+      if (props.expansion === 'open' && preparationSession === session && remaining.length) {
+        scheduleTabPreparation({ session, tabs: remaining });
+      }
+    },
+  });
+}
+
+onUnmounted(() => {
+  preparationSession = undefined;
+  scheduledPreparation?.cancel();
+});
 
 function toggleExpansion(): void {
   switch (props.expansion) {
@@ -188,7 +300,7 @@ function selectTab({ tab, focus }: { tab: 'files' | 'hugging-face' | 'saved', fo
   }
   }
   activeTab.value = next;
-  visited.value = new Set(visited.value).add(next);
+  void loadActiveTab();
   // Storage reports persistence errors; switching the visible source is immediate.
   void preference.remember({ tab: next }).catch(() => {});
   if (focus) {
@@ -287,6 +399,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               </div>
             </Teleport>
             <div data-testid="chat-model-source-viewport" class="chat-model-source-viewport" tw-class="relative h-[min(34rem,60dvh)] min-h-0 overflow-hidden">
+              <div v-if="tabLoadError" role="alert" data-testid="chat-model-tab-load-error" tw-class="absolute inset-x-1 top-1 z-10 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs text-red-600 dark:border-red-500/30 dark:bg-gray-900 dark:text-red-400"><span>{{ lazyStrings.useAppEntry__could_not_open_model_browser() }}</span><button type="button" tw-class="min-h-8 shrink-0 rounded-lg px-2 font-medium hover:bg-red-50 dark:hover:bg-red-500/10 focus-visible:outline-2 focus-visible:outline-blue-500" @click="loadActiveTab">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button></div>
               <div data-testid="chat-model-source-panels" class="chat-model-source-panels" tw-class="relative h-full">
                 <div :id="`${panelId}-files-panel`" role="tabpanel" :aria-labelledby="`${panelId}-files-tab`" :inert="activeSource !== 'files' || undefined" :aria-hidden="activeSource !== 'files'" :tw-class="['absolute inset-0 flex flex-col gap-3 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeSource === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']" data-testid="chat-local-model-drop-zone">
                   <LlamaCppBrowserModelImportModes :model-value="fileMode" :modes="fileModes" :disabled="disabled || expansion === 'closed' || activeSource !== 'files'" tw-class="mx-auto w-full max-w-sm shrink-0" @update:model-value="selectFileMode({ mode: $event })" />
@@ -296,13 +409,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     </div>
                     <div data-testid="chat-linked-folders-panel" :inert="fileTab !== 'linked-folders' || undefined" :aria-hidden="fileTab !== 'linked-folders'" :tw-class="['absolute inset-0 space-y-3 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'linked-folders' ? 'opacity-100' : 'pointer-events-none opacity-0']">
                       <div tw-class="mx-auto w-full max-w-xl">
-                        <LinkedFolders v-if="visited.has('linked-folders')" :disabled="disabled || expansion === 'closed' || activeTab !== 'linked-folders'" />
+                        <LinkedFolders v-if="preparedTabs.has('linked-folders') && (expansion === 'open' || mountedTabs.has('linked-folders'))" @vue:mounted="markTabMounted({ tab: 'linked-folders' })" :disabled="disabled || expansion === 'closed' || activeTab !== 'linked-folders'" />
                       </div>
                     </div>
                   </div>
                 </div>
-                <div :id="`${panelId}-hugging-face-panel`" ref="repositoryViewport" role="tabpanel" :aria-labelledby="`${panelId}-hugging-face-tab`" :inert="activeTab !== 'hugging-face' || undefined" :aria-hidden="activeTab !== 'hugging-face'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'hugging-face' ? 'opacity-100' : 'pointer-events-none opacity-0']"><RepositoryPicker v-if="visited.has('hugging-face')" :disabled="disabled || expansion === 'closed' || activeTab !== 'hugging-face'" @view-change="changeRepositoryView({ view: $event })" @select="state.useRepositoryModel({ target: $event })" /></div>
-                <div :id="`${panelId}-saved-panel`" role="tabpanel" :aria-labelledby="`${panelId}-saved-tab`" :inert="activeTab !== 'saved' || undefined" :aria-hidden="activeTab !== 'saved'" :tw-class="['absolute inset-0 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'saved' ? 'opacity-100' : 'pointer-events-none opacity-0']"><SavedModelPicker v-if="visited.has('saved')" :disabled="disabled || expansion === 'closed' || activeTab !== 'saved'" @select="state.useModel({ model: $event })" @source="selectTab({ tab: $event, focus: true })" /></div>
+                <div :id="`${panelId}-hugging-face-panel`" ref="repositoryViewport" role="tabpanel" :aria-labelledby="`${panelId}-hugging-face-tab`" :inert="activeTab !== 'hugging-face' || undefined" :aria-hidden="activeTab !== 'hugging-face'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'hugging-face' ? 'opacity-100' : 'pointer-events-none opacity-0']"><RepositoryPicker v-if="preparedTabs.has('hugging-face') && (expansion === 'open' || mountedTabs.has('hugging-face'))" @vue:mounted="markTabMounted({ tab: 'hugging-face' })" :disabled="disabled || expansion === 'closed' || activeTab !== 'hugging-face'" @view-change="changeRepositoryView({ view: $event })" @select="state.useRepositoryModel({ target: $event })" /></div>
+                <div :id="`${panelId}-saved-panel`" role="tabpanel" :aria-labelledby="`${panelId}-saved-tab`" :inert="activeTab !== 'saved' || undefined" :aria-hidden="activeTab !== 'saved'" :tw-class="['absolute inset-0 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'saved' ? 'opacity-100' : 'pointer-events-none opacity-0']"><SavedModelPicker v-if="preparedTabs.has('saved') && (expansion === 'open' || mountedTabs.has('saved'))" @vue:mounted="markTabMounted({ tab: 'saved' })" :disabled="disabled || expansion === 'closed' || activeTab !== 'saved'" @select="state.useModel({ model: $event })" @source="selectTab({ tab: $event, focus: true })" /></div>
               </div>
             </div>
           </div>

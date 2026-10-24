@@ -5,9 +5,18 @@ import type { ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLoc
 import { searchModels, type RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ChatLocalModelInput from './ChatLocalModelInput.vue';
+import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import LlamaCppBrowserRepositoryPicker from './LlamaCppBrowserRepositoryPicker.vue';
 
+const preparation = vi.hoisted(() => ({ tasks: [] as (() => Promise<void>)[] }));
+vi.mock('@/utils/idle-task', () => ({
+  scheduleIdleTask: ({ task }: { task: () => Promise<void> }) => {
+    preparation.tasks.push(task);
+    return { cancel: vi.fn() };
+  },
+}));
+vi.mock('../composables/model-inventory', () => ({ listModelInventory: vi.fn() }));
 const metadata = vi.hoisted(() => ({ inspect: vi.fn(), installed: vi.fn() }));
 vi.mock('../hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: metadata.inspect }) }));
@@ -24,6 +33,8 @@ const catalog: RepositoryCatalog = {
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  preparation.tasks = [];
+  vi.mocked(listModelInventory).mockResolvedValue([]);
   vi.mocked(searchModels).mockResolvedValue({ results, nextCursor: 'next-page' });
   metadata.inspect.mockResolvedValue(catalog);
   metadata.installed.mockResolvedValue(undefined);
@@ -175,4 +186,26 @@ it('opens configuration at the top and restores the search position and results 
   expect(view.wrapper.findAll('[data-testid="llama-hf-search-result"]')).toHaveLength(40);
   expect(searchModels).toHaveBeenCalledOnce();
   expect(metadata.inspect).toHaveBeenCalledOnce();
+});
+
+it('prepares the real inactive pickers without network access, inventory scans, or model changes', async () => {
+  using view = renderPicker();
+  using fetch = vi.spyOn(globalThis, 'fetch');
+  await openSearch({ wrapper: view.wrapper });
+  for (let index = 0; index < 3; index++) {
+    await preparation.tasks[index]!();
+    await flushPromises();
+  }
+  expect(view.wrapper.find('[data-testid=chat-saved-model-picker]').exists()).toBe(true);
+  expect(view.wrapper.find('[data-testid=chat-linked-folders-panel]').exists()).toBe(true);
+  expect(view.wrapper.get('[data-testid=chat-saved-model-picker]').element.closest('[inert]')).not.toBeNull();
+  expect(searchModels).not.toHaveBeenCalled();
+  expect(metadata.inspect).not.toHaveBeenCalled();
+  expect(listModelInventory).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(view.state.useModel).not.toHaveBeenCalled();
+  expect(view.state.useRepositoryModel).not.toHaveBeenCalled();
+  await view.wrapper.get('[data-testid=chat-model-tab-saved]').trigger('click');
+  await flushPromises();
+  expect(listModelInventory).toHaveBeenCalledOnce();
 });

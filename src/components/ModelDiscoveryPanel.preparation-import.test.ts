@@ -3,6 +3,11 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ModelDiscoveryPanel from './ModelDiscoveryPanel.vue';
 
+vi.mock('@/composables/useModelDiscoveryTab', async () => {
+  const { ref } = await import('vue');
+  return { useModelDiscoveryTab: () => ({ remembered: ref('candidates'), remember: vi.fn(async () => {}) }) };
+});
+
 const preparation = vi.hoisted(() => ({ tasks: [] as (() => Promise<void>)[], searchImport: Promise.withResolvers<void>(), mounts: 0 }));
 vi.mock('@/utils/idle-task', () => ({
   scheduleIdleTask: ({ task }: { task: () => Promise<void> }) => {

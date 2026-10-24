@@ -789,6 +789,7 @@ describe('Settings Mapping', () => {
       experimental: {
         locale: 'ja',
         chatBrowserModelPickerTab: undefined,
+        modelDiscoveryTab: undefined,
         markdownRendering: 'monolithic_html',
         toolConfigPersistence: 'enabled',
         toolConfigs,
@@ -854,5 +855,22 @@ describe('chat model source preference mapping', () => {
     const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
     expect(settingsToDomain({ dto }).experimental?.chatBrowserModelPickerTab).toBeUndefined();
     expect(settingsToDomain({ dto }).defaultModelId).toBeUndefined();
+  });
+});
+
+describe('model discovery tab preference mapping', () => {
+  it.each(['candidates', 'hugging_face', 'local_files'] as const)('round-trips the discovery tab independently from the chat picker: %s', tab => {
+    const domain: Settings = { endpoint: { type: 'openai', url: 'https://example.test/v1' }, defaultModelId: 'existing-model', storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: tab } };
+    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    expect(dto.experimental?.modelDiscoveryTab).toBe(tab);
+    expect(settingsToDomain({ dto }).experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: tab });
+    expect(settingsToDomain({ dto }).defaultModelId).toBe('existing-model');
+  });
+
+  it('keeps other experimental settings when a saved discovery tab is unsupported', () => {
+    const domain: Settings = { endpoint: { type: 'openai', url: '' }, storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', chatBrowserModelPickerTab: 'saved' } };
+    const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain }), experimental: { ...settingsToDto({ domain }).experimental, modelDiscoveryTab: 'future-tab' } });
+    const experimental = settingsToDomain({ dto }).experimental;
+    expect(experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: undefined, unreadable: { modelDiscoveryTab: 'future-tab' } });
   });
 });

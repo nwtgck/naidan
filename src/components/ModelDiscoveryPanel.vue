@@ -2,6 +2,7 @@
 import { computed, nextTick, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
 import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, CheckIcon, CpuIcon, HardDriveIcon, Loader2Icon, SearchIcon, ShieldCheckIcon, XIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import { useModelDiscoveryTab } from '@/composables/useModelDiscoveryTab';
 import { promiseAllKeyed } from '@/utils/promise';
 import { scheduleIdleTask, type ScheduledIdleTask } from '@/utils/idle-task';
 import { errorCode, type ErrorCode, type LocalModel } from '@/features/llama-cpp-browser/types';
@@ -17,7 +18,7 @@ import SettingsSelect from './SettingsSelect.vue';
 import LlamaCppBrowserModelActionButton from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelActionButton.vue';
 
 type ModelPreview = { suggestionId: string | undefined, repository: string, variant: string, name: string, developer: string };
-const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab, interaction?: 'blocked' | 'ready', currentModelId?: string, selectionTarget?: 'chat' }>();
+const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab | undefined, interaction?: 'blocked' | 'ready', currentModelId?: string, selectionTarget?: 'chat' }>();
 const emit = defineEmits<{ close: [] }>();
 const inventory = shallowRef<LocalModel[]>([]);
 const inventoryIssues = shallowRef<readonly HostModelInventoryIssue[]>([]);
@@ -41,7 +42,8 @@ const open = computed(() => props.visibility === 'open');
 const panel = ref<HTMLElement>();
 const listViewport = ref<HTMLElement>();
 const previewHeading = ref<HTMLElement>();
-const activeTab = ref<ModelDiscoveryTab>(props.tab);
+const preference = useModelDiscoveryTab();
+const activeTab = ref<ModelDiscoveryTab>(props.tab ?? preference.remembered.value);
 const query = ref('');
 const repositoryInput = ref('');
 const repositoryError = ref(false);
@@ -517,6 +519,20 @@ function keydown({ event }: { event: KeyboardEvent }): void {
   }
 }
 
+function rememberTab({ tab }: { tab: ModelDiscoveryTab }): void {
+  if (open.value && props.interaction !== 'blocked') {
+    void preference.remember({ tab }).catch(() => {});
+  }
+}
+
+function selectTab({ tab }: { tab: ModelDiscoveryTab }): void {
+  if (!open.value || props.interaction === 'blocked') {
+    return;
+  }
+  activeTab.value = tab;
+  rememberTab({ tab });
+}
+
 function tabKeydown({ event }: { event: KeyboardEvent }): void {
   const tabs: ModelDiscoveryTab[] = ['candidates', 'hugging-face', 'local-files'];
   const index = tabs.indexOf(activeTab.value);
@@ -534,7 +550,7 @@ function tabKeydown({ event }: { event: KeyboardEvent }): void {
   }
   event.preventDefault();
   if (next) {
-    activeTab.value = next;
+    selectTab({ tab: next });
   }
   void nextTick(() => panel.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus());
 }
@@ -553,7 +569,10 @@ watch(activeTab, async () => {
 });
 watch(() => props.tab, tab => {
   if (open.value) {
-    activeTab.value = tab;
+    activeTab.value = tab ?? preference.remembered.value;
+    if (tab !== undefined && preparationSession !== undefined) {
+      rememberTab({ tab });
+    }
   }
 });
 watch(open, async visible => {
@@ -565,7 +584,12 @@ watch(open, async visible => {
   }
   const session = {};
   preparationSession = session;
-  activeTab.value = props.tab;
+  activeTab.value = props.tab ?? preference.remembered.value;
+  // A concrete entry (for example the Hugging Face hint) is a user selection.
+  // Restoring the remembered tab itself must not write settings on every open.
+  if (props.tab !== undefined) {
+    rememberTab({ tab: props.tab });
+  }
   preview.value = undefined;
   operation.value = undefined;
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
@@ -611,9 +635,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <Transition name="discovery-list">
             <div v-show="!preview" :inert="preview !== undefined || undefined" :aria-hidden="preview !== undefined" tw-class="absolute inset-0 flex min-h-0 flex-col">
               <div role="tablist" @keydown="tabKeydown({ event: $event })" :aria-label="lazyStrings.ModelDiscoveryPanel__ways_to_find_models()" tw-class="flex shrink-0 gap-6 border-b border-gray-100 px-5 dark:border-gray-800 sm:px-8">
-                <button id="candidate-tab" type="button" role="tab" :tabindex="activeTab === 'candidates' ? 0 : -1" :aria-selected="activeTab === 'candidates'" aria-controls="candidate-panel" :tw-class="['relative min-h-11 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeTab === 'candidates' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="activeTab = 'candidates'">{{ lazyStrings.ModelDiscoveryPanel__candidate_models() }}<span tw-class="ml-1.5 text-[10px] font-normal tabular-nums text-gray-400">{{ catalogCandidates.length }}</span></button>
-                <button id="hugging-face-tab" type="button" role="tab" :tabindex="activeTab === 'hugging-face' ? 0 : -1" :aria-selected="activeTab === 'hugging-face'" aria-controls="hugging-face-panel" :tw-class="['relative min-h-11 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeTab === 'hugging-face' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="activeTab = 'hugging-face'">Hugging Face</button>
-                <button id="local-files-tab" type="button" role="tab" :tabindex="activeTab === 'local-files' ? 0 : -1" :aria-selected="activeTab === 'local-files'" aria-controls="local-files-panel" :tw-class="['relative min-h-11 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeTab === 'local-files' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="activeTab = 'local-files'">{{ lazyStrings.ModelDiscoveryPanel__models_on_your_device() }}</button>
+                <button id="candidate-tab" type="button" role="tab" :tabindex="activeTab === 'candidates' ? 0 : -1" :aria-selected="activeTab === 'candidates'" aria-controls="candidate-panel" :tw-class="['relative min-h-11 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeTab === 'candidates' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: 'candidates' })">{{ lazyStrings.ModelDiscoveryPanel__candidate_models() }}<span tw-class="ml-1.5 text-[10px] font-normal tabular-nums text-gray-400">{{ catalogCandidates.length }}</span></button>
+                <button id="hugging-face-tab" type="button" role="tab" :tabindex="activeTab === 'hugging-face' ? 0 : -1" :aria-selected="activeTab === 'hugging-face'" aria-controls="hugging-face-panel" :tw-class="['relative min-h-11 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeTab === 'hugging-face' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: 'hugging-face' })">Hugging Face</button>
+                <button id="local-files-tab" type="button" role="tab" :tabindex="activeTab === 'local-files' ? 0 : -1" :aria-selected="activeTab === 'local-files'" aria-controls="local-files-panel" :tw-class="['relative min-h-11 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeTab === 'local-files' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: 'local-files' })">{{ lazyStrings.ModelDiscoveryPanel__models_on_your_device() }}</button>
               </div>
               <div ref="listViewport" data-testid="discovery-list-viewport" tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-8" @scroll="rememberListScroll({ event: $event })">
                 <div v-show="activeTab === 'candidates'" id="candidate-panel" :inert="activeTab !== 'candidates' || undefined" role="tabpanel" aria-labelledby="candidate-tab" tw-class="space-y-4">
@@ -640,7 +664,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   </ul>
                   <div v-if="!filteredCandidates.length" tw-class="space-y-3 py-8 text-center">
                     <p tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelDiscoveryPanel__no_matching_candidates() }}</p>
-                    <button type="button" tw-class="inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10" @click="activeTab = 'hugging-face'">{{ lazyStrings.ModelDiscoveryPanel__find_on_hugging_face() }}<ArrowRightIcon tw-class="h-3.5 w-3.5" /></button>
+                    <button type="button" tw-class="inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10" @click="selectTab({ tab: 'hugging-face' })">{{ lazyStrings.ModelDiscoveryPanel__find_on_hugging_face() }}<ArrowRightIcon tw-class="h-3.5 w-3.5" /></button>
                   </div>
                 </div>
                 <div v-show="activeTab === 'hugging-face'" id="hugging-face-panel" :inert="activeTab !== 'hugging-face' || undefined" role="tabpanel" aria-labelledby="hugging-face-tab" tw-class="space-y-6">
@@ -663,7 +687,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 </div>
               </div>
               <footer v-if="activeTab === 'candidates'" tw-class="shrink-0 border-t border-gray-100 px-5 py-3 dark:border-gray-800 sm:px-8">
-                <button type="button" data-testid="discovery-more-models" tw-class="group flex min-h-10 w-full items-center justify-between gap-3 rounded-lg text-left text-xs font-medium text-gray-600 transition-colors hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:text-blue-400" @click="activeTab = 'hugging-face'">{{ lazyStrings.ModelDiscoveryPanel__find_other_models_on_hugging_face() }}<ArrowRightIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></button>
+                <button type="button" data-testid="discovery-more-models" tw-class="group flex min-h-10 w-full items-center justify-between gap-3 rounded-lg text-left text-xs font-medium text-gray-600 transition-colors hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:text-blue-400" @click="selectTab({ tab: 'hugging-face' })">{{ lazyStrings.ModelDiscoveryPanel__find_other_models_on_hugging_face() }}<ArrowRightIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></button>
               </footer>
             </div>
           </Transition>

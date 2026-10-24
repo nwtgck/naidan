@@ -2314,6 +2314,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     const {
       locale,
       chatBrowserModelPickerTab,
+      modelDiscoveryTab,
       markdownRendering,
       toolConfigPersistence,
       toolConfigs,
@@ -2356,6 +2357,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     return exactObject<NonNullable<Settings['experimental']>>()({
       locale,
       chatBrowserModelPickerTab,
+      modelDiscoveryTab,
       markdownRendering,
       toolConfigPersistence: toolConfigPersistence ?? 'disabled',
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
@@ -2441,6 +2443,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     const {
       locale,
       chatBrowserModelPickerTab,
+      modelDiscoveryTab,
       markdownRendering,
       toolConfigPersistence,
       toolConfigs,
@@ -2483,6 +2486,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     return exactObject<NonNullable<SettingsDto['experimental']>>()({
       locale,
       chatBrowserModelPickerTab,
+      modelDiscoveryTab,
       markdownRendering,
       toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
         persistence: toolConfigPersistence,

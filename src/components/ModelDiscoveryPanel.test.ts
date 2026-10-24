@@ -1,9 +1,19 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { computed, ref } from 'vue';
+import type { ModelDiscoveryTab } from './browser-model-presentation';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { modelLaunchEntryState, TEST_ONLY as launchTest } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import ModelDiscoveryPanel from './ModelDiscoveryPanel.vue';
 import { modelSuggestions } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+
+const tabPreference = vi.hoisted(() => ({
+  current: undefined as import('vue').Ref<ModelDiscoveryTab> | undefined,
+  save: vi.fn(async ({ tab }: { tab: ModelDiscoveryTab }) => {
+ tabPreference.current!.value = tab;
+  }),
+}));
+vi.mock('@/composables/useModelDiscoveryTab', () => ({ useModelDiscoveryTab: () => ({ remembered: computed(() => tabPreference.current!.value), remember: tabPreference.save }) }));
 
 const inventory = vi.hoisted(() => ({ models: [] as import('@/features/llama-cpp-browser/types').LocalModel[], list: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/composables/model-inventory', () => ({ listModelInventory: inventory.list }));
@@ -48,6 +58,8 @@ vi.mock('./BrowserModelLibrary.vue', () => ({
 
 beforeEach(async () => {
   launchTest.reset();
+  tabPreference.current = ref('candidates');
+  tabPreference.save.mockClear();
   inventory.models = [];
   inventory.list.mockReset().mockImplementation(async () => inventory.models);
   preparation.tasks = [];
@@ -292,5 +304,42 @@ describe('browser model discovery', () => {
     await wrapper.get('[data-testid="settings-select-option-qat-q4_0"]').trigger('click');
     expect(wrapper.find('[data-testid="model-preview-availability"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="discovery-detail"]').text()).toContain('Prepare this model');
+  });
+
+  it('restores the remembered tab on generic opening and leaves an open panel stable when another view changes the preference', async () => {
+    tabPreference.current!.value = 'local-files';
+    using test = {
+      wrapper: mount(ModelDiscoveryPanel, { global: { stubs: { Teleport: true } }, props: { visibility: 'open', tab: undefined } }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    expect(test.wrapper.get('#local-files-tab').attributes('aria-selected')).toBe('true');
+    expect(tabPreference.save).not.toHaveBeenCalled();
+    tabPreference.current!.value = 'hugging-face';
+    await flushPromises();
+    expect(test.wrapper.get('#local-files-tab').attributes('aria-selected')).toBe('true');
+    await test.wrapper.setProps({ visibility: 'closed' });
+    await test.wrapper.setProps({ visibility: 'open' });
+    await flushPromises();
+    expect(test.wrapper.get('#hugging-face-tab').attributes('aria-selected')).toBe('true');
+  });
+
+  it('prioritizes explicit entry tabs and remembers pointer and keyboard navigation', async () => {
+    tabPreference.current!.value = 'local-files';
+    using test = {
+      wrapper: mount(ModelDiscoveryPanel, { global: { stubs: { Teleport: true } }, props: { visibility: 'open', tab: 'hugging-face' } }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    expect(test.wrapper.get('#hugging-face-tab').attributes('aria-selected')).toBe('true');
+    expect(tabPreference.save).toHaveBeenLastCalledWith({ tab: 'hugging-face' });
+    await test.wrapper.get('#candidate-tab').trigger('click');
+    expect(tabPreference.save).toHaveBeenLastCalledWith({ tab: 'candidates' });
+    await test.wrapper.get('[role=tablist]').trigger('keydown', { key: 'End' });
+    expect(tabPreference.save).toHaveBeenLastCalledWith({ tab: 'local-files' });
   });
 });

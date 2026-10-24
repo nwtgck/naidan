@@ -320,7 +320,7 @@ describe('Sidebar Logic Stability', () => {
       expect(discovery.attributes('aria-label')).toBe('Find models');
       expect(discovery.text()).toBe('');
       await discovery.trigger('click');
-      expect(entryCommands.openDiscovery).toHaveBeenCalledExactlyOnceWith({ tab: 'candidates' });
+      expect(entryCommands.openDiscovery).toHaveBeenCalledExactlyOnceWith({ tab: undefined });
       await wrapper.get('[data-testid="sidebar-settings-button"]').trigger('click');
       expect(entryCommands.openSettings).toHaveBeenCalledExactlyOnceWith({ tab: 'connection', opener: expect.any(HTMLElement) });
       expect(mockSettings.value.defaultModelId).toBe('llama3');

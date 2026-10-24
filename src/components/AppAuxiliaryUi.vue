@@ -6,6 +6,8 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useLayout } from '@/composables/useLayout';
+import { useSettings } from '@/composables/useSettings';
+import { provideModelDiscoveryTab } from '@/composables/useModelDiscoveryTab';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { isModelSupportInvestigationAvailable, loadModelSupportInvestigationModal } from '@/features/transformers-js/model-support-investigation';
@@ -32,6 +34,7 @@ const PWAManager = __BUILD_MODE_IS_HOSTED__
 const router = useRouter();
 const route = useRoute();
 const appEntry = useAppEntry();
+provideModelDiscoveryTab({ source: useSettings() });
 const { resolvedSettings } = useCurrentChatState();
 const discoveryCurrentModelId = computed(() => {
   const settings = resolvedSettings.value;
@@ -55,7 +58,7 @@ const isModelPreview = computed(() => appEntry.intent.value.kind === 'model-prev
 const isSettingsOpen = computed(() => appEntry.settingsOverlay.value !== undefined
   || (!isModelPreview.value && (route.path.startsWith('/settings') || !!route.query.settings)));
 const discoveryMounted = ref(false);
-const discoveryTab = ref<'candidates' | 'hugging-face' | 'local-files'>('candidates');
+const discoveryTab = ref<'candidates' | 'hugging-face' | 'local-files'>();
 watch(appEntry.discovery, discovery => {
   if (discovery === undefined) {
     return;

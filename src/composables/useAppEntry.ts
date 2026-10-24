@@ -84,7 +84,7 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
   const homeSelection = ref<AppEntrySelection>({ suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' });
   const previewVariantSelection = ref<AppEntryPreviewVariant>({ kind: 'initial' });
   const settingsOverlay = shallowRef<AppEntrySettingsOverlay>();
-  const discovery = shallowRef<{ owner: symbol, tab: AppEntryDiscoveryTab }>();
+  const discovery = shallowRef<{ owner: symbol, tab: AppEntryDiscoveryTab | undefined }>();
   const modelSelection = shallowRef<ModelSelectionPresentation>();
   const notFoundRecovery = shallowRef<NotFoundRecovery>();
   let initialHomePresentation: 'pending' | 'show' | 'skip' = 'pending';
@@ -501,7 +501,7 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     }
   }
 
-  async function openDiscovery({ tab }: { tab: AppEntryDiscoveryTab }): Promise<void> {
+  async function openDiscovery({ tab }: { tab: AppEntryDiscoveryTab | undefined }): Promise<void> {
     const current = activeEntryIntent({ intent: intentState.value });
     if (current === undefined || interaction.value !== 'ready') {
       return;
