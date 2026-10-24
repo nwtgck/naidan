@@ -70,7 +70,11 @@ const mocks = vi.hoisted(() => ({
   }),
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
-  subscribeToChanges: vi.fn<({ listener }: { listener: ChangeListener }) => () => void>(() => () => {}),
+  changeListeners: new Set<ChangeListener>(),
+  subscribeToChanges: vi.fn<({ listener }: { listener: ChangeListener }) => () => void>(({ listener }) => {
+    mocks.changeListeners.add(listener);
+    return () => mocks.changeListeners.delete(listener);
+  }),
   notify: vi.fn(),
 }));
 
@@ -78,7 +82,11 @@ vi.mock('../00-storage/service', () => ({
   storageService: mocks,
 }));
 
-const synchronizeSettings = mocks.subscribeToChanges.mock.calls[0]![0].listener;
+async function synchronizeSettings({ event }: { event: Parameters<ChangeListener>[0]['event'] }): Promise<void> {
+  for (const listener of mocks.changeListeners) {
+    await listener({ event });
+  }
+}
 
 vi.mock('../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
@@ -160,7 +168,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   it('republishes the editor storage boundary after migration removes the saved Settings record', async () => {
     const { init, settings } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
     const previous = settings.value;
     mocks.loadSettings.mockResolvedValue(null);
     await synchronizeSettings({ event: { type: 'settings', timestamp: 1 } });
@@ -174,7 +182,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('uses thinking off only when no settings have been saved, without persisting a migration', async () => {
     mocks.loadSettings.mockResolvedValue(null);
     const { init, settings } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
     expect(settings.value.titleGeneration).toMatchObject({ lmParameters: { reasoning: { effort: 'none' } } });
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
@@ -188,7 +196,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     };
     mocks.loadSettings.mockResolvedValue(saved);
     const { init, settings } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
     expect(settings.value.titleGeneration).toEqual(saved.titleGeneration);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
@@ -197,7 +205,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(mockScheduledIdleTasks).toHaveLength(0);
 
     const { init } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
     await flushPromises();
 
     expect(mockScheduledIdleTasks).toHaveLength(1);
@@ -215,7 +223,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
 
       const { init, settings } = useSettings();
-      await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+      await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(currentLocale.value).toBe(expectedLocale);
       expect(settings.value.experimental?.locale).toBeUndefined();
@@ -320,7 +328,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('should initialize StorageService with correct type from bootstrap key', async () => {
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'opfs');
     const { init } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
     expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
   });
 
@@ -328,7 +336,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
 
     const { init } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
     expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
@@ -342,7 +350,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Before init it is local
     expect(settings.value.storageType).toBe('local');
 
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     // After init, it should have been updated to 'opfs' (from detection)
     expect(settings.value.storageType).toBe('opfs');
@@ -353,7 +361,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.clear();
 
     const { init, save, settings } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined }); // This detects 'opfs' and sets settings.value.storageType = 'opfs'
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' }); // This detects 'opfs' and sets settings.value.storageType = 'opfs'
 
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
@@ -498,7 +506,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     const { init } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     await runScheduledIdleTasks();
     expect(mockPreloadFakeLmRuntime).toHaveBeenCalledOnce();
@@ -510,7 +518,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'invalid-type');
 
     const { init } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     expect(consoleSpy).toHaveBeenCalled();
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
@@ -528,7 +536,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
 
       const { init } = useSettings();
-      await init({ storageTypeOverride: 'memory', dataZipBase64: undefined });
+      await init({ storageTypeOverride: 'memory', dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(mocks.init).toHaveBeenCalledWith({ type: 'memory' });
       expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
@@ -539,7 +547,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
 
       const { init } = useSettings();
-      await init({ storageTypeOverride: 'memory', dataZipBase64: undefined });
+      await init({ storageTypeOverride: 'memory', dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(mocks.init).toHaveBeenCalledWith({ type: 'local' });
       expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('local');
@@ -552,7 +560,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
 
       const { init } = useSettings();
-      await init({ storageTypeOverride: 'local', dataZipBase64: undefined });
+      await init({ storageTypeOverride: 'local', dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(mocks.init).toHaveBeenCalledWith({ type: 'local' });
       expect(mockShowConfirm).not.toHaveBeenCalled();
@@ -562,7 +570,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
 
       const { init } = useSettings();
-      await init({ storageTypeOverride: 'invalid', dataZipBase64: undefined });
+      await init({ storageTypeOverride: 'invalid', dataZipBase64: undefined, modelRefresh: 'background' });
 
       // Should fallback to detection (opfs in this mock environment)
       expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
@@ -577,7 +585,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
       const { init } = useSettings();
 
-      await init({ storageTypeOverride: 'memory', dataZipBase64: undefined });
+      await init({ storageTypeOverride: 'memory', dataZipBase64: undefined, modelRefresh: 'background' });
 
       expect(mocks.init).toHaveBeenCalledWith({ type: 'memory' });
       expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
@@ -586,7 +594,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     it('should import data from dataZipBase64 during init', async () => {
       await ensureAllStringsForTest({ locale: 'en' });
       const { init } = useSettings();
-      await init({ storageTypeOverride: undefined, dataZipBase64: 'mock-base64-data' });
+      await init({ storageTypeOverride: undefined, dataZipBase64: 'mock-base64-data', modelRefresh: 'background' });
 
       expect(mockImportFromBase64).toHaveBeenCalledWith({ zipBase64: 'mock-base64-data' });
     });
@@ -603,7 +611,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Act
     const { init, isOnboardingDismissed, settings } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(true);
@@ -622,7 +630,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     const { init, isOnboardingDismissed } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     expect(isOnboardingDismissed.value).toBe(false);
   });
@@ -639,7 +647,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     const { init, isOnboardingDismissed } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     expect(isOnboardingDismissed.value).toBe(true);
   });
@@ -653,7 +661,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     const { init, isOnboardingDismissed } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     expect(isOnboardingDismissed.value).toBe(false);
   });
@@ -667,7 +675,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Act
     const { init, isOnboardingDismissed } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(false);
@@ -679,7 +687,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Act
     const { init, isOnboardingDismissed } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(false);
@@ -697,9 +705,9 @@ describe('useSettings Initialization and Bootstrap', () => {
     const { init, initialized } = useSettings();
 
     // Trigger multiple calls in parallel
-    const p1 = init({ storageTypeOverride: undefined, dataZipBase64: undefined });
-    const p2 = init({ storageTypeOverride: undefined, dataZipBase64: undefined });
-    const p3 = init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    const p1 = init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
+    const p2 = init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
+    const p3 = init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
 
     // Wait for microtasks (like checkOPFSSupport) to settle
     await flushPromises();
@@ -724,7 +732,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       });
 
       const { init, fetchModels } = useSettings();
-      await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+      await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
       mockListModels.mockClear();
 
       await fetchModels({});
@@ -740,7 +748,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       });
 
       const { init, fetchModels } = useSettings();
-      await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+      await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
       await vi.waitFor(() => {
         expect(mockListModels).toHaveBeenCalledOnce();
       });

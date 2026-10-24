@@ -8,7 +8,7 @@ import { createInventoryWorker } from './impl';
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
 vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 
-const directories = [{ id: 'linked', name: 'Linked models' }];
+const directories = [{ directoryId: 'linked', directoryName: 'Linked models' }];
 let host: MemoryDirectory, opfs: MemoryDirectory;
 
 async function model({ root, path }: { root: MemoryDirectory, path: string[] }): Promise<void> {
@@ -37,7 +37,7 @@ it.each(['storage', 'getDirectory'] as const)('inspects linked models when the O
   const result = await createInventoryWorker().inspect(undefined, vi.fn(), directories);
   expect(result.issues).toEqual([]);
   expect(result.candidates).toHaveLength(1);
-  expect(result.candidates[0]).toMatchObject({ repositoryId: 'host/linked/owner/repo', family: 'z-image', hostSource: { directoryId: 'linked' } });
+  expect(result.candidates[0]).toMatchObject({ repositoryKey: 'host/linked/owner/repo', family: 'z-image', hostSource: { directoryId: 'linked' } });
 });
 
 it('inspects OPFS and linked repositories together when both are available', async () => {
@@ -45,7 +45,7 @@ it('inspects OPFS and linked repositories together when both are available', asy
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => opfs } });
   const result = await createInventoryWorker().inspect(undefined, vi.fn(), directories);
   expect(result.issues).toEqual([]);
-  expect(result.candidates.map(candidate => candidate.repositoryId).sort()).toEqual(['host/linked/owner/repo', 'user/local']);
+  expect(result.candidates.map(candidate => candidate.repositoryKey).sort()).toEqual(['host/linked/owner/repo', 'user/local']);
   expect(result.candidates.every(candidate => candidate.family === 'z-image')).toBe(true);
 });
 
@@ -72,8 +72,8 @@ it('keeps corrupt OPFS model diagnostics while inspecting an independent linked 
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => opfs } });
   const result = await createInventoryWorker().inspect(undefined, vi.fn(), directories);
   expect(result.candidates).toHaveLength(1);
-  expect(result.candidates[0]?.repositoryId).toBe('host/linked/owner/repo');
-  expect(result.issues).toEqual([expect.objectContaining({ repositoryId: 'user/broken', path: 'broken.gguf' })]);
+  expect(result.candidates[0]?.repositoryKey).toBe('host/linked/owner/repo');
+  expect(result.issues).toEqual([expect.objectContaining({ repositoryKey: 'user/broken', relativePath: 'broken.gguf' })]);
 });
 
 it('only reads the published OPFS repository and does not revisit linked roots', async () => {
@@ -84,7 +84,7 @@ it('only reads the published OPFS repository and does not revisit linked roots',
   vi.mocked(oldFile.getFile).mockClear().mockRejectedValue(new Error('Unrelated source must not be reopened'));
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => opfs } });
   const result = await createInventoryWorker().inspect(undefined, vi.fn(), directories, ['user/published']);
-  expect(result.candidates.map(candidate => candidate.repositoryId)).toEqual(['user/published']);
+  expect(result.candidates.map(candidate => candidate.repositoryKey)).toEqual(['user/published']);
   expect(result.issues).toEqual([]);
   expect(oldFile.getFile).not.toHaveBeenCalled();
   expect(hostModelHandles.get).not.toHaveBeenCalled();

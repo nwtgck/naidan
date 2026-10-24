@@ -3,7 +3,7 @@ import { toMessageId, toToolCallId, toBinaryObjectId, toAttachmentId } from '@/0
 import { EMPTY_LM_PARAMETERS, type AssistantMessageNode, type MessageNode } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import { buildCompactRequestMessages, createCompactChatMessagesFromPrefix, createCompactBranchFromResponse, createCompactRequestPreview } from './context-compact';
-vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn() } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn(), subscribeToChanges: () => () => {} } }));
 
 function assistant(): AssistantMessageNode {
   return {

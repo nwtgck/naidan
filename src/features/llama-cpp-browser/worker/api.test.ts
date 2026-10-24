@@ -1,3 +1,6 @@
+import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
+import type { DeletionPlan } from '@/features/llama-cpp-browser/runtime/deletion-plan';
+import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
 import { createGpuRequestObserver } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
@@ -20,7 +23,8 @@ const result = { content: '', reasoningContent: '', toolCalls: [], finishReason:
 
 const completed = () => ({ ...result, toolCalls: [] });
 
-const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), mutation: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+vi.mock('@/features/llama-cpp-browser/runtime/model-mutation-lock', () => ({ withModelMutationLock: calls.mutation }));
 vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
 vi.mock("./audio-generation", () => ({ generateAudio: calls.audio }));
@@ -36,7 +40,8 @@ vi.mock("../runtime/model-store", () => ({
 function request({ generationId }: { generationId: number }): WorkerGenerateCall {
   return {
     generationId,
-    model: "local.gguf",
+    modelId: "user/local.gguf",
+    resolvedModel: resolvedModelFixture({ modelId: "user/local.gguf" }),
     assetBaseURL: "https://example.invalid/profiles/",
     options: { profile: "cpu-wasm32" },
     messages: [{ role: "user", content: "hello" }],
@@ -64,6 +69,7 @@ beforeEach(() => {
   calls.list.mockResolvedValue([]);
   calls.remove.mockResolvedValue(undefined);
   calls.release.mockResolvedValue(undefined);
+  calls.mutation.mockImplementation(async ({ operation }: { operation: () => Promise<unknown> }) => operation());
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -197,10 +203,14 @@ describe("generation RPC lifecycle", () => {
     calls.remove.mockImplementation(async () => {
       order.push("remove");
     });
-    await api.removeModel({ plan: { id: "user/local-GGUF", files: [] } });
+    const parent = new MockFileSystemDirectoryHandle({ name: 'user' });
+    const folder = await parent.getDirectoryHandle('local-GGUF', { create: true });
+    const plan: DeletionPlan = { target: { kind: 'model', modelId: 'user/local-GGUF', location: { kind: 'opfs-user', rootName: 'local-GGUF' } }, folder, parent, rootName: 'local-GGUF', selectedRelativePaths: [], sharedProjector: undefined, files: [] };
+    await api.removeModel({ plan });
     expect(order).toEqual(["release", "remove"]);
-    expect(calls.release).toHaveBeenCalledWith({ id: "user/local-GGUF" });
-    await expect(api.removeModel({ plan: { id: "../unsafe", files: [] } })).rejects.toThrow();
+    expect(calls.mutation).toHaveBeenCalledOnce();
+    expect(calls.release).toHaveBeenCalledWith({ modelId: "user/local-GGUF" });
+    await expect(api.removeModel({ plan: { ...plan, selectedRelativePaths: ["../unsafe"] } })).rejects.toThrow();
     expect(calls.remove).toHaveBeenCalledOnce();
   });
 
@@ -223,10 +233,10 @@ describe('directory import RPC', () => {
       if (signal?.aborted) {
         throw new Error('llama.cpp browser: aborted');
       }
-      return { id: 'user/Model', name: 'Model', size: 1, importedAt: 1 };
+      return { modelId: 'user/Model', size: 1, importedAt: 1 };
     });
     const api = createWorkerApi();
-    const pending = api.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, generationId: 4 }, () => {});
+    const pending = api.importDirectory({ directory: { rootName: 'Model', files: [{ relativePath: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, generationId: 4 }, () => {});
     await vi.waitFor(() => expect(signal).toBeDefined());
     await expect(api.generate(request({ generationId: 5 }), async () => {}, () => {})).rejects.toThrow('busy');
     await api.cancelGeneration({ generationId: 3 });
@@ -316,7 +326,7 @@ describe('single-file import RPC cancellation', () => {
     const rollback = deferred();
     const acknowledged = deferred();
     let input: Parameters<typeof importStoredModel>[0] | undefined;
-    const model = { id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 };
+    const model = { modelId: 'user/same-GGUF', size: 7, importedAt: 1 };
     calls.import.mockImplementationOnce(async (args: Parameters<typeof importStoredModel>[0]) => {
       input = args;
       args.onProgress({ progress: { phase: 'importing', completed: 1, total: 7 } });
@@ -340,7 +350,7 @@ describe('single-file import RPC cancellation', () => {
     input?.onProgress({ progress: { phase: 'importing', completed: 7, total: 7 } });
     expect(progress).toHaveBeenCalledOnce();
     await expect(api.importModel({ file, generationId: 5 }, () => {})).rejects.toThrow('busy');
-    await expect(api.importDirectory({ directory: { name: 'Folder', files: [{ path: file.name, file }] }, generationId: 5 }, () => {})).rejects.toThrow('busy');
+    await expect(api.importDirectory({ directory: { rootName: 'Folder', files: [{ relativePath: file.name, file }] }, generationId: 5 }, () => {})).rejects.toThrow('busy');
     await expect(api.generate(request({ generationId: 5 }), async () => {}, () => {})).rejects.toThrow('busy');
     rollback.resolve();
     await expect(api.release()).rejects.toThrow('busy');
@@ -362,7 +372,7 @@ describe('single-file import RPC cancellation', () => {
 });
 
 function audioRequest({ generationId }: { generationId: number }): WorkerAudioCall {
-  return { ...defaultAudioParameters(), generationId, model: 'user/voice', text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
+  return { ...defaultAudioParameters(), generationId, modelId: 'user/voice', resolvedModel: resolvedModelFixture({ modelId: 'user/voice' }), text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
 }
 
 describe('audio RPC ownership', () => {
@@ -514,7 +524,7 @@ describe('preview control isolation', () => {
 });
 
 function preparation({ generationId }: { generationId: number }): WorkerPrepareCall {
-  return { generationId, model: 'local.gguf', options: { profile: 'cpu-wasm32' }, debug: 'off', assetBaseURL: 'https://example.invalid/profiles/' };
+  return { generationId, modelId: 'user/local.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }), options: { profile: 'cpu-wasm32' }, debug: 'off', assetBaseURL: 'https://example.invalid/profiles/' };
 }
 
 describe('preparation RPC ownership', () => {

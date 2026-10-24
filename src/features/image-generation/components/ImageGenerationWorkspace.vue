@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SettingsSelectScope from '@/components/SettingsSelectScope.vue';
 import ImageRecoveredOutputs from './ImageRecoveredOutputs.vue';
 import ImagePendingRuns from './ImagePendingRuns.vue';
 import { computed, defineAsyncComponent, onScopeDispose, ref, useId, watch } from 'vue';
@@ -143,56 +144,58 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
 </script>
 <template>
   <section ref="container" tw-class="flex h-full min-h-0 min-w-0 text-gray-800 dark:text-gray-100" data-testid="image-generation">
-    <div tw-class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden @container/workspace" data-testid="workspace-scroll">
-      <div tw-class="p-4 sm:p-5 space-y-3">
-        <header tw-class="flex flex-wrap items-center justify-between gap-2">
-          <div tw-class="min-w-0"><h2 tw-class="text-base font-bold tracking-tight truncate">{{ view.currentSession.value?.title || lazyStrings.imageGeneration__new_session() }}</h2><p v-if="view.currentSession.value" role="status" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ draftLabel }}</p></div>
-          <div tw-class="flex items-center flex-wrap gap-1.5">
-            <button type="button" @click="view.reload" :disabled="view.busy.value || view.loading.value" :title="lazyStrings.imageGeneration__refresh()" :aria-label="lazyStrings.imageGeneration__refresh()" tw-class="min-h-8 min-w-8 rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><RefreshCwIcon tw-class="w-4 h-4" /></button>
-            <button type="button" @click="exportSession" :disabled="!view.currentSession.value || view.busy.value || generation.busy.value || view.hasPendingSave.value || exporting" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><DownloadIcon tw-class="w-3.5 h-3.5" />{{ exporting ? lazyStrings.imageGeneration__exporting() : lazyStrings.imageGeneration__export_session() }}</button>
-            <button v-if="exporting" type="button" @click="exportAbort?.abort()" tw-class="min-h-8 px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.SHARED__cancel() }}</button>
-            <button type="button" @click="setAssistantOpen({ open: !assistantOpen })" :disabled="view.busy.value" data-testid="workspace-open-chat" :aria-expanded="assistantOpen" :aria-controls="inputId + '-assistant'" :tw-class="['inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', assistantOpen ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800']"><MessageSquareIcon tw-class="w-3.5 h-3.5" />{{ assistantOpen ? lazyStrings.imageGeneration__close_chat() : view.currentSession.value?.assistantChatId ? lazyStrings.imageGeneration__show_connected_chat() : lazyStrings.imageGeneration__open_assistant_chat() }}</button>
-          </div>
-        </header>
-        <p v-if="!view.available.value" role="status" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300">{{ lazyStrings.imageGeneration__storage_required() }}</p>
-        <button v-if="view.storageUnavailable.value" type="button" :disabled="view.busy.value || generation.busy.value" @click="view.useTemporary" data-testid="workspace-use-temporary" tw-class="rounded-lg border border-amber-300 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 disabled:opacity-40">{{ lazyStrings.ImageGenerationWorkspace__generate_without_saving() }}</button>
-        <p v-if="view.failure.value || exportFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ view.failure.value || exportFailure }}</p>
-        <div v-if="view.warnings.value.length" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300"><p v-for="warning in view.warnings.value" :key="warning" tw-class="break-words">{{ warning }}</p></div>
-        <div v-if="view.draftStatus.value === 'failed'" role="alert" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs space-y-2"><p tw-class="break-words">{{ view.draftFailure.value }}</p><button type="button" @click="view.saveDraft" tw-class="text-blue-600 dark:text-blue-400 font-semibold rounded-lg px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/20">{{ lazyStrings.imageGeneration__save_retry() }}</button></div>
-        <div tw-class="grid grid-cols-1 @min-[42rem]/workspace:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)] gap-5 min-w-0 items-start" data-testid="workspace-columns">
-          <div tw-class="min-w-0 space-y-3" data-testid="workspace-settings-column" :aria-busy="view.switching.value">
-            <div tw-class="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
-              <div tw-class="flex flex-wrap items-center gap-2">
-                <label :for="inputId + '-count'" tw-class="text-xs font-medium">{{ lazyStrings.imageGeneration__images() }}</label>
-                <input :id="inputId + '-count'" :value="count" @change="editCount({ event: $event })" type="number" min="1" :max="IMAGE_GENERATION_MAX_RUN_IMAGES" step="1" :disabled="view.editor.formDisabled.value" data-testid="workspace-image-count" tw-class="w-16 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40" />
-                <button type="button" @click="countHelpOpen = !countHelpOpen" :aria-expanded="countHelpOpen" :aria-controls="inputId + '-count-help'" :title="lazyStrings.imageGeneration__count_help()" :aria-label="lazyStrings.imageGeneration__count_help()" data-testid="workspace-count-help-toggle" tw-class="min-h-8 min-w-8 rounded-lg p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><InfoIcon aria-hidden="true" tw-class="w-4 h-4" /></button>
-                <div tw-class="ml-auto shrink-0"><ImageGenerationDebugToggle :view="view.editor" /></div>
-              </div>
-              <p v-if="countHelpOpen" :id="inputId + '-count-help'" tw-class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__count_help() }}</p>
+    <SettingsSelectScope :active="active" :return-focus="undefined">
+      <div tw-class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden @container/workspace" data-testid="workspace-scroll">
+        <div tw-class="space-y-4 p-4 sm:px-6 sm:py-5">
+          <header tw-class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4 dark:border-gray-800">
+            <div tw-class="min-w-0 space-y-1"><h2 tw-class="truncate text-base font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ view.currentSession.value?.title || lazyStrings.imageGeneration__new_session() }}</h2><p v-if="view.currentSession.value" role="status" tw-class="text-[11px] text-gray-400 dark:text-gray-500">{{ draftLabel }}</p></div>
+            <div tw-class="flex items-center flex-wrap gap-1.5">
+              <button type="button" @click="view.reload" :disabled="view.busy.value || view.loading.value" :title="lazyStrings.imageGeneration__refresh()" :aria-label="lazyStrings.imageGeneration__refresh()" tw-class="min-h-8 min-w-8 rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><RefreshCwIcon tw-class="w-4 h-4" /></button>
+              <button type="button" @click="exportSession" :disabled="!view.currentSession.value || view.busy.value || generation.busy.value || view.hasPendingSave.value || exporting" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><DownloadIcon tw-class="w-3.5 h-3.5" />{{ exporting ? lazyStrings.imageGeneration__exporting() : lazyStrings.imageGeneration__export_session() }}</button>
+              <button v-if="exporting" type="button" @click="exportAbort?.abort()" tw-class="min-h-8 px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.SHARED__cancel() }}</button>
+              <button type="button" @click="setAssistantOpen({ open: !assistantOpen })" :disabled="view.busy.value" data-testid="workspace-open-chat" :aria-expanded="assistantOpen" :aria-controls="inputId + '-assistant'" :tw-class="['inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', assistantOpen ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800']"><MessageSquareIcon tw-class="w-3.5 h-3.5" />{{ assistantOpen ? lazyStrings.imageGeneration__close_chat() : view.currentSession.value?.assistantChatId ? lazyStrings.imageGeneration__show_connected_chat() : lazyStrings.imageGeneration__open_assistant_chat() }}</button>
             </div>
-            <p v-if="view.editorDeferred.value" data-testid="workspace-editor-deferred" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__viewing_other() }}</p>
-            <ImageGenerationEditor :context="JSON.stringify([view.store.value?.storeId, view.selectedSessionId.value, view.draftRevision.value])" :view="view.editor" :active="active" @manage-models="emit('models')"><template #prompt-actions="{ field, text }"><ImageGenerationTranslationButton :workspace="view" :text="text" :field="field" :active="active && view.editorReady.value" /></template></ImageGenerationEditor>
-            <ImageSettingsSection :open="!!view.sessionPresentation.view.failure.value || !view.available.value" :title="lazyStrings.imageGeneration__more_execution()" :summary="undefined" compact>
-              <ImageGenerationResults :view="view.sessionPresentation.view" :active="active" :presentation="view.available.value ? 'settings' : 'full'" persistence="workspace" @prepare="emit('models')" />
-            </ImageSettingsSection>
-          </div>
-          <!-- One independent right column: gallery follows the preview immediately,
+          </header>
+          <p v-if="!view.available.value" role="status" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300">{{ lazyStrings.imageGeneration__storage_required() }}</p>
+          <button v-if="view.storageUnavailable.value" type="button" :disabled="view.busy.value || generation.busy.value" @click="view.useTemporary" data-testid="workspace-use-temporary" tw-class="rounded-lg border border-amber-300 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 disabled:opacity-40">{{ lazyStrings.ImageGenerationWorkspace__generate_without_saving() }}</button>
+          <p v-if="view.failure.value || exportFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ view.failure.value || exportFailure }}</p>
+          <div v-if="view.warnings.value.length" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300"><p v-for="warning in view.warnings.value" :key="warning" tw-class="break-words">{{ warning }}</p></div>
+          <div v-if="view.draftStatus.value === 'failed'" role="alert" tw-class="rounded-xl border border-amber-200 dark:border-amber-900 p-3 text-xs space-y-2"><p tw-class="break-words">{{ view.draftFailure.value }}</p><button type="button" @click="view.saveDraft" tw-class="text-blue-600 dark:text-blue-400 font-semibold rounded-lg px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/20">{{ lazyStrings.imageGeneration__save_retry() }}</button></div>
+          <div tw-class="grid min-w-0 grid-cols-1 items-start gap-5 @min-[42rem]/workspace:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)]" data-testid="workspace-columns">
+            <div tw-class="min-w-0 space-y-3" data-testid="workspace-settings-column" :aria-busy="view.switching.value">
+              <div tw-class="rounded-xl border border-gray-200/70 bg-white/70 px-3.5 py-2.5 text-xs dark:border-gray-800/80 dark:bg-gray-900/40">
+                <div tw-class="flex flex-wrap items-center gap-2">
+                  <label :for="inputId + '-count'" tw-class="text-xs font-medium">{{ lazyStrings.imageGeneration__images() }}</label>
+                  <input :id="inputId + '-count'" :value="count" @change="editCount({ event: $event })" type="number" min="1" :max="IMAGE_GENERATION_MAX_RUN_IMAGES" step="1" :disabled="view.editor.formDisabled.value" data-testid="workspace-image-count" tw-class="w-16 rounded-lg border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40" />
+                  <button type="button" @click="countHelpOpen = !countHelpOpen" :aria-expanded="countHelpOpen" :aria-controls="inputId + '-count-help'" :title="lazyStrings.imageGeneration__count_help()" :aria-label="lazyStrings.imageGeneration__count_help()" data-testid="workspace-count-help-toggle" tw-class="min-h-8 min-w-8 rounded-lg p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><InfoIcon aria-hidden="true" tw-class="w-4 h-4" /></button>
+                  <div tw-class="ml-auto shrink-0"><ImageGenerationDebugToggle :view="view.editor" /></div>
+                </div>
+                <p v-if="countHelpOpen" :id="inputId + '-count-help'" tw-class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__count_help() }}</p>
+              </div>
+              <p v-if="view.editorDeferred.value" data-testid="workspace-editor-deferred" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__viewing_other() }}</p>
+              <ImageGenerationEditor :context="JSON.stringify([view.store.value?.storeId, view.selectedSessionId.value, view.draftRevision.value])" :view="view.editor" :active="active" @manage-models="emit('models')"><template #prompt-actions="{ field, text }"><ImageGenerationTranslationButton :workspace="view" :text="text" :field="field" :active="active && view.editorReady.value" /></template></ImageGenerationEditor>
+              <ImageSettingsSection :open="!!view.sessionPresentation.view.failure.value || !view.available.value" :title="lazyStrings.imageGeneration__more_execution()" :summary="undefined" compact>
+                <ImageGenerationResults :view="view.sessionPresentation.view" :active="active" :presentation="view.available.value ? 'settings' : 'full'" persistence="workspace" @prepare="emit('models')" />
+              </ImageSettingsSection>
+            </div>
+            <!-- One independent right column: gallery follows the preview immediately,
            regardless of how many model/parameter sections are open on the left. -->
-          <div tw-class="min-w-0 space-y-3" data-testid="workspace-results-column">
-            <ImagePendingRuns />
-            <ImageRecoveredOutputs />
-            <div data-testid="workspace-preview-column" tw-class="min-w-0"><ImageGenerationMonitor :workspace="view" :generation="generation" :active="active" :compact="false" /></div>
-            <section v-if="view.experimentalNoticeVisible.value" role="status" data-testid="workspace-experimental-notice" tw-class="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2.5 text-xs space-y-1.5">
-              <p tw-class="font-semibold text-blue-800 dark:text-blue-200">{{ lazyStrings.imageGeneration__notice_title() }}</p>
-              <p tw-class="leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.imageGeneration__notice_body() }}</p>
-              <button type="button" @click="view.updatePreferences({ change: { type: 'dismiss-notice' } })" :disabled="view.busy.value" data-testid="workspace-dismiss-notice" tw-class="rounded-lg px-2 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__notice_dismiss() }}</button>
-            </section>
-            <ImageGenerationGallery :view="view" />
+            <div tw-class="min-w-0 space-y-3" data-testid="workspace-results-column">
+              <ImagePendingRuns />
+              <ImageRecoveredOutputs />
+              <div data-testid="workspace-preview-column" tw-class="min-w-0"><ImageGenerationMonitor :workspace="view" :generation="generation" :active="active" :compact="false" /></div>
+              <section v-if="view.experimentalNoticeVisible.value" role="status" data-testid="workspace-experimental-notice" tw-class="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/20 px-3 py-2.5 text-xs space-y-1.5">
+                <p tw-class="font-semibold text-blue-800 dark:text-blue-200">{{ lazyStrings.imageGeneration__notice_title() }}</p>
+                <p tw-class="leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.imageGeneration__notice_body() }}</p>
+                <button type="button" @click="view.updatePreferences({ change: { type: 'dismiss-notice' } })" :disabled="view.busy.value" data-testid="workspace-dismiss-notice" tw-class="rounded-lg px-2 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__notice_dismiss() }}</button>
+              </section>
+              <ImageGenerationGallery :view="view" />
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    <ImageGenerationAssetViewer :view="view" :active="active" />
-    <ImageGenerationAssistant v-if="assistantVisited" :id="inputId + '-assistant'" :workspace="view" :presentation="assistantPresentation" :active="active && assistantOpen" @close="setAssistantOpen({ open: false })" />
+      <ImageGenerationAssetViewer :view="view" :active="active" />
+      <ImageGenerationAssistant v-if="assistantVisited" :id="inputId + '-assistant'" :workspace="view" :presentation="assistantPresentation" :active="active && assistantOpen" @close="setAssistantOpen({ open: false })" />
+    </SettingsSelectScope>
   </section>
 </template>

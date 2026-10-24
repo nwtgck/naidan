@@ -89,7 +89,7 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     }
     mounted = mountReadOnlyFile({
       core,
-      path: `/models/${file.path}`,
+      path: `/models/${file.relativePath}`,
       source: readCache.wrap({
         source: {
           size: access.getSize(),
@@ -116,7 +116,7 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     }
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'cb_eval', value: trace ? BigInt(trace.pointer) : 0n });
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'cb_eval_user_data', value: 0n });
-    const path = core.utf8({ text: `/models/${file.path}` });
+    const path = core.utf8({ text: `/models/${file.relativePath}` });
     allocations.push(path);
     checkCancelled();
     await logOperation({ diagnostic: { event: 'operation-start', stage: 'projector-load', profile } });

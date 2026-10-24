@@ -21,10 +21,10 @@ function adapter({ source, root }: { source: ModelFileReceipt['source'] | undefi
   const file = new File(['synthetic adapter'], entry.source.path);
   Object.defineProperty(file, 'size', { value: entry.source.size });
   return {
-    id: `${root ?? 'opfs'}/adapter`,
-    repositoryId: root ? `host/${root}/${entry.source.repository}` : `huggingface.co/${entry.source.repository}/resolve/main`,
-    path: entry.source.path,
-    files: [{ path: entry.source.path, file, ...(source ? { receipt: { version: 1, kind: 'naidan-model-file', size: file.size, lastModified: file.lastModified, source } as const } : {}) }],
+    candidateKey: `${root ?? 'opfs'}/adapter`,
+    repositoryKey: root ? `host/${root}/${entry.source.repository}` : `huggingface.co/${entry.source.repository}/resolve/main`,
+    primaryRelativePath: entry.source.path,
+    files: [{ relativePath: entry.source.path, file, ...(source ? { receipt: { version: 1, kind: 'naidan-model-file', size: file.size, lastModified: file.lastModified, source } as const } : {}) }],
     format: 'safetensors',
     size: file.size,
     family: 'unknown',
@@ -43,10 +43,10 @@ const source = (): ModelFileReceipt['source'] => ({ kind: 'hugging-face', reposi
 function harness() {
   const file = new File(['synthetic checkpoint'], 'model.gguf');
   const model: ModelCandidate = {
-    id: 'model',
-    repositoryId: 'user/model',
-    path: file.name,
-    files: [{ path: file.name, file }],
+    candidateKey: 'model',
+    repositoryKey: 'user/model',
+    primaryRelativePath: file.name,
+    files: [{ relativePath: file.name, file }],
     format: 'gguf',
     size: file.size,
     family: 'sd-checkpoint',
@@ -81,7 +81,7 @@ it('downloads only the optional adapter and preserves the chosen base and its re
   expect(h.library.downloadRecipeId.value).toBe('');
   expect(h.library.downloadState.value).toBe('complete');
   expect(h.library.loraAvailable({ id: entry.id })).toBe(true);
-  expect(h.library.main.value).toBe('model');
+  expect(h.library.selectedCandidateKey.value).toBe('model');
   expect(h.library.ready.value).toBe(true);
   expect(h.library.selectedModels()).toEqual(base);
   expect(h.onSelection).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ it('resumes an adapter download independently of recipe selections and never pro
   await h.library.resumeDownload();
   expect(h.download.mock.calls[1]![0].files).toEqual([entry.source]);
   expect(h.library.downloadState.value).toBe('incomplete');
-  expect(h.library.main.value).toBe('model');
+  expect(h.library.selectedCandidateKey.value).toBe('model');
   h.library.resetDownloadIntent();
   expect(h.library.downloadLoraId.value).toBe(entry.id);
   const job = h.library.downloadQueue.value[0]!;

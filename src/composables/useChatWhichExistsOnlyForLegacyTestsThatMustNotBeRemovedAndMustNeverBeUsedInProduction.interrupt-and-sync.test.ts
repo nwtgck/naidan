@@ -67,6 +67,7 @@ vi.mock('../00-storage/service', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: { endpoint: { type: 'ollama', url: 'http://localhost' }, storageType: 'opfs', titleGeneration: 'disabled', defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },

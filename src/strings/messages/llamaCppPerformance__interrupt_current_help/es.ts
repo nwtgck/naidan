@@ -1,0 +1,1 @@
+export const llamaCppPerformance__interrupt_current_help = (): string => "Al interrumpir se conservan los resultados parciales y se omiten las continuaciones dependientes. El siguiente ensayo independiente vuelve a cargar el modelo; detener la medición finaliza toda la ejecución.";

@@ -12,7 +12,7 @@ describe('Hugging Face candidate presentation', () => {
     const paths = ['BF16', 'Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0'].map(quantization => `Ornith-1.5-35B-${quantization}.gguf`);
     const choices = quantizationChoices({ repository, models: paths.map(path => model({ path })) });
     expect(choices.map(choice => choice.label)).toEqual(['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0', 'BF16']);
-    expect(choices.map(choice => choice.id).sort()).toEqual([...paths].sort());
+    expect(choices.map(choice => choice.primaryRelativePath).sort()).toEqual([...paths].sort());
     for (const choice of choices) {
       expect(quantizationChoices({ repository, models: choice.models })[0]?.label).toBe(choice.label);
     }
@@ -37,7 +37,7 @@ describe('Hugging Face candidate presentation', () => {
   ])('keeps the complete variant order in the choice label: $label', ({ path, label, quantization }) => {
     const candidate = model({ path });
     expect(quantizationChoices({ repository: 'owner/Model-GGUF', models: [candidate] })).toEqual([
-      { id: path, label, quantization, models: [candidate] },
+      { primaryRelativePath: path, label, quantization, models: [candidate] },
     ]);
   });
 
@@ -69,7 +69,7 @@ describe('Hugging Face candidate presentation', () => {
     const paths = ['Model-Q4_K_M.gguf', 'Model-A3B-Q4_K_M.gguf'];
     const choices = quantizationChoices({ repository: 'owner/Model-A3B-GGUF', models: paths.map(path => model({ path })) });
     expect(choices.map(choice => choice.label)).toEqual(['Q4_K_M', 'Q4_K_M']);
-    expect(choices.map(choice => choice.id).sort()).toEqual([...paths].sort());
+    expect(choices.map(choice => choice.primaryRelativePath).sort()).toEqual([...paths].sort());
     expect(choices.every(choice => choice.models.length === 1)).toBe(true);
   });
 
@@ -85,7 +85,7 @@ describe('Hugging Face candidate presentation', () => {
     const models = paths.map(path => model({ path }));
     const expected = ['Model-Q4_K_M.gguf', 'Model-base-Q4_K_M.gguf', 'Model-Q4_K_M-beta.gguf', 'nested/Model-Q4_K_XL.gguf', 'Model-Q5_K_M.gguf'];
     for (const candidates of [models, [...models].reverse()]) {
-      expect(quantizationChoices({ repository: 'owner/Model-GGUF', models: candidates }).map(choice => choice.id)).toEqual(expected);
+      expect(quantizationChoices({ repository: 'owner/Model-GGUF', models: candidates }).map(choice => choice.primaryRelativePath)).toEqual(expected);
     }
   });
 

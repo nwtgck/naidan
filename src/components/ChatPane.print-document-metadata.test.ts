@@ -46,7 +46,7 @@ describe('ChatPane print document metadata', () => {
     await router.push('/chat/print-chat');
     const wrapper = shallowMount(defineComponent({
       setup() {
-        provideDocumentMetadata({ router, document, homeIntroduction: ref({ kind: 'inactive' }), continueHomeIntroduction: () => {}, finishHomeIntroduction: () => {} });
+        provideDocumentMetadata({ router, document, homeIntroduction: ref({ kind: 'inactive' }), finishHomeIntroduction: () => {} });
         return () => h(ChatPane, { chatId: chat.id });
       },
     }), { global: { plugins: [router], stubs: { ChatPane: false } } });

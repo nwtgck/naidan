@@ -8,9 +8,10 @@ import { routes } from 'vue-router/auto-routes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationLab from '@/features/image-generation/components/ImageGenerationLab.vue';
 import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+import type { inspectImageInventory } from '@/features/stable-diffusion-cpp-browser/inventory-worker/client';
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn() }));
-vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn<typeof inspectImageInventory>() }));
+vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: mocks.inspect }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({
   createImageClient: () => {
@@ -34,10 +35,10 @@ beforeEach(async () => {
   const file = ggufFile();
   mocks.inspect.mockResolvedValue({
     candidates: [{
-      id: 'model',
-      repositoryId: 'user/model',
-      path: 'model.gguf',
-      files: [{ path: 'model.gguf', file }],
+      candidateKey: 'model',
+      repositoryKey: 'user/model',
+      primaryRelativePath: 'model.gguf',
+      files: [{ relativePath: 'model.gguf', file }],
       size: file.size,
       format: 'gguf',
       family: 'sd-checkpoint',

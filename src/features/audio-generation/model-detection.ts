@@ -1,6 +1,5 @@
-import { storedModelDirectory } from '@/features/llama-cpp-browser/runtime/model-store';
-import type { ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { modelSchema, type LocalModel } from '@/features/llama-cpp-browser/types';
+import { resolveModel } from '@/features/llama-cpp-browser/runtime/model-resolution';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { readAudioGgufMetadata, type GgufMetadataFile, type GgufMetadataValue } from './gguf-metadata';
 import type { AudioGenerationResult } from './types';
 
@@ -14,14 +13,11 @@ export type AudioModelDetection =
  * similarly named file elsewhere in the directory.
  */
 export async function detectAudioModelFiles({ directory, signal }: {
-  directory: Pick<ModelDirectory, 'modelPath' | 'projectorPath'> & { files: readonly { path: string, file: GgufMetadataFile }[] }, signal: AbortSignal | undefined,
+  directory: { primaryFile: { file: GgufMetadataFile }, projectorFile: { file: GgufMetadataFile } | undefined }, signal: AbortSignal | undefined,
 }): Promise<AudioModelDetection> {
   signal?.throwIfAborted();
   try {
-    const backbone = directory.files.find(entry => entry.path === directory.modelPath);
-    if (!backbone) {
-      return { status: 'unverified', reason: 'metadata' };
-    }
+    const backbone = directory.primaryFile;
     const metadata = await readAudioGgufMetadata({ file: backbone.file, keys: ['general.architecture'], signal });
     const architecture = metadata.get('general.architecture');
     let pipeline: AudioGenerationResult['pipeline'];
@@ -38,7 +34,7 @@ export async function detectAudioModelFiles({ directory, signal }: {
       break;
     default: return { status: 'unverified', reason: 'architecture' };
     }
-    const companion = directory.files.find(entry => entry.path === directory.projectorPath);
+    const companion = directory.projectorFile;
     if (!companion) {
       return { status: 'unverified', reason: 'companion' };
     }
@@ -59,11 +55,10 @@ function hasGenerator({ details, projector }: { details: ReadonlyMap<string, Ggu
   return details.get('clip.has_gen_audio_encoder') === true && details.get('clip.gen.audio.projector_type') === projector;
 }
 
-export async function inspectStoredAudioModel({ id, signal }: { id: string, signal: AbortSignal | undefined }): Promise<AudioModelDetection> {
+export async function inspectStoredAudioModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<AudioModelDetection> {
   signal?.throwIfAborted();
   try {
-    const name = modelSchema.shape.id.parse(id);
-    const directory = await storedModelDirectory({ name });
+    const { directory } = await resolveModel({ modelId, signal });
     return await detectAudioModelFiles({ directory, signal });
   } catch {
     signal?.throwIfAborted();
@@ -76,13 +71,13 @@ export function preferredAudioModel({ models, detections }: {
 }): string | undefined {
   // Prefer a usable no-reference workflow, then the smaller local footprint.
   // File size is not a quality ranking or a promise about peak runtime memory.
-  const candidates = models.filter(model => detections.get(model.id)?.status === 'detected');
-  const referenceRank = ({ id }: { id: string }): number => {
-    const detection = detections.get(id);
+  const candidates = models.filter(model => detections.get(model.modelId)?.status === 'detected');
+  const referenceRank = ({ modelId }: { modelId: string }): number => {
+    const detection = detections.get(modelId);
     return detection?.status === 'detected' && detection.reference === 'optional' ? 0 : 1;
   };
-  candidates.sort((a, b) => referenceRank(a) - referenceRank(b) || a.size - b.size || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return candidates[0]?.id;
+  candidates.sort((a, b) => referenceRank(a) - referenceRank(b) || a.size - b.size || (a.modelId < b.modelId ? -1 : a.modelId > b.modelId ? 1 : 0));
+  return candidates[0]?.modelId;
 }
 
 export const TEST_ONLY = {

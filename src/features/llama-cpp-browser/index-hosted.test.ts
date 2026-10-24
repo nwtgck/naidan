@@ -1,3 +1,8 @@
+import { resolveModel } from './runtime/model-resolution';
+import { createResolvedModelForTest } from './test-utils/resolved-model.test-support';
+import { Blob as NodeBlob } from 'node:buffer';
+import { createPerformanceRunner } from './performance/runner';
+import { performancePlan, performanceEnvironment, performanceReport } from './test-utils/performance.test-support';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
@@ -9,23 +14,32 @@ import type { LlamaCppPerformanceScope, LlamaCppBrowserService } from './service
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 import type { storageService } from '@/00-storage/service';
 import type { ProfileCapabilities } from './runtime/profile-capabilities';
-const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
+import type { DeletionPlan } from './runtime/deletion-plan';
+const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModelEntries: vi.fn<LlamaCppWorkerClient['listModelEntries']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
+const mutationLock = vi.hoisted(() => vi.fn());
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
-vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
+vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn() }));
+vi.mock('./runtime/model-mutation-lock', async importOriginal => ({
+  ...await importOriginal<typeof import('./runtime/model-mutation-lock')>(),
+  withModelMutationLock: mutationLock,
+}));
+vi.mock('./runtime/model-resolution', () => ({ resolveModel: vi.fn() }));
 let service: LlamaCppBrowserService;
 let storage: typeof storageService;
 
 beforeEach(async () => {
   vi.resetModules();
   vi.resetAllMocks();
+  mutationLock.mockImplementation(async ({ operation }: { operation: () => Promise<unknown> }) => operation());
+  vi.mocked(resolveModel).mockImplementation(async ({ modelId }) => createResolvedModelForTest({ modelId, relativePath: 'model.gguf' }));
   storage = (await import('@/00-storage/service')).storageService;
   vi.spyOn(storage, 'loadSettings').mockResolvedValue(null);
   worker.subscribeDisposed.mockReturnValue(() => {});
   worker.probeProfiles.mockResolvedValue({
     recommended: 'cpu-wasm32',
     profiles: [
-      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' },
     ],
   });
   worker.canReuse.mockReturnValue(true);
@@ -34,7 +48,7 @@ beforeEach(async () => {
   worker.releaseRuntime.mockResolvedValue(undefined);
   worker.prepareModel.mockResolvedValue(undefined);
   worker.generateAudio.mockResolvedValue(audioResult());
-  worker.listModels.mockResolvedValue([]);
+  worker.listModelEntries.mockResolvedValue([]);
   worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   service = (await import('./index-hosted')).llamaCppBrowserService;
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -47,7 +61,7 @@ afterEach(() => {
 
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
   return {
-    model: 'local.gguf',
+    modelId: 'user/local',
     messages: [{ role: 'user', content: 'original' }],
     temperature: 0,
     topP: 1,
@@ -55,6 +69,26 @@ function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
     presencePenalty: 0,
     frequencyPenalty: 0,
     stop: [],
+  };
+}
+
+function deletionPlan(): DeletionPlan {
+  const folder = {
+    kind: 'directory',
+    name: 'local',
+    getDirectoryHandle: vi.fn(),
+    getFileHandle: vi.fn(),
+    removeEntry: vi.fn(),
+    async *entries() {},
+  } as unknown as FileSystemDirectoryHandle;
+  return {
+    target: { kind: 'model', modelId: 'user/local', location: { kind: 'opfs-user', rootName: 'local' } },
+    folder,
+    parent: folder,
+    rootName: 'local',
+    selectedRelativePaths: [],
+    sharedProjector: undefined,
+    files: [],
   };
 }
 
@@ -80,7 +114,7 @@ describe('serialized hosted model service', () => {
   it('isolates option snapshots from observers and callers', () => {
     const mutate = service.subscribeOptions({
       listener: ({ options }) => {
-        options.profile = 'cpu-wasm64';
+        options.profile = 'webgpu-wasm64-jspi';
       },
     });
     const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
@@ -181,8 +215,8 @@ describe('serialized hosted model service', () => {
   });
 
   it('does not clear an unrelated model-operation error when inspecting capabilities', async () => {
-    worker.importModel.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'invalid-gguf' }));
-    await expect(service.importModel({ file: new File([], 'invalid.gguf'), signal: undefined })).rejects.toThrow('invalid-gguf');
+    worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'invalid-gguf' }));
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('invalid-gguf');
     await service.probeProfiles({ signal: undefined });
     expect(service.getState()).toEqual({ status: 'error', code: 'invalid-gguf' });
   });
@@ -196,7 +230,7 @@ describe('serialized hosted model service', () => {
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
     service.release();
     const second = service.probeProfiles({ signal: undefined });
-    old.resolve({ recommended: 'cpu-wasm64', profiles: [{ profile: 'cpu-wasm64', status: 'available' }] });
+    old.resolve({ recommended: 'webgpu-wasm64-jspi', profiles: [{ profile: 'webgpu-wasm64-jspi', status: 'available' }] });
     await failed;
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledTimes(2));
     const third = service.probeProfiles({ signal: undefined });
@@ -230,7 +264,7 @@ describe('serialized hosted model service', () => {
     const pendingInput = input();
     const second = service.generate({ input: pendingInput, onEvent: () => {}, signal: undefined });
     pendingInput.messages[0]!.content = 'mutated';
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     expect(worker.generate).toHaveBeenCalledOnce();
     finish();
     await first;
@@ -255,7 +289,7 @@ describe('serialized hosted model service', () => {
     await first;
     await expect(second).rejects.toThrow('aborted');
     expect(worker.generate).toHaveBeenCalledOnce();
-    expect(await service.listModels({ signal: undefined })).toEqual([]);
+    expect(await service.listModelEntries({ signal: undefined })).toEqual([]);
   });
 
   it('terminates failed runtime ownership and exposes only a safe error code', async () => {
@@ -264,7 +298,7 @@ describe('serialized hosted model service', () => {
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
     expect(worker.dispose).toHaveBeenCalledOnce();
     expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private');
-    await service.listModels({ signal: undefined });
+    await service.listModelEntries({ signal: undefined });
     expect(factory).toHaveBeenCalledOnce();
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
   });
@@ -274,9 +308,10 @@ describe('serialized hosted model service', () => {
     worker.generate.mockImplementationOnce(() => gate.promise);
     const generating = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
-    expect(await service.listModels({ signal: undefined })).toEqual([]);
-    const plan = { id: 'hf.co/owner/repo:Model-Q4.gguf', files: [] };
+    expect(await service.listModelEntries({ signal: undefined })).toEqual([]);
+    const plan = deletionPlan();
     expect(await service.removeModel({ plan, signal: undefined })).toBe('deleted');
+    expect(mutationLock).toHaveBeenCalledOnce();
     expect(removeStoredModel).toHaveBeenCalledWith({ plan });
     expect(worker.removeModel).not.toHaveBeenCalled();
     expect(worker.dispose).not.toHaveBeenCalled();
@@ -291,7 +326,7 @@ describe('serialized hosted model service', () => {
         throw new Error('private observer details');
       },
     });
-    await expect(service.removeModel({ plan: { id: 'user/local-GGUF', files: [] }, signal: undefined })).resolves.toBe('deleted');
+    await expect(service.removeModel({ plan: deletionPlan(), signal: undefined })).resolves.toBe('deleted');
     expect(worker.dispose).not.toHaveBeenCalled();
     expect(service.getState()).toEqual({ status: 'idle' });
     expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private observer');
@@ -343,7 +378,7 @@ describe('resident Worker reuse at the service boundary', () => {
 describe('failed preparation runtime is not reused by generation', () => {
   it('disposes after a native preparation trap and reacquires a worker for the next public send', async () => {
     worker.prepareModel.mockRejectedValueOnce(new WebAssembly.RuntimeError('context destruction trap'));
-    await expect(service.prepareModel({ model: 'local.gguf', signal: undefined })).rejects.toThrow('runtime-error');
+    await expect(service.prepareModel({ modelId: 'user/local', signal: undefined })).rejects.toThrow('runtime-error');
     expect(worker.dispose).toHaveBeenCalledOnce();
     expect(factory).toHaveBeenCalledOnce();
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).resolves.toHaveProperty('finishReason', 'stop');
@@ -369,7 +404,7 @@ describe('tool work holds the generation lane', () => {
       },
     });
     await vi.waitFor(() => expect(turns).toBe(1));
-    expect(await service.prepareModel({ model: 'other.gguf', signal: undefined })).toBe('skipped-busy');
+    expect(await service.prepareModel({ modelId: 'user/other', signal: undefined })).toBe('skipped-busy');
     expect(worker.prepareModel).not.toHaveBeenCalled();
     const second = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
@@ -408,7 +443,7 @@ describe('tool work holds the generation lane', () => {
 });
 
 function audioInput(): Parameters<LlamaCppBrowserService['generateAudio']>[0]['input'] {
-  return { ...defaultAudioParameters(), model: 'user/voice', text: 'Original audio text', debug: 'off' };
+  return { ...defaultAudioParameters(), modelId: 'user/voice', text: 'Original audio text', debug: 'off' };
 }
 
 describe('audio sharing the serialized inference lane', () => {
@@ -429,7 +464,7 @@ describe('audio sharing the serialized inference lane', () => {
     const audio = service.generateAudio({ input: pendingInput, cancellationSignal: undefined });
     pendingInput.text = 'mutated';
     pendingInput.contextTokens = 8192;
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     expect(worker.generateAudio).not.toHaveBeenCalled();
     gate.resolve({ content: 'chat', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     await chat;
@@ -478,7 +513,7 @@ describe('explicit runtime recovery', () => {
 
   it('recovers after an audio worker failure without another page load', async () => {
     worker.generateAudio.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
-    const audioInput = { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', debug: 'off' as const };
+    const audioInput = { ...defaultAudioParameters(), modelId: 'user/voice', text: 'Hello', debug: 'off' as const };
     await expect(service.generateAudio({ input: audioInput, cancellationSignal: undefined })).rejects.toThrow('worker-failed');
     expect(service.getProfileState().status).toBe('idle');
     await service.restartRuntime({ signal: undefined });
@@ -568,7 +603,7 @@ describe('idle model preparation', () => {
     worker.probeProfiles.mockReturnValueOnce(gate.promise);
     const probe = service.probeProfiles({ signal: undefined });
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
-    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const preparation = service.prepareModel({ modelId: 'user/local', signal: undefined });
     expect(worker.prepareModel).not.toHaveBeenCalled();
     gate.resolve(report);
     await probe;
@@ -583,7 +618,7 @@ describe('idle model preparation', () => {
     worker.probeProfiles.mockReturnValueOnce(gate.promise);
     const probe = service.probeProfiles({ signal: undefined });
     const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
-    await expect(service.prepareModel({ model: 'other.gguf', signal: undefined })).resolves.toBe('skipped-busy');
+    await expect(service.prepareModel({ modelId: 'user/other', signal: undefined })).resolves.toBe('skipped-busy');
     expect(worker.prepareModel).not.toHaveBeenCalled();
     gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
     await probe;
@@ -596,7 +631,7 @@ describe('idle model preparation', () => {
     const generationGate = Promise.withResolvers<GenerationResult>();
     worker.generate.mockReturnValueOnce(generationGate.promise);
     const probe = service.probeProfiles({ signal: undefined });
-    const preparation = service.prepareModel({ model: 'other.gguf', signal: undefined });
+    const preparation = service.prepareModel({ modelId: 'user/other', signal: undefined });
     const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
     await probe;
@@ -612,7 +647,7 @@ describe('idle model preparation', () => {
     const probe = service.probeProfiles({ signal: undefined });
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
     const controller = new AbortController();
-    const preparation = service.prepareModel({ model: 'local.gguf', signal: controller.signal });
+    const preparation = service.prepareModel({ modelId: 'user/local', signal: controller.signal });
     const rejected = expect(preparation).rejects.toThrow('aborted');
     controller.abort();
     await rejected;
@@ -630,7 +665,7 @@ describe('idle model preparation', () => {
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
     const controller = new AbortController();
     vi.mocked(storage.loadSettings).mockRejectedValueOnce(new Error('settings unavailable'));
-    const preparation = service.prepareModel({ model: 'local.gguf', signal: controller.signal });
+    const preparation = service.prepareModel({ modelId: 'user/local', signal: controller.signal });
     const rejected = expect(preparation).rejects.toThrow('aborted');
     const cancelled = probe.then(() => controller.abort());
     gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
@@ -648,7 +683,7 @@ describe('idle model preparation', () => {
     const probe = service.probeProfiles({ signal: undefined });
     const probeRejected = expect(probe).rejects.toThrow('worker-failed');
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
-    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const preparation = service.prepareModel({ modelId: 'user/local', signal: undefined });
     const preparationRejected = expect(preparation).rejects.toThrow('worker-failed');
     service.release();
     gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
@@ -670,7 +705,7 @@ describe('idle model preparation', () => {
       },
     });
     const probe = service.probeProfiles({ signal: undefined });
-    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const preparation = service.prepareModel({ modelId: 'user/local', signal: undefined });
     const rejected = expect(preparation).rejects.toThrow('aborted');
     gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
     await probe;
@@ -685,12 +720,12 @@ describe('idle model preparation', () => {
     worker.probeProfiles.mockReturnValueOnce(gate.promise);
     service.setOptions({ options: { profile: 'cpu-wasm32' } });
     const probe = service.probeProfiles({ signal: undefined });
-    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    const preparation = service.prepareModel({ modelId: 'user/local', signal: undefined });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     gate.resolve({
-      recommended: 'cpu-wasm64',
+      recommended: 'webgpu-wasm64-jspi',
       profiles: [
-        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' },
       ],
     });
     await probe;
@@ -704,22 +739,22 @@ describe('idle model preparation', () => {
     const loading = Promise.withResolvers<void>();
     worker.prepareModel.mockReturnValueOnce(loading.promise);
     const probe = service.probeProfiles({ signal: undefined });
-    const first = service.prepareModel({ model: 'first.gguf', signal: undefined });
-    const second = service.prepareModel({ model: 'second.gguf', signal: undefined });
+    const first = service.prepareModel({ modelId: 'user/first', signal: undefined });
+    const second = service.prepareModel({ modelId: 'user/second', signal: undefined });
     gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
     await probe;
     await expect(second).resolves.toBe('skipped-busy');
     await vi.waitFor(() => expect(worker.prepareModel).toHaveBeenCalledOnce());
-    expect(worker.prepareModel.mock.calls[0]?.[0].request.model).toBe('first.gguf');
+    expect(worker.prepareModel.mock.calls[0]?.[0].request.modelId).toBe('user/first');
     loading.resolve();
     await expect(first).resolves.toBe('ready');
   });
 
   it('uses real preparation on the same worker without submitting messages or generating', async () => {
-    expect(await service.prepareModel({ model: 'local.gguf', signal: undefined })).toBe('ready');
+    expect(await service.prepareModel({ modelId: 'user/local', signal: undefined })).toBe('ready');
     expect(worker.prepareModel).toHaveBeenCalledOnce();
     const call = worker.prepareModel.mock.calls[0]![0];
-    expect(call.request).toMatchObject({ model: 'local.gguf', options: { profile: 'cpu-wasm32' } });
+    expect(call.request).toMatchObject({ modelId: 'user/local', options: { profile: 'cpu-wasm32' } });
     expect(call.request).not.toHaveProperty('messages');
     expect(worker.generate).not.toHaveBeenCalled();
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
@@ -728,7 +763,7 @@ describe('idle model preparation', () => {
 
   it('skips rather than queues when a foreground generation already reserved the lane', async () => {
     const pending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
-    expect(await service.prepareModel({ model: 'other.gguf', signal: undefined })).toBe('skipped-busy');
+    expect(await service.prepareModel({ modelId: 'user/other', signal: undefined })).toBe('skipped-busy');
     expect(worker.prepareModel).not.toHaveBeenCalled();
     await pending;
   });
@@ -736,11 +771,11 @@ describe('idle model preparation', () => {
   it('keeps foreground sends serialized behind preparation which already started', async () => {
     const gate = Promise.withResolvers<void>();
     worker.prepareModel.mockReturnValueOnce(gate.promise);
-    const loading = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const loading = service.prepareModel({ modelId: 'user/local', signal: undefined });
     await vi.waitFor(() => expect(worker.prepareModel).toHaveBeenCalledOnce());
     const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).not.toHaveBeenCalled();
-    expect(await service.prepareModel({ model: 'other.gguf', signal: undefined })).toBe('skipped-busy');
+    expect(await service.prepareModel({ modelId: 'user/other', signal: undefined })).toBe('skipped-busy');
     gate.resolve();
     await loading;
     await sending;
@@ -749,14 +784,14 @@ describe('idle model preparation', () => {
 
   it('leaves normal generation usable after preparation fails', async () => {
     worker.prepareModel.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'invalid-gguf' }));
-    await expect(service.prepareModel({ model: 'local.gguf', signal: undefined })).rejects.toThrow('invalid-gguf');
+    await expect(service.prepareModel({ modelId: 'user/local', signal: undefined })).rejects.toThrow('invalid-gguf');
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).resolves.toHaveProperty('finishReason', 'stop');
   });
 
   it('does not allocate a worker for an already aborted preparation', async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(service.prepareModel({ model: 'local.gguf', signal: controller.signal })).rejects.toThrow('aborted');
+    await expect(service.prepareModel({ modelId: 'user/local', signal: controller.signal })).rejects.toThrow('aborted');
     expect(worker.prepareModel).not.toHaveBeenCalled();
     expect(factory).not.toHaveBeenCalled();
   });
@@ -769,7 +804,7 @@ describe('preparation progress ownership', () => {
       onProgress({ progress: { phase: 'loading', completed: 0.42, total: 1 } });
       onProgress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
     });
-    await service.prepareModel({ model: 'local.gguf', signal: undefined, onProgress });
+    await service.prepareModel({ modelId: 'user/local', signal: undefined, onProgress });
     expect(onProgress).toHaveBeenCalledWith({ progress: { phase: 'loading', completed: 0.42, total: 1 } });
     expect(onProgress).toHaveBeenLastCalledWith({ progress: { phase: 'initializing', completed: 0, total: 0 } });
     const previousCount = onProgress.mock.calls.length;
@@ -787,7 +822,7 @@ describe('preparation progress ownership', () => {
     worker.generate.mockReturnValueOnce(gate.promise);
     const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     const onProgress = vi.fn();
-    expect(await service.prepareModel({ model: 'other.gguf', signal: undefined, onProgress })).toBe('skipped-busy');
+    expect(await service.prepareModel({ modelId: 'user/other', signal: undefined, onProgress })).toBe('skipped-busy');
     expect(onProgress).not.toHaveBeenCalled();
     gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     await sending;
@@ -798,7 +833,7 @@ describe('preparation progress ownership', () => {
     worker.prepareModel.mockReturnValueOnce(gate.promise);
     const controller = new AbortController();
     const onProgress = vi.fn();
-    const task = service.prepareModel({ model: 'local.gguf', signal: controller.signal, onProgress });
+    const task = service.prepareModel({ modelId: 'user/local', signal: controller.signal, onProgress });
     const rejection = expect(task).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(worker.prepareModel).toHaveBeenCalledOnce());
     controller.abort();
@@ -936,7 +971,7 @@ describe('investigation and read-only cache ownership', () => {
 describe('stored chat allocation targets', () => {
   it('uses the saved target for warmup and the next generation', async () => {
     vi.mocked(storage.loadSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { contextTokens: 65536 } } });
-    await service.prepareModel({ model: 'local.gguf', signal: undefined });
+    await service.prepareModel({ modelId: 'user/local', signal: undefined });
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.prepareModel.mock.calls[0]?.[0].request.options.contextTokens).toBe(65536);
     expect(worker.generate.mock.calls[0]?.[0].request.options.contextTokens).toBe(65536);
@@ -981,4 +1016,100 @@ describe('stored chat allocation targets', () => {
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
   });
+});
+
+describe('trial interruption through the unchanged real performance service', () => {
+  it.each([true, false])('retires the interrupted owner and reacquires without reusing a poisoned scope (canReuse=%s)', async canReuse => {
+    const plan = performancePlan({ models: 2 });
+    factory.mockImplementation(() => {
+      worker.canReuse.mockReturnValue(true);
+      return { ...worker };
+    });
+    vi.mocked(listStoredModels).mockResolvedValue(plan.models);
+    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    using _stop = {
+      [Symbol.dispose]() {
+        runner.stop();
+      },
+    };
+    worker.generate.mockImplementationOnce(async ({ signal, onEvent, onSummary }) => {
+      await onEvent({ event: { type: 'text', text: 'partial' } });
+      expect(runner.interruptCurrent({ trialId: runner.snapshot()!.trials[0]!.id })).toBe(true);
+      expect(signal?.aborted).toBe(true);
+      worker.canReuse.mockReturnValue(canReuse);
+      onSummary?.({ diagnostic: performanceReport({ outcome: 'aborted' }) });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }).mockImplementation(async ({ onEvent, onSummary }) => {
+      worker.canReuse.mockReturnValue(true);
+      await onEvent({ event: { type: 'text', text: 'answer' } });
+      onSummary?.({ diagnostic: performanceReport() });
+      return { content: 'answer', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+    });
+    await runner.start({ plan, environment: performanceEnvironment() });
+    const result = runner.snapshot()!;
+    expect(result.modelErrors).toEqual([]);
+    expect(result.trials).toHaveLength(10);
+    expect(result.trials[0]).toMatchObject({ status: 'interrupted', partialText: 'partial', interruption: { recovery: 'new-scope' } });
+    expect(result.trials.slice(1).every(trial => trial.status === 'succeeded')).toBe(true);
+    expect(factory).toHaveBeenCalledTimes(3);
+    expect(worker.dispose).toHaveBeenCalledTimes(3);
+    expect(worker.generate).toHaveBeenCalledTimes(10);
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+  });
+
+  it('does not start the next request before the real service finishes asynchronous retirement', async () => {
+    const plan = performancePlan();
+    vi.mocked(listStoredModels).mockResolvedValue(plan.models);
+    const retirement = Promise.withResolvers<void>();
+    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        retirement.resolve();
+        runner.stop();
+      },
+    };
+    // Worker retirement is not just releaseRuntime; its transport handle must settle.
+    worker.dispose.mockReturnValueOnce(retirement.promise);
+    worker.generate.mockImplementationOnce(async () => {
+      runner.interruptCurrent({ trialId: runner.snapshot()!.trials[0]!.id });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    const pending = runner.start({ plan, environment: performanceEnvironment() });
+    await vi.waitFor(() => expect(worker.dispose).toHaveBeenCalledOnce());
+    expect(worker.generate).toHaveBeenCalledOnce();
+    expect(factory).toHaveBeenCalledOnce();
+    retirement.resolve();
+    await pending;
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(runner.snapshot()!.trials[0]?.interruption?.recovery).toBe('new-scope');
+  });
+});
+
+it('registers and removes temporary files without acquiring a Worker or copying to persistent storage', async () => {
+  const bytes = new Uint8Array(32);
+  bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+  const file = new File([bytes], 'direct.gguf');
+  Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
+  const stream = vi.fn(() => {
+    throw new Error('No copying');
+  });
+  Object.defineProperty(file, 'stream', { value: stream });
+  const changed = vi.fn();
+  using _subscription = { [Symbol.dispose]: service.subscribeModelList({ listener: changed }) };
+  await service.importModel({ file, storage: 'temp', signal: undefined });
+  expect(factory).not.toHaveBeenCalled();
+  expect(worker.importModel).not.toHaveBeenCalled();
+  expect(stream).not.toHaveBeenCalled();
+  // Registration and confirmed publication may notify independently.
+  expect(changed).toHaveBeenCalled();
+  vi.mocked(listStoredModels).mockRejectedValue(new Error('Browser storage unavailable'));
+  const models = await service.listModelEntries({ signal: undefined });
+  expect(models.map(model => model.modelId)).toEqual(['temp/direct-GGUF']);
+  changed.mockClear();
+  await service.removeTemporaryModel({ modelId: models[0]!.modelId, signal: undefined });
+  expect(changed).toHaveBeenCalledOnce();
+  vi.mocked(listStoredModels).mockResolvedValue([]);
+  expect(await service.listModelEntries({ signal: undefined })).toEqual([]);
+  expect(removeStoredModel).not.toHaveBeenCalled();
+  expect(factory).not.toHaveBeenCalled();
 });

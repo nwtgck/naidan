@@ -33,6 +33,6 @@ describe('persisted preferences versus execution boundary', () => {
       preferences: { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path } }, components: [], loras: [] } },
     });
     expect(restored.modelSelection?.primary.location.path).toBe(path);
-    expect(modelFileSchema.safeParse({ slot: 'diffusion', file: ggufFile(), path }).success).toBe(false);
+    expect(modelFileSchema.safeParse({ slot: 'diffusion', file: ggufFile(), relativePath: path }).success).toBe(false);
   });
 });

@@ -37,6 +37,8 @@ describe('parts to llama.cpp input', () => {
     const raw = '<think> literal </think>  🙂\r\n';
     const input = request({ messages: [{ id, role: 'assistant', parts: [{ ...text({ value: raw }), completeness: 'partial' }] }] });
     const prepared = await prepareLlamaCppRequest(input);
+    expect(prepared.modelId).toBe(input.model);
+    expect(prepared).not.toHaveProperty('model');
     expect(prepared.messages).toEqual([{ role: 'assistant', content: raw }]);
     expect(input.messages[0]?.parts[0]).toMatchObject({ completeness: 'partial', text: raw });
   });

@@ -6,7 +6,7 @@ import GlobalSearchModal from '@/features/global-search/components/GlobalSearchM
 import type { FlatSearchResultItem } from '@/features/global-search/types';
 import { toChatId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { APPLICATION_METADATA, HOME_METADATA } from '@/logic/document-metadata';
+import { APPLICATION_METADATA } from '@/logic/document-metadata';
 import { TEST_ONLY as presentationTestOnly } from './useAppPresentation';
 import { provideDocumentMetadata } from './useDocumentMetadata';
 
@@ -76,7 +76,6 @@ describe('explicit navigation after the home introduction', () => {
       setup() {
         const introduction = presentationTestOnly.createHomeIntroduction({ router });
         provideDocumentMetadata({ router, document, ...introduction });
-        introduction.continueHomeIntroduction({ routePath: '/chat/automatic' });
         return () => h('div');
       },
     }), { global: { plugins: [router] } });
@@ -87,7 +86,7 @@ describe('explicit navigation after the home introduction', () => {
     };
     await router.push('/chat/automatic');
     await nextTick();
-    expect(document.title).toBe(HOME_METADATA.title);
+    expect(document.title).toBe(APPLICATION_METADATA.title);
     // This is the exact router operation used by Sidebar's settings button.
     await router.push({ query: { settings: 'connection' } });
     await flushPromises();
@@ -101,7 +100,6 @@ describe('explicit navigation after the home introduction', () => {
       setup() {
         const introduction = presentationTestOnly.createHomeIntroduction({ router });
         provideDocumentMetadata({ router, document, ...introduction });
-        introduction.continueHomeIntroduction({ routePath: '/chat/automatic' });
         return () => h(GlobalSearchModal);
       },
     }), { global: { plugins: [router] } });
@@ -112,7 +110,7 @@ describe('explicit navigation after the home introduction', () => {
     };
     await router.push('/chat/automatic');
     await flushPromises();
-    expect(document.title).toBe(HOME_METADATA.title);
+    expect(document.title).toBe(APPLICATION_METADATA.title);
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
     await flushPromises();
     expect(openChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'automatic' }) });

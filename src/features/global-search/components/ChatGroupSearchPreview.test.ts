@@ -62,6 +62,7 @@ describe('ChatGroupSearchPreview Component', () => {
       }),
       openChatAtMessage: vi.fn(),
       openChatGroup: vi.fn(),
+      loadAndOpenChatGroup: vi.fn(),
       TEST_ONLY: {},
     });
     mockSidebarItems.value = [

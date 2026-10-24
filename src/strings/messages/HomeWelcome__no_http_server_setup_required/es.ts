@@ -1,0 +1,1 @@
+export const HomeWelcome__no_http_server_setup_required = (): string => "No necesitas configurar un servidor HTTP.";

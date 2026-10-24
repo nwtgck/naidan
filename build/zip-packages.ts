@@ -49,7 +49,7 @@ function addDirectoryToZip(zip: JSZip, basePath: string, relativePath = '', opti
   fileOverrides?: ReadonlyMap<string, string | Buffer>;
 }> = {}): void {
   const fullPath = path.join(basePath, relativePath);
-  const items = fs.readdirSync(fullPath);
+  const items = fs.readdirSync(fullPath).sort();
 
   for (const item of items) {
     const itemPath = path.join(fullPath, item);
@@ -95,6 +95,14 @@ async function stageZipPackage({
     fileOverrides: definition.fileOverrides,
   });
   folder.file('VERSION.txt', version);
+
+  // ZIP timestamps describe the archive entries, not a deployment generation.
+  // Normalize ALL entries, including JSZip's implicit parent directories and
+  // VERSION.txt. JSZip encodes these dates in UTC; 1980 fits the DOS ZIP format.
+  const archiveDate = new Date('1980-01-01T00:00:00.000Z');
+  for (const entry of Object.values(zip.files)) {
+    entry.date = archiveDate;
+  }
 
   // Standalone bundling is already memory-heavy. Compress package variants one
   // at a time so adding locales does not multiply live DEFLATE buffers.

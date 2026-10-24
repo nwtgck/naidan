@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { peerChatTranscriptSchema as transcriptSchema, peerChatEventSchema as eventSchema } from '@/features/naidan-rpc-integration/contract';
 import type { GenerationResult } from '@/features/llama-cpp-browser/types';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
+import type { PeerChatInput } from '@/features/naidan-rpc-integration/handlers/inference/resources';
 import { bytesSource, collectBytes, decodeDocument, encodeDocument, assertDocumentBounds } from '@/features/naidan-rpc-integration/codecs/transfer';
 
 export const TRANSCRIPT_LIMIT = 8 * 1024 * 1024;
@@ -11,10 +12,10 @@ export const OUTPUT_LIMIT = 32 * 1024 * 1024;
 export type Transcript = z.infer<typeof transcriptSchema>;
 export type ImageUpload = { mimeType: 'image/png' | 'image/jpeg' | 'image/webp'; byteLength: number; data: ReadableStream<Uint8Array> };
 
-export function prepareTranscript({ input }: { input: Parameters<LlamaCppBrowserService['generate']>[0]['input'] }): {
+export function prepareTranscript({ input }: { input: PeerChatInput }): {
   transcript: ReadableStream<Uint8Array>; images: ImageUpload[];
 } {
-  const { messages, model: _model, debug: _debug, tools, reasoningEffort, temperature, topP, maxTokens,
+  const { messages, modelId: _modelId, debug: _debug, tools, reasoningEffort, temperature, topP, maxTokens,
     presencePenalty, frequencyPenalty, stop, ...rest } = input;
   rest satisfies Record<PropertyKey, never>;
   const images: ImageUpload[] = [];
@@ -61,9 +62,9 @@ export function prepareTranscript({ input }: { input: Parameters<LlamaCppBrowser
   return { transcript: bytesSource({ bytes: encodeDocument({ value, limit: TRANSCRIPT_LIMIT }) }), images };
 }
 
-export async function receiveTranscript({ transcript, images, model, signal }: {
-  transcript: ReadableStream<Uint8Array>; images: readonly ImageUpload[]; model: string; signal: AbortSignal;
-}): Promise<Parameters<LlamaCppBrowserService['generate']>[0]['input']> {
+export async function receiveTranscript({ transcript, images, modelId, signal }: {
+  transcript: ReadableStream<Uint8Array>; images: readonly ImageUpload[]; modelId: string; signal: AbortSignal;
+}): Promise<PeerChatInput> {
   if (images.length > 8 || images.reduce((sum, image) => sum + image.byteLength, 0) > 64 * 1024 * 1024) {
     throw new Error('Remote chat attachment limit exceeded');
   }
@@ -91,7 +92,7 @@ export async function receiveTranscript({ transcript, images, model, signal }: {
   const { messages, tools, reasoningEffort, temperature, topP, maxTokens, presencePenalty, frequencyPenalty, stop, ...rest } = value;
   rest satisfies Record<PropertyKey, never>;
   return {
-    model,
+    modelId,
     debug: 'off',
     tools,
     reasoningEffort,

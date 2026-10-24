@@ -1,5 +1,6 @@
+import { createChatContentWrite, readChatContentWrite, chatContentFingerprint, type ChatContentModelBinding } from '@/00-storage/service/chat-content-binding';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { reactive } from 'vue';
+import { reactive, toRaw } from 'vue';
 import type { AssistantMessageNode, Chat, ChatContent, ChatMeta, Hierarchy, MessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId, toToolCallId, type ChatId } from '@/01-models/ids';
@@ -11,7 +12,9 @@ const state = vi.hoisted(() => ({
   current: undefined as Chat | undefined,
   fork: undefined as Chat | undefined,
   stored: new Map<ChatId, ChatContent>(),
+  live: new Map<ChatId, Chat>(),
   save: vi.fn(),
+  captureWrite: vi.fn(),
   metadata: vi.fn(),
   sent: vi.fn(),
   opened: vi.fn(),
@@ -21,18 +24,23 @@ const state = vi.hoisted(() => ({
   saveFile: vi.fn(),
 }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  getLiveChatById: ({ chatId }: { chatId: ChatId }) => state.current?.id === chatId ? state.current : null,
+  getLiveChatById: ({ chatId }: { chatId: ChatId }) => state.live.get(chatId) ?? null,
   getLiveChat: ({ chat }: { chat: Chat }) => chat,
   isProcessing: () => state.processing,
   registerLiveInstance: ({ chat }: { chat: Chat }) => {
     state.fork = chat;
+    state.live.set(chat.id, chat);
   },
+  rootItems: { value: [] },
   triggerCurrentChat: vi.fn(),
   loadData: vi.fn(),
+  synchronizeModelBindingContent: async () => 'synchronized',
   updateChatContent: state.save,
   updateChatMeta: state.metadata,
 }));
 vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({ sendMessageToTargetChat: state.sent }));
+vi.mock('@/logic/chat-settings-resolver', () => ({ resolveChatSettings: () => ({ endpoint: { type: 'llama_cpp_browser' }, modelId: state.current?.modelId ?? 'm', sources: { endpoint: 'chat', modelId: 'chat' } }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: {} }, synchronizeModelBindingSettings: async () => 'synchronized' }) }));
 vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
   abortProcessingForChat: () => {
     state.abort();
@@ -41,7 +49,11 @@ vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
 }));
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({ useChatNavigation: () => ({ openChat: state.opened }) }));
 vi.mock('@/00-storage/service', () => ({
+  ChatContentBindingChangedError: class extends Error {},
   storageService: {
+    createChatContentWrite: state.captureWrite,
+    captureSettingsStorage: () => () => true,
+    loadChatContentWithoutAttachments: async () => null,
     get canPersistBinary() {
       return state.persistBinary;
     },
@@ -50,6 +62,7 @@ vi.mock('@/00-storage/service', () => ({
   },
 }));
 import { commitFullHistoryManipulationForChat, editMessageForChat, forkChatForChat, switchVersionForChat } from './chat-history-flow';
+import { captureChatContentWrite } from './chat-model-binding-operations';
 
 function fixture(): { chat: Chat, user: MessageNode, assistant: AssistantMessageNode } {
   const assistant: AssistantMessageNode = {
@@ -69,6 +82,7 @@ function fixture(): { chat: Chat, user: MessageNode, assistant: AssistantMessage
   const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'question', completeness: 'complete' }], replies: { items: [assistant] } };
   const chat = reactive<Chat>({ id: toChatId({ raw: 'chat' }), title: 'Original', root: { items: [user] }, currentLeafId: assistant.id, createdAt: 1, updatedAt: 1, debugEnabled: false });
   state.current = chat;
+  state.live.set(chat.id, chat);
   const actualUser = chat.root.items[0]!, actualAssistant = actualUser.replies.items[0]!;
   if (actualAssistant.role !== 'assistant') {
     throw new Error('Invalid fixture');
@@ -80,16 +94,29 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.clearAllMocks();
   state.stored.clear();
+  state.live.clear();
   state.fork = undefined;
   state.processing = false;
   state.persistBinary = false;
   state.saveFile.mockReset();
+  state.captureWrite.mockImplementation(({ id, content, binding }: { id: Chat['id'], content: import('@/01-models/types').ChatContent | undefined, binding: ChatContentModelBinding | undefined }) => createChatContentWrite({ id, content, binding, isCurrent: () => true }));
   state.save.mockImplementation(async ({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent }) => {
     const next = updater({ current: state.stored.get(id) ?? null });
     state.stored.set(id, next);
+    const live = state.live.get(id);
+    if (live !== undefined) {
+      Object.assign(live, next);
+    }
     return next;
   });
-  state.metadata.mockImplementation(async ({ updater }: { updater: ({ current }: { current: ChatMeta | null }) => ChatMeta }) => updater({ current: null }));
+  state.metadata.mockImplementation(async ({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta }) => {
+    const next = updater({ current: state.live.get(id) ?? null });
+    const live = state.live.get(id);
+    if (live !== undefined) {
+      Object.assign(live, next);
+    }
+    return next;
+  });
 });
 
 describe('parts history branches', () => {
@@ -179,9 +206,43 @@ describe('parts history branches', () => {
     expect(copiedAssistant).toMatchObject({ createdAt: 2, interruption: { type: 'error', message: '記録済みの理由' } });
     expect(copiedTool.parts).toEqual(tool.parts);
     expect(chat.currentLeafId).toBe(copiedTool.id);
-    expect(state.stored.get(chat.id)!.root).toBe(chat.root);
+    expect(toRaw(state.stored.get(chat.id)!.root)).toBe(toRaw(chat.root));
     const updater = state.metadata.mock.calls.at(-1)![0].updater;
     expect(updater({ current: { ...chat, systemPrompt: undefined } }).systemPrompt).toEqual(prompt);
+  });
+
+  it.each(['content', 'empty model binding'])('keeps an editor proposal when storage rejects its opening %s expectation', async change => {
+    const { chat, user } = fixture();
+    if (user.role !== 'user') {
+      throw new Error('Wrong user');
+    }
+    chat.modelId = 'temp/model';
+    state.persistBinary = true;
+    user.parts.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'stale-file' }), binaryObjectId: toBinaryObjectId({ raw: 'stale-body' }), originalName: 'kept.txt', size: 1, mimeType: 'text/plain', uploadedAt: 1, status: 'memory', blob: new Blob(['x']) } });
+    if (change === 'empty model binding') {
+      chat.root.items = [];
+    }
+    const write = captureChatContentWrite({ chat, dependency: 'model' });
+    const baseline = readChatContentWrite({ write, id: chat.id }).baseline;
+    if (change === 'content') {
+      chat.root.items = [];
+    } else {
+      chat.modelId = 'user/saved';
+    }
+    const original = JSON.stringify(chat.root);
+    const proposal = JSON.stringify(user);
+    await expect(commitFullHistoryManipulationForChat({
+      chatId: chat.id,
+      messages: [user],
+      systemPrompt: undefined,
+      write,
+    })).rejects.toThrow();
+    expect(JSON.stringify(chat.root)).toBe(original);
+    expect(JSON.stringify(user)).toBe(proposal);
+    expect(state.save).not.toHaveBeenCalled();
+    expect(readChatContentWrite({ write, id: chat.id })).toMatchObject({ baseline, binding: { modelId: 'temp/model' } });
+    expect(state.saveFile).not.toHaveBeenCalled();
+    expect(state.metadata).not.toHaveBeenCalled();
   });
 
   it('freezes message and prompt snapshots before persisting a memory attachment', async () => {
@@ -198,8 +259,9 @@ describe('parts history branches', () => {
     }));
     const prompt = { behavior: 'append', content: 'original' } as const;
     const mutablePrompt: { behavior: 'append'; content: string } = { ...prompt };
+    const originalContent = chatContentFingerprint({ content: chat });
     const pending = commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user, assistant], systemPrompt: mutablePrompt });
-    expect(state.saveFile).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(state.saveFile).toHaveBeenCalledOnce());
     const body = user.parts[0];
     if (body?.type !== 'text') {
       throw new Error('Expected text');
@@ -207,6 +269,7 @@ describe('parts history branches', () => {
     body.text = 'later edit';
     mutablePrompt.content = 'later prompt';
     attachment.originalName = 'later.png';
+    chat.modelId = 'user/new-live-model';
     finish();
     await pending;
     const savedUser = chat.root.items[1]!;
@@ -217,6 +280,9 @@ describe('parts history branches', () => {
     }
     expect(savedImage.attachment).toMatchObject({ status: 'persisted', originalName: 'x.png' });
     expect(savedImage.attachment).not.toHaveProperty('blob');
+    const write = state.captureWrite.mock.results[0]!.value;
+    expect(state.save.mock.calls[0]![0].write).toBe(write);
+    expect(readChatContentWrite({ write, id: chat.id })).toMatchObject({ baseline: originalContent, binding: { modelId: 'm' } });
     expect(attachment.status).toBe('memory');
     expect(attachment.blob).toBeInstanceOf(Blob);
     expect(chat.systemPrompt).toEqual(prompt);
@@ -238,12 +304,15 @@ describe('parts history branches', () => {
     expect(log).toHaveBeenCalledOnce();
   });
 
-  it('keeps the new branch in memory without rewriting original nodes when content save fails', async () => {
+  it('keeps the editor proposal without installing it over the original nodes when content save fails', async () => {
     const { chat, user } = fixture();
+    const original = JSON.stringify(chat.root);
+    const proposal = JSON.stringify(user);
     state.save.mockRejectedValueOnce(new Error('content storage failure'));
     await expect(commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user], systemPrompt: undefined })).rejects.toThrow('content storage failure');
-    expect(chat.root.items).toHaveLength(2);
-    expect(chat.root.items[1]!.parts).toEqual(user.parts);
+    expect(JSON.stringify(chat.root)).toBe(original);
+    expect(JSON.stringify(user)).toBe(proposal);
+    expect(state.stored.has(chat.id)).toBe(false);
     expect(state.metadata).not.toHaveBeenCalled();
   });
 
@@ -259,6 +328,7 @@ describe('parts history branches', () => {
       finish = resolve;
     }));
     const pending = commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user], systemPrompt: undefined });
+    await vi.waitFor(() => expect(state.saveFile).toHaveBeenCalledOnce());
     const other: Chat = reactive({ ...chat, id: toChatId({ raw: 'other' }), root: { items: [] } });
     state.current = other;
     finish();

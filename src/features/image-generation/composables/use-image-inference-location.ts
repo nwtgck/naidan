@@ -188,8 +188,8 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     const choices = remoteImageModelChoices({ catalog: catalog.value, slot, family: editor.value.primary?.family });
     if (file) {
       const id = remoteImageFileKey({ file });
-      if (!choices.some(item => item.id === id)) {
-        choices.unshift({ id, label: file.location.path, detail: file.location.path, evidence: [], status: 'unverified', issue: undefined });
+      if (!choices.some(item => item.candidateKey === id)) {
+        choices.unshift({ candidateKey: id, label: file.location.path, detail: file.location.path, evidence: [], status: 'unverified', issue: undefined });
       }
     }
     return choices;
@@ -202,7 +202,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     // grants permission or silently fills a missing model component.
     return (['vae', 'clipL', 'clipG', 't5', 'lm'] as const).map(slot => {
       const file = editor.value.components.find(item => item.slot === slot)?.file;
-      return { slot, selected: file ? remoteImageFileKey({ file }) : '', required: requirements.some(item => item.slot === slot && item.required), choices: choices({ slot, file }) };
+      return { slot, selectedCandidateKey: file ? remoteImageFileKey({ file }) : '', required: requirements.some(item => item.slot === slot && item.required), choices: choices({ slot, file }) };
     });
   });
   const loraChoices = computed(() => choices({ slot: 'lora', file: undefined }));
@@ -215,7 +215,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
       return;
     }
     const item = catalog.value.find(item => remoteImageFileKey({ file: item.file }) === id);
-    if (!item || !primaryChoices.value.some(choice => choice.id === id)) {
+    if (!item || !primaryChoices.value.some(choice => choice.candidateKey === id)) {
       return;
     }
     if (item.selection) {
@@ -230,7 +230,7 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
       return;
     }
     const item = id ? catalog.value.find(item => remoteImageFileKey({ file: item.file }) === id) : undefined;
-    if (id && (!item || !components.value.find(component => component.slot === slot)?.choices.some(choice => choice.id === id))) {
+    if (id && (!item || !components.value.find(component => component.slot === slot)?.choices.some(choice => choice.candidateKey === id))) {
       return;
     }
     setEditor({ value: { ...editor.value, components: [...editor.value.components.filter(component => component.slot !== slot), ...(item ? [{ slot, file: item.file }] : [])] } });

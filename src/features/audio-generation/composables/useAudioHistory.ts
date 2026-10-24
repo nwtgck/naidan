@@ -1,7 +1,7 @@
 import { computed, onScopeDispose, shallowRef } from 'vue';
 import type { AudioGenerationInput, AudioHistoryOutput } from '@/features/audio-generation/types';
 
-export type AudioHistorySettings = Omit<AudioGenerationInput, 'reference'> & { modelName: string };
+export type AudioHistorySettings = Omit<AudioGenerationInput, 'reference'>;
 export type AudioHistoryEntry = {
   id: number,
   createdAt: number,
@@ -15,9 +15,9 @@ export type AudioHistoryEntry = {
  * Blob or read live form/service settings when a delayed result arrives.
  * Options and context are requested values, not the resolved native allocation.
  */
-export function captureAudioSettings({ input, modelName }: { input: AudioGenerationInput, modelName: string }): AudioHistorySettings {
+export function captureAudioSettings({ input }: { input: AudioGenerationInput }): AudioHistorySettings {
   const { reference: _reference, options, ...parameters } = input;
-  return { ...parameters, options: { ...options }, modelName };
+  return { ...parameters, options: { ...options } };
 }
 
 export function useAudioHistory() {

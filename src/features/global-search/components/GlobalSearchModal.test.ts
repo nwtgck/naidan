@@ -165,6 +165,7 @@ describe('GlobalSearchModal Component', () => {
       openChatGroup: vi.fn().mockImplementation(({ groupId }) => {
         mockOpenChatGroup({ id: groupId });
       }),
+      loadAndOpenChatGroup: vi.fn(),
       TEST_ONLY: {},
     });
     vi.mocked(useCurrentChatState).mockReturnValue({

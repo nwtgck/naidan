@@ -1,28 +1,24 @@
+import { directoryForModelFile } from './model-directory-input';
+import { withModelFileMarkers } from '@/logic/model-file-publication';
 import { hostDownloadMarker, hostDownloadMarkerPath } from '@/features/llama-cpp-browser/hugging-face/host-download-marker';
-import { resolveHostModel } from './host-model-store';
-import { parseHostModelReference, hostModelRoot, withDestinationLock } from './model-destination';
+import { resolveModel } from './model-resolution';
+import { hostModelRoot, withDestinationLock, type ModelDestination } from './model-destination';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
-import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, type DeletionPlan, type DeletionResult } from './deletion-plan';
-import { listHuggingFaceModels, withRepositoryLock, resolveRepositoryModel, parseModelReference, readJournal, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
-import { pendingName } from '@/features/llama-cpp-browser/hugging-face/types';
-import { allowedModelDirectory, describeDirectory, opfsRoot, resolveDirectory, importModelDirectory, userModelDirectory, existingUserModelDirectory, validSegment, type ModelDirectory } from './model-directory';
+import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, pruneCapturedModelRoot, repositoryLocationSchema, type RepositoryLocation, type DeletionPlan, type DeletionResult } from './deletion-plan';
+export type { ModelRemovalTarget, RepositoryLocation } from './deletion-plan';
+import { listHuggingFaceModels, withRepositoryLock, readJournal, repositoryDirectories, selectRepositoryModel, deleteRepository } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { pendingName, type DownloadJournal } from '@/features/llama-cpp-browser/hugging-face/types';
+import { allowedModelDirectory, describeDirectory, opfsRoot, resolveDirectory, importModelDirectory, existingUserModelDirectory, type ModelDirectory, type ModelRootLocation } from './model-directory';
 import { LlamaCppBrowserError, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
+import { withModelMutationLock } from './model-mutation-lock';
+export { withModelMutationLock } from './model-mutation-lock';
 
 const lockName = "naidan-llama-cpp-browser-model-store";
-const mutationLockName = "naidan-llama-cpp-browser-model-mutation";
 
 function isMissing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && (error.name === "NotFoundError" || error.name === "TypeMismatchError");
-}
-
-function userModelName({ id }: { id: string }): string {
-  const parts = id.split('/');
-  if (parts.length !== 2 || parts[0] !== 'user' || !allowedModelDirectory({ name: parts[1]! })) {
-    throw new LlamaCppBrowserError({ code: 'missing-model' });
-  }
-  return parts[1]!;
 }
 
 export async function withModelStoreLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
@@ -30,13 +26,6 @@ export async function withModelStoreLock<T>({ operation }: { operation: () => Pr
     throw new LlamaCppBrowserError({ code: "unavailable" });
   }
   return navigator.locks.request(lockName, operation);
-}
-
-export async function withModelMutationLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
-  if (!navigator.locks) {
-    throw new LlamaCppBrowserError({ code: 'unavailable' });
-  }
-  return navigator.locks.request(mutationLockName, operation);
 }
 
 export async function listStoredModels(): Promise<LocalModel[]> {
@@ -47,8 +36,8 @@ export async function listStoredModels(): Promise<LocalModel[]> {
       continue;
     }
     try {
-      const model = describeDirectory({ directory: await resolveDirectory({ folder, id: `user/${name}`, name }) });
-      result.push({ ...model, name: `user/${name}` });
+      const model = describeDirectory({ directory: await resolveDirectory({ folder, signal: undefined }), modelId: `user/${name}` });
+      result.push(model);
     } catch (error) {
       if (!(error instanceof LlamaCppBrowserError) && !isMissing({ error })) {
         throw error;
@@ -56,187 +45,257 @@ export async function listStoredModels(): Promise<LocalModel[]> {
     }
   }
   result.push(...await listHuggingFaceModels());
-  return result.sort((a, b) => a.name.localeCompare(b.name));
+  return result.sort((a, b) => a.modelId.localeCompare(b.modelId));
 }
 
 export async function importStoredModel({ file, onProgress, signal }: { file: File, signal: AbortSignal | undefined, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
-  if (!/^.+\.gguf$/i.test(file.name) || !validSegment({ name: file.name })) {
-    throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  }
+  const directory = directoryForModelFile({ file });
   const started = performance.now();
   logDiagnostic({ diagnostic: { event: 'import-start', bytes: file.size } });
-  const model = await importModelDirectory({ signal, directory: { name: `${file.name.slice(0, -5)}-GGUF`, files: [{ path: file.name, file }] }, onProgress });
+  const model = await importModelDirectory({ signal, directory, onProgress });
   logDiagnostic({ diagnostic: { event: 'import-complete', bytes: model.size, elapsedMs: performance.now() - started } });
   return model;
 }
 
-function includeSharedProjector({ choice }: { choice: 'include' | 'keep' | undefined }): boolean {
-  switch (choice) {
-  case 'include': case undefined: return true;
-  case 'keep': return false;
+type StoredLocation = Exclude<ModelRootLocation, { kind: 'temp' }>;
+export type ModelRemovalRequest = { plan: DeletionPlan, sharedPlan: DeletionPlan | undefined, affectedVariants: number };
+
+async function withRemovalLocationLock<T>({ location, operation }: { location: StoredLocation, operation: () => Promise<T> }): Promise<T> {
+  switch (location.kind) {
+  case 'host': return withDestinationLock({ destination: { kind: 'host', directoryId: location.directoryId }, operation: () => withRepositoryLock({ repository: location.repository, operation }) });
+  case 'hugging-face': return withRepositoryLock({ repository: location.repository, operation });
+  case 'opfs-user': return operation();
   default: {
-    const exhaustive: never = choice;
+    const exhaustive: never = location;
     throw new Error(String(exhaustive));
   }
   }
 }
 
-/** Public selectors are resolved before acceptance. Runtime and deletion use
- * captured identities; a missing file must not become another model's alias.
- */
-async function storedRepositoryModel({ id }: { id: string }): Promise<ModelDirectory> {
-  const { repository, variant } = parseModelReference({ name: id });
-  if (variant === undefined) {
-    return resolveRepositoryModel({ name: id });
+function repositoryDestination({ location }: { location: RepositoryLocation }): ModelDestination | undefined {
+  switch (location.kind) {
+  case 'host': return { kind: 'host', directoryId: location.directoryId };
+  case 'hugging-face': return undefined;
+  default: {
+    const exhaustive: never = location;
+    throw new Error(String(exhaustive));
   }
-  const selected = (await repositoryDirectories({ repository })).find(model => model.id === id);
-  if (!selected) {
-    throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  return selected;
 }
 
-async function removalTarget({ id, sharedProjector }: { id: string, sharedProjector: 'include' | 'keep' | undefined }): Promise<{ parent: FileSystemDirectoryHandle, name: string, folder: FileSystemDirectoryHandle, selectedPaths: string[] | undefined, projectors: string[], affectedVariants: number }> {
+function ownedDownloadPaths({ location, journal }: { location: RepositoryLocation, journal: DownloadJournal }): string[] {
+  const ownedFiles = journal.selection.files.filter((_file, index) => !journal.reused?.[index]);
+  switch (location.kind) {
+  case 'host': return [pendingName, ...ownedFiles.flatMap(file => [file.path, hostDownloadMarkerPath({ path: file.path })])];
+  case 'hugging-face': return [pendingName, ...ownedFiles.map(file => file.path)];
+  default: {
+    const exhaustive: never = location;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+async function captureRoot({ location }: { location: StoredLocation }): Promise<{ parent: FileSystemDirectoryHandle, folder: FileSystemDirectoryHandle, rootName: string }> {
   let parent: FileSystemDirectoryHandle;
-  let name: string;
-  let selectedPaths: string[] | undefined;
-  let projectors: string[] = [];
-  let affectedVariants = 0;
-  if (id.startsWith('hf.co/') || id.startsWith('host/')) {
-    const host = id.startsWith('host/') ? parseHostModelReference({ name: id }) : undefined;
-    const { repository, variant } = host ? { repository: host.repository, variant: host.modelPath } : parseModelReference({ name: id });
-    if (host) {
-      parent = await hostModelRoot({ destination: host.destination, mode: 'readwrite' });
-      parent = await parent.getDirectoryHandle(repository.split('/')[0]!);
-      name = repository.split('/')[1]!;
-    } else {
-      parent = await opfsRoot();
-      for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...repository.split('/'), 'resolve']) {
-        parent = await parent.getDirectoryHandle(segment);
-      }
-      name = 'main';
+  let rootName: string;
+  switch (location.kind) {
+  case 'opfs-user': {
+    const existing = await existingUserModelDirectory();
+    if (!existing) {
+      throw new LlamaCppBrowserError({ code: 'missing-model' });
     }
-    const folder = await parent.getDirectoryHandle(name);
-    let pending;
-    if (variant === undefined) {
-      try {
-        pending = await readJournal({ folder });
-      } catch (error) {
-        if (!isMissing({ error })) {
-          throw error;
+    parent = existing;
+    rootName = location.rootName;
+    break;
+  }
+  case 'host': {
+    parent = await hostModelRoot({ destination: { kind: 'host', directoryId: location.directoryId }, mode: 'readwrite' });
+    const [owner, repositoryName] = location.repository.split('/');
+    parent = await parent.getDirectoryHandle(owner!);
+    rootName = repositoryName!;
+    break;
+  }
+  case 'hugging-face': {
+    parent = await opfsRoot();
+    for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...location.repository.split('/'), 'resolve']) {
+      parent = await parent.getDirectoryHandle(segment);
+    }
+    rootName = 'main';
+    break;
+  }
+  default: {
+    const exhaustive: never = location;
+    throw new Error(String(exhaustive));
+  }
+  }
+  return { parent, rootName, folder: await parent.getDirectoryHandle(rootName) };
+}
+
+async function captureRemovalPlans({ target, root, selectedRelativePaths, projectorRelativePaths, affectedVariants }: {
+  target: DeletionPlan['target'], root: { parent: FileSystemDirectoryHandle, folder: FileSystemDirectoryHandle, rootName: string },
+  selectedRelativePaths: string[], projectorRelativePaths: string[], affectedVariants: number,
+}): Promise<ModelRemovalRequest> {
+  const { files } = await scanDeletionTree({ folder: root.folder });
+  const selected = [...new Set(withModelFileMarkers({ paths: selectedRelativePaths }))];
+  const projectors = [...new Set(withModelFileMarkers({ paths: projectorRelativePaths }))];
+  const plan = deletionPlanSchema.parse({
+    target,
+    ...root,
+    selectedRelativePaths: selected,
+    sharedProjector: projectors.length ? 'keep' : undefined,
+    files: files.filter(file => selected.includes(file.relativePath)),
+  });
+  const sharedPaths = [...new Set([...selected, ...projectors])];
+  const sharedPlan = projectors.length ? deletionPlanSchema.parse({
+    target,
+    ...root,
+    selectedRelativePaths: sharedPaths,
+    sharedProjector: 'include',
+    files: files.filter(file => sharedPaths.includes(file.relativePath)),
+  }) : undefined;
+  return { plan, sharedPlan, affectedVariants };
+}
+
+/** Resolve and capture the folder before showing a confirmation. Execution uses
+ * this folder even if public aliases are recomputed in the meantime.
+ */
+export async function prepareModelRemoval({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<ModelRemovalRequest> {
+  return withModelMutationLock({
+    operation: async () => {
+      signal?.throwIfAborted();
+      // Incomplete user imports must remain explicitly removable even though they
+      // are intentionally absent from the readable model inventory.
+      const userRootName = modelId.startsWith('user/') ? modelId.slice('user/'.length) : undefined;
+      let location: StoredLocation;
+      let directory: ModelDirectory | undefined;
+      if (userRootName !== undefined && allowedModelDirectory({ name: userRootName })) {
+        location = { kind: 'opfs-user', rootName: userRootName };
+      } else {
+        const resolved = await resolveModel({ modelId, signal });
+        switch (resolved.location.kind) {
+        case 'temp': throw new LlamaCppBrowserError({ code: 'missing-model' });
+        case 'opfs-user': case 'hugging-face': case 'host': location = resolved.location;
+          break;
+        default: {
+          const exhaustive: never = resolved.location;
+          throw new Error(String(exhaustive));
         }
+        }
+        directory = resolved.directory;
       }
-    }
-    if (pending) {
-      if (host) {
-        for (let index = 0; index < pending.selection.files.length; index++) {
-          if (!pending.reused?.[index]) {
-            await hostDownloadMarker({ folder, selection: pending.selection, index, action: 'check' });
+      return withRemovalLocationLock({
+        location,
+        operation: async () => {
+          const root = await captureRoot({ location });
+          let selectedRelativePaths: string[];
+          let projectorRelativePaths: string[];
+          let affectedVariants = 0;
+          switch (location.kind) {
+          case 'opfs-user': {
+            const { files } = await scanDeletionTree({ folder: root.folder });
+            projectorRelativePaths = files.filter(file => /\.gguf$/i.test(file.relativePath) && isProjector({ path: file.relativePath })).map(file => file.relativePath);
+            selectedRelativePaths = files.filter(file => (file.relativePath === pendingName || /\.gguf$/i.test(file.relativePath)) && !projectorRelativePaths.includes(file.relativePath)).map(file => file.relativePath);
+            break;
+          }
+          case 'hugging-face': case 'host': {
+            if (!directory) {
+              throw new LlamaCppBrowserError({ code: 'missing-model' });
+            }
+            projectorRelativePaths = directory.projectorFile ? [directory.projectorFile.relativePath] : [];
+            selectedRelativePaths = directory.files.filter(file => !projectorRelativePaths.includes(file.relativePath)).map(file => file.relativePath);
+            affectedVariants = Math.max(0, (await repositoryDirectories({ repository: location.repository, destination: repositoryDestination({ location }), signal })).length - 1);
+            break;
+          }
+          default: {
+            const exhaustive: never = location;
+            throw new Error(String(exhaustive));
+          }
+          }
+          signal?.throwIfAborted();
+          return captureRemovalPlans({ target: { kind: 'model', modelId, location }, root, selectedRelativePaths, projectorRelativePaths, affectedVariants });
+        },
+      });
+    },
+  });
+}
+
+export async function prepareRepositoryRemoval({ location, signal }: { location: RepositoryLocation, signal: AbortSignal | undefined }): Promise<ModelRemovalRequest> {
+  location = repositoryLocationSchema.parse(location);
+  return withModelMutationLock({
+    operation: () => withRemovalLocationLock({
+      location,
+      operation: async () => {
+        signal?.throwIfAborted();
+        const root = await captureRoot({ location });
+        let journal: DownloadJournal | undefined;
+        try {
+          journal = await readJournal({ folder: root.folder });
+        } catch (error) {
+          if (!isMissing({ error })) {
+            throw error;
           }
         }
-      }
-      selectedPaths = [pendingName, ...pending.selection.files.filter((_file, index) => !pending.reused?.[index]).flatMap(file => host ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])];
-    } else {
-      const directory = host ? await resolveHostModel({ name: id }) : await storedRepositoryModel({ id });
-      projectors = directory.projectorPath ? [directory.projectorPath] : [];
-      selectedPaths = directory.files.filter(file => !projectors.includes(file.path)).map(file => file.path);
-      affectedVariants = Math.max(0, (await repositoryDirectories({ repository, destination: host?.destination })).length - 1);
-    }
-  } else {
-    name = userModelName({ id });
-    parent = await userModelDirectory();
-    const files = (await scanDeletionTree({ folder: await parent.getDirectoryHandle(name) })).files;
-    projectors = files.filter(file => /\.gguf$/i.test(file.path) && isProjector({ path: file.path })).map(file => file.path);
-    // User model directories can also contain another engine's artifacts.
-    // Select GGUF files and our transient marker; shared metadata is not ours.
-    selectedPaths = files.filter(file => (file.path === pendingName || /\.gguf$/i.test(file.path)) && !projectors.includes(file.path)).map(file => file.path);
-  }
-  if (includeSharedProjector({ choice: sharedProjector })) {
-    selectedPaths?.push(...projectors);
-  }
-  return { parent, name, folder: await parent.getDirectoryHandle(name), selectedPaths, projectors, affectedVariants };
-}
-
-async function withRemovalRepositoryLock<T>({ id, operation }: { id: string, operation: () => Promise<T> }): Promise<T> {
-  if (id.startsWith('host/')) {
-    const { destination, repository } = parseHostModelReference({ name: id });
-    return withDestinationLock({ destination, operation: () => withRepositoryLock({ repository, operation }) });
-  }
-  return id.startsWith('hf.co/') ? withRepositoryLock({ repository: parseModelReference({ name: id }).repository, operation }) : operation();
-}
-
-export type ModelRemovalRequest = { plan: DeletionPlan, sharedPlan: DeletionPlan | undefined, affectedVariants: number };
-
-export async function prepareModelRemoval({ id }: { id: string }): Promise<ModelRemovalRequest> {
-  return withModelMutationLock({
-    operation: () => withRemovalRepositoryLock({
-      id,
-      operation: async () => {
-        const { folder, selectedPaths, projectors, affectedVariants } = await removalTarget({ id, sharedProjector: 'include' });
-        const { files } = await scanDeletionTree({ folder });
-        const selected = selectedPaths ? files.filter(file => selectedPaths.includes(file.path)) : files;
-        const plan = deletionPlanSchema.parse({ id, sharedProjector: projectors.length ? 'keep' : undefined, files: selected.filter(file => !projectors.includes(file.path)) });
-        const sharedPlan = projectors.length ? deletionPlanSchema.parse({ id, sharedProjector: 'include', files: selected }) : undefined;
-        return { plan, sharedPlan, affectedVariants };
+        let selectedRelativePaths: string[];
+        let projectorRelativePaths: string[] = [];
+        if (journal) {
+          if (journal.selection.repository !== location.repository) {
+            throw new Error('Download journal repository mismatch');
+          }
+          switch (location.kind) {
+          case 'host': {
+            for (let index = 0; index < journal.selection.files.length; index++) {
+              if (!journal.reused?.[index]) {
+                await hostDownloadMarker({ folder: root.folder, selection: journal.selection, index, action: 'check' });
+              }
+            }
+            break;
+          }
+          case 'hugging-face': break;
+          default: {
+            const exhaustive: never = location;
+            throw new Error(String(exhaustive));
+          }
+          }
+          selectedRelativePaths = ownedDownloadPaths({ location, journal });
+        } else {
+          const directory = selectRepositoryModel({ models: await repositoryDirectories({ repository: location.repository, destination: repositoryDestination({ location }), signal }), repository: location.repository, variant: undefined });
+          projectorRelativePaths = directory.projectorFile ? [directory.projectorFile.relativePath] : [];
+          selectedRelativePaths = directory.files.filter(file => !projectorRelativePaths.includes(file.relativePath)).map(file => file.relativePath);
+        }
+        signal?.throwIfAborted();
+        return captureRemovalPlans({ target: { kind: 'repository', location, journal }, root, selectedRelativePaths, projectorRelativePaths, affectedVariants: 0 });
       },
     }),
   });
 }
 
-export async function planStoredModelRemoval({ id }: { id: string }): Promise<DeletionPlan> {
-  const request = await prepareModelRemoval({ id });
-  return request.sharedPlan ?? request.plan;
-}
-
 export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult> {
   plan = deletionPlanSchema.parse(plan);
-  return withRemovalRepositoryLock({
-    id: plan.id,
+  return withRemovalLocationLock({
+    location: plan.target.location,
     operation: async () => {
-      const { parent, name, folder, selectedPaths } = await removalTarget({ id: plan.id, sharedProjector: plan.sharedProjector });
-      const result = await executeDeletionPlan({ folder, plan, selectedPaths });
-      switch (result) {
-      case 'changed': return result;
-      case 'deleted': break;
+      const location = plan.target.location;
+      switch (location.kind) {
+      case 'host': case 'hugging-face': return deleteRepository({ repository: location.repository, plan, destination: repositoryDestination({ location }) });
+      case 'opfs-user': {
+        const result = await executeDeletionPlan({ folder: plan.folder, files: plan.files, selectedRelativePaths: plan.selectedRelativePaths });
+        switch (result) {
+        case 'deleted': await pruneCapturedModelRoot({ plan });
+          return result;
+        case 'changed': return result;
+        default: {
+          const exhaustive: never = result;
+          throw new Error(String(exhaustive));
+        }
+        }
+      }
       default: {
-        const exhaustive: never = result;
+        const exhaustive: never = location;
         throw new Error(String(exhaustive));
       }
       }
-      try {
-        await parent.getDirectoryHandle(name);
-        await parent.removeEntry(name);
-      } catch (error) {
-        if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) {
-          throw error;
-        }
-      }
-      return result;
     },
   });
-}
-
-export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
-  if (name.startsWith('host/')) {
-    return resolveHostModel({ name });
-  }
-  if (name.startsWith('hf.co/')) {
-    return storedRepositoryModel({ id: name });
-  }
-  const directory = userModelName({ id: name });
-  try {
-    const parent = await existingUserModelDirectory();
-    if (!parent) {
-      throw new LlamaCppBrowserError({ code: 'missing-model' });
-    }
-    const folder = await parent.getDirectoryHandle(directory);
-    return await resolveDirectory({ folder, id: name, name: directory });
-  } catch (error) {
-    if (isMissing({ error })) {
-      throw new LlamaCppBrowserError({ code: 'missing-model' });
-    }
-    throw error;
-  }
 }
 
 export const TEST_ONLY = {

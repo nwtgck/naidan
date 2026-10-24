@@ -2,10 +2,10 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
 import { useChatModels } from '@/composables/chat/useChatModels';
-import { loadData } from '@/composables/chat/global/chat-core-singletons';
+import { loadData, replaceSidebarItems } from '@/composables/chat/global/chat-core-singletons';
 import { chatRuntimeStore, currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
-import type { Settings } from '@/01-models/types';
+import type { Settings, SidebarItem } from '@/01-models/types';
 import { watch } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
 import { useSettings } from '@/composables/useSettings';
@@ -23,13 +23,17 @@ export type ChatBootstrapAdapter = {
   TEST_ONLY: Record<never, never>,
 };
 
-export async function loadChatsForAppStartup(): Promise<void> {
+export async function loadChatsForAppStartup({ initialSidebar }: { initialSidebar: SidebarItem[] | undefined }): Promise<void> {
   /**
    * WHY: Startup may hydrate the Sidebar while onboarding is still visible,
    * but runtime listeners must remain inactive until the real app has
    * mounted. Keep data hydration separate from runtime activation.
    */
-  await loadData();
+  if (initialSidebar === undefined) {
+    await loadData();
+  } else {
+    replaceSidebarItems({ items: initialSidebar });
+  }
 }
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
@@ -112,7 +116,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   });
 
   async function loadChats() {
-    await loadChatsForAppStartup();
+    await loadChatsForAppStartup({ initialSidebar: undefined });
   }
 
   async function openChat({

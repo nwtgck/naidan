@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
+import type { StoredModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { openModelFileAccess } from './model-file-access';
 
 const slices = new WeakMap<Blob, Uint8Array>();
@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 function fixture({ size }: { size: number }): {
-  entry: ModelFile,
+  entry: StoredModelFile,
   bytes: Uint8Array,
   getFile: ReturnType<typeof vi.fn<() => Promise<File>>>,
   sync: ReturnType<typeof vi.fn>,
@@ -47,9 +47,9 @@ function fixture({ size }: { size: number }): {
   vi.spyOn(file, 'arrayBuffer').mockRejectedValue(new Error('Do not buffer the entire host model'));
   const getFile = vi.fn(async () => file);
   const sync = vi.fn().mockRejectedValue(new DOMException('Host handles are not OPFS', 'InvalidStateError'));
-  const entry: ModelFile = {
+  const entry: StoredModelFile = {
     storageKind: 'host',
-    path: 'nested/model.gguf',
+    relativePath: 'nested/model.gguf',
     file,
     handle: { getFile, createSyncAccessHandle: sync } as unknown as FileSystemFileHandle,
   };
@@ -156,7 +156,7 @@ describe('direct linked-folder model reads', () => {
     const failure = new DOMException('OPFS read denied', 'NotAllowedError');
     host.sync.mockRejectedValue(failure);
 
-    await expect(openModelFileAccess({ entry })).rejects.toBe(failure);
+    await expect(openModelFileAccess({ entry: { ...entry, storageKind: 'opfs' } })).rejects.toBe(failure);
     expect(host.getFile).not.toHaveBeenCalled();
     expect(readAsArrayBuffer).not.toHaveBeenCalled();
   });

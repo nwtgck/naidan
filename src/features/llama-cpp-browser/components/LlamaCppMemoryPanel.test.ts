@@ -28,7 +28,7 @@ describe('passive memory panel', () => {
       data: {
         kind: 'naidan-llama-cpp-memory',
         instanceId: 'historical-core',
-        profile: 'cpu-wasm64',
+        profile: 'webgpu-wasm64-jspi',
         checkpoint: 'model-loaded',
         capacityBytes: 2 ** 33,
         timestamp: 1000,

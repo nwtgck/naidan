@@ -3,7 +3,7 @@ import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-uti
 import LlamaCppBrowserModelAction from './LlamaCppBrowserModelAction.vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
-const model = { id: 'local-model-id', name: 'Local model', size: 128, importedAt: 1 };
+const model = { modelId: 'user/LocalModel', size: 128, importedAt: 1 };
 const wrappers: VueWrapper[] = [];
 
 function render(): VueWrapper {
@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('local model split action', () => {
-  it('exposes only the active label and keeps the main button text-only while busy', async () => {
+  it('exposes only the active label and retains the action icon while busy', async () => {
     const wrapper = render();
     const main = wrapper.get('[data-testid="llama-model-action-main"]');
     const labels = wrapper.get('[data-testid="llama-model-action-labels"]');
@@ -50,20 +50,22 @@ describe('local model split action', () => {
     expect(candidates.map(candidate => candidate.text())).toEqual(['Create chat group', 'Set as default', 'In use']);
     expect(candidates.map(candidate => candidate.attributes('aria-hidden'))).toEqual(['false', 'true', 'true']);
     expect(candidates.map(candidate => candidate.classes().includes('invisible'))).toEqual([false, true, true]);
-    expect(main.find('svg').exists()).toBe(false);
+    expect(main.get('svg').attributes('aria-hidden')).toBe('true');
 
     await wrapper.get('[data-testid="llama-model-action-options"]').trigger('click');
     await option({ testId: 'llama-model-action-set-default' }).trigger('click');
     expect(candidates.map(candidate => candidate.attributes('aria-hidden'))).toEqual(['true', 'false', 'true']);
     expect(candidates.map(candidate => candidate.classes().includes('invisible'))).toEqual([true, false, true]);
-    await wrapper.setProps({ current: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.name } });
+    await wrapper.setProps({ current: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId } });
     expect(candidates.map(candidate => candidate.attributes('aria-hidden'))).toEqual(['true', 'true', 'false']);
     expect(candidates.map(candidate => candidate.classes().includes('invisible'))).toEqual([true, true, false]);
     expect(main.attributes('aria-label')).toBe('In use');
-    expect(main.find('svg').exists()).toBe(false);
+    expect(main.findAll('svg')).toHaveLength(1);
+    const actionIcon = main.get('svg').element;
 
     await wrapper.setProps({ creating: true });
-    expect(main.find('svg').exists()).toBe(false);
+    expect(main.get('svg').element).toBe(actionIcon);
+    expect(main.find('svg.animate-spin').exists()).toBe(false);
     expect(main.attributes('aria-busy')).toBe('true');
     const options = wrapper.get('[data-testid="llama-model-action-options"]');
     expect(options.find('svg.animate-spin').exists()).toBe(true);
@@ -117,7 +119,7 @@ describe('local model split action', () => {
 
   it('keeps the dropdown usable when the selected model is already the default', async () => {
     const wrapper = render();
-    await wrapper.setProps({ current: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.name } });
+    await wrapper.setProps({ current: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId } });
     await wrapper.get('[data-testid="llama-model-action-options"]').trigger('click');
     await option({ testId: 'llama-model-action-set-default' }).trigger('click');
     expect(wrapper.get('[data-testid="llama-model-action-main"]').attributes('aria-label')).toBe('In use');

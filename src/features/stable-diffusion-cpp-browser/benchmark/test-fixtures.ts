@@ -6,13 +6,13 @@ import type { ImageDiagnostic } from '@/features/stable-diffusion-cpp-browser/di
 
 export function targetFixture({ id }: { id: string }): ImageBenchmarkTarget {
   return {
-    id,
+    candidateKey: id,
     label: `model-${id}.gguf`,
     detail: `user/${id}/model.gguf`,
     facts: { family: 'sd-checkpoint', variant: 'unknown', evidence: ['synthetic fixture'] },
     composition: 'automatic',
     components: [],
-    models: [{ slot: 'model', path: 'model.gguf', file: ggufFile() }],
+    models: [{ slot: 'model', relativePath: 'model.gguf', file: ggufFile() }],
     missing: [],
     issue: undefined,
   };

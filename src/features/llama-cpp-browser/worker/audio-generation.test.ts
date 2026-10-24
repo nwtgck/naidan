@@ -1,3 +1,4 @@
+import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { synthesizeAudio, generateAudio, audioPreviewBoundary } from './audio-generation';
 import { readAudioScalar } from './audio-memory';
@@ -10,7 +11,7 @@ const session = vi.hoisted(() => ({ prepare: vi.fn(), release: vi.fn(async () =>
 vi.mock('./session', () => ({ prepareAudioSession: session.prepare, releaseSession: session.release }));
 
 function request(): WorkerAudioInput {
-  return { ...defaultAudioParameters(), model: 'user/voice', text: 'こんにちは', options: { profile: 'cpu-wasm32' }, debug: 'off' };
+  return { ...defaultAudioParameters(), modelId: 'user/voice', resolvedModel: resolvedModelFixture({ modelId: 'user/voice' }), text: 'こんにちは', options: { profile: 'cpu-wasm32' }, debug: 'off' };
 }
 
 function reference(): Blob {
@@ -463,4 +464,19 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
     expect(native.controls.steps).toBe(72);
     expect(native.owned.size).toBe(0);
   });
+});
+
+it('does not feed worker-only temporary sources into the strict audio input schema', async () => {
+  const native = audioNativeFixture({ pointerBytes: 4 });
+  const modelId = 'temp/voice';
+  const entry = { relativePath: 'model.gguf', file: new File(['fixture'], 'model.gguf'), storageKind: 'temp' as const, registrationRevision: 1 };
+  const result = await synthesizeAudio({
+    core: native.core,
+    context: 20n,
+    projector: 30n,
+    request: { ...request(), modelId, resolvedModel: { modelId, location: { kind: 'temp', rootPath: 'temp/voice' }, directory: { files: [entry], primaryFile: entry, projectorFile: undefined } } },
+    cancellationSignal: undefined,
+    onProgress: () => {},
+  });
+  expect(result).toEqual(audioResult());
 });

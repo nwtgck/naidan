@@ -32,7 +32,7 @@ export async function preloadCoreModule({ profile, baseURL }: { profile: LlamaCp
   switch (profile) {
   case 'cpu-wasm32': await import('virtual:llama-cpp-browser-core/cpu-wasm32');
     return;
-  case 'cpu-wasm64': await import('virtual:llama-cpp-browser-core/cpu-wasm64');
+  case 'webgpu-wasm64-jspi-gpu-profile': await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi-gpu-profile');
     return;
   case 'webgpu-wasm32-asyncify': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-asyncify');
     return;
@@ -58,8 +58,8 @@ export async function loadCoreModule({ profile, baseURL, moduleOptions }: {
     const module = await (await import('virtual:llama-cpp-browser-core/cpu-wasm32')).default(moduleOptions);
     return { module, chat: bindNativeChat({ native: module }) };
   }
-  case 'cpu-wasm64': {
-    const module = await (await import('virtual:llama-cpp-browser-core/cpu-wasm64')).default(moduleOptions);
+  case 'webgpu-wasm64-jspi-gpu-profile': {
+    const module = await (await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi-gpu-profile')).default(moduleOptions);
     return { module, chat: bindNativeChat({ native: module }) };
   }
   case 'webgpu-wasm32-asyncify': {

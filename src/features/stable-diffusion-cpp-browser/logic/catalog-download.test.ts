@@ -99,8 +99,8 @@ it('never fetches on inventory read; explicit download writes original paths and
   expect(calls.fetch.mock.calls[0]![0].request.url).toContain(`/tree/${revision}/weights?`);
   expect(calls.fetch.mock.calls[1]![0].request.url).toBe(`https://huggingface.co/org/model/resolve/${revision}/weights/model.gguf`);
   const inventory = await listImageRepositories({ signal: undefined });
-  expect(inventory[0]?.id).toBe('huggingface.co/org/model/resolve/main');
-  expect(inventory[0]?.files[0]?.path).toBe(file.path);
+  expect(inventory[0]?.repositoryKey).toBe('huggingface.co/org/model/resolve/main');
+  expect(inventory[0]?.files[0]?.relativePath).toBe(file.path);
   expect(new Uint8Array(await inventory[0]!.files[0]!.file.arrayBuffer())).toEqual(bytes);
 });
 
@@ -377,9 +377,9 @@ it('keeps partial image downloads hidden from the existing llama.cpp reader as w
     },
   })).rejects.toThrow();
   const folder = await stored();
-  expect(await readModelFiles({ folder: folder as unknown as FileSystemDirectoryHandle, prefix: '' })).toEqual([]);
+  expect(await readModelFiles({ folder: folder as unknown as FileSystemDirectoryHandle, prefix: '', storageKind: 'opfs', signal: undefined })).toEqual([]);
   await downloadImageRecipe({ files: [file], signal: new AbortController().signal, onProgress() {} });
-  expect((await readModelFiles({ folder: folder as unknown as FileSystemDirectoryHandle, prefix: '' })).map(entry => entry.path)).toEqual([file.path]);
+  expect((await readModelFiles({ folder: folder as unknown as FileSystemDirectoryHandle, prefix: '', storageKind: 'opfs', signal: undefined })).map(entry => entry.relativePath)).toEqual([file.path]);
 });
 
 it('does not publish when writing the completion receipt fails, and recovers without a second payload', async () => {

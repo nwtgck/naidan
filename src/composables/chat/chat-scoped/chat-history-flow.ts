@@ -1,9 +1,10 @@
+import type { ChatContentWrite } from '@/00-storage/service';
 import { ensureStrings } from '@/strings';
 import { reactive, toRaw } from 'vue';
 import type { AssistantMessageNode, Attachment, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt } from '@/01-models/types';
 import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
 import { cloneLmParameters } from '@/utils/lm-parameters';
-import { storageService } from '@/00-storage/service';
+import { ChatContentBindingChangedError, storageService } from '@/00-storage/service';
 import {
   createBranchFromMessages,
   findDeepestLeaf,
@@ -33,6 +34,7 @@ import { cloneToolConfigs } from '@/features/tools/tool-config';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
+import { assertChatContentWriteCurrent, captureChatContentWrite, acquireChatModelBindingOperation, synchronizeChatModelBindingAdmission, withChatModelBindingOperation } from './chat-model-binding-operations';
 
 export async function forkChatForChat({
   chatId,
@@ -41,9 +43,12 @@ export async function forkChatForChat({
   chatId: ChatId,
   messageId: MessageId,
 }): Promise<ChatId | null> {
-  return await forkChatFromTarget({
-    targetChat: getLiveChatById({ chatId }),
-    messageId,
+  return await withChatModelBindingOperation({
+    chatId,
+    operation: async () => {
+      await assertHistoryBindingAdmission({ chatId });
+      return await forkChatFromTarget({ targetChat: getLiveChatById({ chatId }), messageId });
+    },
   });
 }
 
@@ -77,13 +82,15 @@ export async function switchVersionForChat({
   chatId: ChatId,
   messageId: MessageId,
 }): Promise<void> {
-  const targetChat = getLiveChatById({ chatId });
-  if (targetChat === null) {
-    return;
-  }
-  await switchVersionInTarget({
-    targetChat,
-    messageId,
+  await withChatModelBindingOperation({
+    chatId,
+    operation: async () => {
+      await assertHistoryBindingAdmission({ chatId });
+      const targetChat = getLiveChatById({ chatId });
+      if (targetChat !== null) {
+        await switchVersionInTarget({ targetChat, messageId });
+      }
+    },
   });
 }
 
@@ -91,15 +98,18 @@ export async function commitFullHistoryManipulationForChat({
   chatId,
   messages,
   systemPrompt,
+  ...expectation
 }: {
   chatId: ChatId,
   messages: readonly MessageNode[],
   systemPrompt: SystemPrompt | undefined,
+  write?: ChatContentWrite,
 }): Promise<void> {
   const chat = getLiveChatById({ chatId });
   if (chat === null) {
     return;
   }
+  const write = expectation.write ?? captureChatContentWrite({ chat, dependency: 'model' });
 
   // Snapshot the complete proposed branch before any storage awaits. Only these
   // copies become the new branch; the editor and existing replies remain intact.
@@ -121,6 +131,14 @@ export async function commitFullHistoryManipulationForChat({
     }
   })();
 
+  await withChatModelBindingOperation({ chatId, operation: () => commitFullHistoryWithBinding({ chat, newNodes, prompt, write }) });
+}
+
+async function commitFullHistoryWithBinding({ chat, newNodes, prompt, write }: {
+  chat: Chat, newNodes: MessageNode[], prompt: SystemPrompt | undefined, write: ChatContentWrite,
+}): Promise<void> {
+  await assertHistoryBindingAdmission({ chatId: chat.id });
+  assertChatContentWriteCurrent({ chat: getLiveChatById({ chatId: chat.id }) ?? chat, write });
   for (const message of newNodes) {
     switch (message.role) {
     case 'user': break;
@@ -167,25 +185,21 @@ export async function commitFullHistoryManipulationForChat({
   }
 
   const mutableChat = getLiveChat({ chat });
-  mutableChat.systemPrompt = prompt;
-  if (newNodes.length > 0) {
-    mutableChat.root.items.push(newNodes[0]!);
-    mutableChat.currentLeafId = newNodes[newNodes.length - 1]!.id;
-  }
-  mutableChat.updatedAt = Date.now();
-  notifyChatChanged({ chatId: mutableChat.id });
-
+  const proposedRoot = newNodes.length === 0 ? mutableChat.root : { items: [...mutableChat.root.items, newNodes[0]!] };
+  const proposedLeafId = newNodes.length === 0 ? mutableChat.currentLeafId : newNodes[newNodes.length - 1]!.id;
   await updateChatContent({
     id: mutableChat.id,
-    updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+    write,
+    updater: () => ({ root: proposedRoot, currentLeafId: proposedLeafId }),
   });
   await updateChatMeta({
     id: mutableChat.id,
+    write,
     updater: ({ current }) => ({
       ...(current ?? mutableChat),
       systemPrompt: prompt,
-      updatedAt: mutableChat.updatedAt,
-      currentLeafId: mutableChat.currentLeafId,
+      updatedAt: Date.now(),
+      currentLeafId: proposedLeafId,
     }),
   });
 }
@@ -236,15 +250,20 @@ async function forkChatFromTarget({
   });
 
   registerLiveInstance({ chat: newChat });
+  const forkWrite = storageService.createChatContentWrite({ id: newChatId, content: undefined, binding: undefined });
   await updateChatContent({
     id: newChatId,
+    write: forkWrite,
     updater: () => ({ root: newChat.root, currentLeafId: newChat.currentLeafId }),
   });
   await updateChatMeta({
     id: newChatId,
+    write: forkWrite,
+    creation: 'new-chat',
     updater: () => newChat,
   });
   await storageService.updateHierarchy({
+    contentWrite: { id: newChatId, write: forkWrite },
     updater: ({ current }) => {
       return prependForkedChatToHierarchy({
         current,
@@ -278,75 +297,84 @@ async function editMessageInTarget({
     }
   }
 
-  const mutableChat = getLiveChat({ chat: targetChat });
-  const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
-  if (node === null) {
-    return;
-  }
+  const bindingOperation = await acquireChatModelBindingOperation({ chatId: targetChat.id });
+  let sendEdited: (() => Promise<void>) | undefined;
+  try {
+    await assertHistoryBindingAdmission({ chatId: targetChat.id });
+    const mutableChat = getLiveChat({ chat: targetChat });
+    const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+    const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
+    if (node === null) {
+      return;
+    }
 
-  switch (node.role) {
-  case 'assistant': {
+    switch (node.role) {
+    case 'assistant': {
     // A manual replacement creates a sibling, not an edited version of generated reasoning or calls.
     // Keep the original node and every descendant intact for version switching.
-    const correctedNode: AssistantMessageNode = {
-      id: generateId<MessageId>(),
-      role: 'assistant',
-      parts: [{ type: 'text', text: newContent, completeness: 'complete' }],
-      createdAt: Date.now(),
-      modelId: node.modelId,
-      replies: { items: [] },
-      interruption: undefined,
-      lmParameters: cloneLmParameters({ lmParameters: node.lmParameters }),
-    };
-    const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
-    if (parent) {
-      parent.replies.items.push(correctedNode);
-    } else {
-      mutableChat.root.items.push(correctedNode);
+      const correctedNode: AssistantMessageNode = {
+        id: generateId<MessageId>(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: newContent, completeness: 'complete' }],
+        createdAt: Date.now(),
+        modelId: node.modelId,
+        replies: { items: [] },
+        interruption: undefined,
+        lmParameters: cloneLmParameters({ lmParameters: node.lmParameters }),
+      };
+      const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
+      if (parent) {
+        parent.replies.items.push(correctedNode);
+      } else {
+        mutableChat.root.items.push(correctedNode);
+      }
+      mutableChat.currentLeafId = correctedNode.id;
+      await updateChatContent({
+        id: mutableChat.id,
+        write,
+        updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+      });
+      notifyChatChanged({ chatId: mutableChat.id });
+      break;
     }
-    mutableChat.currentLeafId = correctedNode.id;
-    await updateChatContent({
-      id: mutableChat.id,
-
-      updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
-    });
-    notifyChatChanged({ chatId: mutableChat.id });
-    break;
+    case 'user':
+      sendEdited = () => sendEditedMessage({
+        mutableChat,
+        messageId,
+        newContent,
+        attachments: node.parts.flatMap(part => {
+          switch (part.type) {
+          case 'text': return [];
+          case 'attachment': return [part.attachment];
+          default: {
+            const _ex: never = part;
+            throw new Error(`Unhandled user part: ${_ex}`);
+          }
+          }
+        }),
+        lmParameters,
+      });
+      break;
+    case 'system':
+      sendEdited = () => sendEditedMessage({
+        mutableChat,
+        messageId,
+        newContent,
+        attachments: undefined,
+        lmParameters,
+      });
+      break;
+    case 'tool':
+      break;
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    }
+    }
+  } finally {
+    bindingOperation.release();
   }
-  case 'user':
-    await sendEditedMessage({
-      mutableChat,
-      messageId,
-      newContent,
-      attachments: node.parts.flatMap(part => {
-        switch (part.type) {
-        case 'text': return [];
-        case 'attachment': return [part.attachment];
-        default: {
-          const _ex: never = part;
-          throw new Error(`Unhandled user part: ${_ex}`);
-        }
-        }
-      }),
-      lmParameters,
-    });
-    break;
-  case 'system':
-    await sendEditedMessage({
-      mutableChat,
-      messageId,
-      newContent,
-      attachments: undefined,
-      lmParameters,
-    });
-    break;
-  case 'tool':
-    break;
-  default: {
-    const _ex: never = node;
-    throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
-  }
-  }
+  await sendEdited?.();
 }
 
 async function switchVersionInTarget({
@@ -357,6 +385,7 @@ async function switchVersionInTarget({
   messageId: MessageId,
 }): Promise<void> {
   const mutableChat = getLiveChat({ chat: targetChat });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
   const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
   if (node === null) {
     return;
@@ -366,7 +395,7 @@ async function switchVersionInTarget({
   notifyChatChanged({ chatId: mutableChat.id });
   await updateChatContent({
     id: mutableChat.id,
-
+    write,
     updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
   });
 }
@@ -418,6 +447,18 @@ async function sendEditedMessage({
     attachments,
     lmParameters,
   });
+}
+
+async function assertHistoryBindingAdmission({ chatId }: { chatId: ChatId }): Promise<void> {
+  const outcome = await synchronizeChatModelBindingAdmission({ chatId });
+  switch (outcome) {
+  case 'synchronized': return;
+  case 'changed': throw new ChatContentBindingChangedError();
+  default: {
+    const exhaustive: never = outcome;
+    throw new Error(String(exhaustive));
+  }
+  }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

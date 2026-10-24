@@ -9,6 +9,7 @@ import { toChatGroupId } from '@/01-models/ids';
 vi.mock('../00-storage/service', () => ({
   storageService: {
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
+    updateChatContent: vi.fn<StorageService['updateChatContent']>().mockImplementation(async ({ updater }) => updater({ current: null })),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     updateChatGroup: vi.fn().mockResolvedValue(undefined),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => {
@@ -24,6 +25,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: reactive({ endpoint: { type: 'openai', url: '' }, autoTitleEnabled: true }),
   }),
 }));

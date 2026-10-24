@@ -1,6 +1,14 @@
 import { hostModelHandles } from '@/00-storage/service/host-model-handles';
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 
+export function missingHostModelDirectoryApis(): string[] {
+  return [
+    ...(typeof window === 'undefined' || typeof Reflect.get(window, 'showDirectoryPicker') !== 'function' ? ['showDirectoryPicker'] : []),
+    ...(typeof indexedDB === 'undefined' ? ['IndexedDB'] : []),
+    ...(typeof navigator === 'undefined' || typeof navigator.locks?.request !== 'function' ? ['Web Locks'] : []),
+  ];
+}
+
 export function hostModelPermissionGranted({ permission }: { permission: PermissionState }): boolean {
   switch (permission) {
   case 'granted': return true;
@@ -35,6 +43,10 @@ export async function unregisterHostModelDirectory({ id, save, restore }: {
       throw new Error('Could not remove the stored handle. The model directory registration was restored; retry removal.', { cause: error });
     }
   });
+}
+
+export function hostModelDirectoryLabel({ id, name, entries }: { id: string, name: string, entries: readonly { id: string, name: string }[] }): string {
+  return entries.some(entry => entry.name === name && entry.id !== id) ? `${name} (${id})` : name;
 }
 
 export const TEST_ONLY = {

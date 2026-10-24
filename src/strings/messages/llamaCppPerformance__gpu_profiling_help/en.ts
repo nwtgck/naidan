@@ -1,0 +1,1 @@
+export const llamaCppPerformance__gpu_profiling_help = (): string => "Measure shader time with the 64-bit WebGPU diagnostic runtime. Profiling adds overhead, so these runs are excluded from ordinary speed summaries.";

@@ -1,3 +1,5 @@
+import { temporaryModelFiles } from '@/logic/temporary-model-files';
+import type { LocalImageRepository } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ModelCandidate } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
@@ -14,6 +16,8 @@ const mocks = vi.hoisted(() => {
     create: vi.fn(),
     generate: vi.fn(),
     dispose: vi.fn(),
+    listChat: vi.fn<() => Promise<{ modelId: string }[]>>(async () => []),
+    generateChat: vi.fn(),
     configuration: {
       kind: 'available',
       sourceCommit: commit,
@@ -29,7 +33,7 @@ const mocks = vi.hoisted(() => {
     },
   };
 });
-vi.mock('@/features/llama-cpp-browser/index-hosted', () => ({ createReadOnlyLlamaCppClient: () => ({ generate: vi.fn(), dispose: vi.fn(async () => {}) }), llamaCppBrowserService: { listModels: vi.fn(async () => []) } }));
+vi.mock('@/features/llama-cpp-browser/index-hosted', () => ({ createReadOnlyLlamaCppClient: () => ({ generate: mocks.generateChat, dispose: vi.fn(async () => {}) }), llamaCppBrowserService: { listModelEntries: mocks.listChat } }));
 vi.mock('@/features/stable-diffusion-cpp-browser/inference/engine', () => ({ createImageEngineClient: mocks.create }));
 vi.mock('@/features/stable-diffusion-cpp-browser/logic/repository-store', () => ({ listImageRepositories: mocks.opfs, listHostImageRepositories: mocks.host }));
 vi.mock('@/features/stable-diffusion-cpp-browser/logic/model-candidates', () => ({ scanImageRepositories: mocks.scan }));
@@ -38,9 +42,9 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: mocks.c
 
 function candidate({ path, roles }: { path: string, roles: ModelCandidate['roles'] }): ModelCandidate {
   return {
-    id: path,
-    repositoryId: 'user/model',
-    path,
+    candidateKey: path,
+    repositoryKey: 'user/model',
+    primaryRelativePath: path,
     roles,
     classes: [],
     hostSource: undefined,
@@ -51,7 +55,7 @@ function candidate({ path, roles }: { path: string, roles: ModelCandidate['roles
     issue: undefined,
     turboHint: false,
     variant: 'unknown',
-    files: [{ path, file: new File([new Uint8Array(16)], path, { lastModified: 123 }) }],
+    files: [{ relativePath: path, file: new File([new Uint8Array(16)], path, { lastModified: 123 }) }],
   };
 }
 
@@ -82,6 +86,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const root of temporaryModelFiles.list()) {
+    temporaryModelFiles.remove({ rootPath: root.rootPath });
+  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -90,6 +97,21 @@ it('reads catalogs without creating an engine or downloading anything', async ()
   const catalog = await resource().listImageModels({ signal: new AbortController().signal });
   expect(catalog[0]?.selection?.primary.file.expected).toEqual({ size: 16, lastModified: 123 });
   expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('preserves readable model references at the peer boundary', async () => {
+  const modelId = 'host/MyModels1/alice/Chat-GGUF:Q4';
+  mocks.listChat.mockResolvedValueOnce([{ modelId }]);
+  const resources = resource();
+  expect(await resources.listChatModels({ signal: new AbortController().signal })).toEqual([{ modelId }]);
+  await resources.generateChat({
+    input: { modelId, messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] },
+    signal: new AbortController().signal,
+    onEvent: () => {},
+    onProgress: () => {},
+  });
+  expect(mocks.generateChat).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ modelId }) }));
+  expect(mocks.generateChat.mock.calls[0]![0].input).not.toHaveProperty('model');
 });
 
 it('does not advertise a diffusion file as a complete implicit model configuration', async () => {
@@ -135,7 +157,7 @@ it('reuses model, component, shard and LoRA snapshots across fresh inventories a
   const resources = resource(), signal = new AbortController().signal;
   mocks.scan.mockImplementation(async () => {
     const model = candidate({ path: 'model.gguf', roles: ['model'] });
-    model.files.push({ path: 'shard.gguf', file: new File(['model shard'], 'shard.gguf', { lastModified: 123 }) });
+    model.files.push({ relativePath: 'shard.gguf', file: new File(['model shard'], 'shard.gguf', { lastModified: 123 }) });
     const vae = candidate({ path: 'vae.gguf', roles: ['vae'] }), lora = candidate({ path: 'lora.gguf', roles: [] });
     lora.classes = ['lora'];
     return { candidates: [model, vae, lora] };
@@ -164,7 +186,7 @@ it('a same-size same-time change in a non-primary shard invalidates the native s
   let body = 'old shard';
   mocks.scan.mockImplementation(async () => {
     const model = candidate({ path: 'model.gguf', roles: ['model'] });
-    model.files.push({ path: 'shard.gguf', file: new File([body], 'shard.gguf', { lastModified: 123 }) });
+    model.files.push({ relativePath: 'shard.gguf', file: new File([body], 'shard.gguf', { lastModified: 123 }) });
     return { candidates: [model] };
   });
   await resources.generateImage({ input: request(), signal, onPreview: () => {}, onProgress: () => {} });
@@ -328,4 +350,83 @@ it('waits for an in-flight result even when disposing its image worker throws', 
   await rejected;
   await closingFailure;
   expect(resources.dispose()).toBe(closing);
+});
+
+function temporaryCandidate({ repository }: { repository: LocalImageRepository }): ModelCandidate {
+  const entry = repository.files[0]!;
+  return { ...candidate({ path: entry.relativePath, roles: ['model'] }), candidateKey: JSON.stringify([repository.repositoryKey, entry.relativePath]), repositoryKey: repository.repositoryKey, files: repository.files };
+}
+
+it('adds shared temporary folders to the read-only RPC catalog without hiding saved or linked models', async () => {
+  const file = new File(['model bytes'], 'model.gguf', { lastModified: 789 });
+  const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: [{ relativePath: 'owner/repo/model.gguf', file }] }, signal: undefined });
+  mocks.scan.mockImplementation(async ({ repositories }: { repositories: LocalImageRepository[] }) => ({ candidates: [candidate({ path: 'saved.gguf', roles: ['model'] }), ...repositories.filter(repository => repository.repositoryKey.startsWith('temp/')).map(repository => temporaryCandidate({ repository }))] }));
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  const catalog = await resources.value.listImageModels({ signal: new AbortController().signal });
+  expect(catalog.map(item => item.file.location)).toEqual([{ kind: 'opfs', path: 'models/user/model/saved.gguf' }, { kind: 'temp', path: `${root.rootPath}/owner/repo/model.gguf` }]);
+  expect(mocks.scan.mock.calls[0]![0].repositories.at(-1).files[0].file).toBe(file);
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('uses the provider page files and accepts persisted metadata for a same-name temporary replacement', async () => {
+  const makeRoot = ({ file }: { file: File }) => temporaryModelFiles.register({ directory: { rootName: 'shared', files: [{ relativePath: 'model.gguf', file }] }, signal: undefined });
+  const first = new File(['first model bytes'], 'model.gguf', { lastModified: 1 });
+  const root = makeRoot({ file: first });
+  mocks.scan.mockImplementation(async ({ repositories }: { repositories: LocalImageRepository[] }) => ({ candidates: repositories.filter(repository => repository.repositoryKey.startsWith('temp/')).map(repository => temporaryCandidate({ repository })) }));
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  const input = request();
+  input.modelSelection.primary.file = { location: { kind: 'temp', path: `${root.rootPath}/model.gguf` }, expected: { size: 999, lastModified: 999 } };
+  const execute = () => resources.value.generateImage({ input, signal: new AbortController().signal, onPreview: () => {}, onProgress: () => {} });
+  await execute();
+  expect(mocks.generate.mock.calls[0]![0].request.models[0].file).toBe(first);
+  temporaryModelFiles.remove({ rootPath: root.rootPath });
+  await expect(execute()).rejects.toMatchObject({ details: { stage: 'model-selection' } });
+  const second = new File(['second different bytes'], 'model.gguf', { lastModified: 2 });
+  expect(makeRoot({ file: second }).rootPath).toBe(root.rootPath);
+  await execute();
+  expect(mocks.generate.mock.calls[1]![0].request.models[0].file).toBe(second);
+});
+
+it('does not publish or generate from a temporary root removed during an RPC scan', async () => {
+  const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: [{ relativePath: 'model.gguf', file: new File(['old'], 'model.gguf') }] }, signal: undefined });
+  const gate = Promise.withResolvers<{ candidates: ModelCandidate[] }>();
+  mocks.scan.mockReturnValueOnce(gate.promise);
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  const pending = resources.value.listImageModels({ signal: new AbortController().signal });
+  await vi.waitFor(() => expect(mocks.scan).toHaveBeenCalledOnce());
+  const repository: LocalImageRepository = mocks.scan.mock.calls[0]![0].repositories[0];
+  temporaryModelFiles.remove({ rootPath: root.rootPath });
+  temporaryModelFiles.register({ directory: { rootName: 'shared', files: [{ relativePath: 'model.gguf', file: new File(['replacement'], 'model.gguf') }] }, signal: undefined });
+  gate.resolve({ candidates: [temporaryCandidate({ repository }), candidate({ path: 'saved.gguf', roles: ['model'] })] });
+  expect((await pending).map(item => item.file.location.kind)).toEqual(['opfs']);
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('can list temporary image models when OPFS is unavailable', async () => {
+  vi.stubGlobal('navigator', {});
+  temporaryModelFiles.register({ directory: { rootName: 'shared', files: [{ relativePath: 'model.gguf', file: new File(['model'], 'model.gguf') }] }, signal: undefined });
+  mocks.opfs.mockRejectedValueOnce(new Error('OPFS unavailable'));
+  mocks.scan.mockImplementation(async ({ repositories }: { repositories: LocalImageRepository[] }) => ({ candidates: repositories.map(repository => temporaryCandidate({ repository })) }));
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  expect((await resources.value.listImageModels({ signal: new AbortController().signal }))[0]?.file.location).toEqual({ kind: 'temp', path: 'temp/shared/model.gguf' });
 });

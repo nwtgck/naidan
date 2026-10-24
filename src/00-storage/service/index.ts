@@ -6,7 +6,16 @@ import type { ImageGenerationExportSnapshot } from './image-generation-export';
 import type { ImageGenerationAsset, ImageGenerationSessionDraft, ImageGenerationRun } from '@/01-models/image-generation';
 import type { ImageGenerationStoreAccess } from './image-generation';
 import type { ImageGenerationBinaryFile } from './image-generation-binaries';
-import { prepareModelLaunchChat, restoreModelLaunch, detachRemovedModelLaunchOwners, readModelLaunch, type ModelLaunchChatRequest } from './model-launch';
+import { prepareModelLaunchChat, detachRemovedModelLaunchOwners, detachModelLaunchOwner, detachModelLaunchChatGroupOwners, readModelLaunch, observeModelLaunch, forgetModelLaunches, type ModelLaunchChatRequest } from './model-launch';
+import { ChatContentBindingChangedError, createChatContentWrite, readChatContentWrite, withChatContentWrite, chatContentFingerprint, snapshotChatContent, type ChatContentWrite, type ChatContentModelBinding } from './chat-content-binding';
+import { areEndpointsEqual } from '@/01-models/endpoint';
+import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
+export { ChatContentBindingChangedError } from './chat-content-binding';
+export type { ChatContentWrite, ChatContentModelBinding } from './chat-content-binding';
+import { captureModelBinding, promoteModelBinding, sameModelBindingFields, type ModelBindingSnapshot, type ModelBindingPromotionResult } from './model-binding';
+export type { ModelBindingSnapshot, ModelBindingPromotionResult } from './model-binding';
+import { prepareLocalModelChat, type LocalModelChatRequest } from './local-model-chat';
+export type { LocalModelChatRequest } from './local-model-chat';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move storage notification text translation to the application layer.
@@ -67,10 +76,32 @@ export class StorageService {
   private currentType: 'local' | 'opfs' | 'memory' | null = null;
   private synchronizer: StorageSynchronizer;
   private providerGeneration = 0;
+  private chatModelBindingRevisions = new Map<ChatId, number>();
+  private chatGroupModelBindingRevisions = new Map<ChatGroupId, number>();
+  private readonly contentWrites = new WeakSet<ChatContentWrite>();
   private readonly rpcRegistryListeners = new Set<() => void>();
 
   constructor() {
     this.synchronizer = new StorageSynchronizer();
+    this.synchronizer.subscribe({
+      listener: ({ event }) => {
+        switch (event.type) {
+        case 'migration':
+          this.providerGeneration++;
+          if (this.provider !== null) {
+            forgetModelLaunches({ provider: this.provider });
+          }
+          break;
+        case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation':
+        case 'settings': case 'binary_objects': case 'naidan_rpc_registry':
+          break;
+        default: {
+          const exhaustive: never = event;
+          throw new Error(String(exhaustive));
+        }
+        }
+      },
+    });
   }
 
   /**
@@ -83,10 +114,37 @@ export class StorageService {
     return this.provider;
   }
 
+  private assertChatContentWriteCurrent({ id, write }: { id: ChatId, write: ChatContentWrite }): void {
+    if (!this.contentWrites.has(write)) {
+      throw new ChatContentBindingChangedError();
+    }
+    readChatContentWrite({ write, id });
+  }
+
+  private observeChatMetaRead({ provider, id, meta }: { provider: IStorageProvider, id: ChatId, meta: ChatMeta | null }): void {
+    if (meta !== null) {
+      observeModelLaunch({ provider, meta });
+      return;
+    }
+    const phase = readModelLaunch({ provider, chatId: id })?.phase;
+    switch (phase) {
+    case 'active': detachModelLaunchOwner({ provider, chatId: id });
+      break;
+    case 'reserved': case 'detached': case undefined: break;
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     await this.synchronizer.withLock({
       fn: async () => {
         this.providerGeneration++;
+        if (this.provider !== null) {
+          forgetModelLaunches({ provider: this.provider });
+        }
         if (this.provider) {
           this.emitRpcRegistryChange();
         }
@@ -183,30 +241,90 @@ export class StorageService {
    * Performs an atomic update on the sidebar hierarchy.
    * Prevents lost updates when multiple tabs are reordering or adding chats.
    */
-  async updateHierarchy({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy | Promise<Hierarchy> }): Promise<void> {
+  async updateHierarchy({ updater, contentWrite }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy | Promise<Hierarchy>, contentWrite?: { id: ChatId, write: ChatContentWrite } }): Promise<void> {
+    const provider = this.getProvider();
+    const isCurrent = this.captureSettingsStorage();
+    const assertCurrent = () => {
+      if (!isCurrent()) {
+        throw new ChatContentBindingChangedError();
+      }
+      if (contentWrite !== undefined) {
+        this.assertChatContentWriteCurrent(contentWrite);
+      }
+    };
     try {
       await this.synchronizer.withLock({
         fn: async () => {
-          const current = await this.loadHierarchy();
+          assertCurrent();
+          const stored = await provider.loadHierarchy();
+          assertCurrent();
+          const current = stored === null ? { items: [] } : hierarchyToDomain({ dto: stored });
           const before = structuredClone(current);
           const updated = await updater({ current: current });
-          await detachRemovedModelLaunchOwners({ provider: this.getProvider(), before, after: updated });
-          await this.getProvider().saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
+          assertCurrent();
+          await this.synchronizer.withLock({
+            lockKey: SYNC_LOCK_KEY,
+            fn: async () => {
+              assertCurrent();
+              await detachRemovedModelLaunchOwners({ provider, after: updated });
+              assertCurrent();
+              await provider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
+            },
+          });
+          const locationFor = ({ hierarchy, chatId }: { hierarchy: Hierarchy, chatId: ChatId }): string | undefined => {
+            const item = hierarchy.items.find(item => {
+              switch (item.type) {
+              case 'chat': return item.id === chatId;
+              case 'chat_group': return item.chat_ids.includes(chatId);
+              default: {
+                const exhaustive: never = item;
+                throw new Error(String(exhaustive));
+              }
+              }
+            });
+            if (item === undefined) {
+              return undefined;
+            }
+            switch (item.type) {
+            case 'chat': return 'chat';
+            case 'chat_group': return `chat_group:${idToRaw({ id: item.id })}`;
+            default: {
+              const exhaustive: never = item;
+              throw new Error(String(exhaustive));
+            }
+            }
+          };
+          const affectedIds = new Set([...before.items, ...updated.items].flatMap(item => {
+            switch (item.type) {
+            case 'chat': return [item.id];
+            case 'chat_group': return item.chat_ids;
+            default: {
+              const exhaustive: never = item;
+              throw new Error(String(exhaustive));
+            }
+            }
+          }));
+          for (const chatId of affectedIds) {
+            if (locationFor({ hierarchy: before, chatId }) !== locationFor({ hierarchy: updated, chatId })) {
+              this.chatModelBindingRevisions.set(chatId, (this.chatModelBindingRevisions.get(chatId) ?? 0) + 1);
+            }
+          }
         },
         lockKey: LOCK_METADATA,
         ...this.getLockOptions({ source: 'updateHierarchy' }),
       });
       this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
-    } catch (e) {
-      await this.handleStorageError({ error: e, source: 'updateHierarchy' });
-      throw e;
+    } catch (error) {
+      if (!(error instanceof ChatContentBindingChangedError)) {
+        await this.handleStorageError({ error, source: 'updateHierarchy' });
+      }
+      throw error;
     }
   }
 
   /** An in-memory capability for an async operation, not a persisted identifier. */
   captureModelLaunchStorage(): () => boolean {
-    const provider = this.getProvider();
-    return () => provider === this.getProvider();
+    return this.captureSettingsStorage();
   }
 
   /** Replacing or restoring a provider invalidates queued editor writes even
@@ -256,30 +374,15 @@ export class StorageService {
     }
   }
 
-  /** Setup state is session-local; it is never part of stored Chat data. */
+  /** Synchronous guards read the latest receipt observed by a durable read. */
   getModelLaunch({ chatId }: { chatId: ChatId }) {
     return this.provider === null ? undefined : readModelLaunch({ provider: this.provider, chatId });
-  }
-
-  async restoreModelLaunch({ chatId, input, requestedVariant, target, signal }: { chatId: Parameters<typeof restoreModelLaunch>[0]['chatId'], input: Parameters<typeof restoreModelLaunch>[0]['input'], requestedVariant: Parameters<typeof restoreModelLaunch>[0]['requestedVariant'], target: Parameters<typeof restoreModelLaunch>[0]['target'], signal: AbortSignal }) {
-    const provider = this.getProvider();
-    return this.synchronizer.withLock({
-      lockKey: LOCK_METADATA,
-      fn: async () => {
-        signal.throwIfAborted();
-        if (provider !== this.getProvider()) {
-          return undefined;
-        }
-        const restored = await restoreModelLaunch({ provider, chatId, input, requestedVariant, target });
-        signal.throwIfAborted();
-        return provider === this.getProvider() ? restored : undefined;
-      },
-    });
   }
 
   /** A launch never holds a storage lock across metadata or payload requests. */
   async prepareModelLaunchChat({ request, signal }: { request: ModelLaunchChatRequest, signal: AbortSignal }): Promise<Chat> {
     const provider = this.getProvider();
+    const isCurrent = this.captureModelLaunchStorage();
     if (this.currentType !== 'memory' && (typeof navigator === 'undefined' || !navigator.locks?.request)) {
       throw new Error('Model launch requires storage locking');
     }
@@ -292,11 +395,20 @@ export class StorageService {
             lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: request.chatId })}`,
             fn: async () => {
               signal.throwIfAborted();
-              if (provider !== this.getProvider()) {
+              if (!isCurrent()) {
                 throw new Error('Model launch storage changed');
               }
               // Finish a started durable write sequence even if navigation changes.
-              return prepareModelLaunchChat({ provider, request });
+              return prepareModelLaunchChat({
+                provider,
+                request,
+                beforeWrite: () => {
+                  signal.throwIfAborted();
+                  if (!isCurrent()) {
+                    throw new Error('Model launch storage changed');
+                  }
+                },
+              });
             },
           }),
         }),
@@ -313,20 +425,165 @@ export class StorageService {
 
   // --- Persistence Methods ---
 
+  async prepareLocalModelChat({ request, signal, isCurrent }: { request: LocalModelChatRequest, signal: AbortSignal, isCurrent?: () => boolean }): Promise<Chat> {
+    const provider = this.getProvider();
+    const isStorageCurrent = this.captureSettingsStorage();
+    if (this.currentType !== 'memory' && (typeof navigator === 'undefined' || !navigator.locks?.request)) {
+      throw new Error('Local model launch requires storage locking');
+    }
+    const chat = await this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      fn: () => this.synchronizer.withLock({
+        lockKey: SYNC_LOCK_KEY,
+        fn: () => this.synchronizer.withLock({
+          lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: request.chatId })}`,
+          fn: async () => {
+            signal.throwIfAborted();
+            if (!isStorageCurrent() || (isCurrent !== undefined && !isCurrent())) {
+              throw new Error('The local model launch source changed');
+            }
+            return prepareLocalModelChat({
+              provider,
+              request,
+              beforeWrite: () => {
+                signal.throwIfAborted();
+                if (!isStorageCurrent() || (isCurrent !== undefined && !isCurrent())) {
+                  throw new Error('The local model launch source changed');
+                }
+              },
+            });
+          },
+        }),
+      }),
+    });
+    this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
+    return chat;
+  }
+
+  async captureModelBinding({ chatId, sourceModelId, isSourceCurrent }: { chatId: ChatId, sourceModelId: string, isSourceCurrent?: () => boolean }): Promise<ModelBindingSnapshot | undefined> {
+    const provider = this.getProvider();
+    const isStorageCurrent = this.captureSettingsStorage();
+    const isCurrent = () => isStorageCurrent() && (isSourceCurrent === undefined || isSourceCurrent());
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      fn: () => this.synchronizer.withLock({
+        lockKey: SYNC_LOCK_KEY,
+        fn: () => captureModelBinding({
+          provider,
+          chatId,
+          sourceModelId,
+          isCurrent,
+          chatRevision: this.chatModelBindingRevisions.get(chatId) ?? 0,
+          chatGroupRevision: ({ id }) => this.chatGroupModelBindingRevisions.get(id) ?? 0,
+        }),
+      }),
+    });
+  }
+
+  async promoteModelBinding({ expected, modelId, knownMessageIds, knownMessageFingerprints, expectedContent, globalOutcome }: {
+    expected: ModelBindingSnapshot, modelId: string, knownMessageIds: readonly import('@/01-models/ids').MessageId[], expectedContent: ChatContentWrite,
+    knownMessageFingerprints?: ReadonlyMap<import('@/01-models/ids').MessageId, string>,
+    globalOutcome: 'applied' | 'changed' | 'not-targeted',
+  }): Promise<ModelBindingPromotionResult> {
+    if (!this.contentWrites.has(expectedContent)) {
+      throw new ChatContentBindingChangedError();
+    }
+    if (this.currentType !== 'memory' && (typeof navigator === 'undefined' || !navigator.locks?.request)) {
+      switch (expected.chatGroupTarget) {
+      case 'candidate': return { chat: 'changed', chatGroup: 'changed', content: 'changed' };
+      case 'not-targeted': return { chat: 'changed', chatGroup: 'not-targeted', content: 'changed' };
+      default: {
+        const exhaustive: never = expected.chatGroupTarget;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
+    const provider = this.getProvider();
+    const attempted = { metadata: false, content: false };
+    try {
+      return await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        fn: () => this.synchronizer.withLock({
+          lockKey: SYNC_LOCK_KEY,
+          fn: () => this.synchronizer.withLock({
+            lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: expected.chatId })}`,
+            fn: () => promoteModelBinding({
+              provider,
+              expected,
+              modelId,
+              knownMessageIds,
+              knownMessageFingerprints,
+              expectedContent,
+              globalOutcome,
+              chatRevision: this.chatModelBindingRevisions.get(expected.chatId) ?? 0,
+              chatGroupRevision: ({ id }) => this.chatGroupModelBindingRevisions.get(id) ?? 0,
+              onWriteAttempt: ({ scope }) => {
+                switch (scope) {
+                case 'metadata': attempted.metadata = true;
+                  break;
+                case 'content': attempted.content = true;
+                  break;
+                default: {
+                  const exhaustive: never = scope;
+                  throw new Error(String(exhaustive));
+                }
+                }
+              },
+            }),
+          }),
+        }),
+      });
+    } finally {
+      // These are invalidation hints, including a write whose acknowledgement
+      // failed. Later scope failures must not hide an already committed scope.
+      if (attempted.metadata) {
+        this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id: expected.chatId }), timestamp: Date.now() } });
+      }
+      if (attempted.content) {
+        this.notify({ event: { type: 'chat_content', id: idToRaw({ id: expected.chatId }), timestamp: Date.now() } });
+      }
+    }
+  }
+
   // Returning undefined is a conditional no-op, checked under the metadata lock.
   // In particular, delayed background work must never recreate a deleted chat.
-  async updateChatMeta({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | undefined | Promise<ChatMeta | undefined> }): Promise<void> {
+  async updateChatMeta({ id, updater, write }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | undefined | Promise<ChatMeta | undefined>, write?: ChatContentWrite }): Promise<void> {
+    const provider = this.getProvider();
+    const isCurrent = this.captureSettingsStorage();
+    const assertCurrent = () => {
+      if (!isCurrent()) {
+        throw new ChatContentBindingChangedError();
+      }
+      if (write !== undefined) {
+        this.assertChatContentWriteCurrent({ write, id });
+      }
+    };
     try {
       let written = false;
       await this.synchronizer.withLock({
         fn: async () => {
-          const current = await this.loadChatMeta({ id });
+          assertCurrent();
+          const current = await provider.loadChatMeta({ id });
+          assertCurrent();
+          this.observeChatMetaRead({ provider, id, meta: current });
+          const previousBinding = current === null ? undefined : { endpoint: structuredClone(current.endpoint), modelId: current.modelId };
           const updated = await updater({ current: current });
+          assertCurrent();
           if (updated === undefined) {
             return;
           }
-          await this.getProvider().saveChatMeta({ meta: updated });
-          written = true;
+          await this.synchronizer.withLock({
+            lockKey: SYNC_LOCK_KEY,
+            fn: async () => {
+              assertCurrent();
+              await provider.saveChatMeta({ meta: updated });
+              if (previousBinding === undefined || !sameModelBindingFields({ left: previousBinding, right: updated })) {
+                this.chatModelBindingRevisions.set(id, (this.chatModelBindingRevisions.get(id) ?? 0) + 1);
+              }
+              observeModelLaunch({ provider, meta: updated });
+              written = true;
+            },
+          });
         },
         lockKey: LOCK_METADATA,
         ...this.getLockOptions({ source: 'updateChatMeta' }),
@@ -334,14 +591,19 @@ export class StorageService {
       if (written) {
         this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
       }
-    } catch (e) {
-      await this.handleStorageError({ error: e, source: 'updateChatMeta' });
-      throw e;
+    } catch (error) {
+      if (!(error instanceof ChatContentBindingChangedError)) {
+        await this.handleStorageError({ error, source: 'updateChatMeta' });
+      }
+      throw error;
     }
   }
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
-    return this.getProvider().loadChatMeta({ id });
+    const provider = this.getProvider();
+    const meta = await provider.loadChatMeta({ id });
+    this.observeChatMetaRead({ provider, id, meta });
+    return meta;
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
@@ -352,33 +614,134 @@ export class StorageService {
     return this.getProvider().loadChatContentWithoutAttachments({ id });
   }
 
-  async updateChatContent({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }): Promise<void> {
+  /** Capture before mutating a tree. Undefined content is an explicit create-only write. */
+  createChatContentWrite({ id, content, binding }: { id: ChatId, content: ChatContent | undefined, binding: ChatContentModelBinding | undefined }): ChatContentWrite {
+    const write = createChatContentWrite({ id, content, binding, isCurrent: this.captureSettingsStorage() });
+    this.contentWrites.add(write);
+    return write;
+  }
+
+  async updateChatContent({ id, updater, write }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>, write: ChatContentWrite }): Promise<ChatContent> {
+    const provider = this.getProvider();
+    if (!this.contentWrites.has(write)) {
+      throw new ChatContentBindingChangedError();
+    }
     try {
-      await this.synchronizer.withLock({
-        fn: async () => {
-          const current = await this.loadChatContent({ id });
-          const updated = await updater({ current: current });
-          await this.getProvider().saveChatContent({ id, content: updated });
+      const persisted = await withChatContentWrite({
+        write,
+        id,
+        operation: async () => {
+          const state = readChatContentWrite({ write, id });
+          // Application callbacks, attachment work, and proposal construction stay
+          // outside storage locks. Freeze the proposal before waiting for a lock.
+          const before = await provider.loadChatContent({ id });
+          if ((before === null ? undefined : chatContentFingerprint({ content: before })) !== state.baseline) {
+            throw new ChatContentBindingChangedError();
+          }
+          const proposed = snapshotChatContent({ content: await updater({ current: before }) });
+          const fingerprint = chatContentFingerprint({ content: proposed });
+          await this.synchronizer.withLock({
+            lockKey: LOCK_METADATA,
+            fn: () =>
+              this.synchronizer.withLock({
+                lockKey: SYNC_LOCK_KEY,
+                fn: () =>
+                  this.synchronizer.withLock({
+                    lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`,
+                    fn: async () => {
+                      readChatContentWrite({ write, id });
+                      const current = await provider.loadChatContent({ id });
+                      if ((current === null ? undefined : chatContentFingerprint({ content: current })) !== state.baseline) {
+                        throw new ChatContentBindingChangedError();
+                      }
+                      if (state.binding !== undefined) {
+                        const meta = await provider.loadChatMeta({ id });
+                        const settings = await provider.loadSettings();
+                        if (meta === null || settings === null) {
+                          throw new ChatContentBindingChangedError();
+                        }
+                        const chatGroup = meta.groupId == null ? undefined : await provider.loadChatGroup({ id: meta.groupId });
+                        const resolved = resolveChatModelBinding({ chat: meta, chatGroup, settings });
+                        const actual: ChatContentModelBinding = { groupId: meta.groupId == null ? undefined : idToRaw({ id: meta.groupId }), endpoint: resolved.chat.endpoint, modelId: resolved.chat.modelId, endpointSource: resolved.sources.endpoint, modelSource: resolved.sources.modelId };
+                        if (actual.groupId !== state.binding.groupId || actual.modelId !== state.binding.modelId || actual.endpointSource !== state.binding.endpointSource || actual.modelSource !== state.binding.modelSource || !areEndpointsEqual({ left: actual.endpoint, right: state.binding.endpoint })) {
+                          throw new ChatContentBindingChangedError();
+                        }
+                      }
+                      readChatContentWrite({ write, id });
+                      await provider.saveChatContent({ id, content: proposed });
+                      state.baseline = fingerprint;
+                    },
+                  }),
+              }),
+          });
+          return proposed;
         },
-        lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`,
-        ...this.getLockOptions({ source: 'updateChatContent' }),
       });
       this.notify({ event: { type: 'chat_content', id: idToRaw({ id }), timestamp: Date.now() } });
-    } catch (e) {
-      await this.handleStorageError({ error: e, source: 'updateChatContent' });
-      throw e;
+      return persisted;
+    } catch (error) {
+      if (!(error instanceof ChatContentBindingChangedError)) {
+        await this.handleStorageError({ error, source: 'updateChatContent' });
+      }
+      throw error;
     }
   }
 
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
-    return this.getProvider().loadChat({ id });
+    const provider = this.getProvider();
+    const chat = await provider.loadChat({ id });
+    if (chat !== null) {
+      observeModelLaunch({ provider, meta: chat });
+    } else {
+      const phase = readModelLaunch({ provider, chatId: id })?.phase;
+      switch (phase) {
+      case 'active': detachModelLaunchOwner({ provider, chatId: id });
+        break;
+      case 'reserved': case 'detached': case undefined: break;
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
+    return chat;
+  }
+
+  /** Observe a complete promotion, never its metadata/content write boundary. */
+  async loadChatForModelBinding({ id }: { id: ChatId }): Promise<{ status: 'loaded', chat: Chat | null, isCurrent(): boolean } | { status: 'changed' }> {
+    const provider = this.getProvider();
+    const isCurrent = this.captureSettingsStorage();
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      fn: () => this.synchronizer.withLock({
+        lockKey: SYNC_LOCK_KEY,
+        fn: () => this.synchronizer.withLock({
+          lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`,
+          fn: async () => {
+            if (!isCurrent()) {
+              return { status: 'changed' as const };
+            }
+            const chat = await provider.loadChat({ id });
+            if (!isCurrent()) {
+              return { status: 'changed' as const };
+            }
+            if (chat !== null) {
+              observeModelLaunch({ provider, meta: chat });
+            }
+            return { status: 'loaded' as const, chat, isCurrent };
+          },
+        }),
+      }),
+    });
   }
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {
     try {
       await this.synchronizer.withLock({
         fn: async () => {
+          detachModelLaunchOwner({ provider: this.getProvider(), chatId: id });
           await this.getProvider().deleteChat({ id });
+          this.chatModelBindingRevisions.set(id, (this.chatModelBindingRevisions.get(id) ?? 0) + 1);
         },
         lockKey: LOCK_METADATA,
         ...this.getLockOptions({ source: 'deleteChat' }),
@@ -390,13 +753,29 @@ export class StorageService {
     }
   }
 
-  async updateChatGroup({ id, updater }: { id: ChatGroupId, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | Promise<ChatGroup> }): Promise<void> {
+  async updateChatGroup({ id, updater }: { id: ChatGroupId, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | undefined | Promise<ChatGroup | undefined> }): Promise<void> {
+    const provider = this.getProvider();
+    const isCurrent = this.captureSettingsStorage();
     try {
       await this.synchronizer.withLock({
         fn: async () => {
-          const current = await this.loadChatGroup({ id });
+          if (!isCurrent()) {
+            throw new ChatContentBindingChangedError();
+          }
+          const current = await provider.loadChatGroup({ id });
+          const previousBinding = current === null ? undefined : { endpoint: structuredClone(current.endpoint), modelId: current.modelId };
           const updated = await updater({ current: current });
-          await this.getProvider().saveChatGroup({ chatGroup: updated });
+          if (!isCurrent()) {
+            throw new ChatContentBindingChangedError();
+          }
+          if (updated === undefined) {
+            return;
+          }
+          await provider.saveChatGroup({ chatGroup: updated });
+          if (previousBinding === undefined || !sameModelBindingFields({ left: previousBinding, right: updated })) {
+            detachModelLaunchChatGroupOwners({ provider, chatGroupId: id });
+            this.chatGroupModelBindingRevisions.set(id, (this.chatGroupModelBindingRevisions.get(id) ?? 0) + 1);
+          }
         },
         lockKey: LOCK_METADATA,
         ...this.getLockOptions({ source: 'updateChatGroup' }),
@@ -416,7 +795,9 @@ export class StorageService {
     try {
       await this.synchronizer.withLock({
         fn: async () => {
+          detachModelLaunchChatGroupOwners({ provider: this.getProvider(), chatGroupId: id });
           await this.getProvider().deleteChatGroup({ id });
+          this.chatGroupModelBindingRevisions.set(id, (this.chatGroupModelBindingRevisions.get(id) ?? 0) + 1);
         },
         lockKey: LOCK_METADATA,
         ...this.getLockOptions({ source: 'deleteChatGroup' }),
@@ -438,6 +819,28 @@ export class StorageService {
 
   async getSidebarStructure(): Promise<SidebarItem[]> {
     return this.getProvider().getSidebarStructure();
+  }
+
+  /** Serialize automatic creation separately from the metadata locks acquired
+   * by normal chat creation. The callback publishes the saved chat and hierarchy
+   * before another tab can decide whether its history is still empty. */
+  async createChatIfHistoryEmpty({ create, isCurrent }: { create(): Promise<Chat | undefined>, isCurrent(): boolean }): Promise<Chat | undefined> {
+    const provider = this.getProvider();
+    const isStorageCurrent = this.captureSettingsStorage();
+    return this.synchronizer.withLock({
+      lockKey: `${SYNC_LOCK_KEY}:automatic-chat`,
+      fn: async () => {
+        if (!isStorageCurrent() || !isCurrent()) {
+          return undefined;
+        }
+        const sidebar = await provider.getSidebarStructure();
+        if (!isStorageCurrent() || !isCurrent() || sidebar.length !== 0) {
+          return undefined;
+        }
+        return create();
+      },
+      ...this.getLockOptions({ source: 'createChatIfHistoryEmpty' }),
+    });
   }
 
   // --- Settings & Bulk ---
@@ -541,6 +944,9 @@ export class StorageService {
       await this.synchronizer.withLock({
         fn: async () => {
           this.providerGeneration++;
+          if (this.provider !== null) {
+            forgetModelLaunches({ provider: this.provider });
+          }
           this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
           await this.getProvider().clearAll();
         },
@@ -1211,6 +1617,9 @@ export class StorageService {
           this.provider = newProvider;
           this.currentType = actualType;
           this.providerGeneration++;
+          if (this.provider !== null) {
+            forgetModelLaunches({ provider: this.provider });
+          }
         },
         lockKey: SYNC_LOCK_KEY,
         ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }),
@@ -1244,6 +1653,9 @@ export class StorageService {
       await this.synchronizer.withLock({
         fn: async () => {
           this.providerGeneration++;
+          if (this.provider !== null) {
+            forgetModelLaunches({ provider: this.provider });
+          }
           this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
           await this.getProvider().restore({ snapshot });
         },

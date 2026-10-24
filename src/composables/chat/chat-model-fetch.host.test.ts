@@ -104,3 +104,14 @@ describe('linked host model selection survives temporary unavailability', () => 
     expect(mocks.triggerCurrentChat).toHaveBeenCalledExactlyOnceWith({ chatId: chat.id });
   });
 });
+
+it.each<Endpoint>([{ type: 'llama_cpp_browser' }, { type: 'naidan_rpc', registrationId: undefined }])('does not rewrite a saved temporary reference when the $type inventory is empty', async endpoint => {
+  const chat = mocks.currentChatRef.value!;
+  chat.modelId = 'temp/Models';
+  mocks.endpoint.value = endpoint;
+  mocks.listModels.mockResolvedValue([]);
+  await fetchModelsForChat({ chatId: chat.id, errorSource: 'test' });
+  expect(chat.modelId).toBe('temp/Models');
+  expect(chat.updatedAt).toBe(123);
+  expect(mocks.triggerCurrentChat).not.toHaveBeenCalled();
+});

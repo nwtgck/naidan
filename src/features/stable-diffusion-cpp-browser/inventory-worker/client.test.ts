@@ -67,7 +67,7 @@ it('allows a long progressing scan and forwards current file progress, not an un
   const task = inspectImageInventory({ signal: new AbortController().signal, onProgress: progress });
   for (let i = 0; i < 4; i++) {
     await vi.advanceTimersByTimeAsync(INSPECTION_STALL_MS - 1000);
-    report!({ progress: { phase: 'headers', path: 'user/model.gguf', completed: i, total: 4 } });
+    report!({ progress: { phase: 'headers', entryPath: 'user/model.gguf', completed: i, total: 4 } });
   }
   gate.resolve({ candidates: [], issues: [] });
   expect(await task).toEqual({ candidates: [], issues: [] });
@@ -82,4 +82,18 @@ it.each(['error', 'messageerror'])('settles and retires the Worker after %s', as
   mocks.workers[0]!.dispatchEvent(new Event(type));
   await expect(task).rejects.toThrow('inspection Worker failed');
   expect(mocks.terminate).toHaveBeenCalledOnce();
+});
+
+it('passes temporary repositories separately from persisted inventory and keeps Files out of transfer lists', async () => {
+  const file = new File(['model bytes'], 'model.gguf');
+  const temporaryRepositories = [{ repositoryKey: 'temp/shared', repositoryLabel: 'shared', files: [{ relativePath: file.name, file }] }];
+  mocks.inspect.mockResolvedValueOnce({ candidates: [], issues: [] });
+  await inspectImageInventory({ signal: new AbortController().signal, onProgress: () => {}, repositoryKeys: ['temp/shared'], temporaryRepositories });
+  const args = mocks.inspect.mock.calls[0]!;
+  expect(args[0]).toBeUndefined();
+  expect(args[3]).toEqual(['temp/shared']);
+  expect(args[4]).toBe(temporaryRepositories);
+  expect(args[4][0].files[0].file).toBe(file);
+  expect(mocks.terminate).toHaveBeenCalledOnce();
+  expect(mocks.release).toHaveBeenCalledOnce();
 });

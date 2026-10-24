@@ -90,7 +90,8 @@ function containsDependencyName({ source, name }: {
   name: string,
 }): boolean {
   return source.includes(`name:${JSON.stringify(name)}`)
-    || source.includes(`"name":${JSON.stringify(name)}`);
+    || source.includes(`"name":${JSON.stringify(name)}`)
+    || source.includes(`name:\`${name}\``);
 }
 
 function evaluateSystemRegisterDefault({ source }: {

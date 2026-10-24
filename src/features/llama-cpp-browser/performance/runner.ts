@@ -1,3 +1,4 @@
+import { optionsForLane, performanceLanes } from './plan';
 import { nanoid } from 'nanoid';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import { type GenerateInput, type RuntimeOptions, errorCode } from '@/features/llama-cpp-browser/types';
@@ -5,7 +6,7 @@ import { planSchema, type PerformanceSnapshot, type PerformanceStep, type Perfor
 
 /** No chat store, alternate inference loop, rendering or archive work here. */
 export function createPerformanceRunner({ service, now, date, hidden, waitUntilVisible, publish }: {
-  service: Pick<LlamaCppBrowserService, 'runPerformanceOperation' | 'listModels'>,
+  service: Pick<LlamaCppBrowserService, 'runPerformanceOperation' | 'listModelEntries'>,
   now: () => number, date: () => string, hidden: () => boolean,
   waitUntilVisible: ({ signal }: { signal: AbortSignal }) => Promise<void>,
   publish: ({ snapshot, current }: { snapshot: PerformanceSnapshot, current: PerformanceTrial | undefined }) => void,
@@ -14,16 +15,19 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
   let snapshot: PerformanceSnapshot | undefined;
   let current: PerformanceTrial | undefined;
   let runStarted: number | undefined;
+  // A stale click is bound to an attempt ID, never to whichever request is next.
+  let activeAttempt: { trialId: string, started: number, control: AbortController } | undefined;
   const notify = () => {
     if (snapshot) {
       publish({ snapshot, current });
     }
   };
-  const skip = ({ step, options, error }: { step: PerformanceStep, options: RuntimeOptions, error: string }): void => {
+  const skip = ({ step, options, error, skipReason }: { step: PerformanceStep, options: RuntimeOptions, error: string, skipReason?: PerformanceTrial['skipReason'] }): void => {
     snapshot?.trials.push({
       id: nanoid(),
       stepId: step.id,
       modelIndex: step.modelIndex,
+      lane: step.lane ?? 'standard',
       status: 'skipped',
       startedAt: date(),
       input: [],
@@ -33,14 +37,30 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       receivedEvents: 0,
       hiddenObserved: hidden(),
       error,
+      skipReason,
       warnings: [],
-      exclusion: ['failed'],
+      exclusion: [skipReason ? 'dependency-unavailable' : 'failed'],
     });
   };
   return {
     snapshot: () => snapshot,
     stop(): void {
       controller?.abort();
+    },
+    canInterruptCurrent({ trialId }: { trialId: string }): boolean {
+      return !!activeAttempt && activeAttempt.trialId === trialId && current?.id === trialId && current.status === 'running'
+        && !current.interruption && !activeAttempt.control.signal.aborted && !controller?.signal.aborted;
+    },
+    interruptCurrent({ trialId }: { trialId: string }): boolean {
+      const attempt = activeAttempt;
+      if (!attempt || attempt.trialId !== trialId || current?.id !== trialId || current.status !== 'running'
+        || current.interruption || attempt.control.signal.aborted || controller?.signal.aborted) {
+        return false;
+      }
+      current.interruption = { reason: 'user-skip', requestedMs: Math.max(0, now() - attempt.started), recovery: 'pending' };
+      attempt.control.abort();
+      notify();
+      return true;
     },
     visibilityChanged(): void {
       if (current && hidden()) {
@@ -74,14 +94,14 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       const elapsed = () => Math.max(0, now() - started);
       // Orchestration intervals are not GPU timings. All clocks here are outside
       // token callbacks and keep hidden-page waiting separate from native work.
-      const interval = ({ kind, modelIndex, stepId }: { kind: typeof execution.intervals[number]['kind'], modelIndex: number, stepId?: string }) => {
+      const interval = ({ kind, modelIndex, stepId, lane, runtimeSegment }: { kind: typeof execution.intervals[number]['kind'], modelIndex: number, stepId?: string, lane?: PerformanceStep['lane'], runtimeSegment?: number }) => {
         const start = elapsed(), hiddenAtStart = hidden();
         return ({ outcome }: { outcome: typeof execution.intervals[number]['outcome'] }) => {
-          execution.intervals.push({ kind, modelIndex, stepId, startedMs: start, elapsedMs: Math.max(0, elapsed() - start), hiddenAtStart, outcome });
+          execution.intervals.push({ kind, modelIndex, stepId, lane, runtimeSegment, startedMs: start, elapsedMs: Math.max(0, elapsed() - start), hiddenAtStart, outcome });
         };
       };
-      const visible = async ({ modelIndex, stepId }: { modelIndex: number, stepId?: string }) => {
-        const finish = interval({ kind: 'visibility-wait', modelIndex, stepId });
+      const visible = async ({ modelIndex, stepId, lane, runtimeSegment }: { modelIndex: number, stepId?: string, lane?: PerformanceStep['lane'], runtimeSegment?: number }) => {
+        const finish = interval({ kind: 'visibility-wait', modelIndex, stepId, lane, runtimeSegment });
         let outcome: typeof execution.intervals[number]['outcome'] = 'completed';
         try {
           await waitUntilVisible({ signal: control.signal });
@@ -96,295 +116,385 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       const activeSnapshot = snapshot;
       notify();
       try {
-        for (const [modelIndex, model] of plan.models.entries()) {
+        for (const { modelIndex, model, lane } of plan.models.flatMap((model, modelIndex) => performanceLanes({ mode: plan.settings.mode }).map(lane => ({ modelIndex, model, lane })))) {
           if (control.signal.aborted) {
             break;
           }
-          const steps = plan.steps.filter(step => step.modelIndex === modelIndex);
-          try {
-            await visible({ modelIndex });
-            const inventory = interval({ kind: 'model-inventory', modelIndex });
-            const stored = await service.listModels({ signal: control.signal }).then(value => {
-              inventory({ outcome: 'completed' });
-              return value;
-            }, error => {
-              inventory({ outcome: control.signal.aborted ? 'cancelled' : 'failed' });
-              throw error;
-            });
-            const matching = stored.filter(entry => entry.name === model.name);
-            if (matching.length !== 1 || matching[0]?.id !== model.id || matching[0]?.size !== model.size || matching[0]?.importedAt !== model.importedAt) {
-              throw new Error('Selected model inventory changed');
-            }
-            const acquired = interval({ kind: 'model-acquire', modelIndex });
-            let entered = false;
-            let release: ReturnType<typeof interval> | undefined;
-            let operationOutcome: typeof execution.intervals[number]['outcome'] = 'completed';
+          const steps = plan.steps.filter(step => step.modelIndex === modelIndex && (step.lane ?? 'standard') === lane);
+          const options = optionsForLane({ plan, lane });
+          let runtimeSegment = 0;
+          let remaining = steps;
+          let resuming: PerformanceTrial | undefined;
+          // Never call generate again on a failed scope. Recovery re-enters the
+          // existing service only AFTER it retires the Worker and releases its lane.
+          while (remaining.length && !control.signal.aborted) {
+            let interrupted: PerformanceTrial | undefined;
             try {
-              await service.runPerformanceOperation({
-                options: plan.options,
-                signal: control.signal,
-                operation: async ({ scope }) => {
-                  entered = true;
-                  acquired({ outcome: 'completed' });
-                  // Service cancellation must also interrupt visibility waits, not
-                  // only a currently running native call. Detach before the service
-                  // aborts its scope during ordinary end-of-model cleanup.
-                  const abortOperation = () => control.abort();
-                  scope.signal.addEventListener('abort', abortOperation, { once: true });
-                  if (scope.signal.aborted) {
-                    abortOperation();
-                  }
-                  try {
-                    for (const step of steps) {
-                      if (control.signal.aborted) {
-                        break;
-                      }
-                      await visible({ modelIndex, stepId: step.id });
-                      control.signal.throwIfAborted();
-                      const parent = step.dependsOn === undefined ? undefined : activeSnapshot.trials.find(trial => trial.stepId === step.dependsOn);
-                      if (step.dependsOn !== undefined && (parent?.status !== 'succeeded' || !parent.output || parent.output.toolCalls.length || (!parent.output.content && !parent.output.reasoningContent))) {
-                        skip({ step, options: scope.options, error: 'Continuation preparation did not produce a usable assistant response' });
-                        notify();
-                        continue;
-                      }
-                      const messages: PerformanceTrial['input'] = parent?.output
-                        ? [...parent.input, { role: 'assistant', content: parent.output.content, reasoning_content: parent.output.reasoningContent }, { role: 'user', content: step.prompt }]
-                        : [{ role: 'user', content: step.prompt }];
-                      const trial: PerformanceTrial = {
-                        id: nanoid(),
-                        stepId: step.id,
-                        modelIndex,
-                        status: 'running',
-                        startedAt: date(),
-                        startedMs: elapsed(),
-                        input: messages,
-                        options: { ...scope.options },
-                        partialText: '',
-                        partialReasoning: '',
-                        receivedEvents: 0,
-                        hiddenObserved: hidden() || Boolean(parent?.hiddenObserved),
-                        warnings: [],
-                        exclusion: [],
-                      };
-                      if (parent?.output?.finishReason !== undefined && parent.output.finishReason !== 'stop') {
-                        trial.warnings.push('incomplete-parent');
-                      }
-                      activeSnapshot.trials.push(trial);
-                      current = trial;
-                      notify();
-                      const started = now();
-                      let lastDelivery: number | undefined;
-                      let accepting = true;
-                      let timedOut = false;
-                      const local = new AbortController();
-                      const abort = () => local.abort();
-                      const sources = [...new Set([control.signal, scope.signal])];
-                      for (const signal of sources) {
-                        signal.addEventListener('abort', abort, { once: true });
-                        if (signal.aborted) {
-                          abort();
+              await visible({ modelIndex, lane, runtimeSegment });
+              control.signal.throwIfAborted();
+              const inventory = interval({ kind: 'model-inventory', modelIndex, lane, runtimeSegment });
+              const stored = await service.listModelEntries({ signal: control.signal }).then(value => {
+                inventory({ outcome: 'completed' });
+                return value;
+              }, error => {
+                inventory({ outcome: control.signal.aborted ? 'cancelled' : 'failed' });
+                throw error;
+              });
+              control.signal.throwIfAborted();
+              const matching = stored.filter(entry => entry.modelId === model.modelId);
+              if (matching.length !== 1 || matching[0]?.size !== model.size || matching[0]?.importedAt !== model.importedAt) {
+                throw new Error('Selected model inventory changed');
+              }
+              const acquired = interval({ kind: 'model-acquire', modelIndex, lane, runtimeSegment });
+              let entered = false;
+              let release: ReturnType<typeof interval> | undefined;
+              let operationOutcome: typeof execution.intervals[number]['outcome'] = 'completed';
+              try {
+                await service.runPerformanceOperation({
+                  options,
+                  signal: control.signal,
+                  operation: async ({ scope }) => {
+                    entered = true;
+                    acquired({ outcome: 'completed' });
+                    if (resuming?.interruption) {
+                      resuming.interruption.recovery = 'new-scope';
+                      resuming = undefined;
+                    }
+                    let firstInScope = true;
+                    // Service cancellation must also interrupt visibility waits, not
+                    // only a currently running native call. Detach before the service
+                    // aborts its scope during ordinary end-of-model cleanup.
+                    const abortOperation = () => control.abort();
+                    scope.signal.addEventListener('abort', abortOperation, { once: true });
+                    if (scope.signal.aborted) {
+                      abortOperation();
+                    }
+                    try {
+                      for (const step of remaining) {
+                        if (control.signal.aborted) {
+                          break;
                         }
-                      }
-                      const timer = setTimeout(() => {
-                        timedOut = true;
-                        local.abort();
-                      }, plan.settings.timeoutMs);
-                      const observation = (() => {
-                        switch (step.scenario) {
-                        case 'placement': return 'placement' as const;
-                        case 'initial': case 'short': case 'long': case 'continuation': return undefined;
-                        default: {
-                          const exhaustive: never = step.scenario;
-                          throw new Error(String(exhaustive));
+                        await visible({ modelIndex, stepId: step.id, lane, runtimeSegment });
+                        control.signal.throwIfAborted();
+                        const parent = step.dependsOn === undefined ? undefined : activeSnapshot.trials.find(trial => trial.stepId === step.dependsOn);
+                        if (step.dependsOn !== undefined && (parent?.status !== 'succeeded' || (parent.runtimeSegment ?? 0) !== runtimeSegment || !parent.output || parent.output.toolCalls.length || (!parent.output.content && !parent.output.reasoningContent))) {
+                          skip({ step, options: scope.options, error: 'Continuation preparation did not produce a usable response in this runtime segment', skipReason: parent?.status === 'succeeded' && (parent.runtimeSegment ?? 0) !== runtimeSegment ? 'dependency-runtime-reset' : undefined });
+                          notify();
+                          continue;
                         }
+                        const messages: PerformanceTrial['input'] = parent?.output
+                          ? [...parent.input, { role: 'assistant', content: parent.output.content, reasoning_content: parent.output.reasoningContent }, { role: 'user', content: step.prompt }]
+                          : [{ role: 'user', content: step.prompt }];
+                        const trial: PerformanceTrial = {
+                          id: nanoid(),
+                          stepId: step.id,
+                          modelIndex,
+                          lane,
+                          status: 'running',
+                          runtimeSegment,
+                          startedAt: date(),
+                          startedMs: elapsed(),
+                          input: messages,
+                          options: { ...scope.options },
+                          partialText: '',
+                          partialReasoning: '',
+                          receivedEvents: 0,
+                          hiddenObserved: hidden() || Boolean(parent?.hiddenObserved),
+                          warnings: runtimeSegment > 0 && firstInScope ? ['runtime-restarted'] : [],
+                          exclusion: [],
+                        };
+                        if (parent?.output?.finishReason !== undefined && parent.output.finishReason !== 'stop') {
+                          trial.warnings.push('incomplete-parent');
                         }
-                      })();
-                      const input: Omit<GenerateInput, 'options'> = {
-                        model: model.name,
-                        messages,
-                        debug: 'off',
-                        temperature: 0,
-                        topP: 1,
-                        maxTokens: step.maxTokens,
-                        presencePenalty: 0,
-                        frequencyPenalty: 0,
-                        stop: [],
-                      };
-                      try {
-                        trial.output = await scope.generate({
-                          input,
-                          sequence: step.sequence,
-                          observation,
-                          signal: local.signal,
-                          onProgress: ({ progress }) => {
-                            if (!accepting) {
-                              return;
-                            }
-                            trial.lastProgress = { ...progress };
-                            trial.lastProgressMs = Math.max(0, now() - started);
-                          },
-                          onMemoryDiagnostics: ({ memory }) => {
-                            if (accepting) {
-                              trial.memoryDiagnostics = memory;
-                            }
-                          },
-                          onSummary: ({ diagnostic }) => {
-                            if (accepting) {
-                              trial.summary = diagnostic;
-                            }
-                          },
-                          onEvent: ({ event }) => {
-                            if (!accepting) {
-                              return;
-                            }
-                            const elapsed = Math.max(0, now() - started);
-                            trial.receivedEvents++;
-                            switch (event.type) {
-                            case 'text': case 'reasoning': {
-                              if (!event.text.length) {
+                        firstInScope = false;
+                        activeSnapshot.trials.push(trial);
+                        current = trial;
+                        const started = now();
+                        let lastDelivery: number | undefined;
+                        let accepting = true;
+                        let timedOut = false;
+                        const local = new AbortController();
+                        const abort = () => local.abort();
+                        const sources = [...new Set([control.signal, scope.signal])];
+                        for (const signal of sources) {
+                          signal.addEventListener('abort', abort, { once: true });
+                          if (signal.aborted) {
+                            abort();
+                          }
+                        }
+                        const timer = setTimeout(() => {
+                          if (!local.signal.aborted) {
+                            timedOut = true;
+                            local.abort();
+                            notify();
+                          }
+                        }, plan.settings.timeoutMs);
+                        const observation = (() => {
+                          switch (step.scenario) {
+                          case 'placement': return 'placement' as const;
+                          case 'initial': case 'short': case 'long': case 'continuation': return undefined;
+                          default: {
+                            const exhaustive: never = step.scenario;
+                            throw new Error(String(exhaustive));
+                          }
+                          }
+                        })();
+                        const input: Omit<GenerateInput, 'options'> = {
+                          modelId: model.modelId,
+                          messages,
+                          debug: 'off',
+                          temperature: 0,
+                          topP: 1,
+                          maxTokens: step.maxTokens,
+                          presencePenalty: 0,
+                          frequencyPenalty: 0,
+                          stop: [],
+                        };
+                        activeAttempt = { trialId: trial.id, started, control: local };
+                        try {
+                          notify();
+                          // The first publish may already request interruption.
+                          local.signal.throwIfAborted();
+                          trial.output = await scope.generate({
+                            input,
+                            sequence: step.sequence,
+                            observation,
+                            signal: local.signal,
+                            onProgress: ({ progress }) => {
+                              if (!accepting) {
                                 return;
                               }
-                              trial.firstReceivedMs ??= elapsed;
-                              if (lastDelivery !== undefined) {
-                                trial.maximumDeliveryGapMs = Math.max(trial.maximumDeliveryGapMs ?? 0, elapsed - lastDelivery);
+                              trial.lastProgress = { ...progress };
+                              trial.lastProgressMs = Math.max(0, now() - started);
+                            },
+                            onMemoryDiagnostics: ({ memory }) => {
+                              if (accepting) {
+                                trial.memoryDiagnostics = memory;
                               }
-                              lastDelivery = elapsed;
+                            },
+                            onSummary: ({ diagnostic }) => {
+                              if (accepting) {
+                                trial.summary = diagnostic;
+                              }
+                            },
+                            onEvent: ({ event }) => {
+                              if (!accepting) {
+                                return;
+                              }
+                              const elapsed = Math.max(0, now() - started);
+                              trial.receivedEvents++;
                               switch (event.type) {
-                              case 'text': trial.firstTextMs ??= elapsed;
-                                trial.partialText += event.text;
+                              case 'text': case 'reasoning': {
+                                if (!event.text.length) {
+                                  return;
+                                }
+                                trial.firstReceivedMs ??= elapsed;
+                                if (lastDelivery !== undefined) {
+                                  trial.maximumDeliveryGapMs = Math.max(trial.maximumDeliveryGapMs ?? 0, elapsed - lastDelivery);
+                                }
+                                lastDelivery = elapsed;
+                                switch (event.type) {
+                                case 'text': trial.firstTextMs ??= elapsed;
+                                  trial.partialText += event.text;
+                                  break;
+                                case 'reasoning': trial.firstReasoningMs ??= elapsed;
+                                  trial.partialReasoning += event.text;
+                                  break;
+                                default: {
+                                  const exhaustive: never = event;
+                                  throw new Error(String(exhaustive));
+                                }
+                                }
                                 break;
-                              case 'reasoning': trial.firstReasoningMs ??= elapsed;
-                                trial.partialReasoning += event.text;
-                                break;
+                              }
+                              case 'tool_call_start': case 'tool_call_draft': case 'tool_call': break;
                               default: {
                                 const exhaustive: never = event;
                                 throw new Error(String(exhaustive));
                               }
                               }
+                            // The view samples current at a low rate. No reactive full
+                            // result replacement or awaited UI work on each delivery.
+                            },
+                          });
+                          local.signal.throwIfAborted();
+                          trial.status = 'succeeded';
+                        } catch (error) {
+                          trial.status = control.signal.aborted ? 'cancelled' : trial.interruption ? 'interrupted' : 'failed';
+                          trial.error = timedOut ? 'trial-timeout' : errorCode({ error });
+                          if (trial.interruption) {
+                            interrupted = trial;
+                            trial.exclusion.push('interrupted');
+                          } else {
+                            trial.exclusion.push('failed');
+                          }
+                          throw error;
+                        } finally {
+                          accepting = false;
+                          clearTimeout(timer);
+                          for (const signal of sources) {
+                            signal.removeEventListener('abort', abort);
+                          }
+                          trial.elapsedMs = Math.max(0, now() - started);
+                          if (trial.interruption) {
+                            trial.interruption.settledMs = trial.elapsedMs;
+                          }
+                          trial.hiddenObserved ||= hidden();
+                          if (trial.hiddenObserved) {
+                            trial.exclusion.push('page-hidden');
+                          }
+                          if (observation !== undefined || lane === 'gpu-profile') {
+                            trial.exclusion.push('instrumented');
+                          }
+                          const metrics = trial.summary?.performance;
+                          const gpuStatus = metrics?.gpuProfile?.status;
+                          switch (lane) {
+                          case 'standard': break;
+                          case 'gpu-profile':
+                            switch (gpuStatus) {
+                            case undefined: case 'unavailable': trial.warnings.push('gpu-profile-missing');
                               break;
-                            }
-                            case 'tool_call_start': case 'tool_call_draft': case 'tool_call': break;
+                            case 'partial': trial.warnings.push('gpu-profile-incomplete');
+                              break;
+                            case 'complete': break;
                             default: {
-                              const exhaustive: never = event;
-                              throw new Error(String(exhaustive));
+                              const exhaustive: never = gpuStatus;
+                              void exhaustive;
                             }
                             }
-                          // The view samples current at a low rate. No reactive full
-                          // result replacement or awaited UI work on each delivery.
-                          },
-                        });
-                        local.signal.throwIfAborted();
-                        trial.status = 'succeeded';
-                      } catch (error) {
-                        trial.status = control.signal.aborted ? 'cancelled' : 'failed';
-                        trial.error = timedOut ? 'trial-timeout' : errorCode({ error });
-                        trial.exclusion.push('failed');
-                        throw error;
-                      } finally {
-                        accepting = false;
-                        clearTimeout(timer);
-                        for (const signal of sources) {
-                          signal.removeEventListener('abort', abort);
-                        }
-                        trial.elapsedMs = Math.max(0, now() - started);
-                        trial.hiddenObserved ||= hidden();
-                        if (trial.hiddenObserved) {
-                          trial.exclusion.push('page-hidden');
-                        }
-                        if (observation !== undefined) {
-                          trial.exclusion.push('instrumented');
-                        }
-                        const metrics = trial.summary?.performance;
-                        switch (observation) {
-                        case 'placement': {
-                          const census = metrics?.backendCensus;
-                          if (!census?.observedNodes) {
-                            trial.warnings.push('placement-missing');
-                          }
-                          const capability = census?.capability;
-                          switch (capability) {
-                          case 'tensor-layout-only': trial.warnings.push('placement-layout-only');
                             break;
-                          case 'legacy-synchronous-getters': case 'synchronous-leaf-bindings-v1': case undefined: break;
                           default: {
-                            const exhaustive: never = capability;
+                            const exhaustive: never = lane;
                             void exhaustive;
                           }
                           }
-                          const completion = census?.decodeCompletionTiming;
-                          if (census && (census.errors > 0 || census.droppedNodes > 0 || completion && (
-                            completion.errors > 0 || completion.skippedNodes > 0 || completion.unattributedNodes > 0 ||
+                          switch (observation) {
+                          case 'placement': {
+                            const census = metrics?.backendCensus;
+                            if (!census?.observedNodes) {
+                              trial.warnings.push('placement-missing');
+                            }
+                            const capability = census?.capability;
+                            switch (capability) {
+                            case 'tensor-layout-only': trial.warnings.push('placement-layout-only');
+                              break;
+                            case 'legacy-synchronous-getters': case 'synchronous-leaf-bindings-v1': case undefined: break;
+                            default: {
+                              const exhaustive: never = capability;
+                              void exhaustive;
+                            }
+                            }
+                            const completion = census?.decodeCompletionTiming;
+                            if (census && (census.errors > 0 || census.droppedNodes > 0 || completion && (
+                              completion.errors > 0 || completion.skippedNodes > 0 || completion.unattributedNodes > 0 ||
                             completion.unfinishedNodes > 0 || completion.timedNodes !== completion.requestedNodes
-                          ))) {
-                            trial.warnings.push('placement-incomplete');
-                          }
-                          break;
-                        }
-                        case undefined: break;
-                        default: {
-                          const exhaustive: never = observation;
-                          void exhaustive;
-                        }
-                        }
-                        if (!metrics) {
-                          trial.exclusion.push('missing-summary');
-                        } else {
-                          switch (metrics.outcome) {
-                          case 'completed': break;
-                          case 'aborted': case 'failed': trial.exclusion.push('incomplete-summary');
+                            ))) {
+                              trial.warnings.push('placement-incomplete');
+                            }
                             break;
+                          }
+                          case undefined: break;
                           default: {
-                            const exhaustive: never = metrics.outcome;
+                            const exhaustive: never = observation;
                             void exhaustive;
                           }
                           }
+                          if (!metrics) {
+                            trial.exclusion.push('missing-summary');
+                          } else {
+                            switch (metrics.outcome) {
+                            case 'completed': break;
+                            case 'aborted': case 'failed': trial.exclusion.push('incomplete-summary');
+                              break;
+                            default: {
+                              const exhaustive: never = metrics.outcome;
+                              void exhaustive;
+                            }
+                            }
+                          }
+                          if (step.sequence === 'fresh' && metrics?.reusedTokens !== undefined && metrics.reusedTokens !== 0) {
+                            trial.exclusion.push('unexpected-reuse');
+                          }
+                          if (!trial.output) {
+                            trial.exclusion.push('incomplete-output');
+                          }
+                          activeAttempt = undefined;
+                          current = undefined;
+                          notify();
                         }
-                        if (step.sequence === 'fresh' && metrics?.reusedTokens !== undefined && metrics.reusedTokens !== 0) {
-                          trial.exclusion.push('unexpected-reuse');
-                        }
-                        if (!trial.output) {
-                          trial.exclusion.push('incomplete-output');
-                        }
-                        current = undefined;
-                        notify();
                       }
+                    } finally {
+                      scope.signal.removeEventListener('abort', abortOperation);
+                      release = interval({ kind: 'model-release', modelIndex, lane, runtimeSegment });
                     }
-                  } finally {
-                    scope.signal.removeEventListener('abort', abortOperation);
-                    release = interval({ kind: 'model-release', modelIndex });
-                  }
-                },
-              });
+                  },
+                });
+              } catch (error) {
+                operationOutcome = control.signal.aborted ? 'cancelled' : interrupted && errorCode({ error }) === 'aborted' ? 'interrupted' : 'failed';
+                throw error;
+              } finally {
+                if (!entered) {
+                  acquired({ outcome: operationOutcome });
+                }
+                // A successful cleanup of a failed request is not inferred here;
+                // outcome describes the containing model operation.
+                release?.({ outcome: operationOutcome });
+              }
+              break;
             } catch (error) {
-              operationOutcome = control.signal.aborted ? 'cancelled' : 'failed';
-              throw error;
-            } finally {
-              if (!entered) {
-                acquired({ outcome: operationOutcome });
+              if (interrupted?.interruption && !control.signal.aborted && errorCode({ error }) === 'aborted') {
+                // An intentional abort is expected. The unchanged service wraps
+                // errors, so do not rely on object identity or swallow other errors.
+                // Retain dependency skips even if no further scope is necessary.
+                for (const step of steps) {
+                  if (activeSnapshot.trials.some(trial => trial.stepId === step.id) || !step.dependsOn) {
+                    continue;
+                  }
+                  const parent = activeSnapshot.trials.find(trial => trial.stepId === step.dependsOn);
+                  if (parent?.status === 'interrupted' || parent?.skipReason === 'dependency-interrupted') {
+                    skip({ step, options, error: 'Dependency was interrupted by the user', skipReason: 'dependency-interrupted' });
+                  }
+                }
+                remaining = steps.filter(step => !activeSnapshot.trials.some(trial => trial.stepId === step.id));
+                if (remaining.length) {
+                  resuming = interrupted;
+                  runtimeSegment++;
+                  notify();
+                  continue;
+                }
+                interrupted.interruption.recovery = 'not-needed';
+                notify();
+                break;
               }
-              // A successful cleanup of a failed request is not inferred here;
-              // outcome describes the containing model operation.
-              release?.({ outcome: operationOutcome });
-            }
-          } catch (error) {
-            activeSnapshot.modelErrors.push({ modelIndex, error: error instanceof Error ? error.message : String(error) });
-            for (const step of steps) {
-              if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
-                skip({ step, options: plan.options, error: control.signal.aborted ? 'cancelled' : 'model-operation-failed' });
+              for (const trial of [interrupted, resuming]) {
+                if (trial?.interruption) {
+                  trial.interruption.recovery = control.signal.aborted ? 'stopped' : 'failed';
+                }
               }
+              activeSnapshot.modelErrors.push({ modelIndex, lane, error: error instanceof Error ? error.message : String(error) });
+              for (const step of steps) {
+                if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
+                  skip({ step, options, error: control.signal.aborted ? 'cancelled' : 'model-operation-failed' });
+                }
+              }
+              notify();
+              break;
             }
-            notify();
+          }
+          if (resuming?.interruption && resuming.interruption.recovery === 'pending') {
+            resuming.interruption.recovery = 'stopped';
           }
         }
       } finally {
         activeSnapshot.status = control.signal.aborted ? 'cancelled' : 'completed';
         for (const step of plan.steps) {
           if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
-            skip({ step, options: plan.options, error: 'cancelled' });
+            skip({ step, options: optionsForLane({ plan, lane: step.lane ?? 'standard' }), error: 'cancelled' });
           }
         }
         execution.finishedAt = date();
         execution.elapsedMs = elapsed();
+        activeAttempt = undefined;
         current = undefined;
         controller = undefined;
         runStarted = undefined;

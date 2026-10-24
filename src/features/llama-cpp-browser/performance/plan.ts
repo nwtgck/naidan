@@ -1,4 +1,5 @@
-import { performanceProtocol, planSchema, type PerformancePlan, type PerformanceStep } from './types';
+import { gpuProfilingProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
+import { measurementLanes, performanceProtocol, planSchema, type MeasurementLane, type MeasurementMode, type PerformancePlan, type PerformanceStep } from './types';
 
 // Public, versioned English fixtures. Changing these changes the workload, so
 // retain both the protocol identity and exact input messages in every archive.
@@ -8,12 +9,13 @@ const followUp = 'Choose the most important limitation from your previous explan
 
 export function createPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
   const steps: PerformanceStep[] = [];
-  for (const [modelIndex] of models.entries()) {
+  for (const { modelIndex, lane } of models.flatMap((_, modelIndex) => performanceLanes({ mode: settings.mode }).map(lane => ({ modelIndex, lane })))) {
     const add = ({ scenario, position, repetition, dependsOn, prompt, maxTokens }: { scenario: PerformanceStep['scenario'], position: PerformanceStep['position'], repetition: PerformanceStep['repetition'], dependsOn?: PerformanceStep['dependsOn'], prompt: PerformanceStep['prompt'], maxTokens: PerformanceStep['maxTokens'] }): string => {
       const id = `m${modelIndex}-${steps.length}`;
       steps.push({
         id,
         modelIndex,
+        lane,
         scenario,
         position,
         role: 'measurement',
@@ -50,11 +52,26 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
     }
     }
   }
-  const plan = planSchema.parse({ version: 1, protocol: performanceProtocol, id, createdAt, models, settings, options, notes, steps });
-  if (new Set(models.map(model => model.id)).size !== models.length || new Set(models.map(model => model.name)).size !== models.length) {
-    throw new Error('Duplicate model identifiers or names');
+  const plan = planSchema.parse({ version: 1, protocol: performanceProtocol, id, createdAt, models, settings, options: settings.mode === 'both' || settings.mode === 'gpu-profile' ? { ...options, profile: 'webgpu-wasm64-jspi' } : options, notes, steps });
+  if (new Set(models.map(model => model.modelId)).size !== models.length) {
+    throw new Error('Duplicate modelId');
   }
   return plan;
+}
+
+export function performanceLanes({ mode }: { mode: MeasurementMode | undefined }): MeasurementLane[] {
+  return measurementLanes({ mode });
+}
+
+export function optionsForLane({ plan, lane }: { plan: PerformancePlan, lane: MeasurementLane }): RuntimeOptions {
+  switch (lane) {
+  case 'gpu-profile': return { ...plan.options, profile: gpuProfilingProfile };
+  case 'standard': return { ...plan.options };
+  default: {
+    const exhaustive: never = lane;
+    throw new Error(String(exhaustive));
+  }
+  }
 }
 
 export const TEST_ONLY = {

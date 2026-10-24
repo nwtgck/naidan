@@ -13,6 +13,9 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
 import ImageGenerationResults from './components/ImageGenerationResults.vue';
 import ImageGenerationProgress from './components/ImageGenerationProgress.vue';
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 const rpcMocks = vi.hoisted(() => ({ manager: vi.fn() }));
 vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ getRpcManager: rpcMocks.manager, subscribeRpcState: () => () => {} }));
 const mocks = vi.hoisted(() => {
@@ -79,7 +82,7 @@ vi.mock('@/features/stable-diffusion-cpp-browser/use-image-library', async () =>
     useImageLibrary: ({ onSelection }: { onSelection: ({ family, turbo }: { family: 'z-image' | 'qwen-image-2.1', turbo: boolean }) => void }) => {
       mocks.selection(onSelection);
       const library = createDisabledImageLibrary();
-      library.main.value = 'selected';
+      library.selectedCandidateKey.value = 'selected';
       const transfers = { importing: ref(false), downloading: ref(false) };
       mocks.setTransfer.mockImplementation(({ operation, active }: { operation: keyof typeof transfers, active: boolean }) => {
         transfers[operation].value = active;
@@ -92,14 +95,14 @@ vi.mock('@/features/stable-diffusion-cpp-browser/use-image-library', async () =>
         selectedFacts: computed(() => mocks.facts),
         prepareHistoryFiles: () => mocks.prepareFiles(),
         restoreModelSelection() {
-          library.main.value = 'missing-primary';
+          library.selectedCandidateKey.value = 'missing-primary';
           return { loras: [], missing: ['missing.gguf'], missingInactive: [] };
         },
-        chooseMain({ id }: { id: string }) {
-          library.main.value = id;
+        chooseMain({ candidateKey }: { candidateKey: string }) {
+          library.selectedCandidateKey.value = candidateKey;
         },
         useManualFiles() {
-          library.main.value = '';
+          library.selectedCandidateKey.value = '';
         },
         historyFileLocation({ file }: { file: File }) {
           return { type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` };
@@ -452,16 +455,16 @@ describe('hosted image history integration with a synthetic inference client', (
       throw new Error('The adapter is unreadable');
     });
     view.loras.value = [
-      { file, path: 'first.gguf', strength: 0.5, enabled: true },
+      { file, relativePath: 'first.gguf', strength: 0.5, enabled: true },
       { file: unavailable, strength: -0.75, enabled: true },
-      { file, path: 'zero.gguf', strength: 0, enabled: true },
+      { file, relativePath: 'zero.gguf', strength: 0, enabled: true },
     ];
     editor = mount(ImageGenerationEditor, { props: { view, active: true } });
     await editor.findAll('[data-testid="image-lora-enabled"]')[1]!.setValue(false);
     await view.generate({ submission: undefined });
     expect(view.invalid.value).toBe(false);
     expect(mocks.generate.mock.calls[0]?.[0].request.loras).toEqual([
-      { file, path: 'first.gguf', strength: 0.5 }, { file, path: 'zero.gguf', strength: 0 },
+      { file, relativePath: 'first.gguf', strength: 0.5 }, { file, relativePath: 'zero.gguf', strength: 0 },
     ]);
     expect(mocks.save.mock.calls[0]?.[0].record.request.loras.map((lora: { path: string, strength: number }) => [lora.path, lora.strength])).toEqual([
       ['first.gguf', 0.5], ['unavailable.gguf', 0], ['zero.gguf', 0],
@@ -471,7 +474,7 @@ describe('hosted image history integration with a synthetic inference client', (
     await editor.findAll('[data-testid="image-lora-enabled"]')[1]!.setValue(true);
     await view.generate({ submission: undefined });
     expect(mocks.generate.mock.calls[1]?.[0].request.loras).toEqual([
-      { file, path: 'first.gguf', strength: 0.5 }, { file: unavailable, strength: -0.75 }, { file, path: 'zero.gguf', strength: 0 },
+      { file, relativePath: 'first.gguf', strength: 0.5 }, { file: unavailable, strength: -0.75 }, { file, relativePath: 'zero.gguf', strength: 0 },
     ]);
     expect(mocks.save.mock.calls[1]?.[0].record.request.loras[1].strength).toBe(-0.75);
   });
@@ -964,8 +967,8 @@ describe('hosted image history integration with a synthetic inference client', (
     const request = requestFixture();
     request.artifact = artifactFixture();
     request.parameters = { ...parametersFixture(), prompt: 'Restored', seed: '987654321', steps: 8, guidance: 1 };
-    request.models = [{ slot: 'model', file, path: 'nested/model.gguf', companions: [{ path: 'nested/shard.gguf', file }] }];
-    request.loras = [{ file, path: 'adapter.gguf', strength: 0.7 }];
+    request.models = [{ slot: 'model', file, relativePath: 'nested/model.gguf', companions: [{ relativePath: 'nested/shard.gguf', file }] }];
+    request.loras = [{ file, relativePath: 'adapter.gguf', strength: 0.7 }];
     request.imageInputs = { initImage: new File(['init'], 'init.png', { type: 'image/png' }), strength: 0.3, referenceImages: [new File(['one'], 'one.png', { type: 'image/png' }), new File(['two'], 'two.png', { type: 'image/png' })] };
     const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), createdAt: 1, locateFile: ({ file }) => ({ type: 'opfs', name: file.name, size: file.size, lastModified: file.lastModified, path: `models/user/example/${file.name}` }) });
     const saved = finishImageGenerationSnapshot({ snapshot, result: result(), previews: [], elapsedMs: 1 });
@@ -980,7 +983,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.imageInputs.value.referenceImages.map(file => file.name)).toEqual(['one.png', 'two.png']);
     expect(view.imageInputs.value.strength).toBe(0.3);
     await view.generate({ submission: undefined });
-    expect(mocks.generate.mock.calls[0]?.[0].request.models[0].companions[0].path).toBe('nested/shard.gguf');
+    expect(mocks.generate.mock.calls[0]?.[0].request.models[0].companions[0].relativePath).toBe('nested/shard.gguf');
     expect(mocks.generate.mock.calls[0]?.[0].request.parameters.seed).toBe('987654321');
     expect(view.historyActions.error.value).toBe('');
   });
@@ -1001,8 +1004,8 @@ describe('hosted image history integration with a synthetic inference client', (
     const base = ggufFile(), companion = new File(['companion'], 'part-two.gguf');
     const vae = new File(['original-vae'], 'original-vae.gguf');
     const replacement = new File(['replacement-vae'], 'replacement-vae.gguf');
-    mocks.models = [{ slot: 'diffusion', file: base, path: 'split/base.gguf', companions: [{ path: 'split/part-two.gguf', file: companion }] },
-      { slot: 'vae', file: vae, path: 'original/vae.gguf' }];
+    mocks.models = [{ slot: 'diffusion', file: base, relativePath: 'split/base.gguf', companions: [{ relativePath: 'split/part-two.gguf', file: companion }] },
+      { slot: 'vae', file: vae, relativePath: 'original/vae.gguf' }];
     const request = requestFixture();
     request.models = mocks.models;
     request.parameters.seed = '42';
@@ -1026,11 +1029,11 @@ describe('hosted image history integration with a synthetic inference client', (
     const models = mocks.generate.mock.calls[0]![0].request.models;
     expect(models.find((model: Request['models'][number]) => model.slot === 'diffusion')).toMatchObject({
       file: base,
-      path: 'split/base.gguf',
-      companions: [{ path: 'split/part-two.gguf', file: companion }],
+      relativePath: 'split/base.gguf',
+      companions: [{ relativePath: 'split/part-two.gguf', file: companion }],
     });
     expect(models.find((model: Request['models'][number]) => model.slot === 'vae')).toMatchObject({ file: replacement });
-    expect(models.find((model: Request['models'][number]) => model.slot === 'vae').path).toBeUndefined();
+    expect(models.find((model: Request['models'][number]) => model.slot === 'vae').relativePath).toBeUndefined();
     Object.defineProperty(input, 'files', { value: [], configurable: true });
     view.chooseFile({ slot: 'vae', event: { target: input } as unknown as Event });
     await view.generate({ submission: undefined });
@@ -1050,9 +1053,9 @@ describe('hosted image history integration with a synthetic inference client', (
     const vae = new File(['vae-data'], 'vae.gguf'), vaePart = new File(['vae-part'], 'vae-part.gguf');
     const lm = new File(['lm-model'], 'lm.gguf'), lmPart = new File(['lm-part-data'], 'lm-part.gguf');
     const request = requestFixture();
-    request.models = [{ slot: mainSlot, file: base, path: 'base/model.gguf', companions: [{ path: 'base/part.gguf', file: oldPart }] },
-      { slot: 'vae', file: vae, path: 'vae/model.gguf', companions: [{ path: 'vae/part.gguf', file: vaePart }] },
-      { slot: 'lm', file: lm, path: 'text/model.gguf', companions: [{ path: 'text/part.gguf', file: lmPart }] }];
+    request.models = [{ slot: mainSlot, file: base, relativePath: 'base/model.gguf', companions: [{ relativePath: 'base/part.gguf', file: oldPart }] },
+      { slot: 'vae', file: vae, relativePath: 'vae/model.gguf', companions: [{ relativePath: 'vae/part.gguf', file: vaePart }] },
+      { slot: 'lm', file: lm, relativePath: 'text/model.gguf', companions: [{ relativePath: 'text/part.gguf', file: lmPart }] }];
     request.loras = [{ file: base, strength: 0.7 }];
     const snapshot = snapshotImageGeneration({
       request,
@@ -1101,7 +1104,7 @@ describe('hosted image history integration with a synthetic inference client', (
     pending.reject(new Error('Local scan failed'));
     await restore;
     expect(view.parameters.value.prompt).toBe('a small tree');
-    expect(view.library.main.value).toBe('selected');
+    expect(view.library.selectedCandidateKey.value).toBe('selected');
     expect(view.historyActions.missingFiles.value).toEqual([]);
     expect(view.historyActions.error.value).toBe('Local scan failed');
     await view.reuseHistory({ record: saved.record });
@@ -1150,7 +1153,7 @@ describe('hosted image history integration with a synthetic inference client', (
   it.each([0, 0.7])('keeps the base model and only requires acknowledgement for an enabled missing adapter (strength %s)', async strength => {
     const request = requestFixture();
     request.models = mocks.models;
-    request.loras = [{ file: new File(['adapter'], 'missing-adapter.gguf'), path: 'missing-adapter.gguf', strength }];
+    request.loras = [{ file: new File(['adapter'], 'missing-adapter.gguf'), relativePath: 'missing-adapter.gguf', strength }];
     const snapshot = snapshotImageGeneration({
       request,
       sourceCommit: 'a'.repeat(40),
@@ -1318,7 +1321,7 @@ it('clears only preference-restoration missing files when a usable base model is
   expect(view.historyActions.missingFiles.value).toEqual(['missing.gguf']);
   await view.generate({ submission: undefined });
   expect(mocks.generate).not.toHaveBeenCalled();
-  view.library.chooseMain({ id: 'available-model' });
+  view.library.chooseMain({ candidateKey: 'available-model' });
   await flushPromises();
   expect(view.historyActions.missingFiles.value).toEqual([]);
   await view.generate({ submission: undefined });
@@ -1461,7 +1464,7 @@ describe('Image Generation submission and draft integration', () => {
     view.parameters.value.width = 0;
     view.seedMode.value = 'fixed';
     const file = ggufFile();
-    view.loras.value = [{ enabled: false, strength: 0.75, file, path: 'draft-adapter.gguf', sourceLabel: 'Draft adapter' }];
+    view.loras.value = [{ enabled: false, strength: 0.75, file, relativePath: 'draft-adapter.gguf', locationLabel: 'Draft adapter' }];
     const draft = view.captureDraft?.();
     if (!draft) {
       throw new Error('Expected hosted draft capture');
@@ -1475,7 +1478,7 @@ describe('Image Generation submission and draft integration', () => {
     expect(view.parameters.value).toMatchObject({ prompt: '', seed: '', width: 0 });
     expect(view.layout.value).toBe('components');
     expect(view.seedMode.value).toBe('fixed');
-    expect(view.loras.value).toMatchObject([{ enabled: false, strength: 0.75, path: 'draft-adapter.gguf' }]);
+    expect(view.loras.value).toMatchObject([{ enabled: false, strength: 0.75, relativePath: 'draft-adapter.gguf' }]);
     await view.generate({ submission: undefined });
     expect(mocks.generate).not.toHaveBeenCalled();
   });

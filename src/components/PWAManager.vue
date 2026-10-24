@@ -9,8 +9,8 @@ onBeforeUnmount(() => {
 
 onMounted(async () => {
   /**
-   * WHY: AppAuxiliaryUi mounts only after startup and onboarding release the
-   * real Sidebar and routed chat surface. Their first paint has priority over
+   * WHY: The owner waits for startup and the initial model dialog to release
+   * the real Sidebar and routed chat surface. Their first paint has priority over
    * PWA checks. Flush Vue's DOM work and give that surface a paint opportunity
    * BEFORE importing the registration client. Do not move this to main.ts or
    * the lightweight startup shell: faster update UI must not slow first paint.

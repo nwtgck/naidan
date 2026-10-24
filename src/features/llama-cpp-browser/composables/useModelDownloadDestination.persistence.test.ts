@@ -12,10 +12,11 @@ import { useHostModelDirectories } from '@/composables/useHostModelDirectories';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import LlamaCppBrowserDownloadDestination from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadDestination.vue';
+import { downloadDestinationControl } from '@/features/llama-cpp-browser/components/model-configuration.test-support';
 import { createDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY, useModelDownloadDestination } from './useModelDownloadDestination';
 
-vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn(), put: vi.fn(), delete: vi.fn() } }));
+vi.mock('@/00-storage/service/host-model-handles', async original => ({ ...await original<typeof import('@/00-storage/service/host-model-handles')>(), hostModelHandles: { get: vi.fn(), put: vi.fn(), delete: vi.fn() } }));
 vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ configureRpcFeature: vi.fn(async () => {}) }));
 vi.mock('@/utils/idle-task', () => ({ scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })) }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
@@ -245,9 +246,9 @@ describe('persisted shared LM download destination', () => {
     await flushPromises();
     expect(first.state.destination.value).toEqual({ kind: 'opfs' });
     expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser).toBeUndefined();
-    await first.wrapper.get('[data-testid="llama-download-destination"]').setValue('host:root-a');
+    await downloadDestinationControl({ view: first.wrapper }).setValue('host:root-a');
     await flushPromises();
-    expect(second.wrapper.get<HTMLSelectElement>('[data-testid="llama-download-destination"]').element.value).toBe('host:root-a');
+    expect(downloadDestinationControl({ view: second.wrapper }).props('modelValue')).toBe('host:root-a');
     expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'root-a' });
     expect((await storageService.loadSettings())?.experimental?.browserImageGeneration?.modelDownloadDestination).toEqual(imageTarget);
     unmountAll();
@@ -363,7 +364,8 @@ describe('persisted shared LM download destination', () => {
     await reloadSettings();
     const restored = create();
     await flushPromises();
-    expect(restored.wrapper.get('[data-testid="llama-missing-download-destination"]').text()).toContain('root-a');
+    expect(downloadDestinationControl({ view: restored.wrapper }).get('button').text()).toContain('root-a');
+    expect(downloadDestinationControl({ view: restored.wrapper }).props('options')).toContainEqual(expect.objectContaining({ value: 'host:root-a', disabled: true }));
     await expect(restored.state.authorize({ destination: restored.state.destination.value })).rejects.toThrow('Reconnect');
     expect(restored.state.destination.value).toEqual({ kind: 'host', directoryId: 'root-a' });
   });
@@ -386,7 +388,7 @@ describe('persisted shared LM download destination', () => {
     await flushPromises();
     expect(restored.state.view.destination.value).toBe('root-a');
     expect(restored.state.unavailable.value).toBe(true);
-    expect(restored.wrapper.get<HTMLOptionElement>('option[value="host:root-a"]').element.disabled).toBe(true);
+    expect(downloadDestinationControl({ view: restored.wrapper }).props('options')).toContainEqual(expect.objectContaining({ value: 'host:root-a', disabled: true }));
     expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'root-a' });
   });
 
@@ -405,9 +407,9 @@ describe('persisted shared LM download destination', () => {
     await reloadSettings();
     const first = create(), second = create();
     await flushPromises();
-    const selector = first.wrapper.get<HTMLSelectElement>('[data-testid="llama-download-destination"]');
-    expect(selector.element.value).toBe('host:opfs');
-    expect(selector.element.selectedOptions[0]?.textContent).toContain(root.name);
+    const selector = downloadDestinationControl({ view: first.wrapper });
+    expect(selector.props('modelValue')).toBe('host:opfs');
+    expect(selector.get('button').text()).toContain(root.name);
     expect(first.state.destination.value).toEqual({ kind: 'host', directoryId: 'opfs' });
     const authorized = await first.state.authorize({ destination: first.state.destination.value });
     expect(authorized).toEqual({ destination: { kind: 'host', directoryId: 'opfs' }, expectedRoot: root });
@@ -437,13 +439,14 @@ describe('persisted shared LM download destination', () => {
     handles.delete('opfs');
     window.dispatchEvent(new Event('focus'));
     await flushPromises();
-    expect(selector.element.value).toBe('host:opfs');
+    expect(selector.props('modelValue')).toBe('host:opfs');
     expect(first.state.unavailable.value).toBe(true);
     await expect(first.state.authorize({ destination: first.state.destination.value })).rejects.toThrow('Reconnect');
     await first.state.view.remove({ id: 'opfs' });
     await flushPromises();
-    expect(selector.element.value).toBe('host:opfs');
-    expect(first.wrapper.get('[data-testid="llama-missing-download-destination"]').text()).toContain('opfs');
+    expect(selector.props('modelValue')).toBe('host:opfs');
+    expect(selector.get('button').text()).toContain('opfs');
+    expect(selector.props('options')).toContainEqual(expect.objectContaining({ value: 'host:opfs', disabled: true }));
     expect(first.state.destination.value).toEqual({ kind: 'host', directoryId: 'opfs' });
   });
 
@@ -463,5 +466,46 @@ describe('persisted shared LM download destination', () => {
     image!.view.selectDestination({ id: 'root-b' });
     expect(first.state.view.destination.value).toBe('root-a');
     expect((await storageService.loadSettings())?.experimental?.browserImageGeneration?.modelDownloadDestination).toEqual(imageTarget);
+  });
+});
+
+describe('dropped linked roots use existing registration ownership', () => {
+  it('registers a read-only dropped root and reconnects it through the existing permission action', async () => {
+    const first = create(), second = create();
+    await flushPromises();
+    const root = new MemoryDirectory('Dropped models');
+    let writable = false;
+    const query = vi.spyOn(root, 'queryPermission').mockImplementation(async (...args: unknown[]) => {
+      const mode = (args[0] as { mode: string }).mode;
+      return mode === 'read' || writable ? 'granted' : 'prompt';
+    });
+    const permission = vi.spyOn(root, 'requestPermission').mockImplementation(async () => {
+      writable = true;
+      return 'granted';
+    });
+    await first.state.view.addDroppedDirectory?.({ directory: root as unknown as FileSystemDirectoryHandle, signal: new AbortController().signal });
+    await flushPromises();
+    const registration = (await storageService.loadSettings())?.experimental?.hostModelDirectories?.find(entry => entry.name === root.name);
+    expect(registration).toBeDefined();
+    expect(query).toHaveBeenCalled();
+    expect(permission).not.toHaveBeenCalled();
+    expect(second.state.view.entries.value.find(entry => entry.id === idToRaw({ id: registration!.id }))?.access).toBe('read');
+    await second.state.view.reconnect({ id: idToRaw({ id: registration!.id }) });
+    expect(permission).toHaveBeenCalledOnce();
+    expect(second.state.view.entries.value.find(entry => entry.id === idToRaw({ id: registration!.id }))?.access).toBe('readwrite');
+    await second.state.view.remove({ id: idToRaw({ id: registration!.id }) });
+    expect((await storageService.loadSettings())?.experimental?.hostModelDirectories?.some(entry => entry.id === registration!.id)).toBe(false);
+  });
+
+  it('rejects an invalid linked-root layout before persisting a handle or changing the destination', async () => {
+    const instance = create();
+    await flushPromises();
+    const root = new MemoryDirectory('Wrong level');
+    await root.getFileHandle('model.gguf', { create: true });
+    vi.mocked(hostModelHandles.put).mockClear();
+    await instance.state.view.addDroppedDirectory?.({ directory: root as unknown as FileSystemDirectoryHandle, signal: new AbortController().signal });
+    expect(instance.state.failure.value).toBe(true);
+    expect(hostModelHandles.put).not.toHaveBeenCalled();
+    expect(instance.state.destination.value).toEqual({ kind: 'opfs' });
   });
 });

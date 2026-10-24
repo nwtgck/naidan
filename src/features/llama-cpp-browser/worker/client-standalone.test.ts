@@ -1,10 +1,12 @@
+import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
 import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
+import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
+import type { AcceptedGenerateInput } from './types';
 import { createLlamaCppWorkerClient } from './client-standalone';
 
 const calls = vi.hoisted(() => ({
@@ -17,7 +19,7 @@ const calls = vi.hoisted(() => ({
     finishAudioGeneration: vi.fn(),
     generateAudio: vi.fn(),
     probeProfiles: vi.fn(),
-    listModels: vi.fn(),
+    listModelEntries: vi.fn(),
     importModel: vi.fn(),
     importDirectory: vi.fn(),
     removeModel: vi.fn(),
@@ -41,8 +43,8 @@ class TestWorker extends EventTarget {
 }
 let worker: TestWorker;
 
-function request(): GenerateInput {
-  return { model: 'local.gguf', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 3, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'webgpu-wasm64-jspi' } };
+function request(): AcceptedGenerateInput {
+  return { modelId: 'user/local.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }), messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 3, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'webgpu-wasm64-jspi' } };
 }
 
 beforeEach(() => {
@@ -54,7 +56,7 @@ beforeEach(() => {
   calls.probe.mockResolvedValue(undefined);
   calls.remote.finishAudioGeneration.mockResolvedValue(undefined);
   calls.remote.generateAudio.mockResolvedValue(audioResult());
-  calls.remote.listModels.mockResolvedValue([]);
+  calls.remote.listModelEntries.mockResolvedValue([]);
   calls.remote.release.mockResolvedValue(undefined);
   calls.release.mockResolvedValue(undefined);
   calls.remote.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
@@ -70,7 +72,7 @@ describe('standalone llama Worker lifetime', () => {
     const client = createLlamaCppWorkerClient();
     expect(calls.factory).not.toHaveBeenCalled();
     expect(memoryDiagnosticsHistories.value).toEqual([]);
-    await client.listModels({ signal: undefined });
+    await client.listModelEntries({ signal: undefined });
     worker.dispatchEvent(new MessageEvent('message', {
       data: {
         kind: 'naidan-llama-cpp-memory',
@@ -109,7 +111,7 @@ describe('standalone llama Worker lifetime', () => {
   it('starts lazily once, checks shared OPFS, and sends no external runtime URL', async () => {
     const client = createLlamaCppWorkerClient();
     expect(calls.factory).not.toHaveBeenCalled();
-    await client.listModels({ signal: undefined });
+    await client.listModelEntries({ signal: undefined });
     await client.generate({ request: request(), onEvent: () => {}, onProgress: () => {}, signal: undefined });
     expect(calls.factory).toHaveBeenCalledOnce();
     expect(calls.probe).toHaveBeenCalledOnce();
@@ -123,7 +125,7 @@ describe('standalone llama Worker lifetime', () => {
     expect(calls.release).toHaveBeenCalledOnce();
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects %s before creating the Worker', async profile => {
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm32-asyncify'] as const)('rejects %s before creating the Worker', async profile => {
     const client = createLlamaCppWorkerClient();
     await expect(client.generate({ request: { ...request(), options: { profile } }, onEvent: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow('unavailable');
     expect(calls.factory).not.toHaveBeenCalled();
@@ -151,7 +153,7 @@ describe('standalone llama Worker lifetime', () => {
     const startup = Promise.withResolvers<Worker>();
     calls.factory.mockReturnValue(startup.promise);
     const client = createLlamaCppWorkerClient();
-    const pending = client.listModels({ signal: undefined });
+    const pending = client.listModelEntries({ signal: undefined });
     client.dispose();
     await expect(pending).rejects.toThrow('worker-failed');
     startup.resolve(worker as unknown as Worker);
@@ -164,11 +166,11 @@ describe('standalone llama Worker lifetime', () => {
     calls.factory.mockReturnValue(startup.promise);
     const client = createLlamaCppWorkerClient();
     const controller = new AbortController();
-    const pending = client.listModels({ signal: controller.signal });
+    const pending = client.listModelEntries({ signal: controller.signal });
     controller.abort();
     await expect(pending).rejects.toThrow('aborted');
     expect(client.canReuse()).toBe(false);
-    await expect(client.listModels({ signal: undefined })).rejects.toThrow('worker-failed');
+    await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow('worker-failed');
     startup.resolve(worker as unknown as Worker);
     await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
   });
@@ -176,15 +178,15 @@ describe('standalone llama Worker lifetime', () => {
   it('reports actual storage unavailability instead of losing it to the disposal race', async () => {
     calls.probe.mockRejectedValue(new LlamaCppBrowserError({ code: 'unavailable' }));
     const client = createLlamaCppWorkerClient();
-    await expect(client.listModels({ signal: undefined })).rejects.toThrow('unavailable');
+    await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow('unavailable');
     await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
-    expect(calls.remote.listModels).not.toHaveBeenCalled();
+    expect(calls.remote.listModelEntries).not.toHaveBeenCalled();
   });
 
   it('reports a missing Worker capability as unavailable without invoking its factory', async () => {
     vi.stubGlobal('Worker', undefined);
     const client = createLlamaCppWorkerClient();
-    await expect(client.listModels({ signal: undefined })).rejects.toThrow('unavailable');
+    await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow('unavailable');
     expect(calls.factory).not.toHaveBeenCalled();
   });
 
@@ -193,18 +195,18 @@ describe('standalone llama Worker lifetime', () => {
     calls.remote.release.mockImplementation(() => new Promise(() => {}));
     calls.release.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
-    await client.listModels({ signal: undefined });
+    await client.listModelEntries({ signal: undefined });
     client.dispose();
     await vi.advanceTimersByTimeAsync(6000);
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
   it('rejects a running operation immediately and skips native cleanup on a failed Worker', async () => {
-    calls.remote.listModels.mockImplementation(() => new Promise(() => {}));
+    calls.remote.listModelEntries.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
-    const operation = client.listModels({ signal: undefined });
+    const operation = client.listModelEntries({ signal: undefined });
     const rejection = expect(operation).rejects.toThrow('worker-failed');
-    await vi.waitFor(() => expect(calls.remote.listModels).toHaveBeenCalled());
+    await vi.waitFor(() => expect(calls.remote.listModelEntries).toHaveBeenCalled());
     worker.dispatchEvent(new ErrorEvent('error', { message: 'private native details', cancelable: true }));
     await rejection;
     await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
@@ -231,7 +233,7 @@ describe('standalone single-file import cancellation', () => {
     rollback.reject(new LlamaCppBrowserError({ code: 'aborted' }));
     await rejected;
     expect(client.canReuse()).toBe(true);
-    const model = { id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 };
+    const model = { modelId: 'user/same-GGUF', size: 7, importedAt: 1 };
     calls.remote.importModel.mockResolvedValueOnce(model);
     await expect(client.importModel({ file, signal: undefined, onProgress: () => {} })).resolves.toEqual(model);
     expect(calls.factory).toHaveBeenCalledOnce();
@@ -243,7 +245,7 @@ describe('standalone single-file import cancellation', () => {
 it('lazily verifies shared storage before dispatching standalone audio', async () => {
   const client = createLlamaCppWorkerClient();
   expect(calls.factory).not.toHaveBeenCalled();
-  const result = await client.generateAudio({ request: { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', debug: 'off', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, cancellationSignal: undefined });
+  const result = await client.generateAudio({ request: { ...defaultAudioParameters(), modelId: 'user/voice', resolvedModel: resolvedModelFixture({ modelId: 'user/voice' }), text: 'Hello', debug: 'off', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, cancellationSignal: undefined });
   expect(calls.factory).toHaveBeenCalledOnce();
   expect(calls.probe).toHaveBeenCalledOnce();
   expect(calls.remote.generateAudio).toHaveBeenCalledOnce();
@@ -257,7 +259,7 @@ it('forwards an early finish through lazy standalone initialization without load
   calls.remote.generateAudio.mockReturnValueOnce(gate.promise);
   const client = createLlamaCppWorkerClient();
   const finish = new AbortController();
-  const pending = client.generateAudio({ request: { ...defaultAudioParameters(), text: 'Hello', model: 'user/voice', debug: 'off', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, cancellationSignal: undefined, completionSignal: finish.signal });
+  const pending = client.generateAudio({ request: { ...defaultAudioParameters(), text: 'Hello', modelId: 'user/voice', resolvedModel: resolvedModelFixture({ modelId: 'user/voice' }), debug: 'off', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, cancellationSignal: undefined, completionSignal: finish.signal });
   finish.abort();
   await vi.waitFor(() => expect(calls.remote.finishAudioGeneration).toHaveBeenCalledExactlyOnceWith({ generationId: 1 }));
   expect(calls.remote.cancelGeneration).not.toHaveBeenCalled();
@@ -276,7 +278,7 @@ it('retains preview intent across lazy standalone initialization without choosin
   calls.remote.generateAudio.mockReturnValueOnce(result.promise);
   const client = createLlamaCppWorkerClient();
   const captures = createAudioPreviewRequests();
-  const pending = client.generateAudio({ request: { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', debug: 'off', options: { profile: 'webgpu-wasm32-jspi' } }, cancellationSignal: undefined, onProgress: () => {}, preview: { requests: captures.requests, onPreview: () => {} } });
+  const pending = client.generateAudio({ request: { ...defaultAudioParameters(), modelId: 'user/voice', resolvedModel: resolvedModelFixture({ modelId: 'user/voice' }), text: 'Hello', debug: 'off', options: { profile: 'webgpu-wasm32-jspi' } }, cancellationSignal: undefined, onProgress: () => {}, preview: { requests: captures.requests, onPreview: () => {} } });
   captures.request();
   expect(calls.remote.requestAudioPreview).not.toHaveBeenCalled();
   initialization.resolve(worker as unknown as Worker);
@@ -293,7 +295,7 @@ describe('standalone preparation', () => {
   it('prepares through the verified standalone worker without an external asset URL', async () => {
     calls.remote.prepareModel.mockResolvedValueOnce(undefined);
     const client = createLlamaCppWorkerClient();
-    await client.prepareModel({ request: { model: 'local.gguf', options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, signal: undefined });
+    await client.prepareModel({ request: { modelId: 'user/local.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }), options: { profile: 'webgpu-wasm64-jspi' } }, onProgress: () => {}, signal: undefined });
     expect(calls.factory).toHaveBeenCalledOnce();
     expect(calls.probe).toHaveBeenCalledOnce();
     expect(calls.remote.prepareModel.mock.calls[0]![0]).not.toHaveProperty('messages');

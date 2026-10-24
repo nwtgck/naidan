@@ -1,14 +1,16 @@
+import { temporaryFilePathSchema } from '@/01-models/temporary-model-files';
 import { z } from 'zod';
-import { isModelSourceSegment, modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
-import { parsePublicHostModelReference } from '@/features/llama-cpp-browser/runtime/model-destination-types';
+import { modelIdSchema } from '@/features/llama-cpp-browser/types';
 import { contract, describeMethods, methodDescriptorSchema, methodNames, procedure, rpc } from '@/features/naidan-rpc';
 import type { NaidanRpcClient, NaidanRpcImplementation } from '@/features/naidan-rpc';
 
 /** This file is the complete peer-facing surface, including documents carried
- * by byte streams. Native schemas must not silently expand this contract.
+ * by byte streams. The public modelId string schema is intentionally shared
+ * with local inference; native request/object schemas must not expand the wire.
  * Object schemas strip unknown fields while validating required fields and
  * bounds. RPC checks raw resource references before projecting known fields. */
 export const peerDocumentLimits = Object.freeze({ depth: 32, nodes: 65536 });
+const NAIDAN_PEER_CONTRACT_NAME = 'naidan.peer.v2';
 
 export const relativeModelPathSchema = z.string().min(1).max(4096).refine(path => {
   if (/[\\:%]/.test(path) || path.startsWith('/')) {
@@ -23,34 +25,14 @@ export const relativeModelPathSchema = z.string().min(1).max(4096).refine(path =
   return path.split('/').every(part => part !== '' && part !== '.' && part !== '..');
 }, 'Use a relative path inside an existing model root');
 
-export const chatModelReferenceSchema = z.string().min(1).max(4096).refine(value => {
-  if (value.startsWith('host/')) {
-    try {
-      // Public aliases remain opaque here; only the serving host resolves them.
-      return parsePublicHostModelReference({ name: value }).selector !== undefined;
-    } catch {
-      return false;
-    }
-  }
-  // The larger bound is reserved for encoded Host aliases and file paths.
-  if (value.length > 512) {
-    return false;
-  }
-  if (!value.startsWith('hf.co/') || !value.includes(':')) {
-    return relativeModelPathSchema.safeParse(value).success;
-  }
-  const at = value.indexOf(':');
-  return modelSourceRepositorySchema.safeParse(value.slice('hf.co/'.length, at)).success &&
-    value.slice(at + 1).split('/').every(name => isModelSourceSegment({ name }));
-});
+export const chatModelIdSchema = modelIdSchema;
 
 export const chatCatalogItemSchema = z.object({
-  ref: chatModelReferenceSchema,
-  label: z.string().min(1).max(4096),
-}).refine(({ ref, label }) => ref.startsWith('host/') || label.length <= 1024,
-  'Non-Host model labels must not exceed 1024 characters');
+  modelId: chatModelIdSchema,
+});
 
 export const imageLocationSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('temp'), path: temporaryFilePathSchema }),
   z.object({
     kind: z.literal('opfs'),
     path: relativeModelPathSchema,
@@ -284,7 +266,7 @@ const controlledMethods = {
 
   generateChat: procedure({
     input: z.object({
-      model: chatModelReferenceSchema,
+      modelId: chatModelIdSchema,
       // Encodes peerChatTranscriptSchema above, not an opaque native request.
       transcript: rpc.byteStream(),
       images: z.array(uploadSchema).max(8),
@@ -324,7 +306,7 @@ const controlledMethods = {
 
 export type NaidanPeerControlledMethodName = Extract<keyof typeof controlledMethods, string>;
 
-const controlledMethodNameSchema = z.enum([...methodNames({ contract: { name: 'naidan.peer', methods: controlledMethods } })]);
+const controlledMethodNameSchema = z.enum([...methodNames({ contract: { name: NAIDAN_PEER_CONTRACT_NAME, methods: controlledMethods } })]);
 export const peerAllowedMethodsSchema = z.array(controlledMethodNameSchema).max(64).refine(names => new Set(names).size === names.length);
 
 export const peerProvidedMethodsSchema = z.object({
@@ -335,7 +317,7 @@ export const peerProvidedMethodsSchema = z.object({
 export type PeerProvidedMethods = z.infer<typeof peerProvidedMethodsSchema>;
 
 export const naidanPeerContract = contract({
-  name: 'naidan.peer',
+  name: NAIDAN_PEER_CONTRACT_NAME,
   methods: {
     getProvidedMethods: procedure({
       input: z.object({}),

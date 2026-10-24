@@ -89,7 +89,7 @@ describe('manifest-verified standalone native artifacts', () => {
     expect(source).not.toContain('Naidan fix:');
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'])('rejects importing %s even before tree shaking', async profile => {
+  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi-gpu-profile'])('rejects importing %s even before tree shaking', async profile => {
     const plugin = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' }).corePlugin;
     const load = plugin.load;
     if (typeof load !== 'function') {
@@ -135,7 +135,7 @@ int unrelated;`;
     expect(() => TEST_ONLY.embeddedNotices({ source: 'int x;' })).toThrow('Missing');
   });
 
-  it.each([false, 'oxc'] as const)('validates and packages the real two-Worker graph with minify=%s in every locale ZIP', async minify => {
+  it.each([false, 'oxc'] as const)('validates and packages the real three-Worker graph with minify=%s in every locale ZIP', async minify => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-llama-package-'));
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -143,6 +143,12 @@ int unrelated;`;
       },
     };
     const outputDirectory = path.join(root, 'dist');
+    // The license collector reads package metadata from the Vite root.
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+      name: 'naidan-llama-package-test',
+      version: '1.0.0',
+      private: true,
+    }));
     writeFileSync(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="UTF-8"></head><body><script type="module" src="./main.ts"></script></body></html>');
     // A seven-message synthetic boundary exercises the real locale packager,
     // without building the application's complete message catalog.
@@ -168,7 +174,7 @@ int unrelated;`;
         });
       `);
     const resolvePath = (relative: string): string => path.join(repo, relative);
-    const workers = createFileProtocolStandaloneWorkerDefinitions({ resolvePath }).filter(worker => worker.name.startsWith('llama-cpp-browser'));
+    const workers = createFileProtocolStandaloneWorkerDefinitions({ resolvePath }).filter(worker => worker.name.startsWith('llama-cpp-browser') || worker.name === 'file-download-worker');
     const adapter = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
     const diagnostics: Record<string, unknown> = {};
     const require = createRequire(import.meta.url);

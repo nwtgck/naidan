@@ -40,7 +40,7 @@ plan.models[0]!.request.parameters.negativePrompt = 'private negative';
   plan.models[0]!.request.parameters.bf16WeightType = 'f16';
 plan.models[0]!.overrides.bf16WeightType = 'f16';
   plan.models[0]!.request.baseUrl = 'https://host.invalid/?token=do-not-export';
-plan.models[0]!.request.models[0]!.sourceId = 'opaque-identity-do-not-export';
+plan.models[0]!.request.models[0]!.modelFilesReuseKey = 'opaque-identity-do-not-export';
 await runner.start({ plan });
 return runner.snapshot()!;
 }
@@ -90,7 +90,7 @@ it('keeps legacy diagnostics readable and records requested adapter strengths wi
       throw new Error('Do not read adapter weights for diagnostics');
     },
   });
-  snapshot.plan.models[0]!.request.loras = [{ file, path: 'styles/style.safetensors', strength: 0.75 }];
+  snapshot.plan.models[0]!.request.loras = [{ file, relativePath: 'styles/style.safetensors', strength: 0.75 }];
   const after = benchmarkManifest({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' });
   expect(after.models[0]!.request.loras).toEqual([{ file: { path: 'styles/style.safetensors', bytes: 12, lastModified: 42 }, strength: 0.75 }]);
   expect(after.models[1]!.request).not.toHaveProperty('loras');

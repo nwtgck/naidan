@@ -27,11 +27,11 @@ it.each([
     // saveImageCatalogFile publishes OPFS bytes under main, while receipts
     // and network requests still identify the exact pinned source revision.
     return {
-      id: destination === 'opfs' ? `huggingface.co/${entry.repository}/resolve/main` : `host/${destination}/${entry.repository}`,
-      name: entry.repository,
+      repositoryKey: destination === 'opfs' ? `huggingface.co/${entry.repository}/resolve/main` : `host/${destination}/${entry.repository}`,
+      repositoryLabel: entry.repository,
       ...(destination === 'opfs' ? {} : { hostSource: { directoryId: destination, directoryName: 'Linked models', repository: entry.repository } }),
       files: [{
-        path: entry.path,
+        relativePath: entry.path,
         file,
         receipt: {
           version: 1 as const,
@@ -53,7 +53,7 @@ it.each([
   const download = vi.fn(async () => {
     available = entries;
   });
-  const list = vi.fn<typeof listImageRepositories>(async ({ repositoryIds }) => repositoryIds ? available.filter(entry => repositoryIds.includes(entry.id)) : available);
+  const list = vi.fn<typeof listImageRepositories>(async ({ repositoryKeys }) => repositoryKeys ? available.filter(entry => repositoryKeys.includes(entry.repositoryKey)) : available);
   const library = scope.run(() => useImageLibrary({
     downloadsBlocked: () => false,
     blocked: () => false,
@@ -75,7 +75,7 @@ it.each([
   await library.downloadRecipe({ recipeId: id, selections: {} });
   expect(download).toHaveBeenCalledWith(expect.objectContaining({ files: recipe.files }));
   expect(list).toHaveBeenCalledTimes(2);
-  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ repositoryIds: destination === 'opfs' ? [...new Set(entries.map(entry => entry.id))] : undefined }));
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ repositoryKeys: destination === 'opfs' ? [...new Set(entries.map(entry => entry.repositoryKey))] : undefined }));
   expect(library.ready.value).toBe(true);
   expect(library.downloadState.value).toBe('complete');
   expect(library.recipeAvailability({ recipeId: id, selections: {} })).toMatchObject({ total: 3, available: 3, selected: true });
@@ -87,7 +87,7 @@ it.each([
   expect(models.map(model => model.slot)).toEqual(['diffusion', 'vae', 'lm']);
   for (const [index, model] of models.entries()) {
     expect(model.file).toBe(entries[index]!.files[0]!.file);
-    expect(model.path).toBe(recipe.files[index]!.path);
+    expect(model.relativePath).toBe(recipe.files[index]!.path);
   }
   const target = library.benchmarkTargets({ selections: {} })[0]!;
   expect(target.models).toEqual(models);
@@ -95,7 +95,7 @@ it.each([
   const resolved = benchmarkParameters({ common, target, strategy: 'model-defaults', overrides: {} });
   expect(resolved.preset).toBe(id);
   expect(resolved.parameters).toMatchObject({ steps: 3, guidance: 1 });
-  const omitted = library.benchmarkTargets({ selections: { [target.id]: { lm: '' } } })[0]!;
+  const omitted = library.benchmarkTargets({ selections: { [target.candidateKey]: { lm: '' } } })[0]!;
   expect(omitted.models).toBeUndefined();
   expect(omitted.missing).toEqual(['lm']);
   expect(library.ready.value).toBe(true);

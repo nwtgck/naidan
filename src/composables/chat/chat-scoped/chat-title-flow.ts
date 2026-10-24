@@ -20,6 +20,7 @@ import {
   loadData,
   registerLiveInstance,
   rootItems,
+  synchronizeModelBindingContent,
   triggerCurrentChat,
   unregisterLiveInstance,
 } from '@/composables/chat/global/chat-core-singletons';
@@ -51,10 +52,14 @@ export function scheduleAutoTitleForChat({ chatId }: { chatId: ChatId }): void {
   autoTitleScheduler.schedule({
     chatId,
     run: async ({ signal }) => {
+      const isStorageCurrent = storageService.captureSettingsStorage();
       // A deleted chat may still have content during its undo window, or its
       // last response may finish after deletion. It must not create new work.
       const hierarchy = await storageService.loadHierarchy();
       signal.throwIfAborted();
+      if (!isStorageCurrent()) {
+        return;
+      }
       if (!hierarchy.items.some(item => {
         switch (item.type) {
         case 'chat': return item.id === chatId;
@@ -68,8 +73,12 @@ export function scheduleAutoTitleForChat({ chatId }: { chatId: ChatId }): void {
         return;
       }
       // A background chat may have left the live registry while waiting.
-      const loaded = getLiveChatById({ chatId }) ?? await storageService.loadChat({ id: chatId });
+      const existing = getLiveChatById({ chatId });
+      const loaded = existing ?? await storageService.loadChat({ id: chatId });
       signal.throwIfAborted();
+      if (!isStorageCurrent()) {
+        return;
+      }
       // Navigation may have installed a newer instance while storage was reading.
       // Never merge an earlier snapshot over that instance.
       const chat = getLiveChatById({ chatId }) ?? loaded;
@@ -77,6 +86,15 @@ export function scheduleAutoTitleForChat({ chatId }: { chatId: ChatId }): void {
         return;
       }
       registerLiveInstance({ chat });
+      // A real background read can establish a clean persisted baseline; a
+      // generic registration alone must not certify arbitrary live content.
+      if (existing === null && await synchronizeModelBindingContent({ chatId }) !== 'synchronized') {
+        return;
+      }
+      signal.throwIfAborted();
+      if (!isStorageCurrent()) {
+        return;
+      }
       await generateTitle({ chatId, titleModelIdOverride: undefined, signal, mode: 'automatic' });
     },
   });
@@ -109,6 +127,7 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
     return undefined;
   }
   const taskId = mutableChat.id;
+  const write = storageService.createChatContentWrite({ id: taskId, content: mutableChat, binding: undefined });
   const titleAtStart = mutableChat.title;
   const leafAtStart = mutableChat.currentLeafId;
 
@@ -212,6 +231,7 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
     let committedAt: number | undefined;
     await storageService.updateChatMeta({
       id: taskId,
+      write,
       updater: ({ current }) => {
         if (current === null || current.title !== titleAtStart || !canCommit()) {
           return undefined;

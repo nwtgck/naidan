@@ -1,16 +1,23 @@
+import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
+import type { DeletionPlan } from '@/features/llama-cpp-browser/runtime/deletion-plan';
+import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
+import { Blob as NodeBlob } from 'node:buffer';
+import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
+import { directoryForModelFile } from '@/features/llama-cpp-browser/runtime/model-directory-input';
 import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import type { AudioPreviewEvent } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
-import { defaultAudioParameters, type AudioGenerationInput } from '@/features/audio-generation/types';
+import { defaultAudioParameters } from '@/features/audio-generation/types';
 import type { Progress } from '@/features/llama-cpp-browser/types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
+import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
+import type { AcceptedGenerateInput, AcceptedAudioInput } from './types';
 import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { release: vi.fn(), prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+const transport = vi.hoisted(() => ({ remote: { release: vi.fn(), prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModelEntries: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({
   ...await importOriginal<typeof import('@/utils/worker-transport')>(),
   wrapWorkerRemote: () => transport.remote,
@@ -35,7 +42,7 @@ beforeEach(() => {
   vi.stubGlobal('Worker', TestWorker);
   transport.remote.release.mockReset();
   transport.remote.release.mockResolvedValue(undefined);
-  transport.remote.listModels.mockResolvedValue([]);
+  transport.remote.listModelEntries.mockResolvedValue([]);
   transport.remote.cancelGeneration.mockResolvedValue(undefined);
   transport.remote.finishAudioGeneration.mockReset();
   transport.remote.finishAudioGeneration.mockResolvedValue(undefined);
@@ -59,7 +66,7 @@ describe('hosted Worker lifetime', () => {
       data: {
         kind: 'naidan-llama-cpp-memory',
         instanceId: 'core-one',
-        profile: 'cpu-wasm64',
+        profile: 'webgpu-wasm64-jspi',
         checkpoint: 'runtime-ready',
         capacityBytes: 2 ** 33,
         timestamp: 1000,
@@ -101,46 +108,48 @@ describe('hosted Worker lifetime', () => {
   it('does not construct a Worker when the platform has no Worker support', async () => {
     vi.stubGlobal('Worker', undefined);
     const client = createLlamaCppWorkerClient();
-    await expect(client.listModels({ signal: undefined })).rejects.toThrow('unavailable');
+    await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow('unavailable');
     expect(TestWorker.instances).toHaveLength(0);
     client.dispose();
   });
 
   it('rejects a pending call immediately when its signal aborts and terminates the Worker once', async () => {
-    transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
+    transport.remote.listModelEntries.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
     const controller = new AbortController();
-    const pending = client.listModels({ signal: controller.signal });
+    const pending = client.listModelEntries({ signal: controller.signal });
     controller.abort();
     await expect(pending).rejects.toThrow('aborted');
     expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
     expect(transport.release).toHaveBeenCalledOnce();
     client.dispose();
     expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
-    await expect(client.listModels({ signal: undefined })).rejects.toThrow('worker-failed');
+    await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow('worker-failed');
   });
 
   it('rejects pending work on a Worker error without exposing the native error message', async () => {
-    transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
+    transport.remote.listModelEntries.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
-    const pending = client.listModels({ signal: undefined });
+    const pending = client.listModelEntries({ signal: undefined });
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private prompt and path', cancelable: true }));
     await expect(pending).rejects.toThrow('llama.cpp browser: worker-failed');
     expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
   });
 
   it('rejects overlapping operations instead of sharing unsafe native state', async () => {
-    transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
+    transport.remote.listModelEntries.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
-    const first = client.listModels({ signal: undefined });
-    await expect(client.listModels({ signal: undefined })).rejects.toThrow('busy');
+    const first = client.listModelEntries({ signal: undefined });
+    await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow('busy');
     client.dispose();
     await expect(first).rejects.toThrow('worker-failed');
   });
 
   it('transmits the confirmed deletion plan and validates the deletion result', async () => {
     const client = createLlamaCppWorkerClient();
-    const plan = { id: 'hf.co/owner/repo', files: [{ path: 'nested/model.gguf', size: 128, lastModified: 1 }] };
+    const parent = new MockFileSystemDirectoryHandle({ name: 'owner' });
+    const folder = await parent.getDirectoryHandle('repo', { create: true });
+    const plan: DeletionPlan = { target: { kind: 'model', modelId: 'hf.co/owner/repo:Q4', location: { kind: 'hugging-face', repository: 'owner/repo' } }, folder, parent, rootName: 'repo', selectedRelativePaths: ['nested/model.gguf'], sharedProjector: undefined, files: [{ relativePath: 'nested/model.gguf', size: 128, lastModified: 1 }] };
     transport.remote.removeModel.mockResolvedValueOnce('changed');
     expect(await client.removeModel({ plan, signal: undefined })).toBe('changed');
     expect(transport.remote.removeModel).toHaveBeenCalledWith({ plan });
@@ -150,16 +159,17 @@ describe('hosted Worker lifetime', () => {
   });
 
   it('validates model inventory received from the Worker', async () => {
-    transport.remote.listModels.mockResolvedValue([{ id: '../invalid', name: 'private.gguf', size: 1, importedAt: 0 }]);
+    transport.remote.listModelEntries.mockResolvedValue([{ id: '../invalid', name: 'private.gguf', size: 1, importedAt: 0 }]);
     const client = createLlamaCppWorkerClient();
-    await expect(client.listModels({ signal: undefined })).rejects.toThrow();
+    await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow();
     client.dispose();
   });
 });
 
-function generationInput(): GenerateInput {
+function generationInput(): AcceptedGenerateInput {
   return {
-    model: 'local.gguf',
+    modelId: 'user/local.gguf',
+    resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }),
     messages: [{ role: 'user', content: 'private prompt' }],
     temperature: 0,
     topP: 1,
@@ -254,7 +264,7 @@ describe('concurrent native failure and cancellation ownership', () => {
         return client.generate({ request: generationInput(), onEvent: () => {}, onProgress: () => {}, signal: controller.signal });
       case 'prepare':
         transport.remote.prepareModel.mockReturnValueOnce(gate.promise);
-        return client.prepareModel({ request: { model: 'local.gguf', options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: controller.signal });
+        return client.prepareModel({ request: { modelId: 'user/local.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }), options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: controller.signal });
       default: {
         const exhaustive: never = operation;
         throw new Error(String(exhaustive));
@@ -281,7 +291,7 @@ describe('directory import cancellation', () => {
     }));
     const client = createLlamaCppWorkerClient();
     const controller = new AbortController();
-    const pending = client.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, signal: controller.signal, onProgress: () => {} });
+    const pending = client.importDirectory({ directory: { rootName: 'Model', files: [{ relativePath: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, signal: controller.signal, onProgress: () => {} });
     controller.abort();
     expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: 1 });
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
@@ -399,9 +409,9 @@ describe('host snapshots of native operations', () => {
 
   it('classifies a known worker error message without printing its raw contents', async () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
+    transport.remote.listModelEntries.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
-    const pending = client.listModels({ signal: undefined });
+    const pending = client.listModelEntries({ signal: undefined });
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'Dispatch workgroup count X (95760) exceeds max compute workgroups per dimension (65535). private path', cancelable: true }));
     await expect(pending).rejects.toThrow('worker-failed');
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ failureKind: 'webgpu-dispatch-limit', dispatchAxis: 'x', dispatchCount: 95760, dispatchLimit: 65535 }));
@@ -441,7 +451,7 @@ describe('single-file import cancellation', () => {
     await rejected;
     expect(client.canReuse()).toBe(true);
     expect(transport.release).not.toHaveBeenCalled();
-    const model = { id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 };
+    const model = { modelId: 'user/same-GGUF', size: 7, importedAt: 1 };
     transport.remote.importModel.mockResolvedValueOnce(model);
     await expect(client.importModel({ file, onProgress: () => {}, signal: undefined })).resolves.toEqual(model);
     expect(transport.remote.importModel.mock.calls[1]?.[0].generationId).toBeGreaterThan(call[0].generationId);
@@ -459,7 +469,7 @@ describe('single-file import cancellation', () => {
     const progress = vi.fn();
     await expect(client.importModel({ file, signal: controller.signal, onProgress: progress })).rejects.toThrow('aborted');
     expect(transport.remote.importModel).not.toHaveBeenCalled();
-    transport.remote.importModel.mockResolvedValueOnce({ id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 });
+    transport.remote.importModel.mockResolvedValueOnce({ modelId: 'user/same-GGUF', size: 7, importedAt: 1 });
     await client.importModel({ file, signal: undefined, onProgress: progress });
     transport.remote.importModel.mock.calls[0]?.[1]({ phase: 'importing', completed: 7, total: 7 });
     expect(progress).not.toHaveBeenCalled();
@@ -481,8 +491,8 @@ describe('single-file import cancellation', () => {
   });
 });
 
-function audioInput(): AudioGenerationInput {
-  return { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
+function audioInput(): AcceptedAudioInput {
+  return { ...defaultAudioParameters(), modelId: 'user/voice', resolvedModel: resolvedModelFixture({ modelId: 'user/voice' }), text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
 }
 
 describe('hosted audio transport', () => {
@@ -490,7 +500,7 @@ describe('hosted audio transport', () => {
     const client = createLlamaCppWorkerClient();
     expect(await client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: undefined })).toEqual(audioResult());
     expect(transport.remote.generate).not.toHaveBeenCalled();
-    expect(transport.remote.generateAudio.mock.calls[0]?.[0]).toMatchObject({ generationId: 1, model: 'user/voice' });
+    expect(transport.remote.generateAudio.mock.calls[0]?.[0]).toMatchObject({ generationId: 1, modelId: 'user/voice' });
     client.dispose();
   });
 
@@ -702,8 +712,8 @@ describe('model preparation transport', () => {
     });
     const client = createLlamaCppWorkerClient();
     const progress = vi.fn();
-    await client.prepareModel({ request: { model: 'local.gguf', options: { profile: 'cpu-wasm32' }, debug: 'off' }, onProgress: progress, signal: undefined });
-    expect(transport.remote.prepareModel.mock.calls[0]![0]).toMatchObject({ model: 'local.gguf', generationId: expect.any(Number) });
+    await client.prepareModel({ request: { modelId: 'user/local.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }), options: { profile: 'cpu-wasm32' }, debug: 'off' }, onProgress: progress, signal: undefined });
+    expect(transport.remote.prepareModel.mock.calls[0]![0]).toMatchObject({ modelId: 'user/local.gguf', generationId: expect.any(Number) });
     expect(transport.remote.prepareModel.mock.calls[0]![0]).not.toHaveProperty('messages');
     expect(progress).toHaveBeenCalledWith({ progress: { phase: 'loading', completed: 1, total: 2 } });
     expect(transport.remote.generate).not.toHaveBeenCalled();
@@ -715,7 +725,7 @@ describe('model preparation transport', () => {
     transport.remote.prepareModel.mockReturnValueOnce(gate.promise);
     const client = createLlamaCppWorkerClient();
     const controller = new AbortController();
-    const pending = client.prepareModel({ request: { model: 'local.gguf', options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: controller.signal });
+    const pending = client.prepareModel({ request: { modelId: 'user/local.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }), options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
     controller.abort();
     expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: transport.remote.prepareModel.mock.calls[0]![0].generationId });
@@ -838,5 +848,38 @@ describe('measured partial memory evidence', () => {
     transport.remote.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'missing-model' }));
     await expect(client.generate(args)).rejects.toThrow('missing-model');
     client.dispose();
+  });
+});
+
+describe('temporary files on the existing worker transport', () => {
+  it('attaches only the selected model for chat, preparation and audio, including a recreated Worker', async () => {
+    const bytes = new Uint8Array(32);
+    bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+    const file = new File([bytes], 'transport-temp.gguf', { lastModified: 123 });
+    Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
+    const [model] = await temporaryModels.registerDirectory({ directory: directoryForModelFile({ file }), signal: undefined });
+    using _registration = { [Symbol.dispose]: () => temporaryModels.removeModel({ modelId: model!.modelId }) };
+    const resolvedModel = (await temporaryModels.resolveModel({ modelId: model!.modelId, signal: undefined }))!;
+    const client = createLlamaCppWorkerClient();
+    using _first = { [Symbol.dispose]: () => client.dispose() };
+    transport.remote.prepareModel.mockResolvedValue(undefined);
+    transport.remote.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await client.prepareModel({ request: { modelId: model!.modelId, resolvedModel, options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: undefined });
+    expect(transport.remote.prepareModel.mock.calls.at(-1)?.[0].resolvedModel.directory.files[0].file).toBe(file);
+    await client.generate({ request: { ...generationInput(), modelId: model!.modelId, resolvedModel }, onEvent: () => {}, onProgress: () => {}, signal: undefined });
+    expect(transport.remote.generate.mock.calls.at(-1)?.[0].resolvedModel.modelId).toBe(model!.modelId);
+    await client.generateAudio({ request: { ...audioInput(), modelId: model!.modelId, resolvedModel }, onProgress: () => {}, cancellationSignal: undefined });
+    expect(transport.remote.generateAudio.mock.calls.at(-1)?.[0].resolvedModel.directory.files[0].file).toBe(file);
+    client.dispose();
+    const replacement = createLlamaCppWorkerClient();
+    using _second = { [Symbol.dispose]: () => replacement.dispose() };
+    await replacement.prepareModel({ request: { modelId: model!.modelId, resolvedModel, options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: undefined });
+    expect(transport.remote.prepareModel.mock.calls.at(-1)?.[0].resolvedModel.directory.files[0].file).toBe(file);
+    temporaryModels.removeModel({ modelId: model!.modelId });
+    const count = transport.remote.prepareModel.mock.calls.length;
+    await expect(temporaryModels.resolveModel({ modelId: model!.modelId, signal: undefined })).rejects.toThrow('missing-model');
+    // An accepted snapshot remains usable after the registry projection is removed.
+    await replacement.prepareModel({ request: { modelId: model!.modelId, resolvedModel, options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: undefined });
+    expect(transport.remote.prepareModel.mock.calls).toHaveLength(count + 1);
   });
 });

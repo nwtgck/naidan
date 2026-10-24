@@ -2,7 +2,7 @@
 import SettingsDisclosure from './SettingsDisclosure.vue';
 import { PlusIcon, Trash2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-const props = defineProps<{ modelValue: readonly [string, string][], testIdPrefix: string, namePlaceholder?: string }>();
+const props = defineProps<{ modelValue: readonly [string, string][], testIdPrefix: string, namePlaceholder?: string, title?: string }>();
 const emit = defineEmits<{ (e: 'update:modelValue', headers: [string, string][]): void, (e: 'save'): void }>();
 
 function update({ index, field, value }: { index: number, field: 0 | 1, value: string }) {
@@ -21,7 +21,7 @@ function remove({ index }: { index: number }) {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <SettingsDisclosure :title="lazyStrings.HttpHeadersEditor__http_headers()" :summary="String(modelValue.length)">
+  <SettingsDisclosure :title="title ?? lazyStrings.HttpHeadersEditor__http_headers()" :summary="String(modelValue.length)">
     <div tw-class="space-y-2 pb-3">
       <div v-for="(header, index) in modelValue" :key="index" tw-class="flex items-start gap-2">
         <div tw-class="grid min-w-0 flex-1 grid-cols-2 gap-2">

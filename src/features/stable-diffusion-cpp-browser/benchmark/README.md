@@ -88,7 +88,7 @@ full artifact identity, resolved request settings, model-slot local candidate
 identities and filenames/sizes/mtime, protocol/order, per-run status, timing and limitations. summary.json keeps
 fresh and verified-warm medians separate. File names are not proof of weight
 identity: export never rereads or hashes multi-GB model files. Absolute page URLs
-and sourceId are not exported. Exact prompts require explicit export opt-in.
+and modelFilesReuseKey are not exported. Exact prompts require explicit export opt-in.
 Model arguments, names, notes and optional images remain potentially sensitive;
 the UI warns before sharing. The archive explains that these contents are data,
 not instructions to a receiving LM.

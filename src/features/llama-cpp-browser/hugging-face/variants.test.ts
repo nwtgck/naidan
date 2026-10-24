@@ -1,14 +1,23 @@
 import { openSyncAccess } from './sync-access';
+import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadWriter } from './writer';
 import { ggufBytes, memoryDirectory } from './test-opfs';
 import { installedSelection, listHuggingFaceModels, readJournal, repositoryFolder, selectedFile, resolveRepositoryModel } from './storage';
 import { cancelDownload } from './download';
-import { planStoredModelRemoval, prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
+import { prepareRepositoryRemoval, prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import { quantizationChoices } from './presentation';
 import { groupModelFiles } from './catalog';
 import type { DownloadSelection } from './types';
 vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
+
+function storedFileHandle({ file }: { file: ModelFile }): FileSystemFileHandle {
+  if (!('handle' in file)) {
+    throw new Error('Expected a stored model file');
+  }
+  return file.handle;
+}
+
 const repository = 'owner/Model-GGUF';
 const revision = 'a'.repeat(40);
 const projector = { path: 'mmproj-Q8_0.gguf', size: 128 };
@@ -51,7 +60,7 @@ describe('independent HF variants in one repository', () => {
     }
     expect(await installedSelection({ selection: split })).toBeUndefined();
     await writer.finish();
-    expect(await installedSelection({ selection: split })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
+    expect(await installedSelection({ selection: split })).toMatchObject({ modelId: `hf.co/${repository}:Q4_K_M` });
     const folder = await repositoryFolder({ repository, create: false });
     await folder.removeEntry(projector.path);
     expect(await installedSelection({ selection: split })).toBeUndefined();
@@ -64,40 +73,56 @@ describe('independent HF variants in one repository', () => {
 
   it('keeps Q4 available during Q8 download, cancels only owned files, and preserves Q4 identity after Q8 publication', async () => {
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
-    const before = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
+    const before = await resolveRepositoryModel({ modelId: `hf.co/${repository}:Q4_K_M`, signal: undefined });
     const writer = createDownloadWriter();
     expect(await writer.begin({ selection: selection({ quant: 'Q8_0' }) })).toMatchObject({ journal: { reused: [false, true] } });
     await writer.open({ fileIndex: 0, start: 0 });
     await writer.append({ bytes: ggufBytes().slice(0, 48) });
     await writer.pause();
-    expect((await listHuggingFaceModels()).map(model => model.name)).toEqual([`hf.co/${repository}:Q4_K_M`]);
-    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
+    expect((await listHuggingFaceModels()).map(model => model.modelId)).toEqual([`hf.co/${repository}:Q4_K_M`]);
+    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ modelId: `hf.co/${repository}:Q4_K_M` });
     expect(await installedSelection({ selection: selection({ quant: 'Q8_0' }) })).toBeUndefined();
-    expect((await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` })).files.map(file => file.path)).toEqual(before.files.map(file => file.path));
-    const plan = await planStoredModelRemoval({ id: `hf.co/${repository}` });
-    expect(plan.files.map(file => file.path)).toEqual(['.llama-cpp-import-pending', 'Model-Q8_0.gguf']);
+    expect((await resolveRepositoryModel({ modelId: `hf.co/${repository}:Q4_K_M`, signal: undefined })).files.map(file => file.relativePath)).toEqual(before.files.map(file => file.relativePath));
+    const { plan } = await prepareRepositoryRemoval({ location: { kind: 'hugging-face', repository }, signal: undefined });
+    expect(plan.files.map(file => file.relativePath)).toEqual(['.llama-cpp-import-pending', 'Model-Q8_0.gguf']);
     expect(await cancelDownload({ repository, plan })).toBe('deleted');
     await publish({ input: selection({ quant: 'Q8_0' }) });
-    const after = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
-    expect(after.id).toBe(before.id);
-    expect(after.name).toBe(before.name);
-    expect(after.files.map(file => [file.path, file.file.size, file.file.lastModified, file.handle])).toEqual(before.files.map(file => [file.path, file.file.size, file.file.lastModified, file.handle]));
-    expect((await listHuggingFaceModels()).map(model => model.name)).toEqual([`hf.co/${repository}:Q4_K_M`, `hf.co/${repository}:Q8_0`]);
-    await expect(resolveRepositoryModel({ name: `hf.co/${repository}` })).rejects.toThrow('unsupported-input');
+    const after = await resolveRepositoryModel({ modelId: `hf.co/${repository}:Q4_K_M`, signal: undefined });
+    expect(after.primaryFile.relativePath).toBe(before.primaryFile.relativePath);
+    expect(after.files.map(file => [file.relativePath, file.file.size, file.file.lastModified, storedFileHandle({ file })])).toEqual(before.files.map(file => [file.relativePath, file.file.size, file.file.lastModified, storedFileHandle({ file })]));
+    expect((await listHuggingFaceModels()).map(model => model.modelId)).toEqual([`hf.co/${repository}:Q4_K_M`, `hf.co/${repository}:Q8_0`]);
+    await expect(resolveRepositoryModel({ modelId: `hf.co/${repository}`, signal: undefined })).rejects.toThrow('missing-model');
   });
 
-  it('keeps exact downloaded selections available while hiding an ambiguous public name', async () => {
+  it('rejects ambiguous readable model IDs and legacy exact references while preserving the selected files', async () => {
     const splitSelection: DownloadSelection = { repository, revision, files: [{ path: 'Model-Q4_K_M-00001-of-00002.gguf', size: 128 }, { path: 'Model-Q4_K_M-00002-of-00002.gguf', size: 128 }, projector] };
     await publish({ input: splitSelection });
-    const before = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
-    expect(before.files.map(file => file.path)).toEqual(splitSelection.files.map(file => file.path));
+    const before = await resolveRepositoryModel({ modelId: `hf.co/${repository}:Q4_K_M`, signal: undefined });
+    expect(before.files.map(file => file.relativePath)).toEqual(splitSelection.files.map(file => file.path));
+    await expect(resolveRepositoryModel({ modelId: `hf.co/${repository}:Model-Q4_K_M-00001-of-00002.gguf`, signal: undefined })).rejects.toThrow();
 
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
     expect(await listHuggingFaceModels()).toEqual([]);
-    await expect(resolveRepositoryModel({ name: before.name })).rejects.toThrow('unsupported-input');
-    expect((await resolveRepositoryModel({ name: before.id })).files.map(file => file.path)).toEqual(before.files.map(file => file.path));
-    expect(await installedSelection({ selection: splitSelection })).toMatchObject({ id: before.id });
-    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toBeDefined();
+    await expect(resolveRepositoryModel({ modelId: `hf.co/${repository}:Q4_K_M`, signal: undefined })).rejects.toThrow('unsupported-input');
+    await expect(resolveRepositoryModel({ modelId: `hf.co/${repository}:Model-Q4_K_M-00001-of-00002.gguf`, signal: undefined })).rejects.toThrow();
+    expect(await installedSelection({ selection: splitSelection })).toBeUndefined();
+    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toBeUndefined();
+    expect(before.files.map(file => file.relativePath)).toEqual(splitSelection.files.map(file => file.path));
+  });
+
+  it('agrees on the readable model ID when a same-variant sibling has an invalid GGUF header', async () => {
+    const downloaded = selection({ quant: 'Q4' });
+    await publish({ input: downloaded });
+    const folder = await repositoryFolder({ repository, create: false });
+    const corrupt = await selectedFile({ folder, path: 'Q4/Model-Q4.gguf', create: true });
+    const access = await openSyncAccess({ handle: corrupt });
+    access.write(new Uint8Array(128), { at: 0 });
+    access.close();
+
+    const modelId = `hf.co/${repository}:Q4`;
+    expect((await listHuggingFaceModels()).map(model => model.modelId)).toEqual([modelId]);
+    expect((await resolveRepositoryModel({ modelId, signal: undefined })).primaryFile.relativePath).toBe('Model-Q4.gguf');
+    expect(await installedSelection({ selection: downloaded })).toMatchObject({ modelId });
   });
 
   it('verifies shared files byte by byte without overwriting them and restarts verification after pause', async () => {
@@ -119,7 +144,7 @@ describe('independent HF variants in one repository', () => {
     await resumed.append({ bytes: ggufBytes().slice(0, 48) });
     await resumed.pause();
     expect(await createDownloadWriter().begin({ selection: selection({ quant: 'Q8_0' }) })).toMatchObject({ journal: { bytes: [0, 0], complete: [false, false], reused: [false, true] } });
-    expect((await listHuggingFaceModels())[0]?.name).toBe(`hf.co/${repository}:Q4_K_M`);
+    expect((await listHuggingFaceModels())[0]?.modelId).toBe(`hf.co/${repository}:Q4_K_M`);
   });
 
   it('rejects another projector path before modifying the repository and uses a deterministic external projector preference', async () => {
@@ -132,25 +157,25 @@ describe('independent HF variants in one repository', () => {
     const sync = await openSyncAccess({ handle: extra });
     sync.write(ggufBytes(), { at: 0 });
     sync.close();
-    const loaded = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
-    expect(loaded.projectorPath).toBe('mmproj-Q8_0.gguf');
+    const loaded = await resolveRepositoryModel({ modelId: `hf.co/${repository}:Q4_K_M`, signal: undefined });
+    expect(loaded.projectorFile?.relativePath).toBe('mmproj-Q8_0.gguf');
     expect(loaded.files).toHaveLength(2);
   });
 
   it('deletes only the selected variant and follows the explicit shared-file choice even when another variant uses it', async () => {
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
     await publish({ input: selection({ quant: 'Q8_0' }) });
-    const q4 = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
-    const request = await prepareModelRemoval({ id: q4.id });
+    const modelId = `hf.co/${repository}:Q4_K_M`;
+    const request = await prepareModelRemoval({ modelId, signal: undefined });
     expect(request.affectedVariants).toBe(1);
-    expect(request.plan.files.map(file => file.path)).toEqual(['Model-Q4_K_M.gguf']);
-    expect(request.sharedPlan?.files.map(file => file.path)).toEqual(['Model-Q4_K_M.gguf', 'mmproj-Q8_0.gguf']);
+    expect(request.plan.files.map(file => file.relativePath)).toEqual(['Model-Q4_K_M.gguf']);
+    expect(request.sharedPlan?.files.map(file => file.relativePath)).toEqual(['Model-Q4_K_M.gguf', 'mmproj-Q8_0.gguf']);
     expect(await removeStoredModel({ plan: request.plan })).toBe('deleted');
-    expect((await resolveRepositoryModel({ name: `hf.co/${repository}:Q8_0` })).projectorPath).toBe(projector.path);
+    expect((await resolveRepositoryModel({ modelId: `hf.co/${repository}:Q8_0`, signal: undefined })).projectorFile?.relativePath).toBe(projector.path);
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
-    const again = await prepareModelRemoval({ id: q4.id });
+    const again = await prepareModelRemoval({ modelId, signal: undefined });
     expect(await removeStoredModel({ plan: again.sharedPlan! })).toBe('deleted');
-    expect((await resolveRepositoryModel({ name: `hf.co/${repository}:Q8_0` })).projectorPath).toBeUndefined();
+    expect((await resolveRepositoryModel({ modelId: `hf.co/${repository}:Q8_0`, signal: undefined })).projectorFile?.relativePath).toBeUndefined();
   });
 
   it('derives distinct variant labels without removing vendor markers and keeps identities stable as files are added', () => {
@@ -159,7 +184,7 @@ describe('independent HF variants in one repository', () => {
     const choices = quantizationChoices({ repository, models });
     expect(choices.map(choice => choice.label)).toEqual(['Q4_K_M', 'AWQ-Q4_K_M', 'Q4_0', 'QAD-Q4_0', 'UD-Q4_K_XL']);
     const alone = quantizationChoices({ repository, models: [models[0]!] })[0]!;
-    expect(choices.find(choice => choice.id === alone.id)?.label).toBe(alone.label);
+    expect(choices.find(choice => choice.primaryRelativePath === alone.primaryRelativePath)?.label).toBe(alone.label);
     expect(quantizationChoices({ repository, models: groupModelFiles({ files: [{ path: 'Model-UD-Q4_K_XL.gguf', size: 128 }] }).models })[0]?.label).toBe('UD-Q4_K_XL');
   });
 });
@@ -181,7 +206,7 @@ describe('scoped local launch validation', () => {
         get.mockRestore();
       },
     };
-    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
+    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ modelId: `hf.co/${repository}:Q4_K_M` });
     expect(slice).not.toHaveBeenCalled();
     await expect(installedSelection({ selection: selection({ quant: 'Q8_0' }) })).rejects.toMatchObject({ name: 'NotReadableError' });
   });

@@ -354,3 +354,18 @@ it('mutates readable local history while retaining an unavailable RPC sibling an
   expect(page.items.map(item => item.id)).toEqual([toImageGenerationId({ raw: 'new-aB' })]);
   expect(page.warningCount).toBeGreaterThan(0);
 });
+
+it('persists temporary primary, component, shard and LoRA references without requiring their live folders', async () => {
+  const original = record({ id: 'temporary-aB', prompt: 'temp models', createdAt: 1 });
+  const location = { type: 'temp' as const, path: 'temp/shared/weights/%ZZ.gguf', name: 'model.gguf', size: 1000, lastModified: 1 };
+  original.request.models = [
+    { slot: 'diffusion', path: 'weights/model.gguf', file: location, companions: [{ path: 'weights/shard.gguf', file: { ...location, path: 'temp/shared/weights/shard.gguf' } }] },
+    { slot: 'vae', path: 'vae.safetensors', file: { ...location, path: 'temp/shared/vae.safetensors' }, companions: [] },
+  ];
+  original.request.loras = [{ path: 'lora.safetensors', file: { ...location, path: 'temp/shared/lora.safetensors' }, strength: 0.7 }];
+  await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
+  expect(await loadImageGenerationRecord({ storageType: 'opfs', id: original.id })).toEqual(original);
+  const persisted = (await (await shard()).getFileHandle('temporary-aB.json')).text;
+  expect(persisted).toContain('temp/shared/weights/%ZZ.gguf');
+  expect(persisted).not.toContain('revision');
+});

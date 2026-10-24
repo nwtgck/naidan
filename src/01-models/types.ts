@@ -166,6 +166,7 @@ export type UserMessageNode = MessageNodeBase & {
 
 export type AssistantMessageNode = MessageNodeBase & {
   role: 'assistant',
+  /** Model selection used for this response, with the same contract as Chat.modelId. */
   modelId: string | undefined,
   lmParameters: LmParameters | undefined,
   parts: (
@@ -242,6 +243,13 @@ export interface Chat {
   debugEnabled: boolean,
 
   endpoint?: Endpoint,
+  /**
+   * User-facing model reference for this endpoint, used for selection, display,
+   * DTO persistence, and generation requests. For llama.cpp browser, preserve
+   * the readable source-specific value, such as "hf.co/alice/Chat-GGUF:Q4" or
+   * "host/MyModels1/alice/Chat-GGUF:Q4". Resolve files separately; file names,
+   * exact file locators, and host registration IDs are not substitutes.
+   */
   modelId?: string,
   titleGeneration?: ScopedTitleGeneration,
   originChatId?: ChatId,
@@ -267,6 +275,7 @@ export interface ChatMeta {
   updatedAt: number,
   debugEnabled: boolean,
   endpoint?: Endpoint,
+  /** Same model selection and persistence contract as Chat.modelId. */
   modelId?: string,
   titleGeneration?: ScopedTitleGeneration,
   originChatId?: ChatId,
@@ -299,6 +308,7 @@ export interface ChatGroup {
   updatedAt: number,
 
   endpoint?: Endpoint,
+  /** Model selection inherited by chats, with the same contract as Chat.modelId. */
   modelId?: string,
   titleGeneration?: ScopedTitleGeneration,
   systemPrompt?: SystemPrompt,
@@ -401,13 +411,16 @@ export interface ProviderProfile {
   id: ProviderProfileId,
   name: string,
   endpoint: Endpoint,
+  /** Default model selection, with the same contract as Chat.modelId. */
   defaultModelId?: string,
+  /** Title-generation model selection, with the same contract as Chat.modelId. */
   titleModelId?: string,
   systemPrompt?: string,
   lmParameters?: LmParameters,
 }
 
 export type BrowserImageModelLocation =
+  | { kind: 'temp', path: string }
   | { kind: 'opfs', path: string }
   | { kind: 'host', directoryId: HostModelDirectoryId, path: string };
 
@@ -472,6 +485,7 @@ export const DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS = {
 
 export interface Settings {
   endpoint: Endpoint,
+  /** Default model selection, with the same contract as Chat.modelId. */
   defaultModelId?: string,
   titleGeneration: SettingsTitleGeneration,
   storageType: StorageType,
@@ -482,6 +496,8 @@ export interface Settings {
   lmParameters?: LmParameters,
   experimental?: {
     locale?: UiLocale,
+    chatBrowserModelPickerTab?: 'files' | 'linked-folders' | 'hugging-face' | 'saved',
+    modelDiscoveryTab?: 'candidates' | 'hugging_face' | 'local_files',
     markdownRendering?: 'block_markdown' | 'monolithic_html',
     /**
      * Controls whether tool configuration changes are persisted.

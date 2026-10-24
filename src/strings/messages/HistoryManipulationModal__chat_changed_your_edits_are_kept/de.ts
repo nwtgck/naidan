@@ -1,0 +1,1 @@
+export const HistoryManipulationModal__chat_changed_your_edits_are_kept = (): string => 'Der Chat wurde geändert oder wird noch aktualisiert. Deshalb konnten diese Änderungen nicht gespeichert werden. Ihre Änderungen bleiben hier erhalten. Kopieren Sie benötigte Inhalte, bevor Sie den Verlaufseditor schließen und erneut öffnen.';

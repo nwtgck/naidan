@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { SquareIcon } from 'lucide-vue-next';
+import { ImageIcon, SquareIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { idToRaw } from '@/01-models/ids';
 import type { ImageGenerationWorkspaceView } from '@/features/image-generation/composables/use-image-generation-workspace';
@@ -53,7 +53,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <!-- Expensive runtime is shared; the selected session owns its visible result. -->
-  <section data-testid="workspace-generation-monitor" tw-class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 space-y-2">
+  <section data-testid="workspace-generation-monitor" tw-class="space-y-3 rounded-2xl border border-gray-200/70 bg-white/80 p-3.5 dark:border-gray-800/80 dark:bg-gray-900/40">
     <header tw-class="flex items-center justify-between gap-3">
       <div tw-class="min-w-0 space-y-1"><p tw-class="text-xs font-semibold truncate">{{ lazyStrings.imageGeneration__execution() }}<span v-if="selectedRun?.run"> · {{ selectedRun.received }} / {{ selectedRun.run.seeds.length }}</span></p><p v-if="selectedRun?.run && destination" tw-class="text-[11px] text-gray-500 dark:text-gray-400 truncate">{{ lazyStrings.imageGeneration__generation_session() }}: {{ destination }}</p></div>
       <button type="button" @click="togglePresentation" :aria-pressed="mode === 'compact-progress'" data-testid="monitor-presentation" tw-class="shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs text-gray-600 dark:text-gray-300">{{ mode === 'visual' ? lazyStrings.imageGeneration__progress_only() : lazyStrings.imageGeneration__visual_progress() }}</button>
@@ -63,7 +63,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p v-if="workspace.monitorFailure.value" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ workspace.monitorFailure.value }}</p>
     <button v-if="workspace.sessionPresentation.otherRunning.value" type="button" @click="workspace.runState.value?.run && workspace.selectSession({ sessionId: workspace.runState.value.run.sessionId })" tw-class="text-xs text-blue-600 dark:text-blue-400">{{ lazyStrings.imageGeneration__other_session_running() }} · {{ destination }}</button>
     <p v-if="mode === 'compact-progress' && !display.busy.value && !image" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__preview_empty() }}</p>
-    <p v-if="mode === 'visual' && !display.busy.value && !image" tw-class="flex min-h-64 items-center justify-center p-8 text-sm text-center text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__preview_empty() }}</p>
+    <div v-if="mode === 'visual' && !display.busy.value && !image" tw-class="flex min-h-64 flex-col items-center justify-center gap-4 rounded-xl bg-gray-50/70 p-8 text-center dark:bg-gray-800/25"><span tw-class="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200/70 bg-white text-blue-400 dark:border-gray-700/60 dark:bg-gray-900/60 dark:text-blue-500"><ImageIcon aria-hidden="true" tw-class="h-5 w-5" /></span><p tw-class="max-w-xs text-xs leading-6 text-gray-400 dark:text-gray-500">{{ lazyStrings.imageGeneration__preview_empty() }}</p></div>
     <ImageGenerationProgress :busy="display.busy.value" :supported="generation.supported.value" :active="active" :stopping="display.stopping.value" :progress="display.progress.value" :width="dimensions.width" :height="dimensions.height" :image="image" :presentation="mode" :started-at="workspace.sessionPresentation.startedAt.value" :size="compact ? 'compact' : 'monitor'" />
     <img v-if="mode === 'visual' && !display.busy.value && image" :src="image.url" :width="image.width" :height="image.height" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" tw-class="block max-h-[60vh] max-w-full mx-auto object-contain rounded-xl" />
     <p v-if="display.failure.value" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ display.failure.value }}</p>

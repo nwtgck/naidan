@@ -2,7 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTransformersJsService } from '@/features/transformers-js/index-hosted';
 import { memoryDirectory, ggufBytes } from '@/features/llama-cpp-browser/hugging-face/test-opfs';
-import { listStoredModels, planStoredModelRemoval, removeStoredModel, storedModelDirectory } from '@/features/llama-cpp-browser/runtime/model-store';
+import { listStoredModels, prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
+import { resolveModel } from '@/features/llama-cpp-browser/runtime/model-resolution';
 import { scanDeletionTree } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { createDownloadWriter } from '@/features/llama-cpp-browser/hugging-face/writer';
 
@@ -78,9 +79,9 @@ describe('shared OPFS model storage', () => {
     expect((await service.service.listCachedModels()).every(model => model.isComplete)).toBe(true);
     expect((await service.service.listCachedModels()).every(model => model.size === 4 && model.fileCount === 2)).toBe(true);
     const llamaModels = await listStoredModels();
-    expect(llamaModels.map(model => model.name)).toEqual(['hf.co/org/gguf:model-Q4_K_M', 'hf.co/org/mixed:model-Q4_K_M', 'user/gguf', 'user/mixed']);
+    expect(llamaModels.map(model => model.modelId)).toEqual(['hf.co/org/gguf:model-Q4_K_M', 'hf.co/org/mixed:model-Q4_K_M', 'user/gguf', 'user/mixed']);
     for (const model of llamaModels) {
-      expect((await storedModelDirectory({ name: model.id })).files.every(entry => entry.path.endsWith('.gguf'))).toBe(true);
+      expect((await resolveModel({ modelId: model.modelId, signal: undefined })).directory.files.every(entry => entry.relativePath.endsWith('.gguf'))).toBe(true);
     }
   });
 
@@ -109,7 +110,7 @@ describe('shared OPFS model storage', () => {
     await textFile({ path: `${path}/.model.onnx.staging-f28f6802-947c-4b9d-bc99-223d8d469f4b` });
     await textFile({ path: `${path}/unfinished.onnx` });
     await service.service.deleteModel({ modelId: id });
-    expect((await scanDeletionTree({ folder: await folderAt({ path }) })).files.map(entry => entry.path)).toEqual([
+    expect((await scanDeletionTree({ folder: await folderAt({ path }) })).files.map(entry => entry.relativePath)).toEqual([
       '.llama-cpp-import-pending', '.model-00001-of-00002.gguf.complete', 'mmproj.gguf', 'model-00001-of-00002.gguf', 'model-00002-of-00002.gguf', 'notes.txt',
     ]);
     expect(await service.service.listCachedModels()).toEqual([]);
@@ -122,7 +123,7 @@ describe('shared OPFS model storage', () => {
       await textFile({ path: `${path}/${name}` });
     }
     await service.service.deleteModel({ modelId: 'user/external' });
-    expect((await scanDeletionTree({ folder: await folderAt({ path }) })).files.map(entry => entry.path)).toEqual(['unknown-chunk']);
+    expect((await scanDeletionTree({ folder: await folderAt({ path }) })).files.map(entry => entry.relativePath)).toEqual(['unknown-chunk']);
   });
 
   it('downloads GGUF alongside a completed TJS repository without hiding or changing the ONNX model', async () => {
@@ -139,7 +140,7 @@ describe('shared OPFS model storage', () => {
     await writer.finishFile();
     await writer.finish();
     expect(await service.service.listCachedModels()).toEqual(before);
-    expect(await listStoredModels()).toEqual([expect.objectContaining({ id: 'hf.co/org/mixed:model.gguf', size: 128 })]);
+    expect(await listStoredModels()).toEqual([expect.objectContaining({ modelId: 'hf.co/org/mixed:model', size: 128 })]);
     expect(root.children.has('llama-cpp-browser-models')).toBe(false);
   });
 
@@ -149,8 +150,9 @@ describe('shared OPFS model storage', () => {
     await file({ path: `${path}/model-Q4_K_M.gguf`, content: ggufBytes() });
     await file({ path: `${path}/mmproj.gguf`, content: ggufBytes() });
     const model = (await listStoredModels())[0]!;
-    const plan = await planStoredModelRemoval({ id: model.id });
-    expect(plan.files.map(entry => entry.path)).toEqual(['mmproj.gguf', 'model-Q4_K_M.gguf']);
+    const removal = await prepareModelRemoval({ modelId: model.modelId, signal: undefined });
+    const plan = removal.sharedPlan ?? removal.plan;
+    expect(plan.files.map(entry => entry.relativePath)).toEqual(['mmproj.gguf', 'model-Q4_K_M.gguf']);
     await textFile({ path: `${path}/tokenizer.json` });
     await textFile({ path: `${path}/.tokenizer.json.complete` });
     expect(await removeStoredModel({ plan })).toBe('deleted');
@@ -163,7 +165,7 @@ describe('shared OPFS model storage', () => {
     await file({ path: `${oldPath}/model.gguf`, content: ggufBytes() });
     expect(await listStoredModels()).toEqual([]);
     expect(await service.service.listCachedModels()).toEqual([]);
-    await expect(storedModelDirectory({ name: 'user/old' })).rejects.toThrow('missing-model');
+    await expect(resolveModel({ modelId: 'user/old', signal: undefined })).rejects.toThrow('missing-model');
     expect((await scanDeletionTree({ folder: await folderAt({ path: oldPath }) })).files).toHaveLength(1);
   });
 });

@@ -6,7 +6,7 @@ vi.mock('virtual:naidan-licenses', () => ({ default: [{ name: 'test-pkg', versio
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, reactive, nextTick } from 'vue';
+import { ref, reactive, nextTick, shallowRef } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import AboutTab from './AboutTab.vue';
@@ -19,6 +19,7 @@ import { useSampleChat } from '@/composables/useSampleChat';
 import { storageService } from '@/00-storage/service';
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
 import type { ProviderProfile, Settings } from '@/01-models/types';
+import { TEST_ONLY as modelPresetTestOnly, type ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -208,6 +209,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
     (useRouter as Mock).mockReturnValue({
+      currentRoute: ref(currentRoute),
       push: vi.fn((p) => {
         if (typeof p === 'string') {
           currentRoute.path = p;
@@ -264,6 +266,27 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     mockShowPrompt.mockClear();
   });
 
+  it.each(['route', 'local'] as const)('ignores a preserved legacy preset when opening %s settings navigation', async navigation => {
+    const claim = vi.fn(() => true);
+    const preset = shallowRef<ModelPreset>({ input: 'owner/legacy-model', target: 'settings', claim });
+    useRoute().query.settings = 'llama-cpp-browser';
+    const wrapper = mount(SettingsModal, {
+      props: { isOpen: true, navigation, requestedTab: 'llama-cpp-browser' },
+      global: {
+        provide: { [modelPresetTestOnly.presetKey]: preset },
+        stubs: { ...globalStubs, LlamaCppBrowserManager: { name: 'LlamaCppBrowserManager', props: ['modelPreset'], template: '<div data-testid="local-manager-stub" />' } },
+      },
+    });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserManager' }).props('modelPreset')).toBeUndefined();
+    expect(claim).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])('rebases the local default without losing unrelated Connection edits (dirty=%s)', async dirty => {
     const state = ref<Settings>({ ...mockSettings, systemPrompt: 'Saved prompt' });
     const previous = { endpoint: state.value.endpoint, modelId: state.value.defaultModelId };
@@ -286,13 +309,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     const manager = wrapper.getComponent({ name: 'LlamaCppBrowserManager' });
     const apply = manager.props('applyDefaultModel') as ApplyDefaultModel;
-    const model = { id: 'user/local', name: 'Local Q4_K_M', size: 128, importedAt: 1 };
+    const model = { modelId: 'user/Local-Q4_K_M', size: 128, importedAt: 1 };
     expect(await apply({ model, previous })).toBe('applied');
-    expect(update).toHaveBeenCalledWith({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
+    expect(update).toHaveBeenCalledWith({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId, expected: previous });
     route.query.settings = 'connection';
     await flushPromises();
     const updated = wrapper.getComponent(ConnectionTab);
-    expect(updated.props('modelValue')).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: model.name, systemPrompt: dirty ? 'Unsaved prompt' : 'Saved prompt' });
+    expect(updated.props('modelValue')).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: model.modelId, systemPrompt: dirty ? 'Unsaved prompt' : 'Saved prompt' });
     expect(updated.props('hasUnsavedChanges')).toBe(dirty);
     expect(mockSave).not.toHaveBeenCalled();
     wrapper.unmount();

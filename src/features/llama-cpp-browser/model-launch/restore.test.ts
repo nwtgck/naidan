@@ -1,69 +1,86 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { modelLaunchViewState } from './history';
-import { toChatId } from '@/01-models/ids';
-import { restoreModelLaunchTarget } from './restore';
+import { observeLegacyModelDownload } from './restore';
 import { resolveModelLaunchTarget } from './target';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
-const io = vi.hoisted(() => ({ folder: vi.fn(), journal: vi.fn(), directories: vi.fn(), inspect: vi.fn() }));
+import { toHostModelDirectoryId } from '@/01-models/ids';
+import { modelFileMarker } from '@/logic/model-file-publication';
+const io = vi.hoisted(() => ({ folder: vi.fn(), journal: vi.fn(), directories: vi.fn(), inspect: vi.fn(), registrations: vi.fn(), root: vi.fn() }));
 vi.mock('../hugging-face/storage', () => ({ repositoryFolder: io.folder, readJournal: io.journal, repositoryDirectories: io.directories, isMissing: ({ error }: { error: unknown }) => error instanceof Error && error.message === 'missing' }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: io.inspect }) }));
+vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: io.registrations } }));
+vi.mock('../runtime/model-destination', () => ({ hostModelRoot: io.root }));
 const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'b'.repeat(40), projectors: [], models: [{ label: 'Model-Q4_K_M', size: 256, files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] }] };
 const target = resolveModelLaunchTarget({ input: catalog.repository, catalog }).target;
-const view = modelLaunchViewState({ chatId: toChatId({ raw: 'chat' }), input: `${catalog.repository}:Q4_K_M`, modelId: target.modelId, revision: 'a'.repeat(40) });
+const journal = { version: 1, selection: target.selection, bytes: [64], complete: [false] };
 
 beforeEach(() => {
   vi.resetAllMocks();
   io.folder.mockResolvedValue({});
-  io.journal.mockRejectedValue(new Error('missing'));
+  io.journal.mockResolvedValue(journal);
   io.directories.mockResolvedValue([]);
   io.inspect.mockResolvedValue(catalog);
+  io.registrations.mockResolvedValue([{ id: toHostModelDirectoryId({ raw: 'root-id' }), name: 'Library' }]);
+  io.root.mockResolvedValue({ name: 'Library' });
 });
 
-describe('DTO-free model launch restoration', () => {
-  it('uses an interrupted download journal and keeps its old pinned revision without a network request', async () => {
+describe('read-only interrupted model download observation', () => {
+  it('uses only an interrupted journal and its pinned revision without fetching metadata', async () => {
     const selection = { ...target.selection, revision: 'c'.repeat(40) };
-    io.journal.mockResolvedValue({ selection });
-    expect(await restoreModelLaunchTarget({ view, signal: new AbortController().signal })).toEqual({ ...target, selection });
+    io.journal.mockResolvedValue({ ...journal, selection });
+    const observed = await observeLegacyModelDownload({ modelId: target.modelId, signal: new AbortController().signal });
+    expect(observed).toMatchObject({ target: { ...target, selection }, destination: { kind: 'opfs' } });
+    expect(io.folder).toHaveBeenCalledExactlyOnceWith({ repository: catalog.repository, create: false, destination: { kind: 'opfs' } });
     expect(io.inspect).not.toHaveBeenCalled();
     expect(io.directories).not.toHaveBeenCalled();
   });
 
-  it('rebuilds an installed selection from existing files while offline', async () => {
-    io.directories.mockResolvedValue([{ id: target.modelId, files: [{ path: target.mainFilePath, file: new File([new Uint8Array(256)], 'model.gguf') }] }]);
-    expect(await restoreModelLaunchTarget({ view, signal: new AbortController().signal })).toEqual({ ...target, selection: { ...target.selection, revision: view.revision } });
+  it('leaves installed files to ordinary Chat instead of fabricating a revision from navigation history', async () => {
+    io.journal.mockRejectedValue(new Error('missing'));
+    const primaryFile = { relativePath: target.mainFilePath, file: new File([new Uint8Array(256)], 'model.gguf') };
+    io.directories.mockResolvedValue([{ primaryFile, projectorFile: undefined, files: [primaryFile] }]);
+    expect(await observeLegacyModelDownload({ modelId: target.modelId, signal: new AbortController().signal })).toBeUndefined();
+    expect(io.directories).not.toHaveBeenCalled();
     expect(io.inspect).not.toHaveBeenCalled();
   });
 
-  it('rechecks metadata only for the same exact main file when no local plan exists', async () => {
-    expect(await restoreModelLaunchTarget({ view, signal: new AbortController().signal })).toEqual(target);
-    expect(io.inspect).toHaveBeenCalledWith({ input: view.input, signal: expect.any(AbortSignal), freshness: 'reuse' });
+  it('requires an explicit operation instead of fetching metadata when no local journal exists', async () => {
+    io.journal.mockRejectedValue(new Error('missing'));
+    expect(await observeLegacyModelDownload({ modelId: target.modelId, signal: new AbortController().signal })).toBeUndefined();
+    expect(io.inspect).not.toHaveBeenCalled();
   });
 
-  it('does not substitute another quantization when the saved model disappeared', async () => {
-    io.inspect.mockResolvedValue({ ...catalog, models: [{ label: 'Q8_0', size: 256, files: [{ path: 'Model-Q8_0.gguf', size: 256 }] }] });
-    await expect(restoreModelLaunchTarget({ view, signal: new AbortController().signal })).rejects.toThrow();
+  it('rejects a journal that does not describe one unambiguous model', async () => {
+    io.journal.mockResolvedValue({ ...journal, selection: { ...target.selection, files: [...target.selection.files, { path: 'Other-Q8_0.gguf', size: 256 }] } });
+    await expect(observeLegacyModelDownload({ modelId: target.modelId, signal: new AbortController().signal })).rejects.toThrow();
+    expect(io.inspect).not.toHaveBeenCalled();
+  });
+
+  it('does not substitute another quantization for the current resolved model', async () => {
+    expect(await observeLegacyModelDownload({ modelId: 'hf.co/owner/Model-GGUF:Q8_0', signal: new AbortController().signal })).toBeUndefined();
+    expect(io.inspect).not.toHaveBeenCalled();
   });
 
   it('does not bypass a corrupt journal by starting remote discovery', async () => {
     io.journal.mockRejectedValue(new Error('invalid journal'));
-    await expect(restoreModelLaunchTarget({ view, signal: new AbortController().signal })).rejects.toThrow('invalid journal');
+    await expect(observeLegacyModelDownload({ modelId: target.modelId, signal: new AbortController().signal })).rejects.toThrow('invalid journal');
     expect(io.inspect).not.toHaveBeenCalled();
   });
 
-  it('rejects a metadata response for another repository', async () => {
-    io.inspect.mockResolvedValue({ ...catalog, repository: 'other/repo' });
-    await expect(restoreModelLaunchTarget({ view, signal: new AbortController().signal })).rejects.toThrow('repository changed');
+  it('does not consult even a cached metadata response when the journal belongs to another repository', async () => {
+    io.journal.mockResolvedValue({ ...journal, selection: { ...target.selection, repository: 'other/repo' } });
+    expect(await observeLegacyModelDownload({ modelId: target.modelId, signal: new AbortController().signal })).toBeUndefined();
+    expect(io.inspect).not.toHaveBeenCalled();
   });
 
   it('cancels after a pending local lookup without issuing metadata requests', async () => {
-    const gate = Promise.withResolvers<unknown[]>();
+    const gate = Promise.withResolvers<unknown>();
     const controller = new AbortController();
-    io.directories.mockReturnValue(gate.promise);
-    const pending = restoreModelLaunchTarget({ view, signal: controller.signal });
+    io.journal.mockReturnValue(gate.promise);
+    const pending = observeLegacyModelDownload({ modelId: target.modelId, signal: controller.signal });
     const rejected = expect(pending).rejects.toThrow();
-    await vi.waitFor(() => expect(io.directories).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(io.journal).toHaveBeenCalledOnce());
     controller.abort();
-    gate.resolve([]);
+    gate.resolve(journal);
     await rejected;
     expect(io.inspect).not.toHaveBeenCalled();
   });
@@ -71,7 +88,47 @@ describe('DTO-free model launch restoration', () => {
   it('does nothing for an already cancelled request', async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(restoreModelLaunchTarget({ view, signal: controller.signal })).rejects.toThrow();
+    await expect(observeLegacyModelDownload({ modelId: target.modelId, signal: controller.signal })).rejects.toThrow();
     expect(io.folder).not.toHaveBeenCalled();
+  });
+
+  it('resolves the current host alias and reads only that destination without requesting permission', async () => {
+    const root = { requestPermission: vi.fn() };
+    io.root.mockResolvedValue(root);
+    const observed = await observeLegacyModelDownload({ modelId: 'host/Library/owner/Model-GGUF:Q4_K_M', signal: new AbortController().signal });
+    expect(observed).toMatchObject({ effectiveModelId: 'host/Library/owner/Model-GGUF:Q4_K_M', destination: { kind: 'host', directoryId: 'root-id' }, target });
+    expect(observed?.expectedRoot).toBe(root);
+    expect(io.root).toHaveBeenCalledExactlyOnceWith({ destination: { kind: 'host', directoryId: 'root-id' }, mode: 'read' });
+    expect(io.folder).toHaveBeenCalledExactlyOnceWith({ repository: catalog.repository, create: false, destination: { kind: 'host', directoryId: 'root-id' } });
+    expect(root.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it('never falls back to OPFS when the current host root cannot be read', async () => {
+    io.root.mockRejectedValue(new Error('permission required'));
+    await expect(observeLegacyModelDownload({ modelId: 'host/Library/owner/Model-GGUF:Q4_K_M', signal: new AbortController().signal })).rejects.toThrow('permission required');
+    expect(io.folder).not.toHaveBeenCalled();
+    expect(io.inspect).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a full plan from a modern per-file pending marker without a legacy aggregate journal', async () => {
+    const actual = await vi.importActual<typeof import('@/features/llama-cpp-browser/hugging-face/storage')>('../hugging-face/storage');
+    const markerName = modelFileMarker({ name: target.mainFilePath, state: 'pending' });
+    const markers = new Map([[markerName, { version: 2, kind: 'naidan-file-download', source: { repository: catalog.repository, revision: catalog.revision, path: target.mainFilePath, size: 256, sha256: 'a'.repeat(64) }, bytes: 64, state: 'partial' }]]);
+    const folder = {
+      getFileHandle: vi.fn(async (name: string) => {
+        const marker = markers.get(name);
+        if (marker === undefined) {
+          throw new Error('missing');
+        }
+        return { getFile: async () => new File([JSON.stringify(marker)], name) };
+      }),
+    };
+    io.folder.mockResolvedValue(folder);
+    io.journal.mockImplementation(actual.readJournal);
+    expect(await observeLegacyModelDownload({ modelId: target.modelId, signal: new AbortController().signal })).toBeUndefined();
+    expect(markers.has(markerName)).toBe(true);
+    expect(folder.getFileHandle).toHaveBeenCalledExactlyOnceWith('.llama-cpp-import-pending');
+    expect(io.inspect).not.toHaveBeenCalled();
+    expect(io.directories).not.toHaveBeenCalled();
   });
 });

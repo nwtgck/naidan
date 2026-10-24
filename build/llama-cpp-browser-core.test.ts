@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createContext, SourceTextModule } from 'node:vm';
@@ -12,7 +12,7 @@ import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/bu
 import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-browser/build-runtime-assets';
 
 const repo = process.cwd();
-const profiles = ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const;
+const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
 
 const callbackGetters = [
   'ggml_op_desc', 'ggml_backend_buffer_name', 'ggml_backend_buffer_is_host',
@@ -51,7 +51,7 @@ describe('shared browser core package integration', () => {
     }
   });
 
-  it('reads the combined inventory and emits five verified hosted Wasm payloads', async () => {
+  it('reads the combined inventory and emits the available verified Hosted Wasm payloads without retired CPU64', async () => {
     const files = new Map<string, Uint8Array>();
     const hook = createLlamaCppRuntimeAssetsPlugin({ rootDir: repo }).generateBundle;
     if (typeof hook !== 'function') {
@@ -66,7 +66,7 @@ describe('shared browser core package integration', () => {
         return file.fileName;
       },
     } as never, {} as never, {} as never, false);
-    expect(files.size).toBe(5);
+    expect(files.size).toBe(profiles.length);
     for (const profile of profiles) {
       const name = `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`;
       const bytes = files.get(name);

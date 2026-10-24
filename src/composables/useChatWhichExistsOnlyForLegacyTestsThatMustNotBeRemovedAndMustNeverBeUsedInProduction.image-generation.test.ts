@@ -1,6 +1,7 @@
 import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
-import type { MessageNode } from '@/01-models/types';
+import type { Chat, MessageNode } from '@/01-models/types';
+import { readChatContentWrite } from '@/00-storage/service/chat-content-binding';
 import { getMessageText } from '@/01-models/message-text';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
@@ -58,6 +59,7 @@ vi.mock('../00-storage/service', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: { endpoint: { type: 'ollama', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'llama3' } },
     setIsOnboardingDismissed: vi.fn(),
     setOnboardingDraft: vi.fn(),
@@ -108,7 +110,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('sendImageRequest triggers message sending with correct parameters', async () => {
-    const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
+    const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: undefined } as any;
     chatStore.registerLiveInstance({ chat });
     await chatStore.openChat({ id: 'chat-1' });
 
@@ -137,7 +139,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('sendImageRequestForChat targets the explicit chatId without opening it', async () => {
-    const chat = { id: 'chat-explicit', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
+    const chat = { id: 'chat-explicit', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: undefined } as any;
     chatStore.registerLiveInstance({ chat });
 
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
@@ -163,7 +165,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('sendImageRequest with attachments passes them to sendMessage', async () => {
-    const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
+    const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: undefined } as any;
     chatStore.registerLiveInstance({ chat });
     await chatStore.openChat({ id: 'chat-attachments' });
 
@@ -293,6 +295,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       },
     } as any;
     chatStore.registerLiveInstance({ chat });
+    await chatStore.openChat({ id: chat.id });
 
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
 
@@ -303,5 +306,44 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await vi.waitFor(() => {
       expect(updateSpy).toHaveBeenCalled();
     }, { timeout: 2000 });
+  });
+
+  it('keeps the image operation write handle and its original model binding across every save', async () => {
+    const chat: Chat = {
+      id: toChatId({ raw: 'image-operation' }),
+      title: 'Image',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+      modelId: 'llama3',
+      root: { items: [{ id: toMessageId({ raw: 'image-assistant' }), role: 'assistant', parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, createdAt: 0, replies: { items: [] } }] },
+    };
+    chatStore.registerLiveInstance({ chat });
+    const updateSpy = vi.spyOn(storageService, 'updateChatContent');
+    mockOllamaGenerateImage.mockImplementationOnce(async () => {
+      chat.modelId = 'a-new-selection';
+      return { image: new Blob(['image'], { type: 'image/png' }), totalSteps: 10 };
+    });
+    await chatStore.handleImageGeneration({
+      chatId: idToRaw({ id: chat.id }),
+      assistantId: 'image-assistant',
+      prompt: 'cat',
+      width: 256,
+      height: 256,
+      count: 1,
+      steps: undefined,
+      seed: undefined,
+      persistAs: 'original',
+      images: [],
+      model: 'x/z-image-turbo:v1',
+      signal: undefined,
+    });
+    const writes = updateSpy.mock.calls.filter(([request]) => request.id === chat.id);
+    expect(writes.length).toBeGreaterThan(1);
+    const write = writes[0]![0].write;
+    for (const [request] of writes) {
+      expect(request.write).toBe(write);
+    }
+    expect(readChatContentWrite({ write, id: chat.id }).binding?.modelId).toBe('llama3');
   });
 });

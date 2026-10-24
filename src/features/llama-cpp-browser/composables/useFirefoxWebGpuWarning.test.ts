@@ -145,7 +145,7 @@ describe('useFirefoxWebGpuWarning', () => {
     expect(wrapper.attributes('data-visible')).toBe('true');
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64'] as const)('does not probe an explicit %s preference', async profile => {
+  it.each(['cpu-wasm32'] as const)('does not probe an explicit %s preference', async profile => {
     options = { profile };
     const wrapper = mountWarning({ enabled: ref(true) });
     await nextTick();
@@ -232,7 +232,7 @@ describe('useFirefoxWebGpuWarning', () => {
   it('rechecks shared state before a scheduled task to avoid redundant work', async () => {
     const wrapper = mountWarning({ enabled: ref(true) });
     await nextTick();
-    publishProfiles({ state: { status: 'ready', capabilities: capabilities({ recommended: 'cpu-wasm64' }) } });
+    publishProfiles({ state: { status: 'ready', capabilities: capabilities({ recommended: 'cpu-wasm32' }) } });
     await runScheduledProbe();
     expect(wrapper.attributes('data-visible')).toBe('false');
     expect(service.probeProfiles).not.toHaveBeenCalled();

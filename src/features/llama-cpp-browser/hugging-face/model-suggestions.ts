@@ -3,10 +3,10 @@ import { getHfRepository } from './model-repositories';
 /**
  * Bundled suggestions, NOT a mirror of a Hugging Face repository.
  *
- * Rendering/filtering/selecting these hints MUST NOT inspect repositories. Naidan permits
- * external access only after an explicit preview/download action (or the
- * separately documented llama-cpp-browser-model URL request). No model avatars,
- * remote fonts, preconnect, prefetch or background metadata refresh belong here.
+ * Rendering/filtering/selecting these bundled hints MUST NOT inspect repositories.
+ * Network authorization belongs to the surface that resolves a selected model.
+ * No model avatars, remote fonts, preconnect, prefetch or background metadata
+ * refresh belong in this catalog.
  *
  * Approximate byte counts are rounded decimal source sizes, not GiB values.
  * They may drift as upstream files change. Identity never depends on size,
@@ -41,7 +41,7 @@ export type ModelSuggestion = {
 // Sources reference the shared repository registry; UI order is independent.
 // Sizes/options are bundled hints,
 // reviewed 2026-09-22, NOT promises that current main contains those artifacts.
-// Resolve only the selected source after an explicit preview/download action.
+// Resolve only the selected source after an explicit Start or download action.
 export const modelSuggestions: readonly ModelSuggestion[] = [
   // QAT (Quantization-Aware Training) describes the checkpoint, not a GGUF
   // tensor type. Keep the matcher at Q4_0 and label only that choice as QAT.
@@ -120,6 +120,15 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     ],
   },
   {
+    id: 'qwen-3-8-flash-next',
+    name: 'Qwen3.8-Flash-Next 125B',
+    developer: 'Qwen',
+    quantizationHints: [
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 119_600_000_000, approximateMultimodalBytes: 904_000_000, suggestedMemoryGiB: 192, suggestedMultimodalMemoryGiB: 192 },
+      { id: 'q3_k_m', hfRepository: getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).hfRepository, preferredQuantization: 'Q3_K_M', checkpoint: 'standard', approximateModelBytes: 91_960_000_000, approximateMultimodalBytes: 904_000_000, suggestedMemoryGiB: 128, suggestedMultimodalMemoryGiB: 128 },
+    ],
+  },
+  {
     id: 'lfm-2-5-230m',
     name: 'LFM2.5 230M',
     developer: 'Liquid AI',
@@ -172,7 +181,6 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
 export type MultimodalDownload = 'off' | 'on';
 export type SuggestedMemoryFilter = 'all' | 8 | 16 | 32;
 export const suggestedMemoryFilters: readonly SuggestedMemoryFilter[] = ['all', 8, 16, 32];
-export const moreGgufModelsUrl = 'https://huggingface.co/models?library=gguf';
 
 export function preferredQuantizationHint({ suggestion }: { suggestion: ModelSuggestion }): SuggestedQuantization {
   // Static policy only. Missing upstream artifacts never authorize a fallback to

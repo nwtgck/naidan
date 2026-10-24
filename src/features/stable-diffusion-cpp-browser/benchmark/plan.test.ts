@@ -28,11 +28,11 @@ it('freezes effective values before work; shared form edits do not alter a captu
   const options = input();
   const plan = createBenchmarkPlan(options);
   options.common.steps = 99;
-options.targets[0]!.models![0]!.path = 'other.gguf';
+options.targets[0]!.models![0]!.relativePath = 'other.gguf';
 options.preview.enabled = true;
 options.protocol.repeats = 10;
 expect(plan.models[0]!.request.parameters.steps).toBe(20);
-expect(plan.models[0]!.request.models[0]!.path).toBe('model.gguf');
+expect(plan.models[0]!.request.models[0]!.relativePath).toBe('model.gguf');
 expect(plan.models[0]!.request.preview.enabled).toBe(false);
 expect(plan.protocol.repeats).toBe(3);
 });
@@ -75,12 +75,12 @@ expect(() => createBenchmarkPlan(broken)).toThrow('Incomplete');
 
 it('captures explicit order and all request defaults without reading weights', () => {
   const plan = planFixture({ mode: 'cold-warm', repeats: 3 });
-  expect(plan.models.map(model => model.target.id)).toEqual(['a', 'b']);
+  expect(plan.models.map(model => model.target.candidateKey)).toEqual(['a', 'b']);
   expect(plan.models[0]!.request.debug).toBe('on');
   const options = input();
   options.targets.push(targetFixture({ id: 'b' }));
   options.protocol.order = 'reverse';
-  expect(createBenchmarkPlan(options).models.map(model => model.target.id)).toEqual(['b', 'a']);
+  expect(createBenchmarkPlan(options).models.map(model => model.target.candidateKey)).toEqual(['b', 'a']);
 });
 
 it('keeps explicit common model arguments, while a sparse override can clear them', () => {

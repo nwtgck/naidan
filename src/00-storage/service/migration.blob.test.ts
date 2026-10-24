@@ -165,6 +165,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
 
     await storageService.updateChatContent({
       id: toChatId({ raw: chat.id }),
+      write: storageService.createChatContentWrite({ id: toChatId({ raw: chat.id }), content: undefined, binding: undefined }),
       updater: () => ({
         root: chat.root,
         currentLeafId: undefined,

@@ -2,7 +2,9 @@ import { isProxy, reactive, ref, toRaw, triggerRef, watch, type Ref } from 'vue'
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/01-models/types';
-import { storageService } from '@/00-storage/service';
+import { storageService, type ChatContentWrite } from '@/00-storage/service';
+import { chatContentFingerprint } from '@/00-storage/service/chat-content-binding';
+import { ChatContentBindingChangedError } from '@/00-storage/service/chat-content-binding';
 import { findDeepestLeaf, findNodeInBranch } from '@/logic/chat-tree';
 import { idToRaw, toChatId } from '@/01-models/ids';
 import {
@@ -57,17 +59,21 @@ export type ChatDataStore = {
   openChat({
     id,
     leafId,
+    isCurrent,
   }: {
     id: ChatId,
     leafId: MessageId | undefined,
+    isCurrent?: () => boolean,
   }): Promise<Chat | null>,
 
   openChatAtMessage({
     chatId,
     messageId,
+    isCurrent,
   }: {
     chatId: ChatId,
     messageId: MessageId,
+    isCurrent?: () => boolean,
   }): Promise<Chat | null>,
 
   openChatGroup({
@@ -83,15 +89,21 @@ export type ChatDataStore = {
     id: ChatId,
 
     updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>,
-  }): Promise<void>,
+    write: ChatContentWrite,
+  }): Promise<ChatContent>,
+
+  synchronizeModelBindingContent({ chatId }: { chatId: ChatId }): Promise<'synchronized' | 'changed'>,
 
   updateChatMeta({
     id,
     updater,
+    creation,
+    write,
   }: {
     id: ChatId,
-
-    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>,
+    updater: ({ current }: { current: ChatMeta | null }) => ChatMeta,
+    creation?: 'new-chat',
+    write?: ChatContentWrite,
   }): Promise<void>,
 
   updateChatScopedSettings({
@@ -100,7 +112,14 @@ export type ChatDataStore = {
   }: {
     chatId: ChatId,
     changes: readonly ScopedSettingChange[],
+    isCurrent?: () => boolean,
   }): Promise<void>,
+
+  updateEmptyChatScopedSettings({ chatId, changes, isCurrent }: { chatId: ChatId, changes: readonly ScopedSettingChange[], isCurrent(): boolean }): Promise<boolean>,
+
+  TEST_ONLY: {
+    resetLiveState(): void,
+  },
 };
 
 export function createChatDataStore({
@@ -125,6 +144,20 @@ export function createChatDataStore({
   const currentChatGroupRef = ref<ChatGroup | null>(null);
   const liveChatRegistry = reactive(new Map<ChatId, Chat>());
   const scopedSettingUpdateQueues = new Map<ChatId, Promise<void>>();
+  const savedContentSnapshots = new Map<ChatId, string>();
+
+  function contentSnapshot({ chat }: { chat: ChatContent }): string {
+    return chatContentFingerprint({ content: chat });
+  }
+
+  function metadataWithoutContent({ chat }: { chat: ChatMeta & Partial<Pick<Chat, 'root'>> }) {
+    const { root: _root, currentLeafId: _currentLeafId, ...metadata } = chat;
+    return metadata;
+  }
+
+  function metadataSnapshot({ chat }: { chat: Chat }): string {
+    return JSON.stringify(metadataWithoutContent({ chat }));
+  }
 
   function registerLiveInstance({
     chat,
@@ -137,13 +170,8 @@ export function createChatDataStore({
     }
 
     if (!liveChatRegistry.has(raw.id)) {
+      savedContentSnapshots.delete(raw.id);
       liveChatRegistry.set(raw.id, isProxy(chat) ? chat : reactive(chat));
-      return;
-    }
-
-    const existing = liveChatRegistry.get(raw.id)!;
-    if (existing !== chat) {
-      Object.assign(existing, raw);
     }
   }
 
@@ -155,8 +183,11 @@ export function createChatDataStore({
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
       return;
     }
-    if (!isTaskRunning({ chatId })) {
+    const existing = liveChatRegistry.get(chatId);
+    const hasUnsavedContent = existing !== undefined && contentSnapshot({ chat: existing }) !== savedContentSnapshots.get(chatId);
+    if (!isTaskRunning({ chatId }) && !hasUnsavedContent) {
       liveChatRegistry.delete(chatId);
+      savedContentSnapshots.delete(chatId);
     }
   }
 
@@ -344,6 +375,7 @@ export function createChatDataStore({
     }
 
     const live = reactive(raw) as Chat;
+    savedContentSnapshots.delete(chatId);
     liveChatRegistry.set(chatId, live);
     return live;
   }
@@ -372,63 +404,144 @@ export function createChatDataStore({
   async function updateChatContent({
     id,
     updater,
+    write,
   }: {
     id: ChatId,
 
     updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>,
+    write: ChatContentWrite,
   }) {
     const existing = liveChatRegistry.get(id);
-    if (existing) {
-      const updated = await updater({ current: { root: existing.root, currentLeafId: existing.currentLeafId } });
-      existing.root = updated.root;
-      existing.currentLeafId = updated.currentLeafId;
+    const before = existing === undefined ? undefined : contentSnapshot({ chat: existing });
+    const persisted = await storageService.updateChatContent({
+      id,
+      write,
+      updater,
+    });
+    if (existing !== undefined && liveChatRegistry.get(id) === existing) {
+      const acceptedSnapshot = contentSnapshot({ chat: persisted });
+      const liveSnapshot = contentSnapshot({ chat: existing });
+      // Streaming nodes may still be referenced by the active generation. Keep
+      // their identity when they already match, and retain edits made in flight.
+      if (liveSnapshot === before && liveSnapshot !== acceptedSnapshot) {
+        existing.root = persisted.root;
+        existing.currentLeafId = persisted.currentLeafId;
+      }
+      savedContentSnapshots.set(id, acceptedSnapshot);
       if (currentChatRef.value && toRaw(currentChatRef.value).id === id) {
         triggerRef(currentChatRef);
       }
     }
+    return persisted;
+  }
 
-    await storageService.updateChatContent({ id: id, updater: updater });
+  async function synchronizeModelBindingContent({ chatId }: { chatId: ChatId }): Promise<'synchronized' | 'changed'> {
+    const existing = getLiveChatById({ chatId });
+    const before = existing === null ? undefined : contentSnapshot({ chat: existing });
+    const saved = savedContentSnapshots.get(chatId);
+    const metadataBefore = existing === null ? undefined : metadataSnapshot({ chat: existing });
+    if (existing !== null && saved !== undefined && before !== saved) {
+      return 'changed';
+    }
+    const snapshot = await storageService.loadChatForModelBinding({ id: chatId });
+    let fresh: Chat | null;
+    switch (snapshot.status) {
+    case 'loaded':
+      if (!snapshot.isCurrent()) {
+        return 'changed';
+      }
+      fresh = snapshot.chat;
+      break;
+    case 'changed': return 'changed';
+    default: {
+      const exhaustive: never = snapshot;
+      throw new Error(String(exhaustive));
+    }
+    }
+    if (fresh === null || getLiveChatById({ chatId }) !== existing || (existing !== null && (
+      contentSnapshot({ chat: existing }) !== before || metadataSnapshot({ chat: existing }) !== metadataBefore ||
+      (saved === undefined && contentSnapshot({ chat: fresh }) !== before)
+    ))) {
+      return 'changed';
+    }
+    if (existing !== null) {
+      pruneVolatileAssistantErrorsForChat({ chat: fresh });
+      Object.assign(existing, fresh);
+      if (currentChatRef.value?.id === chatId) {
+        triggerRef(currentChatRef);
+      }
+    } else {
+      registerLiveInstance({ chat: fresh });
+    }
+    savedContentSnapshots.set(chatId, contentSnapshot({ chat: fresh }));
+    return 'synchronized';
   }
 
   async function updateChatMeta({
     id,
     updater,
+    creation,
+    write,
   }: {
     id: ChatId,
-
-    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>,
+    updater: ({ current }: { current: ChatMeta | null }) => ChatMeta,
+    creation?: 'new-chat',
+    write?: ChatContentWrite,
   }) {
     const existing = liveChatRegistry.get(id);
-    if (existing) {
-      const updated = await updater({ current: toRaw(existing) });
-      Object.assign(existing, updated);
-      if (currentChatRef.value && toRaw(currentChatRef.value).id === id) {
+    const before = existing === undefined ? undefined : metadataSnapshot({ chat: existing });
+    let acceptedChanges: Partial<ChatMeta> | undefined;
+    await storageService.updateChatMeta({
+      id,
+      write,
+      updater: ({ current }) => {
+        switch (creation) {
+        case 'new-chat':
+          if (current !== null) {
+            throw new Error('Chat already exists');
+          }
+          break;
+        case undefined:
+          if (current === null) {
+            return undefined;
+          }
+          break;
+        default: {
+          const exhaustive: never = creation;
+          throw new Error(String(exhaustive));
+        }
+        }
+        const previousMetadata = current === null ? undefined : metadataWithoutContent({ chat: current });
+        const previousFields = new Map(Object.entries(previousMetadata ?? {}).map(([field, value]) => [field, JSON.stringify(value)]));
+        const updated: ChatMeta & Partial<Pick<Chat, 'root'>> = updater({ current });
+        const { root: _root, ...metadata } = updated;
+        const updatedMetadata = metadataWithoutContent({ chat: metadata });
+        acceptedChanges = {};
+        const fields = Object.keys({ ...previousMetadata, ...updatedMetadata }) as (keyof typeof updatedMetadata)[];
+        for (const field of fields) {
+          if (previousFields.get(field) !== JSON.stringify(updatedMetadata[field])) {
+            acceptedChanges = { ...acceptedChanges, [field]: updatedMetadata[field] };
+          }
+        }
+        return metadata;
+      },
+    });
+    if (acceptedChanges !== undefined && existing !== undefined && liveChatRegistry.get(id) === existing && metadataSnapshot({ chat: existing }) === before) {
+      Object.assign(existing, acceptedChanges);
+      if (currentChatRef.value?.id === id) {
         triggerRef(currentChatRef);
       }
     }
-
-    await storageService.updateChatMeta({
-      id: id,
-      updater: async ({ current: curr }) => {
-        const fullChat = curr ? await storageService.loadChat({ id }) : null;
-        const updatedFull = await updater({ current: fullChat });
-        if (!updatedFull) {
-          return curr!;
-        }
-        const { root: _r, ...meta } = updatedFull;
-        return {
-          ...meta,
-        } as ChatMeta;
-      },
-    });
   }
 
   async function updateChatScopedSettings({
     chatId,
     changes,
+    isCurrent,
   }: {
     chatId: ChatId,
     changes: readonly ScopedSettingChange[],
+    isCurrent?: () => boolean,
   }): Promise<void> {
     if (changes.length === 0) {
       return;
@@ -439,10 +552,16 @@ export function createChatDataStore({
     const operation = previous
       .catch(() => undefined)
       .then(async () => {
+        if (isCurrent?.() === false) {
+          return;
+        }
         let persistedUpdatedAt: number | undefined;
         await storageService.updateChatMeta({
           id: chatId,
           updater: ({ current }) => {
+            if (isCurrent?.() === false) {
+              return undefined;
+            }
             if (current === null) {
               throw new Error('Chat not found');
             }
@@ -459,6 +578,9 @@ export function createChatDataStore({
           },
         });
 
+        if (isCurrent?.() === false || persistedUpdatedAt === undefined) {
+          return;
+        }
         const existing = liveChatRegistry.get(chatId);
         if (existing === undefined) {
           return;
@@ -467,10 +589,9 @@ export function createChatDataStore({
         const updated = applyScopedSettingChangesToChat({
           current,
           changes: queuedChanges,
-          // Keep live state monotonic even if a custom storage adapter
-          // short-circuits without invoking the updater.
+          // Preserve a newer live timestamp after the persisted partial update.
           updatedAt: Math.max(
-            persistedUpdatedAt ?? Date.now(),
+            persistedUpdatedAt,
             current.updatedAt + 1,
           ),
         });
@@ -495,39 +616,106 @@ export function createChatDataStore({
     }
   }
 
+  async function updateEmptyChatScopedSettings({ chatId, changes, isCurrent }: { chatId: ChatId, changes: readonly ScopedSettingChange[], isCurrent(): boolean }): Promise<boolean> {
+    const queuedChanges = cloneScopedSettingChanges({ changes });
+    const previous = scopedSettingUpdateQueues.get(chatId) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      let updatedAt: number | undefined;
+      await storageService.updateChatMeta({
+        id: chatId,
+        updater: async ({ current }) => {
+          if (current === null || !isCurrent()) {
+            return undefined;
+          }
+          // Content writers take this same metadata lock. An empty check here
+          // cannot be overtaken by another tab's message commit.
+          const content = await storageService.loadChatContentWithoutAttachments({ id: chatId });
+          if (content === null || content.root.items.length !== 0 || !isCurrent()) {
+            return undefined;
+          }
+          updatedAt = Math.max(Date.now(), current.updatedAt + 1);
+          return applyScopedSettingChangesToChatMeta({ current, changes: queuedChanges, updatedAt });
+        },
+      });
+      if (updatedAt === undefined || !isCurrent()) {
+        return false;
+      }
+      const existing = liveChatRegistry.get(chatId);
+      if (existing !== undefined) {
+        Object.assign(existing, applyScopedSettingChangesToChat({ current: toRaw(existing), changes: queuedChanges, updatedAt: Math.max(updatedAt, existing.updatedAt + 1) }));
+        if (currentChatRef.value?.id === chatId) {
+          triggerRef(currentChatRef);
+        }
+      }
+      return true;
+    });
+    const tail = operation.then(() => undefined, () => undefined);
+    scopedSettingUpdateQueues.set(chatId, tail);
+    try {
+      return await operation;
+    } finally {
+      if (scopedSettingUpdateQueues.get(chatId) === tail) {
+        scopedSettingUpdateQueues.delete(chatId);
+      }
+    }
+  }
+
   async function openChat({
     id,
     leafId,
+    isCurrent,
   }: {
     id: ChatId,
     leafId: MessageId | undefined,
+    isCurrent?: () => boolean,
   }) {
+    const assertCurrent = () => {
+      if (isCurrent?.() === false) {
+        throw new DOMException('Chat navigation superseded', 'AbortError');
+      }
+    };
+    assertCurrent();
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
       if (leafId && leafId !== chat.currentLeafId) {
         const node = findNodeInBranch({ items: chat.root.items, targetId: leafId });
         if (node) {
-          chat.currentLeafId = leafId;
-          void storageService.updateChatContent({ id: id, updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
+          if (!savedContentSnapshots.has(id) && await synchronizeModelBindingContent({ chatId: id }) !== 'synchronized') {
+            throw new ChatContentBindingChangedError();
+          }
+          if (contentSnapshot({ chat }) !== savedContentSnapshots.get(id)) {
+            throw new ChatContentBindingChangedError();
+          }
+          await updateChatContent({ id, write: storageService.createChatContentWrite({ id, content: chat, binding: undefined }), updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
         }
       }
+      assertCurrent();
       currentChatGroupRef.value = null;
       currentChatRef.value = chat;
       return chat;
     }
 
     const loaded = await storageService.loadChat({ id });
+    assertCurrent();
+    if (liveChatRegistry.has(id)) {
+      return openChat({ id, leafId, isCurrent });
+    }
     if (loaded) {
       if (leafId && leafId !== loaded.currentLeafId) {
         const node = findNodeInBranch({ items: loaded.root.items, targetId: leafId });
         if (node) {
-          loaded.currentLeafId = leafId;
-          void storageService.updateChatContent({ id: id, updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
+          const accepted = await updateChatContent({ id, write: storageService.createChatContentWrite({ id, content: loaded, binding: undefined }), updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
+          Object.assign(loaded, accepted);
         }
+      }
+      assertCurrent();
+      if (liveChatRegistry.has(id)) {
+        return openChat({ id, leafId, isCurrent });
       }
       pruneVolatileAssistantErrorsForChat({ chat: loaded });
       const reactiveChat = reactive(loaded);
       registerLiveInstance({ chat: reactiveChat });
+      savedContentSnapshots.set(id, contentSnapshot({ chat: loaded }));
       currentChatGroupRef.value = null;
       currentChatRef.value = reactiveChat;
       return reactiveChat;
@@ -541,11 +729,16 @@ export function createChatDataStore({
   async function openChatAtMessage({
     chatId,
     messageId,
+    isCurrent,
   }: {
     chatId: ChatId,
     messageId: MessageId,
+    isCurrent?: () => boolean,
   }) {
-    const chat = await openChat({ id: chatId, leafId: undefined });
+    const chat = await openChat({ id: chatId, leafId: undefined, isCurrent });
+    if (isCurrent?.() === false) {
+      throw new DOMException('Chat navigation superseded', 'AbortError');
+    }
     if (!chat) {
       return null;
     }
@@ -556,11 +749,7 @@ export function createChatDataStore({
       return chat;
     }
 
-    mutableChat.currentLeafId = findDeepestLeaf({ node }).id;
-    if (currentChatRef.value && toRaw(currentChatRef.value).id === mutableChat.id) {
-      triggerRef(currentChatRef);
-    }
-    return chat;
+    return openChat({ id: chatId, leafId: findDeepestLeaf({ node }).id, isCurrent });
   }
 
   function openChatGroup({
@@ -601,10 +790,16 @@ export function createChatDataStore({
 
         if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
           const chatId = toChatId({ raw: event.id });
+          const existing = currentChatRef.value;
+          const before = metadataSnapshot({ chat: existing });
           const fresh = await storageService.loadChat({ id: chatId });
-          if (fresh && currentChatRef.value) {
-            pruneVolatileAssistantErrorsForChat({ chat: fresh });
-            Object.assign(currentChatRef.value, fresh);
+          if (currentChatRef.value !== existing || metadataSnapshot({ chat: existing }) !== before) {
+            break;
+          }
+          if (fresh) {
+            // Metadata hints cannot replace an accepted unsaved message tree.
+            const { root: _root, currentLeafId: _currentLeafId, ...metadata } = fresh;
+            Object.assign(currentChatRef.value, metadata);
             triggerRef(currentChatRef);
           } else if (!hasActiveGeneration({ chatId })) {
             currentChatRef.value = null;
@@ -642,13 +837,7 @@ export function createChatDataStore({
         if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
           const chatId = toChatId({ raw: event.id });
           if (!hasActiveGeneration({ chatId })) {
-            const fresh = await storageService.loadChat({ id: chatId });
-            if (fresh && currentChatRef.value) {
-              pruneVolatileAssistantErrorsForChat({ chat: fresh });
-              currentChatRef.value.root = fresh.root;
-              currentChatRef.value.currentLeafId = fresh.currentLeafId;
-              triggerRef(currentChatRef);
-            }
+            await synchronizeModelBindingContent({ chatId });
           }
         }
         break;
@@ -656,6 +845,7 @@ export function createChatDataStore({
       case 'migration': {
         onMigration();
         liveChatRegistry.clear();
+        savedContentSnapshots.clear();
         currentChatRef.value = null;
         currentChatGroupRef.value = null;
 
@@ -690,8 +880,21 @@ export function createChatDataStore({
     openChatAtMessage,
     openChatGroup,
     updateChatContent,
+    synchronizeModelBindingContent,
     updateChatMeta,
     updateChatScopedSettings,
+    updateEmptyChatScopedSettings,
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        resetLiveState() {
+          currentChatRef.value = null;
+          currentChatGroupRef.value = null;
+          liveChatRegistry.clear();
+          savedContentSnapshots.clear();
+          scopedSettingUpdateQueues.clear();
+        },
+      },
+    }) || {}),
   };
 }
 

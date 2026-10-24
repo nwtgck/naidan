@@ -110,7 +110,7 @@ export class LocalStorageProvider extends IStorageProvider {
       const key = localStorage.key(i);
       if (key?.startsWith(KEY_META_PREFIX)) {
         const raw = localStorage.getItem(key);
-        if (raw) {
+        if (raw !== null) {
           metas.push(ChatMetaSchemaDto.parse(JSON.parse(raw)));
         }
       }
@@ -124,7 +124,7 @@ export class LocalStorageProvider extends IStorageProvider {
       const key = localStorage.key(i);
       if (key?.startsWith(KEY_GROUP_PREFIX)) {
         const raw = localStorage.getItem(key);
-        if (raw) {
+        if (raw !== null) {
           groups.push(ChatGroupSchemaDto.parse(JSON.parse(raw)));
         }
       }
@@ -136,7 +136,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadHierarchy(): Promise<HierarchyDto | null> {
     const raw = localStorage.getItem(KEY_HIERARCHY);
-    if (!raw) {
+    if (raw === null) {
       return { items: [] };
     }
     return HierarchySchemaDto.parse(JSON.parse(raw));
@@ -246,20 +246,16 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
     const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${idToRaw({ id })}`);
-    if (!raw) {
+    if (raw === null) {
       return null;
     }
-    try {
-      const { hierarchy, allMetas } = await promiseAllKeyed({
-        hierarchy: this.loadHierarchy(),
-        allMetas: this.listChatMetasRaw(),
-      });
-      const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
-      const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
-      return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(JSON.parse(raw)), hierarchy: h, chatMetas });
-    } catch {
-      return null;
-    }
+    const { hierarchy, allMetas } = await promiseAllKeyed({
+      hierarchy: this.loadHierarchy(),
+      allMetas: this.listChatMetasRaw(),
+    });
+    const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
+    const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
+    return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(JSON.parse(raw)), hierarchy: h, chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {

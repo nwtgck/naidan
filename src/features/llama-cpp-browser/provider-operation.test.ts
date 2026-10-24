@@ -1,3 +1,5 @@
+import { resolveModel } from './runtime/model-resolution';
+import { createResolvedModelForTest } from './test-utils/resolved-model.test-support';
 import { translateImagePrompt } from '@/features/image-generation/translation/request';
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: async () => provider }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,18 +18,20 @@ const worker = vi.hoisted(() => ({ subscribeDisposed: vi.fn<LlamaCppWorkerClient
 const factory = vi.hoisted(() => vi.fn(() => worker));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: async () => [], removeStoredModel: vi.fn(), withModelMutationLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
+vi.mock('./runtime/model-resolution', () => ({ resolveModel: vi.fn() }));
 let service: LlamaCppBrowserService;
 let provider: LmProvider;
 
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.mocked(resolveModel).mockImplementation(async ({ modelId }) => createResolvedModelForTest({ modelId, relativePath: 'model.gguf' }));
   await ensureAllStringsForTest({ locale: 'en' });
   worker.canReuse.mockReturnValue(true);
   const { storageService } = await import('@/00-storage/service');
   vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   worker.subscribeDisposed.mockReturnValue(() => {});
-  worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }] });
+  worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' }] });
   worker.generate.mockImplementation(async ({ onEvent }) => deliverNativeResult({ result: finalText({ text: 'answer' }), onEvent }));
   service = (await import('./index-hosted')).llamaCppBrowserService;
   provider = createLlamaCppProvider({ service });
@@ -43,7 +47,7 @@ function firstToolCall(): void {
 }
 
 function queuedRequest() {
-  return { model: 'local.gguf', messages: [{ role: 'user' as const, content: 'queued' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+  return { modelId: 'user/local', messages: [{ role: 'user' as const, content: 'queued' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
 
 describe('llama.cpp public generation across the real owned service lane', () => {
@@ -71,14 +75,14 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     });
     const running = fixture.run();
     await entered.promise;
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     const queued = service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
     expect(factory).toHaveBeenCalledOnce();
     release.resolve();
     expect(await running).toEqual({ type: 'finished', next: 'user' });
     await queued;
-    expect(worker.generate.mock.calls.map(([{ request }]) => request.options.profile)).toEqual(['cpu-wasm32', 'cpu-wasm32', 'cpu-wasm64']);
+    expect(worker.generate.mock.calls.map(([{ request }]) => request.options.profile)).toEqual(['cpu-wasm32', 'cpu-wasm32', 'webgpu-wasm64-jspi']);
     expect(worker.generate.mock.calls[1]?.[0].request.messages.map(m => m.role)).toEqual(['user', 'assistant', 'tool']);
     expect(worker.generate.mock.calls[1]?.[0].request.messages[1]?.reasoning_content).toBe('Check the tool.\n');
     expect(fixture.nodes.map(n => n.role)).toEqual(['assistant', 'tool', 'assistant']);
@@ -247,7 +251,7 @@ it('preserves common generated parts and the next native request through real me
 it.each(['length', 'stop_sequence', 'empty'] as const)('keeps the same Worker between chat and translation even after %s translation', async outcome => {
   await collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() });
   worker.generate.mockImplementationOnce(async ({ onEvent }) => deliverNativeResult({ result: { ...finalText({ text: outcome === 'empty' ? '' : 'partial' }), finishReason: outcome === 'empty' ? 'stop' : outcome }, onEvent }));
-  await expect(translateImagePrompt({ prompt: 'hello', language: 'en', endpoint: { type: 'llama_cpp_browser' }, modelId: 'local.gguf', parameters: undefined, signal: new AbortController().signal, fakeLmDebugModeStatus: 'disabled' })).rejects.toThrow();
+  await expect(translateImagePrompt({ prompt: 'hello', language: 'en', endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/local', parameters: undefined, signal: new AbortController().signal, fakeLmDebugModeStatus: 'disabled' })).rejects.toThrow();
   const otherProvider = createLlamaCppProvider({ service });
   await collectChatGeneration({ items: otherProvider.chat(chatRequest()), abortController: new AbortController() });
   expect(factory).toHaveBeenCalledOnce();
@@ -270,7 +274,7 @@ it('reports only the translation queue and its own progress, never an earlier ch
     prompt: 'hello',
     language: 'en',
     endpoint: { type: 'llama_cpp_browser' },
-    modelId: 'local.gguf',
+    modelId: 'user/local',
     parameters: undefined,
     signal: new AbortController().signal,
     fakeLmDebugModeStatus: 'disabled',
@@ -304,7 +308,7 @@ it('keeps the shared Worker when asynchronous translation display observers reje
     prompt: 'hello',
     language: 'en',
     endpoint: { type: 'llama_cpp_browser' },
-    modelId: 'local.gguf',
+    modelId: 'user/local',
     parameters: undefined,
     signal: new AbortController().signal,
     fakeLmDebugModeStatus: 'disabled',

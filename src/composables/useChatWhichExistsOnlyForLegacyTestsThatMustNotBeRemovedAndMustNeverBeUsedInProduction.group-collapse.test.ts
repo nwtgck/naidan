@@ -12,6 +12,7 @@ const mockRootItems: SidebarItem[] = [];
 vi.mock('../00-storage/service', () => ({
   storageService: {
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
+    updateChatContent: vi.fn<StorageService['updateChatContent']>().mockImplementation(async ({ updater }) => updater({ current: null })),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
@@ -30,6 +31,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }, defaultModelId: 'gpt-4' } },
   }),
 }));

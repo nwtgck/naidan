@@ -2,7 +2,7 @@ import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/se
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { hostModelDirectoryLock, hostModelPermissionGranted } from '@/logic/host-model-directories';
 import { modelDestinationSchema, type ModelDestination } from './model-destination-types';
-export { modelDestinationSchema, destinationKey, hostModelReference, parseHostModelReference, isHostDestination, type ModelDestination } from './model-destination-types';
+export { modelDestinationSchema, destinationKey, isHostDestination, type ModelDestination } from './model-destination-types';
 
 export async function hostModelRoot({ destination, mode }: { destination: Extract<ModelDestination, { kind: 'host' }>, mode: 'read' | 'readwrite' }): Promise<HostModelDirectoryHandle> {
   modelDestinationSchema.parse(destination);

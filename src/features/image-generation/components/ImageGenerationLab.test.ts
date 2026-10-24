@@ -1,3 +1,6 @@
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -134,10 +137,10 @@ it('clears ordinary LoRA selections when choosing another model from the library
   wrapper = mount(ImageGenerationLab);
   await flushPromises();
   const library = wrapper.getComponent(ImageModelLibrary).props('view');
-  const next = library.models.value.find(model => model.id !== library.main.value);
+  const next = library.models.value.find(model => model.candidateKey !== library.selectedCandidateKey.value);
   expect(next).toBeDefined();
   wrapper.vm.TEST_ONLY.loras.value = [{ file: new File(['adapter fixture'], 'style.gguf'), strength: 1, enabled: true }];
-  library.chooseMain({ id: next!.id });
+  library.chooseMain({ candidateKey: next!.candidateKey });
   expect(wrapper.vm.TEST_ONLY.loras.value).toEqual([]);
 });
 
@@ -498,10 +501,10 @@ function benchmarkInventory(): ModelInventory {
     candidates: ['one', 'two'].map(name => {
       const file = ggufFile();
       return {
-        id: `user/${name}`,
-        repositoryId: `user/${name}`,
-        path: 'model.gguf',
-        files: [{ path: 'model.gguf', file }],
+        candidateKey: `user/${name}`,
+        repositoryKey: `user/${name}`,
+        primaryRelativePath: 'model.gguf',
+        files: [{ relativePath: 'model.gguf', file }],
         size: file.size,
         format: 'gguf',
         family: 'sd-checkpoint',
@@ -520,10 +523,10 @@ function benchmarkInventory(): ModelInventory {
 it('uses saved adapters explicitly in normal generation and independently in one diagnostics target', async () => {
   const inventory = benchmarkInventory(), file = new File(['adapter fixture'], 'style.safetensors');
   inventory.candidates.push({
-    id: 'saved-style',
-    repositoryId: 'user/adapters',
-    path: 'style.safetensors',
-    files: [{ path: 'style.safetensors', file }],
+    candidateKey: 'saved-style',
+    repositoryKey: 'user/adapters',
+    primaryRelativePath: 'style.safetensors',
+    files: [{ relativePath: 'style.safetensors', file }],
     size: file.size,
     format: 'safetensors',
     family: 'unknown',
@@ -547,7 +550,7 @@ it('uses saved adapters explicitly in normal generation and independently in one
   await view.generate({ submission: undefined });
   await flushPromises();
   const request = mocks.generate.mock.calls[0]![0].request;
-  expect(request.loras).toEqual([{ file, path: 'style.safetensors', strength: 1 }]);
+  expect(request.loras).toEqual([{ file, relativePath: 'style.safetensors', strength: 1 }]);
   expect(request.loras[0].file).toBe(file);
   await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
   const rows = wrapper.findAll('[data-testid="benchmark-target"]');
@@ -614,10 +617,10 @@ it('defaults to two fresh runs with retained PNGs and clears opened result image
 
 function componentInventory(): ModelInventory {
   const candidates: ModelInventory['candidates'] = ['one', 'two'].map(name => ({
-    id: `user/${name}`,
-    repositoryId: `user/${name}`,
-    path: 'diffusion.gguf',
-    files: [{ path: 'diffusion.gguf', file: ggufFile() }],
+    candidateKey: `user/${name}`,
+    repositoryKey: `user/${name}`,
+    primaryRelativePath: 'diffusion.gguf',
+    files: [{ relativePath: 'diffusion.gguf', file: ggufFile() }],
     size: 512,
     format: 'gguf',
     family: 'z-image',
@@ -631,10 +634,10 @@ function componentInventory(): ModelInventory {
   for (const name of ['vae-a', 'vae-b', 'text']) {
     const slot = name === 'text' ? 'lm' : 'vae';
     candidates.push({
-      id: `user/${name}`,
-      repositoryId: `user/${name}`,
-      path: 'shared.gguf',
-      files: [{ path: 'shared.gguf', file: ggufFile() }],
+      candidateKey: `user/${name}`,
+      repositoryKey: `user/${name}`,
+      primaryRelativePath: 'shared.gguf',
+      files: [{ relativePath: 'shared.gguf', file: ggufFile() }],
       size: 512,
       format: 'gguf',
       family: 'unknown',
@@ -771,7 +774,7 @@ it('materializes only the edited per-model field and keeps all other shared chan
   const row = wrapper.findAll('[data-testid="benchmark-target"]')[0]!;
   await row.get('[data-testid="override-steps"]').setValue(true);
   await row.get('[data-testid="parameter-steps"]').setValue(5);
-  expect(Object.keys(b.overrides.value[target.id]!)).toEqual(['steps']);
+  expect(Object.keys(b.overrides.value[target.candidateKey]!)).toEqual(['steps']);
   b.common.value.width = 640;
   b.common.value.steps = 10;
   expect(b.effective({ target })).toMatchObject({ width: 640, steps: 5 });
@@ -793,7 +796,7 @@ it('uses shared or per-model BF16 conversion in diagnostics without changing the
   expect(row.get('[data-testid="parameter-bf16WeightType"]').element.matches(':disabled')).toBe(true);
   await row.get('[data-testid="override-bf16WeightType"]').setValue(true);
   await row.get('[data-testid="parameter-bf16WeightType"]').setValue('f32');
-  expect(bench.overrides.value[target.id]).toEqual({ bf16WeightType: 'f32' });
+  expect(bench.overrides.value[target.candidateKey]).toEqual({ bf16WeightType: 'f32' });
   expect(bench.effective({ target }).bf16WeightType).toBe('f32');
   await row.get('[data-testid="override-bf16WeightType"]').setValue(false);
   expect(bench.effective({ target }).bf16WeightType).toBe('f16');

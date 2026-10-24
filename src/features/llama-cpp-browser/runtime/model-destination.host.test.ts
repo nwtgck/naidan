@@ -4,7 +4,9 @@ import { toHostModelDirectoryId } from '@/01-models/ids';
 import { findLocalSuggestedModel } from '@/features/llama-cpp-browser/hugging-face/suggestion-plan';
 import { generateInputSchema, modelSchema } from '@/features/llama-cpp-browser/types';
 import type { SuggestedQuantization } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
-import { destinationKey, hostModelReference, hostModelRoot, parseHostModelReference, withDestinationLock } from './model-destination';
+import { destinationKey, hostModelRoot, withDestinationLock } from './model-destination';
+import { formatHostModelId } from './host-model-aliases';
+import { parsePublicHostModelReference } from './model-destination-types';
 
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
 
@@ -16,8 +18,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('source-qualified linked model identities', () => {
-  it('does not case-fold linked root identities when matching an installed catalog choice', () => {
+describe('source-qualified linked model locations', () => {
+  it('does not case-fold linked root locations when matching an installed catalog choice', () => {
     const quantization: SuggestedQuantization = {
       id: 'q4',
       hfRepository: 'owner/repo',
@@ -28,49 +30,59 @@ describe('source-qualified linked model identities', () => {
       suggestedMemoryGiB: 1,
       suggestedMultimodalMemoryGiB: undefined,
     };
-    const id = hostModelReference({ directoryId: 'Root-A', repository: quantization.hfRepository, modelPath: 'model-Q4_K_M.gguf' });
-    const installed = { id, name: id, size: 128, importedAt: 1 };
+    const installed = {
+      modelId: 'host/Models/owner/repo:model-Q4_K_M',
+      size: 128,
+      importedAt: 1,
+      source: { kind: 'host' as const, directoryId: 'Root-A', directoryName: 'Models', repository: 'owner/repo', primaryRelativePath: 'model-Q4_K_M.gguf' },
+    };
 
     expect(findLocalSuggestedModel({ quantization, models: [installed], destination: { kind: 'host', directoryId: 'root-a' } })).toBeUndefined();
     expect(findLocalSuggestedModel({ quantization, models: [installed], destination: { kind: 'host', directoryId: 'Root-A' } })).toBe(installed);
     expect(findLocalSuggestedModel({ quantization, models: [installed], destination: { kind: 'opfs' } })).toBeUndefined();
-    const otherRepositoryId = hostModelReference({ directoryId: 'Root-A', repository: 'Owner/repo', modelPath: 'model-Q4_K_M.gguf' });
-    const otherRepository = { ...installed, id: otherRepositoryId, name: otherRepositoryId };
+    const otherRepository = { ...installed, modelId: 'host/Models/Owner/repo:model-Q4_K_M', source: { ...installed.source, repository: 'Owner/repo' } };
     expect(findLocalSuggestedModel({ quantization, models: [otherRepository], destination: { kind: 'host', directoryId: 'Root-A' } })).toBeUndefined();
   });
 
-  it('round-trips opaque root IDs and exact nested paths without using display names', () => {
+  it('encodes the public folder alias while keeping opaque destination IDs separate', () => {
     const directoryId = 'same name:%/root';
+    const folderName = 'same name:%/folder';
     const repository = 'owner/repository';
-    const modelPath = 'weights:original/100% model.gguf';
-    const reference = hostModelReference({ directoryId, repository, modelPath });
+    const primaryRelativePath = 'weights:original/100% model.gguf';
+    const directories = [{ id: toHostModelDirectoryId({ raw: directoryId }), name: folderName }];
+    const modelId = formatHostModelId({ directoryId, repository, primaryRelativePath, directories });
 
-    expect(reference).toBe('host/same%20name%3A%25%2Froot/owner/repository:weights%3Aoriginal%2F100%25%20model.gguf');
-    expect(parseHostModelReference({ name: reference })).toEqual({ destination: { kind: 'host', directoryId }, repository, modelPath });
-    expect(hostModelReference({ directoryId: 'different root', repository, modelPath })).not.toBe(reference);
+    expect(modelId).toBe('host/same%20name%3A%25%2Ffolder/owner/repository:weights:original/100% model');
+    expect(parsePublicHostModelReference({ modelId })).toEqual({ alias: folderName, repository, selector: 'weights:original/100% model' });
+    expect(destinationKey({ destination: { kind: 'host', directoryId } })).toBe('host/same%20name%3A%25%2Froot');
+    expect(destinationKey({ destination: { kind: 'host', directoryId: 'different root' } })).not.toBe(destinationKey({ destination: { kind: 'host', directoryId } }));
     expect(destinationKey({ destination: { kind: 'host', directoryId } })).not.toBe(destinationKey({ destination: { kind: 'opfs' } }));
   });
 
   it.each([
-    'host/root/owner/repo:weights%2fmodel.gguf',
-    'host/%72oot/owner/repo:model.gguf',
-    'host/root/owner/repo:%2Fmodel.gguf',
-    'host/root/owner/repo:..%2Fmodel.gguf',
-    'host/root/owner/repo:weights%5Cmodel.gguf',
-    'host/root/owner/repo:model.gguf%00',
+    'host/Models/owner/repo:weights//model.gguf',
+    'host/%4Dodels/owner/repo:model.gguf',
+    'host/Models/owner/repo:/model.gguf',
+    'host/Models/owner/repo:../model.gguf',
+    'host/Models/owner/repo:weights\\model.gguf',
+    'host/Models/owner/repo:model.gguf\0',
     'host//owner/repo:model.gguf',
     'host/%zz/owner/repo:model.gguf',
-    'host/root/owner/repo:model.gguf/extra',
+    'host/Models/owner/repo:model.gguf/../extra',
     'hf.co/owner/repo:model.gguf',
-  ])('rejects non-canonical or unsafe reference %s', name => {
-    expect(() => parseHostModelReference({ name })).toThrow();
+  ])('rejects non-canonical aliases or unsafe public references %s', modelId => {
+    expect(() => parsePublicHostModelReference({ modelId })).toThrow();
   });
 
-  it('keeps a repository-level identity separate from an exact model identity', () => {
-    const repository = hostModelReference({ directoryId: 'root', repository: 'owner/repo', modelPath: undefined });
-    expect(repository).toBe('host/root/owner/repo');
-    expect(parseHostModelReference({ name: repository }).modelPath).toBeUndefined();
-    expect(hostModelReference({ directoryId: 'root', repository: 'owner/repo', modelPath: 'model.gguf' })).not.toBe(repository);
+  it('keeps a repository route separate from a selectable modelId', () => {
+    const directories = [{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }];
+    const repositoryRoute = 'host/Models/owner/repo';
+    const modelId = formatHostModelId({ directoryId: 'root', repository: 'owner/repo', primaryRelativePath: 'model.gguf', directories });
+
+    expect(parsePublicHostModelReference({ modelId: repositoryRoute })).toEqual({ alias: 'Models', repository: 'owner/repo', selector: undefined });
+    expect(modelId).toBe('host/Models/owner/repo:model');
+    expect(parsePublicHostModelReference({ modelId }).selector).toBe('model');
+    expect(modelSchema.parse({ modelId: repositoryRoute, size: 128, importedAt: 1 }).modelId).toBe(repositoryRoute);
   });
 });
 
@@ -138,41 +150,48 @@ describe('linked model generation admission', () => {
     stop: [],
     options: { profile: 'cpu-wasm32' },
   };
-  function reference({ length }: { length: number }): string {
-    const prefix = `${hostModelReference({ directoryId: 'root', repository: 'owner/repo', modelPath: undefined })}:`;
+  function publicModelId({ length }: { length: number }): string {
+    const prefix = 'host/Models/owner/repo:';
     let remaining = length - prefix.length;
     const segments: string[] = [];
     while (remaining > 255) {
       segments.push('a'.repeat(200));
-      remaining -= 203;
+      remaining -= 201;
     }
-    segments.push(`${'b'.repeat(remaining - '.gguf'.length)}.gguf`);
-    return hostModelReference({ directoryId: 'root', repository: 'owner/repo', modelPath: segments.join('/') });
+    segments.push('b'.repeat(remaining));
+    return `${prefix}${segments.join('/')}`;
   }
 
-  it.each([512, 513, 1024])('accepts the same canonical %i-character name for inventory and generation', length => {
-    const model = reference({ length });
-    expect(model).toHaveLength(length);
-    expect(modelSchema.safeParse({ id: model, name: model, size: 128, importedAt: 1 }).success).toBe(true);
-    expect(generateInputSchema.parse({ ...input, model }).model).toBe(model);
+  it.each([512, 513, 1024, 4096])('accepts the same public %i-character modelId for inventory and generation', length => {
+    const modelId = publicModelId({ length });
+    expect(modelId).toHaveLength(length);
+    expect(modelSchema.safeParse({ modelId, size: 128, importedAt: 1 }).success).toBe(true);
+    expect(generateInputSchema.parse({ ...input, modelId }).modelId).toBe(modelId);
   });
 
-  it('rejects canonical linked references beyond the inventory boundary', () => {
-    const model = reference({ length: 1025 });
-    expect(modelSchema.safeParse({ id: model, name: model, size: 128, importedAt: 1 }).success).toBe(false);
-    expect(generateInputSchema.safeParse({ ...input, model }).success).toBe(false);
+  it('preserves long modelId strings at the inventory and generation boundaries', () => {
+    const modelId = publicModelId({ length: 4097 });
+    expect(modelSchema.parse({ modelId, size: 128, importedAt: 1 }).modelId).toBe(modelId);
+    expect(generateInputSchema.parse({ ...input, modelId }).modelId).toBe(modelId);
   });
 
   it.each([
-    'host/root/owner/repo:../model.gguf',
-    'host/root/owner/repo:nested%2fmodel.gguf',
-    `host/root/owner/repo:${'a'.repeat(500)}%ZZ.gguf`,
-  ])('rejects an invalid or non-canonical linked reference: %s', model => {
-    expect(generateInputSchema.safeParse({ ...input, model }).success).toBe(false);
+    'host/Models/owner/repo:../model.gguf',
+    'host/%4Dodels/owner/repo:nested/model',
+    `host/Models/owner/repo:${'a'.repeat(500)}%ZZ.gguf`,
+  ])('passes a modelId string to resolution without imposing path rules: %s', modelId => {
+    expect(generateInputSchema.parse({ ...input, modelId }).modelId).toBe(modelId);
   });
 
-  it('retains the 512-character boundary for ordinary model names', () => {
-    expect(generateInputSchema.safeParse({ ...input, model: 'a'.repeat(512) }).success).toBe(true);
-    expect(generateInputSchema.safeParse({ ...input, model: 'a'.repeat(513) }).success).toBe(false);
+  it('does not impose a source-specific length boundary on modelId data', () => {
+    const prefix = `hf.co/owner/repo:${'a'.repeat(250)}/`;
+    expect(generateInputSchema.safeParse({ ...input, modelId: `${prefix}${'b'.repeat(512 - prefix.length)}` }).success).toBe(true);
+    expect(generateInputSchema.safeParse({ ...input, modelId: `${prefix}${'b'.repeat(513 - prefix.length)}` }).success).toBe(true);
+  });
+
+  it.each(['nested%2fmodel', '..%2Fmodel', '%ZZ', '100% model 日本語'])('admits the literal public selector %s without URL decoding', selector => {
+    const modelId = `host/Models/owner/repo:${selector}`;
+    expect(modelSchema.safeParse({ modelId, size: 128, importedAt: 1 }).success).toBe(true);
+    expect(generateInputSchema.parse({ ...input, modelId }).modelId).toBe(modelId);
   });
 });

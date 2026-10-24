@@ -27,7 +27,7 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
         }
         return profile;
       case 'webgpu-wasm32-jspi': return profile;
-      case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm32-asyncify': throw new Error('Non-embedded profile');
+      case 'cpu-wasm32': case 'webgpu-wasm64-jspi-gpu-profile': case 'webgpu-wasm32-asyncify': throw new Error('Non-embedded profile');
       default: {
         const exhaustive: never = profile;
         throw new Error(`Unhandled profile: ${exhaustive}`);

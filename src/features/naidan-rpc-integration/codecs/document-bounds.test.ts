@@ -68,7 +68,7 @@ it('counts the root in the node limit and accepts the exact limit', () => {
 
 it('bounds a local tool schema before recursive Zod validation, including cyclic input', () => {
   const input = {
-    model: 'local/model',
+    modelId: 'user/local',
     messages: [{
       role: 'user' as const,
       content: 'hello',

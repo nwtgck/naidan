@@ -1,10 +1,11 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
+import { storageService } from '@/00-storage/service';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
-import { resolveHostModelName } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
-import { listHostStoredModels, selectHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
+import { listHostStoredModels, resolveHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
+import { prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import { listHuggingFaceModels, resolveRepositoryModel } from './storage';
 import { ggufBytes } from './test-opfs';
 
@@ -42,7 +43,10 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => opfs } });
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe.each(['opfs', 'host'] as const)('%s directory tree to public IDs and selected files', kind => {
   it('keeps identical variants in different directories separate and confines a collision to its directory', async () => {
@@ -83,45 +87,48 @@ describe.each(['opfs', 'host'] as const)('%s directory tree to public IDs and se
 
     const directories = [{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }];
     const listModels = () => kind === 'opfs' ? listHuggingFaceModels() : listHostStoredModels({ directories, signal: undefined });
-    const resolve = ({ name }: { name: string }) => kind === 'opfs'
-      ? resolveRepositoryModel({ name }) : selectHostModel({ name: resolveHostModelName({ name, directories }) });
+    const resolve = async ({ modelId }: { modelId: string }) => kind === 'opfs'
+      ? resolveRepositoryModel({ modelId, signal: undefined }) : (await resolveHostModel({ modelId, directories, signal: undefined })).directory;
     const namespace = kind === 'opfs' ? 'hf.co' : 'host/Models';
     const physicalPrefix = kind === 'opfs' ? 'models/huggingface.co/' : '';
     const physicalSuffix = kind === 'opfs' ? '/resolve/main' : '';
     const expected = [
       {
-        name: `${namespace}/alice/Model-GGUF:Q4_K_M`,
+        modelId: `${namespace}/alice/Model-GGUF:Q4_K_M`,
         directory: `${physicalPrefix}alice/Model-GGUF${physicalSuffix}`,
         files: ['Q4_K_M/Model-Q4_K_M-00001-of-00002.gguf', 'Q4_K_M/Model-Q4_K_M-00002-of-00002.gguf'],
       },
       {
-        name: `${namespace}/alice/Model-GGUF:Q8_0`,
+        modelId: `${namespace}/alice/Model-GGUF:Q8_0`,
         directory: `${physicalPrefix}alice/Model-GGUF${physicalSuffix}`,
         files: ['Model-Q8_0.gguf'],
       },
       {
-        name: `${namespace}/alice/Other-GGUF:Q4_K_M`,
+        modelId: `${namespace}/alice/Other-GGUF:Q4_K_M`,
         directory: `${physicalPrefix}alice/Other-GGUF${physicalSuffix}`,
         files: ['Other-Q4_K_M.gguf'],
       },
       {
-        name: `${namespace}/bob/Model-GGUF:Q4_K_M`,
+        modelId: `${namespace}/bob/Model-GGUF:Q4_K_M`,
         directory: `${physicalPrefix}bob/Model-GGUF${physicalSuffix}`,
         files: ['Model-Q4_K_M.gguf'],
       },
     ];
 
-    expect((await listModels()).map(model => model.name).sort()).toEqual(expected.map(model => model.name).sort());
+    expect((await listModels()).map(model => model.modelId).sort()).toEqual(expected.map(model => model.modelId).sort());
     for (const model of expected) {
-      const selected = await resolve({ name: model.name });
-      expect(selected.modelPath).toBe(model.files[0]);
-      expect(selected.files.map(file => file.path)).toEqual(model.files);
+      const selected = await resolve({ modelId: model.modelId });
+      expect(selected.primaryFile.relativePath).toBe(model.files[0]);
+      expect(selected.files.map(file => file.relativePath)).toEqual(model.files);
       // Check the physical handles as well: matching filenames in another
       // owner's directory must never satisfy this selection.
       for (const file of selected.files) {
-        const parts = `${model.directory}/${file.path}`.split('/');
+        const parts = `${model.directory}/${file.relativePath}`.split('/');
         const filename = parts.pop()!;
         const folder = await directoryAt({ root, path: parts.join('/') });
+        if (!('handle' in file)) {
+          throw new Error('A stored repository file must have a handle');
+        }
         expect(file.handle).toBe(await folder.getFileHandle(filename));
       }
     }
@@ -130,10 +137,47 @@ describe.each(['opfs', 'host'] as const)('%s directory tree to public IDs and se
     const aliceModelDirectory = await directoryAt({ root, path: `${physicalPrefix}alice/Model-GGUF${physicalSuffix}` });
     await writeTree({ folder: aliceModelDirectory, tree: { Q4_K_M: { 'Model-Q4_K_M.gguf': ggufBytes() } } });
     const unchanged = expected.slice(1);
-    expect((await listModels()).map(model => model.name).sort()).toEqual(unchanged.map(model => model.name).sort());
-    await expect(resolve({ name: `${namespace}/alice/Model-GGUF:Q4_K_M` })).rejects.toThrow('unsupported-input');
+    expect((await listModels()).map(model => model.modelId).sort()).toEqual(unchanged.map(model => model.modelId).sort());
+    await expect(resolve({ modelId: `${namespace}/alice/Model-GGUF:Q4_K_M` })).rejects.toThrow('unsupported-input');
     for (const model of unchanged) {
-      expect((await resolve({ name: model.name })).files.map(file => file.path)).toEqual(model.files);
+      expect((await resolve({ modelId: model.modelId })).files.map(file => file.relativePath)).toEqual(model.files);
     }
+  });
+});
+
+describe('captured host removal plans', () => {
+  it('keeps the reviewed folder when another registration takes over its public alias', async () => {
+    const other = new MemoryDirectory('Other');
+    const tree = { owner: { repo: { 'model.gguf': ggufBytes() } } };
+    await writeTree({ folder: host, tree });
+    await writeTree({ folder: other, tree });
+    const originalId = toHostModelDirectoryId({ raw: 'original' });
+    const otherId = toHostModelDirectoryId({ raw: 'other' });
+    vi.mocked(hostModelHandles.get).mockImplementation(async ({ id }) => (id === originalId ? host : other) as unknown as HostModelDirectoryHandle);
+    const loadDirectories = vi.spyOn(storageService, 'loadHostModelDirectories').mockResolvedValue([
+      { id: originalId, name: 'Models' },
+      { id: otherId, name: 'Other' },
+    ]);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: {
+        request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
+      },
+    });
+    const modelId = 'host/Models/owner/repo:model';
+    const { plan } = await prepareModelRemoval({ modelId, signal: undefined });
+    const originalFolder = await directoryAt({ root: host, path: 'owner/repo' });
+    expect(plan.folder).toBe(originalFolder);
+    loadDirectories.mockClear().mockResolvedValue([
+      { id: originalId, name: 'Renamed' },
+      { id: otherId, name: 'Models' },
+    ]);
+    vi.mocked(hostModelHandles.get).mockClear();
+
+    expect(await removeStoredModel({ plan })).toBe('deleted');
+    expect(originalFolder.children.size).toBe(0);
+    expect(await (await directoryAt({ root: other, path: 'owner/repo' })).getFileHandle('model.gguf')).toBeDefined();
+    expect(loadDirectories).not.toHaveBeenCalled();
+    expect(hostModelHandles.get).not.toHaveBeenCalled();
   });
 });

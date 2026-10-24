@@ -74,8 +74,12 @@ it('allows the catalog to download into a linked folder without OPFS', async () 
   await ensureAllStringsForTest({ locale: 'en' });
   const { library } = await harness();
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
-  expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
-  expect(wrapper.get<HTMLOptionElement>('option[value="selected"]').element.disabled).toBe(false);
+  const destination = wrapper.getComponent({ name: 'ImageHostModelDirectories' }).getComponent({ name: 'SettingsFormSelect' });
+  expect(destination.props('modelValue')).toBe('selected');
+  expect(destination.props('options')).toEqual(expect.arrayContaining([
+    expect.objectContaining({ value: 'opfs', disabled: true }),
+    expect.objectContaining({ value: 'selected', disabled: false }),
+  ]));
   const download = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
   expect(download.element.disabled).toBe(false);
   await download.trigger('click');

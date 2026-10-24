@@ -9,17 +9,11 @@ describe('chat text submission setup policy', () => {
     expect(resolveChatTextSubmissionAction({
       endpoint: configured,
       modelId: 'model-1',
-      endpointSource: 'global',
-      modelSource: 'global',
-      globalSetupIncomplete: false,
       canSubmit: true,
     })).toBe('send');
     expect(resolveChatTextSubmissionAction({
       endpoint: configured,
       modelId: 'model-1',
-      endpointSource: 'global',
-      modelSource: 'global',
-      globalSetupIncomplete: false,
       canSubmit: false,
     })).toBe('blocked');
   });
@@ -28,35 +22,26 @@ describe('chat text submission setup policy', () => {
     { endpoint: unconfigured, modelId: 'model-1' },
     { endpoint: configured, modelId: '' },
     { endpoint: unconfigured, modelId: '' },
-  ])('offers onboarding for incomplete inherited global setup: $endpoint / $modelId', ({ endpoint, modelId }) => {
+  ])('offers model selection for incomplete effective setup: $endpoint / $modelId', ({ endpoint, modelId }) => {
     expect(resolveChatTextSubmissionAction({
       endpoint,
       modelId,
-      endpointSource: 'global',
-      modelSource: 'global',
-      globalSetupIncomplete: true,
       canSubmit: false,
-    })).toBe('open-onboarding');
+    })).toBe('select-model');
   });
 
-  it.each(['chat', 'chat_group'] as const)('does not offer global onboarding for a broken %s endpoint override', source => {
+  it.each(['chat', 'chat_group'] as const)('offers a chat-scoped selection for a broken %s endpoint override', _source => {
     expect(resolveChatTextSubmissionAction({
       endpoint: unconfigured,
       modelId: 'model-1',
-      endpointSource: source,
-      modelSource: 'global',
-      globalSetupIncomplete: true,
       canSubmit: false,
-    })).toBe('blocked');
+    })).toBe('select-model');
   });
 
-  it('does not present onboarding as an escape from unrelated submission failures', () => {
+  it('does not present model selection as an escape from unrelated submission failures', () => {
     expect(resolveChatTextSubmissionAction({
-      endpoint: unconfigured,
-      modelId: '',
-      endpointSource: 'global',
-      modelSource: 'global',
-      globalSetupIncomplete: false,
+      endpoint: configured,
+      modelId: 'model-1',
       canSubmit: false,
     })).toBe('blocked');
   });

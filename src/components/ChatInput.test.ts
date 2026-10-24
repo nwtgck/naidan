@@ -6,7 +6,9 @@ import ChatInput from './ChatInput.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
+import type { AppInteraction } from '@/composables/useAppPresentation';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -64,7 +66,7 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 // Mock child components
-vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div><slot name="settings" /></div>' } }));
+vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div><slot name="trigger-detail" /><slot name="settings" /></div>' } }));
 vi.mock('../features/tools/components/ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
 const mockOpenFileExplorer = vi.fn();
@@ -74,11 +76,7 @@ const mockGetChatTmpDirectory = vi.fn();
 const mockGetNaidanSysfsAccessScope = vi.fn();
 
 const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
-const mockAppInteraction = ref<
-  | 'blocked-by-startup'
-  | 'blocked-by-onboarding'
-  | 'enabled'
->('enabled');
+const mockAppInteraction = ref<AppInteraction>('enabled');
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
@@ -576,9 +574,9 @@ describe('ChatInput Integration', () => {
     expect(mockSendMessageForChat).toHaveBeenCalledOnce();
   });
 
-  it('waits to auto-send until onboarding no longer blocks interaction', async () => {
-    mockAppInteraction.value = 'blocked-by-onboarding';
-    getWrapper({ autoSendPrompt: 'Hello after onboarding' });
+  it('waits to auto-send until startup no longer blocks interaction', async () => {
+    mockAppInteraction.value = 'blocked-by-startup';
+    getWrapper({ autoSendPrompt: 'Hello after startup' });
     await flushPromises();
 
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
@@ -589,7 +587,7 @@ describe('ChatInput Integration', () => {
 
     expect(mockSendMessageForChat).toHaveBeenCalledOnce();
     expect(mockSendMessageForChat).toHaveBeenCalledWith(expect.objectContaining({
-      content: 'Hello after onboarding',
+      content: 'Hello after startup',
     }));
   });
 
@@ -628,7 +626,7 @@ describe('ChatInput Integration', () => {
     wrapper.unmount();
   });
 
-  it('does not focus or auto-send when onboarding reopens before scheduled interaction', async () => {
+  it('does not focus or auto-send when startup blocks scheduled interaction', async () => {
     let resolveModels!: (models: string[]) => void;
     const models = new Promise<string[]>((resolve) => {
       resolveModels = resolve;
@@ -638,7 +636,7 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper({ autoSendPrompt: 'Do not send while blocked' });
     const textarea = wrapper.find('[data-testid="chat-input"]').element;
 
-    mockAppInteraction.value = 'blocked-by-onboarding';
+    mockAppInteraction.value = 'blocked-by-startup';
     await nextTick();
     await flushPromises();
 
@@ -952,7 +950,7 @@ describe('ChatInput Integration', () => {
     { label: 'Ctrl+Enter', shortcut: { ctrlKey: true } },
     { label: 'Cmd+Enter', shortcut: { metaKey: true } },
   ])('requests onboarding with %s rather than submitting an incomplete chat', async ({ shortcut }) => {
-    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'open-onboarding' });
+    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'select-model' });
     const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Unsent draft');
     // This data is held in the composer until a *successful* submission.
@@ -969,7 +967,7 @@ describe('ChatInput Integration', () => {
     }
     await flushPromises();
 
-    expect(wrapper.emitted('request-onboarding')).toHaveLength(1);
+    expect(wrapper.emitted('request-model-selection')).toHaveLength(1);
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
     expect(textarea.element.value).toBe('Unsent draft');
     expect(wrapper.vm.TEST_ONLY.attachments.value).toEqual([attachment]);
@@ -978,13 +976,13 @@ describe('ChatInput Integration', () => {
 
   it('keeps image generation independent of missing chat text-model setup', async () => {
     mockIsImageMode.value = true;
-    const wrapper = getWrapper({ isSubmissionEnabled: true, textSubmissionAction: 'open-onboarding' });
+    const wrapper = getWrapper({ isSubmissionEnabled: true, textSubmissionAction: 'select-model' });
     await wrapper.get('[data-testid="chat-input"]').setValue('draw a landscape');
     await wrapper.get('[data-testid="send-button"]').trigger('click');
     await flushPromises();
     expect(mockSendImageRequest).toHaveBeenCalledOnce();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
-    expect(wrapper.emitted('request-onboarding')).toBeUndefined();
+    expect(wrapper.emitted('request-model-selection')).toBeUndefined();
     wrapper.unmount();
   });
 
@@ -992,10 +990,10 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper({
       autoSendPrompt: 'Unsent prompt from URL',
       isSubmissionEnabled: false,
-      textSubmissionAction: 'open-onboarding',
+      textSubmissionAction: 'select-model',
     });
     await flushPromises();
-    expect(wrapper.emitted('request-onboarding')).toBeUndefined();
+    expect(wrapper.emitted('request-model-selection')).toBeUndefined();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
     expect(wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]').element.value).toBe('Unsent prompt from URL');
     expect(wrapper.emitted('auto-sent')).toHaveLength(1);
@@ -1003,11 +1001,11 @@ describe('ChatInput Integration', () => {
   });
 
   it('does not retry an intercepted message automatically after setup finishes', async () => {
-    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'open-onboarding' });
+    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'select-model' });
     const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Send after setup');
     await wrapper.get('[data-testid="send-button"]').trigger('click');
-    expect(wrapper.emitted('request-onboarding')).toHaveLength(1);
+    expect(wrapper.emitted('request-model-selection')).toHaveLength(1);
     await wrapper.setProps({ isSubmissionEnabled: true, textSubmissionAction: 'send' });
     await flushPromises();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
@@ -1051,6 +1049,68 @@ describe('ChatInput Integration', () => {
     }
 
     expect(mockSetPreferredEditorMode).toHaveBeenCalledWith({ mode: 'textarea' });
+  });
+
+  it.each([
+    { effort: 'low' as const, label: 'Low' },
+    { effort: 'medium' as const, label: 'Med' },
+    { effort: 'high' as const, label: 'High' },
+    { effort: 'none' as const, label: 'Off' },
+    { effort: undefined, label: undefined },
+  ])('supplies resolved reasoning $effort to the model selector without adding an unset value', async ({ effort, label }) => {
+    const wrapper = getWrapper();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.setProps({ resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } });
+    const summary = wrapper.find('[data-testid="chat-input-reasoning-summary"]');
+    if (label === undefined) {
+      expect(summary.exists()).toBe(false);
+    } else {
+      expect(summary.text()).toBe(label);
+      expect(summary.element.parentElement?.textContent).toContain(`Think ${label}`);
+    }
+  });
+
+  it('follows resolved reasoning through inherited values, local overrides, clearing, and chat switches', async () => {
+    const wrapper = getWrapper();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.setProps({
+      inheritedReasoningEffort: 'high',
+      resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
+    });
+    const reasoning = wrapper.getComponent(ReasoningSettings);
+    expect(reasoning.props('selectedEffort')).toBeUndefined();
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('High');
+
+    await reasoning.vm.$emit('update:effort', 'none');
+    await flushPromises();
+    await wrapper.setProps({ resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } } });
+    expect(reasoning.props('selectedEffort')).toBe('none');
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('Off');
+
+    await reasoning.vm.$emit('update:effort', undefined);
+    await flushPromises();
+    await wrapper.setProps({ resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } } });
+    expect(reasoning.props('selectedEffort')).toBeUndefined();
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('High');
+
+    mockCurrentChat.value = { id: 'chat-2', modelId: 'model-2' };
+    await wrapper.setProps({
+      chatId: toChatId({ raw: 'chat-2' }),
+      chat: mockCurrentChat.value,
+      inheritedReasoningEffort: 'low',
+      resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } },
+    });
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('Low');
+    await wrapper.setProps({ resolvedLmParameters: undefined });
+    expect(wrapper.find('[data-testid="chat-input-reasoning-summary"]').exists()).toBe(false);
   });
 
   it('should persist reasoning effort when updated via the model selector', async () => {

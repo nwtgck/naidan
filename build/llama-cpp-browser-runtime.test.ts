@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -11,6 +11,8 @@ import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin'
 import { createFileProtocolStandaloneWorkerDefinitions } from './file-protocol-standalone/worker-definitions';
 import { createRequire } from 'node:module';
 import { createStandaloneFacadeAliases } from './standalone-facades.js';
+
+const hostedProfiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
 
 async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{ output: Rollup.OutputBundle, workerCores: string[] }> {
   const workerCores = new Set<string>();
@@ -109,13 +111,13 @@ describe('llama.cpp runtime distribution boundary', () => {
     expect(Object.keys(output).some(name => name.includes('llama-cpp-browser-runtime') || name.endsWith('.wasm') || name.endsWith('.wasm.gz') || name.endsWith('.wasm.br'))).toBe(false);
   }, 90_000);
 
-  it('bundles all five published hosted cores with lossless compressed Wasm assets', async () => {
+  it('bundles only available non-retired Hosted cores with lossless compressed Wasm assets', async () => {
     const { output, workerCores } = await bundleFeature({ standalone: false });
     expect(Object.keys(output).filter(name => name.startsWith('llama-cpp-browser-runtime/')).sort()).toEqual(
-      ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify']
+      hostedProfiles
         .map(profile => `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`).sort(),
     );
-    for (const profile of ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify']) {
+    for (const profile of hostedProfiles) {
       const prefix = `llama-cpp-browser-runtime/profiles/${profile}/`;
       const wasm = output[prefix + 'core.wasm.gz'];
       expect(output[prefix + 'core.mjs']).toBeUndefined();
@@ -129,7 +131,7 @@ describe('llama.cpp runtime distribution boundary', () => {
     }
     expect(Object.keys(output).some(name => name.includes('entry-') && name.endsWith('.js'))).toBe(true);
     const javascript = Object.values(output).filter(file => file.fileName.endsWith('.js')).map(file => file.type === 'chunk' ? file.code : Buffer.from(file.source).toString('utf8'));
-    expect(workerCores.sort()).toEqual(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'].map(profile => path.resolve(`node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`)).sort());
+    expect(workerCores.sort()).toEqual(hostedProfiles.map(profile => path.resolve(`node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`)).sort());
     expect(javascript.some(source => source.includes('Naidan fix:'))).toBe(false);
     expect(javascript.some(source => source.includes('browser-external') || source.includes('node:module'))).toBe(false);
   }, 45000);

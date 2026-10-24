@@ -90,15 +90,18 @@ async function persistSampleChat({ chat, loadChats, openChat }: {
   loadChats: () => Promise<void>,
   openChat: ({ id }: { id: ChatId }) => Promise<unknown>,
 }) {
+  const write = storageService.createChatContentWrite({ id: chat.id, content: undefined, binding: undefined });
   await storageService.updateChatContent({
     id: chat.id,
+    write,
     updater: () => ({
       root: chat.root,
       currentLeafId: chat.currentLeafId,
     }),
   });
-  await storageService.updateChatMeta({ id: chat.id, updater: () => chat });
+  await storageService.updateChatMeta({ id: chat.id, write, updater: () => chat });
   await storageService.updateHierarchy({
+    contentWrite: { id: chat.id, write },
     updater: ({ current: curr }) => {
       curr.items.push({ type: 'chat', id: chat.id });
       return curr;

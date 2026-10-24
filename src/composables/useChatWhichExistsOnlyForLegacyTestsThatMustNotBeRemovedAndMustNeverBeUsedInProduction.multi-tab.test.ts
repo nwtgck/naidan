@@ -76,6 +76,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', titleGeneration: 'disabled', defaultModelId: 'gpt-4', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } }, providerProfiles: [] } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
@@ -192,6 +193,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       const current = mocks.mockChatStorage.get(idToRaw({ id })) || null;
       const updated = await updater({ current: current ? { root: current.root, currentLeafId: current.currentLeafId } : null });
       mocks.mockChatStorage.set(idToRaw({ id }), JSON.parse(JSON.stringify({ ...current, ...updated })));
+      return updated;
     });
 
     const sendP = chatStoreB.sendMessage({ content: 'Reply to me' });

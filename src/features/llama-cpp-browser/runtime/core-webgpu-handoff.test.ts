@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe('core-factory WebGPU scope', () => {
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'] as const)(
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'] as const)(
     'scopes the GPU facade to the %s factory without probing or altering browser globals', async profile => {
       const requestAdapter = vi.fn();
       const navigator = { gpu: { requestAdapter } };

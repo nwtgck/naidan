@@ -10,7 +10,7 @@ import type { GenerationCallback, GenerationResult } from '@/features/llama-cpp-
 export function chatRequest(): Parameters<LmProvider['chat']>[0] {
   return {
     messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'hello', completeness: 'complete' }] }],
-    model: 'local.gguf',
+    model: 'user/local',
     parameters: undefined,
     tools: undefined,
     readBinaryObject: undefined,

@@ -32,6 +32,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: {} },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },

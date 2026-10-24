@@ -93,19 +93,23 @@ export async function checkJspi(): Promise<void> {
   }
 }
 
-export async function gpuUnavailableReason(): Promise<Extract<ProfileUnavailableReason, 'webgpu' | 'shader-f16'> | undefined> {
+export async function probeGpuCapabilities(): Promise<{ reason?: Extract<ProfileUnavailableReason, 'webgpu' | 'shader-f16'>, timestampQuery: boolean }> {
   if (typeof navigator === 'undefined' || !navigator.gpu) {
-    return 'webgpu';
+    return { reason: 'webgpu', timestampQuery: false };
   }
   try {
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) {
-      return 'webgpu';
+      return { reason: 'webgpu', timestampQuery: false };
     }
-    return adapter.features.has('shader-f16') ? undefined : 'shader-f16';
+    return { reason: adapter.features.has('shader-f16') ? undefined : 'shader-f16', timestampQuery: adapter.features.has('timestamp-query') };
   } catch {
-    return 'webgpu';
+    return { reason: 'webgpu', timestampQuery: false };
   }
+}
+
+export async function gpuUnavailableReason(): Promise<Extract<ProfileUnavailableReason, 'webgpu' | 'shader-f16'> | undefined> {
+  return (await probeGpuCapabilities()).reason;
 }
 
 export const TEST_ONLY = {

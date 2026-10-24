@@ -1,3 +1,5 @@
+import { localModelDirectory } from './model-directory.test-support';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DOMWrapper, mount, flushPromises, type VueWrapper } from '@vue/test-utils';
@@ -10,13 +12,15 @@ import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserModelSuggestions from './LlamaCppBrowserModelSuggestions.vue';
+import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
+import { modelSuggestionQuantizationControl } from './model-configuration.test-support';
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedSelection: vi.fn(), repositoryDirectories: vi.fn(async () => []) }));
 const muse = preferredQuantizationHint({ suggestion: modelSuggestions.find(entry => entry.id === 'muse-glimmer-30b')! });
 const main = 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf';
 const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
-const local: LocalModel = { id: `hf.co/${muse.hfRepository}:${encodeURIComponent(main)}`, name: `hf.co/${muse.hfRepository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
+const local: LocalModel = { modelId: `hf.co/${muse.hfRepository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
 const revision = 'a'.repeat(40);
 const wrappers: VueWrapper[] = [];
 
@@ -31,6 +35,7 @@ beforeEach(async () => {
   queueTest.reset();
   metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
+  vi.mocked(repositoryDirectories).mockResolvedValue([localModelDirectory({ primaryRelativePath: main, projectorRelativePath: undefined })]);
   vi.mocked(discoverRepository).mockResolvedValue({ repository: muse.hfRepository, revision, ...groupModelFiles({ files: [main, projector, 'dflash-Q4_K_M.gguf'].map(path => ({ path, size: 128 })) }) });
   await ensureAllStringsForTest({ locale: 'en' });
 });
@@ -65,7 +70,7 @@ describe('offline-first suggested model UI', () => {
     await wrapper.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
     expect(discoverRepository).not.toHaveBeenCalled();
     expect(downloadRepository).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="llama-suggestions-find-more"]').attributes('href')).toBe('https://huggingface.co/models?library=gguf');
+    expect(wrapper.find('[data-testid="llama-suggestions-find-more"]').exists()).toBe(false);
   });
 
   it('starts open for new and returning users without letting local updates override manual folding', async () => {
@@ -122,22 +127,18 @@ describe('offline-first suggested model UI', () => {
   });
 
   it.each([
-    { locale: 'en', title: 'Model catalog', more: 'Browse more models', contents: 'Download contents', check: 'Check contents' },
-    { locale: 'ja', title: 'モデルカタログ', more: 'ほかのモデルを探す', contents: 'ダウンロード内容', check: '内容を確認' },
-    { locale: 'de', title: 'Modellkatalog', more: 'Weitere Modelle entdecken', contents: 'Download-Inhalt', check: 'Inhalt prüfen' },
-    { locale: 'es', title: 'Catálogo de modelos', more: 'Explorar más modelos', contents: 'Archivos de descarga', check: 'Ver archivos' },
-    { locale: 'ko', title: '모델 카탈로그', more: '다른 모델 찾아보기', contents: '다운로드 내용', check: '내용 확인' },
-    { locale: 'pt-BR', title: 'Catálogo de modelos', more: 'Explorar mais modelos', contents: 'Conteúdo do download', check: 'Conferir arquivos' },
-    { locale: 'zh-Hans', title: '模型目录', more: '浏览更多模型', contents: '下载内容', check: '查看内容' },
-  ] as const)('localizes the catalog and discovery actions in $locale', async ({ locale, title, more, contents, check }) => {
+    { locale: 'en', title: 'Model catalog', contents: 'Download contents', check: 'Check contents' },
+    { locale: 'ja', title: 'モデルカタログ', contents: 'ダウンロード内容', check: '内容を確認' },
+    { locale: 'de', title: 'Modellkatalog', contents: 'Download-Inhalt', check: 'Inhalt prüfen' },
+    { locale: 'es', title: 'Catálogo de modelos', contents: 'Archivos de descarga', check: 'Ver archivos' },
+    { locale: 'ko', title: '모델 카탈로그', contents: '다운로드 내용', check: '내용 확인' },
+    { locale: 'pt-BR', title: 'Catálogo de modelos', contents: 'Conteúdo do download', check: 'Conferir arquivos' },
+    { locale: 'zh-Hans', title: '模型目录', contents: '下载内容', check: '查看内容' },
+  ] as const)('localizes the catalog and contents actions in $locale', async ({ locale, title, contents, check }) => {
     await ensureAllStringsForTest({ locale });
     const wrapper = render({ models: [] });
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-suggestions-toggle"]').text()).toBe(title);
-    const link = wrapper.get('[data-testid="llama-suggestions-find-more"]');
-    expect(link.text()).toBe(more);
-    expect(link.attributes('href')).toBe('https://huggingface.co/models?library=gguf');
-    expect(link.attributes('rel')).toBe('noopener noreferrer');
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
     await row.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
     const toolbar = row.get('[data-testid="llama-suggestion-plan-toolbar"]');
@@ -231,10 +232,10 @@ describe('offline-first suggested model UI', () => {
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(false);
     await row.get('[data-testid="llama-default-model-action"]').trigger('click');
     expect(wrapper.emitted('selectDefault')).toEqual([[local]]);
-    await wrapper.setProps({ defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.name } });
+    await wrapper.setProps({ defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.modelId } });
     expect(row.get('[data-testid="llama-default-model-action"]').text()).toBe('In use');
     expect(row.get('[data-testid="llama-default-model-action"]').attributes('disabled')).toBeDefined();
-    await wrapper.setProps({ models: [{ ...local, id: `hf.co/${muse.hfRepository}:model-Q8_0.gguf` }] });
+    await wrapper.setProps({ models: [{ ...local, modelId: `hf.co/${muse.hfRepository}:Q8_0` }] });
     await flushPromises();
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
     expect(discoverRepository).not.toHaveBeenCalled();
@@ -283,7 +284,7 @@ describe('offline-first suggested model UI', () => {
   it('disables both catalog controls and shows progress only for the model being used to create a chat group', async () => {
     const createChatGroup = vi.fn().mockResolvedValue(undefined);
     const wrapper = render({ models: [local] });
-    await wrapper.setProps({ createChatGroup, disabled: true, creatingChatGroupModelId: local.id });
+    await wrapper.setProps({ createChatGroup, disabled: true, creatingChatGroupModelId: local.modelId });
     await flushPromises();
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
     expect(row.get('[data-testid="llama-model-action-main"]').attributes('aria-busy')).toBe('true');
@@ -313,8 +314,8 @@ describe('the original catalog reused for audio', () => {
     for (const toggle of view.findAll('[data-testid="llama-suggestion-details-toggle"]')) {
       await toggle.trigger('click');
     }
-    for (const select of view.findAll('[data-testid="llama-suggestion-quantization"]')) {
-      await select.setValue('q8_0');
+    for (const row of view.findAllComponents(LlamaCppBrowserModelSuggestion)) {
+      await modelSuggestionQuantizationControl({ view: row }).setValue('q8_0');
     }
     await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
     await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
@@ -327,14 +328,16 @@ describe('the original catalog reused for audio', () => {
 
   it('selects a locally installed audio model without changing the chat default or contacting its repository', async () => {
     const hint = audioModelCatalog[0]!.quantizationHints[0];
-    const saved: LocalModel = { id: `hf.co/${hint.hfRepository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
+    const saved: LocalModel = { modelId: formatHuggingFaceModelId({ repository: hint.hfRepository, mainFilePath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf' }), size: 128, importedAt: 1 };
     const view = audioCatalog();
     const createChatGroup = vi.fn().mockResolvedValue(undefined);
     await view.setProps({ models: [saved], createChatGroup });
     await flushPromises();
     const row = view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"]');
     // Required companion mode checks actual stored selection, not just a name.
-    vi.mocked(repositoryDirectories).mockResolvedValue([{ id: saved.id, name: saved.name, modelPath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', projectorPath: 'mmproj-Q8_0.gguf', files: [] }]);
+    const primaryFile = { relativePath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', file: new File(['GGUF'], 'model.gguf'), storageKind: 'temp' as const, registrationRevision: 1 };
+    const projectorFile = { ...primaryFile, relativePath: 'mmproj-Q8_0.gguf', file: new File(['GGUF'], 'mmproj.gguf') };
+    vi.mocked(repositoryDirectories).mockResolvedValue([{ primaryFile, projectorFile, files: [primaryFile, projectorFile] }]);
     await view.setProps({ models: [{ ...saved, importedAt: 2 }] });
     await flushPromises();
     const action = row.find('[data-testid="llama-suggestion-use"]');

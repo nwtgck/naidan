@@ -24,12 +24,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const input = (): { name: string, files: { path: string, file: File }[] } => ({
-  name: 'モデル repo',
+const input = (): { rootName: string, files: { relativePath: string, file: File }[] } => ({
+  rootName: 'モデル repo',
   files: [
-    { path: 'README.md', file: new File(['model description'], 'README.md') },
-    { path: 'vae/config.json', file: new File(['{}'], 'config.json') },
-    { path: 'diffusion/weights.gguf', file: new File(['unverified bytes'], 'weights.gguf') },
+    { relativePath: 'README.md', file: new File(['model description'], 'README.md') },
+    { relativePath: 'vae/config.json', file: new File(['{}'], 'config.json') },
+    { relativePath: 'diffusion/weights.gguf', file: new File(['unverified bytes'], 'weights.gguf') },
   ],
 });
 
@@ -43,8 +43,8 @@ it('streams the working tree into models/user without filtering metadata or alte
   expect(lock).toHaveBeenCalledWith('naidan-llama-cpp-browser-model-mutation');
   const repositories = await listImageRepositories({ signal: undefined });
   expect(repositories).toHaveLength(1);
-  expect(repositories[0]!.files.map(file => file.path)).toEqual(['diffusion/weights.gguf', 'README.md', 'vae/config.json'].sort((a, b) => a.localeCompare(b)));
-  expect(await repositories[0]!.files.find(entry => entry.path === 'README.md')!.file.text()).toBe('model description');
+  expect(repositories[0]!.files.map(file => file.relativePath)).toEqual(['diffusion/weights.gguf', 'README.md', 'vae/config.json'].sort((a, b) => a.localeCompare(b)));
+  expect(await repositories[0]!.files.find(entry => entry.relativePath === 'README.md')!.file.text()).toBe('model description');
   expect(progress).toHaveBeenCalled();
 });
 
@@ -55,12 +55,12 @@ it('never overwrites an existing repository', async () => {
 });
 
 it.each(['../escape.gguf', '/absolute.gguf', 'a/../b', 'x\\y', '.llama-cpp-import-pending', '.git/config'])('rejects unsafe paths before writing %s', async path => {
-  await expect(importImageRepository({ input: { name: 'repo', files: [{ path, file: new File(['bytes'], 'f') }] }, signal: undefined, onProgress() {} })).rejects.toThrow();
+  await expect(importImageRepository({ input: { rootName: 'repo', files: [{ relativePath: path, file: new File(['bytes'], 'f') }] }, signal: undefined, onProgress() {} })).rejects.toThrow();
   expect(root.children.size).toBe(0);
 });
 
 it('rejects file/directory collisions before writing', async () => {
-  await expect(importImageRepository({ input: { name: 'repo', files: ['a', 'a/b'].map(path => ({ path, file: new File(['x'], 'f') })) }, signal: undefined, onProgress() {} })).rejects.toThrow('collision');
+  await expect(importImageRepository({ input: { rootName: 'repo', files: ['a', 'a/b'].map(path => ({ relativePath: path, file: new File(['x'], 'f') })) }, signal: undefined, onProgress() {} })).rejects.toThrow('collision');
   expect(root.children.size).toBe(0);
 });
 
@@ -118,22 +118,22 @@ it('does not read from the network when enumerating existing cached HF repositor
   await writer.write(new Uint8Array([1, 2]));
   await writer.close();
   const models = await listImageRepositories({ signal: undefined });
-  expect(models[0]!.id).toContain('owner/repo');
+  expect(models[0]!.repositoryKey).toContain('owner/repo');
   expect(network).not.toHaveBeenCalled();
 });
 
 it('does not obtain new File snapshots for repositories outside a known publication', async () => {
-  await importImageRepository({ input: { ...input(), name: 'retained' }, signal: undefined, onProgress() {} });
-  await importImageRepository({ input: { ...input(), name: 'published' }, signal: undefined, onProgress() {} });
+  await importImageRepository({ input: { ...input(), rootName: 'retained' }, signal: undefined, onProgress() {} });
+  await importImageRepository({ input: { ...input(), rootName: 'published' }, signal: undefined, onProgress() {} });
   const user = await (await root.getDirectoryHandle('models')).getDirectoryHandle('user');
   const retained = await (await (await user.getDirectoryHandle('retained')).getDirectoryHandle('diffusion')).getFileHandle('weights.gguf');
   const published = await (await (await user.getDirectoryHandle('published')).getDirectoryHandle('diffusion')).getFileHandle('weights.gguf');
   const oldRead = vi.spyOn(retained, 'getFile'), newRead = vi.spyOn(published, 'getFile');
-  const repositories = await listImageRepositories({ signal: undefined, repositoryIds: ['user/published'] });
-  expect(repositories.map(repository => repository.id)).toEqual(['user/published']);
+  const repositories = await listImageRepositories({ signal: undefined, repositoryKeys: ['user/published'] });
+  expect(repositories.map(repository => repository.repositoryKey)).toEqual(['user/published']);
   expect(oldRead).not.toHaveBeenCalled();
   expect(newRead).toHaveBeenCalledOnce();
-  expect(await listImageRepositories({ signal: undefined, repositoryIds: [] })).toEqual([]);
+  expect(await listImageRepositories({ signal: undefined, repositoryKeys: [] })).toEqual([]);
   expect(oldRead).not.toHaveBeenCalled();
   expect(newRead).toHaveBeenCalledOnce();
 });

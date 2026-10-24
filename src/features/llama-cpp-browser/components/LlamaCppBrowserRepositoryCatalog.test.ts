@@ -1,3 +1,4 @@
+import { modelConfigurationControl } from './model-configuration.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h } from 'vue';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
@@ -22,7 +23,7 @@ const service = vi.hoisted(() => ({
   subscribe: vi.fn(() => () => {}),
   subscribeModelList: vi.fn(() => () => {}),
   subscribeProfiles: vi.fn(() => () => {}),
-  listModels: vi.fn(async () => []),
+  listModelEntries: vi.fn(async () => []),
   probeProfiles: vi.fn(async () => ({ profiles: [] })),
   release: vi.fn(),
 }));
@@ -100,8 +101,8 @@ describe('reusable repository catalog and shared model manager', () => {
     await flushPromises();
     expect(discoverRepository).toHaveBeenCalledWith(expect.objectContaining({ input: repositoryCatalog[index]!.input }));
     expect(view.get<HTMLInputElement>('[data-testid="llama-hf-repository"]').element.value).toBe(repositoryCatalog[index]!.input);
-    expect(view.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toContain('Q4_K_M');
-    expect(view.get<HTMLSelectElement>('[data-testid="llama-hf-projector"]').element.value).toBe(families[index]!.projector);
+    expect(modelConfigurationControl({ view: view, field: 'quantization' }).props('modelValue')).toContain('Q4_K_M');
+    expect(modelConfigurationControl({ view: view, field: 'companion' }).props('modelValue')).toBe(families[index]!.projector);
     expect(downloadRepository).not.toHaveBeenCalled();
     await view.get('[data-testid="llama-hf-download"]').trigger('click');
     await flushPromises();

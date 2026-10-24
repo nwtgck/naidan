@@ -1,17 +1,19 @@
+import { createChatContentWrite, readChatContentWrite } from '@/00-storage/service/chat-content-binding';
 import { toChatId, toMessageId, toAttachmentId, toBinaryObjectId, toToolCallId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { copyMessageWithoutReplies } from '@/logic/copy-message-node';
 import HistoryManipulationModal from './HistoryManipulationModal.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { storageService } from '@/00-storage/service';
+import { ChatContentBindingChangedError, storageService } from '@/00-storage/service';
 import { computed, nextTick, ref } from 'vue';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Attachment, Chat, MessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { cloneLmParameters } from '@/utils/lm-parameters';
-const { mockSetActiveFocusArea } = vi.hoisted(() => ({
+const { mockSetActiveFocusArea, mockCaptureWrite } = vi.hoisted(() => ({
+  mockCaptureWrite: vi.fn(),
   mockSetActiveFocusArea: vi.fn(),
 }));
 // Mock vuedraggable
@@ -28,6 +30,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 vi.mock('../composables/chat/chat-scoped/chat-history-flow', () => ({
   commitFullHistoryManipulationForChat: vi.fn(),
 }));
+vi.mock('@/composables/chat/chat-scoped/chat-model-binding-operations', () => ({ captureChatContentWrite: mockCaptureWrite }));
 // Mock useLayout
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -64,6 +67,7 @@ describe('HistoryManipulationModal', () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mockCommit.mockReset();
+    mockCaptureWrite.mockImplementation(({ chat }: { chat: Chat }) => createChatContentWrite({ id: chat.id, content: chat, binding: { groupId: undefined, endpoint: { type: 'llama_cpp_browser' }, modelId: chat.modelId ?? 'test-model', endpointSource: 'global', modelSource: chat.modelId === undefined ? 'global' : 'chat' }, isCurrent: () => true }));
     URL.createObjectURL = vi.fn(() => 'blob:history-preview');
     URL.revokeObjectURL = vi.fn();
     vi.mocked(useCurrentChatState).mockReturnValue({
@@ -215,6 +219,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
     expect(mockCommit).toHaveBeenCalledWith({
       chatId: toChatId({ raw: 'chat-1' }),
+      write: mockCaptureWrite.mock.results[0]!.value,
       messages: [
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 2' })] }),
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 1' })] }),
@@ -232,6 +237,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
     expect(mockCommit).toHaveBeenCalledWith({
       chatId: toChatId({ raw: 'chat-1' }),
+      write: mockCaptureWrite.mock.results[0]!.value,
       messages: [
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Updated Msg 1' })] }),
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 2' })] }),
@@ -255,6 +261,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
     expect(mockCommit).toHaveBeenCalledWith({
       chatId: toChatId({ raw: 'chat-1' }),
+      write: mockCaptureWrite.mock.results[0]!.value,
       messages: [
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 1' })] }),
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 2' })] }),
@@ -272,6 +279,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
     expect(mockCommit).toHaveBeenCalledWith({
       chatId: toChatId({ raw: 'chat-1' }),
+      write: mockCaptureWrite.mock.results[0]!.value,
       messages: [
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 1' })] }),
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 2' })] }),
@@ -290,12 +298,92 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
     expect(mockCommit).toHaveBeenCalledWith({
       chatId: toChatId({ raw: 'chat-1' }),
+      write: mockCaptureWrite.mock.results[0]!.value,
       messages: [
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 1' })] }),
         expect.objectContaining({ parts: [expect.objectContaining({ type: "text", text: 'Msg 2' })] }),
       ],
       systemPrompt: undefined,
     });
+  });
+
+  it.each(['model', 'content'])('keeps the opening write when live %s changes before save', async change => {
+    mockCurrentChat.value.modelId = 'temp/model';
+    const wrapper = await mountModal();
+    const write = mockCaptureWrite.mock.results[0]!.value;
+    const baseline = readChatContentWrite({ write, id: mockCurrentChat.value.id }).baseline;
+    if (change === 'model') {
+      mockCurrentChat.value.modelId = 'user/saved';
+    } else {
+      mockCurrentChat.value.root.items.push(messageFixture({ id: 'foreign', role: 'assistant', content: 'Foreign answer', attachments: undefined }));
+    }
+    await wrapper.findAll('button').find(button => button.text().includes('Apply Changes'))!.trigger('click');
+    expect(mockCommit.mock.calls[0]![0]).toMatchObject({ chatId: toChatId({ raw: 'chat-1' }), write });
+    expect(mockCaptureWrite).toHaveBeenCalledOnce();
+    expect(readChatContentWrite({ write, id: mockCurrentChat.value.id })).toMatchObject({ baseline, binding: { modelId: 'temp/model' } });
+  });
+
+  it('explains a binding conflict while preserving the edited messages and prompt', async () => {
+    mockCommit.mockRejectedValueOnce(new ChatContentBindingChangedError());
+    const wrapper = await mountModal();
+    const message = wrapper.findAll('textarea[placeholder="Type message content..."]')[0]!;
+    await message.setValue('Keep this unfinished edit');
+    await wrapper.findAll('button').find(button => button.text().toLowerCase() === 'override')!.trigger('click');
+    const prompt = wrapper.get('textarea[placeholder="Enter system prompt content..."]');
+    await prompt.setValue('Keep this prompt');
+    await wrapper.get('[data-testid="history-apply-changes"]').trigger('click');
+    await flushPromises();
+    const alert = wrapper.get('[data-testid="history-save-error"]');
+    expect(alert.attributes('role')).toBe('alert');
+    expect(alert.text()).toContain('Your edits remain here');
+    expect(alert.text()).toContain('closing and reopening');
+    expect((message.element as HTMLTextAreaElement).value).toBe('Keep this unfinished edit');
+    expect((prompt.element as HTMLTextAreaElement).value).toBe('Keep this prompt');
+    expect(wrapper.emitted('close')).toBeUndefined();
+    expect(wrapper.find('[inert]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="history-apply-changes"]').attributes('disabled')).toBeUndefined();
+    await wrapper.setProps({ isOpen: false });
+    await wrapper.setProps({ isOpen: true });
+    expect(wrapper.find('[data-testid="history-save-error"]').exists()).toBe(false);
+  });
+
+  it('does not publish a binding conflict from an older editing session into a reopened dialog', async () => {
+    const pending = Promise.withResolvers<void>();
+    using cleanup = {
+      [Symbol.dispose]() {
+        pending.resolve();
+      },
+    };
+    void cleanup;
+    mockCommit.mockReturnValueOnce(pending.promise);
+    const wrapper = await mountModal();
+    await wrapper.get('[data-testid="history-apply-changes"]').trigger('click');
+    await wrapper.setProps({ isOpen: false });
+    await wrapper.setProps({ isOpen: true });
+    pending.reject(new ChatContentBindingChangedError());
+    await flushPromises();
+    expect(wrapper.find('[data-testid="history-save-error"]').exists()).toBe(false);
+    expect(wrapper.emitted('close')).toBeUndefined();
+    expect(wrapper.find('[inert]').exists()).toBe(false);
+  });
+
+  it('keeps non-binding save failures on the existing Vue error path', async () => {
+    const failure = new Error('content storage failure');
+    const errorHandler = vi.fn();
+    mockCommit.mockRejectedValueOnce(failure);
+    const wrapper = mount(HistoryManipulationModal, {
+      props: { isOpen: false },
+      global: { config: { errorHandler } },
+    });
+    wrappers.push(wrapper);
+    await wrapper.setProps({ isOpen: true });
+    await wrapper.get('[data-testid="history-apply-changes"]').trigger('click');
+    await flushPromises();
+    expect(errorHandler).toHaveBeenCalledOnce();
+    expect(errorHandler.mock.calls[0]![0]).toBe(failure);
+    expect(wrapper.find('[data-testid="history-save-error"]').exists()).toBe(false);
+    expect(wrapper.emitted('close')).toBeUndefined();
+    expect(wrapper.get('[data-testid="history-apply-changes"]').attributes('disabled')).toBeUndefined();
   });
 
   it('emits close on discard', async () => {

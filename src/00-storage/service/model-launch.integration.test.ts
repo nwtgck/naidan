@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from './index';
+import { LocalStorageProvider } from './local-storage';
 import type { ModelLaunchChatRequest } from './model-launch';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
-import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { LOCK_METADATA, SYNC_LOCK_KEY, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Storage tests do not exercise application string loading.
@@ -45,9 +46,11 @@ function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {
     chatGroupName: 'Model · Q4_K_M',
     input: `hf.co/${repository}:Q4_K_M`,
     requestedVariant: 'Q4_K_M',
-    target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: huggingFaceModelId({ repository, modelPath: mainFilePath }) },
+    target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: formatHuggingFaceModelId({ repository, mainFilePath }) },
     titleGeneration: 'disabled',
-    mode: 'create-or-resume',
+    destination: { kind: 'opfs' },
+    effectiveModelId: formatHuggingFaceModelId({ repository, mainFilePath }),
+    mode: 'create',
     expectedTarget: undefined,
   };
 }
@@ -88,7 +91,9 @@ describe('model launch storage service integration', () => {
     const secondChat = await second.loadChat({ id: b.chatId });
     expect(firstChat?.groupId).toBeDefined();
     expect(secondChat?.groupId).toBe(firstChat?.groupId);
-    expect(firstChat).not.toHaveProperty('modelLaunch');
+    expect(first.getModelLaunch({ chatId: a.chatId })).toMatchObject({ target: a.target, effectiveModelId: a.effectiveModelId, phase: 'active' });
+    expect(second.getModelLaunch({ chatId: a.chatId })).toBeUndefined();
+    expect(first.getModelLaunch({ chatId: b.chatId })).toBeUndefined();
     expect((await first.loadHierarchy()).items).toHaveLength(1);
     expect(await first.loadChatGroup({ id: b.newChatGroupId })).toBeNull();
   });
@@ -98,8 +103,8 @@ describe('model launch storage service integration', () => {
     const service = new StorageService();
     await service.init({ type: 'memory' });
     const req = request({ suffix: 'memory' });
-    await Promise.all([1, 2, 3].map(async () => {
-      await service.prepareModelLaunchChat({ request: req, signal: new AbortController().signal });
+    await Promise.all([1, 2, 3].map(async index => {
+      await service.prepareModelLaunchChat({ request: { ...req, mode: index === 1 ? 'create' : 'resume' }, signal: new AbortController().signal });
     }));
     expect((await service.loadHierarchy()).items).toEqual([{ type: 'chat_group', id: (await service.loadChat({ id: req.chatId }))!.groupId, chat_ids: [req.chatId] }]);
   });
@@ -122,6 +127,43 @@ describe('model launch storage service integration', () => {
     await expect(service.prepareModelLaunchChat({ request: req, signal: controller.signal })).rejects.toThrow();
     expect(await service.loadChatMeta({ id: req.chatId })).toBeNull();
     expect((await service.loadHierarchy()).items).toEqual([]);
+  });
+
+  it.each(['aborted', 'provider-replaced'] as const)('does not write while validating a changed owner when %s', async change => {
+    const service = new StorageService();
+    await service.init({ type: 'local' });
+    const req = request({ suffix: `guard-${change}` });
+    await service.prepareModelLaunchChat({ request: req, signal: new AbortController().signal });
+    await service.updateChatMeta({ id: req.chatId, updater: ({ current }) => ({ ...current!, endpoint: { type: 'llama_cpp_browser' } }) });
+    const read = LocalStorageProvider.prototype.loadChatMeta;
+    const started = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<void>();
+    vi.spyOn(LocalStorageProvider.prototype, 'loadChatMeta').mockImplementationOnce(async function (this: LocalStorageProvider, args) {
+      const meta = await read.call(this, args);
+      started.resolve();
+      await pending.promise;
+      return meta;
+    });
+    const save = vi.spyOn(LocalStorageProvider.prototype, 'saveChatMeta');
+    const controller = new AbortController();
+    const operation = service.prepareModelLaunchChat({ request: { ...req, mode: 'resume' }, signal: controller.signal });
+    await started.promise;
+    let replacement: Promise<void> | undefined;
+    switch (change) {
+    case 'aborted': controller.abort();
+      break;
+    case 'provider-replaced': replacement = service.init({ type: 'memory' });
+      break;
+    default: {
+      const exhaustive: never = change;
+      throw new Error(String(exhaustive));
+    }
+    }
+    pending.resolve();
+    await expect(operation).rejects.toThrow();
+    await replacement;
+    expect(save).not.toHaveBeenCalled();
+    expect(await new LocalStorageProvider().loadChatMeta({ id: req.chatId })).not.toHaveProperty('modelLaunch');
   });
 
   it('keeps the existing settings DTO shape across change and revert', async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mount, enableAutoUnmount, flushPromises } from '@vue/test-utils';
-import { nextTick, defineComponent } from 'vue';
+import { nextTick, defineComponent, h } from 'vue';
 import SettingsSelect from './SettingsSelect.vue';
 import SettingsDisclosure from './SettingsDisclosure.vue';
 
@@ -16,6 +16,24 @@ const options = [
   { value: 'disabled', label: 'Unavailable', disabled: true },
   { value: 'ollama', label: 'Ollama' },
 ];
+
+it('supports compact model options with inline sizes while preserving selection and focus', async () => {
+  const wrapper = mount(SettingsSelect, {
+    attachTo: document.body,
+    props: { modelValue: 'q4', options: [{ value: 'q4', label: 'Q4_K_M', detail: '4.30 GiB' }, { value: 'q8', label: 'Q8_0', detail: '8.10 GiB' }], label: 'Quantization', size: 'compact', presentation: 'toolbar', menuWidthRem: 15 },
+    slots: { option: ({ option }) => [h('span', { 'data-testid': 'model-option-label' }, option.label), h('span', { 'data-testid': 'model-option-size' }, option.detail)] },
+  });
+  await wrapper.get('button').trigger('click');
+  const entry = document.querySelector<HTMLButtonElement>('[data-testid="settings-select-option-q8"]')!;
+  expect(entry.getAttribute('aria-label')).toBe('Q8_0 · 8.10 GiB');
+  expect(entry.querySelector('[data-testid="model-option-label"]')?.textContent).toBe('Q8_0');
+  expect(entry.querySelector('[data-testid="model-option-size"]')?.textContent).toBe('8.10 GiB');
+  entry.click();
+  await nextTick();
+  expect(wrapper.emitted('update:modelValue')).toEqual([['q8']]);
+  expect(document.activeElement).toBe(wrapper.get('button').element);
+  expect(wrapper.get('button').attributes('aria-expanded')).toBe('false');
+});
 
 describe.each(['default', 'compact'] as const)('SettingsSelect (%s)', size => {
   it('distinguishes inherited and explicit equal values without rewriting raw values', async () => {

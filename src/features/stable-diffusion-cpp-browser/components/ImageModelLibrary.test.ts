@@ -13,7 +13,7 @@ beforeEach(async () => {
 it('shows inspection phase/path/progress and offers cancel while inspecting', async () => {
   const view = createDisabledImageLibrary();
   view.scanState.value = 'scanning';
-  view.scanProgress.value = { phase: 'headers', completed: 3, total: 7, path: 'user/weights/model.gguf' };
+  view.scanProgress.value = { phase: 'headers', completed: 3, total: 7, entryPath: 'user/weights/model.gguf' };
   view.cancelScan = vi.fn();
   const wrapper = mount(ImageModelLibrary, { props: { active: true, view, disabled: false } });
   expect(wrapper.get('[data-testid="image-inventory-progress"]').text()).toContain('3 / 7');
@@ -30,7 +30,7 @@ it('shows inspection phase/path/progress and offers cancel while inspecting', as
 
 it('closes companion choices during a scan without resetting the selected file', async () => {
   const view = createDisabledImageLibrary();
-  view.components = computed(() => [{ slot: 'vae', selected: 'selected-vae', required: true, choices: [{ id: 'selected-vae', label: 'VAE', detail: 'OPFS: models/vae.gguf', status: 'matching', evidence: [], issue: undefined }] }]);
+  view.components = computed(() => [{ slot: 'vae', selectedCandidateKey: 'selected-vae', required: true, choices: [{ candidateKey: 'selected-vae', label: 'VAE', detail: 'OPFS: models/vae.gguf', status: 'matching', evidence: [], issue: undefined }] }]);
   const wrapper = mount(ImageModelConfiguration, { props: { view, active: true, disabled: false }, global: { stubs: { Teleport: true } } });
   const picker = wrapper.get('[data-testid="image-model-picker-trigger"]');
   await picker.trigger('click');
@@ -39,7 +39,7 @@ it('closes companion choices during a scan without resetting the selected file',
   await wrapper.vm.$nextTick();
   expect(picker.element.matches(':disabled')).toBe(true);
   expect(wrapper.find('[data-testid="image-model-picker-popup"]').exists()).toBe(false);
-  expect(view.components.value[0]?.selected).toBe('selected-vae');
+  expect(view.components.value[0]?.selectedCandidateKey).toBe('selected-vae');
   view.scanState.value = 'idle';
   await wrapper.vm.$nextTick();
   expect(picker.element.matches(':disabled')).toBe(false);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import { computed, ref, defineAsyncComponent } from 'vue';
-import { StarIcon, ChevronDownIcon, TagsIcon, ArchiveIcon, ArchiveRestoreIcon } from 'lucide-vue-next';
+import { StarIcon, TagsIcon, ArchiveIcon, ArchiveRestoreIcon } from 'lucide-vue-next';
 import { usePrompt } from '@/composables/usePrompt';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { idToRaw, type ImageGenerationRunId, type ImageGenerationTagId } from '@/01-models/ids';
@@ -54,11 +55,7 @@ async function editTag({ tagId }: { tagId: ImageGenerationTagId | undefined }): 
   }
 }
 
-function chooseTag({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) {
-    return;
-  }
-  const value = event.target.value;
+function chooseTag({ value }: { value: string }): void {
   view.filterTagId.value = view.userTags.value.find(tag => idToRaw({ id: tag.id }) === value)?.id;
 }
 
@@ -88,9 +85,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <button type="button" @click="mode = 'compare'" :disabled="selection.length !== 2" :aria-pressed="mode === 'compare'" :tw-class="['rounded-xl px-3 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'compare' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800']">{{ lazyStrings.imageGeneration__compare() }}</button>
     </div>
     <div tw-class="flex flex-wrap gap-2 items-center">
-      <input v-model="text" type="search" :placeholder="lazyStrings.imageGeneration__search_images()" :aria-label="lazyStrings.imageGeneration__search_images()" tw-class="min-w-40 flex-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <input v-model="text" type="search" :placeholder="lazyStrings.imageGeneration__search_images()" :aria-label="lazyStrings.imageGeneration__search_images()" tw-class="min-w-40 flex-1 rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
       <button type="button" @click="onlyFavorite = !onlyFavorite" :aria-label="lazyStrings.imageGeneration__favorite()" :aria-pressed="onlyFavorite" :tw-class="['rounded-xl border px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', onlyFavorite ? 'border-amber-300 dark:border-amber-700 text-amber-500 bg-amber-50 dark:bg-amber-950/20' : 'border-gray-200 dark:border-gray-700 text-gray-400']"><StarIcon tw-class="w-4 h-4" :fill="onlyFavorite ? 'currentColor' : 'none'" /></button>
-      <span tw-class="relative"><select :value="view.filterTagId.value ? idToRaw({ id: view.filterTagId.value }) : ''" @change="chooseTag({ event: $event })" :aria-label="lazyStrings.imageGeneration__tags()" tw-class="appearance-none max-w-48 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">{{ lazyStrings.imageGeneration__all_tags() }}</option><option v-for="tag in view.userTags.value" :key="idToRaw({ id: tag.id })" :value="idToRaw({ id: tag.id })">{{ tag.name }}</option></select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-3 top-2.5 w-4 h-4 text-gray-400" /></span><button type="button" @click="tagsOpen = !tagsOpen" :aria-expanded="tagsOpen" :title="lazyStrings.imageGeneration__manage_tags()" :aria-label="lazyStrings.imageGeneration__manage_tags()" data-testid="workspace-manage-tags" tw-class="min-h-8 min-w-8 p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><TagsIcon aria-hidden="true" tw-class="w-4 h-4" /></button>
+      <span tw-class="block w-48 max-w-full"><SettingsFormSelect :model-value="view.filterTagId.value ? idToRaw({ id: view.filterTagId.value }) : ''" @update:model-value="chooseTag({ value: $event })" :aria-label="lazyStrings.imageGeneration__tags()" :disabled="false" :label="lazyStrings.imageGeneration__tags()" :options="[{ value: '', label: lazyStrings.imageGeneration__all_tags() }, ...view.userTags.value.map(tag => ({ value: idToRaw({ id: tag.id }), label: tag.name }))]" /></span><button type="button" @click="tagsOpen = !tagsOpen" :aria-expanded="tagsOpen" :title="lazyStrings.imageGeneration__manage_tags()" :aria-label="lazyStrings.imageGeneration__manage_tags()" data-testid="workspace-manage-tags" tw-class="min-h-8 min-w-8 p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><TagsIcon aria-hidden="true" tw-class="w-4 h-4" /></button>
     </div>
     <div v-if="tagsOpen" data-testid="workspace-tag-manager" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2 text-xs">
       <div tw-class="flex flex-wrap gap-2"><button type="button" @click="editTag({ tagId: undefined })" :disabled="!view.store.value || view.mutation.value" tw-class="min-h-8 rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-blue-600 dark:text-blue-400 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__new_tag() }}</button><button v-for="tag in view.userTags.value" :key="idToRaw({ id: tag.id })" type="button" @click="editTag({ tagId: tag.id })" :disabled="view.mutation.value" :title="lazyStrings.imageGeneration__rename_tag()" tw-class="min-h-8 max-w-full break-words rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ tag.name }} · {{ lazyStrings.imageGeneration__rename() }}</button></div>

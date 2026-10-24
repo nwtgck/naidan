@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { useSampleChat } from './useSampleChat';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
-import { storageService } from '@/00-storage/service';
+import { storageService, type StorageService } from '@/00-storage/service';
+import { createChatContentWrite, snapshotChatContent } from '@/00-storage/service/chat-content-binding';
 import sampleContent from '@/assets/sample-showcase.md?raw';
 import { idToRaw } from '@/01-models/ids';
 
@@ -14,8 +15,9 @@ vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
-    updateChatContent: vi.fn(),
-    updateChatMeta: vi.fn(),
+    createChatContentWrite: vi.fn<StorageService['createChatContentWrite']>().mockImplementation(({ id, content, binding }) => createChatContentWrite({ id, content, binding, isCurrent: () => true })),
+    updateChatContent: vi.fn<StorageService['updateChatContent']>(),
+    updateChatMeta: vi.fn<StorageService['updateChatMeta']>().mockResolvedValue(undefined),
     updateHierarchy: vi.fn(),
   },
 }));
@@ -26,6 +28,7 @@ describe('useSampleChat', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(storageService.updateChatContent).mockImplementation(async ({ updater }) => snapshotChatContent({ content: await updater({ current: null }) }));
     (useChatBootstrap as unknown as Mock).mockReturnValue({
       loadChats: mockLoadChats,
       openChat: mockOpenChat,

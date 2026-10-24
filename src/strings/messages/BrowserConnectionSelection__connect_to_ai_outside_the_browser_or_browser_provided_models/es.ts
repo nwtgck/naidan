@@ -1,0 +1,1 @@
+export const BrowserConnectionSelection__connect_to_ai_outside_the_browser_or_browser_provided_models = (): string => "Conecta con IA fuera de tu navegador web o con modelos proporcionados por el navegador.";

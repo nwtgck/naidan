@@ -1,3 +1,4 @@
+import { buildAllowsGpuProfiling, gpuProfilingUnavailableReason } from '@/features/llama-cpp-browser/performance/profiling-mode';
 import { resolvePerformanceModelInput } from '@/features/llama-cpp-browser/performance/model-input';
 import rawRuntimeManifest from 'llama-cpp-browser-core/manifest.json';
 import { runtimeBuildEvidence } from '@/features/llama-cpp-browser/performance/runtime-evidence';
@@ -5,17 +6,24 @@ import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import { nanoid } from 'nanoid';
 import { llamaCppBrowserService as service } from '@/features/llama-cpp-browser';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
-import { type LocalModel, type RuntimeOptions, usesWebGpu } from '@/features/llama-cpp-browser/types';
-import { resolveProfilePreference } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
+import { gpuProfilingProfile, type LocalModel, type RuntimeOptions, usesWebGpu } from '@/features/llama-cpp-browser/types';
+import { resolveProfilePreference, type ProfileCapabilities } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { createPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
 import { createPerformanceRunner } from '@/features/llama-cpp-browser/performance/runner';
-import { protocolSchema, type PerformanceSnapshot, type PerformanceTrial } from '@/features/llama-cpp-browser/performance/types';
+import { measurementLanes, protocolSchema, type MeasurementMode, type PerformanceSnapshot, type PerformanceTrial } from '@/features/llama-cpp-browser/performance/types';
 
 export function useLlamaCppPerformance() {
   const models = shallowRef<LocalModel[]>([]), selected = ref<string[]>([]), query = ref('');
   const repeats = ref(1), maxTokens = ref(64), timeoutMinutes = ref(15), notes = ref('');
   const modelDraft = ref('');
   const diagnostics = ref(true);
+  const hosted = buildAllowsGpuProfiling();
+  const mode = ref<MeasurementMode>(hosted ? 'gpu-profile' : 'standard');
+  const capabilities = shallowRef<ProfileCapabilities>();
+  let modeInitialized = false;
+  let refreshController: AbortController | undefined;
+  const profilingUnavailableReason = computed(() => gpuProfilingUnavailableReason({ hosted, capabilities: capabilities.value }));
+  const profilingSupported = computed(() => profilingUnavailableReason.value === undefined);
   const profile = ref<RuntimeOptions['profile']>(service.getOptions().profile);
   const running = ref(false), stopping = ref(false), exporting = ref(false), loading = ref(false), error = ref('');
   const downloadStarted = ref(false), pageHidden = ref(document.hidden);
@@ -31,19 +39,19 @@ export function useLlamaCppPerformance() {
   let disposed = false, seeded = false;
   let currentLive: PerformanceTrial | undefined;
   let startController: AbortController | undefined;
-  const filteredModels = computed(() => models.value.filter(model => `${model.name} ${model.id}`.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())));
+  const filteredModels = computed(() => models.value.filter(model => model.modelId.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())));
   const draftResolution = computed(() => resolvePerformanceModelInput({ text: modelDraft.value, models: models.value, selected: selected.value }));
   const modelInputError = computed(() => draftResolution.value.errors.join('\n'));
   const selectedModels = computed(() => draftResolution.value.selected.flatMap(id => {
-    const model = models.value.find(model => model.id === id);
+    const model = models.value.find(model => model.modelId === id);
     return model ? [model] : [];
   }));
   const otherWork = computed(() => !running.value && (serviceState.value.status === 'working' || queue.jobs.value.some(job => jobIsBusy({ job }))));
   const valid = computed(() => !draftResolution.value.errors.length && selectedModels.value.length > 0 && selectedModels.value.length <= 16 && selectedModels.value.length === draftResolution.value.selected.length
-    && notes.value.length <= 10000 && new Set(selectedModels.value.map(model => model.name)).size === selectedModels.value.length
-    && protocolSchema.safeParse({ repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
-  const canStart = computed(() => !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value);
-  const callCount = computed(() => selectedModels.value.length * (1 + repeats.value * 4 + (diagnostics.value ? 1 : 0)));
+    && notes.value.length <= 10000 && new Set(selectedModels.value.map(model => model.modelId)).size === selectedModels.value.length
+    && protocolSchema.safeParse({ mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
+  const canStart = computed(() => !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value && (mode.value === 'standard' || profilingSupported.value));
+  const callCount = computed(() => selectedModels.value.length * (1 + repeats.value * 4 + (diagnostics.value ? 1 : 0)) * measurementLanes({ mode: mode.value }).length);
   const runner = createPerformanceRunner({
     service,
     now: () => performance.now(),
@@ -87,6 +95,12 @@ export function useLlamaCppPerformance() {
       current.value = trial ? { ...trial } : undefined;
     },
   });
+  const canInterruptCurrent = computed(() => !!current.value && running.value && !stopping.value
+    && runner.canInterruptCurrent({ trialId: current.value.id }));
+  const interruptionPending = computed(() => running.value && snapshot.value?.trials.some(trial => trial.interruption?.recovery === 'pending') === true);
+  function interruptCurrent({ trialId }: { trialId: string }): boolean {
+    return !disposed && running.value && !stopping.value && runner.interruptCurrent({ trialId });
+  }
   const visibilityChanged = () => {
     pageHidden.value = document.hidden;
     runner.visibilityChanged();
@@ -105,19 +119,37 @@ export function useLlamaCppPerformance() {
     }
     loading.value = true;
     error.value = '';
+    const control = new AbortController();
+    refreshController = control;
     try {
-      const found = await service.listModels({ signal: undefined });
+      const found = await service.listModelEntries({ signal: control.signal });
       if (disposed) {
         return;
       }
       models.value = found;
-      selected.value = selected.value.filter(id => found.some(model => model.id === id));
+      selected.value = selected.value.filter(id => found.some(model => model.modelId === id));
       if (!seeded) {
-        const candidate = found.find(model => model.name === defaultModel || model.id === defaultModel);
+        const candidate = found.find(model => model.modelId === defaultModel);
         if (candidate) {
-          selected.value = [candidate.id];
+          selected.value = [candidate.modelId];
         }
         seeded = true;
+      }
+      try {
+        const detected = await service.probeProfiles({ signal: control.signal });
+        if (!disposed && !control.signal.aborted) {
+          capabilities.value = detected;
+        }
+      } catch {
+        if (!disposed) {
+          capabilities.value = undefined;
+        }
+      }
+      // Only initialize the default. Never silently change a user's selected
+      // mode when a later probe fails; keep it disabled with its explanation.
+      if (!modeInitialized && !disposed) {
+        mode.value = profilingSupported.value ? 'gpu-profile' : 'standard';
+        modeInitialized = true;
       }
     } catch (cause) {
       if (!disposed) {
@@ -127,6 +159,7 @@ export function useLlamaCppPerformance() {
       if (!disposed) {
         loading.value = false;
       }
+      refreshController = undefined;
     }
   }
   async function download(): Promise<void> {
@@ -202,9 +235,9 @@ export function useLlamaCppPerformance() {
       return;
     }
     try {
-      // IDs round-trip even when display names are ambiguous. Include a valid
-      // uncommitted draft, just like the Transformers.js model list.
-      await navigator.clipboard.writeText(selectedModels.value.map(model => model.id).join('\n'));
+      // Copy the same modelId values that are displayed and accepted on paste.
+      // Include a valid uncommitted draft.
+      await navigator.clipboard.writeText(selectedModels.value.map(model => model.modelId).join('\n'));
     } catch { /* Clipboard failure is non-semantic and must not change the list. */ }
   }
   function stop(): void {
@@ -224,14 +257,14 @@ export function useLlamaCppPerformance() {
       id: nanoid(),
       createdAt: new Date().toISOString(),
       models: selectedModels.value,
-      settings: { repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000, diagnostics: diagnostics.value ? 'placement' : 'none' },
+      settings: { mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000, diagnostics: diagnostics.value ? 'placement' : 'none' },
       options: { profile: profile.value },
       notes: notes.value,
     });
     const environment: PerformanceSnapshot['environment'] = {
       appVersion: __APP_VERSION__,
       appSource: { ...__APP_SOURCE__ },
-      buildMode: __BUILD_MODE_IS_HOSTED__ ? 'hosted' : 'standalone',
+      buildMode: hosted ? 'hosted' : 'standalone',
       userAgent: navigator.userAgent,
       hardwareConcurrency: navigator.hardwareConcurrency,
       crossOriginIsolated: globalThis.crossOriginIsolated === true,
@@ -252,11 +285,25 @@ export function useLlamaCppPerformance() {
     try {
       const capabilities = await service.probeProfiles({ signal: control.signal });
       control.signal.throwIfAborted();
+      if (plan.settings.mode === 'gpu-profile' || plan.settings.mode === 'both') {
+        for (const required of [gpuProfilingProfile, 'webgpu-wasm64-jspi'] as const) {
+          const entry = capabilities.profiles.find(entry => entry.profile === required);
+          switch (entry?.status) {
+          case 'available': break;
+          case 'unavailable': throw new Error(`GPU profiling is unavailable: ${entry.reason}`);
+          case undefined: throw new Error('GPU profiling is unavailable: profiling-artifact');
+          default: {
+            const exhaustive: never = entry;
+            throw new Error(String(exhaustive));
+          }
+          }
+        }
+      }
       const concrete = resolveProfilePreference({ preference: plan.options.profile, capabilities });
       if (!concrete || (plan.options.profile === 'auto' && !usesWebGpu({ profile: concrete }))) {
         throw new Error('WebGPU is unavailable. Select an explicit CPU profile only for a CPU measurement.');
       }
-      plan = { ...plan, options: { profile: concrete } };
+      plan = { ...plan, options: { ...plan.options, profile: concrete } };
       try {
         // Optional browser cooperation must not block starting or stopping a run.
         void navigator.wakeLock?.request('screen').then(lock => {
@@ -302,12 +349,19 @@ export function useLlamaCppPerformance() {
   onScopeDispose(() => {
     disposed = true;
     startController?.abort();
+    refreshController?.abort();
     runner.stop();
     unsubscribe();
     clearInterval(previewTimer);
     document.removeEventListener('visibilitychange', visibilityChanged);
   });
   return {
+    canInterruptCurrent,
+    interruptionPending,
+    interruptCurrent,
+    mode,
+    profilingUnavailableReason,
+    profilingSupported,
     modelDraft,
     modelInputError,
     diagnostics,

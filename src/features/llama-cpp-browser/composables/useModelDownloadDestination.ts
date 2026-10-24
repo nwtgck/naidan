@@ -1,3 +1,6 @@
+import { hostModelDirectoryLabel } from '@/logic/host-model-directories';
+export { hostModelDirectoryLabel } from '@/logic/host-model-directories';
+import { validateLinkedModelDirectory } from '@/features/llama-cpp-browser/runtime/linked-directory-input';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { LlamaCppBrowserSettings } from '@/01-models/types';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
@@ -22,9 +25,6 @@ type DestinationIntent = {
 const destinationIntent = shallowRef<DestinationIntent>();
 let destinationRevision = 0;
 
-export function hostModelDirectoryLabel({ id, name, entries }: { id: string, name: string, entries: readonly { id: string, name: string }[] }): string {
-  return entries.some(entry => entry.name === name && entry.id !== id) ? `${name} (${id})` : name;
-}
 
 /** Both LM download entry points share one persisted choice; image generation remains independent. */
 export function useModelDownloadDestination({ blocked, changed }: {
@@ -37,6 +37,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
   let adding: { revision: number, isCurrent: () => boolean } | undefined;
   const host = useHostModelDirectories({
     blocked,
+    validateDirectory: validateLinkedModelDirectory,
     stopDownload: async ({ id }) => getDownloadQueue().stopDirectory({ directoryId: id }),
     added: async ({ id }) => {
       if (adding?.revision === destinationRevision && adding.isCurrent()) {
@@ -164,6 +165,19 @@ export function useModelDownloadDestination({ blocked, changed }: {
       adding = undefined;
     }
   }
+  async function addDroppedDirectory({ directory, signal }: { directory: FileSystemDirectoryHandle, signal: AbortSignal }): Promise<void> {
+    if (blocked() || host.view.busy.value || !host.view.supported.value) {
+      return;
+    }
+    try {
+      adding = { revision: ++destinationRevision, isCurrent: captureExperimentalStorage() };
+      await host.view.addDroppedDirectory?.({ directory, signal });
+    } catch {
+      registrationFailure.value = true;
+    } finally {
+      adding = undefined;
+    }
+  }
   const unavailable = computed(() => {
     if (pending.value) {
       return true;
@@ -238,7 +252,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
     window.removeEventListener(registrationChangeEvent, registrationsChanged);
   });
   return {
-    view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination, add },
+    view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination, add, addDroppedDirectory },
     destination,
     unavailable,
     authorize,

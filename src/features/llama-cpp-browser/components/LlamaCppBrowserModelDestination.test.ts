@@ -17,6 +17,7 @@ import { hostModelRoot, type ModelDestination } from '@/features/llama-cpp-brows
 import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
 import LlamaCppBrowserModelSuggestions from './LlamaCppBrowserModelSuggestions.vue';
 import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManager.vue';
+import { downloadDestinationControl } from './model-configuration.test-support';
 
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async original => ({ ...await original<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadRepository: vi.fn(), cancelDownload: vi.fn() }));
@@ -165,12 +166,16 @@ describe('destination-bound model downloads', () => {
     const catalogView = mount(LlamaCppBrowserModelSuggestions, { props: { models: [], disabled: false, defaultModel: undefined, defaultActionDisabled: false, suggestions: [suggestion] } });
     wrappers.push(repository, catalogView);
     await flushPromises();
-    await repository.get('[data-testid="llama-download-destination"]').setValue('host:root-a');
+    expect(repository.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
+    expect(catalogView.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
+    await repository.get('[data-testid="llama-manage-model-directories"]').trigger('click');
+    expect(repository.get('[data-testid="llama-model-directory-registrations"]').attributes('aria-hidden')).toBe('false');
+    await downloadDestinationControl({ view: repository }).setValue('host:root-a');
     await flushPromises();
-    expect(catalogView.get<HTMLSelectElement>('[data-testid="llama-download-destination"]').element.value).toBe('host:root-a');
-    await catalogView.get('[data-testid="llama-download-destination"]').setValue('host:root-b');
+    expect(downloadDestinationControl({ view: catalogView }).props('modelValue')).toBe('host:root-a');
+    await downloadDestinationControl({ view: catalogView }).setValue('host:root-b');
     await flushPromises();
-    expect(repository.get<HTMLSelectElement>('[data-testid="llama-download-destination"]').element.value).toBe('host:root-b');
+    expect(downloadDestinationControl({ view: repository }).props('modelValue')).toBe('host:root-b');
     expect(settings.value.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'root-b' });
     expect(discoverRepository).not.toHaveBeenCalled();
   });

@@ -17,20 +17,20 @@ it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'qwen-image-2.1-turb
 
 it('does not infer Turbo from a filename or from missing variant evidence', async () => {
   const file = ggufFixture({ name: 'Z-Image-Turbo.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
-  const result = await scanImageRepositories({ repositories: [{ id: 'user/Z-Image-Turbo', name: 'Turbo', files: [{ path: file.name, file }] }], signal: undefined });
+  const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/Z-Image-Turbo', repositoryLabel: 'Turbo', files: [{ relativePath: file.name, file }] }], signal: undefined });
   expect(result.candidates[0]).toMatchObject({ family: 'z-image', variant: 'unknown', turboHint: false });
   expect(recommendationForSelection({ model: result.candidates[0] })).toBeUndefined();
 });
 
 it.each(['Turbo', 'Base'])('uses %s metadata even for renamed files', async variant => {
   const file = ggufFixture({ name: 'nothing.data', tensors: zImageTensors, metadata: { 'general.finetune': variant }, extraBytes: 0 }).file;
-  const result = await scanImageRepositories({ repositories: [{ id: 'user/x', name: 'x', files: [{ path: file.name, file }] }], signal: undefined });
+  const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/x', repositoryLabel: 'x', files: [{ relativePath: file.name, file }] }], signal: undefined });
   expect(recommendationForSelection({ model: result.candidates[0] })?.id).toBe(variant === 'Turbo' ? 'z-image-turbo' : 'z-image-base');
 });
 
 it('identifies Qwen from tensor structure independently of the filename', async () => {
   const file = ggufFixture({ name: 'renamed.data', tensors: qwenImageTensors, metadata: {}, extraBytes: 0 }).file;
-  const result = await scanImageRepositories({ repositories: [{ id: 'user/x', name: 'x', files: [{ path: file.name, file }] }], signal: undefined });
+  const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/x', repositoryLabel: 'x', files: [{ relativePath: file.name, file }] }], signal: undefined });
   expect(recommendationForSelection({ model: result.candidates[0] })?.parameters).toMatchObject({ guidance: 6, sampler: 'euler' });
 });
 
@@ -47,10 +47,10 @@ it.each([{ id: 'z-image-turbo', steps: 8 }, { id: 'z-image-base', steps: 50 }, {
   const scan = (revision: string) => scanImageRepositories({
     signal: undefined,
     repositories: [{
-      id: 'user/x',
-      name: 'x',
+      repositoryKey: 'user/x',
+      repositoryLabel: 'x',
       files: [
-        { path: file.name, file, receipt: { ...receipt, source: { ...receipt.source, revision } } },
+        { relativePath: file.name, file, receipt: { ...receipt, source: { ...receipt.source, revision } } },
       ],
     }],
   });
@@ -63,7 +63,7 @@ it.each([{ id: 'z-image-turbo', steps: 8 }, { id: 'z-image-base', steps: 50 }, {
 it('leaves a Klein Base or renamed manual Klein file without a guessed distilled preset', async () => {
   for (const name of ['flux-2-klein-base-4b.gguf', 'flux-2-klein-4b-distilled.gguf']) {
     const file = ggufFixture({ name, tensors: flux2KleinTensors, metadata: { 'general.name': name }, extraBytes: 0 }).file;
-    const result = await scanImageRepositories({ repositories: [{ id: 'user/klein', name: 'klein', files: [{ path: name, file }] }], signal: undefined });
+    const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/klein', repositoryLabel: 'klein', files: [{ relativePath: name, file }] }], signal: undefined });
     expect(result.candidates[0]).toMatchObject({ family: 'flux2-klein-4b', variant: 'unknown' });
     expect(recommendationForSelection({ model: result.candidates[0] })).toBeUndefined();
   }
@@ -71,7 +71,7 @@ it('leaves a Klein Base or renamed manual Klein file without a guessed distilled
 
 it('does not infer Anima Turbo from a filename or family structure', async () => {
   const file = ggufFixture({ name: 'anima-turbo-v1.1.gguf', tensors: animaTensors, metadata: {}, extraBytes: 0 }).file;
-  const result = await scanImageRepositories({ repositories: [{ id: 'user/anima', name: 'anima', files: [{ path: file.name, file }] }], signal: undefined });
+  const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/anima', repositoryLabel: 'anima', files: [{ relativePath: file.name, file }] }], signal: undefined });
   expect(result.candidates[0]?.variant).toBe('unknown');
   expect(recommendationForSelection({ model: result.candidates[0] })).toBeUndefined();
 });
@@ -85,7 +85,7 @@ it.each([
   const source = { kind: 'hugging-face' as const, repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) };
   const receipt = { version: 1 as const, kind: 'naidan-model-file' as const, size: file.size, lastModified: file.lastModified, source };
   for (const proof of [undefined, receipt, { ...receipt, source: { ...source, revision: '0'.repeat(40) } }]) {
-    const result = await scanImageRepositories({ repositories: [{ id: 'user/renamed', name: 'renamed', files: [{ path: file.name, file, ...(proof ? { receipt: proof } : {}) }] }], signal: undefined });
+    const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/renamed', repositoryLabel: 'renamed', files: [{ relativePath: file.name, file, ...(proof ? { receipt: proof } : {}) }] }], signal: undefined });
     const preset = recommendationForSelection({ model: result.candidates[0] });
     if (proof === receipt) {
       expect(preset).toMatchObject({ id, parameters: { steps: 8, guidance: 1 } });
@@ -102,7 +102,7 @@ it('recognizes Qwen Image 2.1 Turbo only from catalog provenance and never appli
   const scan = async ({ entry, revision }: { entry: typeof turbo.files[number] | undefined, revision?: string }) => {
     const source = entry && { kind: 'hugging-face' as const, repository: entry.repository, revision: revision ?? entry.revision, path: entry.path, sha256: '0'.repeat(64) };
     const receipt = source && { version: 1 as const, kind: 'naidan-model-file' as const, size: file.size, lastModified: file.lastModified, source };
-    const result = await scanImageRepositories({ repositories: [{ id: 'user/x', name: 'x', files: [{ path: file.name, file, ...(receipt ? { receipt } : {}) }] }], signal: undefined });
+    const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/x', repositoryLabel: 'x', files: [{ relativePath: file.name, file, ...(receipt ? { receipt } : {}) }] }], signal: undefined });
     return result.candidates[0]!;
   };
   const unknown = await scan({ entry: undefined });

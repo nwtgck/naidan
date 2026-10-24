@@ -4,7 +4,7 @@ import { preferredAudioModel, type AudioModelDetection, type inspectStoredAudioM
 
 export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudioModel }) {
   const models = shallowRef<LocalModel[]>([]);
-  const model = ref('');
+  const modelId = ref('');
   const scope = ref<'detected' | 'all'>('detected');
   const scanState = ref<'idle' | 'scanning'>('idle');
   const detections = shallowRef<ReadonlyMap<string, AudioModelDetection>>(new Map());
@@ -12,11 +12,11 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
   let scan: AbortController | undefined;
   let disposed = false;
   const visibleModels = computed(() => models.value.filter(entry => scope.value === 'all'
-    || detections.value.get(entry.id)?.status === 'detected' || entry.id === model.value));
-  const detectedCount = computed(() => models.value.filter(entry => detections.value.get(entry.id)?.status === 'detected').length);
+    || detections.value.get(entry.modelId)?.status === 'detected' || entry.modelId === modelId.value));
+  const detectedCount = computed(() => models.value.filter(entry => detections.value.get(entry.modelId)?.status === 'detected').length);
 
-  function isDetected({ id }: { id: string }): boolean {
-    const status = detections.value.get(id)?.status;
+  function isDetected({ modelId }: { modelId: string }): boolean {
+    const status = detections.value.get(modelId)?.status;
     switch (status) {
     case 'detected': return true;
     case 'unverified': case undefined: return false;
@@ -27,19 +27,19 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
     }
   }
   function chooseDefault(): void {
-    if (selectionOrigin.value === 'manual' && models.value.some(entry => entry.id === model.value)) {
+    if (selectionOrigin.value === 'manual' && models.value.some(entry => entry.modelId === modelId.value)) {
       // A user selection wins over a late scan, even when metadata is unknown.
-      if (!isDetected({ id: model.value })) {
+      if (!isDetected({ modelId: modelId.value })) {
         scope.value = 'all';
       }
       return;
     }
     // A refresh must not replace a still-detected automatic selection merely
     // because a smaller model was downloaded in the meantime.
-    if (isDetected({ id: model.value })) {
+    if (isDetected({ modelId: modelId.value })) {
       return;
     }
-    model.value = preferredAudioModel({ models: models.value, detections: detections.value }) ?? '';
+    modelId.value = preferredAudioModel({ models: models.value, detections: detections.value }) ?? '';
   }
   async function scanModels({ entries, controller }: { entries: LocalModel[], controller: AbortController }): Promise<void> {
     const next = new Map<string, AudioModelDetection>();
@@ -49,7 +49,7 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
         controller.signal.throwIfAborted();
         let detection: AudioModelDetection;
         try {
-          detection = await inspect({ id: entry.id, signal: controller.signal });
+          detection = await inspect({ modelId: entry.modelId, signal: controller.signal });
         } catch {
           controller.signal.throwIfAborted();
           detection = { status: 'unverified', reason: 'metadata' };
@@ -57,7 +57,7 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
         if (disposed || scan !== controller || controller.signal.aborted) {
           return;
         }
-        next.set(entry.id, detection);
+        next.set(entry.modelId, detection);
         detections.value = new Map(next);
       }
       if (!disposed && scan === controller && !controller.signal.aborted) {
@@ -78,8 +78,8 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
     }
     scan?.abort();
     models.value = [...entries];
-    if (!entries.some(entry => entry.id === model.value)) {
-      model.value = '';
+    if (!entries.some(entry => entry.modelId === modelId.value)) {
+      modelId.value = '';
       selectionOrigin.value = 'automatic';
     }
     detections.value = new Map();
@@ -91,20 +91,20 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
   function selectionChanged(): void {
     selectionOrigin.value = 'manual';
   }
-  function selectModel({ name }: { name: string }): void {
-    const matches = models.value.filter(entry => entry.name === name);
+  function selectModel({ modelId: selectedModelId }: { modelId: string }): void {
+    const matches = models.value.filter(entry => entry.modelId === selectedModelId);
     if (matches.length !== 1) {
       return;
     }
-    model.value = matches[0]!.id;
+    modelId.value = matches[0]!.modelId;
     selectionChanged();
-    if (!isDetected({ id: model.value })) {
+    if (!isDetected({ modelId: modelId.value })) {
       scope.value = 'all';
     }
   }
   function scopeChanged(): void {
-    if (scope.value === 'detected' && !isDetected({ id: model.value })) {
-      model.value = '';
+    if (scope.value === 'detected' && !isDetected({ modelId: modelId.value })) {
+      modelId.value = '';
       selectionOrigin.value = 'automatic';
       chooseDefault();
     }
@@ -119,7 +119,7 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
   });
   return {
     models,
-    model,
+    modelId,
     scope,
     scanState,
     detections,

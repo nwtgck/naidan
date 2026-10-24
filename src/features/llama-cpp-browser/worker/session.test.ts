@@ -5,21 +5,20 @@ import type { MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagn
 import * as readOnlyModule from '@/features/llama-cpp-browser/runtime/read-only-file';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
-import type { ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
+import type { ModelDirectory, StoredModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { loadProjector, loadProjectorForBackend } from './projector';
 import type { WorkerGenerateInput } from './types';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import { prepareSession, prepareGenerationSession, prepareAudioSession, releaseSession } from './session';
 
-const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as ModelDirectory | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
+const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as (Omit<ModelDirectory, 'files'> & { files: StoredModelFile[] }) | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
 vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => host.core }));
 vi.mock('../runtime/detect-profile', () => ({ resolveRuntimeProfile: async () => 'cpu-wasm32' }));
-vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => host.directory }));
 vi.mock('../runtime/read-only-file', () => ({ mountReadOnlyFile: () => ({ remove: () => {} }) }));
 vi.mock('./projector', () => ({ loadProjector: host.load, loadProjectorForBackend: host.loadAudio }));
 
 function request({ debug }: { debug: 'off' | 'on' }): WorkerGenerateInput {
-  return { debug, model: 'Model', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/' };
+  return { debug, modelId: 'Model', resolvedModel: { modelId: 'Model', location: { kind: 'opfs-user', rootName: 'Model' }, directory: host.directory! }, messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/' };
 }
 
 const releases: ReturnType<typeof vi.fn>[] = [];
@@ -65,12 +64,15 @@ beforeEach(() => {
     constant: () => 0,
   } as unknown as Core;
   host.directory = {
-    id: 'Model',
-    name: 'Model',
-    modelPath: 'model.gguf',
-    projectorPath: 'mmproj.gguf',
+    get primaryFile() {
+      return this.files[0]!;
+    },
+    get projectorFile() {
+      return this.files.find(entry => entry.relativePath === 'mmproj.gguf');
+    },
     files: ['model.gguf', 'mmproj.gguf'].map(path => ({
-      path,
+      relativePath: path,
+      storageKind: 'opfs',
       file: new File(['x'], path, { lastModified: 1 }),
       handle: { isSameEntry: async () => true, createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close: () => {} }) } as unknown as FileSystemFileHandle,
     })),
@@ -381,7 +383,7 @@ describe('dedicated audio context configuration', () => {
   });
 
   it('rejects missing audio companions before native model allocation', async () => {
-    host.directory!.projectorPath = undefined;
+    host.directory!.files = host.directory!.files.filter(entry => entry.relativePath !== 'mmproj.gguf');
     await expect(prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 4096, audioBackend: 'cpu', onProgress: () => {}, signal: undefined })).rejects.toThrow('audio-model-unsupported');
     expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
   });
@@ -390,7 +392,7 @@ describe('dedicated audio context configuration', () => {
 describe('preparing a conversation without generating one', () => {
   it('loads the real session from a minimal prepare request and reuses it on the first send', async () => {
     const full = request({ debug: 'off' });
-    const prepared = await prepareSession({ request: { model: full.model, options: full.options, debug: full.debug, assetBaseURL: full.assetBaseURL }, signal: undefined, onProgress: () => {} });
+    const prepared = await prepareSession({ request: { modelId: full.modelId, resolvedModel: full.resolvedModel, options: full.options, debug: full.debug, assetBaseURL: full.assetBaseURL }, signal: undefined, onProgress: () => {} });
     expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
     const readyForSend = await prepareSession({ request: full, signal: undefined, onProgress: () => {} });
     expect(readyForSend.model).toBe(prepared.model);
@@ -506,7 +508,7 @@ describe('on-demand generation companions', () => {
   });
 
   it('reports no companion when the directory has none', async () => {
-    host.directory!.projectorPath = undefined;
+    host.directory!.files = host.directory!.files.filter(entry => entry.relativePath !== 'mmproj.gguf');
 host.directory!.files = host.directory!.files.slice(0, 1);
 const session = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
 expect(session.preparation).toEqual({ projector: 'absent', releasedTextContext: false });
@@ -711,7 +713,7 @@ expect(first.core.api.llama_free).not.toHaveBeenCalled();
   it('keeps file-identity invalidation for a deferred companion', async () => {
     const first = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     const companion = host.directory!.files[1]!;
-    host.directory!.files = [host.directory!.files[0]!, { ...companion, file: new File(['changed'], companion.path, { lastModified: 2 }) }];
+    host.directory!.files = [host.directory!.files[0]!, { ...companion, file: new File(['changed'], companion.relativePath, { lastModified: 2 }) }];
     await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(first.core.api.llama_model_free).toHaveBeenCalledOnce();
     expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
@@ -734,8 +736,8 @@ describe('model read-window ownership', () => {
     });
     core.api.llama_model_load_from_splits = vi.fn(async () => 10n);
     core.bytes = ({ length }) => new Uint8Array(Number(length)).fill(1);
-    host.directory!.files = Array.from({ length: 4 }, (_, i) => ({ ...host.directory!.files[0]!, path: `model-${i}.gguf` }));
-    host.directory!.projectorPath = undefined;
+    host.directory!.files = Array.from({ length: 4 }, (_, i) => ({ ...host.directory!.files[0]!, relativePath: `model-${i}.gguf` }));
+    host.directory!.files = host.directory!.files.filter(entry => entry.relativePath !== 'mmproj.gguf');
     await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(caches).toHaveLength(1);
     expect(caches[0]!.wrap).toHaveBeenCalledTimes(4);
@@ -754,7 +756,7 @@ describe('model read-window ownership', () => {
       return cache;
     });
     const close = vi.fn();
-    host.directory!.projectorPath = undefined;
+    host.directory!.files = host.directory!.files.filter(entry => entry.relativePath !== 'mmproj.gguf');
     host.directory!.files = [{
       ...host.directory!.files[0]!,
       file: new File([new Uint8Array(1024)], 'model.gguf'),
@@ -801,9 +803,10 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
       const path = `part-${index}.gguf`;
       return { access, close, remove, open, path };
     });
-    host.directory!.projectorPath = undefined;
+    host.directory!.files = host.directory!.files.filter(entry => entry.relativePath !== 'mmproj.gguf');
     host.directory!.files = resources.map(item => ({
-      path: item.path,
+      relativePath: item.path,
+      storageKind: 'opfs',
       file: new File(['x'], item.path),
       handle: { isSameEntry: async () => true, createSyncAccessHandle: item.open } as unknown as FileSystemFileHandle,
     }));
@@ -1250,5 +1253,40 @@ describe('chat context target changes without weight reload', () => {
     await prepareAudioSession({ request: { ...request({ debug: 'off' }), options: { profile: 'cpu-wasm32', contextTokens: 131072 } }, contextTokens: 4096, audioBackend: 'profile', signal: undefined, onProgress: () => {} });
     expect(targets()).toEqual([4096]);
     expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+});
+
+describe('temporary resident model cache', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reuses the same registration but reloads replacement files with identical public ID, size and mtime', async () => {
+    vi.stubGlobal('FileReaderSync', class {
+      readAsArrayBuffer(): ArrayBuffer {
+        return new ArrayBuffer(1);
+      }
+    });
+    const model = 'temp/Models';
+    const file = new File(['x'], 'model.gguf', { lastModified: 123 });
+    const entry = { relativePath: 'model.gguf', file, storageKind: 'temp' as const, registrationRevision: 1 };
+    const resolvedModel = { modelId: model, location: { kind: 'temp' as const, rootPath: 'temp/Models' }, directory: { files: [entry], primaryFile: entry, projectorFile: undefined } };
+    const first = { ...request({ debug: 'off' }), modelId: model, resolvedModel };
+    await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(1);
+    await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(1);
+    const replacementEntry = { ...entry, registrationRevision: 2, file: new File(['y'], 'model.gguf', { lastModified: 123 }) };
+    const replacement = { ...first, resolvedModel: { ...resolvedModel, directory: { files: [replacementEntry], primaryFile: replacementEntry, projectorFile: undefined } } };
+    await prepareSession({ request: replacement, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
+    expect(host.core!.api.llama_model_free).toHaveBeenCalledTimes(1);
+    // Releasing the runtime does not require an independent worker-side registry.
+    await releaseSession({ releaseRuntime: true });
+    await prepareSession({ request: replacement, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not substitute the resident model when a temporary source is absent', async () => {
+    await expect(prepareSession({ request: { ...request({ debug: 'off' }), modelId: 'temp/missing' }, onProgress: () => {}, signal: undefined })).rejects.toThrow('missing-model');
+    expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
   });
 });

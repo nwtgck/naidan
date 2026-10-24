@@ -58,6 +58,7 @@ describe('SettingsModal Design Specifications', () => {
     currentRoute.query = {};
 
     (useRouter as Mock).mockReturnValue({
+      currentRoute: ref(currentRoute),
       push: vi.fn((p) => {
         if (typeof p === 'string') {
           currentRoute.path = p;

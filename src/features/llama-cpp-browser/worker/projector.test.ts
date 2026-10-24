@@ -37,7 +37,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     free,
     setField: ({ field, value }: { field: string, value: number | bigint }) => fields.set(field, value),
   } as unknown as Core;
-  const file = { path: 'mmproj.gguf', file: new File(['x'], 'mmproj.gguf'), handle: { createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close }) } } as unknown as ModelFile;
+  const file = { storageKind: 'opfs', relativePath: 'mmproj.gguf', file: new File(['x'], 'mmproj.gguf'), handle: { createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close }) } } as unknown as ModelFile;
   return { core, file, api, fields, addFunction, removeFunction, order, close, free };
 }
 
@@ -67,7 +67,7 @@ describe('projector callback ownership', () => {
   it('releases a callback when native initialization fails', async () => {
     const f = fixture({ pointerBytes: 8 });
     f.api.mtmd_init_from_file.mockResolvedValue(0n);
-    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: undefined })).rejects.toThrow('unsupported-input');
+    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: undefined })).rejects.toThrow('unsupported-input');
     expect(f.order).toEqual(['callback-free']);
     expect(f.close).toHaveBeenCalledOnce();
     expect(f.free).toHaveBeenCalledTimes(2);
@@ -80,14 +80,14 @@ describe('projector callback ownership', () => {
       controller.abort();
       return 500n;
     });
-    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: controller.signal })).rejects.toThrow('aborted');
+    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: controller.signal })).rejects.toThrow('aborted');
     expect(f.order).toEqual(['native-free', 'callback-free']);
     expect(f.close).toHaveBeenCalledOnce();
   });
 
   it('does not remove a callback if native projector release fails', async () => {
     const f = fixture({ pointerBytes: 8 });
-    const projector = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: undefined });
+    const projector = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: undefined });
     f.api.mtmd_free.mockRejectedValueOnce(new Error('native release failed'));
     await expect(projector.release()).rejects.toThrow();
     expect(f.removeFunction).not.toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe('projector callback ownership', () => {
       return 500n;
     });
     f.api.mtmd_free.mockRejectedValueOnce(new Error('native cleanup failed'));
-    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: controller.signal })).rejects.toThrow('native cleanup failed');
+    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: controller.signal })).rejects.toThrow('native cleanup failed');
     expect(f.removeFunction).not.toHaveBeenCalled();
   });
 
@@ -110,7 +110,7 @@ describe('projector callback ownership', () => {
     f.close.mockImplementationOnce(() => {
       throw new Error('close failed');
     });
-    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: undefined })).rejects.toThrow('close failed');
+    await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: undefined })).rejects.toThrow('close failed');
     expect(f.order).toEqual(['native-free', 'callback-free']);
   });
 });

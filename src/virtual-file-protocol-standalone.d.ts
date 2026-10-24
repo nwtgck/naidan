@@ -75,3 +75,7 @@ declare module 'virtual:file-protocol-standalone/worker/image-history' {
 declare module 'virtual:file-protocol-standalone/worker/image-generation-query' {
   export function createStandaloneWorker(): Promise<Worker>;
 }
+
+declare module 'virtual:file-protocol-standalone/worker/file-download' {
+  export function createStandaloneWorker(): Promise<Worker>;
+}

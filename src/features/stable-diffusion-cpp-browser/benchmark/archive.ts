@@ -53,7 +53,7 @@ export function benchmarkManifest({ snapshot, includePrompts, includeInputImages
       });
       return {
         index,
-        id: target.id,
+        id: target.candidateKey,
         label: target.label,
         detail: target.detail,
         family: target.facts.family,
@@ -73,14 +73,14 @@ export function benchmarkManifest({ snapshot, includePrompts, includeInputImages
           gpuBudgetMiB: request.gpuBudgetMiB,
           models: request.models.map(model => ({
             slot: model.slot,
-            localCandidateId: target.components.find(component => component.slot === model.slot)?.selected ?? target.id,
-            files: [{ path: model.path ?? model.file.name, bytes: model.file.size, lastModified: model.file.lastModified },
-              ...(model.companions ?? []).map(entry => ({ path: entry.path, bytes: entry.file.size, lastModified: entry.file.lastModified }))],
+            localCandidateId: target.components.find(component => component.slot === model.slot)?.selectedCandidateKey ?? target.candidateKey,
+            files: [{ path: model.relativePath ?? model.file.name, bytes: model.file.size, lastModified: model.file.lastModified },
+              ...(model.companions ?? []).map(entry => ({ path: entry.relativePath, bytes: entry.file.size, lastModified: entry.file.lastModified }))],
           })),
           ...(request.loras.length ? {
-            loras: request.loras.map(({ file, path, strength, ...unhandled }) => {
+            loras: request.loras.map(({ file, relativePath, strength, ...unhandled }) => {
             unhandled satisfies Record<PropertyKey, never>;
-            return { file: { path: path ?? file.name, bytes: file.size, lastModified: file.lastModified }, strength };
+            return { file: { path: relativePath ?? file.name, bytes: file.size, lastModified: file.lastModified }, strength };
             }),
           } : {}),
           ...(inputs.length ? {
@@ -136,7 +136,7 @@ const README = `\
 Read manifest.json first, then summary.json. Each model has its own directory;
 each run contains result.json, raw diagnostics.jsonl, and optionally result.png.
 The manifest is the settings snapshot captured BEFORE running, not the current UI.
-No model weights, absolute page URL, sourceId or raw user-agent are exported.
+No model weights, absolute page URL, modelFilesReuseKey or raw user-agent are exported.
 Prompt/negativePrompt fields are omitted unless explicitly enabled when exporting.
 Input image files are omitted unless explicitly enabled at export. When
 included, models/*/inputs holds their original encoded bytes; filenames in

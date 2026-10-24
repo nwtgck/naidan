@@ -101,11 +101,13 @@ defineExpose({
         v-if="isHostedMode"
         :href="portableAppDownload.href"
         :download="portableAppDownload.fileName"
+        :aria-label="lazyStrings.SHARED__download_portable_html_edition()"
+        :title="lazyStrings.SHARED__extract_the_zip_and_open_index_html_no_http_server_required()"
         data-testid="sidebar-download-button"
         tw-class="group flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 no-underline transition-colors hover:bg-green-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400/50 dark:border-green-900/30 dark:bg-green-900/10 dark:hover:bg-green-900/20"
       >
         <DownloadIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-green-600 transition-transform group-hover:scale-110 dark:text-green-400" />
-        <span tw-class="truncate text-[10px] font-bold text-green-800 md:text-xs dark:text-green-300">{{ lazyStrings.SettingsModal__standalone() }}</span>
+        <span tw-class="min-w-0 text-center leading-tight"><span tw-class="block text-[10px] font-bold text-green-800 md:text-[11px] dark:text-green-300">{{ lazyStrings.SHARED__portable_html_edition() }}</span><span tw-class="mt-0.5 block text-[9px] font-medium text-green-600/70 dark:text-green-400/70">ZIP</span></span>
       </a>
     </div>
   </aside>

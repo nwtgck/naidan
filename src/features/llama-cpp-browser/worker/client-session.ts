@@ -4,7 +4,7 @@ import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreview
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
-import { workerProxy, type WorkerRemote } from '@/utils/worker-transport';
+import { workerCapability, workerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
@@ -244,7 +244,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       }
     },
     probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
-    listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
+    listModelEntries: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModelEntries(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
     importModel: ({ file, onProgress, signal }) => importWithCancellation({
       signal,
       onProgress,
@@ -256,14 +256,14 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       call: ({ generationId, report }) => remote.importDirectory({ directory, generationId }, report),
     }),
     removeModel: async ({ plan, signal }) => {
-      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
+      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel(workerCapability({ value: { plan: deletionPlanSchema.parse(plan) }, capability: 'file-system-handle-clone' })), signal, onAbort: undefined, abortTimeoutMs: undefined }));
     },
     prepareModel: async ({ request, onProgress, signal }) => {
       const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
         await invoke({
-          call: () => remote.prepareModel(accepted, workerProxy({
+          call: () => remote.prepareModel(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }), workerProxy({
             value: ({ ...event }) => {
               if (acceptingEvents && !disposed && !signal?.aborted) {
                 onProgress({ progress: progressSchema.parse(event) });
@@ -291,7 +291,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       const memory = started === undefined ? undefined : observeMeasurementMemory({ worker, now: () => performance.now() - started });
       try {
         const result = await invoke({
-          call: () => remote.generate(accepted,
+          call: () => remote.generate(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
             workerProxy({
               value: async ({ event }) => {
                 if (acceptingEvents && !disposed) {
@@ -401,7 +401,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       try {
         const result = await invoke({
           call: () => {
-            const pending = remote.generateAudio(accepted,
+            const pending = remote.generateAudio(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
               workerProxy({
                 value: ({ ...event }) => {
                   if (acceptingEvents && !disposed && !cancellationSignal?.aborted) {

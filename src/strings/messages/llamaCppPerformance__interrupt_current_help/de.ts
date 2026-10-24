@@ -1,0 +1,1 @@
+export const llamaCppPerformance__interrupt_current_help = (): string => "Beim Abbruch bleiben Teilergebnisse erhalten. Abhängige Fortsetzungen werden übersprungen. Der nächste unabhängige Versuch lädt das Modell neu; „Messung stoppen“ beendet den gesamten Lauf.";

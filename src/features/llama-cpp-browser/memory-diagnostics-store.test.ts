@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { memoryDiagnosticsHistories, observeWorkerMemory, TEST_ONLY } from './memory-diagnostics-store';
 import type { MemoryDiagnostic } from './memory-diagnostics';
-const sample: MemoryDiagnostic = { kind: 'naidan-llama-cpp-memory', instanceId: 'runtime-one', profile: 'cpu-wasm64', checkpoint: 'runtime-ready', capacityBytes: 65536, timestamp: 1000 };
+const sample: MemoryDiagnostic = { kind: 'naidan-llama-cpp-memory', instanceId: 'runtime-one', profile: 'webgpu-wasm64-jspi', checkpoint: 'runtime-ready', capacityBytes: 65536, timestamp: 1000 };
 
 beforeEach(() => TEST_ONLY.reset());
 

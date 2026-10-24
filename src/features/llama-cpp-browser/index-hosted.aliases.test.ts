@@ -1,8 +1,8 @@
-import { selectHostModel } from './runtime/host-model-store';
-import { resolveRepositoryModel } from './hugging-face/storage';
+import { resolveModel } from './runtime/model-resolution';
+import { createResolvedModelForTest } from './test-utils/resolved-model.test-support';
+import type { ResolvedModel } from './runtime/model-directory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
-import { toHostModelDirectoryId } from '@/01-models/ids';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import type { LlamaCppBrowserService } from './service-contract';
@@ -22,46 +22,44 @@ const worker = vi.hoisted(() => ({
 }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
-vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn(), loadSettings: vi.fn() } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn(), loadSettings: vi.fn(), subscribeToChanges: () => () => {} } }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 vi.mock('./runtime/detect-profile', () => ({ resolveRuntimeProfile: vi.fn(async () => 'cpu-wasm32') }));
 
-vi.mock('./runtime/host-model-store', () => ({ selectHostModel: vi.fn(), listHostStoredModels: vi.fn(), recordOpfsInventoryIssue: vi.fn() }));
-vi.mock('./hugging-face/storage', () => ({ resolveRepositoryModel: vi.fn() }));
+vi.mock('./runtime/model-resolution', () => ({ resolveModel: vi.fn() }));
 
 let hosted: typeof import('./index-hosted');
 let service: LlamaCppBrowserService;
-const canonical = 'host/root/owner/repo:model.gguf';
-const alias = 'host/Models/owner/repo:model.gguf';
+const alias = 'host/Models/owner/repo:model';
 const result: GenerationResult = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
 
-function directory({ id, name }: { id: string, name: string }) {
-  return { id: toHostModelDirectoryId({ raw: id }), name };
+function resolved({ modelId, relativePath }: { modelId: string, relativePath: string }): ResolvedModel {
+  return createResolvedModelForTest({ modelId, relativePath });
 }
 
-function input({ model }: { model: string }): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
-  return { model, messages: [{ role: 'user', content: 'Original text' }], temperature: 0, topP: 1, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+function input({ modelId }: { modelId: string }): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
+  return { modelId, messages: [{ role: 'user', content: 'Original text' }], temperature: 0, topP: 1, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
 
 type Entry = 'prepare' | 'generate' | 'audio' | 'generation-scope' | 'performance-scope' | 'read-only';
 const entries: Entry[] = ['prepare', 'generate', 'audio', 'generation-scope', 'performance-scope', 'read-only'];
 
-async function execute({ entry, model }: { entry: Entry, model: string }) {
+async function execute({ entry, modelId }: { entry: Entry, modelId: string }) {
   switch (entry) {
-  case 'prepare': return service.prepareModel({ model, signal: undefined });
-  case 'generate': return service.generate({ input: input({ model }), onEvent: () => {}, signal: undefined });
-  case 'audio': return service.generateAudio({ input: { ...defaultAudioParameters(), model, text: 'Original audio', debug: 'off' }, cancellationSignal: undefined });
+  case 'prepare': return service.prepareModel({ modelId, signal: undefined });
+  case 'generate': return service.generate({ input: input({ modelId }), onEvent: () => {}, signal: undefined });
+  case 'audio': return service.generateAudio({ input: { ...defaultAudioParameters(), modelId, text: 'Original audio', debug: 'off' }, cancellationSignal: undefined });
   case 'generation-scope': return service.runGenerationOperation({
     signal: undefined,
     operation: async ({ scope }) => {
-      await scope.generate({ input: input({ model }), onEvent: () => {}, signal: scope.signal });
+      await scope.generate({ input: input({ modelId }), onEvent: () => {}, signal: scope.signal });
     },
   });
   case 'performance-scope': return service.runPerformanceOperation({
     options: { profile: 'cpu-wasm32' },
     signal: undefined,
     operation: async ({ scope }) => {
-      await scope.generate({ input: input({ model }), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+      await scope.generate({ input: input({ modelId }), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
     },
   });
   case 'read-only': {
@@ -71,7 +69,7 @@ async function execute({ entry, model }: { entry: Entry, model: string }) {
         await client.dispose();
       },
     };
-    return await client.generate({ input: input({ model }), onEvent: () => {}, onProgress: () => {}, signal: undefined });
+    return await client.generate({ input: input({ modelId }), onEvent: () => {}, onProgress: () => {}, signal: undefined });
   }
   default: {
     const exhaustive: never = entry;
@@ -80,12 +78,12 @@ async function execute({ entry, model }: { entry: Entry, model: string }) {
   }
 }
 
-function receivedModel({ entry }: { entry: Entry }) {
+function receivedRequest({ entry }: { entry: Entry }) {
   switch (entry) {
-  case 'prepare': return worker.prepareModel.mock.calls.at(-1)?.[0].request.model;
-  case 'audio': return worker.generateAudio.mock.calls.at(-1)?.[0].request.model;
+  case 'prepare': return worker.prepareModel.mock.calls.at(-1)?.[0].request;
+  case 'audio': return worker.generateAudio.mock.calls.at(-1)?.[0].request;
   case 'generate': case 'generation-scope': case 'performance-scope': case 'read-only':
-    return worker.generate.mock.calls.at(-1)?.[0].request.model;
+    return worker.generate.mock.calls.at(-1)?.[0].request;
   default: {
     const exhaustive: never = entry;
     throw new Error(String(exhaustive));
@@ -97,9 +95,7 @@ beforeEach(async () => {
   vi.resetModules();
   vi.resetAllMocks();
   vi.mocked(storageService.loadSettings).mockResolvedValue(null);
-  vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([directory({ id: 'root', name: 'Models' })]);
-  vi.mocked(selectHostModel).mockImplementation(async ({ name }) => ({ id: name, name, modelPath: 'model.gguf', projectorPath: undefined, files: [] }));
-  vi.mocked(resolveRepositoryModel).mockImplementation(async ({ name }) => ({ id: name, name, modelPath: 'model.gguf', projectorPath: undefined, files: [] }));
+  vi.mocked(resolveModel).mockImplementation(async ({ modelId }) => resolved({ modelId, relativePath: 'model.gguf' }));
   worker.subscribeDisposed.mockReturnValue(() => {});
   worker.canReuse.mockReturnValue(true);
   worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
@@ -117,74 +113,99 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(entries)('host alias at the %s execution boundary', entry => {
-  it('passes the canonical ID to the worker', async () => {
-    await execute({ entry, model: alias });
-    expect(receivedModel({ entry })).toBe(canonical);
+describe.each(entries)('public modelId at the %s execution boundary', entry => {
+  it('passes the displayed modelId and captured files to the worker', async () => {
+    const captured = resolved({ modelId: alias, relativePath: 'model.gguf' });
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    await execute({ entry, modelId: alias });
+    expect(receivedRequest({ entry })).toMatchObject({ modelId: alias, resolvedModel: captured });
+    expect(receivedRequest({ entry })?.resolvedModel.directory.primaryFile.file).toBe(captured.directory.primaryFile.file);
   });
 
-  it('resolves a public variant to an exact file identity', async () => {
-    vi.mocked(selectHostModel).mockResolvedValue({ id: canonical, name: 'host/root/owner/repo:Q4_K_M', modelPath: 'model.gguf', projectorPath: undefined, files: [] });
-    await execute({ entry, model: 'host/Models/owner/repo:Q4_K_M' });
-    expect(selectHostModel).toHaveBeenCalledExactlyOnceWith({ name: 'host/root/owner/repo:Q4_K_M' });
-    expect(receivedModel({ entry })).toBe(canonical);
+  it('resolves a public variant without replacing modelId with a file selector', async () => {
+    const modelId = 'host/Models/owner/repo:Q4_K_M';
+    const captured = resolved({ modelId, relativePath: 'Q4/model.gguf' });
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    await execute({ entry, modelId });
+    expect(resolveModel).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ modelId }));
+    expect(receivedRequest({ entry })?.modelId).toBe(modelId);
+    expect(receivedRequest({ entry })?.resolvedModel.directory.primaryFile.relativePath).toBe('Q4/model.gguf');
   });
 
-  it('continues to accept a registered canonical ID', async () => {
-    await execute({ entry, model: canonical });
-    expect(receivedModel({ entry })).toBe(canonical);
+  it('keeps every captured shard and its selected projector in the accepted request', async () => {
+    const modelId = 'hf.co/owner/Chat-GGUF:Q4';
+    const captured = resolved({ modelId, relativePath: 'Q4/Chat-Q4-00001-of-00002.gguf' });
+    const secondShard = resolved({ modelId, relativePath: 'Q4/Chat-Q4-00002-of-00002.gguf' }).directory.primaryFile;
+    const projector = resolved({ modelId, relativePath: 'mmproj-Chat.gguf' }).directory.primaryFile;
+    captured.directory.files.push(secondShard, projector);
+    captured.directory.projectorFile = projector;
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    await execute({ entry, modelId });
+    const directory = receivedRequest({ entry })?.resolvedModel.directory;
+    expect(directory?.files.map(file => file.relativePath)).toEqual(captured.directory.files.map(file => file.relativePath));
+    expect(directory?.files[1]?.file).toBe(secondShard.file);
+    expect(directory?.projectorFile?.file).toBe(projector.file);
+    expect(receivedRequest({ entry })?.modelId).toBe(modelId);
   });
 
-  it.each(['user/local.gguf', 'hf.co/owner/repo:model.gguf'])('preserves the canonical non-host input %s without consulting host settings', async model => {
-    await execute({ entry, model });
-    expect(receivedModel({ entry })).toBe(model);
+  it('keeps an opaque registered directory ID inside the captured location', async () => {
+    const captured = resolved({ modelId: alias, relativePath: 'model.gguf' });
+    await execute({ entry, modelId: alias });
+    expect(receivedRequest({ entry })?.modelId).toBe(alias);
+    expect(receivedRequest({ entry })?.resolvedModel.location).toEqual(captured.location);
+  });
+
+  it.each(['user/local.gguf', 'hf.co/owner/repo:model'])('resolves the public non-host input %s without consulting host settings', async modelId => {
+    await execute({ entry, modelId });
+    expect(receivedRequest({ entry })?.modelId).toBe(modelId);
+    expect(resolveModel).toHaveBeenCalledOnce();
     expect(storageService.loadHostModelDirectories).not.toHaveBeenCalled();
   });
 
-  it('captures an HF public short name as an exact file identity before sending it to the worker', async () => {
-    const name = 'hf.co/owner/Model-GGUF:Q4';
-    const id = 'hf.co/owner/Model-GGUF:Model-Q4.gguf';
-    vi.mocked(resolveRepositoryModel).mockResolvedValue({ id, name, modelPath: 'Model-Q4.gguf', projectorPath: undefined, files: [] });
-    await execute({ entry, model: name });
-    expect(resolveRepositoryModel).toHaveBeenCalledExactlyOnceWith({ name });
-    expect(receivedModel({ entry })).toBe(id);
+  it('captures HF files while retaining the public modelId', async () => {
+    const modelId = 'hf.co/owner/Model-GGUF:Q4';
+    const captured = resolved({ modelId, relativePath: 'Model-Q4.gguf' });
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    await execute({ entry, modelId });
+    expect(resolveModel).toHaveBeenCalledOnce();
+    expect(receivedRequest({ entry })).toMatchObject({ modelId, resolvedModel: captured });
     expect(storageService.loadHostModelDirectories).not.toHaveBeenCalled();
   });
 
-  it('accepts a short Unicode HF public name whose captured encoded identity exceeds 512 characters', async () => {
-    const modelPath = `${'日'.repeat(40)}/${'本'.repeat(40)}.gguf`;
-    const name = `hf.co/owner/Model-GGUF:${modelPath.replace(/\.gguf$/, '')}`;
-    const id = `hf.co/owner/Model-GGUF:${encodeURIComponent(modelPath)}`;
-    expect(name.length).toBeLessThan(512);
-    expect(id.length).toBeGreaterThan(512);
-    vi.mocked(resolveRepositoryModel).mockResolvedValue({ id, name, modelPath, projectorPath: undefined, files: [] });
-    await execute({ entry, model: name });
-    expect(resolveRepositoryModel).toHaveBeenCalledExactlyOnceWith({ name });
-    expect(receivedModel({ entry })).toBe(id);
+  it('preserves a Unicode public modelId without encoding its captured file path', async () => {
+    const relativePath = `${'日'.repeat(40)}/${'本'.repeat(40)}.gguf`;
+    const modelId = `hf.co/owner/Model-GGUF:${relativePath.replace(/\.gguf$/, '')}`;
+    expect(modelId.length).toBeLessThan(512);
+    expect(encodeURIComponent(relativePath).length).toBeGreaterThan(512);
+    vi.mocked(resolveModel).mockResolvedValue(resolved({ modelId, relativePath }));
+    await execute({ entry, modelId });
+    expect(receivedRequest({ entry })?.modelId).toBe(modelId);
+    expect(receivedRequest({ entry })?.resolvedModel.directory.primaryFile.relativePath).toBe(relativePath);
   });
 
-  it('canonicalizes a long encoded folder alias before worker schema validation', async () => {
-    const name = '資料:%/'.repeat(120);
-    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([directory({ id: 'root', name })]);
-    await execute({ entry, model: `host/${encodeURIComponent(name)}/owner/repo:model.gguf` });
-    expect(receivedModel({ entry })).toBe(canonical);
+  it('passes a host public modelId longer than 1024 characters without shortening it', async () => {
+    const modelId = `host/${encodeURIComponent('資料:%/'.repeat(120))}/owner/repo:model`;
+    expect(modelId.length).toBeGreaterThan(1024);
+    expect(modelId.length).toBeLessThan(4096);
+    await execute({ entry, modelId });
+    expect(receivedRequest({ entry })?.modelId).toBe(modelId);
   });
 
-  it.each(['host/Missing/owner/repo:model.gguf', 'host/%ZZ/owner/repo:model.gguf'])('rejects unresolved or malformed aliases before native execution: %s', async model => {
-    await expect(execute({ entry, model })).rejects.toThrow();
+  it.each(['host/Missing/owner/repo:model', 'host/%ZZ/owner/repo:model'])('rejects unresolved or malformed modelId before native execution: %s', async modelId => {
+    vi.mocked(resolveModel).mockRejectedValue(new LlamaCppBrowserError({ code: 'missing-model' }));
+    await expect(execute({ entry, modelId })).rejects.toThrow();
     expect(worker.generate).not.toHaveBeenCalled();
     expect(worker.generateAudio).not.toHaveBeenCalled();
     expect(worker.prepareModel).not.toHaveBeenCalled();
-    // Scoped operations own a worker before the callback supplies a model.
     if (entry !== 'generation-scope' && entry !== 'performance-scope') {
       expect(factory).not.toHaveBeenCalled();
     }
   });
 
-  it.each(['missing-model', 'unsupported-input'] as const)('stops an unresolved selector before native execution: %s', async code => {
-    vi.mocked(selectHostModel).mockRejectedValue(new LlamaCppBrowserError({ code }));
-    await expect(execute({ entry, model: 'host/Models/owner/repo:model.bin' })).rejects.toThrow(code);
-    expect(selectHostModel).toHaveBeenCalledExactlyOnceWith({ name: 'host/root/owner/repo:model.bin' });
+  it.each(['missing-model', 'unsupported-input'] as const)('stops a failed resolution before native execution: %s', async code => {
+    vi.mocked(resolveModel).mockRejectedValue(new LlamaCppBrowserError({ code }));
+    await expect(execute({ entry, modelId: 'host/Models/owner/repo:model.bin' })).rejects.toThrow(code);
+    expect(resolveModel).toHaveBeenCalledOnce();
     expect(worker.generate).not.toHaveBeenCalled();
     expect(worker.generateAudio).not.toHaveBeenCalled();
     expect(worker.prepareModel).not.toHaveBeenCalled();
@@ -193,137 +214,149 @@ describe.each(entries)('host alias at the %s execution boundary', entry => {
     }
   });
 
-  it('resolves a duplicate folder through its assigned suffix', async () => {
-    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([
-      directory({ id: 'root', name: 'Models' }), directory({ id: 'other', name: 'Models' }),
-    ]);
-    await execute({ entry, model: 'host/Models-2/owner/repo:model.gguf' });
-    expect(receivedModel({ entry })).toBe('host/other/owner/repo:model.gguf');
+  it('keeps a duplicate-folder public suffix separate from the captured directory ID', async () => {
+    const modelId = 'host/Models-2/owner/repo:model';
+    const captured = resolved({ modelId, relativePath: 'model.gguf' });
+    captured.location = { kind: 'host', directoryId: 'other', repository: 'owner/repo' };
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    await execute({ entry, modelId });
+    expect(receivedRequest({ entry })?.modelId).toBe(modelId);
+    expect(receivedRequest({ entry })?.resolvedModel.location).toEqual(captured.location);
   });
 });
 
-describe('host alias acceptance before the serialized lane', () => {
-  it('captures the HF file before queueing and never resolves its public name again in the lane', async () => {
+describe('model resolution before the serialized lane', () => {
+  it('captures HF files before queueing and never resolves the public modelId again in the lane', async () => {
     const gate = Promise.withResolvers<GenerationResult>();
     worker.generate.mockReturnValueOnce(gate.promise);
-    const active = execute({ entry: 'generate', model: 'user/blocker' });
+    const active = execute({ entry: 'generate', modelId: 'user/blocker' });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
-    const name = 'hf.co/owner/Model-GGUF:Q4';
-    const id = 'hf.co/owner/Model-GGUF:Model-Q4.gguf';
-    vi.mocked(resolveRepositoryModel).mockResolvedValue({ id, name, modelPath: 'Model-Q4.gguf', projectorPath: undefined, files: [] });
-    const pending = execute({ entry: 'generate', model: name });
-    await vi.waitFor(() => expect(resolveRepositoryModel).toHaveBeenCalledOnce());
-    vi.mocked(resolveRepositoryModel).mockResolvedValue({ id: 'hf.co/owner/Model-GGUF:replacement.gguf', name, modelPath: 'replacement.gguf', projectorPath: undefined, files: [] });
+    const modelId = 'hf.co/owner/Model-GGUF:Q4';
+    const captured = resolved({ modelId, relativePath: 'Model-Q4.gguf' });
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    const pending = execute({ entry: 'generate', modelId });
+    await vi.waitFor(() => expect(resolveModel).toHaveBeenCalledTimes(2));
+    vi.mocked(resolveModel).mockResolvedValue(resolved({ modelId, relativePath: 'replacement.gguf' }));
     gate.resolve(result);
     await active;
     await pending;
-    expect(receivedModel({ entry: 'generate' })).toBe(id);
-    expect(resolveRepositoryModel).toHaveBeenCalledOnce();
+    expect(receivedRequest({ entry: 'generate' })).toMatchObject({ modelId, resolvedModel: captured });
+    expect(receivedRequest({ entry: 'generate' })?.resolvedModel.directory.primaryFile.file).toBe(captured.directory.primaryFile.file);
+    expect(resolveModel).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['generate', 'audio'] satisfies Entry[])('pins %s to its accepted canonical model across a queued rename and reorder', async entry => {
+  it.each(['generate', 'audio'] satisfies Entry[])('pins %s to captured files across a queued alias rename and reorder', async entry => {
     const gate = Promise.withResolvers<GenerationResult>();
     worker.generate.mockReturnValueOnce(gate.promise);
-    const active = execute({ entry: 'generate', model: 'user/blocker' });
+    const active = execute({ entry: 'generate', modelId: 'user/blocker' });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
-    const pending = execute({ entry, model: alias });
-    await vi.waitFor(() => expect(storageService.loadHostModelDirectories).toHaveBeenCalledOnce());
-    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([
-      directory({ id: 'other', name: 'Models' }), directory({ id: 'root', name: 'Renamed' }),
-    ]);
+    const captured = resolved({ modelId: alias, relativePath: 'model.gguf' });
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    const pending = execute({ entry, modelId: alias });
+    await vi.waitFor(() => expect(resolveModel).toHaveBeenCalledTimes(2));
+    const replacement = resolved({ modelId: alias, relativePath: 'other.gguf' });
+    replacement.location = { kind: 'host', directoryId: 'other', repository: 'owner/repo' };
+    vi.mocked(resolveModel).mockResolvedValue(replacement);
     gate.resolve(result);
     await active;
     await pending;
-    expect(receivedModel({ entry })).toBe(canonical);
-    expect(storageService.loadHostModelDirectories).toHaveBeenCalledOnce();
+    expect(receivedRequest({ entry })?.modelId).toBe(alias);
+    expect(receivedRequest({ entry })?.resolvedModel.location).toEqual(captured.location);
+    expect(receivedRequest({ entry })?.resolvedModel.directory.primaryFile.file).toBe(captured.directory.primaryFile.file);
+    expect(resolveModel).toHaveBeenCalledTimes(2);
   });
 
   it('captures the variant selection before the lane and does not select a replacement later', async () => {
     const gate = Promise.withResolvers<GenerationResult>();
     worker.generate.mockReturnValueOnce(gate.promise);
-    const active = execute({ entry: 'generate', model: 'user/blocker' });
+    const active = execute({ entry: 'generate', modelId: 'user/blocker' });
     await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
-    vi.mocked(selectHostModel).mockResolvedValue({ id: canonical, name: 'host/root/owner/repo:Q4', modelPath: 'model.gguf', projectorPath: undefined, files: [] });
-    const pending = execute({ entry: 'generate', model: 'host/Models/owner/repo:Q4' });
-    await vi.waitFor(() => expect(selectHostModel).toHaveBeenCalledOnce());
-    vi.mocked(selectHostModel).mockResolvedValue({ id: 'host/root/owner/repo:replacement.gguf', name: canonical, modelPath: 'replacement.gguf', projectorPath: undefined, files: [] });
+    const modelId = 'host/Models/owner/repo:Q4';
+    const captured = resolved({ modelId, relativePath: 'model.gguf' });
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    const pending = execute({ entry: 'generate', modelId });
+    await vi.waitFor(() => expect(resolveModel).toHaveBeenCalledTimes(2));
+    vi.mocked(resolveModel).mockResolvedValue(resolved({ modelId, relativePath: 'replacement.gguf' }));
     gate.resolve(result);
     await active;
     await pending;
-    expect(receivedModel({ entry: 'generate' })).toBe(canonical);
-    expect(selectHostModel).toHaveBeenCalledOnce();
+    expect(receivedRequest({ entry: 'generate' })?.modelId).toBe(modelId);
+    expect(receivedRequest({ entry: 'generate' })?.resolvedModel.directory.primaryFile.file).toBe(captured.directory.primaryFile.file);
+    expect(resolveModel).toHaveBeenCalledTimes(2);
   });
 
-  it('reserves request order while an earlier alias lookup is unresolved', async () => {
-    const directories = Promise.withResolvers<Awaited<ReturnType<typeof storageService.loadHostModelDirectories>>>();
-    vi.mocked(storageService.loadHostModelDirectories).mockReturnValueOnce(directories.promise);
-    const first = execute({ entry: 'generate', model: alias });
-    const second = execute({ entry: 'generate', model: 'user/second' });
+  it('reserves request order while an earlier model resolution is unresolved', async () => {
+    const resolution = Promise.withResolvers<ResolvedModel>();
+    vi.mocked(resolveModel).mockReturnValueOnce(resolution.promise);
+    const first = execute({ entry: 'generate', modelId: alias });
+    const second = execute({ entry: 'generate', modelId: 'user/second' });
     expect(factory).not.toHaveBeenCalled();
-    directories.resolve([directory({ id: 'root', name: 'Models' })]);
+    resolution.resolve(resolved({ modelId: alias, relativePath: 'model.gguf' }));
     await first;
     await second;
-    expect(worker.generate.mock.calls.map(([call]) => call.request.model)).toEqual([canonical, 'user/second']);
+    expect(worker.generate.mock.calls.map(([call]) => call.request.modelId)).toEqual([alias, 'user/second']);
   });
 });
 
-describe('host alias lookup interruption', () => {
-  it('does not start a performance generation cancelled during alias lookup', async () => {
-    const directories = Promise.withResolvers<Awaited<ReturnType<typeof storageService.loadHostModelDirectories>>>();
-    vi.mocked(storageService.loadHostModelDirectories).mockReturnValueOnce(directories.promise);
+describe('model resolution interruption', () => {
+  it('does not start a performance generation cancelled during model resolution', async () => {
+    const resolution = Promise.withResolvers<ResolvedModel>();
+    vi.mocked(resolveModel).mockReturnValueOnce(resolution.promise);
     const controller = new AbortController();
     const operation = service.runPerformanceOperation({
       options: { profile: 'cpu-wasm32' },
       signal: undefined,
       operation: async ({ scope }) => {
-        await scope.generate({ input: input({ model: alias }), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: controller.signal });
+        await scope.generate({ input: input({ modelId: alias }), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: controller.signal });
       },
     });
     const rejected = expect(operation).rejects.toThrow();
-    await vi.waitFor(() => expect(storageService.loadHostModelDirectories).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(resolveModel).toHaveBeenCalledOnce());
     controller.abort();
-    directories.resolve([directory({ id: 'root', name: 'Models' })]);
+    resolution.resolve(resolved({ modelId: alias, relativePath: 'model.gguf' }));
     await rejected;
     expect(worker.generate).not.toHaveBeenCalled();
   });
 
-  it('keeps the lane usable after an alias lookup rejects before acquiring a worker', async () => {
-    await expect(execute({ entry: 'generate', model: 'host/Missing/owner/repo:model.gguf' })).rejects.toThrow();
+  it('keeps the lane usable after resolution rejects before acquiring a worker', async () => {
+    vi.mocked(resolveModel).mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'missing-model' }));
+    await expect(execute({ entry: 'generate', modelId: 'host/Missing/owner/repo:model' })).rejects.toThrow();
     expect(factory).not.toHaveBeenCalled();
-    await execute({ entry: 'generate', model: alias });
-    expect(receivedModel({ entry: 'generate' })).toBe(canonical);
+    await execute({ entry: 'generate', modelId: alias });
+    expect(receivedRequest({ entry: 'generate' })?.modelId).toBe(alias);
     expect(factory).toHaveBeenCalledOnce();
   });
 });
 
-describe('host alias preparation during an advisory probe', () => {
+describe('model preparation during an advisory probe', () => {
   const report: ProfileCapabilities = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
 
-  it('pins the accepted canonical model across a probe-time rename and reorder', async () => {
+  it('pins accepted files across a probe-time rename and reorder', async () => {
     const gate = Promise.withResolvers<ProfileCapabilities>();
     worker.probeProfiles.mockReturnValueOnce(gate.promise);
     const probe = service.probeProfiles({ signal: undefined });
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
-    const preparation = service.prepareModel({ model: alias, signal: undefined });
-    await vi.waitFor(() => expect(storageService.loadHostModelDirectories).toHaveBeenCalledOnce());
-    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([
-      directory({ id: 'other', name: 'Models' }), directory({ id: 'root', name: 'Renamed' }),
-    ]);
+    const captured = resolved({ modelId: alias, relativePath: 'model.gguf' });
+    vi.mocked(resolveModel).mockResolvedValue(captured);
+    const preparation = service.prepareModel({ modelId: alias, signal: undefined });
+    await vi.waitFor(() => expect(resolveModel).toHaveBeenCalledOnce());
+    vi.mocked(resolveModel).mockResolvedValue(resolved({ modelId: alias, relativePath: 'replacement.gguf' }));
     gate.resolve(report);
     await probe;
     await expect(preparation).resolves.toBe('ready');
-    expect(receivedModel({ entry: 'prepare' })).toBe(canonical);
-    expect(storageService.loadHostModelDirectories).toHaveBeenCalledOnce();
+    expect(receivedRequest({ entry: 'prepare' })?.modelId).toBe(alias);
+    expect(receivedRequest({ entry: 'prepare' })?.resolvedModel.directory.primaryFile.file).toBe(captured.directory.primaryFile.file);
+    expect(resolveModel).toHaveBeenCalledOnce();
   });
 
-  it('still yields to a foreground send while the alias preparation observes the probe', async () => {
+  it('still yields to a foreground send while the preparation observes the probe', async () => {
     const gate = Promise.withResolvers<ProfileCapabilities>();
     const generationGate = Promise.withResolvers<GenerationResult>();
     worker.probeProfiles.mockReturnValueOnce(gate.promise);
     worker.generate.mockReturnValueOnce(generationGate.promise);
     const probe = service.probeProfiles({ signal: undefined });
-    const preparation = service.prepareModel({ model: alias, signal: undefined });
-    const sending = execute({ entry: 'generate', model: 'user/foreground' });
+    const preparation = service.prepareModel({ modelId: alias, signal: undefined });
+    const sending = execute({ entry: 'generate', modelId: 'user/foreground' });
     gate.resolve(report);
     await probe;
     await expect(preparation).resolves.toBe('skipped-busy');
@@ -343,7 +376,7 @@ describe('host alias preparation during an advisory probe', () => {
       },
     });
     const probe = service.probeProfiles({ signal: undefined });
-    const preparation = service.prepareModel({ model: alias, signal: undefined });
+    const preparation = service.prepareModel({ modelId: alias, signal: undefined });
     const rejected = expect(preparation).rejects.toThrow('aborted');
     gate.resolve(report);
     await probe;

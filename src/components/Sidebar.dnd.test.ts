@@ -217,7 +217,7 @@ describe('Sidebar DND Improvements', () => {
     // but we can verify the binding.
     (wrapper.vm as any).toggleGroupCompactExpansion({ groupId: 'g1' });
     await nextTick();
-    expect(showMoreWrapper.attributes('style')).toContain('max-height: 2000px');
+    expect(showMoreWrapper.attributes('style')).toContain('max-height: var(--sidebar-chat-list-height)');
   });
 
   it('should use sortable-ghost class for drag visualization', async () => {
@@ -328,7 +328,7 @@ describe('Sidebar DND Improvements', () => {
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
   });
 
-  it('exposes sidebar scroll helper for selected chat handling', async () => {
+  it('reveals a selected chat after its DOM is available', async () => {
     vi.useRealTimers();
     mockChatStore.chats.value = [{ id: 'chat-scroll-test', title: 'Test', updatedAt: Date.now() }];
     mockChatStore.sidebarItems.value = [{ type: 'chat', id: 'chat-scroll-test', chat: mockChatStore.chats.value[0] }];
@@ -338,37 +338,38 @@ describe('Sidebar DND Improvements', () => {
 
     const nav = wrapper.get('[data-testid="sidebar-nav"]').element as HTMLElement;
     const item = wrapper.get('[data-sidebar-chat-id="chat-scroll-test"]').element as HTMLElement;
-    vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({
-      top: 0,
-      bottom: 100,
-      left: 0,
-      right: 100,
-      width: 100,
-      height: 100,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
+    Object.defineProperty(nav, 'getBoundingClientRect', {
+      value: () => ({
+        top: 0,
+        bottom: 100,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 100,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
     });
-    vi.spyOn(item, 'getBoundingClientRect').mockReturnValue({
-      top: 180,
-      bottom: 220,
-      left: 0,
-      right: 100,
-      width: 100,
-      height: 40,
-      x: 0,
-      y: 180,
-      toJSON: () => ({}),
+    Object.defineProperty(item, 'getBoundingClientRect', {
+      value: () => ({
+        top: 180,
+        bottom: 220,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 40,
+        x: 0,
+        y: 180,
+        toJSON: () => ({}),
+      }),
     });
 
-    const scrollPromise = (wrapper.vm as any).TEST_ONLY.scheduleSidebarItemScroll({
-      itemType: 'chat',
-      id: 'chat-scroll-test',
-      onlyWhenOutOfView: true,
-    });
-    await new Promise(resolve => setTimeout(resolve, 150));
-    await scrollPromise;
+    Object.defineProperties(nav, { clientHeight: { value: 100 }, scrollHeight: { value: 1000 } });
+    mockChatStore.currentChat.value = { id: 'chat-scroll-test' };
+    await nextTick();
+    await nextTick();
 
-    expect((wrapper.vm as any).TEST_ONLY.scheduleSidebarItemScroll).toBeTypeOf('function');
+    expect(nav.scrollTo).toHaveBeenCalledWith({ top: 132.5, behavior: 'smooth' });
   });
 });

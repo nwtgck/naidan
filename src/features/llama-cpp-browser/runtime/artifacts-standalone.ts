@@ -9,7 +9,7 @@ function embeddedProfile({ profile, baseURL }: { profile: LlamaCppProfile, baseU
   }
   switch (profile) {
   case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': return profile;
-  case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm32-asyncify': throw new LlamaCppBrowserError({ code: 'unavailable' });
+  case 'cpu-wasm32': case 'webgpu-wasm64-jspi-gpu-profile': case 'webgpu-wasm32-asyncify': throw new LlamaCppBrowserError({ code: 'unavailable' });
   default: {
     const exhaustive: never = profile;
     throw new Error(`Unhandled profile: ${exhaustive}`);

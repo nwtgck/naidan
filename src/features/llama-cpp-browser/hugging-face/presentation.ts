@@ -5,7 +5,7 @@ import type { RepositoryFile } from './types';
 
 // A fixed preference order, independent of device capabilities or repository order.
 const quantizationPreference = ['Q4_K_M', 'Q4_K_S', 'Q4_0', 'Q4_1', 'IQ4_NL', 'IQ4_XS', 'MXFP4', 'NVFP4', 'Q5_K_M', 'Q5_K_S', 'Q5_0', 'Q5_1', 'IQ5_XS', 'Q6_K', 'IQ6_K', 'Q8_0', 'Q8_1', 'Q3_K_M', 'Q3_K_L', 'Q3_K_S', 'IQ3_M', 'IQ3_S', 'IQ3_XS', 'IQ3_XXS', 'Q2_K', 'IQ2_M', 'IQ2_S', 'IQ2_XS', 'IQ2_XXS', 'IQ1_M', 'IQ1_S', 'BF16', 'F16', 'F32'];
-export type QuantizationChoice = { id: string, label: string, quantization: string | undefined, models: ModelCandidate[] };
+export type QuantizationChoice = { primaryRelativePath: string, label: string, quantization: string | undefined, models: ModelCandidate[] };
 
 export function quantizationName({ path }: { path: string }): string | undefined {
   const name = (path.split('/').at(-1) ?? '').toUpperCase();
@@ -26,8 +26,18 @@ function quantizationFirstLabel({ variant, quantization }: { variant: string, qu
 }
 
 export function matchesQuantizationChoice({ choice, variant }: { choice: QuantizationChoice, variant: string }): boolean {
-  // Previously displayed labels were also accepted as explicit input.
-  return choice.label === variant || quantizationFirstLabel({ variant: choice.label, quantization: choice.quantization }) === variant;
+  // The metadata picker submits an exact path. Previously displayed labels
+  // remain accepted as explicit input too.
+  return choice.primaryRelativePath === variant || choice.label === variant || quantizationFirstLabel({ variant: choice.label, quantization: choice.quantization }) === variant;
+}
+
+export function selectedQuantizationChoice({ choices, variant }: { choices: readonly QuantizationChoice[], variant: string | undefined }): QuantizationChoice | undefined {
+  if (variant === undefined) {
+    return undefined;
+  }
+  const exact = choices.filter(choice => matchesQuantizationChoice({ choice, variant }));
+  const matching = exact.length > 0 ? exact : choices.filter(choice => choice.quantization === variant.toUpperCase());
+  return matching.length === 1 ? matching[0] : undefined;
 }
 
 export function quantizationChoices({ repository, models }: { repository: string, models: ModelCandidate[] }): QuantizationChoice[] {
@@ -38,7 +48,7 @@ export function quantizationChoices({ repository, models }: { repository: string
     // Keep the existing preference and tie-break order independent of display
     // labels, which retain the complete variant in its original order.
     const sortLabel = quantizationFirstLabel({ variant, quantization });
-    return { choice: { id: path, label: variant, quantization, models: [model] }, sortLabel };
+    return { choice: { primaryRelativePath: path, label: variant, quantization, models: [model] }, sortLabel };
   }).sort((a, b) => {
     const rank = ({ choice, sortLabel }: { choice: QuantizationChoice, sortLabel: string }): number => {
       if (choice.quantization !== undefined && quantizationPreference.includes(choice.quantization)) {
@@ -48,7 +58,7 @@ export function quantizationChoices({ repository, models }: { repository: string
       return /(?:^|[-_.])(?:I?Q|MXFP|NVFP)4(?:[-_.]|$)/i.test(sortLabel) ? 7.5 : quantizationPreference.length;
     };
     const ordinary = ({ choice, sortLabel }: { choice: QuantizationChoice, sortLabel: string }): number => sortLabel.split('/').at(-1)?.toUpperCase() === choice.quantization ? 0 : 1;
-    return Number(artifactRole({ path: a.choice.id }) === 'auxiliary') - Number(artifactRole({ path: b.choice.id }) === 'auxiliary') || rank(a) - rank(b) || ordinary(a) - ordinary(b) || lexical({ left: a.sortLabel, right: b.sortLabel }) || lexical({ left: a.choice.id, right: b.choice.id });
+    return Number(artifactRole({ path: a.choice.primaryRelativePath }) === 'auxiliary') - Number(artifactRole({ path: b.choice.primaryRelativePath }) === 'auxiliary') || rank(a) - rank(b) || ordinary(a) - ordinary(b) || lexical({ left: a.sortLabel, right: b.sortLabel }) || lexical({ left: a.choice.primaryRelativePath, right: b.choice.primaryRelativePath });
   }).map(({ choice }) => choice);
 }
 
@@ -91,6 +101,19 @@ export function preferredProjector({ files }: { files: RepositoryFile[] }): Repo
     return undefined;
   }
   return ranked[0]?.file;
+}
+
+export function formatDownloadBytes({ bytes }: { bytes: number }): string {
+  if (bytes < 1024) {
+    return `${Math.max(0, Math.round(bytes))} B`;
+  }
+  if (bytes < 1024 ** 2) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  if (bytes < 1024 ** 3) {
+    return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+  }
+  return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
 
 export const TEST_ONLY = {

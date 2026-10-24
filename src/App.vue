@@ -3,28 +3,28 @@
 // Post-startup auxiliary UI belongs in MainApp's lazy-loaded AppAuxiliaryUi.
 import { computed, type ShallowRef } from 'vue';
 import GlobalDialogHost from '@/components/GlobalDialogHost.vue';
-import OnboardingModal from '@/components/OnboardingModal.vue';
 import ToastContainer from '@/components/ToastContainer.vue';
 import StartupErrorView from '@/components/startup/StartupErrorView.vue';
 import { provideAppPresentation } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
+import { provideAppEntry } from '@/composables/useAppEntry';
+import BrowserModelWelcomeDialog from '@/components/BrowserModelWelcomeDialog.vue';
 
 const props = defineProps<{
   startupState: ShallowRef<StartupState>,
 }>();
 
 const startup = computed(() => props.startupState.value);
+const entry = provideAppEntry({ startupState: props.startupState });
 const {
-  onboardingPresentation,
   appInteraction,
-  finishHomeIntroduction,
-} = provideAppPresentation({ startupState: props.startupState });
+} = provideAppPresentation({ startupState: props.startupState, modelSelectionVisible: computed(() => entry.modelSelection.value !== undefined || entry.notFoundRecovery.value !== undefined) });
 
 const appContentInert = computed(() => {
   const interaction = appInteraction.value;
   switch (interaction) {
   case 'blocked-by-startup':
-  case 'blocked-by-onboarding':
+  case 'blocked-by-model-selection':
     return true;
   case 'enabled':
     return undefined;
@@ -39,15 +39,19 @@ const appContentAriaHidden = computed(() => appContentInert.value === true
   ? 'true'
   : undefined);
 
-const renderOnboarding = computed(() => {
-  const presentation = onboardingPresentation.value;
-  switch (presentation) {
-  case 'hidden':
-    return false;
-  case 'visible':
-    return true;
+const earlyEntry = computed(() => {
+  const state = startup.value;
+  switch (state.kind) {
+  case 'starting-main':
+  case 'rendering-main':
+    return state.entrySurface;
+  case 'initializing-foundation':
+  case 'ready':
+  case 'foundation-failed':
+  case 'main-failed':
+    return undefined;
   default: {
-    const _ex: never = presentation;
+    const _ex: never = state;
     return _ex;
   }
   }
@@ -75,6 +79,10 @@ defineExpose({
       v-if="startup.kind === 'rendering-main' || startup.kind === 'ready'"
     />
 
+    <div v-else-if="earlyEntry" tw-class="h-dvh">
+      <component :is="earlyEntry" />
+    </div>
+
     <StartupErrorView
       v-else-if="startup.kind === 'foundation-failed' || startup.kind === 'main-failed'"
       :error="startup.error"
@@ -87,10 +95,8 @@ defineExpose({
     />
   </div>
 
-  <Transition name="modal">
-    <OnboardingModal v-if="renderOnboarding" @dismiss="finishHomeIntroduction" />
-  </Transition>
-
+  <!-- Keep one synchronous dialog outside MainApp across the startup handoff. -->
+  <BrowserModelWelcomeDialog v-if="entry.modelSelection.value !== undefined" />
   <GlobalDialogHost />
   <ToastContainer />
 </template>

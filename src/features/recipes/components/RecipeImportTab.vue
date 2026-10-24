@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import { generateId } from '@/01-models/id';
 import { idToRaw } from '@/01-models/ids';
 import type { RecipeImportCandidateId } from '@/01-models/ids';
@@ -187,11 +188,11 @@ defineExpose({
             :key="idToRaw({ id: item.id })"
             tw-class="p-5 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-3xl flex items-start gap-4 transition-all hover:border-blue-500/30"
           >
-            <input
+            <SettingsChoiceControl presentation="checkbox"><input
               type="checkbox"
               v-model="item.selected"
-              tw-class="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-            >
+              :aria-label="item.newName || lazyStrings.RecipeImportTab__chat_group_name()"
+            /></SettingsChoiceControl>
             <div tw-class="flex-1 min-w-0 space-y-3">
               <div tw-class="flex flex-col gap-1.5">
                 <label tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">{{ lazyStrings.RecipeImportTab__chat_group_name() }}</label>

@@ -5,7 +5,7 @@ import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diff
 import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core';
 import VueRouter from 'vue-router/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
-import type { Alias } from 'vite';
+import type { Alias, Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import VueDevTools from 'vite-plugin-vue-devtools';
 import fs from 'node:fs';
@@ -120,8 +120,9 @@ function ensureExistingPath(relativePath: string): string {
  * Plugin to manually Gzip WASM files in the output directory and delete originals.
  * Replacing vite-plugin-compression per user request.
  */
-const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
+const manualGzipWasmPlugin = ({ outDir }: { outDir: string }): Plugin => ({
   name: 'manual-gzip-wasm-plugin',
+  apply: 'build',
   async closeBundle() {
     console.log('  \u231B Compressing WASM files to .gz...');
     const distDir = path.resolve(__dirname, outDir);
@@ -446,8 +447,9 @@ const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
 /**
  * Copy the universal and locale-specific standalone packages to hosted output.
  */
-const copyZipPlugin = () => ({
+const copyZipPlugin = (): Plugin => ({
   name: 'copy-zip-plugin',
+  apply: 'build',
   async closeBundle() {
     const hostedDistDir = path.resolve(__dirname, 'dist/hosted');
     const copiedFileNames = copyStandalonePackagesToHosted({

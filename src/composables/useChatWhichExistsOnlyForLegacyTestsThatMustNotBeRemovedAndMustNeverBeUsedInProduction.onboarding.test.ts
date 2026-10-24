@@ -1,7 +1,13 @@
-import type { StorageService } from '@/00-storage/service';
+import { storageService, type StorageService } from '@/00-storage/service';
+import type { useSettings } from './useSettings';
+import type { LmProvider } from '@/01-models/lm';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { reactive } from 'vue';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+
+const { mockRequestAppSettings } = vi.hoisted(() => ({ mockRequestAppSettings: vi.fn() }));
+vi.mock('./useAppEntry', () => ({ requestAppSettings: mockRequestAppSettings }));
 
 // Mock storage service
 vi.mock('../00-storage/service', () => ({
@@ -39,14 +45,15 @@ const mockSettings = {
   },
 };
 const mockIsOnboardingDismissed = { value: true };
-const mockOnboardingDraft = { value: null };
+const mockOnboardingDraft: { value: ReturnType<typeof useSettings>['onboardingDraft']['value'] } = { value: null };
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: mockSettings,
     isOnboardingDismissed: mockIsOnboardingDismissed,
     onboardingDraft: mockOnboardingDraft,
-    setOnboardingDraft: ({ draft }: { draft: any }) => {
+    setOnboardingDraft: ({ draft }: { draft: typeof mockOnboardingDraft.value }) => {
       mockOnboardingDraft.value = draft;
     },
     setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => {
@@ -57,9 +64,10 @@ vi.mock('./useSettings', () => ({
 
 // Mock LM Provider
 const mockListModels = vi.fn();
+const mockLmChat = vi.fn<LmProvider['chat']>();
 vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
-    chat = vi.fn();
+    chat = mockLmChat;
     listModels = mockListModels;
   }
   return {
@@ -71,13 +79,15 @@ vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 
-describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Onboarding Trigger', () => {
+describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Missing Connection Settings', () => {
   const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
   const { TEST_ONLY, sendMessage, currentChat } = chatStore;
   const { __testOnlySetCurrentChat } = TEST_ONLY;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    TEST_ONLY.clearLiveChatRegistry();
     mockSettings.value.endpoint = { type: 'openai', url: '' };
     mockSettings.value.defaultModelId = '';
     mockIsOnboardingDismissed.value = true;
@@ -85,7 +95,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockListModels.mockResolvedValue(['model-a', 'model-b']);
   });
 
-  it('should trigger onboarding if endpointUrl is missing when sending a message', async () => {
+  it('should request connection settings if endpointUrl is missing when sending a message', async () => {
     __testOnlySetCurrentChat({
       chat: reactive({
         id: 'chat-1',
@@ -98,13 +108,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       }) as any,
     });
 
-    await sendMessage({ content: 'Hello' });
+    expect(await sendMessage({ content: 'Hello' })).toBe(false);
 
-    expect(mockIsOnboardingDismissed.value).toBe(false);
+    expect(mockRequestAppSettings).toHaveBeenCalledWith({ tab: 'connection', opener: undefined });
+    expect(mockIsOnboardingDismissed.value).toBe(true);
+    expect(mockLmChat).not.toHaveBeenCalled();
   });
 
-  it('should trigger onboarding and populate draft if modelId is missing when sending a message', async () => {
+  it('should request connection settings and preserve an existing legacy draft if modelId is missing', async () => {
     mockSettings.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
+    const legacyDraft = { url: 'https://legacy.example.invalid', type: 'ollama' as const, models: ['legacy-only-model'], selectedModel: 'legacy-only-model' };
+    mockOnboardingDraft.value = structuredClone(legacyDraft);
     __testOnlySetCurrentChat({
       chat: reactive({
         id: 'chat-1',
@@ -117,15 +131,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       }) as any,
     });
 
-    await sendMessage({ content: 'Hello' });
+    expect(await sendMessage({ content: 'Hello' })).toBe(false);
 
-    expect(mockIsOnboardingDismissed.value).toBe(false);
-    expect(mockOnboardingDraft.value).toEqual({
-      url: 'http://localhost:11434',
-      type: 'openai',
-      models: ['model-a', 'model-b'],
-      selectedModel: 'model-a',
-    });
+    expect(mockRequestAppSettings).toHaveBeenCalledWith({ tab: 'connection', opener: undefined });
+    expect(mockIsOnboardingDismissed.value).toBe(true);
+    expect(mockLmChat).not.toHaveBeenCalled();
+    expect(mockOnboardingDraft.value).toEqual(legacyDraft);
+    expect(currentChat.value!.root.items).toHaveLength(0);
+    expect(storageService.updateChatContent).not.toHaveBeenCalled();
   });
 
   it('should NOT use gpt-3.5-turbo as fallback model anymore', async () => {
@@ -143,11 +156,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       }) as any,
     });
 
-    await sendMessage({ content: 'Hello' });
+    expect(await sendMessage({ content: 'Hello' })).toBe(false);
 
-    // It should have stopped and triggered onboarding instead of sending
-    expect(mockIsOnboardingDismissed.value).toBe(false);
-    // If it had used gpt-3.5-turbo, currentChat.value.root.items would have 1 item
+    // Missing configuration opens connection settings before any message is saved.
+    expect(mockRequestAppSettings).toHaveBeenCalledWith({ tab: 'connection', opener: undefined });
+    expect(mockIsOnboardingDismissed.value).toBe(true);
+    expect(mockLmChat).not.toHaveBeenCalled();
+    // A fallback model would have allowed a user message to be appended.
     expect(currentChat.value!.root.items).toHaveLength(0);
   });
 

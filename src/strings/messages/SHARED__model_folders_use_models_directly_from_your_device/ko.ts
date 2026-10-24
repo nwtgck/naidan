@@ -1,0 +1,1 @@
+export const SHARED__model_folders_use_models_directly_from_your_device = (): string => 'Use model files directly from a folder on your device. No copy is stored in the browser, saving browser storage space.';

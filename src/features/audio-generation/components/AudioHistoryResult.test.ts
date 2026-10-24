@@ -15,7 +15,7 @@ function entry(): AudioHistoryEntry {
     createdAt: 1,
     bytes: wav.byteLength,
     result,
-    settings: captureAudioSettings({ input: { ...defaultAudioParameters(), text, model: 'voice', options: { profile: 'auto' }, debug: 'off' }, modelName: 'Voice' }),
+    settings: captureAudioSettings({ input: { ...defaultAudioParameters(), text, modelId: 'voice', options: { profile: 'auto' }, debug: 'off' } }),
   };
 }
 

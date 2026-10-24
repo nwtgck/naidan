@@ -8,6 +8,7 @@ import { useFileExplorerModal } from '@/features/file-explorer/composables/useFi
 import { useRecentChats } from '@/composables/useRecentChats';
 import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, AudioLinesIcon, ImageIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
+import ModelDownloads from './ModelDownloads.vue';
 
 defineProps<{
   isSidebarOpen: boolean,
@@ -36,7 +37,8 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="flex items-center gap-1 duration-300">
+  <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="flex shrink-0 items-center gap-1 duration-300">
+    <ModelDownloads />
     <button
       @click="toggleDebug"
       :tw-class="['p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm relative group', { 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner': isDebugOpen }]"
@@ -123,16 +125,18 @@ defineExpose({
       </MessageActionsMenu>
     </div>
   </div>
-  <button
-    v-else
-    @click="toggleDebug"
-    :tw-class="['flex items-center justify-center w-8 h-8 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 transition-all relative', { 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800': isDebugOpen }]"
-    :title="lazyStrings.SidebarDebugControls__debug_events()"
-  >
-    <TerminalIcon tw-class="w-4 h-4" />
-    <div
-      v-if="errorCount > 0"
-      tw-class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm animate-pulse border-2 border-white dark:border-gray-900"
-    ></div>
-  </button>
+  <div v-else tw-class="flex flex-col items-center gap-1">
+    <ModelDownloads />
+    <button
+      @click="toggleDebug"
+      :tw-class="['flex items-center justify-center w-8 h-8 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 transition-all relative', { 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800': isDebugOpen }]"
+      :title="lazyStrings.SidebarDebugControls__debug_events()"
+    >
+      <TerminalIcon tw-class="w-4 h-4" />
+      <div
+        v-if="errorCount > 0"
+        tw-class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm animate-pulse border-2 border-white dark:border-gray-900"
+      ></div>
+    </button>
+  </div>
 </template>

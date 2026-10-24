@@ -1,22 +1,19 @@
 import { isHostDestination, destinationKey, hostModelRoot, modelDestinationSchema, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import { shallowReadonly, shallowRef } from 'vue';
+import { createDownloadManager, getDownloadManager, type DownloadManager } from '@/logic/download-manager';
+import { downloadFilesForDisplay } from '@/logic/hugging-face-download/presentation';
+import { awaitInspection } from '@/logic/model-file-inspection/abort';
+import type { ManagedDownloadStatus } from '@/01-models/download';
 import { downloadRepository } from './download';
-import { installedSelection } from './storage';
 import { DownloadConflictError, selectionSchema, type DownloadConflict, type DownloadProgress, type DownloadSelection } from './types';
 import { SuggestionPlanError } from './suggestion-plan';
+import { selectionKey } from './download-plan';
 
 export type DownloadJobStatus = 'queued' | 'resolving' | 'downloading' | 'pausing' | 'paused' | 'complete' | 'failed' | 'cancelled';
 export type DownloadJobError = DownloadConflict | 'failed' | 'selection-unavailable';
 export type DownloadJob = {
-  id: number,
-  key: string,
-  repository: string,
-  source: 'suggestion' | 'repository',
-  destination: ModelDestination,
-  status: DownloadJobStatus,
-  selection: DownloadSelection | undefined,
-  progress: DownloadProgress | undefined,
-  error: DownloadJobError | undefined,
+  id: number, key: string, repository: string, source: 'suggestion' | 'repository', destination: ModelDestination,
+  status: DownloadJobStatus, selection: DownloadSelection | undefined, progress: DownloadProgress | undefined, error: DownloadJobError | undefined,
 };
 
 export function jobIsBusy({ job }: { job: DownloadJob | undefined }): boolean {
@@ -31,168 +28,175 @@ export function jobIsBusy({ job }: { job: DownloadJob | undefined }): boolean {
   }
 }
 
-type PrepareDownload = ({ signal }: { signal: AbortSignal }) => Promise<DownloadSelection>;
-type DownloadTask = { root: Promise<{ handle: FileSystemDirectoryHandle } | { error: unknown }> | undefined, prepare: PrepareDownload, done: Promise<DownloadJob>, finish: ({ job }: { job: DownloadJob }) => void };
+function jobIsComplete({ job }: { job: DownloadJob | undefined }): boolean {
+  const status = job?.status;
+  switch (status) {
+  case 'complete': return true;
+  case 'queued': case 'resolving': case 'downloading': case 'pausing': case 'paused': case 'failed': case 'cancelled': case undefined: return false;
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
 
-/**
- * One payload download per page, including the repository-input UI. The queue
- * and unresolved intents are memory-only. A reload loses waiting work; only
- * the existing writer's started-download journal survives for explicit resume.
- * Components may unmount without cancelling the user's download request.
- */
-export function createDownloadQueue({ download }: { download: typeof downloadRepository }) {
+type PrepareDownload = ({ signal }: { signal: AbortSignal }) => Promise<DownloadSelection>;
+type Binding = { job: DownloadJob, root: FileSystemDirectoryHandle | undefined, done: Promise<DownloadJob> };
+
+function legacyStatus({ status, prepared }: { status: ManagedDownloadStatus, prepared: boolean }): DownloadJobStatus {
+  switch (status) {
+  case 'cancelling': return 'pausing';
+  case 'paused': return prepared ? 'paused' : 'cancelled';
+  case 'queued': case 'resolving': case 'downloading': case 'pausing': case 'complete': case 'failed': case 'cancelled': return status;
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+/** Existing model screens subscribe to the shared manager through this facade.
+ * They neither own a second scheduler nor keep a view mounted to execute work. */
+export function createDownloadQueue({ download, manager: suppliedManager }: { download: typeof downloadRepository, manager?: DownloadManager }) {
+  const manager = suppliedManager ?? createDownloadManager();
   const jobs = shallowRef<DownloadJob[]>([]);
   const changed = shallowRef(0);
-  const tasks = new Map<number, DownloadTask>();
-  const boundRoots = new Map<number, FileSystemDirectoryHandle>();
-  let sequence = 0;
-  let running: { id: number, controller: AbortController } | undefined;
-  function replace({ id, patch }: { id: number, patch: Partial<Pick<DownloadJob, 'status' | 'selection' | 'progress' | 'error'>> }): DownloadJob {
-    const current = jobs.value.find(job => job.id === id);
-    if (!current) {
-      throw new Error('Unknown download job');
+  const bindings = new Map<number, Binding>();
+  function synchronize(): void {
+    const states = new Map(manager.snapshot().map(job => [job.id, job]));
+    for (const [id, binding] of bindings) {
+      const current = states.get(id);
+      if (!current) {
+        // Another view or the shared download panel can retire this job.
+        // Keeping its old binding would render an orphaned retry control.
+        bindings.delete(id);
+        if (binding.job.selection) {
+          changed.value++;
+        }
+        continue;
+      }
+      const status = legacyStatus({ status: current.status, prepared: binding.job.selection !== undefined });
+      if (jobIsBusy({ job: binding.job }) && !jobIsBusy({ job: { ...binding.job, status } })) {
+        changed.value++;
+      }
+      binding.job = { ...binding.job, status };
     }
-    const next = { ...current, ...patch };
-    jobs.value = jobs.value.map(job => job.id === id ? next : job);
-    return next;
+    jobs.value = [...bindings.values()].map(binding => binding.job);
   }
-  async function drain(): Promise<void> {
-    if (running) {
-      return;
-    }
-    const queued = jobs.value.find(job => job.status === 'queued');
-    if (!queued) {
-      return;
-    }
-    const task = tasks.get(queued.id)!;
-    const controller = new AbortController();
-    running = { id: queued.id, controller };
-    try {
-      replace({ id: queued.id, patch: { status: 'resolving' } });
-      const root = await task.root;
-      if (root && 'error' in root) {
-        throw root.error;
-      }
-      if (root) {
-        boundRoots.set(queued.id, root.handle);
-      }
-      controller.signal.throwIfAborted();
-      const selection = selectionSchema.parse(await task.prepare({ signal: controller.signal }));
-      controller.signal.throwIfAborted();
-      replace({ id: queued.id, patch: { status: 'downloading', selection } });
-      await download({
-        selection,
-        ...(isHostDestination(queued.destination) ? { destination: queued.destination, expectedRoot: root?.handle } : {}),
-        signal: controller.signal,
-        onProgress: ({ progress }) => {
-          if (!controller.signal.aborted) {
-            replace({ id: queued.id, patch: { progress } });
-          }
-        },
-      });
-      // A writer may finish concurrently with a pause. A committed success must
-      // not become a phantom paused job with no journal to resume.
-      replace({ id: queued.id, patch: { status: 'complete' } });
-    } catch (error) {
-      if (controller.signal.aborted) {
-        const prepared = jobs.value.find(job => job.id === queued.id)?.selection;
-        replace({ id: queued.id, patch: { status: prepared ? 'paused' : 'cancelled' } });
-      } else {
-        replace({ id: queued.id, patch: { status: 'failed', error: error instanceof DownloadConflictError ? error.reason : error instanceof SuggestionPlanError ? 'selection-unavailable' : 'failed' } });
-      }
-    } finally {
-      changed.value++;
-      task.finish({ job: jobs.value.find(job => job.id === queued.id)! });
-      tasks.delete(queued.id);
-      running = undefined;
-      // Wait for writer cleanup before the next operation enters its lane.
-      void drain();
-    }
-  }
-  function enqueue({ key, repository, source, prepare, destination, expectedRoot }: { key: string, repository: string, source: DownloadJob['source'], prepare: PrepareDownload, destination?: ModelDestination, expectedRoot?: FileSystemDirectoryHandle }): { id: number, done: Promise<DownloadJob> } {
+  manager.subscribe({ listener: synchronize });
+  function enqueue({ key, repository, source, prepare, destination, expectedRoot }: {
+    key: string, repository: string, source: DownloadJob['source'], prepare: PrepareDownload, destination?: ModelDestination, expectedRoot?: FileSystemDirectoryHandle,
+  }): { id: number, done: Promise<DownloadJob> } {
     const target = modelDestinationSchema.parse(destination ?? { kind: 'opfs' });
     key = downloadJobKey({ key, destination: target });
-    const existing = jobs.value.find(job => job.key === key && jobIsBusy({ job }));
+    const existing = [...bindings.values()].find(binding => binding.job.key === key
+      || binding.job.selection !== undefined && downloadJobKey({ key: selectionKey({ selection: binding.job.selection }), destination: binding.job.destination }) === key);
+    if (existing && jobIsBusy({ job: existing.job })) {
+      return { id: existing.job.id, done: manager.wait({ id: existing.job.id })?.then(result => ({ ...existing.job, status: legacyStatus({ status: result.status, prepared: existing.job.selection !== undefined }) })) ?? existing.done };
+    }
+    const boundRoot = (!jobIsComplete({ job: existing?.job }) ? existing?.root : undefined) ?? expectedRoot;
     if (existing) {
-      return { id: existing.id, done: tasks.get(existing.id)!.done };
-    }
-    const previous = jobs.value.find(job => job.key === key);
-    const boundRoot = (previous && previous.status !== 'complete' ? boundRoots.get(previous.id) : undefined) ?? expectedRoot;
-    if (previous) {
-      boundRoots.delete(previous.id);
-    }
-    const id = ++sequence;
-    if (boundRoot) {
-      boundRoots.set(id, boundRoot);
-    }
-    const deferred = Promise.withResolvers<DownloadJob>();
-    // Capture physical identity before the queue waits on metadata or another job.
-    const root = isHostDestination(target) ? hostModelRoot({ destination: target, mode: 'readwrite' }).then(async handle => {
-      if (boundRoot && !await handle.isSameEntry(boundRoot)) {
-        return { error: new Error('Linked model folder changed during permission authorization') };
+      bindings.delete(existing.job.id);
+      if (!jobIsComplete({ job: existing.job })) {
+        void manager.remove({ id: existing.job.id });
       }
-      return { handle: boundRoot ?? handle };
-    }).catch(error => ({ error })) : undefined;
-    tasks.set(id, { root, prepare, done: deferred.promise, finish: ({ job }) => deferred.resolve(job) });
-    // Keep only the most recent terminal job for a key; no unbounded retry log.
-    jobs.value = [...jobs.value.filter(job => job.key !== key), { id, key, repository, source, destination: target, status: 'queued', selection: undefined, progress: undefined, error: undefined }];
-    // Queue the entire intent before discovery. Rapid clicks do not fan out
-    // into metadata requests. Waiting host jobs read only their bound handle;
-    // cancelled waiting work never opens or writes a model file.
-    void Promise.resolve().then(drain);
-    return { id, done: deferred.promise };
+    }
+    // Authorize/capture the physical root at the click, before waiting in the queue.
+    const authorize = ({ expected }: { expected: FileSystemDirectoryHandle | undefined }) => isHostDestination(target) ? hostModelRoot({ destination: target, mode: 'readwrite' }).then(async handle => {
+      if (expected && !await handle.isSameEntry(expected)) {
+        throw new Error('Linked model folder changed during permission authorization');
+      }
+      return { handle: expected ?? handle };
+    }).catch(error => ({ error })) : Promise.resolve(undefined);
+    let root = authorize({ expected: boundRoot });
+    // eslint-disable-next-line prefer-const -- The run closure is registered before its returned job id can initialize this binding.
+    let binding: Binding;
+    const managed = manager.enqueue({
+      key: `llama:${key}`,
+      title: repository,
+      category: 'language-model',
+      destination: target,
+      files: [],
+      onResume: () => {
+        root = authorize({ expected: binding.root ?? boundRoot });
+      },
+      run: async ({ execution }) => {
+        const { signal } = execution;
+        try {
+          const authorized = await awaitInspection({ task: root, signal });
+          if (authorized && 'error' in authorized) {
+            throw authorized.error;
+          }
+          binding.root = authorized?.handle;
+          if (isHostDestination(target) && binding.root) {
+            const current = await hostModelRoot({ destination: target, mode: 'readwrite' });
+            if (!await current.isSameEntry(binding.root)) {
+              throw new Error('Linked model folder changed after this download was queued');
+            }
+          }
+          const selection = selectionSchema.parse(await awaitInspection({ task: prepare({ signal }), signal }));
+          signal.throwIfAborted();
+          binding.job = { ...binding.job, selection, progress: undefined, error: undefined };
+          execution.setFiles({ files: downloadFilesForDisplay({ files: selection.files.map(file => ({ ...file, repository: selection.repository, revision: selection.revision })), destination: target, rootName: binding.root?.name }) });
+          await download({
+            selection,
+            signal,
+            ...(isHostDestination(target) ? { destination: target, expectedRoot: binding.root } : {}),
+            onProgress: ({ progress }) => {
+              if (signal.aborted) {
+                return;
+              }
+              binding.job = { ...binding.job, progress };
+              for (const [index, file] of progress.fileProgress?.entries() ?? []) {
+                execution.reportFile({ index, patch: { size: file.total, completed: file.completed, state: file.state } });
+              }
+              synchronize();
+            },
+          });
+        } catch (error) {
+          binding.job = { ...binding.job, error: signal.aborted ? undefined : error instanceof DownloadConflictError ? error.reason : error instanceof SuggestionPlanError ? 'selection-unavailable' : 'failed' };
+          throw error;
+        }
+      },
+    });
+    const done = managed.done.then(result => {
+      synchronize();
+      return { ...binding.job, status: legacyStatus({ status: result.status, prepared: binding.job.selection !== undefined }) };
+    });
+    binding = { job: { id: managed.id, key, repository, source, destination: target, status: 'queued', selection: undefined, progress: undefined, error: undefined }, root: boundRoot, done };
+    bindings.set(managed.id, binding);
+    synchronize();
+    return { id: managed.id, done };
   }
   function cancel({ id }: { id: number }): void {
-    const job = jobs.value.find(job => job.id === id);
-    if (!job) {
+    const binding = bindings.get(id);
+    if (!binding) {
       return;
     }
-    switch (job.status) {
-    case 'queued': {
-      tasks.get(id)?.finish({ job: { ...job, status: 'cancelled' } });
-      tasks.delete(id);
-      boundRoots.delete(id);
-      jobs.value = jobs.value.filter(entry => entry.id !== id);
-      return;
-    }
-    case 'resolving': case 'downloading':
-      replace({ id, patch: { status: 'pausing' } });
-      running?.controller.abort();
-      return;
-    case 'pausing': case 'paused': case 'complete': case 'failed': case 'cancelled': return;
+    switch (binding.job.status) {
+    case 'queued':
+      void manager.remove({ id });
+      bindings.delete(id);
+      synchronize();
+      break;
+    case 'resolving': case 'downloading': case 'pausing': manager.pause({ id });
+      break;
+    case 'paused': case 'failed': case 'complete': case 'cancelled': break;
     default: {
-      const exhaustive: never = job.status;
+      const exhaustive: never = binding.job.status;
       throw new Error(String(exhaustive));
     }
     }
   }
-  function position({ id }: { id: number }): number | undefined {
-    const index = jobs.value.filter(job => job.status === 'queued').findIndex(job => job.id === id);
-    return index < 0 ? undefined : index + 1;
-  }
   function forget({ id }: { id: number }): void {
-    const job = jobs.value.find(entry => entry.id === id);
-    if (jobIsBusy({ job })) {
+    if (jobIsBusy({ job: bindings.get(id)?.job })) {
       return;
     }
-    boundRoots.delete(id);
-    jobs.value = jobs.value.filter(entry => entry.id !== id);
+    void manager.remove({ id });
+    bindings.delete(id);
+    synchronize();
   }
-  async function stopDirectory({ directoryId }: { directoryId: string }): Promise<void> {
-    const waiting: Promise<DownloadJob>[] = [];
-    for (const job of jobs.value) {
-      if (job.destination.kind !== 'host' || job.destination.directoryId !== directoryId || !jobIsBusy({ job })) {
-        continue;
-      }
-      const task = tasks.get(job.id);
-      if (task) {
-        waiting.push(task.done);
-      }
-      cancel({ id: job.id });
-    }
-    await Promise.all(waiting);
-  }
-  return { jobs: shallowReadonly(jobs), changed: shallowReadonly(changed), enqueue, cancel, position, forget, stopDirectory };
+  return { jobs: shallowReadonly(jobs), changed: shallowReadonly(changed), enqueue, cancel, position: manager.position, forget, stopDirectory: manager.stopDirectory };
 }
 
 export function downloadJobKey({ key, destination }: { key: string, destination?: ModelDestination }): string {
@@ -204,25 +208,16 @@ export function downloadJobKey({ key, destination }: { key: string, destination?
 let queue: ReturnType<typeof createDownloadQueue> | undefined;
 
 export function getDownloadQueue(): ReturnType<typeof createDownloadQueue> {
-  queue ??= createDownloadQueue({
-    download: async ({ selection, signal, onProgress, destination, expectedRoot }) => {
-      signal.throwIfAborted();
-      // Two explicitly queued entry points may target the same installed file set.
-      // Local availability follows the same validated-file contract as the UI;
-      // it is not a claim about remote revision/content equality.
-      if (!isHostDestination(destination) && await installedSelection({ selection })) {
-        signal.throwIfAborted();
-        return;
-      }
-      signal.throwIfAborted();
-      await downloadRepository({ selection, signal, onProgress, ...(isHostDestination(destination) ? { destination, expectedRoot } : {}) });
-    },
-  });
+  queue ??= createDownloadQueue({ download: downloadRepository, manager: getDownloadManager() });
   return queue;
 }
 
 export const TEST_ONLY = {
-  reset: () => {
+  reset() {
     queue = undefined;
+    const manager = getDownloadManager();
+    for (const job of manager.snapshot()) {
+      void manager.remove({ id: job.id });
+    }
   },
 };

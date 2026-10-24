@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { exposeWorkerRemote, releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
+import { exposeWorkerRemote, releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote, type WorkerCapability, type WorkerServerApi } from '@/utils/worker-transport';
 import type { LlamaCppWorkerApi, WorkerGenerateCall } from './types';
 import type { generate } from './generation';
 import type { GenerationEvent } from '@/features/llama-cpp-browser/types';
@@ -27,12 +27,26 @@ afterEach(() => {
 function connect() {
   const link = new MessageChannel();
   links.push(link);
-  exposeWorkerRemote<LlamaCppWorkerApi>({ api: createWorkerApi(), endpoint: link.port1 });
+  const api = createWorkerApi();
+  // Node's MessageChannel clones File as Blob. Restore the test File metadata
+  // on receipt; event delivery and request ownership still use actual Comlink.
+  const nodeApi: WorkerServerApi<LlamaCppWorkerApi> = {
+    ...api,
+    generate(request, ...callbacks) {
+      const captured = request.resolvedModel.directory;
+      const files = captured.files.map(entry => ({ ...entry, file: new File([entry.file], entry.relativePath.split('/').at(-1)!, { lastModified: 1 }) }));
+      const directory = { files, primaryFile: files.find(entry => entry.relativePath === captured.primaryFile.relativePath)!, projectorFile: files.find(entry => entry.relativePath === captured.projectorFile?.relativePath) };
+      return api.generate({ ...request, resolvedModel: { ...request.resolvedModel, directory } }, ...callbacks);
+    },
+  };
+  exposeWorkerRemote<LlamaCppWorkerApi>({ api: nodeApi, endpoint: link.port1 });
   return wrapWorkerRemote<LlamaCppWorkerApi>({ endpoint: link.port2 });
 }
 
-function request(): WorkerGenerateCall {
-  return { generationId: 1, model: 'fixture.gguf', options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/profiles/', messages: [{ role: 'user', content: 'hi' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+function request(): WorkerCapability<WorkerGenerateCall, 'file-system-handle-clone'> {
+  const modelId = 'temp/fixture';
+  const entry = { relativePath: 'model.gguf', file: new File([new Uint8Array(24)], 'model.gguf', { lastModified: 1 }), storageKind: 'temp' as const, registrationRevision: 1 };
+  return workerCapability({ value: { generationId: 1, modelId, resolvedModel: { modelId, location: { kind: 'temp', rootPath: 'temp/fixture' }, directory: { files: [entry], primaryFile: entry, projectorFile: undefined } }, options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/profiles/', messages: [{ role: 'user', content: 'hi' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] }, capability: 'file-system-handle-clone' });
 }
 
 describe('structured generation over the actual Comlink MessageChannel transport', () => {

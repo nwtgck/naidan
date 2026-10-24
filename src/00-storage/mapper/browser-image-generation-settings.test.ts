@@ -144,3 +144,16 @@ describe('browser image generation settings', () => {
     });
   });
 });
+
+it('roundtrips temporary primary, component and adapter locations without requiring registered files', () => {
+  const preferences: BrowserImageGenerationSettings = {
+    modelSelection: {
+      primary: { slot: 'diffusion', location: { kind: 'temp', path: 'temp/shared/owner/repo/weights/model.gguf' } },
+      components: [{ slot: 'vae', choice: { kind: 'file', location: { kind: 'temp', path: 'temp/shared/vae/decoder.safetensors' } } }],
+      loras: [{ location: { kind: 'temp', path: 'temp/shared/loras/%ZZ.safetensors' }, enabled: 'enabled', strength: 0.7 }],
+    },
+  };
+  const stored = JSON.parse(JSON.stringify(settingsToDto({ domain: { ...base, experimental: { browserImageGeneration: preferences } } })));
+  expect(settingsToDomain({ dto: SettingsSchemaDto.parse(stored) }).experimental?.browserImageGeneration).toMatchObject(preferences);
+  expect(JSON.stringify(stored)).not.toContain('revision');
+});

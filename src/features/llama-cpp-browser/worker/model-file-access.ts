@@ -12,15 +12,26 @@ declare const FileReaderSync: { new(): {
   readAsArrayBuffer(blob: Blob): ArrayBuffer,
 } };
 
-/** Native host files have no OPFS sync handle. Read bounded slices directly
+/** Native host and temporary files have no OPFS sync handle. Read bounded slices directly
  * from their File snapshot in this Worker; never stage model bytes in OPFS. */
 export async function openModelFileAccess({ entry }: { entry: ModelFile }): Promise<ModelFileAccess> {
   switch (entry.storageKind) {
-  case 'host': {
+  case 'host': case 'temp': {
     if (typeof FileReaderSync !== 'function') {
       throw new LlamaCppBrowserError({ code: 'unavailable' });
     }
-    const file = await entry.handle.getFile();
+    let file: File;
+    const kind = entry.storageKind;
+    switch (kind) {
+    case 'temp': file = entry.file;
+      break;
+    case 'host': file = await entry.handle.getFile();
+      break;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(String(exhaustive));
+    }
+    }
     if (file.size !== entry.file.size || file.lastModified !== entry.file.lastModified) {
       throw new LlamaCppBrowserError({ code: 'storage-error' });
     }
@@ -48,7 +59,7 @@ export async function openModelFileAccess({ entry }: { entry: ModelFile }): Prom
       },
     };
   }
-  case undefined: {
+  case 'opfs': {
     const handle = entry.handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<ModelFileAccess> };
     if (!handle.createSyncAccessHandle) {
       throw new LlamaCppBrowserError({ code: 'unavailable' });
@@ -56,7 +67,7 @@ export async function openModelFileAccess({ entry }: { entry: ModelFile }): Prom
     return handle.createSyncAccessHandle();
   }
   default: {
-    const exhaustive: never = entry.storageKind;
+    const exhaustive: never = entry;
     throw new Error(String(exhaustive));
   }
   }

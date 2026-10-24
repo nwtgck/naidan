@@ -14,7 +14,7 @@ function mountPrint() {
   });
   const wrapper = mount(defineComponent({
     setup() {
-      provideDocumentMetadata({ router: undefined, document, homeIntroduction: ref({ kind: 'inactive' }), continueHomeIntroduction: () => {}, finishHomeIntroduction: () => {} });
+      provideDocumentMetadata({ router: undefined, document, homeIntroduction: ref({ kind: 'inactive' }), finishHomeIntroduction: () => {} });
       return () => h(Client);
     },
   }));

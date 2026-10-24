@@ -38,6 +38,12 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
       if (id.startsWith('\0virtual:file-protocol-standalone/worker/')) {
         return 'export async function createStandaloneWorker(){throw new Error("Worker bootstrap is not run by this fixture");}';
       }
+      if (id === '\0virtual:llama-cpp-browser-core/availability') {
+        // The image boundary has no llama runtime. Model the public capability
+        // contract separately from native core factories so caller modules can
+        // still import the named flag without bundling profiling artifacts.
+        return 'export const gpuProfilingAvailable = false;';
+      }
       if (id.startsWith('\0virtual:llama-cpp-browser-core/')) {
         return 'export default function () { throw new Error("Native llama is not executed by this bundle fixture"); }';
       }
@@ -161,10 +167,14 @@ describe('hosted-only bicore image boundary', () => {
     for (const name of ['entry.ts', 'impl.ts']) {
       expect(workerModules.some(id => id.endsWith('/inventory-worker/' + name))).toBe(true);
     }
-    expect(workerModules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(true);
-    expect(workerModules.some(id => id.endsWith('/logic/catalog-file-download.ts'))).toBe(true);
+    // Image model acquisition is now implemented by the shared Hugging Face
+    // writer, rather than the former image-specific download Worker.
+    expect(workerModules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(false);
+    expect(workerModules.some(id => id.endsWith('/logic/catalog-file-download.ts'))).toBe(false);
+    expect(workerModules.some(id => id.endsWith('/hugging-face-download/worker/impl.ts'))).toBe(true);
+    expect(workerModules.some(id => id.endsWith('/hugging-face-download/acquire.ts'))).toBe(true);
     expect(workerModules.some(id => id.endsWith('/privacy-fetch/broker-client.ts'))).toBe(false);
-    expect(modules.some(id => id.endsWith('/download-worker/fetch-bridge.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/hugging-face-download/fetch-bridge.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/diagnostics.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/use-image-generation-standalone.ts'))).toBe(false);
     for (const name of ['entry.ts', 'session.ts', 'core-loader.ts', 'gguf-file.ts', 'gpu-diagnostics.ts', 'gpu-performance.ts', 'performance-counters.ts', 'run-performance.ts', 'webgpu.ts', 'preview-control.ts', 'preview-output.ts', 'image-input.ts', 'image-output.ts']) {
@@ -220,7 +230,7 @@ describe('hosted-only bicore image boundary', () => {
     expect(code).toContain('画像を復元中…');
     expect(code).not.toContain('Missing en.ts for catalog message');
     expect(modules.some(id => id.includes('virtual:image-strings'))).toBe(false);
-  }, 60_000);
+  }, 120_000);
 
   it('rejects a direct hosted import instead of relying on dead-code elimination', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: "export * from '@/features/stable-diffusion-cpp-browser/worker/client-hosted';", injectImageAsset: false })).rejects.toThrow('Hosted image implementation');

@@ -1,19 +1,20 @@
 import { z } from 'zod';
 import { inspectWeightFile, readModelJson, type ModelMetadataFile, type WeightMetadata } from '@/features/stable-diffusion-cpp-browser/logic/model-metadata';
 import { relativeCompanionPath, validModelPath } from '@/features/stable-diffusion-cpp-browser/logic/model-path';
+import { parseGgufSplitPath } from '@/utils/gguf-file-paths';
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { SyncBlobReader } from './gguf-file';
 
-type Input = Pick<Request['models'][number], 'file' | 'path' | 'companions'>;
+type Input = Pick<Request['models'][number], 'file' | 'relativePath' | 'companions'>;
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(map => Object.keys(map).length > 0) });
 
 /** Validate untrusted model/index data before the native parser can fall back to
  * a different format. No model-provided network path or code is ever executed. */
-export async function validateModelMounts({ input, reader, capabilities }: { input: Input, reader: SyncBlobReader, capabilities: number }): Promise<{ path: string, files: { path: string, file: File }[], summary: { tensorCount: number, dtypes: string, largestElements: number } }> {
-  const path = input.path ?? input.file.name;
-  const files = [{ path, file: input.file }, ...(input.companions ?? [])];
-  const names = new Set(files.map(file => file.path));
-  if (files.some(file => !validModelPath({ path: file.path })) || names.size !== files.length) {
+export async function validateModelMounts({ input, reader, capabilities }: { input: Input, reader: SyncBlobReader, capabilities: number }): Promise<{ relativePath: string, files: { relativePath: string, file: File }[], summary: { tensorCount: number, dtypes: string, largestElements: number } }> {
+  const path = input.relativePath ?? input.file.name;
+  const files = [{ relativePath: path, file: input.file }, ...(input.companions ?? [])];
+  const names = new Set(files.map(file => file.relativePath));
+  if (files.some(file => !validModelPath({ path: file.relativePath })) || names.size !== files.length) {
     throw new Error('Unsafe or duplicate model paths');
   }
   const metadata = new Map<string, WeightMetadata>();
@@ -31,13 +32,13 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
     };
   }
   for (const entry of files) {
-    if (entry.path === path && /\.json$/i.test(path)) {
+    if (entry.relativePath === path && /\.json$/i.test(path)) {
       continue;
     }
     const inspection = await inspectWeightFile({ file: source({ file: entry.file }), signal: undefined });
     switch (inspection.status) {
     case 'weights': break;
-    case 'invalid': case 'unknown': case 'lfs-pointer': throw new Error(`${entry.path}: ${inspection.reason}`);
+    case 'invalid': case 'unknown': case 'lfs-pointer': throw new Error(`${entry.relativePath}: ${inspection.reason}`);
     default: {
       const exhaustive: never = inspection;
       throw new Error(String(exhaustive));
@@ -49,7 +50,7 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
     if (inspection.value.format === 'safetensors' && entry.file.size >= 2 ** 32 && !(capabilities & 1)) {
       throw new Error('This bicore needs the 64-bit safetensors update. Keep the original file; do not split it.');
     }
-    metadata.set(entry.path, inspection.value);
+    metadata.set(entry.relativePath, inspection.value);
   }
   const primary = metadata.get(path);
   const required = new Set([path]);
@@ -73,13 +74,13 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
     if (!(capabilities & 2)) {
       throw new Error('This bicore needs the GGUF shard-group update. Keep the repository shard files unchanged.');
     }
-    const match = /^(.*)-([0-9]{5})-of-([0-9]{5})(\.gguf)$/i.exec(path);
-    if (!match || Number(match[2]) !== primary.split.index + 1 || Number(match[3]) !== primary.split.count) {
+    const splitPath = parseGgufSplitPath({ relativePath: path });
+    if (!splitPath || splitPath.index !== primary.split.index + 1 || splitPath.count !== primary.split.count) {
       throw new Error('GGUF filename and split metadata disagree');
     }
     let count = 0;
     for (let i = 0; i < primary.split.count; i++) {
-      const target = `${match[1]}-${String(i + 1).padStart(5, '0')}-of-${match[3]}${match[4]}`;
+      const target = `${splitPath.stem}-${String(i + 1).padStart(5, '0')}-of-${String(splitPath.count).padStart(5, '0')}${splitPath.extension}`;
       required.add(target);
       const member = metadata.get(target);
       if (!member || member.format !== 'gguf' || !member.split || member.split.index !== i || member.split.count !== primary.split.count || member.split.tensors !== primary.split.tensors) {
@@ -114,8 +115,8 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
     }
   }
   return {
-    path,
-    files: files.filter(entry => required.has(entry.path)),
+    relativePath: path,
+    files: files.filter(entry => required.has(entry.relativePath)),
     summary: {
       tensorCount,
       dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512),

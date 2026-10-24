@@ -130,7 +130,7 @@ watch(identity, ([active, chatId, storeId, sessionId], _previous, onCleanup) => 
         readTarget,
         readContext() {
           const view = props.workspace, parameters = view.editor.parameters.value;
-          const model = view.editor.library.models.value.find(choice => choice.id === view.editor.library.main.value);
+          const model = view.editor.library.models.value.find(choice => choice.candidateKey === view.editor.library.selectedCandidateKey.value);
           return {
             sessionTitle: view.currentSession.value?.title ?? '',
             model: model?.label ?? '',

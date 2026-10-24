@@ -1,0 +1,1 @@
+export const llamaCppPerformance__gpu_profiling_help = (): string => "Mede o tempo dos shaders com o runtime de diagnóstico WebGPU de 64 bits. O perfilamento adiciona sobrecarga, por isso essas execuções são excluídas dos resumos de velocidade normal.";

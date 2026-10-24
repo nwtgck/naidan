@@ -55,7 +55,12 @@ it('rejects an entire over-limit selection without silently truncating it', asyn
   expect(wrapper!.get('[data-testid="image-lora-file-error"]').text()).toContain('16');
 });
 
-it.each([new File(['not an adapter'], 'model.json'), new File([], 'empty.safetensors'), new File(['1234567'], 'short.gguf')])('rejects invalid file input %s', async file => {
+it.each([
+  { name: 'unsupported extension', content: 'not an adapter', filename: 'model.json' },
+  { name: 'empty safetensors', content: '', filename: 'empty.safetensors' },
+  { name: 'short GGUF', content: '1234567', filename: 'short.gguf' },
+])('rejects invalid file input $name', async ({ content, filename }) => {
+  const file = new File([content], filename);
   await choose({ files: [file] });
   expect(selections).toEqual([]);
   expect(wrapper!.find('[data-testid="image-lora-file-error"]').exists()).toBe(true);
@@ -76,8 +81,8 @@ it('keeps unavailable controls visible and rejects programmatic file changes', a
 
 it('adds multiple saved adapters only on request and distinguishes the same path in different stores', async () => {
   const one = new File(['first adapter'], 'style.gguf'), two = new File(['second adapter'], 'style.gguf');
-  const saved = [{ id: 'opfs', label: one.name, path: 'styles/style.gguf', file: one, detail: 'OPFS: user/adapters/styles/style.gguf' },
-    { id: 'host', label: two.name, path: 'styles/style.gguf', file: two, detail: 'Host: models/owner/adapters/styles/style.gguf' }];
+  const saved = [{ candidateKey: 'opfs', label: one.name, relativePath: 'styles/style.gguf', file: one, detail: 'OPFS: user/adapters/styles/style.gguf' },
+    { candidateKey: 'host', label: two.name, relativePath: 'styles/style.gguf', file: two, detail: 'Host: models/owner/adapters/styles/style.gguf' }];
   await wrapper!.setProps({ saved });
   const selector = wrapper!.getComponent(ImageModelPicker);
   expect(selector.props('modelValue')).toBe('');
@@ -104,10 +109,10 @@ it('adds multiple saved adapters only on request and distinguishes the same path
 
 it('never substitutes a different saved adapter when the selected inventory entry disappears', async () => {
   const file = new File(['adapter fixture'], 'style.gguf');
-  await wrapper!.setProps({ saved: [{ id: 'one', label: file.name, detail: 'OPFS: one/style.gguf', file, path: file.name }] });
+  await wrapper!.setProps({ saved: [{ candidateKey: 'one', label: file.name, detail: 'OPFS: one/style.gguf', file, relativePath: file.name }] });
   wrapper!.getComponent(ImageModelPicker).vm.$emit('update:modelValue', 'one');
   await wrapper!.vm.$nextTick();
-  await wrapper!.setProps({ saved: [{ id: 'two', label: file.name, detail: 'OPFS: two/style.gguf', file, path: file.name }] });
+  await wrapper!.setProps({ saved: [{ candidateKey: 'two', label: file.name, detail: 'OPFS: two/style.gguf', file, relativePath: file.name }] });
   const add = wrapper!.get('[data-testid="image-lora-add-saved"]');
   expect(add.element.matches(':disabled')).toBe(true);
   await add.trigger('click');

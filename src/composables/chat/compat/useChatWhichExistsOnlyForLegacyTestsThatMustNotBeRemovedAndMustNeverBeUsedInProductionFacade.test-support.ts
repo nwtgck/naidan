@@ -1,5 +1,7 @@
 import { computed, type ComputedRef } from 'vue';
-import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/01-models/types';
+import type { Attachment, Chat, ChatContent, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
+import { captureChatContentWrite } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
@@ -8,6 +10,7 @@ import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge'
 import {
   availableModels as sharedAvailableModels,
   chatRuntimeStore,
+  chatDataStore,
   chatTmpDirectories,
   chatVolatileState,
   contextCompactProgress,
@@ -25,12 +28,12 @@ import {
   isTaskRunning,
   liveChatRegistry,
   loadData,
-  registerLiveInstance,
+  registerLiveInstance as registerOwnedLiveInstance,
   rootItems,
   setContextCompactProgress,
   streaming,
   unregisterLiveInstance,
-  updateChatContent,
+  updateChatContent as updateOwnedChatContent,
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
@@ -64,6 +67,9 @@ import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 import type { ImageRequestParams } from '@/utils/image-generation';
+import { installLegacyChatStorageFixture, resetLegacyChatStorageFixture, seedLegacyChatStorageFixture } from './legacy-chat-storage.test-support';
+
+installLegacyChatStorageFixture({ storage: storageService, getSettings: () => useSettings().settings.value as Settings });
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 
@@ -102,6 +108,17 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
   const inheritedSettings = chatDerivedState.inheritedSettings;
   const activeMessages = chatDerivedState.activeMessages;
   const allMessages = chatDerivedState.allMessages;
+
+  function registerLiveInstance({ chat }: { chat: Chat }) {
+    seedLegacyChatStorageFixture({ storage: storageService, chat });
+    registerOwnedLiveInstance({ chat });
+  }
+
+  async function updateChatContent({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }) {
+    const chat = chatCurrentBridge.getChatTargetById({ id });
+    const write = storageService.createChatContentWrite({ id, content: chat ?? undefined, binding: undefined });
+    return await updateOwnedChatContent({ id, updater, write });
+  }
 
   async function addMountToChat({
     chatId,
@@ -439,6 +456,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
     if (chat === null) {
       return;
     }
+    const write = captureChatContentWrite({ chat, dependency: 'model' });
 
     const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
     const endpoint = (() => {
@@ -478,9 +496,9 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
       signal,
       getLiveChat,
       updateChatContent: async ({ chatId, updater }) => {
-        await updateChatContent({
+        await updateOwnedChatContent({
           id: chatId,
-
+          write,
           updater: ({ current }) => {
             if (current === null) {
               throw new Error('Chat content not found');
@@ -1028,13 +1046,21 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
     registerLiveInstance,
     setContextCompactProgress,
     clearLiveChatRegistryImpl: () => {
-      liveChatRegistry.clear();
+      chatDataStore.TEST_ONLY.resetLiveState();
     },
   });
-  const __testOnlySetCurrentChat = chatTestSupport.__testOnlySetCurrentChat;
+  function __testOnlySetCurrentChat({ chat }: { chat: Chat | null }) {
+    if (chat !== null) {
+      seedLegacyChatStorageFixture({ storage: storageService, chat });
+    }
+    chatTestSupport.__testOnlySetCurrentChat({ chat });
+  }
   const __testOnlySetCurrentChatGroup = chatTestSupport.__testOnlySetCurrentChatGroup;
   const __testOnlySetContextCompactProgress = chatTestSupport.__testOnlySetContextCompactProgress;
-  const clearLiveChatRegistry = chatTestSupport.clearLiveChatRegistry;
+  function clearLiveChatRegistry() {
+    resetLegacyChatStorageFixture({ storage: storageService });
+    chatTestSupport.clearLiveChatRegistry();
+  }
 
   const clearActiveTaskCounts = () => {
     chatRuntimeStore.clearActiveTaskCounts();

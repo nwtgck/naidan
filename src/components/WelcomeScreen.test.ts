@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
+import WelcomeScreenFrame from './layout/WelcomeScreenFrame.vue';
 import { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/01-models/types';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -65,6 +66,7 @@ describe('WelcomeScreen.vue', () => {
 
   it('behaves like a wallpaper (absolute positioning and centered)', () => {
     const wrapper = mount(WelcomeScreen);
+    expect(wrapper.getComponent(WelcomeScreenFrame).props('placement')).toBe('floating');
     const container = wrapper.find('div'); // Root div
     expect(container.classes()).toContain('absolute');
     expect(container.classes()).toContain('inset-0');
@@ -122,6 +124,7 @@ describe('WelcomeScreen primary slot', () => {
     expect(wrapper.find('a[download]').exists()).toBe(false);
     expect(wrapper.classes()).toContain('relative');
     expect(wrapper.classes()).not.toContain('absolute');
+    expect(wrapper.getComponent(WelcomeScreenFrame).props('placement')).toBe('contained');
     wrapper.unmount();
   });
 });
@@ -149,5 +152,25 @@ describe('ordinary Chat recovery slot', () => {
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
     expect(wrapper.classes()).toContain('relative');
     wrapper.unmount();
+  });
+});
+
+describe('ordinary Chat actions slot', () => {
+  it('retains storage guidance, portable download, and suggestions around local model actions', () => {
+    const wrapper = mount(WelcomeScreen, { slots: { actions: '<section data-testid="local-actions">Local model files</section>' } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(wrapper.find('[data-testid="local-actions"]').exists()).toBe(true);
+    const introduction = wrapper.get('[data-testid="welcome-storage-introduction"]').element;
+    expect(introduction.contains(wrapper.get('h2').element)).toBe(true);
+    expect(introduction.contains(wrapper.get('[data-testid="local-actions"]').element)).toBe(false);
+    expect(wrapper.get('h2').text()).toContain('All conversations are stored locally.');
+    expect(wrapper.text()).toContain('Your data stays on your device.');
+    expect(wrapper.find('a[download]').exists()).toBe(__BUILD_MODE_IS_HOSTED__);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    expect(wrapper.getComponent(WelcomeScreenFrame).props('placement')).toBe('contained');
   });
 });

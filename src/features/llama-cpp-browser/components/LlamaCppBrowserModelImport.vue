@@ -1,35 +1,71 @@
 <script setup lang="ts">
-import { onUnmounted, ref, useId } from 'vue';
-import { AlertCircleIcon, FileUpIcon, FolderOpenIcon } from 'lucide-vue-next';
+import TemporaryModelFolders from '@/components/TemporaryModelFolders.vue';
+import { computed, defineAsyncComponent, onUnmounted, ref, watch } from 'vue';
+import { AlertCircleIcon, FileUpIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
-import { errorCode, type ErrorCode, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
+import { errorCode, type ErrorCode, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
-import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.vue';
+import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
+import LlamaCppBrowserModelFileInput from './LlamaCppBrowserModelFileInput.vue';
+import LlamaCppBrowserModelImportModes from './LlamaCppBrowserModelImportModes.vue';
+
+const LlamaCppBrowserModelImportLinkedFolders = defineAsyncComponent(() => import('./LlamaCppBrowserModelImportLinkedFolders.vue'));
 
 const props = defineProps<{ disabled: boolean }>();
 const emit = defineEmits<{ busy: [value: boolean], changed: [] }>();
-const id = useId();
 const active = ref<AbortController>();
+const importProgress = ref<Progress>();
+const percentage = computed(() => importProgress.value && importProgress.value.total > 0
+  ? Math.min(100, Math.max(0, Math.round(importProgress.value.completed / importProgress.value.total * 100))) : undefined);
 const localError = ref<ErrorCode>();
-const dragDepth = ref(0);
-const fileInput = ref<HTMLInputElement>();
-const directoryInput = ref<HTMLInputElement>();
 let disposed = false;
+const mode = ref<'opfs' | 'host' | 'temp'>('opfs');
+const linkSupported = missingHostModelDirectoryApis().length === 0;
+const linkBusy = ref(false);
+const modes = computed(() => [
+  { mode: 'opfs' as const, label: lazyStrings.SHARED__model_import_save_in_browser(), availability: 'available' as const },
+  { mode: 'host' as const, label: lazyStrings.SHARED__model_import_link_folder(), availability: linkSupported ? 'available' as const : 'unavailable' as const },
+  { mode: 'temp' as const, label: lazyStrings.SHARED__model_import_use_temporarily(), availability: 'available' as const },
+]);
+// Switching modes is a local presentation choice, not a persisted preference.
+// In particular an unsupported link option stays keyboard/click selectable:
+// only actual file operations honor the parent's disabled state, so explanations
+// remain discoverable even when inference itself is unavailable.
+watch(mode, () => {
+  localError.value = undefined;
+});
 type ImportInput = { files: File[], directories: ModelDirectoryInput[] };
 
 async function importFiles({ collect }: { collect: () => ImportInput | Promise<ImportInput> }): Promise<void> {
   // Returning focus from a native drag or file picker starts a read-only list
   // refresh. That refresh must not disable imports or silently discard the input.
-  if (disposed || props.disabled || active.value !== undefined) {
+  if (disposed || props.disabled || active.value !== undefined || mode.value === 'host' || linkBusy.value) {
     return;
   }
   localError.value = undefined;
+  const storage = mode.value;
+  const importOptions = ((): { storage?: 'temp' } => {
+    switch (storage) {
+    case 'opfs': return {};
+    case 'temp': return { storage };
+    default: {
+      const exhaustive: never = storage;
+      throw new Error(String(exhaustive));
+    }
+    }
+  })();
   // Reserve the operation before asynchronous entry traversal, not just before
   // writing files. Cancellation/unmount must prevent late writes, and a second
   // drop, download, or deletion must not take over while an entry callback is pending.
   const controller = new AbortController();
   active.value = controller;
+  importProgress.value = undefined;
+  function onProgress({ progress }: { progress: Progress }): void {
+    if (!disposed && active.value === controller && !controller.signal.aborted) {
+      importProgress.value = progress;
+    }
+  }
   emit('busy', true);
   let needsRefresh = false;
   try {
@@ -48,14 +84,16 @@ async function importFiles({ collect }: { collect: () => ImportInput | Promise<I
         break;
       }
       needsRefresh = true;
-      await llamaCppBrowserService.importDirectory({ directory, signal: controller.signal });
+      importProgress.value = undefined;
+      await llamaCppBrowserModelFiles.importDirectory({ directory, signal: controller.signal, onProgress, ...importOptions });
     }
     for (const file of files) {
       if (controller.signal.aborted) {
         break;
       }
       needsRefresh = true;
-      await llamaCppBrowserService.importModel({ file, signal: controller.signal });
+      importProgress.value = undefined;
+      await llamaCppBrowserModelFiles.importModel({ file, signal: controller.signal, onProgress, ...importOptions });
     }
   } catch (error) {
     if (!disposed && !controller.signal.aborted) {
@@ -96,26 +134,12 @@ async function importDirectory({ event }: { event: Event }): Promise<void> {
   await importFiles({ collect: () => ({ files: [], directories: [directoryFromFiles({ files })] }) });
 }
 
-function dragEnter({ event }: { event: DragEvent }): void {
-  if (props.disabled || active.value !== undefined || !event.dataTransfer?.types.includes('Files')) {
-    return;
-  }
-  dragDepth.value++;
-}
-
-function dragOver({ event }: { event: DragEvent }): void {
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = props.disabled || active.value !== undefined ? 'none' : 'copy';
-  }
-}
-
 async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
-  dragDepth.value = 0;
   const transfer = event.dataTransfer;
   if (!transfer) {
     return;
   }
-  await importFiles({ collect: () => droppedModels({ transfer }) });
+  await importFiles({ collect: () => droppedModels({ transfer, signal: active.value?.signal }) });
 }
 
 function cancel(): void {
@@ -130,32 +154,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <section data-testid="llama-cpp-browser-import" tw-class="space-y-3">
-    <fieldset :disabled="disabled || active !== undefined" tw-class="space-y-3 disabled:opacity-50">
+    <fieldset :disabled="active !== undefined || linkBusy" tw-class="space-y-3 disabled:opacity-50">
       <legend tw-class="w-full flex items-center gap-2 pb-2 mb-3 border-b border-gray-100 dark:border-gray-800">
         <FileUpIcon tw-class="w-5 h-5 text-blue-500" />
         <span tw-class="text-sm font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.llamaCppBrowser__gguf_model_files() }}</span>
       </legend>
-      <div
-        data-testid="llama-cpp-browser-drop-zone"
-        :tw-class="['rounded-2xl border-2 border-dashed p-4 text-center transition-colors', dragDepth > 0 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30']"
-        @dragenter.prevent.stop="dragEnter({ event: $event })"
-        @dragover.prevent.stop="dragOver({ event: $event })"
-        @dragleave.prevent.stop="dragDepth = Math.max(0, dragDepth - 1)"
-        @drop.prevent.stop="dropFiles({ event: $event })"
-      >
-        <div tw-class="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto mb-2"><FileUpIcon tw-class="w-4 h-4" /></div>
-        <p tw-class="text-sm font-bold text-gray-800 dark:text-white">{{ lazyStrings.llamaCppBrowser__drop_model_folders_or_gguf_files_here() }}</p>
-        <p :id="`${id}-file-help`" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-1 mb-3">{{ lazyStrings.llamaCppBrowser__or_choose_files_from_your_device() }}</p>
-        <input ref="fileInput" type="file" accept=".gguf" multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_gguf_files()" :aria-describedby="`${id}-file-help`" data-testid="llama-cpp-browser-file" tw-class="sr-only" @change="importFile({ event: $event })" />
-        <input ref="directoryInput" type="file" webkitdirectory multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_model_folder()" data-testid="llama-cpp-browser-directory" tw-class="sr-only" @change="importDirectory({ event: $event })" />
-        <button type="button" data-testid="llama-cpp-browser-choose-directory" tw-class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400 border border-gray-200 dark:border-gray-700 shadow-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" @click="directoryInput?.click()"><FolderOpenIcon tw-class="w-4 h-4" />{{ lazyStrings.llamaCppBrowser__choose_model_folder() }}</button>
-        <button type="button" data-testid="llama-cpp-browser-choose-files" tw-class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400 border border-gray-200 dark:border-gray-700 shadow-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" @click="fileInput?.click()">
-          <FolderOpenIcon tw-class="w-4 h-4" />{{ lazyStrings.llamaCppBrowser__choose_gguf_files() }}
-        </button>
-      </div>
+      <LlamaCppBrowserModelImportModes v-model="mode" :modes="modes" :disabled="active !== undefined || linkBusy" />
+      <LlamaCppBrowserModelImportLinkedFolders v-if="mode === 'host'" :disabled="disabled || active !== undefined" @busy="linkBusy = $event; emit('busy', $event)" @changed="emit('changed')" />
+      <LlamaCppBrowserModelFileInput v-if="mode !== 'host'" :disabled="disabled || active !== undefined" :mode="mode" layout="compact" @files="importFile({ event: $event })" @directory="importDirectory({ event: $event })" @drop-files="dropFiles({ event: $event })" />
     </fieldset>
+    <TemporaryModelFolders v-if="mode === 'temp'" :disabled="disabled || active !== undefined" />
     <div v-if="active" tw-class="rounded-2xl border border-blue-100 dark:border-blue-900/30 p-4 space-y-3">
-      <LlamaCppBrowserLoadingIndicator scope="import" />
+      <div tw-class="flex items-center justify-between gap-3">
+        <p role="status" data-testid="llama-cpp-browser-import-status" tw-class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><Loader2Icon aria-hidden="true" tw-class="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" />{{ lazyStrings.llamaCppBrowser__importing() }}</p>
+        <span v-if="percentage !== undefined" tw-class="text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ percentage }}%</span>
+      </div>
+      <template v-if="percentage !== undefined">
+        <div role="progressbar" :aria-label="lazyStrings.llamaCppBrowser__importing()" :aria-valuenow="percentage" :aria-valuemin="0" :aria-valuemax="100" tw-class="h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div tw-class="h-full rounded-full bg-blue-500/80 dark:bg-blue-400/80 transition-[width] duration-300 ease-out motion-reduce:transition-none" :style="{ width: `${percentage}%` }"></div></div>
+      </template>
       <div tw-class="flex justify-end"><button type="button" data-testid="llama-cpp-browser-cancel" tw-class="px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="cancel">{{ lazyStrings.SHARED__cancel() }}</button></div>
     </div>
     <div v-if="localError" role="alert" tw-class="flex items-start gap-3 rounded-2xl p-4 border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400">

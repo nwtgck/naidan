@@ -26,16 +26,16 @@ export function createImageSessionKeys() {
       modelArguments,
       models: request.models.map(model => ({
         slot: model.slot,
-        path: model.path ?? model.file.name,
+        path: model.relativePath ?? model.file.name,
         // Library identity covers the publication and all companions. Manual
         // File objects with identical names/size/time are still distinct.
-        source: model.sourceId ?? [token({ file: model.file }), ...(model.companions ?? []).map(entry => [entry.path, token({ file: entry.file })])],
+        source: model.modelFilesReuseKey ?? [token({ file: model.file }), ...(model.companions ?? []).map(entry => [entry.relativePath, token({ file: entry.file })])],
       })).sort((a, b) => a.slot.localeCompare(b.slot)),
       // Strength is per generation. Files stay mounted while their native
       // adapter state is retained, including a temporary strength of zero.
-      loras: request.loras.map(({ file, path, strength: _strength, ...unhandled }) => {
+      loras: request.loras.map(({ file, relativePath, strength: _strength, ...unhandled }) => {
         unhandled satisfies Record<PropertyKey, never>;
-        return { path: path ?? file.name, file: token({ file }) };
+        return { path: relativePath ?? file.name, file: token({ file }) };
       }),
     });
   }

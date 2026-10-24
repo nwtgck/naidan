@@ -22,7 +22,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <details tw-class="mt-4 text-xs text-gray-500 dark:text-gray-400" data-testid="llama-delete-details">
       <summary tw-class="cursor-pointer font-medium">{{ lazyStrings.llamaCppBrowser__files_to_delete() }}</summary>
-      <ul tw-class="mt-2 max-h-48 overflow-y-auto space-y-1 font-mono break-all"><li v-for="file in selected?.files" :key="file.path">{{ file.path }}</li></ul>
+      <ul tw-class="mt-2 max-h-48 overflow-y-auto space-y-1 font-mono break-all"><li v-for="file in selected?.files" :key="file.relativePath">{{ file.relativePath }}</li></ul>
     </details>
   </CustomDialog>
 </template>

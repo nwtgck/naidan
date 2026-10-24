@@ -440,33 +440,41 @@ describe('Sidebar Keyboard Navigation', () => {
     expect(mockOpenChatGroup).toHaveBeenCalledTimes(1);
   });
 
-  it('triggers scrollIntoView when chat is selected', async () => {
-    const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+  it('reveals the selected chat inside the navigation list', async () => {
+    using scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    using _clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100);
+    using _scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1000);
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(function (this: HTMLElement) {
+      return new DOMRect(0, this.dataset.testid === 'sidebar-nav' ? 0 : 180, 100, this.dataset.testid === 'sidebar-nav' ? 100 : 40);
+    });
     mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0 }];
 
     mockCurrentChat.value = { id: '1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
 
     await nextTick();
-    vi.advanceTimersByTime(150);
+    await nextTick();
 
-    // scrollIntoViewSafe calls container.scrollTo
     expect(scrollToSpy).toHaveBeenCalled();
-    scrollToSpy.mockRestore();
   });
 
-  it('triggers scrollIntoView when group is selected', async () => {
-    const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+  it('reveals the selected chat group inside the navigation list', async () => {
+    using scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    using _clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100);
+    using _scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1000);
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(function (this: HTMLElement) {
+      return new DOMRect(0, this.dataset.testid === 'sidebar-nav' ? 0 : 180, 100, this.dataset.testid === 'sidebar-nav' ? 100 : 40);
+    });
     mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }];
 
+    mockCurrentChat.value = null;
     mockCurrentChatGroup.value = { id: 'g1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
 
     await nextTick();
-    vi.advanceTimersByTime(150);
+    await nextTick();
 
     expect(scrollToSpy).toHaveBeenCalled();
-    scrollToSpy.mockRestore();
   });
 
   it('ignores arrow keys when focus area is NOT sidebar', async () => {

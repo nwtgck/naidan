@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { watch, computed, shallowRef } from 'vue';
+import { watch, computed, shallowRef, onScopeDispose } from 'vue';
+import { storageService } from '@/00-storage/service';
+import { hasModelEntryQuery } from '@/logic/startup/entry-intent';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
+import { useAppEntry } from '@/composables/useAppEntry';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
 const chatNavigation = useChatNavigation();
+const entry = useAppEntry();
 
 const chatId = computed(() => {
   const params = currentRoute.value?.params;
@@ -30,36 +34,43 @@ const load = shallowRef<{
   target: typeof target.value,
   status: 'loading' | 'ready' | 'error',
 }>();
-const loadStatus = computed(() => load.value?.target === target.value ? load.value.status : 'loading');
+const modelEntry = computed(() => hasModelEntryQuery({ query: currentRoute.value?.query ?? {} }));
+const loadStatus = computed(() => load.value?.target === target.value && !modelEntry.value ? load.value.status : 'loading');
+let active = true;
 
 async function syncChat() {
+  const route = currentRoute.value;
+  if (!active || route === undefined || modelEntry.value) {
+    return;
+  }
   const request = { target: target.value, status: 'loading' as const };
   load.value = request;
   const { id, leafId, messageId } = request.target;
   if (!id) {
     return;
   }
-
+  let isStorageCurrent: (() => boolean) | undefined;
+  const isCurrent = () => active && load.value === request && target.value === request.target && !modelEntry.value
+    && (isStorageCurrent === undefined || isStorageCurrent());
   try {
-    if (messageId) {
-      await chatNavigation.openChatAtMessage({
-        chatId: toChatId({ raw: id }),
-        messageId,
-      });
-    } else {
-      await chatNavigation.openChat({
-        chatId: toChatId({ raw: id }),
-        leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }),
-      });
+    isStorageCurrent = storageService.captureSettingsStorage();
+    const chat = messageId
+      ? await chatNavigation.openChatAtMessage({ chatId: toChatId({ raw: id }), messageId, isCurrent })
+      : await chatNavigation.openChat({ chatId: toChatId({ raw: id }), leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }), isCurrent });
+    if (!isCurrent()) {
+      return;
     }
-    if (load.value === request) {
-      load.value = { ...request, status: 'ready' };
+    if (chat === null) {
+      await entry.recoverNotFound({ isCurrent });
+      return;
     }
+    load.value = { ...request, status: 'ready' };
   } catch (error) {
-    console.error('Failed to load chat:', error);
-    if (load.value === request) {
-      load.value = { ...request, status: 'error' };
+    if (!isCurrent()) {
+      return;
     }
+    console.error('Failed to load chat:', error);
+    load.value = { ...request, status: 'error' };
   }
 }
 
@@ -80,7 +91,26 @@ function handleAutoSent() {
   router.replace({ query });
 }
 
-watch(target, syncChat, { immediate: true });
+// Clearing q after submission must not hide the pane and reopen the same chat.
+// Only a new target or entering/leaving the explicit model URL changes its owner.
+watch([target, modelEntry], syncChat, { immediate: true });
+const unsubscribeStorage = storageService.subscribeToChanges({
+  listener: ({ event }) => {
+    switch (event.type) {
+    case 'migration': void syncChat();
+      break;
+    case 'chat_content': case 'chat_meta_and_chat_group': case 'chat_content_generation': case 'settings': case 'binary_objects': case 'naidan_rpc_registry': break;
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
+    }
+  },
+});
+onScopeDispose(() => {
+  active = false;
+  unsubscribeStorage();
+});
 
 
 defineExpose({
@@ -97,7 +127,7 @@ defineExpose({
     <!-- Keep the previous pane mounted to retain its draft and attachment URLs while a read fails. -->
     <div
       v-show="loadStatus === 'ready'"
-      :inert="loadStatus !== 'ready'"
+      :inert="loadStatus !== 'ready' || undefined"
       data-testid="chat-page-content"
       tw-class="h-full w-full"
     >

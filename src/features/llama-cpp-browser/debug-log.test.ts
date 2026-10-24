@@ -88,8 +88,8 @@ describe('private browser diagnostics', () => {
 
   it('logs safe technical fields with the common prefix', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' } });
-    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' });
+    logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'webgpu-wasm64-jspi' } });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'load-complete', elapsedMs: 42, profile: 'webgpu-wasm64-jspi' });
   });
 
   it('forwards cache counts and native state without exposing either token sequence', () => {

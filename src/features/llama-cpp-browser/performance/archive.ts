@@ -1,3 +1,4 @@
+import { isGpuProfileTrial, summarizeGpuProfiles } from './gpu-profile-summary';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
 import { performanceProtocol, snapshotSchema, type PerformanceSnapshot } from './types';
@@ -17,6 +18,10 @@ const readme = `# Naidan llama.cpp browser performance / ${performanceProtocol}
 - memory/: canonical bounded raw memory observations, including partial failures;
   trials.jsonl links each available file and summarizes its retained/dropped counts.
 - backend-placement.json: operation metadata from separate diagnostic calls.
+- gpu-profile.jsonl: one record per GPU-profiling attempt, including missing and
+  partial results; the canonical shader/phase/grid timestamp observations.
+- gpu-profile-summary.json: per-request/per-phase shader rankings, not a model
+  speed benchmark or a cross-request average.
 - outputs/: actual input, output, and reasoning for each attempt.
 - summary.csv: one row per attempt, including failures and exclusions; unlike
   summary.json, this is not an aggregate or a list of only valid speed samples.
@@ -54,13 +59,62 @@ counts describe retained and discarded records, not uninterrupted sampling.
 The 128 MiB archive-output limit is not a cap on live export memory: validation,
 JSON strings, ZIP output chunks and final Blob can coexist while exporting.
 
+## Measurement modes and GPU timestamp boundaries
+plan.settings.mode is gpu-profile, standard, or both. Missing means the older
+standard-only protocol. Both runs each model's complete standard block first,
+retires its Worker, then runs the profiling block in a new Worker. Continuations
+never cross these boundaries. Each lane has its own initial load/warm-up and
+optional placement diagnostic. Request counts double, not necessarily wall time.
+The ordinary lane in both always uses webgpu-wasm64-jspi, matching the diagnostic
+profile's memory width and suspension strategy. Standalone cannot select the GPU
+profiling runtime. Hosted includes development serving as well as production.
+
+GPU-profile attempts, including their ordinary-looking generation rates, are
+instrumented and excluded from summary.json and findings.json. summary.csv keeps
+those rates only in explicitly instrumented columns. GPU pass sums are NOT
+request wall time: do not subtract them to derive CPU time or utilization.
+The upstream GGML_WEBGPU_GPU_PROFILE build changes pass boundaries and reads
+queries back. Naidan observes those existing public timestampWrites, pipeline
+labels, resolveQuerySet, copyBufferToBuffer and getMappedRange calls. It does not
+add GPU queries, dispatches, copies, maps or waits. No upstream private layouts or
+new upstream patches are used. This observer is loaded only for the diagnostic
+runtime and only isolated measurement requests can activate it.
+
+Each sample is owned by the request and phase active when its pass was encoded,
+not the phase active when readback completes. phases are prefill, decode,
+checkpoint and other. Shader labels distinguish the implementation/quantization
+when upstream includes them in the name; the collector does not guess tensor
+quantization, layer, expert, dimensions or FLOPS from a label. workgroups is the
+actual dispatch grid, NOT a tensor shape. passes counts timed compute passes;
+dispatches counts native dispatch calls inside them. A split pass has no single
+grid. minimum/maximum/meanPassMs describe passes, not individual split dispatches.
+The derived amortizedDispatchMs is total time divided by dispatch count, not an
+individual dispatch latency distribution. Multiple-pipeline passes are marked
+ambiguous and are never credited in full to each shader separately.
+
+Timestamp values are nanoseconds converted to milliseconds; precision is
+browser-defined. Complete status means all observed timestamp-bearing passes
+were read, not that every GPU operation was timed: untimestamped setup/copy/memset
+work is outside this table. Zero durations can reflect quantization, not absent work.
+Missing/unavailable observations are never zero-cost kernels. Check status,
+pendingPasses, invalidPasses, droppedPasses, ungroupedPasses, ambiguousPasses and
+instrumentationErrors. Collection is bounded to 1024 groups and 4096 pending
+passes per request. Retained-row phase shares exclude lost observations and must
+not be interpreted as shares of total GPU work or of the whole request.
+Rankings stay separate for initial, short-before, continuation, long, short-after
+and placement; the latter additionally synchronizes native evaluation callbacks.
+Late readbacks cannot modify a closed request or contaminate its successor.
+No hardware performance counters, physical GPU residency, swap, bandwidth
+utilization or per-instruction timings are collected.
+
 ## What changed in this protocol
 The default is one block: initial short (up to 8 output tokens), short before
 (up to 64), its real continuation (up to 16), long input (up to 8), and the
 same fresh short input after (up to 64). The initial call doubles as warm-up;
 there is no additional full-length warm-up or regenerated continuation parent.
 An optional final diagnostic generates up to 2 tokens. Thus the default is
-6 calls with an output ceiling of 162 tokens, rather than 15 calls of 128 each.
+6 calls per lane with an output ceiling of 162 tokens. GPU profiling is the UI
+default when supported; both uses 12 calls with these same default settings.
 That describes the default UI settings only; plan.steps is authoritative for this
 archive, including custom output limits, disabled diagnostics and extra blocks.
 The short before/after results stay separate. The first long input can include
@@ -77,7 +131,8 @@ whose metadata was dropped. The scheduler synchronizes each node before the
 completion callback; this deliberately changes batching and inhibits fusion.
 Tensor values are NEVER read. This extra instrumentation is enabled only in the
 separate diagnostic call, never ordinary chat or the speed-summary trials. It
-uses the installed runtime, with no additional Wasm variant or timestamp feature.
+does not itself require a different Wasm variant or a timestamp feature. It is
+orthogonal to the selected standard/GPU-profiling lane.
 Operation type, weight/source shapes and quantization, destination-buffer storage,
 and WebGPU operation-support queries are collected. This is NOT an exact
 execution-backend trace: a host buffer does not by itself prove CPU fallback,
@@ -263,6 +318,46 @@ retainedRestoredCaptures counts identical restored snapshots not copied again.
 Checkpoint elapsed time can include device-to-host transfer and synchronization;
 it must not be labelled CPU arithmetic time.
 
+## Interrupt the current trial and continue
+The user can interrupt only the active attempt, without stopping the whole run.
+An accepted request immediately records interruption.reason=user-skip and
+requestedMs (relative to that trial). The runner waits for the existing generation
+call to settle, retaining ALL received events, output, progress, summary and memory
+observations until then. settledMs is the same trial-relative clock. Late callbacks
+after settlement are ignored; unavailable/unfinished GPU observations remain missing
+or partial, never fabricated zero. No additional GPU synchronization is introduced.
+The unchanged Worker client still owns cooperative cancellation and its bounded
+forced-termination fallback. Unsaved Worker-local data cannot be recovered after
+termination; this UI does not claim which native termination path occurred.
+
+status=interrupted is distinct from skipped (never started) and cancelled (whole
+run stopped). A whole-run Stop wins if received before the attempt settles; an
+already accepted interruption record is still retained. Timeout that already fired
+cannot be converted into a user interruption. Interrupted requests remain in raw
+outputs, memory, GPU profiles and CSV but not successful normal speed aggregates.
+
+The runner NEVER reuses a failed performance scope. After an intentional abort it
+awaits full scope/Worker retirement, then acquires a new scope for the next independent
+step in the SAME model/lane. Model identity is revalidated. Dependent continuations
+are skipped with skipReason=dependency-interrupted (including transitive dependents),
+not generated from truncated output. A successful parent from a different runtime
+segment cannot supply cached continuation state (dependency-runtime-reset).
+No extra warm-up call or hidden retry of the interrupted attempt is performed.
+A paired run keeps the other lane's plan unchanged. Real non-abort failures retain
+the existing lane-failure behavior rather than becoming automatic retries.
+
+interruption.recovery is pending while settling/releasing/reacquiring, new-scope
+once the next scope is acquired, not-needed when no independent step remains in that
+lane, stopped if the whole run stops first, or failed if cleanup/reacquisition fails.
+It is NOT a report of native cancellation safety. runtimeSegment starts at zero per
+model/lane and increments on reacquisition. The first request after restarting carries
+runtime-restarted. It includes model reload cost in its ordinary timings. Successful
+aggregates partition by segment and findings reject a before/after pair crossing a
+segment. Older records without a segment are treated as segment zero. Acquisition,
+visibility, inventory and release intervals identify their segment; interrupted is
+also an orchestration outcome. The interval cap allows up to 1024 planned trials each
+requiring a separate scope. Completion order and actual request counts remain visible.
+
 ## Provenance and failure handling
 Inputs and results live in memory; no chat history is read or written. Export
 occurs only when the user presses Save ZIP, never automatically after completion.
@@ -336,6 +431,7 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           value: {
             version: 1,
             id: snapshot.plan.id,
+            mode: snapshot.plan.settings.mode ?? 'standard',
             status: snapshot.status,
             modelErrors: snapshot.modelErrors,
             exportedAt: modifiedAt.toISOString(),
@@ -347,7 +443,31 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
       await add({ name: 'environment.json', text: json({ value: snapshot.environment }) });
       await add({ name: 'summary.json', text: json({ value: summarizePerformance({ snapshot }) }) });
       await add({ name: 'findings.json', text: json({ value: performanceFindings({ snapshot }) }) });
-      await add({ name: 'backend-placement.json', text: json({ value: snapshot.trials.filter(trial => snapshot.plan.steps.find(step => step.id === trial.stepId)?.scenario === 'placement').map(trial => ({ attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, warnings: trial.warnings, diagnostic: trial.summary?.performance?.backendCensus, failureKind: trial.summary?.failureKind, stage: trial.summary?.stage, error: trial.error })) }) });
+      await add({ name: 'gpu-profile-summary.json', text: json({ value: summarizeGpuProfiles({ snapshot }) }) });
+      await add({
+        name: 'gpu-profile.jsonl',
+        text: snapshot.trials.filter(trial => isGpuProfileTrial({ trial, snapshot })).map(trial => {
+          const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
+          return JSON.stringify({
+            attemptId: trial.id,
+            stepId: trial.stepId,
+            modelIndex: trial.modelIndex,
+            lane: trial.lane ?? step?.lane,
+            scenario: step?.scenario,
+            position: step?.position,
+            status: trial.status,
+            interruption: trial.interruption,
+            runtimeSegment: trial.runtimeSegment,
+            requestedProfile: trial.options.profile,
+            observedProfile: trial.summary?.profile,
+            observationStatus: trial.summary?.performance?.gpuProfile?.status ?? 'missing',
+            observation: trial.summary?.performance?.gpuProfile,
+            warnings: trial.warnings,
+            error: trial.error,
+          });
+        }).join('\n') + '\n',
+      });
+      await add({ name: 'backend-placement.json', text: json({ value: snapshot.trials.filter(trial => snapshot.plan.steps.find(step => step.id === trial.stepId)?.scenario === 'placement').map(trial => ({ attemptId: trial.id, modelIndex: trial.modelIndex, lane: trial.lane, profile: trial.options.profile, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, warnings: trial.warnings, diagnostic: trial.summary?.performance?.backendCensus, failureKind: trial.summary?.failureKind, stage: trial.summary?.stage, error: trial.error })) }) });
       await add({
         name: 'trials.jsonl',
         text: snapshot.trials.map(({ input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record }) => {
@@ -359,22 +479,38 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
             unhandled satisfies Record<PropertyKey, never>;
             return { samples: samples.length, droppedSamples, nativeAllocations: nativeAllocations.length, droppedNativeAllocations, nativeSettings: nativeSettings.length, droppedNativeSettings };
           })();
-          return JSON.stringify({ ...record, memoryDiagnosticsFile: memoryDiagnostics ? `memory/${record.id}.json` : undefined, memoryDiagnosticsCoverage: coverage });
+          const gpuProfile = record.summary?.performance?.gpuProfile;
+          const { rows: _gpuRows, ...gpuCoverage } = gpuProfile ?? {};
+          const summary = record.summary?.performance && gpuProfile ? { ...record.summary, performance: { ...record.summary.performance, gpuProfile: undefined } } : record.summary;
+          return JSON.stringify({ ...record, summary, gpuProfileFile: gpuProfile ? 'gpu-profile.jsonl' : undefined, gpuProfileCoverage: gpuProfile ? gpuCoverage : undefined, memoryDiagnosticsFile: memoryDiagnostics ? `memory/${record.id}.json` : undefined, memoryDiagnosticsCoverage: coverage });
         }).join('\n') + '\n',
       });
-      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error']];
+      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason']];
       for (const trial of snapshot.trials) {
         if (trial.memoryDiagnostics) {
-          await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, ...trial.memoryDiagnostics } }) });
+          await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, ...trial.memoryDiagnostics } }) });
         }
         const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
         const metrics = trial.summary?.performance, rates = trialRates({ trial });
-        rows.push([trial.id, snapshot.plan.models[trial.modelIndex]?.name, step?.scenario, step?.position, step?.maxTokens, step?.role, trial.status,
+        const instrumented = trial.exclusion.includes('instrumented') || isGpuProfileTrial({ trial, snapshot });
+        let gpuTotalMs: number | undefined;
+        const gpuStatus = metrics?.gpuProfile?.status;
+        switch (gpuStatus) {
+        case undefined: case 'unavailable': break;
+        case 'complete': case 'partial': gpuTotalMs = metrics?.gpuProfile?.totalGpuMs;
+          break;
+        default: {
+          const exhaustive: never = gpuStatus;
+          throw new Error(String(exhaustive));
+        }
+        }
+        rows.push([trial.id, snapshot.plan.models[trial.modelIndex]?.modelId, snapshot.plan.settings.mode ?? 'standard', trial.lane ?? step?.lane ?? 'standard', trial.options.profile, trial.summary?.profile, step?.scenario, step?.position, step?.maxTokens, step?.role, trial.status,
           trial.warnings.join(';'), trial.exclusion.join(';'), trial.elapsedMs, trial.firstReceivedMs, trial.firstTextMs, trial.firstReasoningMs,
-          trial.exclusion.includes('instrumented') ? undefined : rates.prefillTokensPerSecond, trial.exclusion.includes('instrumented') ? undefined : rates.generationTokensPerSecond, metrics?.promptTokens, metrics?.reusedTokens,
+          instrumented ? undefined : rates.prefillTokensPerSecond, instrumented ? undefined : rates.generationTokensPerSecond, metrics?.promptTokens, metrics?.reusedTokens,
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,
-          step?.dependsOn === undefined ? undefined : snapshot.trials.find(parent => parent.stepId === step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error]);
-        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { input: trial.input, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
+          step?.dependsOn === undefined ? undefined : snapshot.trials.find(parent => parent.stepId === step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
+          instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason]);
+        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
       await add({ name: 'summary.csv', text: rows.map(row => row.map(value => csvCell({ value })).join(',')).join('\r\n') + '\r\n' });
       await writer.finalize();

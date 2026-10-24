@@ -1,3 +1,4 @@
+import { parseRepository } from './repository-input';
 import { modelGroups } from './model-variants';
 import { z } from 'zod';
 import { privacyFetchStream } from '@/features/privacy-fetch';
@@ -131,32 +132,16 @@ export async function searchModels({ query, cursor, numParameters, signal }: { q
   return { results: [...new Map(results.map(result => [result.id, result])).values()].slice(0, 20), nextCursor: nextSearchCursor({ link: response.headers.get('link') ?? undefined, requestUrl: url, cursor }) };
 }
 
-export function parseRepository({ input }: { input: string }): { repository: string, requestedVariant: string | undefined } {
-  let value = input.trim();
-  if (value.startsWith('hf.co/')) {
-    value = `https://${value}`;
-  }
-  if (value.startsWith('https://')) {
-    const url = new URL(value);
-    if (!['huggingface.co', 'hf.co'].includes(url.hostname) || url.port || url.username || url.password) {
-      throw new Error('Invalid Hugging Face repository');
-    }
-    // Any URL suffix deliberately points to main, regardless of path, query or fragment.
-    value = url.pathname.replace(/^\/+/, '').split('/').slice(0, 2).map(part => decodeURIComponent(part)).join('/');
-  }
-  const separator = value.indexOf(':');
-  const repository = repositorySchema.parse(separator < 0 ? value : value.slice(0, separator));
-  const requestedVariant = separator < 0 ? undefined : z.string().min(1).regex(/^[^\p{Cc}]+$/u).parse(value.slice(separator + 1));
-  return { repository, requestedVariant };
-}
+export { parseRepository } from './repository-input';
 
 export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<RepositoryCatalog, 'models' | 'projectors'> {
-  const { models: groups, projectors } = modelGroups({ files });
+  const { models: groups, projectors } = modelGroups({ files: files.map(file => ({ relativePath: file.path, source: file })) });
   const models: ModelCandidate[] = [];
-  for (const group of groups) {
+  for (const entries of groups) {
+    const group = entries.map(entry => entry.source);
     group.sort((a, b) => a.path.localeCompare(b.path));
     try {
-      resolveModelFiles({ files: group });
+      resolveModelFiles({ files: group.map(file => ({ relativePath: file.path })) });
     } catch {
       continue;
     }
@@ -165,7 +150,7 @@ export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<Re
       models.push({ label: group[0]!.path, files: group, size });
     }
   }
-  return { models: models.sort((a, b) => a.label.localeCompare(b.label)), projectors: projectors.sort((a, b) => a.path.localeCompare(b.path)) };
+  return { models: models.sort((a, b) => a.label.localeCompare(b.label)), projectors: projectors.map(entry => entry.source).sort((a, b) => a.path.localeCompare(b.path)) };
 }
 
 async function fetchJson({ url, signal }: { url: string, signal: AbortSignal }): Promise<{ value: unknown, headers: Headers }> {

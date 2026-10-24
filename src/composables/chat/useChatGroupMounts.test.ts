@@ -118,6 +118,9 @@ describe('useChatGroupMounts', () => {
     mockUpdateChatGroup.mockImplementation(async ({ id, updater }) => {
       expect(id).toBe(chatGroupId);
       const result = await updater({ current });
+      if (!result) {
+        throw new Error('Expected mount update');
+      }
       expect(result.name).toBe('Latest name');
       expect(result.mounts).toEqual([{ type: 'volume', volumeId, mountPath: '/latest-path', readOnly: false }]);
       // A path change while persistence is pending must also survive the live update.
@@ -135,7 +138,7 @@ describe('useChatGroupMounts', () => {
     mockCurrentChatGroupRef.value = nextChatGroup;
     mockRootItems.value = [{ type: 'chat_group', chatGroup: original }];
     mockUpdateChatGroup.mockImplementation(async ({ updater }) => {
-      expect((await updater({ current: original })).mounts).toEqual([]);
+      expect((await updater({ current: original }))?.mounts).toEqual([]);
     });
     await useChatGroupMounts().setMountReadOnly({ chatGroupId, volumeId: toVolumeId({ raw: 'removed-volume' }), readOnly: false });
     expect(original.mounts).toEqual([]);

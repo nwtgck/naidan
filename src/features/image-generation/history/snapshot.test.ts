@@ -18,7 +18,7 @@ function source() {
     strength: 0.5,
     referenceImages: [new File(['first'], 'first.png', { type: 'image/png' }), new File(['second'], 'second.png', { type: 'image/png' })],
   };
-  request.loras = [{ file: ggufFile(), path: 'disabled.gguf', strength: 0 }, { file: ggufFile(), path: 'enabled.gguf', strength: 0.8 }];
+  request.loras = [{ file: ggufFile(), relativePath: 'disabled.gguf', strength: 0 }, { file: ggufFile(), relativePath: 'enabled.gguf', strength: 0.8 }];
   return request;
 }
 
@@ -35,6 +35,24 @@ function completed() {
 }
 
 describe('image history request snapshots', () => {
+  it('keeps persisted model paths while resolving runtime relative paths and split companions', async () => {
+    const request = source();
+    const file = request.models[0]!.file, companion = new File([file], 'part.gguf');
+    request.models = [{ slot: 'model', file, relativePath: 'nested/main.gguf', companions: [{ relativePath: 'nested/part.gguf', file: companion }], modelFilesReuseKey: 'published-file-set' }];
+    const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), locateFile, createdAt: 1 });
+    expect(snapshot.request.models).toEqual([{ slot: 'model', path: 'nested/main.gguf', file: locateFile({ file }), companions: [{ path: 'nested/part.gguf', file: locateFile({ file: companion }) }] }]);
+    expect(snapshot.request.loras.map(lora => lora.path)).toEqual(['disabled.gguf', 'enabled.gguf']);
+    const restored = await prepareImageHistoryReuse({
+      record: { request: snapshot.request },
+      findFile: ({ location }) => location.name === companion.name ? companion : file,
+      getImage: async ({ binaryObjectId }) => snapshot.inputFiles.find(input => input.binaryObjectId === binaryObjectId)?.blob,
+    });
+    expect(restored.models).toEqual([{ slot: 'model', file, relativePath: 'nested/main.gguf', companions: [{ relativePath: 'nested/part.gguf', file: companion }] }]);
+    expect(restored.models[0]!.file).toBe(file);
+    expect(restored.models[0]!.companions?.[0]?.file).toBe(companion);
+    expect(restored.loras.map(lora => lora.relativePath)).toEqual(['disabled.gguf', 'enabled.gguf']);
+  });
+
   it('freezes settings, ordered inputs and requested adapter strengths before generation', () => {
     const request = source();
     const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), locateFile, createdAt: 1 });
@@ -91,7 +109,7 @@ describe('image history request snapshots', () => {
       getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
     });
     expect(restored.models.map(model => model.slot)).toEqual(request.models.map(model => model.slot));
-    expect(restored.loras.map(lora => [lora.path, lora.strength, lora.enabled])).toEqual([['disabled.gguf', 0, false]]);
+    expect(restored.loras.map(lora => [lora.relativePath, lora.strength, lora.enabled])).toEqual([['disabled.gguf', 0, false]]);
     expect(restored.missing).toEqual([missingAdapter.name]);
   });
 
@@ -109,7 +127,7 @@ describe('image history request snapshots', () => {
       getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
     });
     expect(restored.models).toHaveLength(request.models.length);
-    expect(restored.loras.map(lora => [lora.path, lora.strength])).toEqual([['first.gguf', 0.6], ['last.gguf', 0.9]]);
+    expect(restored.loras.map(lora => [lora.relativePath, lora.strength])).toEqual([['first.gguf', 0.6], ['last.gguf', 0.9]]);
     expect(restored.missing).toEqual([missingAdapter.name]);
   });
 
@@ -122,7 +140,7 @@ describe('image history request snapshots', () => {
       getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
     });
     expect(restored.models).toHaveLength(request.models.length);
-    expect(restored.loras.map(lora => [lora.path, lora.strength])).toEqual([['enabled.gguf', 0.8]]);
+    expect(restored.loras.map(lora => [lora.relativePath, lora.strength])).toEqual([['enabled.gguf', 0.8]]);
     expect(restored.missing).toEqual([]);
     expect(restored.missingInactive).toEqual([disabledAdapter.name]);
   });
@@ -137,7 +155,7 @@ describe('image history request snapshots', () => {
       findFile: ({ location: candidate }) => candidate === location ? file : request.models[0]!.file,
       getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob,
     });
-    expect(restored.loras).toEqual([{ file, path: file.name, strength: 0, enabled: false, sourceLabel: file.name }]);
+    expect(restored.loras).toEqual([{ file, relativePath: file.name, strength: 0, enabled: false, locationLabel: file.name }]);
     expect(restored.missing).toEqual([]);
   });
 

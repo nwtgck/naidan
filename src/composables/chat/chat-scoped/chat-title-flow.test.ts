@@ -8,7 +8,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import {
   chatRuntimeStore, currentChatRef, getLiveChatById, liveChatRegistry,
-  loadData, registerLiveInstance, rootItems, unregisterLiveInstance,
+  loadData, registerLiveInstance, rootItems, synchronizeModelBindingContent, unregisterLiveInstance,
 } from '@/composables/chat/global/chat-core-singletons';
 import { abortTitleGenerationForChat, generateChatTitleForChat, scheduleAutoTitleForChat } from './chat-title-flow';
 
@@ -58,9 +58,10 @@ async function savedChat({ name, selected }: { name: string, selected: boolean }
     },
   };
   await storageService.updateChatMeta({ id, updater: () => chat });
-  await storageService.updateChatContent({ id, updater: () => ({ root: chat.root, currentLeafId: messageId }) });
+  await storageService.updateChatContent({ id, write: storageService.createChatContentWrite({ id, content: undefined, binding: undefined }), updater: () => ({ root: chat.root, currentLeafId: messageId }) });
   await storageService.updateHierarchy({ updater: ({ current }) => ({ items: [...current.items, { type: 'chat', id }] }) });
   registerLiveInstance({ chat });
+  expect(await synchronizeModelBindingContent({ chatId: id })).toBe('synchronized');
   if (selected) {
     currentChatRef.value = getLiveChatById({ chatId: id });
   }

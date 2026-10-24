@@ -36,3 +36,20 @@ it('preserves duplicate component slots but still rejects invalid numeric repres
   expect(ExperimentalRemoteImageModelEditorSchemaDto.parse({ primary: undefined, components, loras: [] }).components).toEqual(components);
   expect(ExperimentalRemoteImageModelEditorSchemaDto.safeParse({ primary: undefined, components: [], loras: [{ file, strength: Number.NaN, enabled: 'disabled' }] }).success).toBe(false);
 });
+
+it('keeps remote temporary locators and their metadata in the persisted editor without invalidation', () => {
+  const registrationId = toNaidanRpcRegistrationId({ raw: 'remote-registration' }), peerPublicKey = toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) });
+  const file = { location: { kind: 'temp' as const, path: 'temp/shared/weights/%ZZ.gguf' }, expected: { size: 123, lastModified: 456 } };
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    storageType: 'local',
+    endpoint: { type: 'openai', url: '' },
+    experimental: {
+      browserImageGeneration: {
+        remoteModelEditors: [{ registrationId, peerPublicKey, editor: { primary: { slot: 'diffusion', file, family: undefined }, components: [{ slot: 'vae', file }], loras: [{ file, strength: 0.7, enabled: 'enabled' }] } }],
+      },
+    },
+  };
+  const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: settings })))) });
+  expect(restored.experimental?.browserImageGeneration?.remoteModelEditors).toEqual(settings.experimental!.browserImageGeneration!.remoteModelEditors);
+});

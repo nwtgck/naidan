@@ -11,15 +11,15 @@ import type { ImageLoraSelection } from './lora-form';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 
 export type ImageModelChoice = {
-  id: string; label: string; detail: string; evidence: string[];
+  candidateKey: string; label: string; detail: string; evidence: string[];
   status: 'matching' | 'unverified' | 'incompatible'; issue: string | undefined;
 };
 export type ImageComponentChoice = {
-  slot: ModelSlot; selected: string; required: boolean; choices: ImageModelChoice[];
+  slot: ModelSlot; selectedCandidateKey: string; required: boolean; choices: ImageModelChoice[];
 };
 /** Header-identified adapters; compatibility with the selected base is unverified. */
 export type SavedImageLoraChoice = {
-  id: string; label: string; detail: string; file: File; path: string;
+  candidateKey: string; label: string; detail: string; file: File; relativePath: string;
 };
 export type ImageRecipeAvailability = { available: number, total: number, selected: boolean, bytes: number };
 export type ImageDownloadQueueEntry = {
@@ -28,7 +28,7 @@ export type ImageDownloadQueueEntry = {
 };
 /** Known primary model, with its explicitly resolved local component set. */
 export type ImageBenchmarkTarget = {
-  id: string; label: string; detail: string;
+  candidateKey: string; label: string; detail: string;
   facts: Pick<ModelCandidate, 'family' | 'variant' | 'evidence'>;
   composition: 'selected' | 'automatic'; models: Request['models'] | undefined;
   components: ImageComponentChoice[];
@@ -42,7 +42,7 @@ export type ImageLibraryView = {
   selectedFacts: ComputedRef<Pick<ModelCandidate, 'family' | 'variant' | 'evidence'> | undefined>;
   models: ComputedRef<ImageModelChoice[]>;
   savedLoras: ComputedRef<SavedImageLoraChoice[]>;
-  main: Ref<string>;
+  selectedCandidateKey: Ref<string>;
   components: ComputedRef<ImageComponentChoice[]>;
   scanState: Ref<'idle' | 'scanning'>;
   scanProgress: ShallowRef<InspectionProgress | undefined>;
@@ -73,10 +73,11 @@ export type ImageLibraryView = {
   ready: ComputedRef<boolean>;
   refresh(): Promise<void>;
   refreshAccess(): Promise<void>;
-  chooseMain({ id }: { id: string }): void;
-  chooseComponent({ slot, id }: { slot: ModelSlot, id: string }): void;
-  importDirectory({ event }: { event: Event }): Promise<void>;
-  dropDirectory({ event }: { event: DragEvent }): Promise<void>;
+  chooseMain({ candidateKey }: { candidateKey: string }): void;
+  chooseComponent({ slot, candidateKey }: { slot: ModelSlot, candidateKey: string }): void;
+  importDirectory({ event, storage }: { event: Event, storage?: 'opfs' | 'temp' }): Promise<void>;
+  dropDirectory({ event, storage }: { event: DragEvent, storage?: 'opfs' | 'temp' }): Promise<void>;
+  importFiles({ event, storage }: { event: Event, storage: 'opfs' | 'temp' }): Promise<void>;
   cancelImport(): void;
   useManualFiles(): void;
   selectedModels(): Request['models'] | undefined;

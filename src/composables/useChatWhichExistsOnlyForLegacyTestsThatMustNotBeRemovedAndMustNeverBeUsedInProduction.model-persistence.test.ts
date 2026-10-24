@@ -47,6 +47,7 @@ const mockSettings = {
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: mockSettings },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },

@@ -208,7 +208,7 @@ describe('Sidebar IME handling', () => {
     await wrapper.vm.$nextTick();
 
     // Start editing
-    await wrapper.find('button[class*="hover:text-blue-600"]').trigger('click'); // Pencil button for chat
+    await wrapper.get('[data-testid="sidebar-chat-rename-button"]').trigger('click');
 
     const input = wrapper.find('[data-testid="chat-rename-input"]');
     expect(input.exists()).toBe(true);

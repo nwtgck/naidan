@@ -1,4 +1,4 @@
-import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
+import { prepareRepositoryRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { deleteRepository } from './storage';
 import { openSyncAccess } from './sync-access';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,7 @@ describe('resumable GGUF storage writer', () => {
     await writer.finishFile();
     await writer.finish();
     expect(await listPendingDownloads()).toEqual([]);
-    expect(await listHuggingFaceModels()).toEqual([{ id: 'hf.co/owner/repo:nested%2Fmodel.gguf', name: 'hf.co/owner/repo:nested/model', size: 128, importedAt: 123 }]);
+    expect(await listHuggingFaceModels()).toEqual([{ modelId: 'hf.co/owner/repo:nested/model', size: 128, importedAt: 123 }]);
   });
 
   it('discards unrecorded suffixes and rejects smaller files than the journal', async () => {
@@ -156,8 +156,8 @@ describe('resumable GGUF storage writer', () => {
         request: async (_name: string, optionsOrCallback: object | (() => Promise<unknown>), callback?: (lock: object) => Promise<unknown>) => callback ? callback({}) : typeof optionsOrCallback === 'function' ? optionsOrCallback() : undefined,
       },
     });
-    const { plan } = await prepareModelRemoval({ id: 'hf.co/owner/repo' });
-    expect(plan.files.some(file => file.path === selection.files[0]!.path)).toBe(false);
+    const { plan } = await prepareRepositoryRemoval({ location: { kind: 'hugging-face', repository: selection.repository }, signal: undefined });
+    expect(plan.files.some(file => file.relativePath === selection.files[0]!.path)).toBe(false);
     expect(await deleteRepository({ repository: selection.repository, plan })).toBe('deleted');
     expect(new Uint8Array(await (await handle.getFile()).arrayBuffer())).toEqual(ggufBytes());
     expect(await listPendingDownloads()).toEqual([]);

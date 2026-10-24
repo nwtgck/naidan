@@ -25,11 +25,16 @@ const props = defineProps<{
   label: string | undefined,
   disabled?: boolean,
   surface?: 'default' | 'embedded',
-  presentation?: 'default' | 'toolbar',
+  presentation?: 'default' | 'toolbar' | 'inline',
   size?: 'default' | 'compact',
+  menuWidthRem?: number,
 }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void,
+}>();
+defineSlots<{
+  leading?({ option }: { option: SettingsSelectOption | undefined }): unknown,
+  option({ option }: { option: SettingsSelectOption }): unknown,
 }>();
 
 const selected = computed(() => props.options.find(option => option.value === props.modelValue));
@@ -42,6 +47,9 @@ const popup = useAnchoredPopup({
   preferredWidth: {
     unit: 'rem',
     get value() {
+      if (props.menuWidthRem !== undefined) {
+        return props.menuWidthRem;
+      }
       const size = props.size;
       switch (size) {
       case 'compact': return 10;
@@ -65,7 +73,7 @@ function close({ restoreFocus }: { restoreFocus: boolean }) {
 }
 
 async function toggle() {
-  if (props.disabled) {
+  if (props.disabled || disclosureOpen?.value === false) {
     return;
   }
   if (open.value) {
@@ -81,7 +89,7 @@ async function toggle() {
 }
 
 function choose({ value }: { value: string }) {
-  if (props.disabled || !open.value || !props.options.some(option => option.value === value && !option.disabled)) {
+  if (props.disabled || disclosureOpen?.value === false || !open.value || !props.options.some(option => option.value === value && !option.disabled)) {
     return;
   }
   // Reselecting a native select did not request another owner mutation.
@@ -173,20 +181,21 @@ defineExpose({
     :aria-controls="open ? menuId : undefined"
     :title="[selected?.label, selected?.detail, selected?.source?.description].filter(Boolean).join(' · ')"
     class="settings-select-trigger"
-    :class="{ 'settings-select-trigger-embedded': surface === 'embedded', 'settings-select-trigger-toolbar': presentation === 'toolbar', 'settings-select-trigger-compact': size === 'compact' }"
-    :tw-class="['group flex w-full min-w-0 items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800', surface === 'embedded' ? 'h-full rounded-none border-0 bg-transparent shadow-none focus-visible:ring-inset' : 'rounded-xl border border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:border-gray-600']"
+    :class="{ 'settings-select-trigger-embedded': surface === 'embedded', 'settings-select-trigger-toolbar': presentation === 'toolbar', 'settings-select-trigger-compact': size === 'compact', 'settings-select-trigger-inline': presentation === 'inline' }"
+    :tw-class="['group flex min-w-0 items-center gap-3 px-3.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30', presentation === 'inline' ? 'w-auto rounded-md border border-transparent bg-transparent hover:border-gray-200 hover:bg-gray-100/70 dark:hover:border-gray-700 dark:hover:bg-gray-800/70' : surface === 'embedded' ? 'h-full w-full rounded-none border-0 bg-transparent shadow-none hover:bg-gray-50 focus-visible:ring-inset dark:hover:bg-gray-800' : 'w-full rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:border-gray-600 dark:hover:bg-gray-800']"
     @click="toggle"
     @keydown.down.prevent="open || toggle()"
     @keydown.up.prevent="open || toggle()"
   >
-    <span :class="{ 'settings-select-content-toolbar': presentation === 'toolbar' }" tw-class="block min-w-0 flex-1">
-      <span class="settings-select-value" :tw-class="['block truncate font-medium text-gray-800 dark:text-gray-100', size === 'compact' ? 'text-xs leading-4' : 'text-sm leading-5']">{{ selected?.label ?? modelValue }}</span>
-      <span v-if="presentation !== 'toolbar'" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5">
+    <slot name="leading" :option="selected" />
+    <span :class="{ 'settings-select-content-toolbar': presentation === 'toolbar' || presentation === 'inline' }" tw-class="block min-w-0 flex-1">
+      <span class="settings-select-value" :tw-class="['block truncate', presentation === 'inline' ? 'text-[11px] font-normal leading-4 text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' : size === 'compact' ? 'text-xs font-medium leading-4 text-gray-800 dark:text-gray-100' : 'text-sm font-medium leading-5 text-gray-800 dark:text-gray-100']">{{ selected?.label ?? modelValue }}</span>
+      <span v-if="presentation !== 'toolbar' && presentation !== 'inline'" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5">
         <SettingsSourceBadge :source="selected?.source" />
         <span v-if="selected?.detail" tw-class="min-w-0 flex-1 truncate text-xs leading-4 text-gray-500 dark:text-gray-400">{{ selected.detail }}</span>
       </span>
     </span>
-    <ChevronDownIcon :tw-class="['shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-gray-600 dark:group-hover:text-gray-200', size === 'compact' ? 'h-3 w-3' : 'h-4 w-4', open && 'rotate-180']" />
+    <ChevronDownIcon :tw-class="['shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-gray-600 dark:group-hover:text-gray-200', presentation === 'inline' ? 'h-2.5 w-2.5' : size === 'compact' ? 'h-3 w-3' : 'h-4 w-4', open && 'rotate-180']" />
   </button>
   <Teleport to="body">
     <Transition name="settings-select-menu">
@@ -218,13 +227,15 @@ defineExpose({
           :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex w-full items-center text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', size === 'compact' ? 'min-h-8 gap-2 rounded-md px-2.5 py-1.5' : 'min-h-12 gap-3 rounded-xl px-3 py-2.5', option.value === modelValue ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
           @click="choose({ value: option.value })"
         >
-          <span tw-class="block min-w-0 flex-1">
-            <span :tw-class="['block truncate font-medium', size === 'compact' ? 'text-xs' : 'text-sm']">{{ option.label }}</span>
-            <span v-if="option.detail || option.source" tw-class="mt-1 flex min-w-0 items-center gap-1.5">
-              <SettingsSourceBadge :source="option.source" />
-              <span v-if="option.detail" tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ option.detail }}</span>
+          <slot name="option" :option="option">
+            <span tw-class="block min-w-0 flex-1">
+              <span :tw-class="['block truncate font-medium', size === 'compact' ? 'text-xs' : 'text-sm']">{{ option.label }}</span>
+              <span v-if="option.detail || option.source" tw-class="mt-1 flex min-w-0 items-center gap-1.5">
+                <SettingsSourceBadge :source="option.source" />
+                <span v-if="option.detail" tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ option.detail }}</span>
+              </span>
             </span>
-          </span>
+          </slot>
           <CheckIcon v-if="option.value === modelValue" tw-class="h-4 w-4 shrink-0" />
         </button>
       </div>
@@ -253,6 +264,13 @@ defineExpose({
   padding: 0.25rem 0.625rem;
   gap: 0.5rem;
   border-radius: 0.5rem;
+}
+
+.settings-select-trigger-inline {
+  min-height: 1.5rem;
+  padding: 0.125rem 0.375rem;
+  gap: 0.375rem;
+  border-radius: 0.375rem;
 }
 
 .settings-select-content-toolbar {
