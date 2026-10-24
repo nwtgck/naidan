@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import { readNativeLicenseDependencies } from './build/native-licenses/load';
 import { createTestOnlyBoundaryPlugin } from './build/test-only-boundary';
 import { createDocsDevBridge } from './build/docs-dev-bridge';
 import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diffusion-cpp-browser/build-runtime';
@@ -34,6 +35,7 @@ import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
 import { createPrivacyFetchBrokerDevHeadersPlugin } from './build/privacy-fetch-broker-dev';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
 import { createZipPackages } from './build/zip-packages';
+import { standaloneZipDefinitions } from './build/standalone-zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
 import { createLlamaCppRuntimeAssetsPlugin } from './src/features/llama-cpp-browser/build-runtime-assets';
 import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
@@ -171,6 +173,7 @@ export default defineConfig(({ mode, command }) => {
   const pwaBuild = createPWABuild();
   const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
   const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode });
+  const imageBuild = createStableDiffusionCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode });
   const isHosted = mode === 'hosted';
   const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: __dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
@@ -257,7 +260,7 @@ export default defineConfig(({ mode, command }) => {
     plugins: [
       mode !== 'test' && createDocsDevBridge(),
       (mode !== 'test' || command === 'build') && createTestOnlyBoundaryPlugin(),
-      createStableDiffusionCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }),
+      imageBuild.plugin,
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
       createDocumentMetadataHtmlPlugin(),
@@ -306,6 +309,12 @@ export default defineConfig(({ mode, command }) => {
       llamaCppBuild.corePlugin,
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
+        async getNativeDependencies({ watchFile }) {
+          const llama = await readNativeLicenseDependencies({ source: llamaCppBuild.nativeLicenseSource, watchFile });
+          const imageSource = imageBuild.getNativeLicenseSource();
+          const image = imageSource === undefined ? [] : await readNativeLicenseDependencies({ source: imageSource, watchFile });
+          return [...llama, ...image];
+        },
         onBuildDependenciesCollected({ dependencies }) {
           if (isStandalone) {
             standaloneCollectedLicenseDependencies = dependencies;
@@ -351,16 +360,7 @@ export default defineConfig(({ mode, command }) => {
             sourceDirectory: path.resolve(__dirname, outDir),
             archiveDirectory: path.resolve(__dirname, 'dist'),
             version: pkg.version,
-            packages: variants.map((variant) => ({
-              zipFileName: variant.locale === undefined
-                ? 'naidan-standalone.zip'
-                : `naidan-standalone-${variant.locale}.zip`,
-              folderName: variant.locale === undefined
-                ? `naidan-standalone-${pkg.version}`
-                : `naidan-standalone-${variant.locale}-${pkg.version}`,
-              excludedFileNames: new Set(variant.excludedFileNames),
-              fileOverrides: new Map([['index.html', variant.indexHtml]]),
-            })),
+            packages: standaloneZipDefinitions({ version: pkg.version, variants }),
           }),
         },
       }),

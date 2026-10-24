@@ -1,4 +1,4 @@
-import type { BuildLicenseDependency } from './license-dependencies';
+import type { NaidanLicense } from '../src/01-models/naidan-license';
 
 /**
  * Serializes license dependencies as one self-contained JavaScript expression.
@@ -74,7 +74,7 @@ function splitLinesPreservingEndings({ text }: { text: string }): readonly strin
 }
 
 function createUniqueLicenseTexts({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): readonly Readonly<{
   text: string,
   dependencyIndices: readonly number[],
@@ -98,7 +98,7 @@ function createUniqueLicenseTexts({ dependencies }: {
 }
 
 function createLicenseTextIndex({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): LicenseTextIndex {
   const lineIdByText = new Map<string, number>();
   const lineTexts: string[] = [];
@@ -358,7 +358,7 @@ function findLineSequenceOccurrences({ index, sourceStart, lineCount }: {
 }
 
 function createLicenseTextCandidates({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): readonly LicenseTextCandidate[] {
   const index = createLicenseTextIndex({ dependencies });
   const occurrencesByCandidateText = new Map<string, Map<string, LicenseTextOccurrence>>();
@@ -525,7 +525,7 @@ function getAdditionalDictionaryBytes({ dictionary, candidateText }: {
 }
 
 function createCompressionPlan({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): CompressionPlan {
   const selectedOccurrencesByDependency: SelectedLicenseTextOccurrence[][] = dependencies.map(() => []);
   const currentExpressions = dependencies.map((dependency) => (
@@ -596,23 +596,26 @@ function createCompressionPlan({ dependencies }: {
 }
 
 function serializeLicenseArray({ dependencies, plan }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
   plan: CompressionPlan,
 }): string {
   const records = dependencies.map((dependency, dependencyIndex) => {
-    const licenseText = dependency.licenseText === null
+    const { id, origin, name, version, license, licenseText: originalText, ...unhandledDependency } = dependency;
+    unhandledDependency satisfies Record<PropertyKey, never>;
+    const licenseText = originalText === null
       ? 'null'
       : serializeLicenseTextExpression({
-        text: dependency.licenseText,
+        text: originalText,
         selectedOccurrences: plan.selectedOccurrencesByDependency[dependencyIndex] ?? [],
       });
-    return `{name:${JSON.stringify(dependency.name)},version:${JSON.stringify(dependency.version)},license:${JSON.stringify(dependency.license)},licenseText:${licenseText}}`;
+    const identity = `${id === undefined ? '' : `id:${JSON.stringify(id)},`}${origin === undefined ? '' : `origin:${JSON.stringify(origin)},`}`;
+    return `{${identity}name:${JSON.stringify(name)},version:${JSON.stringify(version)},license:${JSON.stringify(license)},licenseText:${licenseText}}`;
   });
   return `[${records.join(',')}]`;
 }
 
 export function serializeLicenseDependencies({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): string {
   const plan = createCompressionPlan({ dependencies });
   const licenseArray = serializeLicenseArray({ dependencies, plan });

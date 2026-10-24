@@ -150,9 +150,9 @@ describe("file-protocol standalone representative artifact contract", () => {
     const executableScripts = scripts.filter(script => script.getAttribute("type") !== "application/ld+json");
     const structuredDataScript = scripts.find(script => script.getAttribute("type") === "application/ld+json");
     const runtimeSources = [
-      "./file-protocol-standalone/system.min.js",
-      "./file-protocol-standalone/systemjs-file-protocol-patch.js",
-      "./file-protocol-standalone/systemjs-physical-load-retry.js",
+      "./assets/file-protocol-standalone/system.min.js",
+      "./assets/file-protocol-standalone/systemjs-file-protocol-patch.js",
+      "./assets/file-protocol-standalone/systemjs-physical-load-retry.js",
     ] as const;
 
     expect(structuredDataScript?.textContent).toContain("representative-standalone-artifact");
@@ -216,7 +216,7 @@ describe("file-protocol standalone representative artifact contract", () => {
       expect(Object.keys(workerChunk.modules).some(moduleId => moduleId.endsWith(workerSourceSuffix))).toBe(true);
       expect(entryChunk.code).toContain(basename({ fileName: workerChunk.fileName }));
     }
-    expect(entryChunk.code).toContain("file-protocol-standalone/system.min.js");
+    expect(entryChunk.code).toContain("assets/file-protocol-standalone/system.min.js");
     expect(entryChunk.code).toContain("URL.createObjectURL");
     expect(entryChunk.code).toContain("new Worker");
     expect(entryChunk.code).toContain("__representativeWorkerFactories");

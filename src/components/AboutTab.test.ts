@@ -17,6 +17,20 @@ vi.mock('virtual:naidan-licenses', () => ({
     version: '1.2.3',
     license: 'MIT',
     licenseText: 'Shared license text',
+  }, {
+    id: 'native:llama-cpp:shared',
+    origin: 'llama.cpp',
+    name: 'shared-license-package',
+    version: null,
+    license: null,
+    licenseText: 'Native shared notice',
+  }, {
+    id: 'native:stable-diffusion-cpp:shared',
+    origin: 'stable-diffusion.cpp',
+    name: 'shared-license-package',
+    version: null,
+    license: null,
+    licenseText: 'Image shared notice',
   }],
 }));
 
@@ -51,7 +65,12 @@ describe('AboutTab licenses', () => {
     expect(licenseList.text()).toContain('shared-license-package');
     expect(licenseList.text()).toContain('1.2.3');
     expect(licenseList.text()).toContain('MIT');
-    expect(wrapper.findAll('[data-testid="oss-license-item"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="oss-license-item"]')).toHaveLength(3);
+    expect(licenseList.text()).toContain('llama.cpp');
+    expect(licenseList.text()).toContain('stable-diffusion.cpp');
+    expect(licenseList.text()).toContain('Native shared notice');
+    expect(licenseList.text()).toContain('Image shared notice');
+    expect(licenseList.text()).not.toContain('vnull');
     expect(wrapper.text()).not.toContain('THIRD_PARTY_LICENSES.txt');
     expect(wrapper.text()).not.toContain('Offline License Information');
   });

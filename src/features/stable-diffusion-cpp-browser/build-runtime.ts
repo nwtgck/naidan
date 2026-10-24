@@ -1,3 +1,5 @@
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build entry is also checked without the app alias.
+import type { NativeLicenseSource } from '../../01-models/native-license-build-source';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -25,10 +27,10 @@ const imageManifestSchema = z.object({
 /** Optional, build-time-only integration. No compiler, model download, or install hook. */
 export function readImageArtifacts({ rootDir, mode, artifactDir }: {
   rootDir: string, mode: 'hosted' | 'standalone', artifactDir: string | undefined,
-}): { configuration: Configuration, files: Map<string, Uint8Array> } {
+}): { configuration: Configuration, files: Map<string, Uint8Array>, nativeLicenseSource: NativeLicenseSource | undefined } {
   const files = new Map<string, Uint8Array>();
   switch (mode) {
-  case 'standalone': return { configuration: { kind: 'unavailable', reason: 'standalone' }, files };
+  case 'standalone': return { configuration: { kind: 'unavailable', reason: 'standalone' }, files, nativeLicenseSource: undefined };
   case 'hosted': break;
   default: {
     const exhaustive: never = mode;
@@ -40,7 +42,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     if (artifactDir !== undefined) {
       throw new Error('Explicit image artifact directory does not exist');
     }
-    return { configuration: { kind: 'unavailable', reason: 'not-installed' }, files };
+    return { configuration: { kind: 'unavailable', reason: 'not-installed' }, files, nativeLicenseSource: undefined };
   }
   const realRoot = realpathSync(directory);
   const read = ({ relative, expectedBytes }: { relative: string, expectedBytes: number | undefined }): Buffer => {
@@ -147,15 +149,27 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     files.set(wasmPath, gzipSync(wasm, { level: 9 }));
     artifacts.push({ profile, modulePath, wasmPath, helpersPath, schemaSha256: image.schemaSha256, wasmBytes: wasm.length, wasmSha256: wasmEntry.sha256 });
   }
-  for (const entry of image.files) {
-    if (entry.path === 'LICENSE' || entry.path.startsWith('licenses/')) {
-      files.set(prefix + entry.path, checked({ relative: 'stable-diffusion-cpp-browser-core/' + entry.path }));
-    }
-  }
   if (!entries.has('LICENSE') || ![...entries.keys()].some(name => name.startsWith('licenses/'))) {
     throw new Error('Missing runtime notices');
   }
-  return { configuration: configurationSchema.parse({ kind: 'available', sourceCommit: root.sourceCommit, artifacts }), files };
+  return {
+    configuration: configurationSchema.parse({ kind: 'available', sourceCommit: root.sourceCommit, artifacts }),
+    files,
+    nativeLicenseSource: {
+      runtime: 'stable-diffusion-cpp',
+      kind: artifactDir === undefined ? 'installed' : 'external',
+      rootDir,
+      manifestPaths: [path.join(realRoot, 'manifest.json'), path.join(realRoot, 'stable-diffusion-cpp-browser-core/manifest.json')],
+      files: new Set(entries.keys()),
+      readArtifact({ relative }) {
+        if (!entries.has(relative)) {
+          throw new Error(`Missing image native notice: ${relative}`);
+        }
+        const name = 'stable-diffusion-cpp-browser-core/' + relative;
+        return { data: checked({ relative: name }), filePath: path.join(realRoot, name) };
+      },
+    },
+  };
 }
 
 const standaloneUiFiles = new Set([
@@ -187,7 +201,7 @@ export function assertStandaloneImageModule({ rootDir, id }: { rootDir: string, 
   }
 }
 
-export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDir: string, mode: 'hosted' | 'standalone' }): Plugin {
+export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDir: string, mode: 'hosted' | 'standalone' }): { plugin: Plugin, getNativeLicenseSource: () => NativeLicenseSource | undefined } {
   const isStandalone = (() => {
     switch (mode) {
     case 'standalone': return true;
@@ -200,8 +214,11 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
   })();
   let cached: ReturnType<typeof readImageArtifacts> | undefined;
   const load = () => cached ??= readImageArtifacts({ rootDir, mode, artifactDir: process.env.NAIDAN_STABLE_DIFFUSION_CORE_DIR });
-  return {
+  const plugin: Plugin = {
     name: 'naidan-stable-diffusion-cpp-browser',
+    buildStart() {
+      cached = undefined;
+    },
     resolveId(id) {
       return id === virtualId ? '\0' + virtualId : undefined;
     },
@@ -256,6 +273,7 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
       }
     },
   };
+  return { plugin, getNativeLicenseSource: () => load().nativeLicenseSource };
 }
 
 export const TEST_ONLY = {

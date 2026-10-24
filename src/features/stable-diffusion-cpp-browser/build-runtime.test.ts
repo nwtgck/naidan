@@ -68,11 +68,12 @@ describe('optional image build integration', () => {
     expect(() => readImageArtifacts({ rootDir: '/missing', mode: 'hosted', artifactDir: '/invalid-image-artifacts' })).toThrow('does not exist');
   });
 
-  it('validates source-bound artifacts and emits gzip plus all notices', () => {
+  it('validates source-bound artifacts and keeps notices separate from emitted runtime assets', () => {
     const { directory, sourceCommit } = fixture();
     const { configuration, files } = readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory });
     expect(configuration.kind).toBe('available');
-    expect(files.size).toBe(12);
+    expect(files.size).toBe(10);
+    expect([...files.keys()].some(file => file.includes('/licenses/') || file.endsWith('/LICENSE'))).toBe(false);
     const wasm = files.get(`stable-diffusion-cpp-runtime/${sourceCommit}/webgpu-wasm32-asyncify/core.wasm.gz`);
     expect(wasm && gunzipSync(wasm)).toEqual(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
     expect([...files.keys()].some(file => file.endsWith('.wasm'))).toBe(false);
