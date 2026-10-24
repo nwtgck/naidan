@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
-import { ArrowLeftIcon, ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, FileIcon, FolderOpenIcon, HardDriveIcon, InfoIcon, ListIcon, MonitorIcon, PlugZapIcon, SearchIcon, ServerOffIcon, ShieldCheckIcon } from 'lucide-vue-next';
+import { computed, onMounted, onScopeDispose, ref, useId, watch } from 'vue';
+import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon, FileIcon, FolderOpenIcon, InfoIcon, ListIcon, PlugZapIcon, SearchIcon, ServerOffIcon, ShieldCheckIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import { localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api/constants';
-import { browserModelShowcaseIds, browserModelSuggestionSelection, type ModelDiscoveryTab, type BrowserModelLocalInput, type BrowserModelSelection } from './browser-model-presentation';
+import { browserModelShowcaseIds, browserModelSuggestionSelection, type ModelDiscoveryTab, type BrowserModelLocalInput, type BrowserModelSelection, type BrowserModelShowcaseItem, type BrowserModelShowcasePosition } from './browser-model-presentation';
+import BrowserModelShowcaseCard from './BrowserModelShowcaseCard.vue';
 import LanguageSelector from './LanguageSelector.vue';
 import Logo from './Logo.vue';
 import WelcomeScreenFrame from './layout/WelcomeScreenFrame.vue';
@@ -45,8 +46,7 @@ const browserCardSelected = computed(() => {
 });
 const selectedIndex = computed(() => browserCardSelected.value ? models.length : models.findIndex(model => model.id === selected.value?.suggestion.id));
 const showcaseCount = computed(() => models.length + (props.browserProvidedModel === undefined ? 0 : 1));
-type ModelCardPosition = 'selected' | 'previous' | 'next' | 'hidden';
-const modelCards = computed(() => {
+const modelCards = computed<BrowserModelShowcaseItem[]>(() => {
   const current = selected.value;
   const ggufModels = current && selectedIndex.value < 0 ? [...models, current.suggestion] : models;
   const ggufCards = ggufModels.map(model => ({
@@ -69,10 +69,55 @@ const modelCards = computed(() => {
   const half = Math.floor(candidates.length / 2);
   return candidates.map((card, index) => {
     const distance = (index - currentIndex + candidates.length + half) % candidates.length - half;
-    const position: ModelCardPosition = distance === 0 ? 'selected' : distance === -1 ? 'previous' : distance === 1 ? 'next' : 'hidden';
+    const position: BrowserModelShowcasePosition = distance === 0 ? 'selected' : distance === -1 ? 'previous' : distance === 1 ? 'next' : 'hidden';
     return { ...card, position, offset: Math.max(-2, Math.min(2, distance)) };
   });
 });
+const benefits = computed(() => [
+  { id: 'privacy' as const, icon: ShieldCheckIcon, text: lazyStrings.BrowserModelWelcome__prompts_stay_on_your_device() },
+  { id: 'server' as const, icon: ServerOffIcon, text: lazyStrings.BrowserModelWelcome__no_inference_server_required() },
+  { id: 'gguf' as const, icon: FileIcon, text: lazyStrings.BrowserModelWelcome__gguf_support() },
+]);
+const benefitContainer = ref<HTMLElement>();
+const benefitMeasurement = ref<HTMLElement>();
+const benefitLayout = ref<'inline' | 'rotating'>('rotating');
+let benefitObserver: ResizeObserver | undefined;
+
+function updateBenefitLayout(): void {
+  const container = benefitContainer.value;
+  const measurement = benefitMeasurement.value;
+  if (!container || !measurement || benefits.value.some(benefit => benefit.text === undefined)) {
+    return;
+  }
+  // Compare both in the same coordinate space, including the modal's opening
+  // scale. The hidden row uses the same text, icons, font, and gaps without wrapping.
+  const available = container.getBoundingClientRect().width;
+  const required = measurement.getBoundingClientRect().width;
+  if (available > 0 && required > 0) {
+    benefitLayout.value = required <= available ? 'inline' : 'rotating';
+  }
+}
+
+onMounted(() => {
+  updateBenefitLayout();
+  if (typeof ResizeObserver === 'undefined') {
+    window.addEventListener('resize', updateBenefitLayout);
+    return;
+  }
+  benefitObserver = new ResizeObserver(updateBenefitLayout);
+  if (benefitContainer.value) {
+    benefitObserver.observe(benefitContainer.value);
+  }
+  if (benefitMeasurement.value) {
+    benefitObserver.observe(benefitMeasurement.value);
+  }
+});
+watch(benefits, updateBenefitLayout, { flush: 'post' });
+onScopeDispose(() => {
+  benefitObserver?.disconnect();
+  window.removeEventListener('resize', updateBenefitLayout);
+});
+
 const discoveryHint = ref<'hidden' | 'visible'>('hidden');
 const swipeStart = ref<{ source: 'pointer' | 'touch', inputId: number, x: number, y: number, phase: 'pending' | 'dragging' }>();
 const swipeOffset = ref(0);
@@ -155,7 +200,7 @@ function moveModel({ step }: { step: -1 | 1 }): void {
   selectModel({ index: selectedIndex.value + step });
 }
 
-function activateCard({ position }: { position: ModelCardPosition }): void {
+function activateCard({ position }: { position: BrowserModelShowcasePosition }): void {
   if (disabled.value || Date.now() < suppressStartUntil) {
     return;
   }
@@ -376,17 +421,25 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <span tw-class="text-[18px] font-semibold leading-none tracking-tight text-gray-600 dark:text-gray-300">Naidan</span>
           </div>
           <h2 data-testid="browser-model-heading" tw-class="text-balance text-[clamp(24px,6.5cqw,44px)] font-extrabold leading-[1.15] tracking-[-0.035em] text-gray-800 dark:text-gray-100">{{ lazyStrings.BrowserModelWelcome__run_ai_in_your_web_browser() }}</h2>
-          <div class="onboarding-benefits" tw-class="mx-auto flex w-fit max-w-full flex-col items-start gap-y-2 py-1 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
-            <span class="onboarding-benefit" tw-class="inline-flex items-center gap-1.5"><ServerOffIcon aria-hidden="true" tw-class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />{{ lazyStrings.BrowserModelWelcome__no_inference_server_required() }}</span>
-            <span class="onboarding-benefit" tw-class="inline-flex items-center gap-1.5"><ShieldCheckIcon aria-hidden="true" tw-class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />{{ lazyStrings.BrowserModelWelcome__prompts_stay_on_your_device() }}</span>
-            <span class="onboarding-benefit" tw-class="inline-flex items-center gap-1.5"><FileIcon aria-hidden="true" tw-class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />{{ lazyStrings.BrowserModelWelcome__gguf_support() }}</span>
+          <!-- All claims stay available to assistive reading; CSS changes only
+               which one is visible, without repeated live announcements. -->
+          <div ref="benefitContainer" data-testid="onboarding-benefits" class="onboarding-benefits" :data-benefit-layout="benefitLayout" role="list" tw-class="relative mx-auto grid w-full max-w-full overflow-hidden py-1 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+            <span v-for="benefit in benefits" :key="benefit.id" class="onboarding-benefit" :class="{ 'onboarding-benefit-privacy': benefit.id === 'privacy', 'onboarding-benefit-server': benefit.id === 'server', 'onboarding-benefit-gguf': benefit.id === 'gguf' }" role="listitem" tw-class="inline-flex items-center gap-1.5"><component :is="benefit.icon" aria-hidden="true" tw-class="w-3.5 h-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><span>{{ benefit.text }}</span></span>
+            <!-- Measure the actual translated labels; this row never participates
+                 in layout or accessibility, and performs no data loading. -->
+            <div ref="benefitMeasurement" data-testid="onboarding-benefit-measurement" class="onboarding-benefit-measurement" aria-hidden="true">
+              <span v-for="benefit in benefits" :key="benefit.id" tw-class="inline-flex shrink-0 items-center gap-1.5"><component :is="benefit.icon" tw-class="w-3.5 h-3.5 shrink-0" /><span>{{ benefit.text }}</span></span>
+            </div>
           </div>
         </div>
         <div role="group" :aria-label="lazyStrings.BrowserModelWelcome__choose_the_model_to_use()" tw-class="mx-auto w-full text-left space-y-2">
           <div class="model-toolbar" tw-class="mx-auto flex w-full max-w-md items-center justify-between gap-3">
             <div class="model-pagination" role="group" :aria-label="lazyStrings.BrowserModelWelcome__browse_models()" tw-class="flex shrink-0 items-center gap-1">
               <button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__previous_model()" data-testid="previous-model" tw-class="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="moveModel({ step: -1 })"><ChevronLeftIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
-              <span tw-class="min-w-9 text-center text-[12px] tabular-nums text-gray-400 dark:text-gray-500">{{ selectedIndex < 0 ? lazyStrings.BrowserModelWelcome__selected_model() : `${selectedIndex + 1} / ${showcaseCount}` }}</span>
+              <span tw-class="min-w-9 whitespace-nowrap text-center text-[12px] tabular-nums text-gray-400 dark:text-gray-500">
+                <template v-if="selectedIndex < 0">{{ lazyStrings.BrowserModelWelcome__selected_model() }}</template>
+                <template v-else>{{ selectedIndex + 1 }} / <span class="model-showcase-total"><Transition name="model-showcase-total" mode="out-in"><span :key="showcaseCount">{{ showcaseCount }}</span></Transition></span></template>
+              </span>
               <button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__next_model()" data-testid="next-model" tw-class="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="moveModel({ step: 1 })"><ChevronRightIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
             </div>
             <button type="button" class="model-list-button" :disabled="disabled" data-testid="open-model-list" aria-haspopup="dialog" tw-class="group inline-flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100/80 dark:hover:bg-gray-800/70 hover:text-gray-900 dark:hover:text-gray-100 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 motion-reduce:transition-none disabled:opacity-50" @click="emit('open-discovery', { tab: 'candidates' })"><ListIcon aria-hidden="true" tw-class="h-4 w-4 text-gray-500 dark:text-gray-400" />{{ lazyStrings.BrowserModelWelcome__choose_a_model() }}<ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" /></button>
@@ -395,16 +448,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <p v-else-if="selected" role="status" tw-class="sr-only">{{ selected.suggestion.name }} {{ modelSize({ bytes: selected.quantization.approximateModelBytes }) }}</p>
           <div class="model-stage" tw-class="relative isolate">
             <div class="model-deck" :class="{ 'model-deck-dragging': swipeStart?.phase === 'dragging' }" :style="{ '--model-drag': `${swipeOffset}px` }" data-testid="model-swipe" tw-class="relative select-none [touch-action:pan-y_pinch-zoom]" @pointerdown="beginSwipe({ event: $event })" @pointermove="moveSwipe({ event: $event })" @pointerup="finishSwipe({ event: $event })" @pointercancel="cancelPointerSwipe({ event: $event })" @lostpointercapture="loseSwipeCapture({ event: $event })" @touchstart.passive="beginTouchSwipe({ event: $event })" @touchmove="moveTouchSwipe({ event: $event })" @touchend="finishTouchSwipe({ event: $event })" @touchcancel="cancelTouchSwipe({ event: $event })" @keydown.left.prevent="moveModel({ step: -1 })" @keydown.right.prevent="moveModel({ step: 1 })">
-              <button v-for="card in modelCards" :key="card.model.id" type="button" class="model-deck-card" :class="{ 'model-deck-card-selected': card.position === 'selected', 'model-deck-card-previous': card.position === 'previous', 'model-deck-card-next': card.position === 'next', 'model-deck-card-hidden': card.position === 'hidden' }" :style="{ '--model-offset': card.offset }" :data-testid="card.position === 'selected' ? 'start-model' : card.position === 'hidden' ? undefined : `peek-${card.position}`" :aria-label="card.model.name === undefined ? undefined : card.position === 'selected' ? lazyStrings.BrowserModelWelcome__run_model_in_your_browser({ name: card.model.name }) : lazyStrings.BrowserModelWelcome__select_model({ name: card.model.name })" :aria-hidden="card.position === 'hidden' ? true : undefined" :aria-busy="card.position === 'selected' && startStatus === 'starting'" :disabled="disabled || card.position === 'hidden'" :tabindex="card.position === 'hidden' ? -1 : 0" tw-class="group overflow-hidden rounded-2xl border border-gray-200/70 dark:border-gray-700/60 bg-white/50 dark:bg-gray-800/40 text-left hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-gray-800 focus-visible:bg-white dark:focus-visible:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-default" @click="activateCard({ position: card.position })">
-                <span class="model-deck-preview model-deck-preview-action" aria-hidden="true" tw-class="absolute inset-x-0 bottom-4 flex items-center justify-center gap-1 text-[11px] text-gray-400 dark:text-gray-500"><ArrowRightIcon v-if="card.position === 'previous'" tw-class="h-3 w-3" />{{ lazyStrings.BrowserModelWelcome__select() }}<ArrowLeftIcon v-if="card.position === 'next'" tw-class="h-3 w-3" /></span>
-                <div class="model-deck-content" aria-hidden="true" tw-class="flex min-h-0 flex-col justify-center gap-3 px-3 py-3">
-                  <!-- One identity travels with its card; do not crossfade duplicate model names. -->
-                  <div class="model-deck-identity" tw-class="flex items-center"><div class="model-deck-cpu"><div class="model-cpu-accent" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 text-gray-400 dark:text-gray-500 group-hover:border-sky-200/80 dark:group-hover:border-sky-400/25 group-hover:bg-sky-50 dark:group-hover:bg-sky-400/10 group-hover:text-sky-600 dark:group-hover:text-sky-300 group-focus-visible:border-sky-200/80 dark:group-focus-visible:border-sky-400/25 group-focus-visible:bg-sky-50 dark:group-focus-visible:bg-sky-400/10 group-focus-visible:text-sky-600 dark:group-focus-visible:text-sky-300"><MonitorIcon v-if="card.kind === 'browser-provided'" tw-class="w-5 h-5" /><CpuIcon v-else tw-class="w-5 h-5" /></div></div><div tw-class="min-w-0"><p tw-class="whitespace-nowrap text-[12px] text-gray-500 dark:text-gray-400">{{ card.model.developer }}</p><h3 class="model-deck-name" tw-class="font-semibold text-gray-600 dark:text-gray-400 tracking-tight leading-snug [overflow-wrap:anywhere] group-hover:text-gray-800 dark:group-hover:text-gray-100 group-focus-visible:text-gray-800 dark:group-focus-visible:text-gray-100 transition-colors duration-300 motion-reduce:transition-none">{{ card.model.name }}</h3></div></div>
-                  <div v-if="card.kind === 'gguf'" class="model-deck-main model-deck-metadata" tw-class="flex flex-col gap-y-1 text-[11px] text-gray-500 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-400 group-focus-visible:text-gray-600 dark:group-focus-visible:text-gray-400 transition-colors duration-300 motion-reduce:transition-none"><span tw-class="inline-flex items-center gap-1 whitespace-nowrap"><HardDriveIcon tw-class="h-3.5 w-3.5 shrink-0" />{{ modelSize({ bytes: card.hint.approximateModelBytes }) }}</span><span tw-class="whitespace-nowrap">{{ lazyStrings.llamaCppBrowser__memory_estimate_gib({ memory: String(card.hint.suggestedMemoryGiB) }) }}</span></div>
-                  <div v-else class="model-deck-main model-deck-metadata" tw-class="space-y-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400"><span tw-class="flex items-center gap-1.5"><ShieldCheckIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.BrowserModelWelcome__processed_on_this_device() }}</span><span v-if="card.availability !== 'available'">{{ card.availability === 'downloading' ? lazyStrings.BrowserModelWelcome__the_browser_is_preparing_the_model() : lazyStrings.BrowserModelWelcome__the_browser_handles_initial_preparation() }}</span></div>
-                </div>
-                <span class="model-deck-main model-deck-start" aria-hidden="true" tw-class="flex items-center justify-between gap-2 border-t border-gray-200/60 dark:border-gray-700/50 bg-gray-50/60 dark:bg-gray-900/15 px-3 py-3 text-[13px] font-bold leading-snug text-gray-600 dark:text-gray-400 group-hover:border-blue-100/60 dark:group-hover:border-blue-500/10 group-hover:bg-blue-50/70 dark:group-hover:bg-blue-500/10 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-focus-visible:border-blue-100/60 dark:group-focus-visible:border-blue-500/10 group-focus-visible:bg-blue-50/70 dark:group-focus-visible:bg-blue-500/10 group-focus-visible:text-blue-600 dark:group-focus-visible:text-blue-400 transition-colors duration-300 motion-reduce:transition-none"><span tw-class="min-w-0 text-balance">{{ lazyStrings.SHARED__run_in_your_browser() }}</span><ArrowRightIcon tw-class="h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none" /></span>
-              </button>
+              <!-- Capability detection can append a browser model after first paint.
+                   Fade in that new card without replaying the existing cards. -->
+              <Transition v-for="card in modelCards" :key="card.model.id" name="model-showcase-card" type="animation" :appear="card.kind === 'browser-provided'">
+                <BrowserModelShowcaseCard :card="card" :interaction="disabled ? 'blocked' : 'ready'" :start-status="startStatus" @activate="activateCard($event)" />
+              </Transition>
             </div>
           </div>
           <div tw-class="flex min-h-9 items-center justify-center" aria-live="polite">
@@ -467,20 +515,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     transform: translateY(0);
   }
 }
-.model-cpu-accent {
-  box-shadow: 0 0 26px rgb(56 189 248 / 0), 0 0 10px rgb(59 130 246 / 0);
-  transition: box-shadow 650ms ease, color 650ms ease, background-color 650ms ease, border-color 650ms ease;
-}
-.model-deck-card-selected:hover .model-cpu-accent, .model-deck-card-selected:focus-visible .model-cpu-accent {
-  box-shadow: 0 0 26px rgb(56 189 248 / 0.26), 0 0 10px rgb(59 130 246 / 0.14);
-  transition-duration: 950ms;
-}
 .model-deck {
   --model-card-width: min(28rem, max(11.5rem, 62cqw));
-  --model-identity-icon-width: 0rem;
   --model-visible-peek: calc((100cqw - var(--model-card-width)) / 2 - 0.5rem);
   --model-edge-fade: clamp(1.25rem, calc(var(--model-visible-peek) * 0.55), 4rem);
-  height: 13.5rem;
+  /* Stacked grid items share the height their content needs at this width. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding-block: 0.5rem;
   overflow: hidden;
   mask-image: linear-gradient(to right, transparent, rgb(0 0 0 / 0.7) calc(var(--model-edge-fade) * 0.45), #000 var(--model-edge-fade), #000 calc(100% - var(--model-edge-fade)), rgb(0 0 0 / 0.7) calc(100% - var(--model-edge-fade) * 0.45), transparent);
 }
@@ -488,125 +530,93 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   container: model-stage / inline-size;
   margin-inline: calc(-1 * var(--welcome-gutter));
 }
-.model-deck-card {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  position: absolute;
-  top: 0.5rem;
-  bottom: 0.5rem;
-  /* Every card keeps its full width; neighboring cards continue beyond the fog. */
-  left: 50%;
-  width: var(--model-card-width);
-  touch-action: pan-y pinch-zoom;
-  transform: translateX(calc(-50% + var(--model-offset) * (var(--model-card-width) + 0.5rem) + var(--model-drag, 0px)));
-  opacity: 0.9;
-  z-index: 1;
-  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease, border-color 180ms ease, background-color 300ms ease, box-shadow 300ms ease;
-}
-.model-deck-card-selected {
-  opacity: 1;
-  z-index: 2;
-}
-.model-deck-card-selected:hover, .model-deck-card-selected:focus-visible {
-  box-shadow: 0 3px 12px rgb(0 0 0 / 0.04);
-}
-.model-deck-card-previous:hover, .model-deck-card-next:hover, .model-deck-card-previous:focus-visible, .model-deck-card-next:focus-visible {
-  opacity: 1;
-}
-.model-deck-card-hidden {
-  opacity: 0;
-  pointer-events: none;
-  z-index: 0;
-}
 .model-deck-dragging .model-deck-card {
   transition: none;
 }
-.model-deck-identity {
-  transform: translateX(calc(-1 * var(--model-identity-icon-width)));
-  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+.onboarding-benefits {
+  --benefit-inline-gap: 1rem;
 }
-.model-deck-card-selected .model-deck-identity {
-  transform: translateX(0);
+.onboarding-benefit {
+  /* One shared grid cell reserves the height of the longest translation.
+     Each label owns four seconds of this twelve-second cycle. */
+  grid-area: 1 / 1;
+  align-self: center;
+  justify-self: center;
+  min-width: 0;
+  max-width: 100%;
+  opacity: 0;
+  animation: onboarding-benefit-cycle 12s ease-in-out infinite both;
 }
-.model-deck-card-previous .model-deck-identity {
-  transform: translateX(calc(var(--model-card-width) - var(--model-visible-peek) - 0.75rem + var(--model-edge-fade) * 0.45 - var(--model-identity-icon-width)));
+.onboarding-benefit-server {
+  animation-delay: 4s;
 }
-.model-deck-cpu {
-  display: none;
+.onboarding-benefit-gguf {
+  animation-delay: 8s;
+}
+.onboarding-benefits[data-benefit-layout="inline"] {
+  display: flex;
+  justify-content: center;
+  gap: var(--benefit-inline-gap);
+}
+.onboarding-benefits[data-benefit-layout="inline"] > .onboarding-benefit {
   flex-shrink: 0;
-  width: var(--model-identity-icon-width);
-  opacity: 0;
-  transition: opacity 240ms ease;
-}
-.model-cpu-accent {
-  width: 3rem;
-}
-.model-deck-main {
-  opacity: 0;
-  transition: opacity 160ms ease;
-}
-.model-deck-card-selected .model-deck-main {
+  white-space: nowrap;
   opacity: 1;
-  transition-delay: 140ms;
+  transform: none;
+  animation: none;
 }
-.model-deck-preview {
-  opacity: 1;
-  transition: opacity 160ms ease;
+.onboarding-benefit-measurement {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--benefit-inline-gap);
+  width: max-content;
+  white-space: nowrap;
+  visibility: hidden;
+  pointer-events: none;
 }
-.model-deck-preview-action {
-  inset-inline-start: 0;
-  inset-inline-end: auto;
-  width: var(--model-visible-peek);
+@keyframes onboarding-benefit-cycle {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  2%, 31.6667% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  33.3333%, 100% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
-.model-deck-card-previous .model-deck-preview-action {
-  inset-inline-start: auto;
-  inset-inline-end: 0;
+.model-deck :deep(.model-showcase-card-enter-active) {
+  /* Animate only opacity; the card keeps its existing slide transform. */
+  animation: model-showcase-card-added 800ms ease-out both;
 }
-.model-deck-name {
-  /* Keep glyph size and wrapping stable throughout the card's movement. */
-  font-size: clamp(16px, 2.8cqw, 20px);
-  white-space: normal;
+@keyframes model-showcase-card-added {
+  from {
+    opacity: 0;
+  }
 }
-.model-deck-card-selected .model-deck-preview {
+.model-showcase-total {
+  display: inline-block;
+  min-width: 1ch;
+}
+.model-showcase-total-enter-active {
+  transition: opacity 260ms ease-out;
+}
+.model-showcase-total-leave-active {
+  transition: opacity 120ms ease-in;
+}
+.model-showcase-total-enter-from, .model-showcase-total-leave-to {
   opacity: 0;
 }
 /* Respond to the space left by the sidebar rather than the viewport width. */
 @container browser-model-welcome (min-width: 36rem) {
   .onboarding-benefits {
-    width: 100%;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    column-gap: 1rem;
     font-size: 13px;
-  }
-  .model-deck {
-    --model-identity-icon-width: 3.75rem;
-    height: 12rem;
-  }
-  .model-deck-cpu {
-    display: block;
-  }
-  .model-deck-card-selected .model-deck-cpu {
-    opacity: 1;
-  }
-  .model-deck-content, .model-deck-start {
-    padding-inline: 1rem;
-  }
-  .model-deck-metadata {
-    flex-direction: row;
-    flex-wrap: wrap;
-    column-gap: 1rem;
-    font-size: 12px;
-  }
-  .model-deck-start {
-    font-size: 14px;
-  }
-}
-@container browser-model-welcome (max-width: 30rem) {
-  .model-deck-preview-action {
-    display: none;
   }
 }
 @container browser-model-welcome (max-width: 22rem) {
@@ -630,7 +640,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     padding-top: 4rem;
   }
   .onboarding-content {
-    gap: 1rem;
+    gap: var(--benefit-inline-gap);
   }
 }
 .discovery-hint-enter-active {
@@ -648,10 +658,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   opacity: 0;
 }
 @media (prefers-reduced-motion: reduce) {
+  .onboarding-benefits {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1rem;
+  }
+  .onboarding-benefit {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
   .onboarding-brand {
     animation: none;
   }
-  .model-cpu-accent, .model-deck-card, .model-deck-identity, .model-deck-cpu, .model-deck-name, .model-deck-main, .model-deck-preview, .discovery-hint-enter-active, .discovery-hint-leave-active {
+  .model-deck :deep(.model-showcase-card-enter-active) {
+    animation: none;
+  }
+  .model-showcase-total-enter-active, .model-showcase-total-leave-active, .discovery-hint-enter-active, .discovery-hint-leave-active {
     transition: none;
   }
 }

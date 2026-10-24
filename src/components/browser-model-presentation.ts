@@ -9,6 +9,16 @@ export type BrowserModelSelection = { suggestionId: string, quantizationId: stri
 export type BrowserModelPresentation = { name: string, developer: string, repository: string, bytes: number | undefined };
 export type BrowserModelLocalInput = { directories: Promise<TemporaryModelDirectoryInput[]>, controller: AbortController };
 export type ModelDiscoveryTab = 'candidates' | 'hugging-face' | 'local-files';
+export type BrowserModelShowcasePosition = 'selected' | 'previous' | 'next' | 'hidden';
+export type BrowserModelShowcaseItem = ({
+  kind: 'gguf',
+  model: ModelSuggestion,
+  hint: SuggestedQuantization,
+} | {
+  kind: 'browser-provided',
+  model: { id: string, name: string | undefined, developer: string | undefined },
+  availability: 'available' | 'downloadable' | 'downloading',
+}) & { position: BrowserModelShowcasePosition, offset: number };
 
 // The showcase chooses only order and membership. All model data comes from the shared catalog.
 export const browserModelShowcaseIds = ['gemma-4-e2b', 'gpt-oss-20b', 'lfm-2-5-2-6b', 'qwen-3-5-9b', 'qwen-3-6-35b', 'qwen-3-8-flash-next'] as const;

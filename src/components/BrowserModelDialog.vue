@@ -135,14 +135,9 @@ defineExpose({ focusPanel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || 
   top: 1.125rem;
   right: 4rem;
 }
-.browser-model-dialog-active :deep(.onboarding-benefit) {
+.browser-model-dialog-active :deep(.onboarding-benefits[data-benefit-layout="rotating"]) {
+  /* Reveal the row once; its individual labels own their repeating cycle. */
   animation: browser-model-benefit-appear 800ms cubic-bezier(0.22, 1, 0.36, 1) 160ms both;
-}
-.browser-model-dialog-active :deep(.onboarding-benefits > .onboarding-benefit:nth-child(2)) {
-  animation-delay: 300ms;
-}
-.browser-model-dialog-active :deep(.onboarding-benefits > .onboarding-benefit:nth-child(3)) {
-  animation-delay: 440ms;
 }
 .browser-model-dialog-active :deep(.onboarding-local-files) {
   margin-block-start: clamp(2.5rem, calc(7dvh + 0.5rem), 4.5rem);
@@ -254,7 +249,7 @@ defineExpose({ focusPanel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || 
     transition: none;
   }
   .browser-model-dialog-active :deep(.onboarding-local-files),
-  .browser-model-dialog-active :deep(.onboarding-benefit) {
+  .browser-model-dialog-active :deep(.onboarding-benefits[data-benefit-layout="rotating"]) {
     animation: none;
   }
 }

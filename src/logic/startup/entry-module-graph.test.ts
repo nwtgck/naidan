@@ -195,6 +195,7 @@ describe('production entry module boundaries', () => {
       ['src/App.vue', 'src/components/BrowserModelWelcomeDialog.vue'],
       ['src/components/BrowserModelWelcomeDialog.vue', 'src/components/BrowserModelDialog.vue'],
       ['src/components/BrowserModelWelcomeDialog.vue', 'src/components/BrowserModelWelcome.vue'],
+      ['src/components/BrowserModelWelcome.vue', 'src/components/BrowserModelShowcaseCard.vue'],
     ]) {
       expect(graph.referencesFrom({ from: from! })).toContainEqual({ from, target, kind: 'static' });
     }
