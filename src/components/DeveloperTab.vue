@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon, SearchCheckIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
+import ActionButton from './ActionButton.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import DeveloperDataDeletionPanel from '@/features/data-deletion/components/DeveloperDataDeletionPanel.vue';
 import DeveloperCspDiagnostics from './DeveloperCspDiagnostics.vue';
@@ -83,106 +84,105 @@ defineExpose({
 </script>
 
 <template>
-  <div data-testid="developer-section" class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-8 duration-400">
-    <section tw-class="space-y-8">
-      <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <CpuIcon tw-class="w-5 h-5 text-blue-500" />
-        <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.DeveloperTab__developer_tools() }}</h2>
+  <div data-testid="developer-section" class="animate-in fade-in slide-in-from-bottom-2" tw-class="@container space-y-7 duration-300">
+    <section tw-class="space-y-7">
+      <div tw-class="flex items-center gap-2.5 border-b border-gray-200/70 pb-4 dark:border-gray-800">
+        <CpuIcon aria-hidden="true" tw-class="h-5 w-5 shrink-0 text-blue-500 dark:text-blue-400" />
+        <h2 tw-class="text-lg font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.DeveloperTab__developer_tools() }}</h2>
       </div>
 
-      <div tw-class="space-y-8">
-        <div tw-class="space-y-4">
-          <h3 tw-class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__experimental_features() }}</h3>
+      <div tw-class="space-y-7">
+        <section tw-class="space-y-3">
+          <h3 tw-class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200"><FlaskConicalIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" />{{ lazyStrings.DeveloperTab__experimental_features() }}</h3>
           <FeatureFlagsSettings />
-        </div>
+        </section>
 
-        <div tw-class="space-y-4">
-          <h3 tw-class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__debug_and_testing() }}</h3>
-          <div tw-class="flex flex-col gap-2 sm:flex-row">
-            <button
+        <section tw-class="space-y-3 border-t border-gray-200/70 pt-5 dark:border-gray-800">
+          <h3 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.DeveloperTab__debug_and_testing() }}</h3>
+          <div tw-class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <ActionButton
+              :icon-tone="undefined"
+              :disabled="false"
+              appearance="primary"
               @click="createSampleChat"
-              tw-class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              tw-class="w-full sm:w-auto"
               data-testid="setting-create-sample-button"
             >
-              <FlaskConicalIcon tw-class="h-4 w-4" />
+              <FlaskConicalIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
               {{ lazyStrings.DeveloperTab__create_sample_chat() }}
-            </button>
-            <button
+            </ActionButton>
+            <ActionButton
+              :icon-tone="undefined"
+              :disabled="false"
+              appearance="primary"
               @click="createLongSampleChat"
-              tw-class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              tw-class="w-full sm:w-auto"
               data-testid="setting-create-long-sample-button"
             >
-              <ScrollTextIcon tw-class="h-4 w-4" />
+              <ScrollTextIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
               {{ lazyStrings.DeveloperTab__create_long_sample_chat() }}
-            </button>
+            </ActionButton>
           </div>
-          <p tw-class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
-        </div>
+          <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
+        </section>
 
-        <div v-if="canOpenModelSupportInvestigation" tw-class="space-y-4">
+        <section v-if="canOpenModelSupportInvestigation" tw-class="space-y-3 border-t border-gray-200/70 pt-5 dark:border-gray-800">
           <div>
-            <h3 tw-class="ml-1 text-sm font-bold uppercase tracking-widest text-gray-500">{{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}</h3>
-            <p tw-class="ml-1 mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
+            <h3 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}</h3>
+            <p tw-class="mt-1.5 max-w-2xl text-xs leading-relaxed text-gray-500 dark:text-gray-400">
               {{ lazyStrings.ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation() }}
             </p>
           </div>
-          <button
-            type="button"
+          <ActionButton
+            :icon-tone="undefined"
+            :disabled="false"
+            appearance="primary"
             data-testid="open-model-support-investigation-button"
-            tw-class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            tw-class="w-full sm:w-auto"
             @click="openModelSupportInvestigation"
           >
-            <div tw-class="flex items-center gap-2">
-              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <SearchCheckIcon tw-class="w-4 h-4 text-purple-500" />
-              </div>
-              <span>{{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}</span>
-            </div>
-          </button>
-        </div>
+            <SearchCheckIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
+            {{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}
+          </ActionButton>
+        </section>
 
         <DeveloperOpenStateLinks />
 
         <DeveloperCspDiagnostics />
 
-        <div tw-class="space-y-2">
-          <button
-            @click="togglePWAUpdate"
-            :tw-class="['w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left', { 'ring-2 ring-emerald-500/20 border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-900/10': hasPWAUpdate }]"
-            data-testid="toggle-pwa-update-button"
-          >
-            <div tw-class="flex items-center gap-2">
-              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <RefreshCwIcon :class="hasPWAUpdate ? 'animate-spin-slow' : ''" :tw-class="['w-4 h-4', hasPWAUpdate ? 'text-emerald-500' : 'text-gray-400']" />
-              </div>
-              <div tw-class="flex flex-col">
-                <span tw-class="text-sm font-bold">{{ lazyStrings.DeveloperTab__simulate_pwa_update() }}</span>
-                <span tw-class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</span>
-              </div>
-            </div>
-            <div v-if="hasPWAUpdate" tw-class="flex h-2 w-2 relative">
-              <span tw-class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span tw-class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </div>
-          </button>
+        <section tw-class="grid gap-4 border-t border-gray-200/70 pt-5 dark:border-gray-800 @2xl:grid-cols-2">
+          <div tw-class="min-w-0 space-y-2">
+            <ActionButton
+              :icon-tone="undefined"
+              :disabled="false"
+              appearance="primary"
+              :aria-pressed="hasPWAUpdate"
+              @click="togglePWAUpdate"
+              tw-class="w-full"
+              data-testid="toggle-pwa-update-button"
+            >
+              <RefreshCwIcon :class="hasPWAUpdate ? 'animate-spin-slow' : ''" aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
+              <span tw-class="min-w-0 flex-1 text-left">{{ lazyStrings.DeveloperTab__simulate_pwa_update() }}</span>
+              <span v-if="hasPWAUpdate" aria-hidden="true" tw-class="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+            </ActionButton>
+            <p tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</p>
+          </div>
 
-
-          <button
-            @click="handleReload"
-            tw-class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
-            data-testid="reload-app-button"
-          >
-            <div tw-class="flex items-center gap-2">
-              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <RefreshCwIcon tw-class="w-4 h-4 text-gray-400" />
-              </div>
-              <div tw-class="flex flex-col">
-                <span tw-class="text-sm font-bold">{{ lazyStrings.DeveloperTab__reload_application() }}</span>
-                <span tw-class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__perform_window_reload() }}</span>
-              </div>
-            </div>
-          </button>
-        </div>
+          <div tw-class="min-w-0 space-y-2">
+            <ActionButton
+              :icon-tone="undefined"
+              :disabled="false"
+              appearance="secondary"
+              @click="handleReload"
+              tw-class="w-full"
+              data-testid="reload-app-button"
+            >
+              <RefreshCwIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
+              <span tw-class="min-w-0 flex-1 text-left">{{ lazyStrings.DeveloperTab__reload_application() }}</span>
+            </ActionButton>
+            <p tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.DeveloperTab__perform_window_reload() }}</p>
+          </div>
+        </section>
 
         <DeveloperDataDeletionPanel :storage-type="props.storageType" />
       </div>
@@ -202,5 +202,10 @@ defineExpose({
 
 .animate-spin-slow {
   animation: spin-slow 8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin-slow {
+    animation: none;
+  }
 }
 </style>

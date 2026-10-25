@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import DeveloperDataDeletionPanel from './DeveloperDataDeletionPanel.vue';
+import ActionButton from '@/components/ActionButton.vue';
 import { useConfirm } from '@/composables/useConfirm';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import * as dataDeletion from '@/features/data-deletion/logic/data-deletion';
@@ -55,7 +56,110 @@ describe('DeveloperDataDeletionPanel', () => {
     expect(wrapper.find('[data-testid="data-deletion-checkbox-local-storage-theme-mode"]').exists()).toBe(true);
   });
 
-  it('applies the Factory Reset preset including Cache Storage all caches', async () => {
+  it.each(['localStorage', 'opfs', 'indexedDb', 'cacheStorage'] as const)('selects only visible %s items while advanced mode is off', async group => {
+    const wrapper = mountPanel();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const selectAll = wrapper.get<HTMLInputElement>(`[data-testid="data-deletion-group-select-all-${group}"]`);
+
+    await selectAll.setValue(true);
+    expect(selectAll.element.checked).toBe(true);
+    expect(selectAll.element.indeterminate).toBe(false);
+    await wrapper.get('[data-testid="data-deletion-advanced-mode-checkbox"]').setValue(true);
+
+    // Revealing the advanced options must not reveal any silently selected items.
+    for (const option of dataDeletion.DATA_DELETION_OPTIONS) {
+      const input = wrapper.get<HTMLInputElement>(`[data-testid="data-deletion-checkbox-${option.id}"]`);
+      expect(input.element.checked).toBe(option.group === group && !option.advanced);
+    }
+    expect(selectAll.element.checked).toBe(false);
+    expect(selectAll.element.indeterminate).toBe(true);
+
+    await wrapper.get('[data-testid="data-deletion-advanced-mode-checkbox"]').setValue(false);
+    expect(selectAll.element.checked).toBe(true);
+    await selectAll.setValue(false);
+    await wrapper.get('[data-testid="data-deletion-advanced-mode-checkbox"]').setValue(true);
+    for (const input of wrapper.findAll<HTMLInputElement>('[data-testid^="data-deletion-checkbox-"]')) {
+      expect(input.element.checked).toBe(false);
+    }
+  });
+
+  it.each(['localStorage', 'opfs', 'indexedDb', 'cacheStorage'] as const)('selects and clears all visible %s items in advanced mode without changing other sections', async group => {
+    const wrapper = mountPanel();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="data-deletion-advanced-mode-checkbox"]').setValue(true);
+    const selectAll = wrapper.get<HTMLInputElement>(`[data-testid="data-deletion-group-select-all-${group}"]`);
+    await selectAll.setValue(true);
+
+    for (const option of dataDeletion.DATA_DELETION_OPTIONS) {
+      expect(wrapper.get<HTMLInputElement>(`[data-testid="data-deletion-checkbox-${option.id}"]`).element.checked).toBe(option.group === group);
+    }
+    expect(selectAll.element.checked).toBe(true);
+    expect(selectAll.element.indeterminate).toBe(false);
+
+    await selectAll.setValue(false);
+    for (const input of wrapper.findAll<HTMLInputElement>('[data-testid^="data-deletion-checkbox-"]')) {
+      expect(input.element.checked).toBe(false);
+    }
+    expect(selectAll.element.checked).toBe(false);
+    expect(selectAll.element.indeterminate).toBe(false);
+  });
+
+  it('shows a mixed group selection and updates it after individual checkbox changes', async () => {
+    const wrapper = mountPanel();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const selectAll = wrapper.get<HTMLInputElement>('[data-testid="data-deletion-group-select-all-localStorage"]');
+    const first = wrapper.get('[data-testid="data-deletion-checkbox-local-storage-naidan-all"]');
+    const second = wrapper.get('[data-testid="data-deletion-checkbox-local-storage-lsp"]');
+
+    await first.setValue(true);
+    expect(selectAll.element.checked).toBe(false);
+    expect(selectAll.element.indeterminate).toBe(true);
+    await second.setValue(true);
+    expect(selectAll.element.checked).toBe(true);
+    expect(selectAll.element.indeterminate).toBe(false);
+    await first.setValue(false);
+    expect(selectAll.element.checked).toBe(false);
+    expect(selectAll.element.indeterminate).toBe(true);
+    await wrapper.get('[data-testid="data-deletion-clear-all-selections-button"]').trigger('click');
+    expect(selectAll.element.checked).toBe(false);
+    expect(selectAll.element.indeterminate).toBe(false);
+  });
+
+  it('leaves explicitly selected hidden advanced items untouched by normal-mode group actions', async () => {
+    const wrapper = mountPanel();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const advanced = wrapper.get('[data-testid="data-deletion-advanced-mode-checkbox"]');
+    await advanced.setValue(true);
+    await wrapper.get('[data-testid="data-deletion-checkbox-local-storage-theme-mode"]').setValue(true);
+    await advanced.setValue(false);
+
+    const selectAll = wrapper.get('[data-testid="data-deletion-group-select-all-localStorage"]');
+    await selectAll.setValue(true);
+    await selectAll.setValue(false);
+    await advanced.setValue(true);
+    for (const option of dataDeletion.DATA_DELETION_OPTIONS) {
+      expect(wrapper.get<HTMLInputElement>(`[data-testid="data-deletion-checkbox-${option.id}"]`).element.checked).toBe(option.id === 'local-storage-theme-mode');
+    }
+  });
+
+  it('applies the Factory Reset preset including Cache Storage all caches without deleting data', async () => {
+    using executeDeletion = vi.spyOn(dataDeletion, 'executeDataDeletion');
     const wrapper = mountPanel();
 
     await wrapper.find('[data-testid="data-deletion-factory-reset-preset-button"]').trigger('click');
@@ -71,6 +175,9 @@ describe('DeveloperDataDeletionPanel', () => {
       const input = wrapper.find<HTMLInputElement>(`[data-testid="data-deletion-checkbox-${id}"]`);
       expect(input.element.checked).toBe(true);
     }
+    expect(showConfirm).not.toHaveBeenCalled();
+    expect(executeDeletion).not.toHaveBeenCalled();
+    expect(reloadPage).not.toHaveBeenCalled();
   });
 
   it('clears the Factory Reset selection and preview without deleting data and allows reselection', async () => {
@@ -191,15 +298,17 @@ describe('DeveloperDataDeletionPanel', () => {
     expect(input.attributes('disabled')).toBeUndefined();
   });
 
-  it('uses the existing Danger Zone red button style for destructive deletion', () => {
+  it('distinguishes the selection preset from the destructive deletion action', () => {
     const wrapper = mountPanel();
-    const button = wrapper.find('[data-testid="setting-reset-data-button"]');
+    const buttons = wrapper.findAllComponents(ActionButton);
+    const preset = buttons.find(button => button.attributes('data-testid') === 'data-deletion-factory-reset-preset-button');
+    const deletion = buttons.find(button => button.attributes('data-testid') === 'setting-reset-data-button');
 
-    expect(button.classes()).toEqual(expect.arrayContaining([
-      'bg-red-600',
-      'hover:bg-red-700',
-      'shadow-red-500/20',
-    ]));
+    expect(preset?.props('appearance')).toBe('primary');
+    expect(preset?.text()).toBe('Select factory reset items');
+    expect(deletion?.props('appearance')).toBe('danger-filled');
+    expect(deletion?.attributes('type')).toBe('button');
+    expect(deletion?.attributes('disabled')).toBeDefined();
   });
 
   it('keeps the destructive delete button above the preview panel', () => {

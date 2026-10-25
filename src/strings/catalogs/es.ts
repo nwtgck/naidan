@@ -2474,6 +2474,7 @@ import { contextCompact__to_keep } from '@/strings/messages/contextCompact__to_k
 import { contextCompact__waiting_for_the_model } from '@/strings/messages/contextCompact__waiting_for_the_model/es';
 import { dataDeletion__advanced_mode } from '@/strings/messages/dataDeletion__advanced_mode/es';
 import { dataDeletion__checked_selectors_matching_entries } from '@/strings/messages/dataDeletion__checked_selectors_matching_entries/es';
+import { dataDeletion__choose_a_preset_or_select_items_individually } from '@/strings/messages/dataDeletion__choose_a_preset_or_select_items_individually/es';
 import { dataDeletion__clear_all_selections } from '@/strings/messages/dataDeletion__clear_all_selections/es';
 import { dataDeletion__delete_application_data } from '@/strings/messages/dataDeletion__delete_application_data/es';
 import { dataDeletion__delete_data_matched_by_selected_selectors } from '@/strings/messages/dataDeletion__delete_data_matched_by_selected_selectors/es';
@@ -2487,7 +2488,10 @@ import { dataDeletion__no_matching_entries } from '@/strings/messages/dataDeleti
 import { dataDeletion__not_available_in_this_runtime } from '@/strings/messages/dataDeletion__not_available_in_this_runtime/es';
 import { dataDeletion__preview_entries } from '@/strings/messages/dataDeletion__preview_entries/es';
 import { dataDeletion__scanning_storage } from '@/strings/messages/dataDeletion__scanning_storage/es';
+import { dataDeletion__select_all } from '@/strings/messages/dataDeletion__select_all/es';
 import { dataDeletion__select_at_least_one_deletion_selector } from '@/strings/messages/dataDeletion__select_at_least_one_deletion_selector/es';
+import { dataDeletion__select_factory_reset_items } from '@/strings/messages/dataDeletion__select_factory_reset_items/es';
+import { dataDeletion__selection_presets } from '@/strings/messages/dataDeletion__selection_presets/es';
 import { documentTitle__run_ai_on_your_device_directly_in_your_browser } from '@/strings/messages/documentTitle__run_ai_on_your_device_directly_in_your_browser/es';
 import { endpointTypeDescription__connect_to_an_ollama_server } from '@/strings/messages/endpointTypeDescription__connect_to_an_ollama_server/es';
 import { endpointTypeDescription__connect_to_an_openai_compatible_api } from '@/strings/messages/endpointTypeDescription__connect_to_an_openai_compatible_api/es';
@@ -5778,6 +5782,7 @@ export const catalog = {
   contextCompact__waiting_for_the_model,
   dataDeletion__advanced_mode,
   dataDeletion__checked_selectors_matching_entries,
+  dataDeletion__choose_a_preset_or_select_items_individually,
   dataDeletion__clear_all_selections,
   dataDeletion__delete_application_data,
   dataDeletion__delete_data_matched_by_selected_selectors,
@@ -5791,7 +5796,10 @@ export const catalog = {
   dataDeletion__not_available_in_this_runtime,
   dataDeletion__preview_entries,
   dataDeletion__scanning_storage,
+  dataDeletion__select_all,
   dataDeletion__select_at_least_one_deletion_selector,
+  dataDeletion__select_factory_reset_items,
+  dataDeletion__selection_presets,
   documentTitle__run_ai_on_your_device_directly_in_your_browser,
   endpointTypeDescription__connect_to_an_ollama_server,
   endpointTypeDescription__connect_to_an_openai_compatible_api,

@@ -3,6 +3,7 @@ import { computed, useId } from 'vue';
 import type { LlamaCppServerTimingsMode } from '@/01-models/types';
 import { useGenerationSpeedSettings } from '@/composables/useGenerationSpeedSettings';
 import { lazyStrings } from '@/strings';
+import RadioButton from './RadioButton.vue';
 
 const groupName = useId();
 const { llamaCppServerTimings, saving, update } = useGenerationSpeedSettings();
@@ -25,7 +26,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <legend tw-class="mb-2 font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.GenerationSpeed__llama_cpp_server_timings() }}</legend>
     <div tw-class="flex flex-wrap gap-x-4 gap-y-2">
       <label v-for="option in options" :key="option.mode" tw-class="flex cursor-pointer items-center gap-1.5 text-gray-600 dark:text-gray-300">
-        <input type="radio" :name="groupName" :value="option.mode" :checked="llamaCppServerTimings === option.mode" tw-class="accent-blue-500 disabled:cursor-not-allowed" @change="choose({ mode: option.mode })" />
+        <RadioButton tone="amber" :name="groupName" :value="option.mode" :checked="llamaCppServerTimings === option.mode" @change="choose({ mode: option.mode })" />
         <span>{{ option.label }}</span>
       </label>
     </div>

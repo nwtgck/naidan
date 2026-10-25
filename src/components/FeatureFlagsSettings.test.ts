@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
+import RadioButton from './RadioButton.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Settings } from '@/01-models/types';
@@ -267,6 +268,11 @@ describe('FeatureFlagsSettings.vue', () => {
       },
     };
     const fieldset = wrapper.get('[data-testid="generation-speed-server-settings"]');
+    const radios = fieldset.findAll<HTMLInputElement>('input[type="radio"]');
+    expect(radios.map(radio => radio.element.value)).toEqual(['auto', 'enabled', 'disabled']);
+    expect(new Set(radios.map(radio => radio.element.name)).size).toBe(1);
+    expect(radios[0]?.element.name).toBeTruthy();
+    expect(wrapper.findAllComponents(RadioButton).map(radio => radio.props('tone'))).toEqual(['amber', 'amber', 'amber']);
     expect(fieldset.get<HTMLInputElement>('input[value="auto"]').element.checked).toBe(true);
     await fieldset.get<HTMLInputElement>('input[value="enabled"]').setValue();
     await flushPromises();
