@@ -45,6 +45,8 @@ import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue
 import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
+import GenerationSpeed from './GenerationSpeed.vue';
+import { useGenerationMetrics } from '@/composables/useGenerationMetrics';
 import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
@@ -300,6 +302,8 @@ const showChatInspector = ref(false);
 watch(() => props.chatId, () => {
   showChatInspector.value = false;
 });
+const { generationMetrics } = useGenerationMetrics({ chat, chatFlow });
+
 const chatIdentityKey = computed(() => {
   const chatId = props.chatId;
   const leafId = chat.value?.currentLeafId ?? 'no-leaf';
@@ -2017,6 +2021,9 @@ watch(
                     </template>
                   </template>
                 </template>
+                <template #generation-metrics>
+                  <GenerationSpeed v-if="generationMetrics.get(flowItem.id) !== undefined" :presentation="generationMetrics.get(flowItem.id)!" />
+                </template>
                 <template #default="{ isExpanded }">
                   <template v-for="subItem in (flowItem.items as ChatFlowItem[])" :key="subItem.type === 'message' ? subItem.key : subItem.id">
                     <MessageItem
@@ -2075,6 +2082,7 @@ watch(
                 :is-last-in-node="flowItem.isLastInNode"
                 :is-first-in-turn="flowItem.isFirstInTurn"
                 :show-generating-indicator="flowIdx === generatingIndicatorIndex"
+                :generation-metrics="generationMetrics.get(flowItem.key)"
                 @fork="messageId => handleFork({ messageId })"
                 @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                 @switch-version="messageId => handleSwitchVersion({ messageId })"

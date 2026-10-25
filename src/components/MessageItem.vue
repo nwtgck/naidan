@@ -22,6 +22,8 @@ import { getAssistantDisplayParts, getDisplayedMessageText } from '@/logic/messa
 import { useChatMessageError } from '@/composables/chat/useChatMessageError';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
+import GenerationSpeed from './GenerationSpeed.vue';
+import type { GenerationMetricsPresentation } from '@/01-models/generation-metrics';
 import SpeechLanguageSelector from '@/features/speech/components/SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/features/transformers-js';
 import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/components/LlamaCppBrowserLoadingIndicator.vue';
@@ -66,6 +68,7 @@ const props = withDefaults(defineProps<{
   isLastInNode?: boolean,
   isFirstInTurn?: boolean,
   showGeneratingIndicator?: boolean,
+  generationMetrics?: GenerationMetricsPresentation,
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
   isGenerating: false,
@@ -826,23 +829,26 @@ defineExpose({
           </div>
           <div v-else></div>
 
-          <!-- Message Actions -->
-          <MessageActions
-            v-if="speechText !== undefined"
-            :chat-id="chatId"
-            :message="message"
-            :is-image-response="isImageResponse"
-            :is-user="isUser"
-            :is-generating="isGenerating"
-            v-model:show-extensions="showExtensions"
-            :speech-text="speechText"
-            :display-content="displayContent"
-            @regenerate="id => emit('regenerate', id)"
-            @edit="(id, content, params) => emit('edit', id, content, params)"
-            @fork="id => emit('fork', id)"
-            @enter-edit-mode="isEditing = true"
-            @show-diff="showDiffModal = true"
-          />
+          <!-- Metrics stay before the entire actions/extension group. -->
+          <div tw-class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+            <GenerationSpeed v-if="generationMetrics !== undefined" :presentation="generationMetrics" />
+            <MessageActions
+              v-if="speechText !== undefined"
+              :chat-id="chatId"
+              :message="message"
+              :is-image-response="isImageResponse"
+              :is-user="isUser"
+              :is-generating="isGenerating"
+              v-model:show-extensions="showExtensions"
+              :speech-text="speechText"
+              :display-content="displayContent"
+              @regenerate="id => emit('regenerate', id)"
+              @edit="(id, content, params) => emit('edit', id, content, params)"
+              @fork="id => emit('fork', id)"
+              @enter-edit-mode="isEditing = true"
+              @show-diff="showDiffModal = true"
+            />
+          </div>
 
         </div>
       </div>

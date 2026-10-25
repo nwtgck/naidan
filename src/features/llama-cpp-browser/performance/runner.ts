@@ -307,7 +307,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                                 }
                                 break;
                               }
-                              case 'tool_call_start': case 'tool_call_draft': case 'tool_call': break;
+                              case 'generation_metrics': case 'tool_call_start': case 'tool_call_draft': case 'tool_call': break;
                               default: {
                                 const exhaustive: never = event;
                                 throw new Error(String(exhaustive));

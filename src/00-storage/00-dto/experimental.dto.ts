@@ -258,6 +258,11 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
   toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
   fakeLm: missingAsUndefined(dtozod.literal('enabled')),
   naidanRpc: missingAsUndefined(dtozod.literal('enabled')),
+  generationSpeed: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+    status: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+    inlineStats: missingAsUndefined(dtozod.enum(['on_demand', 'always'])),
+    llamaCppServerTimings: missingAsUndefined(dtozod.enum(['auto', 'enabled', 'disabled'])),
+  }))),
   sidebarSendMessageReorder: missingAsUndefined(dtozod.union([
     dtozod.literal('disabled'),
     dtozod.literal('move_sent_chat'),

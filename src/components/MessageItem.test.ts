@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { flushPromises, mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
+import MessageActions from './MessageActions.vue';
+import type { GenerationMetricsPresentation } from '@/01-models/generation-metrics';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { CheckIcon } from 'lucide-vue-next';
@@ -61,6 +63,21 @@ describe('MessageItem Rendering', () => {
     (useSettings as any).mockReturnValue({
       settings: ref({}),
     });
+  });
+
+  it('keeps speed before the complete action group when extensions are expanded', async () => {
+    const presentation: GenerationMetricsPresentation = { runId: 1, live: false, scope: 'last', updatedAt: 0, calls: [], metrics: { speed: { unit: 'tokens', measurement: 'llama_cpp_predicted', perSecond: 42.6 } } };
+    const wrapper = baseMount(MessageItem, { props: { chatId: toChatId({ raw: 'chat-1' }), message: createMessage('completed'), generationMetrics: presentation } });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const speed = wrapper.get('[data-testid="generation-speed"]').element;
+    const actions = wrapper.getComponent(MessageActions);
+    expect(speed.nextElementSibling).toBe(actions.element);
+    expect(wrapper.findAll('[data-testid="generation-speed"]')).toHaveLength(1);
+    await actions.get('button').trigger('click');
+    expect(actions.props('showExtensions')).toBe(true);
+    expect(speed.nextElementSibling).toBe(actions.element);
+    expect(wrapper.findAll('[data-testid="generation-speed"]')).toHaveLength(1);
+    void cleanup;
   });
 
   it('renders basic markdown correctly', () => {

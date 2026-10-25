@@ -3,11 +3,11 @@ import { CheckIcon, MinusIcon } from 'lucide-vue-next';
 
 // Keep the native input at the call site: checked values, change events,
 // fieldset disabling, labels and form semantics remain owned by the form.
-defineProps<{ presentation: 'checkbox' | 'switch' }>();
+defineProps<{ presentation: 'checkbox' | 'switch', tone?: 'blue' | 'amber' }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <span class="settings-choice-control" :data-presentation="presentation">
+  <span class="settings-choice-control" :data-presentation="presentation" :data-tone="tone ?? 'blue'">
     <slot />
     <CheckIcon v-if="presentation === 'checkbox'" aria-hidden="true" class="settings-choice-check" />
     <MinusIcon v-if="presentation === 'checkbox'" aria-hidden="true" class="settings-choice-mixed" />
@@ -24,6 +24,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --choice-selected-track: #dbeafe;
   --choice-thumb: #fff;
   --choice-selected-thumb: #3b82f6;
+  --choice-checked: #3b82f6;
+  --choice-hover: #60a5fa;
+  --choice-focus: #60a5fa80;
   position: relative;
   display: inline-flex;
   flex: 0 0 auto;
@@ -42,6 +45,21 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --choice-selected-thumb: #60a5fa;
 }
 
+.settings-choice-control[data-tone='amber'] {
+  --choice-selected-border: #f59e0b;
+  --choice-selected-track: #f59e0b;
+  --choice-selected-thumb: #fff;
+  --choice-checked: #f59e0b;
+  --choice-hover: #fbbf24;
+  --choice-focus: #f59e0b66;
+}
+
+:global(.dark .settings-choice-control[data-tone='amber']) {
+  --choice-selected-border: #fbbf24;
+  --choice-selected-track: #fbbf24;
+  --choice-selected-thumb: #fff;
+}
+
 .settings-choice-control :deep(input[type='checkbox']) {
   appearance: none;
   display: block;
@@ -56,18 +74,18 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 
 .settings-choice-control :deep(input[type='checkbox']:hover:not(:disabled)) {
-  border-color: #60a5fa;
+  border-color: var(--choice-hover);
 }
 
 .settings-choice-control :deep(input[type='checkbox']:focus-visible) {
-  outline: 2px solid #60a5fa80;
+  outline: 2px solid var(--choice-focus);
   outline-offset: 3px;
 }
 
 .settings-choice-control :deep(input[type='checkbox']:checked),
 .settings-choice-control :deep(input[type='checkbox']:indeterminate) {
-  border-color: #3b82f6;
-  background: #3b82f6;
+  border-color: var(--choice-checked);
+  background: var(--choice-checked);
 }
 
 .settings-choice-check,

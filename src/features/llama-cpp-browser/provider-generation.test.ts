@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { GenerationMetrics } from '@/01-models/generation-metrics';
 import type { AssistantMessageNode } from '@/01-models/types';
 import type { ChatGenerationItem, ToolCallDraft } from '@/01-models/lm';
 import { toMessageId } from '@/01-models/ids';
@@ -34,6 +35,26 @@ const call = { id: 'call1', type: 'function' as const, function: { name: 'lookup
 const called = (): GenerationResult => ({ ...finalText({ text: '' }), toolCalls: [call] });
 
 describe('native llama.cpp events into common parts', () => {
+  it.each(['observe', 'throw'] as const)('isolates live telemetry (%s) and preserves final native metrics', async mode => {
+    const metrics: GenerationMetrics = { nOutputTokens: 3, speed: { unit: 'tokens', measurement: 'worker_sample_interval', perSecond: 1, interval: { nUnits: 2, durationMs: 2000 } } };
+    const controller = new AbortController();
+    const observer = vi.fn(() => {
+      if (mode === 'throw') {
+        throw new Error('optional UI failed');
+      }
+    });
+    const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
+      await onEvent({ event: { type: 'generation_metrics', metrics } });
+      await onEvent({ event: { type: 'generation_metrics', metrics: undefined } });
+      return deliverNativeResult({ result: { ...finalText({ text: 'completed' }), generationMetrics: metrics }, onEvent });
+    };
+    const observed = observation({ items: createLlamaCppGeneration({ request: { ...chatRequest(), signal: controller.signal, onGenerationMetrics: observer }, generate }), controller });
+    expect(await observed.result).toEqual({ type: 'finished', next: 'user', generationMetrics: metrics });
+    expect(observer).toHaveBeenCalledExactlyOnceWith({ metrics });
+    expect(observed.node.parts).toEqual([{ type: 'text', text: 'completed', completeness: 'complete' }]);
+    expect(observed.node).not.toHaveProperty('generationMetrics');
+  });
+
   it('keeps parallel native previews transient and replaces them only with authoritative completed calls', async () => {
     const controller = new AbortController();
     const gate = Promise.withResolvers<void>();

@@ -2320,6 +2320,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigs,
       fakeLm,
       naidanRpc,
+      generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
       llamaCppBrowser,
@@ -2363,6 +2364,11 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
       fakeLm: fakeLm ?? 'disabled',
       naidanRpc: naidanRpc ?? 'disabled',
+      generationSpeed: generationSpeed === undefined ? undefined : (() => {
+        const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
+        unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['generationSpeed']>>()({ status, inlineStats, llamaCppServerTimings });
+      })(),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
       llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
@@ -2449,6 +2455,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       toolConfigs,
       fakeLm,
       naidanRpc,
+      generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
       llamaCppBrowser,
@@ -2505,6 +2512,11 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       fakeLm: fakeLmToExperimentalDto({
         status: fakeLm,
       }),
+      generationSpeed: generationSpeed === undefined ? undefined : (() => {
+        const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
+        unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['generationSpeed']>>()({ status, inlineStats, llamaCppServerTimings });
+      })(),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDto,
       llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),

@@ -1,0 +1,1 @@
+export const GenerationSpeed__llama_cpp_server_timings_help = (): string => "Global setting, applied from the next response while generation speed is enabled. Auto-detection checks /props; when unavailable, the usual measurement is used.";

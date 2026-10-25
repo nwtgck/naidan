@@ -17,7 +17,7 @@ export async function runProviderReplayTurn({ provider, request, tools, abortCon
 }) {
   const generated: (AssistantMessageNode | ToolMessageNode)[] = [];
   const toolEvents: { toolCallId: ToolCallId; event: ToolExecutionEvent }[] = [];
-  const { model, parameters, messages, readBinaryObject, debug, ...unhandled } = request;
+  const { model, parameters, messages, readBinaryObject, debug, onGenerationMetrics: _onGenerationMetrics, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
   const outcome = await generateChatTurn({
     onToolCallDraftsChange: undefined,

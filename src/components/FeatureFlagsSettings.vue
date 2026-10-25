@@ -1,21 +1,25 @@
 <script setup lang="ts">
 import NaidanRpcFeatureRow from '@/features/naidan-rpc-integration/components/NaidanRpcFeatureRow.vue';
 import { computed } from 'vue';
-import { AlertTriangleIcon, FlaskConicalIcon, FolderIcon, ListRestartIcon, TerminalIcon } from 'lucide-vue-next';
+import { AlertTriangleIcon, FlaskConicalIcon, FolderIcon, GaugeIcon, ListRestartIcon, TerminalIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
+import { useGenerationSpeedSettings } from '@/composables/useGenerationSpeedSettings';
 import {
   FAKE_LM_ENDPOINT_URL,
   useFakeLmDebugMode,
   type FakeLmDebugModeStatus,
 } from '@/features/fake-lm';
 import ExperimentalFeatureRow from './ExperimentalFeatureRow.vue';
+import SettingsChoiceControl from './SettingsChoiceControl.vue';
+import GenerationSpeedServerSettings from './GenerationSpeedServerSettings.vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 const { isFeatureEnabled, setFeatureEnabled } = useFeatureFlags();
 const { showConfirm } = useConfirm();
 const { settings, save, setFakeLmDebugModeStatus } = useSettings();
+const { status: generationSpeedStatus, inlineStats: generationSpeedInlineStats, saving: generationSpeedSaving, update: updateGenerationSpeedSettings } = useGenerationSpeedSettings();
 const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 
 const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
@@ -187,6 +191,13 @@ const fakeLmFeatureCopy = computed(() => resolveFeatureRowCopy({
   summary: lazyStrings.FeatureFlagsSettings__uses_bundled_fake_lm(),
   details: fakeLmDebugModeDetails.value,
   toggleLabel: fakeLmToggleLabel(),
+}));
+
+const generationSpeedFeatureCopy = computed(() => resolveFeatureRowCopy({
+  title: lazyStrings.FeatureFlagsSettings__generation_speed(),
+  summary: lazyStrings.FeatureFlagsSettings__shows_generation_speed_in_chat(),
+  details: lazyStrings.FeatureFlagsSettings__view_token_counts_and_measurement_intervals(),
+  toggleLabel: lazyStrings.GenerationSpeed__show_generation_speed(),
 }));
 
 
@@ -394,6 +405,28 @@ defineExpose({
           <FlaskConicalIcon tw-class="h-4 w-4" />
         </template>
       </ExperimentalFeatureRow>
+      <div v-if="generationSpeedFeatureCopy">
+        <ExperimentalFeatureRow
+          id="feature-generation-speed"
+          :title="generationSpeedFeatureCopy.title"
+          :summary="generationSpeedFeatureCopy.summary"
+          :details="generationSpeedFeatureCopy.details"
+          :status="generationSpeedStatus"
+          :toggle-availability="generationSpeedSaving ? 'unavailable' : 'available'"
+          :toggle-label="generationSpeedFeatureCopy.toggleLabel"
+          toggle-test-id="feature-generation-speed-toggle"
+          @toggle="updateGenerationSpeedSettings({ patch: { status: generationSpeedStatus === 'enabled' ? 'disabled' : 'enabled' } })"
+        >
+          <template #icon><GaugeIcon tw-class="h-4 w-4" /></template>
+        </ExperimentalFeatureRow>
+        <label tw-class="flex cursor-pointer items-center justify-between gap-4 border-t border-gray-100 px-4 py-3 text-[11px] font-medium text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:px-5">
+          <span tw-class="ml-12">{{ lazyStrings.GenerationSpeed__always_show_token_count_and_interval() }}</span>
+          <SettingsChoiceControl presentation="switch" tone="amber"><input type="checkbox" :checked="generationSpeedInlineStats === 'always'" :disabled="generationSpeedSaving" data-testid="feature-generation-speed-always-show-toggle" @change="updateGenerationSpeedSettings({ patch: { inlineStats: ($event.target as HTMLInputElement).checked ? 'always' : 'on_demand' } })" /></SettingsChoiceControl>
+        </label>
+        <div tw-class="border-t border-gray-100 px-4 py-3 dark:border-gray-800 sm:px-5">
+          <GenerationSpeedServerSettings tw-class="sm:ml-12" />
+        </div>
+      </div>
       <NaidanRpcFeatureRow />
     </div>
 

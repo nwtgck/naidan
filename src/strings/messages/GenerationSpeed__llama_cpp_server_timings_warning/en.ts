@@ -1,0 +1,1 @@
+export const GenerationSpeed__llama_cpp_server_timings_warning = (): string => "Always request sends timings_per_token to every OpenAI-compatible connection used for chat. Unsupported servers may reject generation.";

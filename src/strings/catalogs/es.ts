@@ -658,6 +658,7 @@ import { FeatureFlagsSettings__features_may_change } from '@/strings/messages/Fe
 import { FeatureFlagsSettings__folders } from '@/strings/messages/FeatureFlagsSettings__folders/es';
 import { FeatureFlagsSettings__folders_disabled_details } from '@/strings/messages/FeatureFlagsSettings__folders_disabled_details/es';
 import { FeatureFlagsSettings__folders_enabled_details } from '@/strings/messages/FeatureFlagsSettings__folders_enabled_details/es';
+import { FeatureFlagsSettings__generation_speed } from '@/strings/messages/FeatureFlagsSettings__generation_speed/es';
 import { FeatureFlagsSettings__hosted_build_only } from '@/strings/messages/FeatureFlagsSettings__hosted_build_only/es';
 import { FeatureFlagsSettings__move_chat_disabled_details } from '@/strings/messages/FeatureFlagsSettings__move_chat_disabled_details/es';
 import { FeatureFlagsSettings__move_chat_enabled_details } from '@/strings/messages/FeatureFlagsSettings__move_chat_enabled_details/es';
@@ -668,12 +669,37 @@ import { FeatureFlagsSettings__shell_disabled_details } from '@/strings/messages
 import { FeatureFlagsSettings__shell_enabled_details } from '@/strings/messages/FeatureFlagsSettings__shell_enabled_details/es';
 import { FeatureFlagsSettings__shell_in_browser } from '@/strings/messages/FeatureFlagsSettings__shell_in_browser/es';
 import { FeatureFlagsSettings__shows_folders_tab } from '@/strings/messages/FeatureFlagsSettings__shows_folders_tab/es';
+import { FeatureFlagsSettings__shows_generation_speed_in_chat } from '@/strings/messages/FeatureFlagsSettings__shows_generation_speed_in_chat/es';
 import { FeatureFlagsSettings__shows_shell_in_chat_tools } from '@/strings/messages/FeatureFlagsSettings__shows_shell_in_chat_tools/es';
 import { FeatureFlagsSettings__tool_config_persistence } from '@/strings/messages/FeatureFlagsSettings__tool_config_persistence/es';
 import { FeatureFlagsSettings__tool_persistence_disabled_details } from '@/strings/messages/FeatureFlagsSettings__tool_persistence_disabled_details/es';
 import { FeatureFlagsSettings__tool_persistence_enabled_details } from '@/strings/messages/FeatureFlagsSettings__tool_persistence_enabled_details/es';
 import { FeatureFlagsSettings__use_fake_lm_endpoint } from '@/strings/messages/FeatureFlagsSettings__use_fake_lm_endpoint/es';
 import { FeatureFlagsSettings__uses_bundled_fake_lm } from '@/strings/messages/FeatureFlagsSettings__uses_bundled_fake_lm/es';
+import { FeatureFlagsSettings__view_token_counts_and_measurement_intervals } from '@/strings/messages/FeatureFlagsSettings__view_token_counts_and_measurement_intervals/es';
+import { GenerationSpeed__always_show_token_count_and_interval } from '@/strings/messages/GenerationSpeed__always_show_token_count_and_interval/es';
+import { GenerationSpeed__could_not_save_display_settings } from '@/strings/messages/GenerationSpeed__could_not_save_display_settings/es';
+import { GenerationSpeed__enable_again_in_developer_settings } from '@/strings/messages/GenerationSpeed__enable_again_in_developer_settings/es';
+import { GenerationSpeed__generation_details } from '@/strings/messages/GenerationSpeed__generation_details/es';
+import { GenerationSpeed__generation_number } from '@/strings/messages/GenerationSpeed__generation_number/es';
+import { GenerationSpeed__input_tokens } from '@/strings/messages/GenerationSpeed__input_tokens/es';
+import { GenerationSpeed__llama_cpp_server_timings } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings/es';
+import { GenerationSpeed__llama_cpp_server_timings_help } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_help/es';
+import { GenerationSpeed__llama_cpp_server_timings_mode } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_mode/es';
+import { GenerationSpeed__llama_cpp_server_timings_warning } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_warning/es';
+import { GenerationSpeed__measured_interval } from '@/strings/messages/GenerationSpeed__measured_interval/es';
+import { GenerationSpeed__measured_units } from '@/strings/messages/GenerationSpeed__measured_units/es';
+import { GenerationSpeed__measurement_description } from '@/strings/messages/GenerationSpeed__measurement_description/es';
+import { GenerationSpeed__measurement_interval } from '@/strings/messages/GenerationSpeed__measurement_interval/es';
+import { GenerationSpeed__not_measured } from '@/strings/messages/GenerationSpeed__not_measured/es';
+import { GenerationSpeed__output_token_count } from '@/strings/messages/GenerationSpeed__output_token_count/es';
+import { GenerationSpeed__output_tokens } from '@/strings/messages/GenerationSpeed__output_tokens/es';
+import { GenerationSpeed__rate } from '@/strings/messages/GenerationSpeed__rate/es';
+import { GenerationSpeed__scope } from '@/strings/messages/GenerationSpeed__scope/es';
+import { GenerationSpeed__seconds } from '@/strings/messages/GenerationSpeed__seconds/es';
+import { GenerationSpeed__show_generation_speed } from '@/strings/messages/GenerationSpeed__show_generation_speed/es';
+import { GenerationSpeed__speed } from '@/strings/messages/GenerationSpeed__speed/es';
+import { GenerationSpeed__token_count_and_measurement_interval } from '@/strings/messages/GenerationSpeed__token_count_and_measurement_interval/es';
 import { GlobalSearchModal__all } from '@/strings/messages/GlobalSearchModal__all/es';
 import { GlobalSearchModal__alt_branch } from '@/strings/messages/GlobalSearchModal__alt_branch/es';
 import { GlobalSearchModal__assistant } from '@/strings/messages/GlobalSearchModal__assistant/es';
@@ -3765,6 +3791,7 @@ export const catalog = {
   FeatureFlagsSettings__folders,
   FeatureFlagsSettings__folders_disabled_details,
   FeatureFlagsSettings__folders_enabled_details,
+  FeatureFlagsSettings__generation_speed,
   FeatureFlagsSettings__hosted_build_only,
   FeatureFlagsSettings__move_chat_disabled_details,
   FeatureFlagsSettings__move_chat_enabled_details,
@@ -3775,12 +3802,37 @@ export const catalog = {
   FeatureFlagsSettings__shell_enabled_details,
   FeatureFlagsSettings__shell_in_browser,
   FeatureFlagsSettings__shows_folders_tab,
+  FeatureFlagsSettings__shows_generation_speed_in_chat,
   FeatureFlagsSettings__shows_shell_in_chat_tools,
   FeatureFlagsSettings__tool_config_persistence,
   FeatureFlagsSettings__tool_persistence_disabled_details,
   FeatureFlagsSettings__tool_persistence_enabled_details,
   FeatureFlagsSettings__use_fake_lm_endpoint,
   FeatureFlagsSettings__uses_bundled_fake_lm,
+  FeatureFlagsSettings__view_token_counts_and_measurement_intervals,
+  GenerationSpeed__always_show_token_count_and_interval,
+  GenerationSpeed__could_not_save_display_settings,
+  GenerationSpeed__enable_again_in_developer_settings,
+  GenerationSpeed__generation_details,
+  GenerationSpeed__generation_number,
+  GenerationSpeed__input_tokens,
+  GenerationSpeed__llama_cpp_server_timings,
+  GenerationSpeed__llama_cpp_server_timings_help,
+  GenerationSpeed__llama_cpp_server_timings_mode,
+  GenerationSpeed__llama_cpp_server_timings_warning,
+  GenerationSpeed__measured_interval,
+  GenerationSpeed__measured_units,
+  GenerationSpeed__measurement_description,
+  GenerationSpeed__measurement_interval,
+  GenerationSpeed__not_measured,
+  GenerationSpeed__output_token_count,
+  GenerationSpeed__output_tokens,
+  GenerationSpeed__rate,
+  GenerationSpeed__scope,
+  GenerationSpeed__seconds,
+  GenerationSpeed__show_generation_speed,
+  GenerationSpeed__speed,
+  GenerationSpeed__token_count_and_measurement_interval,
   GlobalSearchModal__all,
   GlobalSearchModal__alt_branch,
   GlobalSearchModal__assistant,
