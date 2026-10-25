@@ -1,3 +1,5 @@
+import UiLabel from '../../../components/UiLabel.vue';
+
 export const messages = {
   title: 'Naidanはオープンソースソフトウェアです',
   description: 'NaidanのMITライセンス、公開ソースコードと配布の記録を確認し、自分でビルドするか完成済みの版を使うか選べます。',
@@ -7,6 +9,7 @@ export const messages = {
   license_body: 'Naidanのコードは、ライセンス料なしで利用・複製・改変・再配布でき、商用にも使えます。無料で配ることも、販売することもできます。コピーやソフトウェアの相当部分を配布するときは、著作権表示と許諾文を含めてください。',
   license_link: 'MITライセンスの全文を読む',
   license_note: '依存ライブラリや利用するモデルには別の条件があり、NaidanのMITライセンスがそれらすべての利用権を与えるわけではありません。',
+  dependency_license_guidance: () => <>Naidanの<UiLabel text="設定" />→<UiLabel text="このアプリについて" />→<UiLabel text="オープンソースライセンス" />で、同梱する依存ソフトウェアの<UiLabel text="ライセンス本文を表示" />を選ぶと原文を読めます。その版に含まれるブラウザ内推論エンジンの表示も、この一覧に含まれます。</>,
   source_title: 'ソースコードと変更履歴を調べられる',
   source_body: '公開リポジトリのコードから、機能の実装やデータの扱い方を調べられます。コミット履歴で変更を追い、リリースのタグから特定の版のソースを開くこともできます。',
   source_link: 'ソースコードを見る',

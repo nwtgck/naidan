@@ -34,6 +34,7 @@ describe('open source and releases guide', () => {
       ]);
       expect(article?.textContent).toContain(copy.build_note);
       expect(article?.textContent).toContain(copy.use_self_build_body);
+      expect(article?.querySelector('#open-source-license')?.closest('section')?.textContent).toContain(locale === 'en' ? 'View License Text' : 'ライセンス本文を表示');
       expect(article?.querySelectorAll('.open-source-flow li')).toHaveLength(3);
       expect(article?.querySelectorAll('.pair-grid .panel')).toHaveLength(2);
       expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/standalone/`);

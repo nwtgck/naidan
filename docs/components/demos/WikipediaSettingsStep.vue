@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { BookOpenIcon, CalculatorIcon, ListIcon, MousePointer2Icon, SendIcon, Settings2Icon, SquarePenIcon, TerminalIcon } from 'lucide-vue-next';
+import { BookOpenIcon, CalculatorIcon, InfoIcon, ListIcon, MousePointer2Icon, SquarePenIcon, TerminalIcon } from 'lucide-vue-next';
+import NaidanChatInput from './NaidanChatInput.vue';
+import type { CommonMessages } from '../../messages/types';
 
-defineProps<{ stage: 'open' | 'enabled'; messages: typeof import('../../pages/tool-wikipedia/messages/en').messages }>();
+defineProps<{ stage: 'open' | 'enabled'; messages: typeof import('../../pages/tool-wikipedia/messages/en').messages; common: CommonMessages }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
@@ -15,23 +17,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div class="app-main">
       <div class="chat-header">{{ messages.sample_chat_title }}</div>
       <div class="chat-space" />
-      <div class="chat-composer">
-        <div class="message-placeholder">{{ messages.message_placeholder }}</div>
-        <div class="composer-footer">
-          <span class="model-select">{{ messages.model_selector }}</span>
-          <span class="tools-button" :title="messages.tools_button"><Settings2Icon :size="18" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="21" /></span>
-          <span class="send-button"><SendIcon :size="15" /></span>
-        </div>
-      </div>
+      <!-- Omit the model source badge to keep the tool switches in focus. -->
+      <NaidanChatInput class="chat-composer" :messages="common" :model="messages.sample_model">
+        <template #tools><MousePointer2Icon v-if="stage === 'open'" class="pointer" data-testid="docs-wikipedia-open-pointer" :size="21" /></template>
+      </NaidanChatInput>
     </div>
 
     <div class="tool-sheet">
       <div class="sheet-handle" />
       <div class="sheet-title">{{ messages.options_sheet }}</div>
+      <div class="tool-session-note"><InfoIcon :size="11" /><span>{{ messages.tool_session_notice }}</span></div>
       <div class="tool-card muted"><span class="tool-icon"><CalculatorIcon :size="15" /></span><span class="tool-name">{{ messages.calculator_tool }}</span><span class="toggle"><i /></span></div>
       <div class="tool-card muted"><span class="tool-icon"><ListIcon :size="15" /></span><span class="tool-name">{{ messages.choices_tool }}</span><span class="toggle"><i /></span></div>
-      <div class="tool-card wikipedia"><span class="tool-icon"><BookOpenIcon :size="15" /></span><span class="tool-label"><strong>{{ messages.wikipedia_tool }}</strong><small>{{ messages.wikipedia_tool_description }}</small></span><span class="toggle"><b class="off">{{ messages.off_status }}</b><b class="on">{{ messages.on_status }}</b><i /></span><MousePointer2Icon v-if="stage === 'enabled'" class="wiki-pointer" :size="21" /></div>
-      <div class="tool-card shell"><span class="tool-icon"><TerminalIcon :size="15" /></span><span class="tool-label"><strong>{{ messages.shell_tool }}</strong><small>{{ messages.shell_tool_description }}</small></span><span class="toggle"><b class="off">{{ messages.off_status }}</b><b class="on">{{ messages.on_status }}</b><i /></span></div>
+      <div class="tool-card wikipedia"><span class="tool-icon"><BookOpenIcon :size="15" /></span><span class="tool-label"><strong>{{ messages.wikipedia_tool }}</strong><small>{{ messages.wikipedia_tool_description }}</small></span><span v-if="stage === 'enabled'" class="tool-inherit">{{ messages.inherit_global_label }}</span><span class="toggle"><b class="off">{{ messages.off_status }}</b><b class="on">{{ messages.on_status }}</b><i /><MousePointer2Icon v-if="stage === 'enabled'" class="wiki-pointer" :size="21" /></span></div>
+      <div class="tool-card shell"><span class="tool-icon"><TerminalIcon :size="15" /></span><span class="tool-label"><strong>{{ messages.shell_tool }}</strong><small>{{ messages.shell_tool_description }}</small></span><span v-if="stage === 'enabled'" class="tool-inherit">{{ messages.inherit_global_label }}</span><span class="toggle"><b class="off">{{ messages.off_status }}</b><b class="on">{{ messages.on_status }}</b><i /></span></div>
       <div class="mount-detail"><strong>{{ messages.mount_label }} <code>/sys/fs/naidan</code></strong><span>{{ messages.current_chat_scope }}</span></div>
       <div class="sheet-close">{{ messages.close_menu }}</div>
     </div>
@@ -95,34 +94,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .chat-space {
   flex: 1;
 }
-.chat-composer {
+.wiki-settings-scene .chat-composer {
+  --chat-input-control-size:24px;
+  --chat-input-font-size:10px;
   margin: 12px 17px 16px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--surface-2);
 }
-.message-placeholder {
-  min-height: 43px;
-  padding: 12px;
-  color: var(--muted);
-}
-.composer-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 9px 8px;
-}
-.model-select {
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  padding: 5px 9px;
-  color: var(--text);
-  font-size: 10px;
-}
-.tools-button {
-  position: relative;
-  padding: 5px;
-  border-radius: 7px;
+.chat-composer :deep([data-testid="docs-chat-input-tools"]) {
   background: color-mix(in srgb,var(--blue) 14%,var(--surface));
   color: var(--blue);
 }
@@ -137,13 +114,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   bottom: -13px;
   animation: tool-pointer 7s linear infinite;
 }
-.send-button {
-  margin-left: auto;
-  padding: 6px 9px;
-  border-radius: 7px;
-  background: #2563eb;
-  color: #fff;
-}
 .tool-sheet {
   position: absolute;
   left: 155px;
@@ -152,7 +122,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   min-height: 269px;
   padding: 6px 12px 0;
   border: 1px solid var(--line-strong);
-  border-radius: 14px 14px 7px 7px;
+  border-radius: 14px 14px 0 0;
   background: var(--surface-2);
   box-shadow: 0 -12px 38px #0009;
   transform: translateY(calc(100% + 12px));
@@ -175,12 +145,34 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   font-weight: 800;
   letter-spacing: .08em;
 }
+.tool-session-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 7px 0;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.4;
+}
+.tool-session-note svg {
+  flex: none;
+}
+.tool-inherit {
+  flex: none;
+  padding: 3px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 7px;
+  opacity: 1;
+  animation: inherited-control 7s linear infinite;
+}
 .tool-card {
   position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 39px;
+  min-height: 36px;
   margin: 3px 0;
   padding: 5px 8px;
   border: 1px solid var(--line-strong);
@@ -254,8 +246,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   box-shadow: 0 1px 4px #0005;
 }
 .wiki-pointer {
-  right: 0;
-  bottom: -12px;
+  right: -8px;
+  bottom: -10px;
   animation: wiki-pointer 7s linear infinite;
 }
 .mount-detail {
@@ -290,13 +282,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   animation: none;
 }
 .stage-enabled .wikipedia,.stage-enabled .shell {
-  border-color: color-mix(in srgb,var(--blue) 50%,var(--line));
-  background: color-mix(in srgb,var(--blue) 12%,var(--surface-2));
+  border-color: var(--line-strong);
+  background: color-mix(in srgb,var(--text) 3%,var(--surface-3));
   animation: card-on 7s linear infinite;
 }
 .stage-enabled .wikipedia .tool-icon,.stage-enabled .shell .tool-icon {
-  background: #2563eb;
-  color: #fff;
+  background: var(--surface-2);
+  color: var(--blue);
   animation: icon-on 7s linear infinite;
 }
 .stage-enabled .wikipedia .toggle,.stage-enabled .shell .toggle {
@@ -356,8 +348,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     background: var(--surface-3);
   }
   40%,100% {
-    border-color: color-mix(in srgb,var(--blue) 50%,var(--line));
-    background: color-mix(in srgb,var(--blue) 12%,var(--surface-2));
+    border-color: var(--line-strong);
+    background: color-mix(in srgb,var(--text) 3%,var(--surface-3));
   }
 }
 @keyframes icon-on {
@@ -366,8 +358,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     color: var(--muted);
   }
   40%,100% {
-    background: #2563eb;
-    color: #fff;
+    background: var(--surface-2);
+    color: var(--blue);
   }
 }
 @keyframes switch-on {
@@ -395,6 +387,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   }
 }
 @keyframes on-label {
+  0%,39% {
+    opacity: 0;
+  }
+  40%,100% {
+    opacity: 1;
+  }
+}
+@keyframes inherited-control {
   0%,39% {
     opacity: 0;
   }
@@ -448,7 +448,7 @@ html:has(#docs-pause-motion:checked) .stage-enabled .mount-detail {
     font-size: 11px;
   }
   .tool-card {
-    min-height: 40px;
+    min-height: 36px;
   }
   .wiki-settings-scene {
     height: 340px;

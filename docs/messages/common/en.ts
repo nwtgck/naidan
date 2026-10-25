@@ -77,6 +77,8 @@ export const messages = {
   pause_motion: 'Pause motion',
   resume_motion: 'Resume motion',
   use_light_theme: 'Use light theme',
-  footer: 'Naidan · AI in your browser',
+  footer_navigation: 'Footer links',
+  footer_guide_home: 'Guide home',
+  footer_about_open_source: 'About open source',
   all_guides: 'All guides',
 };

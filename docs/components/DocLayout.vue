@@ -7,6 +7,7 @@ import { DOCS_LOCALES, DOCS_LOCALE_NAMES } from '../navigation/routes';
 import type { DocsLocale, DocsPageId } from '../navigation/routes';
 import AppEntryLink from './AppEntryLink.vue';
 import DocsLink from './DocsLink.vue';
+import ExternalLink from './ExternalLink.vue';
 import SkipToContentLink from './SkipToContentLink.vue';
 import DocsGuideMenu from './DocsGuideMenu.vue';
 import DocsGuideTree from './DocsGuideTree.vue';
@@ -140,8 +141,14 @@ defineExpose({
     </div>
   </main>
   <footer class="footer">
-    <div class="wrap footer-inner"><span>{{ s.footer }}</span><DocsLink
-      :locale="locale" page="index">{{ s.guide_home }}</DocsLink></div>
+    <div class="wrap footer-inner">
+      <span>Naidan</span>
+      <nav class="footer-navigation" :aria-label="s.footer_navigation">
+        <DocsLink :locale="locale" page="index">{{ s.footer_guide_home }}</DocsLink>
+        <DocsLink :locale="locale" page="open-source">{{ s.footer_about_open_source }}</DocsLink>
+        <ExternalLink :locale="locale" href="https://github.com/nwtgck/naidan">GitHub</ExternalLink>
+      </nav>
+    </div>
   </footer>
 </template>
 
@@ -169,7 +176,20 @@ defineExpose({
 
 .footer-inner {
   display: flex;
-  justify-content: space-between;
-  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 12px 24px;
+}
+
+.footer-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  min-width: 0;
+}
+
+.footer-navigation a {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2Icon, ChevronDownIcon, FolderIcon, GlobeIcon, MousePointer2Icon, SaveIcon, Settings2Icon, SettingsIcon } from 'lucide-vue-next';
+import { BrainIcon, CheckCircle2Icon, ChevronDownIcon, FolderIcon, GlobeIcon, MoreHorizontalIcon, MoreVerticalIcon, MousePointer2Icon, PencilIcon, RotateCcwIcon, SaveIcon, SearchIcon, SettingsIcon, XIcon } from 'lucide-vue-next';
 
 defineProps<{
   stage: 'global' | 'group' | 'inheritedChat' | 'chatModel' | 'reset';
@@ -14,56 +14,44 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div class="scene-canvas" data-testid="inheritance-camera-canvas">
       <aside class="app-sidebar">
         <strong class="app-brand">{{ messages.naidan }}</strong>
-        <div class="sidebar-tree">
-          <div class="group-item"><FolderIcon :size="17" /><span>{{ messages.translation }}</span><MousePointer2Icon v-if="stage === 'group'" class="pointer sidebar-group-pointer" :size="23" /></div>
-          <div class="chat-item">{{ messages.article_translation }}</div>
-        </div>
-        <div class="sidebar-settings"><SettingsIcon :size="17" /><span>{{ messages.settings }}</span><MousePointer2Icon v-if="stage === 'global'" class="pointer sidebar-settings-pointer" :size="23" /></div>
+        <div class="sidebar-tree"><div class="group-item"><FolderIcon :size="17" /><span>{{ messages.translation }}</span><MousePointer2Icon v-if="stage === 'group'" class="pointer entry-pointer" :size="23" /></div><div class="chat-item">{{ messages.article_translation }}</div></div>
+        <div class="sidebar-settings"><SettingsIcon :size="17" /><span>{{ messages.settings }}</span><MousePointer2Icon v-if="stage === 'global'" class="pointer entry-pointer" :size="23" /></div>
       </aside>
-
       <main class="app-workspace">
-        <template v-if="stage === 'group'">
-          <div class="group-page">
-            <div class="group-heading"><span class="heading-icon"><Settings2Icon :size="21" /></span><div><h3>{{ messages.translation_settings }}</h3><small>{{ messages.group_overrides }}</small></div><span class="override-badge">{{ messages.active_overrides }}</span></div>
-            <div class="page-content">
-              <div class="presets"><span class="field-label">{{ messages.quick_endpoint_presets }}</span><span class="preset-pill">Ollama</span></div>
-              <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="field-value endpoint-control"><span class="value-stack"><span class="phase-start">{{ messages.global_ollama }}</span><span class="phase-end">{{ messages.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer endpoint-pointer" :size="23" /><span class="select-menu endpoint-menu"><span class="select-option">{{ messages.global_ollama }}</span><span class="select-option target-option">{{ messages.ollama }}</span></span></div></div>
-              <div class="field group-url"><span class="field-label">{{ messages.endpoint_url }}</span><div class="field-value mono"><span>http://localhost:11434</span></div></div>
-              <div class="field"><span class="field-label">{{ messages.model_id_override }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ messages.global_gemma3n_e2b }}</span><span class="phase-end">{{ messages.group_example_model_id }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer group-model-pointer" :size="23" /><span class="select-menu model-menu"><span class="select-option">{{ messages.global_gemma3n_e2b }}</span><span class="select-option target-option">{{ messages.group_example_model_id }}</span></span></div></div>
-            </div>
-          </div>
-        </template>
-
-        <template v-else>
-          <div class="chat-page-header"><h3>{{ messages.article_translation }}</h3><span class="model-trigger" data-testid="inheritance-header-model"><span v-if="stage === 'chatModel'" class="value-stack"><span class="phase-start">{{ messages.group_example_model_id }}</span><span class="phase-end">{{ messages.chat_example_model_id }}</span></span><span v-else-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial">{{ messages.chat_example_model_id }}</span><span class="reset-cleared">{{ messages.group_example_model_id }}</span><span class="reset-local-model">{{ messages.local_model }}</span><span class="reset-final">{{ messages.group_example_model_id }}</span></span><span v-else>{{ stage === 'global' ? messages.global_example_model_id : messages.group_example_model_id }}</span><Settings2Icon :size="16" /><MousePointer2Icon v-if="stage === 'inheritedChat'" class="pointer header-pointer" :size="23" /></span></div>
-          <div class="chat-transcript"><div class="message-label">{{ messages.translation }}</div><p>{{ messages.translate_this_paragraph_into_japanese }}</p><div class="message-label assistant-label">{{ messages.naidan }}</div><p>{{ messages.i_will_translate_the_paragraph }}</p></div>
-        </template>
+        <div class="chat-page-header"><h3>{{ messages.article_translation }}</h3><span class="model-trigger" data-testid="inheritance-header-model"><span v-if="stage === 'chatModel'" class="value-stack"><span class="phase-start">{{ messages.group_example_model_id }}</span><span class="phase-end">{{ messages.chat_example_model_id }}</span></span><span v-else-if="stage === 'reset'" class="value-stack"><span class="reset-initial">{{ messages.chat_example_model_id }}</span><span class="reset-cleared">{{ messages.group_example_model_id }}</span><span class="reset-local-model">{{ messages.local_model }}</span><span class="reset-final">{{ messages.group_example_model_id }}</span></span><span v-else>{{ messages.group_example_model_id }}</span><SettingsIcon :size="15" /></span><span class="more-trigger" :title="messages.more_actions"><MoreVerticalIcon :size="20" /><MousePointer2Icon v-if="stage === 'inheritedChat'" class="pointer entry-pointer" :size="23" /></span></div>
+        <div v-if="stage === 'inheritedChat'" class="header-menu"><SettingsIcon :size="17" /><span>{{ messages.chat_settings }}</span><MousePointer2Icon class="pointer header-pointer" :size="23" /></div>
+        <div class="chat-transcript"><strong>{{ messages.translation }}</strong><p>{{ messages.translate_this_paragraph_into_japanese }}</p><strong>{{ messages.naidan }}</strong><p>{{ messages.i_will_translate_the_paragraph }}</p></div>
       </main>
 
       <template v-if="stage === 'global'">
         <div class="modal-veil" />
         <div class="settings-modal global-modal" data-testid="inheritance-global-modal">
-          <div class="modal-heading"><span class="heading-icon"><Settings2Icon :size="20" /></span><strong>{{ messages.settings }}</strong></div>
-          <div class="global-modal-body"><div class="modal-navigation"><GlobeIcon :size="17" />{{ messages.connection }}</div><div class="modal-fields">
-            <h3 class="section-heading">{{ messages.endpoint_configuration }}</h3>
-            <div class="field"><span class="field-label">{{ messages.api_provider }}</span><div class="field-value provider-control"><span class="value-stack"><span class="phase-start">{{ messages.openai_compatible }}</span><span class="phase-end">{{ messages.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer provider-pointer" :size="23" /><span class="select-menu provider-menu"><span class="select-option">{{ messages.openai_compatible }}</span><span class="select-option target-option">{{ messages.ollama }}</span></span></div></div>
-            <div class="field"><span class="field-label">{{ messages.endpoint_url }}</span><div class="field-value mono url-control"><span class="value-stack"><span class="phase-start muted">http://localhost:1234/v1</span><span class="phase-end">http://localhost:11434</span></span><MousePointer2Icon class="pointer url-pointer" :size="23" /></div></div>
-            <h3 class="section-heading model-heading">{{ messages.model_selection }}</h3>
-            <div class="field"><span class="field-label">{{ messages.default_model }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ messages.none }}</span><span class="phase-end">{{ messages.global_example_model_id }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer global-model-pointer" :size="23" /><span class="select-menu model-menu"><span class="select-option">{{ messages.none }}</span><span class="select-option target-option">{{ messages.global_example_model_id }}</span></span></div></div>
-          </div></div>
-          <div class="modal-footer"><div class="save-control"><span class="save-icon-stack"><SaveIcon class="phase-start" :size="16" /><CheckCircle2Icon class="phase-end" :size="16" /></span><span class="value-stack"><span class="phase-start">{{ messages.save_changes }}</span><span class="phase-end">{{ messages.settings_saved }}</span></span><MousePointer2Icon class="pointer save-pointer" :size="23" /></div></div>
+          <aside class="modal-navigation"><div class="navigation-heading"><SettingsIcon :size="19" /><strong>{{ messages.settings }}</strong></div><div class="navigation-group"><span class="selected"><GlobeIcon :size="16" />{{ messages.connection }}</span><span>{{ messages.tools }}</span><span>{{ messages.profiles }}</span></div><div class="navigation-group"><span>{{ messages.gguf_models }}</span><span>{{ messages.transformers_models }}</span><span>{{ messages.recipes }}</span></div><div class="navigation-group"><span>{{ messages.storage }}</span><span>{{ messages.files }}</span><span>{{ messages.folders }}</span></div><div class="navigation-group"><span>Naidan RPC</span><span>{{ messages.developer }}</span><span>{{ messages.about }}</span></div></aside>
+          <div class="global-content"><div class="global-toolbar">{{ messages.copy_setup_url }}<XIcon :size="18" /></div><div class="modal-fields">
+            <div class="field"><span class="field-label">{{ messages.connection }}</span><div class="field-value provider-control"><span class="value-stack"><span class="phase-start">{{ messages.openai_compatible }}</span><span class="phase-end">{{ messages.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer provider-pointer" :size="23" /><span class="select-menu provider-menu"><span>{{ messages.openai_compatible }}</span><strong>{{ messages.ollama }}</strong></span></div></div>
+            <div class="field"><span class="field-label">{{ messages.default_model }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ messages.none }}</span><span class="phase-end">{{ messages.global_example_model_id }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer global-model-pointer" :size="23" /><span class="select-menu model-menu"><span>{{ messages.none }}</span><strong>{{ messages.global_example_model_id }}</strong></span></div></div>
+            <div class="reasoning"><span><BrainIcon :size="14" />{{ messages.reasoning }}</span><div class="segments"><strong>{{ messages.reasoning_default }}</strong><span>{{ messages.reasoning_off }}</span><span>{{ messages.reasoning_low }}</span><span>{{ messages.reasoning_medium }}</span><span>{{ messages.reasoning_high }}</span></div></div>
+            <div class="connection-details global-details"><div class="field"><span class="field-label">{{ messages.endpoint_url }}</span><div class="field-value mono url-control" data-testid="inheritance-global-url-edit"><span class="value-stack"><span class="phase-start">http://localhost:1234/v1</span><span class="phase-end">http://localhost:11434</span></span><MousePointer2Icon class="pointer url-pointer" :size="23" /></div></div><div class="header-editor"><span class="field-label">{{ messages.http_headers }}</span><span>{{ messages.add_header }}</span></div></div>
+          </div><div class="modal-footer"><div class="save-control"><SaveIcon :size="16" /><span class="value-stack"><span class="phase-start">{{ messages.save_changes }}</span><span class="phase-end"><CheckCircle2Icon :size="14" />{{ messages.settings_saved }}</span></span><MousePointer2Icon class="pointer save-pointer" :size="23" /></div></div></div>
         </div>
       </template>
 
-      <template v-else-if="stage !== 'group'">
-        <div class="modal-veil chat-veil" />
-        <div class="settings-modal chat-modal" data-testid="inheritance-chat-modal">
-          <div class="modal-heading"><span class="heading-icon"><Settings2Icon :size="20" /></span><strong>{{ messages.chat_specific_overrides }}</strong><span v-if="stage !== 'inheritedChat'" class="override-badge">{{ messages.active_overrides }}</span></div>
-          <div class="chat-modal-body">
-            <div class="presets"><span class="field-label">{{ messages.quick_endpoint_presets }}</span><span class="preset-pill">Ollama</span></div>
-            <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="field-value endpoint-control"><span v-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial muted">{{ messages.chat_group_ollama }}</span><span class="reset-local-endpoint">{{ messages.openai_compatible }}</span><span class="reset-final muted">{{ messages.chat_group_ollama }}</span></span><span v-else class="muted">{{ messages.chat_group_ollama }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-pointer" :size="23" /><span v-if="stage === 'reset'" class="select-menu reset-endpoint-out-menu"><span class="select-option">{{ messages.chat_group_ollama }}</span><span class="select-option target-option">{{ messages.openai_compatible }}</span></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-back-menu"><span class="select-option">{{ messages.openai_compatible }}</span><span class="select-option target-option">{{ messages.chat_group_ollama }}</span></span></div></div>
-            <div class="field"><span class="field-label">{{ messages.endpoint_url }}</span><div class="field-value mono"><span v-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial muted">{{ messages.chat_group_http_localhost_11434 }}</span><span class="reset-local-endpoint">http://localhost:1234/v1</span><span class="reset-final muted">{{ messages.chat_group_http_localhost_11434 }}</span></span><span v-else class="muted">{{ messages.chat_group_http_localhost_11434 }}</span></div></div>
-            <div class="field"><span class="field-label">{{ messages.model_override }}</span><div class="field-value model-control"><span v-if="stage === 'chatModel'" class="value-stack"><span class="phase-start muted">{{ messages.chat_group_qwen3_4b }}</span><span class="phase-end">{{ messages.chat_example_model_id }}</span></span><span v-else-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial">{{ messages.chat_example_model_id }}</span><span class="reset-cleared muted">{{ messages.chat_group_qwen3_4b }}</span><span class="reset-local-model">{{ messages.local_model }}</span><span class="reset-final muted">{{ messages.chat_group_qwen3_4b }}</span></span><span v-else class="muted">{{ messages.chat_group_qwen3_4b }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'chatModel'" class="pointer chat-model-pointer" :size="23" /><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-model-pointer" :size="23" /><span v-if="stage === 'chatModel'" class="select-menu chat-model-menu"><span class="select-option">{{ messages.chat_group_qwen3_4b }}</span><span class="select-option target-option">{{ messages.chat_example_model_id }}</span></span><span v-if="stage === 'reset'" class="select-menu reset-model-menu"><span class="select-option">{{ messages.chat_group_qwen3_4b }}</span><span class="select-option target-option">{{ messages.local_model }}</span></span></div></div>
+      <template v-else>
+        <div v-if="stage !== 'group'" class="modal-veil chat-veil" />
+        <div class="scoped-settings" :class="stage === 'group' ? 'group-page' : 'chat-modal'" :data-testid="stage === 'group' ? 'inheritance-group-page' : 'inheritance-chat-modal'">
+          <div v-if="stage === 'group'" class="group-heading"><h3>{{ messages.translation }}</h3><PencilIcon :size="17" :title="messages.rename" /><SearchIcon :size="18" :title="messages.search" /><MoreHorizontalIcon :size="20" :title="messages.group_actions" /></div>
+          <div v-else class="modal-heading"><strong>{{ messages.chat_specific_overrides }}</strong><XIcon :size="20" /></div>
+          <div class="scoped-body">
+            <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="connection-summary" data-testid="inheritance-connection-summary"><div><strong v-if="stage === 'reset'" class="value-stack"><span class="reset-initial">{{ messages.ollama }}</span><span class="reset-local-endpoint">{{ messages.openai_compatible }}</span><span class="reset-final">{{ messages.ollama }}</span></strong><strong v-else>{{ messages.ollama }}</strong><span class="connection-metadata"><span class="source-badge" :class="{ 'endpoint-source': stage === 'group' || stage === 'reset' }">{{ stage === 'group' ? messages.source_global : messages.source_chat_group }}</span><span v-if="stage === 'reset'" class="value-stack mono"><span class="reset-url-initial">http://localhost:11434</span><span class="reset-local-url">http://localhost:1234/v1</span><span class="reset-final">http://localhost:11434</span></span><span v-else class="mono">http://localhost:11434</span></span></div><ChevronDownIcon :size="19" /><MousePointer2Icon v-if="stage !== 'chatModel'" class="pointer summary-pointer" :size="23" /></div></div>
+            <div class="field"><span class="field-label">{{ stage === 'group' ? messages.model_id_override : messages.model_override }}</span><div class="field-value model-control"><span><span v-if="stage === 'group' || stage === 'chatModel'" class="value-stack"><span class="phase-start">{{ stage === 'group' ? messages.global_example_model_id : messages.group_example_model_id }}</span><span class="phase-end">{{ stage === 'group' ? messages.group_example_model_id : messages.chat_example_model_id }}</span></span><span v-else-if="stage === 'reset'" class="value-stack"><span class="reset-initial">{{ messages.chat_example_model_id }}</span><span class="reset-cleared">{{ messages.group_example_model_id }}</span><span class="reset-local-model">{{ messages.local_model }}</span><span class="reset-final">{{ messages.group_example_model_id }}</span></span><span v-else>{{ messages.group_example_model_id }}</span><span v-if="stage !== 'reset'" class="source-badge model-source">{{ stage === 'group' ? messages.source_global : messages.source_chat_group }}</span><span v-else class="source-badge reset-model-source">{{ messages.source_chat_group }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage !== 'inheritedChat'" class="pointer model-pointer" :size="23" /><span v-if="stage === 'group' || stage === 'chatModel'" class="select-menu model-menu"><span>{{ stage === 'group' ? messages.global_gemma3n_e2b : messages.chat_group_qwen3_4b }}</span><strong>{{ stage === 'group' ? messages.group_example_model_id : messages.chat_example_model_id }}</strong></span><span v-if="stage === 'reset'" class="select-menu reset-model-menu"><span>{{ messages.chat_group_qwen3_4b }}</span><strong>{{ messages.local_model }}</strong></span></div></div>
+            <div class="reasoning"><span><BrainIcon :size="14" />{{ messages.reasoning }}<span class="source-badge">{{ stage === 'group' ? messages.source_global : messages.source_chat_group }}</span></span><div class="segments"><strong>{{ messages.reasoning_inherited }}</strong><span>{{ messages.reasoning_off }}</span><span>{{ messages.reasoning_low }}</span><span>{{ messages.reasoning_medium }}</span><span>{{ messages.reasoning_high }}</span></div></div>
+            <div v-if="stage !== 'chatModel'" class="connection-details scoped-details" data-testid="inheritance-connection-details">
+              <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="field-value endpoint-control"><span v-if="stage === 'group'" class="value-stack"><span class="phase-start">{{ messages.global_ollama }}</span><span class="phase-end">{{ messages.ollama }}</span></span><span v-else-if="stage === 'reset'" class="value-stack"><span class="reset-initial">{{ messages.chat_group_ollama }}</span><span class="reset-local-endpoint">{{ messages.openai_compatible }}</span><span class="reset-final">{{ messages.chat_group_ollama }}</span></span><span v-else>{{ messages.chat_group_ollama }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'group' || stage === 'reset'" class="pointer endpoint-pointer" :size="23" /><span v-if="stage === 'group'" class="select-menu endpoint-menu"><span>{{ messages.global_ollama }}</span><strong>{{ messages.ollama }}</strong></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-out-menu"><span>{{ messages.chat_group_ollama }}</span><strong>{{ messages.openai_compatible }}</strong></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-back-menu"><span>{{ messages.openai_compatible }}</span><strong>{{ messages.chat_group_ollama }}</strong></span></div></div>
+              <div class="field"><span class="field-label">{{ messages.endpoint_url }}</span><div class="field-value mono url-control" data-testid="inheritance-effective-url"><span v-if="stage === 'reset'" class="value-stack"><span class="reset-url-initial">http://localhost:11434</span><span class="reset-local-url">http://localhost:1234/v1</span><span class="reset-final">http://localhost:11434</span></span><span v-else>http://localhost:11434</span><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-url-pointer" :size="23" /></div></div>
+              <div class="header-editor"><span class="field-label">{{ messages.http_headers }}</span><span>{{ messages.add_header }}</span></div>
+            </div>
+            <div class="disclosures"><div v-for="label in [messages.parameters, messages.automatic_title, messages.tools, messages.folders]" :key="label"><span>{{ label }}</span><ChevronDownIcon :size="16" /></div></div>
+            <div class="restore-footer"><RotateCcwIcon :size="15" />{{ messages.restore_defaults }}</div>
           </div>
         </div>
       </template>
@@ -73,51 +61,72 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <style scoped>
 .camera-viewport {
-  --scene-surface:var(--surface);
-  --scene-field:var(--surface-2);
-  --scene-line:var(--line-strong);
-  --scene-text:var(--text);
-  --scene-muted:var(--muted);
-  --scene-blue:var(--blue);
+  --focus-x:-125px;
+  --focus-y:-230px;
+  --summary-y:-110px;
+  --focus-scale:1;
+  --entry-x:0px;
+  --entry-y:-100px;
+  --duration:16s;
   position: relative;
   width: 100%;
   max-width: 680px;
   height: 390px;
   margin-inline: auto;
   overflow: hidden;
-  border: 1px solid var(--scene-line);
+  container-type: inline-size;
+  border: 1px solid var(--line-strong);
   border-radius: 16px;
   background: var(--bg);
   box-shadow: var(--panel-shadow);
-  color: var(--scene-text);
+  color: var(--text);
 }
 .scene-canvas {
   position: absolute;
   inset: 0 auto auto 0;
   width: 980px;
-  height: 680px;
+  height: 900px;
   transform-origin: 0 0;
-  font: 15px/1.45 ui-sans-serif,system-ui,sans-serif;
-  animation-duration: 12s;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
+  transform: translate(var(--focus-x),var(--focus-y)) scale(var(--focus-scale));
+  font: 14px/1.45 ui-sans-serif,system-ui,sans-serif;
+  animation: focus-camera var(--duration) ease-in-out infinite;
 }
 .stage-global .scene-canvas {
   animation-name: global-camera;
 }
-.stage-group .scene-canvas {
-  animation-name: group-camera;
+.stage-global {
+  --focus-x:-250px;
+  --focus-y:-220px;
+  --summary-y:-70px;
+  --entry-y:-210px;
 }
-.stage-inheritedChat .scene-canvas {
-  animation-name: inherited-camera;
-  animation-duration: 10s;
+.stage-group {
+  --focus-x:-125px;
+  --focus-y:-220px;
+  --summary-y:-90px;
+  --entry-y:-20px;
 }
-.stage-chatModel .scene-canvas {
-  animation-name: chat-model-camera;
+.stage-inheritedChat {
+  --focus-x:-125px;
+  --focus-y:-230px;
+  --summary-y:-115px;
+  --entry-x:-120px;
+  --entry-y:-10px;
 }
-.stage-reset .scene-canvas {
-  animation-name: reset-camera;
-  animation-duration: 16s;
+.stage-chatModel {
+  --focus-x:-125px;
+  --focus-y:-65px;
+  --summary-y:-65px;
+  --entry-x:-125px;
+  --entry-y:-65px;
+}
+.stage-reset {
+  --focus-x:-125px;
+  --focus-y:-230px;
+  --summary-y:-115px;
+  --entry-x:-120px;
+  --entry-y:-10px;
+  --duration:22s;
 }
 .app-sidebar {
   position: absolute;
@@ -126,8 +135,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   display: flex;
   flex-direction: column;
   padding: 20px 12px;
-  border-right: 1px solid var(--scene-line);
-  background: var(--scene-surface);
+  border-right: 1px solid var(--line);
+  background: var(--surface);
 }
 .app-brand {
   font-size: 22px;
@@ -145,25 +154,27 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   min-height: 41px;
   padding: 8px 10px;
   border-radius: 10px;
-  font-weight: 700;
 }
 .group-item {
-  color: var(--scene-blue);
-  background: color-mix(in srgb,var(--scene-blue) 10%,var(--scene-surface));
+  color: var(--blue);
+  background: var(--surface-2);
 }
 .group-item svg,.sidebar-settings svg {
   flex: none;
 }
 .chat-item {
   margin-left: 25px;
-  padding-left: 12px;
-  border-left: 1px solid var(--scene-line);
-  font-size: 13px;
-  color: var(--scene-muted);
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
 }
 .sidebar-settings {
-  border: 1px solid var(--scene-line);
-  color: var(--scene-muted);
+  position: absolute;
+  top: 550px;
+  left: 12px;
+  right: 12px;
+  border: 1px solid var(--line);
+  color: var(--muted);
 }
 .app-workspace {
   position: absolute;
@@ -173,1120 +184,899 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .chat-page-header {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   gap: 22px;
   height: 86px;
   padding: 0 35px;
-  border-bottom: 1px solid var(--scene-line);
-  background: var(--scene-surface);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
 }
 .chat-page-header h3 {
   margin: 0;
   font-size: 20px;
 }
 .model-trigger {
-  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 145px;
-  padding: 7px 12px;
-  border-radius: 20px;
-  background: var(--scene-field);
-  color: var(--scene-muted);
+  color: var(--muted);
   font-size: 13px;
-  font-weight: 750;
 }
-.model-trigger > svg:not(.pointer) {
-  flex: none;
+.more-trigger {
+  position: relative;
   margin-left: auto;
 }
+.header-menu {
+  position: absolute;
+  z-index: 3;
+  top: 72px;
+  right: 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 225px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--panel-shadow);
+  opacity: 0;
+  animation: header-menu 16s linear infinite;
+}
 .chat-transcript {
-  max-width: 490px;
-  margin: 70px auto 0;
+  width: 490px;
+  margin: 70px auto;
   padding: 28px;
-  border: 1px solid var(--scene-line);
+  border: 1px solid var(--line);
   border-radius: 20px;
-  background: var(--scene-surface);
-  color: var(--scene-muted);
+  background: var(--surface);
+  color: var(--muted);
 }
 .chat-transcript p {
   margin: 5px 0 24px;
-}
-.chat-transcript p:last-child {
-  margin-bottom: 0;
-}
-.message-label {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--scene-text);
-}
-.assistant-label {
-  color: var(--scene-blue);
-}
-.group-page {
-  width: 445px;
-  margin: 70px 0 0 25px;
-  border: 1px solid var(--scene-line);
-  border-radius: 20px;
-  background: var(--scene-surface);
-  box-shadow: 0 10px 30px #0002;
-}
-.group-heading {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 84px;
-  padding: 17px 24px;
-  border-bottom: 1px solid var(--scene-line);
-}
-.group-heading h3 {
-  margin: 0;
-  font-size: 21px;
-}
-.group-heading small {
-  font-size: 11px;
-  font-weight: 750;
-  color: var(--scene-blue);
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-.heading-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: color-mix(in srgb,var(--scene-blue) 11%,var(--scene-surface));
-  color: var(--scene-blue);
-}
-.override-badge {
-  margin-left: auto;
-  padding: 5px 8px;
-  border: 1px solid color-mix(in srgb,var(--scene-blue) 38%,transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb,var(--scene-blue) 10%,var(--scene-surface));
-  color: var(--scene-blue);
-  font-size: 10px;
-  font-weight: 800;
-  text-align: center;
-}
-.page-content {
-  display: grid;
-  gap: 22px;
-  padding: 27px 38px 42px;
-}
-.presets {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  min-height: 38px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid var(--scene-line);
-}
-.preset-pill {
-  padding: 7px 12px;
-  border: 1px solid var(--scene-line);
-  border-radius: 10px;
-  background: var(--scene-field);
-  color: var(--scene-muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-.field {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-.field-label {
-  color: var(--scene-muted);
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-.field-value {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  min-height: 49px;
-  padding: 12px 15px;
-  border: 1px solid var(--scene-line);
-  border-radius: 11px;
-  background: var(--scene-field);
-  font-size: 17px;
-  font-weight: 750;
-  overflow-wrap: anywhere;
-}
-.select-menu {
-  position: absolute;
-  z-index: 12;
-  top: calc(100% + 5px);
-  left: 0;
-  right: 0;
-  display: grid;
-  gap: 3px;
-  padding: 6px;
-  border: 1px solid var(--scene-line);
-  border-radius: 11px;
-  background: var(--scene-surface);
-  box-shadow: 0 13px 32px #0005;
-  color: var(--scene-text);
-  font-size: 13px;
-  font-weight: 750;
-  opacity: 0;
-  transform: translateY(-6px) scale(.98);
-  pointer-events: none;
-}
-.select-option {
-  display: block;
-  min-width: 0;
-  padding: 8px 9px;
-  border-radius: 7px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-.select-option.target-option {
-  animation: option-picked-late 12s linear infinite;
-}
-.stage-global .provider-menu {
-  animation: menu-open-global-provider 12s linear infinite;
-}
-.stage-global .provider-menu .target-option {
-  animation-name: option-picked-global-provider;
-}
-.stage-global .model-menu,.stage-group .model-menu {
-  animation: menu-open-late 12s linear infinite;
-}
-.stage-group .endpoint-menu,.stage-chatModel .chat-model-menu {
-  animation: menu-open-middle 12s linear infinite;
-}
-.stage-group .endpoint-menu .target-option,.stage-chatModel .chat-model-menu .target-option {
-  animation-name: option-picked-middle;
-}
-.stage-group .model-menu,.stage-chatModel .chat-model-menu,.stage-reset .reset-model-menu {
-  bottom: calc(100% + 5px);
-  top: auto;
-}
-.stage-reset .reset-endpoint-out-menu {
-  animation: menu-open-reset-out 16s linear infinite;
-}
-.stage-reset .reset-endpoint-out-menu .target-option {
-  animation: option-picked-reset-out 16s linear infinite;
-}
-.stage-reset .reset-model-menu {
-  animation: menu-open-reset-model 16s linear infinite;
-}
-.stage-reset .reset-model-menu .target-option {
-  animation: option-picked-reset-model 16s linear infinite;
-}
-.stage-reset .reset-endpoint-back-menu {
-  animation: menu-open-reset-back 16s linear infinite;
-}
-.stage-reset .reset-endpoint-back-menu .target-option {
-  animation: option-picked-reset-back 16s linear infinite;
-}
-.field-value > svg:not(.pointer) {
-  flex: none;
-  color: var(--scene-muted);
-}
-.field-value > span {
-  min-width: 0;
-}
-.mono {
-  font: 16px/1.5 ui-monospace,SFMono-Regular,monospace;
-  overflow-wrap: anywhere;
-}
-.muted {
-  color: var(--scene-muted);
-  font-weight: 650;
-}
-.value-stack {
-  display: grid;
-  min-width: 0;
-}
-.value-stack > span {
-  grid-area: 1/1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.phase-start {
-  opacity: 0;
-}
-.phase-end {
-  opacity: 1;
-}
-.reset-initial,.reset-cleared,.reset-local-endpoint,.reset-local-model {
-  opacity: 0;
-}
-.reset-final {
-  opacity: 1;
 }
 .modal-veil {
   position: absolute;
   inset: 0;
   background: #070c17a8;
 }
-.settings-modal {
+.settings-modal,.scoped-settings {
   position: absolute;
-  border: 1px solid var(--scene-line);
-  border-radius: 19px;
-  background: var(--scene-surface);
-  box-shadow: 0 25px 70px #0008;
-}
-.modal-heading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  padding: 14px 22px;
-  border-bottom: 1px solid var(--scene-line);
-  font-size: 17px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 25px 70px #0005;
 }
 .global-modal {
   left: 245px;
   top: 53px;
-  width: 540px;
-}
-.global-modal-body {
   display: grid;
-  grid-template-columns: 137px minmax(0,1fr);
+  grid-template-columns: 190px minmax(0,1fr);
+  width: 700px;
 }
 .modal-navigation {
+  border-right: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 18px 0 0 18px;
+}
+.navigation-heading {
   display: flex;
   align-items: center;
-  align-self: start;
-  gap: 8px;
-  margin: 18px 12px;
-  padding: 11px;
-  border: 1px solid var(--scene-line);
-  border-radius: 10px;
-  background: var(--scene-field);
-  color: var(--scene-blue);
-  font-size: 13px;
-  font-weight: 750;
+  gap: 9px;
+  min-height: 58px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 16px;
+}
+.navigation-group {
+  display: grid;
+  gap: 2px;
+  padding: 7px;
+  border-bottom: 1px solid var(--line);
+}
+.navigation-group > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.navigation-group .selected {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--blue);
+}
+.global-content {
+  min-width: 0;
+}
+.global-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 22px;
+  height: 58px;
+  padding: 0 24px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .modal-fields {
   display: grid;
-  gap: 16px;
-  padding: 20px 25px 24px;
-  border-left: 1px solid var(--scene-line);
+  gap: 18px;
+  padding: 12px 26px 22px;
 }
-.section-heading {
-  margin: 0 0 2px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid var(--scene-line);
-  font-size: 17px;
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
 }
-.model-heading {
-  margin-top: 5px;
+.field-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.field-value {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  min-height: 45px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: var(--surface);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.field-value > span {
+  min-width: 0;
+}
+.field-value > svg:not(.pointer) {
+  flex: none;
+  color: var(--muted);
+}
+.mono {
+  font-family: ui-monospace,SFMono-Regular,monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: var(--muted);
+}
+.value-stack {
+  display: grid;
+  min-width: 0;
+}
+.value-stack > * {
+  grid-area: 1/1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.phase-start,.reset-initial,.reset-cleared,.reset-local-endpoint,.reset-local-url,.reset-local-model,.reset-url-initial {
+  opacity: 0;
+}
+.phase-end,.reset-final {
+  opacity: 1;
+}
+.connection-summary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: var(--surface);
+}
+.connection-summary > div {
+  min-width: 0;
+}
+.connection-summary strong {
+  font-weight: 500;
+}
+.connection-summary > svg {
+  flex: none;
+  color: var(--muted);
+}
+.connection-metadata {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.source-badge {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.model-control .source-badge {
+  display: block;
+  margin-top: 3px;
+}
+.reasoning {
+  display: grid;
+  gap: 4px;
+}
+.reasoning > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.segments {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.segments > * {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 3px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.segments > strong {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+}
+.connection-details {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.header-editor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.header-editor > span:last-child {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
 }
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  padding: 15px 20px;
-  border-top: 1px solid var(--scene-line);
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
 }
 .save-control {
   position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 150px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
   background: #2563eb;
-  color: white;
-  font-size: 13px;
-  font-weight: 800;
+  color: #fff;
+  font-size: 12px;
 }
-.save-icon-stack {
-  display: grid;
-  place-items: center;
+.save-control .phase-end {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
-.save-icon-stack svg {
-  grid-area: 1/1;
-}
-.chat-modal {
+.scoped-settings {
   left: 273px;
-  top: 135px;
-  width: 420px;
+  top: 80px;
+  width: 450px;
 }
-.chat-modal-body {
+.group-page {
+  left: 195px;
+  top: 68px;
+  width: 490px;
+  border-radius: 0;
+  box-shadow: none;
+}
+.modal-heading,.group-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 57px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.modal-heading > svg {
+  margin-left: auto;
+  color: var(--muted);
+}
+.group-heading h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.group-heading > svg {
+  color: var(--muted);
+}
+.scoped-body {
   display: grid;
-  gap: 18px;
-  padding: 23px 31px 30px;
+  gap: 15px;
+  padding: 22px 26px;
 }
-.chat-modal-body .presets {
-  min-height: 34px;
+.scoped-details {
+  opacity: 1;
+  animation: details-open var(--duration) linear infinite;
+}
+.disclosures {
+  margin-top: 6px;
+}
+.disclosures > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+.restore-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.select-menu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px #0004;
+  font-size: 12px;
+  opacity: 0;
+}
+.select-menu > * {
+  display: block;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.select-menu > strong {
+  background: var(--surface-2);
+  color: var(--blue);
+  font-weight: 500;
 }
 .pointer {
   position: absolute;
-  z-index: 5;
-  right: 1px;
-  bottom: -7px;
-  color: var(--scene-text);
-  fill: var(--scene-surface);
-  filter: drop-shadow(0 1px 2px #0009);
-  pointer-events: none;
-  animation: tap-middle 12s linear infinite;
+  z-index: 10;
+  right: 6px;
+  bottom: -12px;
+  fill: var(--surface);
+  color: var(--text);
+  filter: drop-shadow(0 1px 2px #0007);
+  opacity: 0;
+  animation: tap-middle var(--duration) linear infinite;
 }
-.sidebar-settings-pointer {
-  animation-name: tap-early;
-}
-.sidebar-group-pointer {
-  animation-name: tap-early;
+.entry-pointer {
+  animation-name: tap-entry;
 }
 .header-pointer {
-  animation: tap-early 10s linear infinite;
+  animation-name: tap-header;
+}
+.summary-pointer {
+  animation-name: tap-summary;
 }
 .provider-pointer {
   animation-name: tap-provider;
 }
-.endpoint-pointer,.chat-model-pointer,.url-pointer {
-  animation-name: tap-middle;
-}
-.reset-pointer {
-  animation: tap-reset-endpoint 16s linear infinite;
-}
-.reset-model-pointer {
-  animation: tap-reset-model 16s linear infinite;
-}
 .url-pointer {
-  right: 35px;
+  animation-name: tap-url;
 }
-.global-model-pointer,.group-model-pointer {
-  animation-name: tap-late;
+.global-model-pointer,.model-pointer {
+  animation-name: tap-model;
 }
 .save-pointer {
-  animation-name: tap-end;
+  animation-name: tap-save;
+}
+.endpoint-pointer {
+  animation-name: tap-provider;
+}
+.reset-url-pointer {
+  animation-name: tap-url;
 }
 .stage-global .global-modal,.stage-global .modal-veil {
-  animation: modal-open 12s linear infinite;
+  animation: modal-open 16s linear infinite;
 }
 .stage-inheritedChat .chat-modal,.stage-inheritedChat .chat-veil {
-  animation: chat-modal-open 10s linear infinite;
+  animation: chat-modal-open 16s linear infinite;
 }
-.stage-global .provider-control .phase-start {
-  animation: early-start 12s linear infinite;
+.stage-global .provider-control .phase-start,.stage-group .endpoint-control .phase-start {
+  animation: provider-before var(--duration) linear infinite;
 }
-.stage-global .provider-control .phase-end {
-  animation: early-end 12s linear infinite;
+.stage-global .provider-control .phase-end,.stage-group .endpoint-control .phase-end {
+  animation: provider-after var(--duration) linear infinite;
 }
 .stage-global .url-control .phase-start {
-  animation: middle-start 12s linear infinite;
+  animation: url-before 16s linear infinite;
 }
 .stage-global .url-control .phase-end {
-  animation: middle-end 12s linear infinite;
+  animation: url-after 16s linear infinite;
 }
-.stage-global .model-control .phase-start {
-  animation: late-start 12s linear infinite;
+.stage-global .model-control .phase-start,.stage-group .model-control .phase-start,.stage-chatModel .phase-start {
+  animation: model-before var(--duration) linear infinite;
 }
-.stage-global .model-control .phase-end {
-  animation: late-end 12s linear infinite;
+.stage-global .model-control .phase-end,.stage-group .model-control .phase-end,.stage-chatModel .phase-end {
+  animation: model-after var(--duration) linear infinite;
 }
 .stage-global .save-control .phase-start {
-  animation: end-start 12s linear infinite;
+  animation: save-before 16s linear infinite;
 }
 .stage-global .save-control .phase-end {
-  animation: end-end 12s linear infinite;
+  animation: save-after 16s linear infinite;
 }
-.stage-group .endpoint-control .phase-start {
-  animation: middle-start 12s linear infinite;
+.stage-group .endpoint-source {
+  opacity: 0;
+  animation: provider-before 16s linear infinite;
 }
-.stage-group .endpoint-control .phase-end {
-  animation: middle-end 12s linear infinite;
+.stage-group .model-source,.stage-chatModel .model-source {
+  opacity: 0;
+  animation: model-before 16s linear infinite;
 }
-.stage-group .group-url {
-  animation: group-url-show 12s linear infinite;
+.provider-menu,.stage-group .endpoint-menu {
+  animation: provider-menu var(--duration) linear infinite;
 }
-.stage-group .model-control .phase-start {
-  animation: late-start 12s linear infinite;
+.model-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+  animation: model-menu var(--duration) linear infinite;
 }
-.stage-group .model-control .phase-end {
-  animation: late-end 12s linear infinite;
-}
-.stage-chatModel .model-control .phase-start,.stage-chatModel .model-trigger .phase-start {
-  animation: middle-start 12s linear infinite;
-}
-.stage-chatModel .model-control .phase-end,.stage-chatModel .model-trigger .phase-end {
-  animation: middle-end 12s linear infinite;
+.stage-chatModel .scoped-details {
+  display: none;
 }
 .stage-reset .reset-initial {
-  animation: reset-initial-value 16s linear infinite;
+  animation: reset-initial 22s linear infinite;
 }
 .stage-reset .reset-cleared {
-  animation: reset-cleared-value 16s linear infinite;
+  animation: reset-cleared 22s linear infinite;
 }
 .stage-reset .reset-local-endpoint {
-  animation: reset-local-endpoint-value 16s linear infinite;
+  animation: reset-endpoint 22s linear infinite;
+}
+.stage-reset .reset-url-initial {
+  animation: reset-url-initial 22s linear infinite;
+}
+.stage-reset .reset-local-url {
+  animation: reset-url 22s linear infinite;
 }
 .stage-reset .reset-local-model {
-  animation: reset-local-model-value 16s linear infinite;
+  animation: reset-model 22s linear infinite;
 }
 .stage-reset .reset-final {
-  animation: reset-final-value 16s linear infinite;
+  animation: reset-final 22s linear infinite;
 }
-.stage-reset .override-badge {
-  opacity: 0;
-  animation: reset-override-badge 16s linear infinite;
+.stage-reset .endpoint-source {
+  animation: reset-source 22s linear infinite;
+}
+.stage-reset .reset-model-source {
+  animation: reset-model-source 22s linear infinite;
+}
+.stage-reset .endpoint-pointer {
+  animation: tap-reset-endpoint 22s linear infinite;
+}
+.stage-reset .reset-endpoint-out-menu {
+  animation: provider-menu 22s linear infinite;
+}
+.stage-reset .reset-model-menu {
+  animation: model-menu 22s linear infinite;
+}
+.stage-reset .reset-endpoint-back-menu {
+  animation: return-menu 22s linear infinite;
+}
+@keyframes focus-camera {
+  0%,10%,100% {
+    transform: translate(var(--entry-x),var(--entry-y)) scale(.85);
+  }
+  25%,32% {
+    transform: translate(var(--focus-x),var(--summary-y)) scale(var(--focus-scale));
+  }
+  45%,94% {
+    transform: translate(var(--focus-x),var(--focus-y)) scale(var(--focus-scale));
+  }
 }
 @keyframes global-camera {
-  0%,12% {
-    transform: translate(0,-195px) scale(.85);
+  0%,10%,100% {
+    transform: translate(var(--entry-x),var(--entry-y)) scale(.85);
   }
-  27%,55% {
-    transform: translate(-120px,-80px) scale(.98);
+  25%,43% {
+    transform: translate(var(--focus-x),var(--summary-y)) scale(var(--focus-scale));
   }
-  68%,94% {
-    transform: translate(-120px,-210px) scale(.98);
-  }
-  100% {
-    transform: translate(0,-195px) scale(.85);
-  }
-}
-@keyframes group-camera {
-  0%,15% {
-    transform: translate(0,-20px) scale(.85);
-  }
-  33%,94% {
-    transform: translate(-85px,-165px) scale(1.05);
-  }
-  100% {
-    transform: translate(0,-20px) scale(.85);
-  }
-}
-@keyframes inherited-camera {
-  0%,25% {
-    transform: translate(-120px,-15px) scale(.85);
-  }
-  65%,94% {
-    transform: translate(-105px,-215px) scale(1.05);
-  }
-  100% {
-    transform: translate(-120px,-15px) scale(.85);
-  }
-}
-@keyframes chat-model-camera {
-  0%,15% {
-    transform: translate(-105px,-215px) scale(1.05);
-  }
-  30%,62% {
-    transform: translate(-105px,-215px) scale(1.05);
-  }
-  82%,94% {
-    transform: translate(-120px,-15px) scale(.85);
-  }
-  100% {
-    transform: translate(-105px,-215px) scale(1.05);
-  }
-}
-@keyframes reset-camera {
-  0%,14%,100% {
-    transform: translate(-120px,-15px) scale(.85);
-  }
-  24%,94% {
-    transform: translate(-105px,-215px) scale(1.05);
+  60%,94% {
+    transform: translate(var(--focus-x),var(--focus-y)) scale(var(--focus-scale));
   }
 }
 @keyframes modal-open {
-  0%,14%,100% {
+  0%,10%,100% {
     opacity: 0;
   }
-  25%,94% {
+  20%,94% {
     opacity: 1;
   }
 }
 @keyframes chat-modal-open {
-  0%,25%,100% {
+  0%,24%,100% {
     opacity: 0;
   }
-  37%,94% {
+  32%,94% {
     opacity: 1;
   }
 }
-@keyframes early-start {
-  0%,40%,100% {
-    opacity: 1;
-  }
-  48%,94% {
+@keyframes header-menu {
+  0%,9%,26%,100% {
     opacity: 0;
   }
-}
-@keyframes early-end {
-  0%,40%,100% {
-    opacity: 0;
-  }
-  48%,94% {
+  13%,23% {
     opacity: 1;
   }
 }
-@keyframes middle-start {
-  0%,46%,100% {
-    opacity: 1;
-  }
-  56%,94% {
+@keyframes details-open {
+  0%,32%,100% {
     opacity: 0;
   }
-}
-@keyframes middle-end {
-  0%,46%,100% {
-    opacity: 0;
-  }
-  56%,94% {
+  39%,94% {
     opacity: 1;
   }
 }
-@keyframes late-start {
-  0%,67%,100% {
+@keyframes provider-before {
+  0%,42%,100% {
     opacity: 1;
   }
-  77%,94% {
+  46%,94% {
     opacity: 0;
   }
 }
-@keyframes late-end {
-  0%,67%,100% {
+@keyframes provider-after {
+  0%,42%,100% {
     opacity: 0;
   }
-  77%,94% {
+  46%,94% {
     opacity: 1;
   }
 }
-@keyframes end-start {
-  0%,79%,100% {
+@keyframes url-before {
+  0%,55%,100% {
     opacity: 1;
   }
-  88%,94% {
+  59%,94% {
     opacity: 0;
   }
 }
-@keyframes end-end {
-  0%,79%,100% {
+@keyframes url-after {
+  0%,55%,100% {
     opacity: 0;
   }
-  88%,94% {
+  59%,94% {
     opacity: 1;
   }
 }
-@keyframes group-url-show {
-  0%,46%,100% {
-    opacity: 0;
-  }
-  56%,94% {
+@keyframes model-before {
+  0%,68%,100% {
     opacity: 1;
   }
-}
-@keyframes reset-initial-value {
-  0%,27%,100% {
-    opacity: 1;
-  }
-  36%,94% {
+  72%,94% {
     opacity: 0;
   }
 }
-@keyframes reset-cleared-value {
-  0%,27%,58%,100% {
+@keyframes model-after {
+  0%,68%,100% {
     opacity: 0;
   }
-  36%,50% {
+  72%,94% {
     opacity: 1;
   }
 }
-@keyframes reset-local-endpoint-value {
-  0%,27%,84%,100% {
-    opacity: 0;
-  }
-  36%,83% {
+@keyframes save-before {
+  0%,82%,100% {
     opacity: 1;
   }
-}
-@keyframes reset-local-model-value {
-  0%,50%,84%,100% {
-    opacity: 0;
-  }
-  58%,83% {
-    opacity: 1;
-  }
-}
-@keyframes reset-final-value {
-  0%,75%,100% {
-    opacity: 0;
-  }
-  84%,94% {
-    opacity: 1;
-  }
-}
-@keyframes reset-override-badge {
-  0%,75%,100% {
-    opacity: 1;
-  }
-  84%,94% {
+  87%,94% {
     opacity: 0;
   }
 }
-@keyframes tap-early {
-  0%,5%,20%,100% {
+@keyframes save-after {
+  0%,82%,100% {
     opacity: 0;
-    transform: translate(9px,9px);
   }
-  10%,15% {
+  87%,94% {
+    opacity: 1;
+  }
+}
+@keyframes provider-menu {
+  0%,37%,45%,100% {
+    opacity: 0;
+  }
+  39%,43% {
+    opacity: 1;
+  }
+}
+@keyframes model-menu {
+  0%,62%,71%,100% {
+    opacity: 0;
+  }
+  65%,69% {
+    opacity: 1;
+  }
+}
+@keyframes return-menu {
+  0%,78%,85%,100% {
+    opacity: 0;
+  }
+  80%,83% {
+    opacity: 1;
+  }
+}
+@keyframes tap-entry {
+  0%,3%,13%,100% {
+    opacity: 0;
+    transform: translate(8px,8px);
+  }
+  6%,10% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tap-header {
+  0%,15%,25%,100% {
+    opacity: 0;
+    transform: translate(8px,8px);
+  }
+  18%,22% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tap-summary {
+  0%,30%,40%,100% {
+    opacity: 0;
+    transform: translate(8px,8px);
+  }
+  33%,37% {
     opacity: 1;
     transform: none;
   }
 }
 @keyframes tap-provider {
-  0%,25%,40%,100% {
+  0%,37%,47%,100% {
     opacity: 0;
-    transform: translate(9px,9px);
+    transform: translate(8px,8px);
   }
-  30%,35% {
+  40%,44% {
     opacity: 1;
     transform: none;
   }
 }
-@keyframes tap-middle {
-  0%,42%,60%,100% {
+@keyframes tap-url {
+  0%,50%,61%,100% {
     opacity: 0;
-    transform: translate(9px,9px);
+    transform: translate(8px,8px);
   }
-  48%,53% {
+  53%,58% {
     opacity: 1;
     transform: none;
   }
 }
-@keyframes tap-late {
-  0%,63%,81%,100% {
+@keyframes tap-model {
+  0%,62%,73%,100% {
     opacity: 0;
-    transform: translate(9px,9px);
+    transform: translate(8px,8px);
   }
-  69%,74% {
+  65%,70% {
     opacity: 1;
     transform: none;
   }
 }
-@keyframes tap-end {
-  0%,77%,91%,100% {
+@keyframes tap-save {
+  0%,79%,89%,100% {
     opacity: 0;
-    transform: translate(9px,9px);
+    transform: translate(8px,8px);
   }
   82%,86% {
     opacity: 1;
     transform: none;
   }
 }
+@keyframes tap-middle {
+  0%,35%,55%,100% {
+    opacity: 0;
+  }
+  40%,50% {
+    opacity: 1;
+  }
+}
 @keyframes tap-reset-endpoint {
-  0%,24%,34%,75%,85%,100% {
+  0%,37%,47%,77%,87%,100% {
     opacity: 0;
-    transform: translate(9px,9px);
+    transform: translate(8px,8px);
   }
-  28%,31%,78%,81% {
+  40%,44%,80%,84% {
     opacity: 1;
     transform: none;
   }
 }
-@keyframes tap-reset-model {
-  0%,47%,59%,100% {
-    opacity: 0;
-    transform: translate(9px,9px);
-  }
-  51%,55% {
+@keyframes reset-initial {
+  0%,42%,100% {
     opacity: 1;
-    transform: none;
   }
-}
-@keyframes menu-open-global-provider {
-  0%,28%,46%,100% {
+  46%,94% {
     opacity: 0;
-    transform: translateY(-6px) scale(.98);
-  }
-  32%,43% {
-    opacity: 1;
-    transform: none;
   }
 }
-@keyframes menu-open-middle {
-  0%,46%,58%,100% {
+@keyframes reset-cleared {
+  0%,42%,72%,100% {
     opacity: 0;
-    transform: translateY(-6px) scale(.98);
   }
-  49%,55% {
+  46%,68% {
     opacity: 1;
-    transform: none;
   }
 }
-@keyframes menu-open-late {
-  0%,67%,79%,100% {
+@keyframes reset-endpoint {
+  0%,42%,86%,100% {
     opacity: 0;
-    transform: translateY(-6px) scale(.98);
   }
-  70%,76% {
+  46%,83% {
     opacity: 1;
-    transform: none;
   }
 }
-@keyframes menu-open-reset-out {
-  0%,26%,38%,100% {
+@keyframes reset-url-initial {
+  0%,55%,100% {
+    opacity: 1;
+  }
+  59%,94% {
     opacity: 0;
-    transform: translateY(-6px) scale(.98);
-  }
-  29%,35% {
-    opacity: 1;
-    transform: none;
   }
 }
-@keyframes menu-open-reset-model {
-  0%,48%,60%,100% {
+@keyframes reset-url {
+  0%,55%,86%,100% {
     opacity: 0;
-    transform: translateY(-6px) scale(.98);
   }
-  51%,57% {
+  59%,83% {
     opacity: 1;
-    transform: none;
   }
 }
-@keyframes menu-open-reset-back {
-  0%,75%,86%,100% {
+@keyframes reset-model {
+  0%,68%,86%,100% {
     opacity: 0;
-    transform: translateY(-6px) scale(.98);
   }
-  78%,83% {
+  72%,83% {
     opacity: 1;
-    transform: none;
   }
 }
-@keyframes option-picked-global-provider {
-  0%,38%,46%,100% {
-    background: transparent;
-    color: var(--scene-text);
+@keyframes reset-final {
+  0%,83%,100% {
+    opacity: 0;
   }
-  41%,44% {
-    background: color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));
-    color: var(--scene-blue);
+  86%,94% {
+    opacity: 1;
   }
 }
-@keyframes option-picked-middle {
-  0%,51%,59%,100% {
-    background: transparent;
-    color: var(--scene-text);
+@keyframes reset-source {
+  0%,42%,86%,100% {
+    opacity: 1;
   }
-  53%,56% {
-    background: color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));
-    color: var(--scene-blue);
+  46%,83% {
+    opacity: 0;
   }
 }
-@keyframes option-picked-late {
-  0%,72%,80%,100% {
-    background: transparent;
-    color: var(--scene-text);
+@keyframes reset-model-source {
+  0%,42%,72%,83%,100% {
+    opacity: 0;
   }
-  74%,77% {
-    background: color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));
-    color: var(--scene-blue);
+  46%,68%,86%,94% {
+    opacity: 1;
   }
 }
-@keyframes option-picked-reset-out {
-  0%,31%,39%,100% {
-    background: transparent;
-    color: var(--scene-text);
-  }
-  33%,36% {
-    background: color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));
-    color: var(--scene-blue);
-  }
-}
-@keyframes option-picked-reset-model {
-  0%,53%,61%,100% {
-    background: transparent;
-    color: var(--scene-text);
-  }
-  55%,58% {
-    background: color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));
-    color: var(--scene-blue);
-  }
-}
-@keyframes option-picked-reset-back {
-  0%,79%,87%,100% {
-    background: transparent;
-    color: var(--scene-text);
-  }
-  81%,84% {
-    background: color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));
-    color: var(--scene-blue);
-  }
-}
-@media(max-width:560px) {
-  .camera-viewport {
-    height: 345px;
-  }
-  .stage-global .field-label {
-    transform: translateX(24px);
-    animation: global-label-shift 12s linear infinite;
-  }
-  .stage-group .field-label {
-    transform: translateX(35px);
-    animation: group-label-shift 12s linear infinite;
-  }
-  .stage-inheritedChat .field-label {
-    transform: translateX(24px);
-    animation: inherited-label-shift 10s linear infinite;
-  }
-  .stage-chatModel .field-label {
-    transform: translateX(24px);
-    animation: chat-model-label-shift 12s linear infinite;
-  }
-  .stage-reset .field-label {
-    transform: translateX(24px);
-    animation: reset-label-shift 16s linear infinite;
-  }
-  .stage-global .field-value > span {
-    margin-left: 12px;
-  }
-  .stage-group .field-value > span {
-    margin-left: 20px;
-  }
-  .stage-inheritedChat .field-value > span,.stage-chatModel .field-value > span,.stage-reset .field-value > span {
-    margin-left: 8px;
-  }
-  .field-value .pointer {
-    right: 16px;
-  }
-  .stage-global .select-menu {
-    left: 20px;
-    right: auto;
-    width: 260px;
-  }
-  .stage-group .select-menu {
-    left: 40px;
-    right: auto;
-    width: 260px;
-  }
-  .stage-chatModel .select-menu,.stage-reset .select-menu {
-    left: 25px;
-    right: auto;
-    width: 260px;
-  }
-  .stage-global .save-control {
-    margin-right: 20px;
+@container (max-width:560px) {
+  .scene-canvas {
+    --focus-scale:.9;
+    --focus-x:-232px;
+    --focus-y:-185px;
+    --summary-y:-108px;
   }
   .stage-global .scene-canvas {
-    animation-name: global-camera-mobile;
+    --focus-x:-402px;
+    --focus-y:-200px;
+    --summary-y:-75px;
   }
   .stage-group .scene-canvas {
-    animation-name: group-camera-mobile;
-  }
-  .stage-inheritedChat .scene-canvas {
-    animation-name: inherited-camera-mobile;
+    --focus-x:-165px;
+    --focus-y:-185px;
+    --summary-y:-95px;
   }
   .stage-chatModel .scene-canvas {
-    animation-name: chat-model-camera-mobile;
+    --focus-y:-65px;
+    --summary-y:-65px;
+    --entry-x:-232px;
   }
-  .stage-reset .scene-canvas {
-    animation-name: reset-camera-mobile;
+  .stage-inheritedChat .scene-canvas,.stage-reset .scene-canvas {
+    --entry-x:min(-490px,calc(100cqw - 820px));
   }
-}
-@keyframes global-camera-mobile {
-  0%,12% {
-    transform: translate(0,-207px) scale(.82);
+  /* Fit the active fields and pointers without reducing the focus scale. */
+  .scoped-settings {
+    width: min(360px,calc(100cqw + 4px));
   }
-  25% {
-    transform: translate(-320px,-70px) scale(.82);
+  .group-page {
+    width: min(360px,calc(100cqw + 4px));
   }
-  32%,55% {
-    transform: translate(-342px,-70px) scale(.82);
+  .global-modal {
+    width: min(550px,calc(100cqw + 240px));
   }
-  68%,94% {
-    transform: translate(-342px,-190px) scale(.82);
+  .scoped-body {
+    padding: 18px;
+    gap: 13px;
   }
-  100% {
-    transform: translate(0,-207px) scale(.82);
+  .modal-fields {
+    padding: 12px 18px 18px;
+    gap: 15px;
   }
-}
-@keyframes group-camera-mobile {
-  0%,15% {
-    transform: translate(0,-10px) scale(.82);
+  .mono {
+    font-size: 12px;
   }
-  33% {
-    transform: translate(-177px,-130px) scale(.82);
+  .connection-metadata {
+    gap: 4px;
   }
-  43%,94% {
-    transform: translate(-212px,-130px) scale(.82);
-  }
-  100% {
-    transform: translate(0,-10px) scale(.82);
+  .connection-details {
+    padding: 12px;
   }
 }
-@keyframes inherited-camera-mobile {
-  0%,25% {
-    transform: translate(-150px,-10px) scale(.82);
-  }
-  45% {
-    transform: translate(-235px,-145px) scale(.82);
-  }
-  65%,94% {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-  100% {
-    transform: translate(-150px,-10px) scale(.82);
-  }
-}
-@keyframes chat-model-camera-mobile {
-  0%,15% {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-  30% {
-    transform: translate(-235px,-145px) scale(.82);
-  }
-  42%,62% {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-  82%,94% {
-    transform: translate(-150px,-10px) scale(.82);
-  }
-  100% {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-}
-@keyframes reset-camera-mobile {
-  0%,14%,100% {
-    transform: translate(-150px,-10px) scale(.82);
-  }
-  22% {
-    transform: translate(-235px,-145px) scale(.82);
-  }
-  27%,94% {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-}
-@keyframes global-label-shift {
-  0%,25%,100% {
-    transform: none;
-  }
-  32%,94% {
-    transform: translateX(24px);
-  }
-}
-@keyframes group-label-shift {
-  0%,33%,100% {
-    transform: none;
-  }
-  43%,94% {
-    transform: translateX(35px);
-  }
-}
-@keyframes inherited-label-shift {
-  0%,45%,100% {
-    transform: none;
-  }
-  65%,94% {
-    transform: translateX(24px);
-  }
-}
-@keyframes chat-model-label-shift {
-  0%,15%,42%,94%,100% {
-    transform: translateX(24px);
-  }
-  30% {
-    transform: none;
-  }
-}
-@keyframes reset-label-shift {
-  0%,22%,100% {
-    transform: none;
-  }
-  27%,94% {
-    transform: translateX(24px);
-  }
-}
-:global(html:has(#docs-pause-motion:checked) .camera-viewport *),
-:global(html:has(#docs-pause-motion:checked) .camera-viewport *::before),
-:global(html:has(#docs-pause-motion:checked) .camera-viewport *::after) {
+:global(html:has(#docs-pause-motion:checked) .camera-viewport *) {
   animation: none!important;
 }
-:global(html:has(#docs-pause-motion:checked) .stage-global .scene-canvas) {
-  transform: translate(-120px,-210px) scale(.98);
-}
-:global(html:has(#docs-pause-motion:checked) .stage-group .scene-canvas) {
-  transform: translate(-85px,-165px) scale(1.05);
-}
-:global(html:has(#docs-pause-motion:checked) .stage-inheritedChat .scene-canvas) {
-  transform: translate(-105px,-215px) scale(1.05);
-}
-:global(html:has(#docs-pause-motion:checked) .stage-chatModel .scene-canvas) {
-  transform: translate(-120px,-15px) scale(.85);
-}
 :global(html:has(#docs-pause-motion:checked) .stage-reset .scene-canvas) {
-  transform: translate(-105px,-215px) scale(1.05);
+  transform: translate(var(--focus-x),var(--focus-y)) scale(var(--focus-scale));
 }
-:global(html:has(#docs-pause-motion:checked) .camera-viewport .pointer) {
+:global(html:has(#docs-pause-motion:checked) .camera-viewport .pointer),
+:global(html:has(#docs-pause-motion:checked) .camera-viewport .select-menu),
+:global(html:has(#docs-pause-motion:checked) .camera-viewport .header-menu) {
   display: none;
 }
-:global(html:has(#docs-pause-motion:checked) .camera-viewport .select-menu) {
-  opacity: 0;
-}
-@media(max-width:560px) {
-  :global(html:has(#docs-pause-motion:checked) .stage-global .scene-canvas) {
-    transform: translate(-342px,-190px) scale(.82);
-  }
-  :global(html:has(#docs-pause-motion:checked) .stage-group .scene-canvas) {
-    transform: translate(-212px,-130px) scale(.82);
-  }
-  :global(html:has(#docs-pause-motion:checked) .stage-inheritedChat .scene-canvas) {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-  :global(html:has(#docs-pause-motion:checked) .stage-chatModel .scene-canvas) {
-    transform: translate(-150px,-10px) scale(.82);
-  }
-  :global(html:has(#docs-pause-motion:checked) .stage-reset .scene-canvas) {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-}
 @media(prefers-reduced-motion:reduce) {
-  .camera-viewport *, .camera-viewport *::before, .camera-viewport *::after {
+  .camera-viewport * {
     animation: none!important;
   }
-  .stage-global .scene-canvas {
-    transform: translate(-120px,-210px) scale(.98);
-  }
-  .stage-group .scene-canvas {
-    transform: translate(-85px,-165px) scale(1.05);
-  }
-  .stage-inheritedChat .scene-canvas {
-    transform: translate(-105px,-215px) scale(1.05);
-  }
-  .stage-chatModel .scene-canvas {
-    transform: translate(-120px,-15px) scale(.85);
-  }
-  .stage-reset .scene-canvas {
-    transform: translate(-105px,-215px) scale(1.05);
-  }
-  .pointer {
+  .pointer,.select-menu,.header-menu {
     display: none;
-  }
-  .select-menu {
-    opacity: 0;
-  }
-}
-@media(max-width:560px) and (prefers-reduced-motion:reduce) {
-  .stage-global .scene-canvas {
-    transform: translate(-342px,-190px) scale(.82);
-  }
-  .stage-group .scene-canvas {
-    transform: translate(-212px,-130px) scale(.82);
-  }
-  .stage-inheritedChat .scene-canvas {
-    transform: translate(-260px,-145px) scale(.82);
-  }
-  .stage-chatModel .scene-canvas {
-    transform: translate(-150px,-10px) scale(.82);
-  }
-  .stage-reset .scene-canvas {
-    transform: translate(-260px,-145px) scale(.82);
   }
 }
 </style>

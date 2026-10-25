@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { CheckCircle2Icon, HammerIcon, SendIcon } from 'lucide-vue-next';
+import { CheckCircle2Icon, HammerIcon } from 'lucide-vue-next';
+import NaidanChatInput from './NaidanChatInput.vue';
+import type { CommonMessages } from '../../messages/types';
 
-defineProps<{ stage: 'search' | 'page' | 'result'; messages: typeof import('../../pages/tool-wikipedia/messages/en').messages }>();
+defineProps<{ stage: 'search' | 'page' | 'result'; messages: typeof import('../../pages/tool-wikipedia/messages/en').messages; common: CommonMessages }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
@@ -17,7 +19,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div class="assistant-message">{{ messages.aurora_answer }}</div>
       </template>
     </div>
-    <div class="composer"><span>{{ messages.message_placeholder }}</span><i><SendIcon :size="14" /></i></div>
+    <!-- Omit the model source badge to keep the approval and tool result in focus. -->
+    <NaidanChatInput class="composer" :messages="common" :model="messages.sample_model" :status="stage === 'result' ? 'idle' : 'generating'" />
     <div v-if="stage !== 'result'" class="approval-panel">
       <strong>{{ stage === 'search' ? messages.search_approval_action : messages.page_approval_action }}</strong>
       <div class="approval-preview">
@@ -126,34 +129,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   overflow-wrap: anywhere;
   animation: answer-arrive 8s linear infinite;
 }
-.composer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.wiki-chat-scene .composer {
+  --chat-input-control-size:24px;
+  --chat-input-font-size:10px;
   flex: none;
   margin: 0 17px 12px;
-  padding: 9px 11px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--muted);
-  font-size: 10px;
-}
-.composer i {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 25px;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #fff;
-  font-style: normal;
 }
 .approval-panel {
   position: absolute;
   left: 17px;
   right: 17px;
-  bottom: 58px;
+  bottom: 100px;
   padding: 12px;
   border: 1px solid var(--line-strong);
   border-radius: 13px;

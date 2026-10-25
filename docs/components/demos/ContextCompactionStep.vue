@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeftIcon, ArrowRightIcon, BrainIcon, ChevronDownIcon, ChevronUpIcon, FolderInputIcon, GitForkIcon, HammerIcon, ListIcon, Minimize2Icon, MoreVerticalIcon, MousePointer2Icon, PrinterIcon, SearchIcon, SquareIcon, XIcon } from 'lucide-vue-next';
+import { ArrowLeftIcon, ArrowRightIcon, BrainIcon, ChevronDownIcon, ChevronUpIcon, FolderInputIcon, GitForkIcon, HammerIcon, ImageIcon, ListIcon, Minimize2Icon, MoreVerticalIcon, MousePointer2Icon, PrinterIcon, SearchIcon, Settings2Icon, SquareIcon, XIcon } from 'lucide-vue-next';
 
 defineProps<{ stage: 'open' | 'keep' | 'run' | 'result'; messages: typeof import('../../pages/chat-context-compaction/messages/en').messages }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -12,7 +12,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div class="chat-header"><strong>{{ messages.research_notes }}</strong><div class="header-actions"><GitForkIcon :size="16" /><FolderInputIcon :size="16" /><ListIcon :size="16" /><span class="more-button" :title="messages.more_actions"><MoreVerticalIcon :size="17" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="18" /></span></div></div>
         <div class="path-stack"><div class="original-path"><span class="role">{{ messages.you }}</span><p class="message user-message">{{ messages.compare_the_sources_before_choosing_a_direction }}</p></div><div class="compacted-path"><div class="version-row"><ArrowLeftIcon :size="13" /><span>{{ messages.original }}</span><strong>{{ messages.second_version }}</strong><span>{{ messages.compacted }}</span><ArrowRightIcon :size="13" /></div><span class="role">{{ messages.assistant }}</span><p class="message assistant-message">{{ messages.the_sources_have_been_compared_the }}</p><span class="role">{{ messages.you }}</span><p class="message user-message">{{ messages.let_s_test_the_first_direction }}</p></div></div>
       </div>
-      <div class="more-menu"><div><PrinterIcon :size="14" />{{ messages.print }}</div><div><SearchIcon :size="14" />{{ messages.search_in_chat }}</div><div><HammerIcon :size="14" />{{ messages.super_edit }}</div><div class="compact-choice"><Minimize2Icon :size="14" />{{ messages.compact_context }}<MousePointer2Icon v-if="stage === 'open'" class="pointer menu-pointer" :size="18" /></div></div>
+      <div class="more-menu"><div><Settings2Icon :size="14" />{{ messages.chat_settings }}</div><i class="menu-separator" /><div><SearchIcon :size="14" />{{ messages.search_in_chat }}</div><div><ImageIcon :size="14" />{{ messages.media_gallery }}</div><i class="menu-separator" /><div><HammerIcon :size="14" />{{ messages.super_edit }}</div><div class="compact-choice"><Minimize2Icon :size="14" />{{ messages.compact_context }}<MousePointer2Icon v-if="stage === 'open'" class="pointer menu-pointer" :size="18" /></div><i class="menu-separator" /><div><PrinterIcon :size="14" />{{ messages.print }}</div></div>
       <div class="modal-shade" />
       <div class="compact-dialog"><div class="dialog-head"><BrainIcon :size="17" /><span><strong>{{ messages.compact_context }}</strong><small>{{ messages.memory_reconfiguration }}</small></span><XIcon :size="15" /></div><div class="dialog-body">
         <div class="message-bars"><i v-for="n in 20" :key="n" :class="n > 8 ? 'kept' : 'summarized'" /></div>
@@ -164,9 +164,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   padding: 7px 9px;
   color: var(--muted);
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  font-weight: 500;
+}
+.menu-separator {
+  display: block;
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line);
 }
 .more-menu .compact-choice {
   position: relative;

@@ -179,8 +179,8 @@ describe('accessible guide presentation', () => {
 
   it.each(DOCS_LOCALES)('localizes diagrams and keeps authentic technical labels in %s', locale => {
     const expected = locale === 'ja'
-      ? { os: 'このPCのOS', browser: 'ブラウザ', blocked: '直接操作を防止', folder: 'フォルダ（コピー）', access: '読み取り専用', open: 'ブラウザで開く', newChat: '新しいチャット' }
-      : { os: 'The OS on this PC', browser: 'Browser', blocked: 'Direct access prevented', folder: 'Folder (copy)', access: 'READ ONLY', open: 'Open in your browser', newChat: 'New Chat' };
+      ? { os: 'このPCのOS', browser: 'ブラウザ', blocked: '直接操作を防止', folder: 'フォルダ（コピー）', access: '読み取り専用', open: 'ブラウザで開く', newChat: '新しいチャット', modelHeading: 'Webブラウザ内でAIを動かそう', chooseModel: 'モデルを選ぶ', runModel: 'ブラウザ内で動かす' }
+      : { os: 'The OS on this PC', browser: 'Browser', blocked: 'Direct access prevented', folder: 'Folder (copy)', access: 'READ ONLY', open: 'Open in your browser', newChat: 'New Chat', modelHeading: 'Run AI directly in your web browser', chooseModel: 'Choose a model', runModel: 'Run in your browser' };
     for (const page of ['index', 'browser-boundaries', 'file-access', 'standalone'] as const) {
       const output = pages.get(docsHref({ locale, page }));
       if (!output) {
@@ -237,7 +237,10 @@ describe('accessible guide presentation', () => {
       }
       if (standalone) {
         expect(standalone.textContent).toContain(expected.open);
-        expect(standalone.textContent).toContain(expected.newChat);
+        const welcome = standalone.querySelector('[data-testid="standalone-model-welcome"]');
+        expect(welcome?.textContent).toContain(expected.modelHeading);
+        expect(welcome?.textContent).toContain(expected.chooseModel);
+        expect(welcome?.textContent).toContain(expected.runModel);
         expect(standalone.textContent).toContain('index.html');
         expect(standalone.textContent).toContain('assets/');
         expect(standalone.querySelector('[data-testid="standalone-explorer"]')).not.toBeNull();

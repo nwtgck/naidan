@@ -25,6 +25,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="media-step" aria-labelledby="image-model">
       <h2 id="image-model">{{ s.prepare_and_select_an_image_model }}</h2>
       <p><RenderText :node="s.choose_and_prepare_an_image_model()" /></p>
+      <p><RenderText :node="s.choose_how_to_use_image_model_files()" /></p>
       <figure class="guide-figure"><ImageCreationStep stage="model" :messages="s" /><figcaption class="caption"><RenderText :node="s.return_with_a_prepared_model()" /></figcaption></figure>
     </section>
 
@@ -40,7 +41,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <figure class="guide-figure"><ImageCreationStep stage="reuse" :messages="s" /><figcaption class="caption">{{ s.reuse_from_the_result_viewer }}</figcaption></figure>
     </section>
 
-    <section class="media-note" aria-labelledby="image-storage"><h2 id="image-storage">{{ s.keep_work_for_later }}</h2><p><RenderText :node="s.image_session_storage_and_exports()" /></p></section>
+    <section class="media-note" aria-labelledby="image-storage"><h2 id="image-storage">{{ s.keep_work_for_later }}</h2><p><RenderText :node="s.image_session_storage_and_exports()" /></p><p>{{ s.temporary_models_and_saved_results }}</p></section>
     <section class="media-note" aria-labelledby="image-next"><h2 id="image-next">{{ s.after_your_first_image }}</h2><p>{{ s.more_ways_to_work_with_images }}</p></section>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.run_a_gguf_model_in_your_browser, description: s.start_a_chat_with_a_local_gguf_model }]" />
   </article>

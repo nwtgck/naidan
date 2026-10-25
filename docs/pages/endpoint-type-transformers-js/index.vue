@@ -16,7 +16,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
     <p class="app-entry-intro"><RenderText :node="s.open_model_manager({ locale, destination: { kind: 'screen', screen: 'transformers-js-manager' } })" /></p>
-    <p class="app-entry-onboarding"><RenderText :node="s.model_manager_first_run_note()" /></p>
     <p class="guide-context">{{ s.availability }}</p>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-open">

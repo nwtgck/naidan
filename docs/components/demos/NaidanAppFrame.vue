@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import logo from '../../assets/naidan.svg';
-import { PanelLeftIcon, Settings2Icon, SettingsIcon, FolderIcon, MessageSquareIcon, SearchIcon, SquarePenIcon } from 'lucide-vue-next';
+import { PanelLeftIcon, Settings2Icon, SettingsIcon, FolderIcon, MessageSquareIcon, MoreVerticalIcon, SearchIcon, SquarePenIcon } from 'lucide-vue-next';
 
 // Deliberately independent of app stores and inference imports. See docs/components/demos/README.md
 // for the current app components and tests whose presentation this replica follows.
-defineProps<{ title: string; address: string; sidebar: 'visible' | 'hidden'; messages: typeof import('../../messages/replica-chrome/en').messages }>();
+defineProps<{ title: string; address: string; sidebar: 'visible' | 'hidden'; messages: typeof import('../../messages/replica-chrome/en').messages; model?: string; modelSource?: string }>();
 
 
 defineExpose({
@@ -33,7 +33,7 @@ defineExpose({
         <div class="replica-bottom"><SettingsIcon :size="14" /><span>{{ messages.chrome_settings }}</span></div>
       </aside>
       <div class="replica-main">
-        <div class="replica-header"><PanelLeftIcon :size="15" /><strong><slot name="title">{{ title }}</slot></strong><Settings2Icon :size="15" /></div>
+        <div class="replica-header"><PanelLeftIcon :size="15" /><div class="replica-chat-identity"><strong><slot name="title">{{ title }}</slot></strong><div v-if="model" class="replica-model-row" :title="messages.chrome_chat_settings" data-testid="replica-chat-settings"><span v-if="modelSource" class="replica-model-source">{{ modelSource }}</span><span class="replica-model-name">{{ model }}</span><Settings2Icon :size="11" /></div></div><span class="replica-more" :title="messages.chrome_more_actions"><MoreVerticalIcon :size="16" /></span></div>
         <slot />
       </div>
     </div>
@@ -168,6 +168,8 @@ defineExpose({
   min-width: 0;
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+  container-name: docs-chat-pane;
 }
 
 .replica-header {
@@ -181,15 +183,63 @@ defineExpose({
 }
 
 .replica-header strong {
-  flex: 1;
+  display: block;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text);
   font-weight: 600;
 }
 
+.replica-chat-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.replica-model-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.replica-model-source {
+  max-width: 45%;
+  overflow: hidden;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replica-model-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replica-more {
+  display: grid;
+  flex: none;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+}
+
 .replica-header svg {
   flex-shrink: 0;
+}
+
+@container docs-chat-pane (max-width: 479px) {
+  .replica-model-row {
+    display: none;
+  }
 }
 
 @media(max-width:600px) {

@@ -32,7 +32,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </section>
 
     <h2 class="setup-heading">{{ s.set_values_in_naidan_heading }}</h2>
-    <p class="app-entry-intro"><RenderText :node="s.open_naidan_for_settings({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_naidan_for_settings({ locale, destination: { kind: 'screen', screen: 'connection' } })" /></p>
     <p class="sample-note">{{ s.example_addresses_and_models }}</p>
 
     <section class="walkthrough-step" aria-labelledby="inheritance-global">
@@ -81,6 +81,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </figure>
     </section>
 
+    <h2>{{ s.additional_settings_heading }}</h2>
+    <p><RenderText :node="s.additional_settings()" /></p>
+    <p><RenderText :node="s.automatic_title_inheritance()" /></p>
     <p class="closing-note"><RenderText :node="s.restore_inherited_settings()" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'chat-groups', title: s.chat_groups_guide, description: s.organize_chats_and_settings_by_purpose }, { page: 'endpoint-type-ollama', title: s.connect_to_ollama_guide, description: s.choose_ollama_connection_and_model }]" />
   </article>

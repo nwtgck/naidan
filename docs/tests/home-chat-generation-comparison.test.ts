@@ -19,6 +19,8 @@ describe('homepage GGUF generation comparison', () => {
     expect(localBrowser?.textContent).toContain(messages.new_chat);
     expect(remoteBrowser?.textContent).toContain(messages.ai_service);
     expect(localBrowser?.querySelector('.chat-composer .sr-only')?.textContent).toBe(messages.chat_question);
+    expect(localBrowser?.querySelector('.chat-composer .send-action .lucide-arrow-up')).not.toBeNull();
+    expect(localBrowser?.querySelector('.chat-composer .lucide-send')).toBeNull();
     expect(remoteBrowser?.querySelector('.chat-composer .sr-only')?.textContent).toBe(messages.chat_question);
     expect(localModel?.querySelector('.received-prompt')?.textContent).toBe(messages.chat_question);
     expect(remoteServer?.querySelector('.received-prompt')?.textContent).toBe(messages.chat_question);

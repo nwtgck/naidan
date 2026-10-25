@@ -23,20 +23,33 @@ const guidePages = [
 
 const featureTitles = {
   en: [
-    'Chat in your browser',
-    'Create images on your device',
-    'Turn text into speech',
+    'Chat with a local LLM',
+    'Create images locally',
+    'Create speech locally',
     'Branch and edit conversations',
-    'Let AI work with your files',
-    'Start with a double-click',
+    'A safe shell environment in your browser',
+    'Just open an HTML file',
   ],
   ja: [
-    'ブラウザ内でチャット',
-    '端末内で画像を作る',
-    '文章を、端末内で音声に',
+    'ローカルLLMとチャット',
+    'ローカルで画像を作る',
+    'ローカルで音声を作る',
     '会話を自由に分岐・編集',
-    'AIにファイル作業を任せる',
-    'ダブルクリックで使い始める',
+    'ブラウザ内の安全なシェル環境',
+    'HTMLファイルを開くだけ',
+  ],
+} as const;
+
+const generationDescriptions = {
+  en: [
+    'Run a GGUF model in your browser. Chat without sending questions to an inference server, even offline after setup.',
+    'Run an image model in your browser. Create images without sending prompts to an inference server, even offline after setup.',
+    'Run a speech model in your browser. Create speech without sending text to an inference server, even offline after setup, and save it as a WAV.',
+  ],
+  ja: [
+    'GGUFモデルをブラウザ内で実行。質問を推論サーバーに送らず、準備後はオフラインでも会話できます。',
+    '画像モデルをブラウザ内で実行。プロンプトを推論サーバーに送らず、準備後はオフラインでも画像を作れます。',
+    '音声モデルをブラウザ内で実行。文章を推論サーバーに送らず、準備後はオフラインでも音声を作り、WAVで保存できます。',
   ],
 } as const;
 
@@ -107,9 +120,12 @@ describe('Docs home brand', () => {
     const features = home.document.querySelector('[data-testid="docs-hero"] [data-testid="docs-home-features"]');
     expect(features).not.toBeNull();
     expect(features?.closest('[aria-hidden="true"], [hidden], [data-docs-island]')).toBeNull();
+    expect(features?.getAttribute('aria-label')).toBeTruthy();
+    expect(features?.querySelector('h2')).toBeNull();
     const featureLinks = Array.from(features?.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-home-feature-link"]') ?? []);
     expect(featureLinks.map(link => link.getAttribute('href'))).toEqual(featurePages.map(page => docsHref({ locale, page })));
     expect(featureLinks.map(link => link.querySelector('h3')?.textContent)).toEqual(featureTitles[locale]);
+    expect(featureLinks.slice(0, 3).map(link => link.querySelector('p')?.textContent)).toEqual(generationDescriptions[locale]);
     expect(featureLinks.every(link => Boolean(link.querySelector('p')?.textContent?.trim()))).toBe(true);
     const guideCards = Array.from(home.document.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-home-guide-card"]'));
     expect(guideCards.map(card => card.getAttribute('href'))).toEqual(guidePages.map(page => docsHref({ locale, page })));

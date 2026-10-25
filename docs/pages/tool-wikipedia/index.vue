@@ -20,13 +20,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="walkthrough-step">
       <h2>{{ s.open_tool_settings_title }}</h2>
       <p><RenderText :node="s.open_tool_settings_body()" /></p>
-      <figure class="guide-figure"><WikipediaSettingsStep stage="open" :messages="s" /><figcaption class="caption"><RenderText :node="s.open_tool_settings_caption()" /></figcaption></figure>
+      <figure class="guide-figure"><WikipediaSettingsStep stage="open" :messages="s" :common="common" /><figcaption class="caption"><RenderText :node="s.open_tool_settings_caption()" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step">
       <h2>{{ s.enable_wikipedia_title }}</h2>
       <p><RenderText :node="s.enable_wikipedia_body()" /></p>
-      <figure class="guide-figure"><WikipediaSettingsStep stage="enabled" :messages="s" /><figcaption class="caption">{{ s.enable_wikipedia_caption }}</figcaption></figure>
+      <figure class="guide-figure"><WikipediaSettingsStep stage="enabled" :messages="s" :common="common" /><figcaption class="caption">{{ s.enable_wikipedia_caption }}</figcaption></figure>
       <p><RenderText :node="s.wikipedia_sysfs_guide({ locale, page: 'wesh-sysfs' })" /></p>
     </section>
 
@@ -34,19 +34,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2>{{ s.approve_search_title }}</h2>
       <p><RenderText :node="s.wikipedia_editions_note({ locale, page: 'csp-editions' })" /></p>
       <p><RenderText :node="s.approve_search_body()" /></p>
-      <figure class="guide-figure"><WikipediaChatStep stage="search" :messages="s" /><figcaption class="caption">{{ s.approve_search_caption }}</figcaption></figure>
+      <figure class="guide-figure"><WikipediaChatStep stage="search" :messages="s" :common="common" /><figcaption class="caption">{{ s.approve_search_caption }}</figcaption></figure>
     </section>
 
     <section class="walkthrough-step">
       <h2>{{ s.approve_page_title }}</h2>
       <p><RenderText :node="s.approve_page_body()" /></p>
-      <figure class="guide-figure"><WikipediaChatStep stage="page" :messages="s" /><figcaption class="caption">{{ s.approve_page_caption }}</figcaption></figure>
+      <figure class="guide-figure"><WikipediaChatStep stage="page" :messages="s" :common="common" /><figcaption class="caption">{{ s.approve_page_caption }}</figcaption></figure>
     </section>
 
     <section class="result-section">
       <h2>{{ s.use_search_results_title }}</h2>
       <p>{{ s.use_search_results_body }}</p>
-      <figure class="guide-figure"><WikipediaChatStep stage="result" :messages="s" /></figure>
+      <figure class="guide-figure"><WikipediaChatStep stage="result" :messages="s" :common="common" /></figure>
       <p>{{ s.use_search_results_help }}</p>
     </section>
 

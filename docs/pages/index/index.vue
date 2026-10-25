@@ -81,8 +81,7 @@ defineExpose({
         <HomeChatResponseDemo :messages="s" :common="common" />
       </figure>
     </div>
-    <section class="home-features wrap" aria-labelledby="features-title" data-testid="docs-home-features">
-      <h2 id="features-title">{{ s.features_heading }}</h2>
+    <section class="home-features wrap" :aria-label="s.features_heading" data-testid="docs-home-features">
       <ul class="feature-list">
         <li v-for="feature in features" :key="feature.page">
           <DocsLink
@@ -92,7 +91,6 @@ defineExpose({
           >
             <span class="feature-icon"><svg class="icon" aria-hidden="true"><use :href="feature.icon" /></svg></span>
             <div class="feature-copy"><h3>{{ s[feature.titleKey] }}</h3><p>{{ s[feature.bodyKey] }}</p></div>
-            <span class="feature-arrow" aria-hidden="true">→</span>
           </DocsLink>
         </li>
       </ul>
@@ -365,44 +363,37 @@ defineExpose({
 .home-features {
   padding-bottom: 42px;
 }
-.home-features h2 {
-  margin: 0 0 21px;
-  font-size: clamp(20px, 2vw, 24px);
-  line-height: 1.5;
-  letter-spacing: -.035em;
-  overflow-wrap: anywhere;
-}
 .feature-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0 28px;
+  gap: 18px 26px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .feature-list li {
   min-width: 0;
-  border-top: 1px solid var(--line-strong);
+  border-radius: 18px;
 }
 .feature-link {
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 11px;
   height: 100%;
-  padding: 17px 4px;
-  border-radius: 9px;
+  padding: 14px 12px;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
   color: var(--text);
   text-decoration: none;
+  transition: background-color .15s ease;
 }
 .feature-icon {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid color-mix(in srgb, var(--blue) 20%, var(--line));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--blue) 8%, var(--surface));
+  width: 28px;
+  height: 28px;
   color: var(--blue);
 }
 .feature-copy {
@@ -411,7 +402,7 @@ defineExpose({
 }
 .feature-copy h3 {
   margin: 2px 0 6px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 750;
   line-height: 1.5;
 }
@@ -420,12 +411,6 @@ defineExpose({
   color: var(--muted);
   font-size: 12px;
   line-height: 1.75;
-}
-.feature-arrow {
-  margin-top: 3px;
-  color: var(--blue);
-  font-size: 18px;
-  line-height: 1.3;
 }
 .feature-link:hover {
   background: var(--surface);
@@ -445,9 +430,6 @@ defineExpose({
 @media(max-width:620px) {
   .home-features {
     padding-bottom: 28px;
-  }
-  .home-features h2 {
-    margin-bottom: 17px;
   }
   .feature-list {
     grid-template-columns: minmax(0, 1fr);

@@ -17,6 +17,8 @@ describe('media workflow guides', () => {
     using page = parsePage({ html });
     expect(page.document.querySelector('article h1')?.textContent).toBe(copy.title);
     expect(page.document.querySelector('.app-entry-intro a')?.getAttribute('data-docs-app-entry-path')).toBe('/#/image-generation/');
+    expect(page.document.querySelector('.app-entry-intro')?.textContent).toContain(locale === 'en' ? 'Hosted edition' : 'Hosted版');
+    expect(page.document.querySelector('#image-model')?.parentElement?.textContent).toContain(locale === 'en' ? 'portable HTML edition' : 'ポータブルHTML版');
     const steps = [...page.document.querySelectorAll('section.media-step')];
     expect(steps.map(step => step.querySelector('h2')?.textContent)).toEqual([
       copy.open_the_image_workspace, copy.prepare_and_select_an_image_model, copy.enter_a_prompt_and_generate_an_image, copy.inspect_and_try_another_version,
@@ -33,6 +35,11 @@ describe('media workflow guides', () => {
     expect(page.document.querySelectorAll('[data-testid^="image-step-"] > .canvas')).toHaveLength(4);
     expect(page.document.querySelector('[data-testid="image-step-model"] [data-testid="image-models-screen"]')?.textContent).toContain(copy.model_catalog);
     expect(page.document.querySelector('[data-testid="image-step-model"] [data-testid="image-model-options"]')?.textContent).toContain(copy.search_choices);
+    const modelPreparation = page.document.querySelector('[data-testid="image-step-model"]');
+    expect(modelPreparation?.querySelector('.download-destination')?.textContent).toContain(copy.browser_storage);
+    expect(modelPreparation?.querySelector('.import-methods')?.textContent).toContain(copy.save_in_browser);
+    expect(modelPreparation?.querySelector('.import-methods')?.textContent).toContain(copy.link_folder);
+    expect(modelPreparation?.querySelector('.import-methods')?.textContent).toContain(copy.use_temporarily);
     expect(page.document.querySelector('[data-testid="image-step-open"] [data-testid="image-model-options"]')).toBeNull();
     expect(page.document.querySelector('[data-testid="image-step-generate"] [data-testid="image-workspace-canvas"] .columns')).not.toBeNull();
     expect(page.document.querySelector('[data-testid="image-step-reuse"] [data-testid="image-result-viewer"]')).not.toBeNull();
@@ -45,6 +52,7 @@ describe('media workflow guides', () => {
     expect(page.document.querySelector('[data-testid="image-step-reuse"] .viewer-side p')?.textContent).toBe(copy.kitten_flying_through_blue_sky);
     expect(page.document.querySelector('#image-storage')?.parentElement?.textContent).toContain('OPFS');
     expect(page.document.querySelector('#image-storage')?.parentElement?.querySelector('.ui-label')).not.toBeNull();
+    expect(page.document.querySelector('#image-storage')?.parentElement?.textContent).toContain(copy.temporary_models_and_saved_results);
     expect(page.document.querySelector('article')?.textContent).not.toContain('Naidan RPC');
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
     const related = page.document.querySelector('[data-docs-related-guide]');
@@ -71,6 +79,9 @@ describe('media workflow guides', () => {
     expect(page.document.querySelectorAll('[data-testid^="audio-step-"] > .canvas')).toHaveLength(4);
     expect(page.document.querySelector('[data-testid="audio-step-text"] .textarea')?.textContent).toContain(copy.morning_light_sample);
     expect(page.document.querySelector('[data-testid="audio-step-text"] [data-testid="audio-model-options"]')?.textContent).toContain(copy.filter_models);
+    expect(page.document.querySelector('[data-testid="audio-step-text"] .model-after')?.textContent).toBe(copy.qwen3_tts_model_id);
+    expect(page.document.querySelector('[data-testid="audio-step-text"] .popup-model')?.textContent).toBe(copy.qwen3_tts_model_id);
+    expect(page.document.querySelector('[data-testid="audio-step-save"] [data-testid="audio-result-model"]')?.textContent).toBe(copy.qwen3_tts_model_id);
     expect(page.document.querySelector('[data-testid="audio-step-text"] [data-testid="audio-language-options"]')?.textContent).toContain(copy.model_default);
     expect(page.document.querySelector('[data-testid="audio-step-open"] [data-testid="audio-model-options"]')).toBeNull();
     expect(page.document.querySelector('[data-testid="audio-step-generate"] [data-testid="audio-result-card"]')).not.toBeNull();

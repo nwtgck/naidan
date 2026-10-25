@@ -1,10 +1,13 @@
 import path from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
 
+type DocsDevFactory = { createDocsDevServer: ({ root, parentServer }: { root: string; parentServer: ViteDevServer }) => Promise<ViteDevServer> };
+
 // Keep the app config small: no Docs compilation, parsing or model initialization
 // until a /docs request arrives. The child has its own Vue/CSS/plugin graph.
 export function createDocsDevBridge(): Plugin {
   let pending: Promise<ViteDevServer> | undefined;
+  let createDocsDevServer: DocsDevFactory['createDocsDevServer'] | undefined;
   let retirement: Promise<void> = Promise.resolve();
   let closing = false;
   let parent: ViteDevServer | undefined;
@@ -26,28 +29,6 @@ export function createDocsDevBridge(): Plugin {
     configureServer(server) {
       parent = server;
       const docsRoot = path.resolve(server.config.root, 'docs');
-      server.watcher.add([
-        path.resolve(docsRoot, 'build'),
-        path.resolve(docsRoot, 'navigation/routes.ts'),
-        path.resolve(docsRoot, 'navigation/external-link.ts'),
-        path.resolve(docsRoot, 'islands/registry.ts'),
-        path.resolve(docsRoot, 'messages/entry/en.ts'),
-        path.resolve(docsRoot, 'messages/entry/ja.ts'),
-      ]);
-      server.watcher.on('all', (event, file) => {
-        if (event !== 'change' && event !== 'add' && event !== 'unlink') {
-          return;
-        }
-        const relative = path.relative(docsRoot, file);
-        if (relative.startsWith(`build${path.sep}`) && relative.endsWith('.ts')
-          || relative === path.join('navigation', 'routes.ts')
-          || relative === path.join('navigation', 'external-link.ts')
-          || relative === path.join('islands', 'registry.ts')
-          || relative === path.join('messages', 'entry', 'en.ts')
-          || relative === path.join('messages', 'entry', 'ja.ts')) {
-          retire();
-        }
-      });
       server.middlewares.use(async (request, response, next) => {
         let url: URL;
         try {
@@ -66,12 +47,24 @@ export function createDocsDevBridge(): Plugin {
         try {
           let docs: ViteDevServer;
           for (;;) {
+            // Vite caches this import and invalidates it with every transitive
+            // SSR dependency. Keep the child aligned with its parent helpers;
+            // article edits only invalidate the child's separate render graph.
+            const factory = await server.ssrLoadModule('/docs/build/dev.ts') as DocsDevFactory;
+            if (closing) {
+              response.statusCode = 503;
+              response.end();
+              return;
+            }
+            if (typeof factory.createDocsDevServer !== 'function') {
+              throw new Error('Invalid Docs development module');
+            }
+            if (createDocsDevServer !== factory.createDocsDevServer) {
+              retire();
+              createDocsDevServer = factory.createDocsDevServer;
+            }
             if (!pending) {
               const attempt: Promise<ViteDevServer> = retirement.then(async () => {
-                const factory = await server.ssrLoadModule('/docs/build/dev.ts') as { createDocsDevServer: ({ root, parentServer }: { root: string; parentServer: ViteDevServer }) => Promise<ViteDevServer> };
-                if (typeof factory.createDocsDevServer !== 'function') {
-                  throw new Error('Invalid Docs development module');
-                }
                 return factory.createDocsDevServer({ root: docsRoot, parentServer: server });
               }).catch(error => {
                 if (pending === attempt) {

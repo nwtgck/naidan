@@ -7,7 +7,7 @@ export const messages = {
   description: "Download Naidan Standalone and open index.html with file:// to start AI in your browser. No installer or HTTP app server is needed; choose your model or local engine separately.",
   intro_paragraphs: () => [
     "Using AI should not require giving an application more access to your PC just to start it. Naidan’s Standalone edition runs from local files in the browser, keeping the browser’s boundaries without a separate application server.",
-    "Keep the application as a folder you can open. Model preparation, saved conversations and any local inference engine are separate parts of the setup."
+    "In Naidan’s download controls, this is called the Portable HTML edition. Keep the extracted application as a folder you can open. Model preparation, saved conversations and any local inference engine are separate parts of the setup."
   ],
   standalone_diagram_caption: "Double-click index.html in the extracted folder to open Naidan in your browser. The file:// address shows that the browser opened a local file. Choose a model or engine after opening it.",
   download_standalone_zip: "Download the Standalone ZIP",
@@ -31,9 +31,9 @@ export const messages = {
   open_in_browser: "Open in your browser",
   keep_extracted_files_together: "Keep the extracted files together",
   extract_the_zip_first: "Extract the ZIP first",
-  new_chat: "New Chat",
-  type_a_message: "Type a message...",
-  choose_a_model_to_begin: "Choose a model to begin",
+  browser_model_heading: "Run AI directly in your web browser",
+  choose_a_model: "Choose a model",
+  run_in_browser: "Run in your browser",
   browser_session: "Browser",
   no_app_server: "No app server",
   download_and_extract_heading: "Download and extract",

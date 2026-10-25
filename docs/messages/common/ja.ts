@@ -74,6 +74,8 @@ export const messages = {
   pause_motion: '動きを止める',
   resume_motion: '動きを再開',
   use_light_theme: 'ライトテーマに切り替える',
-  footer: 'Naidan · ブラウザで使うAI環境',
+  footer_navigation: 'フッターのリンク',
+  footer_guide_home: 'ガイドのトップ',
+  footer_about_open_source: 'オープンソースについて',
   all_guides: 'ガイド一覧',
 } satisfies typeof import('./en').messages;

@@ -6,7 +6,7 @@ export const messages = {
   description: "Naidanのスタンドアロン版を展開し、index.htmlをfile://で開けばブラウザでAIを使い始められます。インストーラーや画面を配信するHTTPサーバーは不要で、モデルやローカルエンジンは別に選べます。",
   intro_paragraphs: () => [
     "AIを使い始めるためだけに、アプリへPC上の広い権限を渡す必要はあるのか。Naidanのスタンドアロン版は、ブラウザの制限を保ったまま、手元のファイルから直接起動する方法です。アプリを配信するためのサーバーも別途用意しません。",
-    "アプリをフォルダとして持ち、必要なときに開く。モデルの準備、会話の保存、外部の推論エンジンへの接続は、それぞれ選んだ使い方に合わせて設定します。"
+    "Naidanのダウンロード案内では「ポータブルHTML版」と表示されます。展開したアプリをフォルダとして持ち、必要なときに開く。モデルの準備、会話の保存、外部の推論エンジンへの接続は、それぞれ選んだ使い方に合わせて設定します。"
   ],
   standalone_diagram_caption: "展開したフォルダのindex.htmlをダブルクリックすると、ブラウザでNaidanが開きます。file://のアドレスは、手元のファイルを直接開いたことを示します。起動した後にモデルやエンジンを選びます。",
   download_standalone_zip: "スタンドアロン版のZIPをダウンロード",
@@ -30,9 +30,9 @@ export const messages = {
   open_in_browser: "ブラウザで開く",
   keep_extracted_files_together: "展開したファイルは一緒に保管",
   extract_the_zip_first: "まずZIPを展開",
-  new_chat: "新しいチャット",
-  type_a_message: "メッセージを入力...",
-  choose_a_model_to_begin: "モデルを選んで始める",
+  browser_model_heading: "Webブラウザ内でAIを動かそう",
+  choose_a_model: "モデルを選ぶ",
+  run_in_browser: "ブラウザ内で動かす",
   browser_session: "ブラウザ",
   no_app_server: "配信用サーバー不要",
   download_and_extract_heading: "ZIPをダウンロードして展開する",

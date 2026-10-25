@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, FileCodeIcon, FolderIcon, FolderOpenIcon, MinusIcon, MoreHorizontalIcon, MousePointer2Icon, RotateCwIcon, SendIcon, SquareIcon, XIcon } from 'lucide-vue-next';
+import { ArrowLeftIcon, ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, FileCodeIcon, FolderIcon, FolderOpenIcon, ListIcon, MinusIcon, MoreHorizontalIcon, MousePointer2Icon, RotateCwIcon, SquareIcon, XIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
 type StandaloneDemoMessages = typeof import('../../pages/standalone/messages/en').messages | typeof import('../../pages/index/messages/en').messages;
 
@@ -32,7 +32,15 @@ defineExpose({
       <div class="browser-window" data-testid="standalone-browser">
         <div class="browser-tabs"><span><img :src="logo" alt="" width="12" height="12">Naidan<XIcon :size="10" /></span><span class="window-controls"><MinusIcon :size="11" /><SquareIcon :size="10" /><XIcon :size="11" /></span></div>
         <div class="browser-address"><RotateCwIcon :size="12" /><code>file:///…/naidan-standalone/index.html</code></div>
-        <div class="standalone-app"><img :src="logo" width="29" height="29" alt=""><b>Naidan</b><p>{{ messages.new_chat }}</p><div class="model-preparation">{{ messages.choose_a_model_to_begin }}</div><div class="standalone-composer"><span>{{ messages.type_a_message }}</span><SendIcon :size="13" /></div></div>
+        <div class="standalone-app" data-testid="standalone-model-welcome">
+          <div class="welcome-brand"><img :src="logo" width="23" height="23" alt=""><b>Naidan</b></div>
+          <strong class="welcome-heading">{{ messages.browser_model_heading }}</strong>
+          <div class="model-toolbar"><span class="model-pagination"><ChevronLeftIcon :size="13" /><span>1 / 6</span><ChevronRightIcon :size="13" /></span><span class="choose-model"><ListIcon :size="13" />{{ messages.choose_a_model }}<ChevronRightIcon :size="11" /></span></div>
+          <div class="welcome-model-card">
+            <div class="model-identity"><CpuIcon :size="27" /><span><small>Google</small><b>Gemma 4 E2B it</b></span></div>
+            <div class="model-start">{{ messages.run_in_browser }}<ArrowRightIcon :size="14" /></div>
+          </div>
+        </div>
         <div class="browser-status"><span>{{ messages.browser_session }}</span><span>{{ messages.no_app_server }}</span></div>
       </div>
     </div>
@@ -257,49 +265,103 @@ defineExpose({
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 16px 12px 12px;
+  height: 276px;
+  padding: 19px 12px 14px;
+  overflow: hidden;
 }
-.standalone-app b {
-  font-size: 16px;
-  letter-spacing: -.04em;
-  margin-top: 4px;
-}
-.standalone-app p {
-  font-size: 9px;
-  line-height: 1.5;
-  color: var(--muted);
-  margin: 1px 0 8px;
-}
-.model-preparation {
-  align-self: stretch;
-  padding: 6px 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: 5px;
-  font-size: 8px;
-  line-height: 1.6;
+.welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: var(--muted);
 }
-.standalone-composer {
+.welcome-brand b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.welcome-heading {
+  max-width: 240px;
+  margin-top: 11px;
+  font-size: 17px;
+  line-height: 1.2;
+  letter-spacing: -.035em;
+  text-align: center;
+  text-wrap: balance;
+}
+.model-toolbar {
   display: flex;
   align-items: center;
   align-self: stretch;
-  gap: 8px;
-  padding: 8px;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.model-pagination,.choose-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.model-toolbar svg {
+  flex: none;
+}
+.choose-model {
+  min-width: 0;
+}
+.welcome-model-card {
+  width: 100%;
   margin-top: 8px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--surface-2);
+  border-radius: 11px;
+  background: var(--surface);
   color: var(--muted);
+  overflow: hidden;
+  flex: none;
 }
-.standalone-composer span {
+.model-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+}
+.model-identity > svg {
+  flex: none;
+  padding: 5px;
+  box-sizing: content-box;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.model-identity > span {
   min-width: 0;
-  flex: 1;
-  font-size: 8px;
+}
+.model-identity small,.model-identity b {
+  display: block;
   overflow-wrap: anywhere;
 }
-.standalone-composer svg {
-  flex-shrink: 0;
-  color: var(--blue);
+.model-identity small {
+  font-size: 9px;
+}
+.model-identity b {
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--text);
+  letter-spacing: -.02em;
+}
+.model-start {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 10px;
+  font-weight: 700;
+}
+.model-start svg {
+  flex: none;
 }
 .browser-status {
   display: flex;

@@ -6,6 +6,7 @@ import { messages as en } from '../pages/chat-super-edit/messages/en';
 import { messages as ja } from '../pages/chat-super-edit/messages/ja';
 import { messages as commonEn } from '../messages/common/en';
 import { messages as commonJa } from '../messages/common/ja';
+import { parsePage } from './site.test-support';
 
 describe('Super Edit guide', () => {
   it.each([
@@ -18,6 +19,10 @@ describe('Super Edit guide', () => {
     for (const stage of ['open', 'edit', 'prompt', 'apply']) {
       expect(html).toContain(`data-docs-animation="super-edit-${stage}"`);
     }
+    using page = parsePage({ html });
+    expect([...(page.document.querySelector('[data-testid="super-edit-step-open"] .more-menu')?.querySelectorAll(':scope > span, :scope > strong') ?? [])].map(item => item.textContent)).toEqual([
+      copy.chat_settings, copy.search_in_chat, copy.media_gallery, copy.super_edit, copy.compact_context, copy.print,
+    ]);
     expect(html).toContain(copy.super_edit);
     expect(html).toContain(copy.applying_changes_creates_a_new_branch);
     expect(html).toContain(copy.original_path);

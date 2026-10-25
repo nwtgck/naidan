@@ -20,7 +20,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="offline-prepare">{{ s.prepare_app_online_title }}</h2>
       <p>{{ s.prepare_app_online_instructions }}</p>
       <figure class="guide-figure">
-        <OfflineGuideStep stage="prepare" :messages="s" />
+        <OfflineGuideStep stage="prepare" :messages="s" :common="common" />
         <figcaption class="caption">{{ s.saved_app_files_caption }}</figcaption>
       </figure>
       <p class="check-detail"><RenderText :node="s.offline_ready_event_guidance()" /></p>
@@ -29,9 +29,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="walkthrough-step" aria-labelledby="offline-model">
       <h2 id="offline-model">{{ s.prepare_local_model_title }}</h2>
       <p>{{ s.prepare_local_model_instructions }}</p>
+      <p data-testid="offline-model-reload-guidance"><RenderText :node="s.model_after_reload_guidance()" /></p>
       <p><RenderText :node="s.gguf_model_setup_guidance({ locale })" /></p>
       <figure class="guide-figure">
-        <OfflineGuideStep stage="model" :messages="s" />
+        <OfflineGuideStep stage="model" :messages="s" :common="common" />
         <figcaption class="caption">{{ s.separate_app_and_model_preparation_caption }}</figcaption>
       </figure>
     </section>
@@ -40,7 +41,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="offline-verify">{{ s.verify_offline_title }}</h2>
       <p>{{ s.verify_offline_instructions }}</p>
       <figure class="guide-figure">
-        <OfflineGuideStep stage="verify" :messages="s" />
+        <OfflineGuideStep stage="verify" :messages="s" :common="common" />
         <figcaption class="caption">{{ s.offline_verification_caption }}</figcaption>
       </figure>
       <p class="check-detail">{{ s.offline_feature_limitations }}</p>
@@ -50,7 +51,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="offline-update">{{ s.apply_update_title }}</h2>
       <p><RenderText :node="s.apply_prepared_update_instructions()" /></p>
       <figure class="guide-figure">
-        <OfflineGuideStep stage="update" :messages="s" />
+        <OfflineGuideStep stage="update" :messages="s" :common="common" />
         <figcaption class="caption"><RenderText :node="s.update_preparation_caption()" /></figcaption>
       </figure>
       <p class="check-detail"><RenderText :node="s.early_update_warning()" /></p>
