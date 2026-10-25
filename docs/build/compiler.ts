@@ -1,4 +1,6 @@
 import vue from '@vitejs/plugin-vue';
+import path from 'node:path';
+import { createNodeEnvBoundaryPlugin } from '../../build/node-env-boundary';
 import type { PluginOption, UserConfig } from 'vite';
 import { createDocsModulesPlugin } from './virtual-modules';
 
@@ -20,7 +22,8 @@ export function docsCompilerConfig({ root }: { root: string }): UserConfig {
     // Do not load the app's Tailwind/PostCSS pipeline into isolated Docs builds.
     css: { postcss: { plugins: [] } },
     optimizeDeps: { noDiscovery: true, include: [] },
-    plugins: docsCompilerPlugins({ root }),
+    plugins: [createNodeEnvBoundaryPlugin({ rootDir: path.resolve(root, '..') }), ...docsCompilerPlugins({ root })],
+    worker: { plugins: () => [createNodeEnvBoundaryPlugin({ rootDir: path.resolve(root, '..') })] },
     build: { assetsInlineLimit: 0, minify: true, cssCodeSplit: true, sourcemap: false },
   };
 }

@@ -1,3 +1,4 @@
+import { READ_ENV_LCORE_TEST_PROFILE } from '../../../../build/node-env';
 import * as graphCountersModule from './native-graph-counters';
 // @vitest-environment node
 import * as chatPromptModule from './tokenize-chat-prompt';
@@ -34,7 +35,7 @@ import { prepareLlamaCppRequest } from '@/features/llama-cpp-browser/message-pro
 import { prepareChat } from './native-chat';
 
 // Select another installed artifact without requesting real GPU allocation.
-const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
+const integrationProfile = profileSchema.parse(READ_ENV_LCORE_TEST_PROFILE() ?? 'cpu-wasm32');
 
 const host = vi.hoisted(() => ({ bytes: new Uint8Array(), reads: 0, maxRead: 0, revision: 123, sameFile: true, modelLoads: 0, close: vi.fn(), companion: false, openCompanion: vi.fn(), core: undefined as Core | undefined }));
 
