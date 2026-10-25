@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import type { Settings } from '@/01-models/types';
+import type { useSettings } from '@/composables/useSettings';
 
 const {
   mockFakeLmDebugModeAvailability,
@@ -14,6 +16,7 @@ const {
 }));
 const mockShowConfirm = vi.fn();
 const mockSaveSettings = vi.fn();
+const mockUpdateExperimentalForStorage = vi.fn();
 const mockSettings = ref({
   endpoint: {
     type: 'openai',
@@ -24,11 +27,7 @@ const mockSettings = ref({
   defaultModelId: 'gpt-4',
   providerProfiles: [],
   mounts: [],
-  experimental: undefined as {
-    fakeLm?: 'disabled' | 'enabled',
-    toolConfigPersistence?: 'disabled' | 'enabled',
-    sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
-  } | undefined,
+  experimental: undefined as Settings['experimental'],
 });
 
 vi.mock('@/composables/useConfirm', () => ({
@@ -42,6 +41,8 @@ vi.mock('@/composables/useSettings', () => ({
     settings: mockSettings,
     save: mockSaveSettings,
     setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
+    captureExperimentalStorage: () => () => true,
+    updateExperimentalForStorage: mockUpdateExperimentalForStorage,
   }),
 }));
 
@@ -55,6 +56,9 @@ vi.mock('@/features/fake-lm', () => ({
 vi.mock('lucide-vue-next', () => ({
   AlertTriangleIcon: { template: '<span>AlertTriangle</span>' },
   ChevronDownIcon: { template: '<span>ChevronDown</span>' },
+  CheckIcon: { template: '<span>Check</span>' },
+  MinusIcon: { template: '<span>Minus</span>' },
+  GaugeIcon: { template: '<span>Gauge</span>' },
   FlaskConicalIcon: { template: '<span>FlaskConical</span>' },
   FolderIcon: { template: '<span>Folder</span>' },
   ListRestartIcon: { template: '<span>ListRestart</span>' },
@@ -67,6 +71,11 @@ describe('FeatureFlagsSettings.vue', () => {
     localStorage.clear();
     mockShowConfirm.mockReset();
     mockSaveSettings.mockReset();
+    mockUpdateExperimentalForStorage.mockReset();
+    mockUpdateExperimentalForStorage.mockImplementation(async ({ updater }: Parameters<ReturnType<typeof useSettings>['updateExperimentalForStorage']>[0]) => {
+      mockSettings.value.experimental = updater({ experimental: mockSettings.value.experimental });
+      return 'saved';
+    });
     mockSetFakeLmDebugModeStatus.mockReset();
     mockFakeLmDebugModeAvailability.value = 'available';
     mockSettings.value.experimental = undefined;
@@ -80,13 +89,33 @@ describe('FeatureFlagsSettings.vue', () => {
     const list = wrapper.find('[data-testid="experimental-feature-list"]');
 
     const rows = list.findAll('[data-testid$="-row"]');
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(7);
     const ids = rows.map(row => row.attributes('data-testid'));
-    expect(ids.indexOf('feature-naidan-rpc-row')).toBe(ids.indexOf('feature-fake-lm-row') + 1);
+    expect(ids.indexOf('feature-generation-speed-row')).toBe(ids.indexOf('feature-fake-lm-row') + 1);
+    expect(ids.indexOf('feature-naidan-rpc-row')).toBe(ids.indexOf('feature-generation-speed-row') + 1);
     expect(list.classes()).toContain('divide-y');
     expect(list.classes().some(className => className.includes('grid-cols'))).toBe(false);
     expect(wrapper.find('[data-testid="feature-volume-row"] > div').classes()).toContain('flex-wrap');
     expect(wrapper.find('[data-testid="feature-fake-lm-row"]').exists()).toBe(true);
+  });
+
+  it('saves visibility and persistent inline statistics independently from the developer controls', async () => {
+    mockSettings.value.experimental = { fakeLm: 'enabled', generationSpeed: { inlineStats: 'always' } };
+    const wrapper = mount(FeatureFlagsSettings);
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="feature-generation-speed-toggle"]').trigger('click');
+    await flushPromises();
+    expect(mockSettings.value.experimental?.generationSpeed).toEqual({ status: 'disabled', inlineStats: 'always' });
+    await wrapper.get('[data-testid="feature-generation-speed-always-show-toggle"]').setValue(false);
+    await flushPromises();
+    expect(mockSettings.value.experimental?.generationSpeed).toEqual({ status: 'disabled', inlineStats: 'on_demand' });
+    expect(mockSettings.value.experimental?.fakeLm).toBe('enabled');
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    void cleanup;
   });
 
   it('keeps long descriptions collapsed until details are requested', async () => {

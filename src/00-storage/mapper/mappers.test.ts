@@ -806,6 +806,7 @@ describe('Settings Mapping', () => {
         llamaCppBrowser: undefined,
         browserImageGeneration: undefined,
         naidanRpc: undefined,
+        generationSpeed: undefined,
       },
     };
 

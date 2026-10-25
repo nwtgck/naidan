@@ -45,10 +45,10 @@ export type GenerationMetricsPresentation = {
   metrics: GenerationMetrics,
   live: boolean,
   updatedAt: number,
-  scope: 'current' | 'turn' | 'last',
+  scope: 'current' | 'turn' | 'last' | 'last_sample',
   /** Earlier calls evicted from the bounded detail history. */
   nOmittedCalls?: number,
-  calls: readonly { metrics: GenerationMetrics | undefined }[],
+  calls: readonly { metrics: GenerationMetrics | undefined, snapshot?: 'last_sample' }[],
 };
 
 export const TEST_ONLY = {

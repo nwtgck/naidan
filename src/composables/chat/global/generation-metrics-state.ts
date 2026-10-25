@@ -4,11 +4,11 @@ import type { AssistantMessageNode, Chat } from '@/01-models/types';
 import { chatModelBindingAssistantFingerprint } from '@/01-models/chat-message';
 import type { ChatGenerationTelemetryEvent } from '@/logic/generate-chat-turn';
 import { parseGenerationMetrics, type GenerationMetrics, type GenerationMetricsPresentation } from '@/01-models/generation-metrics';
-import { aggregateGenerationMetrics, LIVE_SPEED_INTERVAL_MS } from '@/logic/generation-metrics/measurement';
+import { aggregateGenerationMetrics, LIVE_SPEED_INTERVAL_MS, LIVE_SPEED_STALE_MS } from '@/logic/generation-metrics/measurement';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 import { createSha256Hasher } from '@/utils/sha256';
+import { normalizeLmParameters } from '@/utils/lm-parameters';
 
-const MAX_RETAINED_RUNS = 128;
 const MAX_RETAINED_CALLS = 256;
 
 type Entry = {
@@ -16,6 +16,7 @@ type Entry = {
   metrics: GenerationMetrics | undefined,
   updatedAt: number,
   proof: string | undefined,
+  snapshot: 'final' | 'last_sample' | undefined,
   liveNode: AssistantMessageNode | undefined,
 };
 type Run = {
@@ -28,7 +29,18 @@ type Run = {
   entries: Map<MessageId, Entry>,
 };
 
-/** Bounded tab-local state. Neither these records nor their ownership signals cross storage/RPC. */
+function isLastSample({ snapshot }: { snapshot: Entry['snapshot'] }): boolean {
+  switch (snapshot) {
+  case 'last_sample': return true;
+  case 'final': case undefined: return false;
+  default: {
+    const exhaustive: never = snapshot;
+    throw new Error(`Unhandled generation snapshot: ${exhaustive}`);
+  }
+  }
+}
+
+/** Page-local history, retained until reload or deletion. Never persisted or sent over RPC. */
 export function createGenerationMetricsState({ now = () => performance.now() }: { now?: () => number } = {}) {
   const runs = shallowReactive(new Map<number, Run>());
   const active = new Map<ChatId, { owner: AbortSignal, run: Run }>();
@@ -38,7 +50,10 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
   function proofFor({ node }: { node: AssistantMessageNode }): string {
     const fingerprint = () => {
       const hasher = createSha256Hasher();
-      hasher.update({ bytes: new TextEncoder().encode(JSON.stringify([node.modelId, chatModelBindingAssistantFingerprint({ node })])) });
+      // Persistence normalizes empty parameters to undefined. Apply the same
+      // equivalence here without weakening content or non-empty parameter checks.
+      const normalized = { ...node, lmParameters: normalizeLmParameters({ lmParameters: node.lmParameters }) };
+      hasher.update({ bytes: new TextEncoder().encode(JSON.stringify([node.modelId, chatModelBindingAssistantFingerprint({ node: normalized })])) });
       return hasher.digestHex();
     };
     // Plain snapshots can be mutated without Vue invalidating a computed value.
@@ -51,23 +66,6 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
       proofs.set(node, cached);
     }
     return cached.value;
-  }
-
-  function trim(): void {
-    for (const [id, run] of runs) {
-      if (runs.size <= MAX_RETAINED_RUNS) {
-        break;
-      }
-      switch (run.phase) {
-      case 'running': break;
-      case 'complete': case 'interrupted': runs.delete(id);
-        break;
-      default: {
-        const exhaustive: never = run.phase;
-        throw new Error(String(exhaustive));
-      }
-      }
-    }
   }
 
   function start({ chatId, owner }: { chatId: ChatId, owner: AbortSignal }): void {
@@ -84,7 +82,6 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
     const run = shallowReactive<Run>({ id: ++sequence, chatId, phase: 'running', messageIds: [], currentMessageId: undefined, nOmittedCalls: 0, entries: shallowReactive(new Map<MessageId, Entry>()) });
     runs.set(run.id, run);
     active.set(chatId, { owner, run });
-    trim();
   }
 
   function observe({ chatId, owner, node, event }: { chatId: ChatId, owner: AbortSignal, node: AssistantMessageNode, event: ChatGenerationTelemetryEvent }): void {
@@ -113,7 +110,7 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
       }
       run.messageIds = [...run.messageIds, node.id];
       run.currentMessageId = node.id;
-      run.entries.set(node.id, { phase: 'live', metrics: undefined, updatedAt: -Infinity, proof: undefined, liveNode: toRaw(node) });
+      run.entries.set(node.id, { phase: 'live', metrics: undefined, updatedAt: -Infinity, proof: undefined, snapshot: undefined, liveNode: toRaw(node) });
       return;
     case 'sample': {
       const entry = run.entries.get(node.id);
@@ -131,7 +128,8 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
       return;
     }
     case 'finished': {
-      if (run.currentMessageId !== node.id || run.entries.get(node.id)?.phase !== 'live' || run.entries.get(node.id)?.liveNode !== toRaw(node)) {
+      const entry = run.entries.get(node.id);
+      if (run.currentMessageId !== node.id || entry?.phase !== 'live' || entry.liveNode !== toRaw(node)) {
         return;
       }
       const result = event.result;
@@ -151,7 +149,13 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
       }
       }
       completed = completed && !owner.aborted;
-      run.entries.set(node.id, { phase: completed ? 'complete' : 'interrupted', metrics: completed ? metrics : undefined, updatedAt: now(), proof: completed && metrics !== undefined ? proofFor({ node }) : undefined, liveNode: undefined });
+      const finishedAt = now();
+      let snapshot: Entry['snapshot'] = metrics === undefined ? undefined : 'final';
+      if (completed && metrics === undefined && entry.metrics !== undefined && finishedAt >= entry.updatedAt && finishedAt - entry.updatedAt < LIVE_SPEED_STALE_MS) {
+        metrics = entry.metrics;
+        snapshot = 'last_sample';
+      }
+      run.entries.set(node.id, { phase: completed ? 'complete' : 'interrupted', metrics: completed ? metrics : undefined, updatedAt: isLastSample({ snapshot }) ? entry.updatedAt : finishedAt, proof: completed && metrics !== undefined ? proofFor({ node }) : undefined, snapshot: completed ? snapshot : undefined, liveNode: undefined });
       run.currentMessageId = undefined;
       return;
     }
@@ -173,13 +177,12 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
     // Live object identities are only held while the matching call is active.
     for (const [messageId, entry] of owned.run.entries) {
       if (entry.liveNode !== undefined) {
-        owned.run.entries.set(messageId, { phase: 'interrupted', metrics: undefined, updatedAt: entry.updatedAt, proof: undefined, liveNode: undefined });
+        owned.run.entries.set(messageId, { phase: 'interrupted', metrics: undefined, updatedAt: entry.updatedAt, proof: undefined, snapshot: undefined, liveNode: undefined });
       }
     }
     if (!completed || owner.aborted || ![...owned.run.entries.values()].some(entry => entry.metrics !== undefined)) {
       runs.delete(owned.run.id);
     }
-    trim();
   }
 
   function presentations({ chat }: { chat: Chat }): { messageId: MessageId, presentation: GenerationMetricsPresentation }[] {
@@ -215,14 +218,14 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
         const recorded = run.entries.get(id);
         const recordedNode = branch.get(id);
         const valid = recorded?.metrics !== undefined && (recorded.phase === 'live' || (recorded.phase === 'complete' && recordedNode?.role === 'assistant' && proofFor({ node: recordedNode }) === recorded.proof));
-        return { metrics: valid ? recorded?.metrics : undefined };
+        return { metrics: valid ? recorded?.metrics : undefined, ...(valid && isLastSample({ snapshot: recorded?.snapshot }) ? { snapshot: 'last_sample' as const } : {}) };
       });
       const lastMetrics = calls.at(-1)?.metrics;
       if (lastMetrics === undefined) {
         continue;
       }
-      const aggregate = live || run.nOmittedCalls > 0 ? undefined : aggregateGenerationMetrics({ calls: calls.map(call => call.metrics) });
-      result.push({ messageId, presentation: { runId: run.id, live, updatedAt: entry.updatedAt, metrics: aggregate ?? lastMetrics, scope: live ? 'current' : aggregate === undefined ? 'last' : 'turn', nOmittedCalls: run.nOmittedCalls, calls } });
+      const aggregate = live || run.nOmittedCalls > 0 || calls.some(call => isLastSample({ snapshot: call.snapshot })) ? undefined : aggregateGenerationMetrics({ calls: calls.map(call => call.metrics) });
+      result.push({ messageId, presentation: { runId: run.id, live, updatedAt: entry.updatedAt, metrics: aggregate ?? lastMetrics, scope: live ? 'current' : isLastSample({ snapshot: entry.snapshot }) ? 'last_sample' : aggregate === undefined ? 'last' : 'turn', nOmittedCalls: run.nOmittedCalls, calls } });
     }
     return result;
   }

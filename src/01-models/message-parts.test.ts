@@ -54,10 +54,10 @@ describe('message parts', () => {
     expectTypeOf<Extract<keyof MessageNode, 'content' | 'thinking' | 'timestamp'>>().toEqualTypeOf<never>();
   });
 
-  it('uses a local nested generation contract with explicit arguments and no resume mode', () => {
+  it('requires generation arguments while allowing optional display telemetry', () => {
     type Request = Parameters<LmProvider['chat']>[0];
     type OptionalKeys<T> = { [K in keyof T]-?: object extends Pick<T, K> ? K : never }[keyof T];
-    expectTypeOf<OptionalKeys<Request>>().toEqualTypeOf<never>();
+    expectTypeOf<OptionalKeys<Request>>().toEqualTypeOf<'onGenerationMetrics'>();
     expectTypeOf<Extract<keyof Request, 'onChunk' | 'onEvent' | 'generationMode' | 'output'>>().toEqualTypeOf<never>();
     expectTypeOf<ReturnType<LmProvider['chat']>>().toEqualTypeOf<AsyncIterable<ChatGenerationItem>>();
     expectTypeOf<Extract<ChatGenerationResult, { type: 'finished' }>['next']>().toEqualTypeOf<'user' | 'tool_results'>();

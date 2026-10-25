@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { reactive, computed } from 'vue';
 import type { AssistantMessageNode, Chat, ToolMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import type { GenerationMetrics } from '@/01-models/generation-metrics';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { createTokenMetrics } from '@/logic/generation-metrics/measurement';
@@ -48,6 +50,46 @@ function fixture({ reactiveChat = false }: { reactiveChat?: boolean } = {}) {
 }
 
 describe('memory-only generation metrics ownership', () => {
+  it.each([undefined, 0.7])('retains earlier results through persisted parameter normalization (temperature=%s)', async temperature => {
+    using cleanup = {
+      [Symbol.dispose]() {
+        localStorage.clear();
+      },
+    };
+    const f = fixture();
+    f.node.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined }, temperature };
+    f.started();
+    f.finished({ value: metrics() });
+    f.complete();
+
+    const storage = new LocalStorageProvider();
+    await storage.saveChatMeta({ meta: f.chat });
+    await storage.saveChatContent({ id: f.chat.id, content: f.chat });
+    const restored = await storage.loadChat({ id: f.chat.id });
+    if (restored === null) {
+      throw new Error('Missing restored chat');
+    }
+    expect(f.state.presentations({ chat: restored })).toHaveLength(1);
+
+    const second = assistant({ id: 'second-turn' });
+    restored.root.items[0]!.replies.items.push(second);
+    restored.currentLeafId = second.id;
+    const owner = new AbortController().signal;
+    f.state.start({ chatId: restored.id, owner });
+    f.state.observe({ chatId: restored.id, owner, node: second, event: { type: 'started', messageId: second.id } });
+    f.state.observe({ chatId: restored.id, owner, node: second, event: { type: 'finished', messageId: second.id, result: { type: 'finished', next: 'user', generationMetrics: metrics({ n: 30 }) } } });
+    f.state.finish({ chatId: restored.id, owner, completed: true });
+    expect(f.state.presentations({ chat: restored }).map(item => item.messageId)).toEqual([f.node.id, second.id]);
+
+    const first = restored.root.items[0];
+    if (first?.role !== 'assistant') {
+      throw new Error('Missing first assistant');
+    }
+    first.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined }, temperature: 0.2 };
+    expect(f.state.presentations({ chat: restored }).map(item => item.messageId)).toEqual([second.id]);
+    void cleanup;
+  });
+
   it('does not modify chat data and does not survive a fresh state instance', () => {
     const f = fixture();
     const before = JSON.stringify(f.chat);
@@ -194,6 +236,64 @@ describe('memory-only generation metrics ownership', () => {
     expect(f.state.presentations({ chat: f.chat })[0]?.presentation.metrics.nOutputTokens).toBe(99);
   });
 
+  it('retains a fresh last sample after normal completion without inventing final statistics', () => {
+    const f = fixture();
+    f.started();
+    f.tick({ value: 100 });
+    f.sampled();
+    f.tick({ value: 1000 });
+    f.finished({ value: undefined });
+    f.complete();
+    f.tick({ value: 100_000 });
+    expect(f.state.presentations({ chat: f.chat })[0]?.presentation).toMatchObject({
+      live: false,
+      scope: 'last_sample',
+      updatedAt: 100,
+      metrics: metrics(),
+      calls: [{ metrics: metrics(), snapshot: 'last_sample' }],
+    });
+  });
+
+  it.each([5000, 5001])('does not revive a sample that expired %s ms before completion', elapsed => {
+    const f = fixture();
+    f.started();
+    f.sampled();
+    f.tick({ value: elapsed });
+    f.finished({ value: undefined });
+    f.complete();
+    expect(f.state.presentations({ chat: f.chat })).toEqual([]);
+  });
+
+  it.each(['error', 'unknown', 'aborted'] as const)('does not retain a live sample after %s', outcome => {
+    const f = fixture();
+    f.started();
+    f.sampled();
+    const result = outcome === 'error'
+      ? { type: 'error' as const, error: new Error('failed') }
+      : { type: 'interrupted' as const, reason: outcome };
+    f.state.observe({ chatId: f.chat.id, owner: f.owner, node: f.node, event: { type: 'finished', messageId: f.node.id, result } });
+    f.state.finish({ chatId: f.chat.id, owner: f.owner, completed: false });
+    expect(f.state.presentations({ chat: f.chat })).toEqual([]);
+  });
+
+  it('does not aggregate a last sample with final statistics from another call', () => {
+    const f = fixture();
+    f.started();
+    f.sampled();
+    f.finished({ value: undefined });
+    const second = assistant({ id: 'second-sampled-turn' });
+    f.node.replies.items.push(second);
+    f.chat.currentLeafId = second.id;
+    f.started({ node: second });
+    f.finished({ node: second, value: metrics({ n: 30 }) });
+    f.complete();
+    expect(f.state.presentations({ chat: f.chat })[0]?.presentation).toMatchObject({
+      scope: 'last',
+      metrics: { nOutputTokens: 30 },
+      calls: [{ snapshot: 'last_sample' }, {}],
+    });
+  });
+
   it('hides a completed measurement immediately when the same assistant is regenerated', () => {
     const f = fixture();
     f.started();
@@ -227,7 +327,7 @@ describe('memory-only generation metrics ownership', () => {
     expect(result?.calls).toHaveLength(256);
   });
 
-  it('bounds retained completed runs', () => {
+  it('retains every completed run until the page state is cleared', () => {
     const state = createGenerationMetricsState();
     for (let index = 0; index < 140; index++) {
       const chatId = toChatId({ raw: String(index) });
@@ -238,7 +338,7 @@ describe('memory-only generation metrics ownership', () => {
       state.observe({ chatId, owner, node, event: { type: 'finished', messageId: node.id, result: { type: 'finished', next: 'user', generationMetrics: metrics() } } });
       state.finish({ chatId, owner, completed: true });
     }
-    expect(state.TEST_ONLY?.runs.size).toBe(128);
+    expect(state.TEST_ONLY?.runs.size).toBe(140);
     state.clear();
     expect(state.TEST_ONLY?.runs.size).toBe(0);
   });

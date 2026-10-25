@@ -511,6 +511,11 @@ export interface Settings {
     toolConfigs?: ToolConfig[],
     fakeLm?: 'disabled' | 'enabled',
     naidanRpc?: 'disabled' | 'enabled',
+    /** Display preferences only; generation measurements remain in memory. */
+    generationSpeed?: {
+      status?: 'enabled' | 'disabled',
+      inlineStats?: 'on_demand' | 'always',
+    },
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
     globalSearch?: {
       scope?: 'all' | 'current_thread' | 'title_only',

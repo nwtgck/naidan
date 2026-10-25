@@ -1,6 +1,6 @@
 import { computed } from 'vue';
 import { describe, expect, it } from 'vitest';
-import type { AssistantMessageNode, Chat, ToolMessageNode } from '@/01-models/types';
+import type { AssistantMessageNode, Chat, ToolMessageNode, UserMessageNode } from '@/01-models/types';
 import type { GenerationMetricsPresentation } from '@/01-models/generation-metrics';
 import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
 import { createTokenMetrics } from '@/logic/generation-metrics/measurement';
@@ -22,6 +22,27 @@ function flow({ first, leaf = first, processing = false }: { first: AssistantMes
 }
 
 describe('one speed host per displayed response', () => {
+  it('keeps separate speed hosts for every earlier response in the selected conversation', () => {
+    const first = node({ id: 'earlier', parts: [{ type: 'text', text: 'Earlier answer', completeness: 'complete' }] });
+    const last = node({ id: 'latest', parts: [{ type: 'text', text: 'Latest answer', completeness: 'complete' }] });
+    const user: UserMessageNode = { id: toMessageId({ raw: 'next-question' }), role: 'user', parts: [{ type: 'text', text: 'Next question', completeness: 'complete' }], createdAt: 2, modelId: undefined, lmParameters: undefined, replies: { items: [last] } };
+    first.replies.items.push(user);
+    const items = flow({ first, leaf: last });
+    const hosts = resolveGenerationMetricsHosts({
+      flow: items,
+      presentations: [
+        { messageId: first.id, presentation: presentation() },
+        { messageId: last.id, presentation: { ...presentation(), runId: 2 } },
+      ],
+    });
+    expect(hosts.size).toBe(2);
+    for (const item of items) {
+      if (item.type === 'message' && item.node.role === 'assistant') {
+        expect(hosts.has(item.key)).toBe(true);
+      }
+    }
+  });
+
   it('uses the final answer rather than the earlier thinking section', () => {
     const assistant = node({ parts: [{ type: 'reasoning', text: 'thinking', completeness: 'complete' }, { type: 'text', text: 'answer', completeness: 'complete' }] });
     const items = flow({ first: assistant });
