@@ -25,6 +25,7 @@ export async function createSiteFixture() {
     await cp(path.join(repository, 'tsconfig.node.json'), path.join(root, 'tsconfig.node.json'));
     await mkdir(path.join(root, 'build'));
     await cp(path.join(repository, 'build/docs-dev-bridge.ts'), path.join(root, 'build/docs-dev-bridge.ts'));
+    await cp(path.join(repository, 'build/node-env-boundary.ts'), path.join(root, 'build/node-env-boundary.ts'));
     return {
       root,
       docs: path.join(root, 'docs'),
