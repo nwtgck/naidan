@@ -3,10 +3,10 @@
   font-family: 'Noto Sans CJK JP', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, sans-serif;
   color-scheme: dark;
   font-synthesis: none;
-  --bg: #0a0e16;
-  --surface: #101621;
-  --surface-2: #151d2a;
-  --surface-3: #1b2636;
+  --bg: oklch(21% .034 264.665);
+  --surface: color-mix(in srgb,oklch(27.8% .033 256.848) 25%,var(--bg));
+  --surface-2: color-mix(in srgb,oklch(27.8% .033 256.848) 55%,var(--bg));
+  --surface-3: oklch(27.8% .033 256.848);
   --line: rgba(158, 181, 218, .12);
   --line-strong: rgba(158, 181, 218, .20);
   --text: #f1f5fb;

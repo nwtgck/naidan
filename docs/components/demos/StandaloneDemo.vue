@@ -204,17 +204,17 @@ defineExpose({
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
-  border: 1px solid #435370;
+  border: 1px solid var(--line-strong);
   border-radius: 9px;
-  background: #111827;
-  color: #e5e7eb;
+  background: var(--bg);
+  color: var(--text);
   box-shadow: 0 10px 25px #0003;
   transform-origin: center;
   animation: docs-open-browser 8s ease-out infinite;
 }
 .browser-tabs {
-  border-color: #303d50;
-  background: #182233;
+  border-color: var(--line);
+  background: var(--surface-2);
   border-radius: 8px 8px 0 0;
   padding: 6px 8px;
 }
@@ -223,7 +223,7 @@ defineExpose({
   align-items: center;
   gap: 6px;
   padding: 3px 6px;
-  background: #253247;
+  background: var(--surface-3);
   border-radius: 5px 5px 0 0;
   font-size: 9px;
 }
@@ -235,9 +235,9 @@ defineExpose({
   align-items: flex-start;
   gap: 7px;
   padding: 6px 8px;
-  background: #182233;
-  border-bottom: 1px solid #303d50;
-  color: #aebcd2;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
 }
 .browser-address svg {
   flex-shrink: 0;
@@ -247,7 +247,7 @@ defineExpose({
   flex: 1;
   min-width: 0;
   border-radius: 4px;
-  background: #111827;
+  background: var(--bg);
   padding: 3px 6px;
   font: 8px/1.6 ui-monospace, monospace;
   overflow-wrap: anywhere;
@@ -267,17 +267,17 @@ defineExpose({
 .standalone-app p {
   font-size: 9px;
   line-height: 1.5;
-  color: #a6b5cc;
+  color: var(--muted);
   margin: 1px 0 8px;
 }
 .model-preparation {
   align-self: stretch;
   padding: 6px 8px;
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   border-radius: 5px;
   font-size: 8px;
   line-height: 1.6;
-  color: #a6b5cc;
+  color: var(--muted);
 }
 .standalone-composer {
   display: flex;
@@ -286,10 +286,10 @@ defineExpose({
   gap: 8px;
   padding: 8px;
   margin-top: 8px;
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: #1f2937;
-  color: #94a3b8;
+  background: var(--surface-2);
+  color: var(--muted);
 }
 .standalone-composer span {
   min-width: 0;
@@ -299,17 +299,17 @@ defineExpose({
 }
 .standalone-composer svg {
   flex-shrink: 0;
-  color: #93c5fd;
+  color: var(--blue);
 }
 .browser-status {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 4px 10px;
-  border-top: 1px solid #29364b;
+  border-top: 1px solid var(--line);
   padding: 6px 9px;
   font-size: 8px;
-  color: #a6b5cc;
+  color: var(--muted);
 }
 .standalone-note {
   color: var(--subtle);

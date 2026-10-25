@@ -74,7 +74,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --panel:var(--surface);
   --line:var(--line-strong);
   --ink:var(--text);
-  --muted:var(--muted);
   --accent:var(--blue);
   font: 14px/1.5 ui-sans-serif,system-ui,sans-serif;
 }

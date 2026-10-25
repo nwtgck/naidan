@@ -42,14 +42,14 @@ defineExpose({
 
 <style scoped>
 .replica {
-  --app-bg: #111827;
-  --app-surface: #1f2937;
-  --app-line: #374151;
+  --app-bg: var(--bg);
+  --app-surface: var(--surface-2);
+  --app-line: var(--line-strong);
   background: var(--app-bg);
-  border: 1px solid #3b4a64;
+  border: 1px solid var(--line-strong);
   border-radius: 17px;
   overflow: hidden;
-  color: #e5e7eb;
+  color: var(--text);
   font-family: ui-sans-serif, system-ui, sans-serif;
   text-align: left;
   box-shadow: 0 22px 64px #0003;
@@ -61,8 +61,8 @@ defineExpose({
   align-items: center;
   gap: 16px;
   padding: 12px 15px;
-  background: #182233;
-  border-bottom: 1px solid #303d50;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
 }
 
 .replica-address code {
@@ -71,10 +71,10 @@ defineExpose({
   width: 100%;
   overflow-wrap: anywhere;
   white-space: normal;
-  background: #111827;
+  background: var(--bg);
   border-radius: 6px;
   padding: 4px 8px;
-  color: #aebcd2;
+  color: var(--muted);
   font: 10px/1.6 ui-monospace, monospace;
 }
 
@@ -86,12 +86,12 @@ defineExpose({
 .replica-dots i {
   width: 6px;
   height: 6px;
-  background: #55657b;
+  background: var(--subtle);
   border-radius: 100%;
 }
 
 .replica-security {
-  color: #8fbaff;
+  color: var(--blue);
 }
 
 .replica-body {
@@ -105,8 +105,8 @@ defineExpose({
 .replica-sidebar {
   display: flex;
   flex-direction: column;
-  background: #172030;
-  border-right: 1px solid #2b3749;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
   padding: 14px 8px;
   font-size: 10px;
   gap: 7px;
@@ -129,23 +129,23 @@ defineExpose({
 }
 
 .replica-new {
-  border: 1px solid #364255;
+  border: 1px solid var(--line-strong);
   border-radius: 7px;
-  color: #c6d1e3;
+  color: var(--text);
 }
 
 .replica-search {
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .replica-group {
   margin-top: 12px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .replica-chat {
   align-items: flex-start;
-  color: #a4b2c7;
+  color: var(--muted);
 }
 
 .replica-chat span,.replica-group span {
@@ -154,14 +154,14 @@ defineExpose({
 }
 
 .replica-chat.active {
-  background: #253858;
-  color: #93c5fd;
+  background: color-mix(in srgb,var(--blue) 14%,var(--surface));
+  color: var(--blue);
   border-radius: 7px;
 }
 
 .replica-bottom {
   margin-top: auto;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .replica-main {
@@ -174,9 +174,9 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid #283549;
+  border-bottom: 1px solid var(--line);
   padding: 14px 16px;
-  color: #aebbd0;
+  color: var(--muted);
   font-size: 11px;
 }
 
@@ -184,7 +184,7 @@ defineExpose({
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  color: #e5e7eb;
+  color: var(--text);
   font-weight: 600;
 }
 

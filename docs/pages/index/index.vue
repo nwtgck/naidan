@@ -15,12 +15,16 @@ import type { HomeMessages, CommonMessages } from '../../messages/types';
 import type { DocsLocale, DocsPageId } from '../../navigation/routes';
 import RenderText from '../../components/RenderText';
 
+const features = [
+  { titleKey: 'chat_on_your_device_heading', bodyKey: 'chat_on_your_device_description', page: 'endpoint-type-llama-cpp-browser', icon: '#i-model' },
+  { titleKey: 'create_images_on_your_device_heading', bodyKey: 'create_images_on_your_device_description', page: 'image-generation', icon: '#i-image' },
+  { titleKey: 'create_speech_on_your_device_heading', bodyKey: 'create_speech_on_your_device_description', page: 'audio-generation', icon: '#i-audio' },
+  { titleKey: 'branch_and_edit_heading', bodyKey: 'branch_and_edit_description', page: 'chat-branching', icon: '#i-branch' },
+  { titleKey: 'let_ai_work_with_files_heading', bodyKey: 'let_ai_work_with_files_description', page: 'tool-browser-shell', icon: '#i-terminal' },
+  { titleKey: 'start_with_a_double_click_heading', bodyKey: 'start_with_a_double_click_description', page: 'standalone', icon: '#i-download' },
+] as const satisfies readonly { titleKey: keyof HomeMessages; bodyKey: keyof HomeMessages; page: DocsPageId; icon: string }[];
+
 const guideCards = [
-  { titleKey: 'chat_with_gguf_guide_title', bodyKey: 'chat_with_gguf_guide_description', page: 'endpoint-type-llama-cpp-browser', icon: '#i-model' },
-  { titleKey: 'create_images_guide_title', bodyKey: 'create_images_guide_description', page: 'image-generation', icon: '#i-image' },
-  { titleKey: 'make_speech_guide_title', bodyKey: 'make_speech_guide_description', page: 'audio-generation', icon: '#i-audio' },
-  { titleKey: 'branch_conversation_guide_title', bodyKey: 'branch_conversation_guide_description', page: 'chat-branching', icon: '#i-branch' },
-  { titleKey: 'selected_files_guide_title', bodyKey: 'selected_files_guide_description', page: 'tool-browser-shell', icon: '#i-terminal' },
   { titleKey: 'organize_chats_guide_title', bodyKey: 'organize_chats_guide_description', page: 'chat-groups', icon: '#i-grid' },
   { titleKey: 'wikipedia_guide_title', bodyKey: 'wikipedia_guide_description', page: 'tool-wikipedia', icon: '#i-search' },
   { titleKey: 'offline_pwa_guide_title', bodyKey: 'offline_pwa_guide_description', page: 'pwa', icon: '#i-download' },
@@ -77,6 +81,22 @@ defineExpose({
         <HomeChatResponseDemo :messages="s" :common="common" />
       </figure>
     </div>
+    <section class="home-features wrap" aria-labelledby="features-title" data-testid="docs-home-features">
+      <h2 id="features-title">{{ s.features_heading }}</h2>
+      <ul class="feature-list">
+        <li v-for="feature in features" :key="feature.page">
+          <DocsLink
+            class="feature-link"
+            data-testid="docs-home-feature-link"
+            :locale="locale" :page="feature.page"
+          >
+            <span class="feature-icon"><svg class="icon" aria-hidden="true"><use :href="feature.icon" /></svg></span>
+            <div class="feature-copy"><h3>{{ s[feature.titleKey] }}</h3><p>{{ s[feature.bodyKey] }}</p></div>
+            <span class="feature-arrow" aria-hidden="true">→</span>
+          </DocsLink>
+        </li>
+      </ul>
+    </section>
   </section>
   <section
     class="mechanism-section"
@@ -342,6 +362,101 @@ defineExpose({
   min-width: 0;
 }
 
+.home-features {
+  padding-bottom: 42px;
+}
+.home-features h2 {
+  margin: 0 0 21px;
+  font-size: clamp(20px, 2vw, 24px);
+  line-height: 1.5;
+  letter-spacing: -.035em;
+  overflow-wrap: anywhere;
+}
+.feature-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.feature-list li {
+  min-width: 0;
+  border-top: 1px solid var(--line-strong);
+}
+.feature-link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 11px;
+  height: 100%;
+  padding: 17px 4px;
+  border-radius: 9px;
+  color: var(--text);
+  text-decoration: none;
+}
+.feature-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--blue) 20%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--blue) 8%, var(--surface));
+  color: var(--blue);
+}
+.feature-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.feature-copy h3 {
+  margin: 2px 0 6px;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+.feature-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+.feature-arrow {
+  margin-top: 3px;
+  color: var(--blue);
+  font-size: 18px;
+  line-height: 1.3;
+}
+.feature-link:hover {
+  background: var(--surface);
+}
+.feature-link:hover h3 {
+  color: var(--blue);
+}
+.feature-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+@media(max-width:1000px) {
+  .feature-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media(max-width:620px) {
+  .home-features {
+    padding-bottom: 28px;
+  }
+  .home-features h2 {
+    margin-bottom: 17px;
+  }
+  .feature-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feature-link {
+    padding-block: 14px;
+  }
+}
+
 .models-section {
   margin-top: 64px;
 }
@@ -593,7 +708,7 @@ defineExpose({
 }
 
 .article-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: 1fr;
 }
 

@@ -48,8 +48,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 14px;
-  background: #111827;
-  color: #e5e7eb;
+  background: var(--bg);
+  color: var(--text);
   font: 12px/1.45 ui-sans-serif,system-ui,sans-serif;
   box-shadow: var(--panel-shadow);
 }
@@ -60,8 +60,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 12px;
   width: 145px;
   padding: 17px 10px;
-  background: #172030;
-  border-right: 1px solid #303d50;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
 }
 .brand {
   font-size: 15px;
@@ -71,15 +71,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   align-items: center;
   gap: 8px;
   padding: 8px;
-  border: 1px solid #39455a;
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
-  color: #cbd5e1;
+  color: var(--text);
   font-size: 11px;
 }
 .chat-list-item {
   border: 0;
-  background: #253858;
-  color: #93c5fd;
+  background: color-mix(in srgb,var(--blue) 14%,var(--surface));
+  color: var(--blue);
 }
 .app-main {
   display: flex;
@@ -89,7 +89,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .chat-header {
   padding: 13px 16px;
-  border-bottom: 1px solid #303d50;
+  border-bottom: 1px solid var(--line);
   font-weight: 700;
 }
 .chat-space {
@@ -97,14 +97,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .chat-composer {
   margin: 12px 17px 16px;
-  border: 1px solid #39455a;
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: #1f2937;
+  background: var(--surface-2);
 }
 .message-placeholder {
   min-height: 43px;
   padding: 12px;
-  color: #8995aa;
+  color: var(--muted);
 }
 .composer-footer {
   display: flex;
@@ -113,23 +113,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   padding: 0 9px 8px;
 }
 .model-select {
-  border: 1px solid #475569;
+  border: 1px solid var(--line-strong);
   border-radius: 7px;
   padding: 5px 9px;
-  color: #cbd5e1;
+  color: var(--text);
   font-size: 10px;
 }
 .tools-button {
   position: relative;
   padding: 5px;
   border-radius: 7px;
-  background: #1e3a5f;
-  color: #93c5fd;
+  background: color-mix(in srgb,var(--blue) 14%,var(--surface));
+  color: var(--blue);
 }
 .pointer,.wiki-pointer {
   position: absolute;
-  color: #f8fafc;
-  fill: #111827;
+  color: var(--text);
+  fill: var(--bg);
   filter: drop-shadow(0 1px 2px #0009);
 }
 .pointer {
@@ -151,9 +151,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   bottom: 9px;
   min-height: 269px;
   padding: 6px 12px 0;
-  border: 1px solid #465164;
+  border: 1px solid var(--line-strong);
   border-radius: 14px 14px 7px 7px;
-  background: #1f2937;
+  background: var(--surface-2);
   box-shadow: 0 -12px 38px #0009;
   transform: translateY(calc(100% + 12px));
   animation: sheet-open 7s ease-in-out infinite;
@@ -163,13 +163,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   height: 4px;
   margin: 0 auto 7px;
   border-radius: 9px;
-  background: #64748b;
+  background: var(--subtle);
 }
 .sheet-title {
   margin: 0 -12px 5px;
   padding: 2px 12px 6px;
-  border-bottom: 1px solid #374151;
-  color: #94a3b8;
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--muted);
   text-transform: uppercase;
   font-size: 10px;
   font-weight: 800;
@@ -183,9 +183,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   min-height: 39px;
   margin: 3px 0;
   padding: 5px 8px;
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   border-radius: 9px;
-  background: #273244;
+  background: var(--surface-3);
 }
 .tool-card.muted {
   opacity: .68;
@@ -197,8 +197,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   width: 25px;
   height: 25px;
   border-radius: 6px;
-  background: #374151;
-  color: #94a3b8;
+  background: var(--surface-2);
+  color: var(--muted);
 }
 .tool-name {
   flex: 1;
@@ -214,7 +214,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   font-size: 11px;
 }
 .tool-label small {
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 9px;
   white-space: nowrap;
   overflow: hidden;
@@ -265,22 +265,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 10px;
   min-height: 27px;
   padding: 3px 9px;
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   border-radius: 7px;
-  color: #94a3b8;
+  color: var(--muted);
   font-size: 9px;
   opacity: 0;
 }
 .mount-detail strong {
   font: 10px ui-monospace,monospace;
-  color: #cbd5e1;
+  color: var(--text);
 }
 .sheet-close {
   margin: 6px -12px 0;
   padding: 6px;
   text-align: center;
-  border-top: 1px solid #374151;
-  color: #94a3b8;
+  border-top: 1px solid var(--line-strong);
+  color: var(--muted);
   font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
@@ -290,8 +290,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   animation: none;
 }
 .stage-enabled .wikipedia,.stage-enabled .shell {
-  border-color: #2e5a91;
-  background: #243a57;
+  border-color: color-mix(in srgb,var(--blue) 50%,var(--line));
+  background: color-mix(in srgb,var(--blue) 12%,var(--surface-2));
   animation: card-on 7s linear infinite;
 }
 .stage-enabled .wikipedia .tool-icon,.stage-enabled .shell .tool-icon {
@@ -352,18 +352,18 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 @keyframes card-on {
   0%,39% {
-    border-color: #374151;
-    background: #273244;
+    border-color: var(--line-strong);
+    background: var(--surface-3);
   }
   40%,100% {
-    border-color: #2e5a91;
-    background: #243a57;
+    border-color: color-mix(in srgb,var(--blue) 50%,var(--line));
+    background: color-mix(in srgb,var(--blue) 12%,var(--surface-2));
   }
 }
 @keyframes icon-on {
   0%,39% {
-    background: #374151;
-    color: #94a3b8;
+    background: var(--surface-2);
+    color: var(--muted);
   }
   40%,100% {
     background: #2563eb;

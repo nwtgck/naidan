@@ -6,34 +6,47 @@ import { startHomeBrandMotion } from '../client/home-brand-motion';
 import { docsHref } from '../navigation/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
-const guidePages = [
+const featurePages = [
   'endpoint-type-llama-cpp-browser',
   'image-generation',
   'audio-generation',
   'chat-branching',
   'tool-browser-shell',
+  'standalone',
+] as const;
+
+const guidePages = [
   'chat-groups',
   'tool-wikipedia',
   'pwa',
 ] as const;
 
+const featureTitles = {
+  en: [
+    'Chat in your browser',
+    'Create images on your device',
+    'Turn text into speech',
+    'Branch and edit conversations',
+    'Let AI work with your files',
+    'Start with a double-click',
+  ],
+  ja: [
+    'ブラウザ内でチャット',
+    '端末内で画像を作る',
+    '文章を、端末内で音声に',
+    '会話を自由に分岐・編集',
+    'AIにファイル作業を任せる',
+    'ダブルクリックで使い始める',
+  ],
+} as const;
+
 const guideTitles = {
   en: [
-    'Chat with a GGUF model in your browser',
-    'Create images on your device',
-    'Make speech from text on your device',
-    'Branch and edit a conversation',
-    'Let AI work with selected files',
     'Keep chats organized by purpose',
     'Use Wikipedia to inform local AI answers',
     'Use Naidan offline as a PWA',
   ],
   ja: [
-    'GGUFモデルでチャットする',
-    '端末内で画像を作る',
-    '端末内で音声を作る',
-    '会話を分岐・編集する',
-    'AIにファイル操作を任せる',
     '用途別にチャットをまとめる',
     'Wikipediaの情報でローカルAIの回答を補う',
     'NaidanをPWAとしてオフラインで使う',
@@ -91,6 +104,13 @@ describe('Docs home brand', () => {
     const homeMenu = home.document.querySelector('[data-testid="docs-header"] [data-testid="docs-guide-menu"]');
     expect(homeMenu?.querySelector('summary')?.textContent?.trim()).toBeTruthy();
     expect(homeMenu?.nextElementSibling?.querySelector('[data-testid="docs-search-trigger"]')).not.toBeNull();
+    const features = home.document.querySelector('[data-testid="docs-hero"] [data-testid="docs-home-features"]');
+    expect(features).not.toBeNull();
+    expect(features?.closest('[aria-hidden="true"], [hidden], [data-docs-island]')).toBeNull();
+    const featureLinks = Array.from(features?.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-home-feature-link"]') ?? []);
+    expect(featureLinks.map(link => link.getAttribute('href'))).toEqual(featurePages.map(page => docsHref({ locale, page })));
+    expect(featureLinks.map(link => link.querySelector('h3')?.textContent)).toEqual(featureTitles[locale]);
+    expect(featureLinks.every(link => Boolean(link.querySelector('p')?.textContent?.trim()))).toBe(true);
     const guideCards = Array.from(home.document.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-home-guide-card"]'));
     expect(guideCards.map(card => card.getAttribute('href'))).toEqual(guidePages.map(page => docsHref({ locale, page })));
     expect(guideCards.map(card => card.querySelector('h3')?.textContent)).toEqual(guideTitles[locale]);
