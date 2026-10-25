@@ -23,6 +23,7 @@ import { readSystemJsLicenseDependency } from './file-protocol-standalone/system
 import { boundaryModuleId, packModuleId } from './boundary-strings/virtual-modules';
 import { BOUNDARY_STRING_LOCALES } from './boundary-strings/message-catalog';
 import { createZipPackages } from './zip-packages';
+import { restoreLicenseCatalog } from './test-support/license-catalog.test-support';
 
 const repo = process.cwd();
 const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
@@ -291,7 +292,7 @@ describe('manifest-verified standalone native artifacts', () => {
     // The reviewed v0.7.0 artifact is 1,534,864 Brotli bytes on wasm64.
     // Keep a fixed 1.6 MB budget, independent of chunk names or input size.
     expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_600_000);
-    expect(evaluateDataModule({ source: licenses.code }).default).toEqual([...collectedDependencies, ...nativeDependencies]);
+    expect(restoreLicenseCatalog({ factory: evaluateDataModule({ source: licenses.code }).default })).toEqual([...collectedDependencies, ...nativeDependencies]);
     expect(nativeDependencies.map(item => item.licenseText).join('\n')).toContain('Niels Lohmann');
     expect(nativeDependencies.map(item => item.licenseText).join('\n')).toContain('David Reid');
     expect(brotliDecompressSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
