@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { CheckIcon, CloudDownloadIcon, FileCode2Icon, HardDriveIcon, MessageSquareIcon, RotateCwIcon, SendIcon, WifiIcon, WifiOffIcon } from 'lucide-vue-next';
+import { CheckIcon, CloudDownloadIcon, FileCode2Icon, HardDriveIcon, MessageSquareIcon, RotateCwIcon, WifiIcon, WifiOffIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
+import type { CommonMessages } from '../../messages/types';
 import type { messages as englishMessages } from '../../pages/pwa/messages/en';
+import NaidanChatInput from './NaidanChatInput.vue';
 
-defineProps<{ stage: 'prepare' | 'model' | 'verify' | 'update'; messages: typeof englishMessages }>();
+defineProps<{ stage: 'prepare' | 'model' | 'verify' | 'update'; messages: typeof englishMessages; common: CommonMessages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -38,8 +40,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
         <div class="chat-card">
           <span class="chat-title"><MessageSquareIcon :size="15" />{{ messages.chat_label }}</span>
-          <div class="question">{{ messages.sample_question }}<SendIcon :size="12" /></div>
+          <div class="question">{{ messages.sample_question }}</div>
           <div class="answer">{{ messages.sample_answer }}</div>
+          <!-- Show the prepared model; inheritance is outside this online/offline check. -->
+          <NaidanChatInput class="model-chat-input" :messages="common" :model="messages.model_file_name" />
         </div>
       </div>
     </template>
@@ -47,7 +51,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <template v-else-if="stage === 'verify'">
       <div class="verify-browser">
         <div class="browser-bar"><span class="browser-dots"><i /><i /><i /></span><code>/#/</code><span class="offline-badge"><WifiOffIcon :size="13" />{{ messages.offline_status }}</span><RotateCwIcon class="reload-icon" :size="15" /></div>
-        <div class="verify-app"><div class="app-brand"><img :src="logo" width="21" height="21" alt=""><strong>Naidan</strong></div><div class="verify-chat"><span class="chat-title"><MessageSquareIcon :size="14" />{{ messages.chat_label }}</span><span class="verify-question">{{ messages.sample_question }}</span><span class="verify-answer">{{ messages.sample_answer }}</span></div></div>
+        <div class="verify-app"><div class="app-brand"><img :src="logo" width="21" height="21" alt=""><strong>Naidan</strong></div><div class="verify-chat"><span class="chat-title"><MessageSquareIcon :size="14" />{{ messages.chat_label }}</span><span class="verify-question">{{ messages.sample_question }}</span><span class="verify-answer">{{ messages.sample_answer }}</span>
+          <!-- Keep the model and offline state in focus; omit the inheritance badge. -->
+          <NaidanChatInput class="verify-chat-input" :messages="common" :model="messages.model_file_name" />
+        </div></div>
       </div>
     </template>
 
@@ -80,6 +87,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .offline-step * {
   box-sizing: border-box;
+}
+.stage-model,.stage-verify {
+  height: 326px;
 }
 .prepare-layout,.model-layout {
   display: grid;
@@ -207,9 +217,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   flex: none;
 }
 .chat-card {
-  background: #111827;
-  color: #e5e7eb;
-  border-color: #374151;
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--line-strong);
+  height: 100%;
+}
+.model-chat-input,.verify-chat-input {
+  align-self: stretch;
+  flex: none;
+  margin-top: auto;
+  --chat-input-font-size: 10px;
+  --chat-input-control-size: 24px;
 }
 .chat-title {
   display: inline-flex;
@@ -238,17 +256,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .answer {
   align-self: start;
   margin-top: 10px;
-  background: #374151;
-  color: white;
+  background: var(--surface-3);
+  color: var(--text);
   opacity: 0;
   animation: answer-appear 7s linear infinite;
 }
 .verify-browser {
   height: 100%;
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   border-radius: 11px;
-  background: #111827;
-  color: #e5e7eb;
+  background: var(--bg);
+  color: var(--text);
   overflow: hidden;
 }
 .browser-bar {
@@ -257,8 +275,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 10px;
   min-height: 42px;
   padding: 7px 11px;
-  border-bottom: 1px solid #374151;
-  background: #182233;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface-2);
 }
 .browser-dots {
   display: flex;
@@ -269,15 +287,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #55657b;
+  background: var(--subtle);
 }
 .browser-bar code {
   flex: 1;
   min-width: 0;
   padding: 4px 8px;
   border-radius: 5px;
-  background: #111827;
-  color: #b6c4d9;
+  background: var(--bg);
+  color: var(--muted);
   font: 10px/1.5 ui-monospace,monospace;
   overflow-wrap: anywhere;
 }
@@ -286,13 +304,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   align-items: center;
   gap: 5px;
   flex: none;
-  color: #9fd7b7;
+  color: var(--green);
   font-size: 10px;
   font-weight: 700;
 }
 .reload-icon {
   flex: none;
-  color: #aebcd2;
+  color: var(--muted);
   animation: reload-turn 8s ease-in-out infinite;
 }
 .verify-app {
@@ -305,8 +323,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   align-items: flex-start;
   gap: 7px;
   padding: 16px 12px;
-  border-right: 1px solid #2b3749;
-  background: #172030;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
   font-size: 14px;
 }
 .verify-chat {
@@ -331,7 +349,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .verify-answer {
   margin-top: 9px;
-  background: #374151;
+  background: var(--surface-3);
   opacity: 0;
   animation: verify-answer 8s linear infinite;
 }
@@ -339,16 +357,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   display: grid;
   grid-template-columns: 255px minmax(0,1fr);
   height: 100%;
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   border-radius: 11px;
   overflow: hidden;
-  background: #111827;
-  color: #e5e7eb;
+  background: var(--bg);
+  color: var(--text);
 }
 .update-sidebar {
   padding: 13px 12px;
-  border-right: 1px solid #2b3749;
-  background: #172030;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
 }
 .update-brand {
   display: flex;
@@ -365,10 +383,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 7px;
   min-height: 41px;
   padding: 7px 9px;
-  border: 1px solid #05966980;
+  border: 1px solid color-mix(in srgb,var(--green) 50%,var(--line));
   border-radius: 11px;
-  background: #10b9811a;
-  color: #34d399;
+  background: color-mix(in srgb,var(--green) 10%,var(--surface));
+  color: var(--green);
   font-size: 10px;
   line-height: 1.4;
   font-weight: 750;
@@ -395,7 +413,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .update-warning {
   height: 62px;
   margin: 5px 0 0;
-  color: #9ca3af;
+  color: var(--muted);
   font-size: 9px;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -416,7 +434,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .update-main-header {
   padding: 15px;
-  border-bottom: 1px solid #374151;
+  border-bottom: 1px solid var(--line-strong);
   font-size: 11px;
   font-weight: 750;
 }
@@ -425,7 +443,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   height: 8px;
   margin: 24px auto;
   border-radius: 10px;
-  background: #374151;
+  background: var(--surface-3);
   opacity: .35;
 }
 @keyframes flow-arrive {
@@ -567,7 +585,6 @@ html:has(#docs-pause-motion:checked) .offline-step .verify-answer {
 @media(max-width:520px) {
   .offline-step {
     padding: 11px;
-    height: 238px;
   }
   .prepare-layout {
     grid-template-columns: minmax(0,1fr) 17px minmax(0,1fr);
@@ -576,6 +593,9 @@ html:has(#docs-pause-motion:checked) .offline-step .verify-answer {
   .source-card,.storage-card,.model-card,.chat-card {
     padding: 10px;
     height: 190px;
+  }
+  .chat-card {
+    height: 100%;
   }
   .source-brand {
     gap: 5px;
@@ -589,7 +609,16 @@ html:has(#docs-pause-motion:checked) .offline-step .verify-answer {
     width: 18px;
   }
   .model-layout {
-    gap: 7px;
+    grid-template-columns: minmax(0,1fr);
+    grid-template-rows: 62px minmax(0,1fr);
+    gap: 8px;
+  }
+  .model-card {
+    height: 62px;
+    padding: 8px 10px;
+  }
+  .model-card .connection,.model-card .file-icon {
+    display: none;
   }
   .model-card strong,.stage-status {
     font-size: 10px;
@@ -598,12 +627,14 @@ html:has(#docs-pause-motion:checked) .offline-step .verify-answer {
     padding: 7px;
     font-size: 11px;
   }
+  .question {
+    margin-top: 13px;
+  }
   .app-brand {
-    padding: 13px 7px;
-    font-size: 11px;
+    display: none;
   }
   .verify-app {
-    grid-template-columns: 100px minmax(0,1fr);
+    grid-template-columns: minmax(0,1fr);
   }
   .verify-chat {
     padding: 13px 10px;

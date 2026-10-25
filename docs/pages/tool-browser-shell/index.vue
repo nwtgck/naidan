@@ -38,12 +38,12 @@ defineExpose({
       <section class="shell-walkthrough-step">
         <h3>{{ s.open_chat_tools_title }}</h3>
         <p><RenderText :node="s.open_chat_tools_body()" /></p>
-        <figure class="guide-figure"><ShellEnableStep stage="open" :messages="s" /><figcaption class="caption"><RenderText :node="s.open_chat_tools_caption()" /></figcaption></figure>
+        <figure class="guide-figure"><ShellEnableStep stage="open" :messages="s" :common="common" /><figcaption class="caption"><RenderText :node="s.open_chat_tools_caption()" /></figcaption></figure>
       </section>
       <section class="shell-walkthrough-step">
         <h3>{{ s.turn_on_shell_title }}</h3>
         <p><RenderText :node="s.turn_on_shell_body()" /></p>
-        <figure class="guide-figure"><ShellEnableStep stage="enable" :messages="s" /><figcaption class="caption"><RenderText :node="s.turn_on_shell_caption()" /></figcaption></figure>
+        <figure class="guide-figure"><ShellEnableStep stage="enable" :messages="s" :common="common" /><figcaption class="caption"><RenderText :node="s.turn_on_shell_caption()" /></figcaption></figure>
         <p><RenderText :node="s.shell_mount_guide({ locale, page: 'wesh-sysfs' })" /></p>
       </section>
       <p><RenderText :node="s.choose_working_folder_guide({ locale, page: 'file-access' })" /></p>

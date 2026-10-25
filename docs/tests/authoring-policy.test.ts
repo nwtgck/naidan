@@ -195,8 +195,8 @@ export const branchingIsland = defineDocsIsland({ spec: branchingSpec, component
     const host = '<template><div :data-docs-island="data.id" :data-docs-props="data.serialized"><component :is="preparedComponent()" v-bind="data.canonical" /></div></template>';
     expect(() => validateStaticComponent({ source: host, filename: 'components/DocsIsland.vue', mode: 'static' })).not.toThrow();
     expect(() => validateStaticComponent({ source: host.replace('preparedComponent()', 'data.component'), filename: 'components/DocsIsland.vue', mode: 'static' }))
-      .toThrow('explicit static attribute name');
-    expect(() => validateStaticComponent({ source: '<template><component :is="data.component" v-bind="data.canonical" /></template>', filename: 'components/Other.vue', mode: 'static' })).toThrow('explicit static attribute name');
+      .toThrow('require explicit native tag literals');
+    expect(() => validateStaticComponent({ source: '<template><component :is="data.component" v-bind="data.canonical" /></template>', filename: 'components/Other.vue', mode: 'static' })).toThrow('require explicit native tag literals');
   });
 
   it('rejects obvious render-function markers and Vue context APIs', async () => {
@@ -390,6 +390,85 @@ onErrorCaptured(() => false);
     }
     await expect(validate({ filename: 'components/helper.ts', source: "import type * as Vue from 'vue'; import type { VNode } from '@vue/runtime-core';" }))
       .resolves.toBeUndefined();
+  });
+
+  it('rejects inactive click handlers hidden behind createElementVNode in a static component', async () => {
+    await expect(validate({
+      filename: 'pages/test/index.vue',
+      source: `\
+<script setup lang="ts">
+import { createElementVNode, ref } from 'vue';
+const count = ref(0);
+const Counter = () => createElementVNode('button', { onClick: () => { count.value += 1; } }, String(count.value));
+</script>
+<template><Counter /></template>`,
+    })).rejects.toThrow('Vue createElementVNode is outside the supported static Docs script subset; render functions can hide inactive events');
+  });
+
+  it('rejects unchecked links hidden behind createStaticVNode in a static component', async () => {
+    await expect(validate({
+      filename: 'pages/test/index.vue',
+      source: `\
+<script setup lang="ts">
+import { createStaticVNode } from 'vue';
+const UncheckedLink = () => createStaticVNode('<a href="/docs/en/missing-page/">Missing</a>', 1);
+</script>
+<template><UncheckedLink /></template>`,
+    })).rejects.toThrow('Vue createStaticVNode is outside the supported static Docs script subset; render functions can hide inactive events');
+  });
+
+  it('rejects unchecked inline Vue options templates in a static component', async () => {
+    await expect(validate({
+      filename: 'pages/test/index.vue',
+      source: `\
+<script setup lang="ts">
+const UncheckedLink = { template: '<a href="/docs/en/missing-page/">Missing</a>' };
+</script>
+<template><UncheckedLink /></template>`,
+    })).rejects.toThrow('Static Docs scripts do not support object template properties');
+  });
+
+  it.each([
+    "{ 'template': markup }",
+    "{ ['template']: markup }",
+    "{ [('template')]: markup }",
+    '{ [`template`]: markup }',
+    '{ template }',
+    '{ get template() { return markup; } }',
+    '{ template() { return markup; } }',
+  ])('rejects equivalent inline template members in static helpers: %s', options => {
+    return expect(validate({
+      filename: 'components/helper.ts',
+      source: `const markup = '<a href="/docs/en/missing-page/">Missing</a>'; const template = markup; export const options = ${options};`,
+    })).rejects.toThrow('Static Docs scripts do not support object template properties');
+  });
+
+  it('keeps template data in locale catalogs and island contracts, and permits island component templates', async () => {
+    for (const filename of ['messages/example/en.ts', 'pages/test/messages/en.tsx', 'islands/branching/messages/en.tsx']) {
+      await expect(validate({ filename, source: "export const messages = { template: 'Choose a template' };" }))
+        .resolves.toBeUndefined();
+    }
+    await expect(validate({
+      filename: 'islands/branching/contracts.ts',
+      source: "const payload = { template: 'A saved template' }; export const spec = defineDocsIslandSpec({ id: 'branching', parse: () => payload, start: 'dom-content-loaded' });",
+    })).resolves.toBeUndefined();
+    await expect(validate({
+      filename: 'islands/branching/BranchingDemo.vue',
+      source: '<script setup lang="ts">const Child = { template: \'<button @click="run">Run</button>\' };</script><template><Child /></template>',
+    })).resolves.toBeUndefined();
+  });
+
+  it.each(['createElementVNode', 'createBlock', 'createElementBlock', 'cloneVNode', 'createStaticVNode'])('checks %s aliases and re-exports without restricting island render APIs or type imports', async name => {
+    for (const source of [`import { ${name} as render } from 'vue';`, `export { ${name} as render } from 'vue';`]) {
+      await expect(validate({ filename: 'components/helper.ts', source }))
+        .rejects.toThrow(`Vue ${name} is outside the supported static Docs script subset; render functions can hide inactive events`);
+    }
+    await expect(validate({ filename: 'components/helper.ts', source: `import type { ${name} } from 'vue';` }))
+      .resolves.toBeUndefined();
+    await expect(validate({
+      filename: 'islands/branching/BranchingDemo.vue',
+      source: `<script setup lang="ts">import { ${name} } from 'vue';</script><template><p>Island</p></template>`,
+    })).resolves.toBeUndefined();
   });
 
   it('keeps static helpers out of browser client and private island code', async () => {

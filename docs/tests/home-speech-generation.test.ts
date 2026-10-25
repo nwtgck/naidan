@@ -23,7 +23,9 @@ describe('home speech generation comparison', () => {
     const overhead = page.document.querySelector('.local-overhead');
     expect(overhead?.textContent).toContain(`Naidan${messages.no_text_sent_to_server}`);
     expect(overhead?.querySelector('.local-overhead-brand img')).not.toBeNull();
-    expect(local?.querySelector('[data-testid="docs-local-speech-input"]')?.textContent).toContain(messages.qwen3_tts_1_7b_base);
+    expect(local?.querySelector('[data-testid="docs-local-speech-input"] .select-field')?.textContent).toBe(messages.qwen3_tts_model_id);
+    expect(local?.querySelector('[data-testid="docs-local-speech-wav"] .result-meta strong')?.textContent).toBe(messages.qwen3_tts_model_id);
+    expect(local?.querySelector('.engine-core strong')?.textContent).toBe(messages.qwen3_tts_1_7b_base);
     expect(local?.querySelector('[data-testid="docs-local-speech-input"]')?.textContent).toContain(messages.audio_language_choice);
     expect(local?.querySelector('.generate-action')?.textContent).toBe(messages.generate_audio);
     expect(local?.querySelectorAll('.generate-action svg')).toHaveLength(1);

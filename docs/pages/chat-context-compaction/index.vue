@@ -38,6 +38,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <section class="walkthrough-step" aria-labelledby="compact-run">
       <h2 id="compact-run">{{ s.start_summary_heading }}</h2>
+      <p>{{ s.summary_model_location }}</p>
       <p><RenderText :node="s.start_summary_instructions()" /></p>
       <figure class="guide-figure">
         <ContextCompactionStep stage="run" :messages="s" />

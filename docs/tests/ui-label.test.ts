@@ -33,13 +33,17 @@ describe('inline UI names in guide prose', () => {
     expect(page.document.querySelector('.ui-label')?.textContent).toBe('<script>alert(1)</script>');
   });
 
-  it.each([{ locale: 'ja', strings: ja, common: commonJa, expected: 'モデル選択' }, { locale: 'en', strings: en, common: commonEn, expected: 'Model Selection' }] as const)(
+  it.each([
+    { locale: 'ja', strings: ja, common: commonJa, expected: ['接続', 'デフォルトモデル', '変更を保存'] },
+    { locale: 'en', strings: en, common: commonEn, expected: ['Connection', 'Default Model', 'Save Changes'] },
+  ] as const)(
     'renders localized control names in the $locale Ollama guide without source brackets',
     async ({ locale, strings, common, expected }) => {
       const html = await renderToString(createSSRApp({ render: () => h(OllamaGuide, { s: strings, locale, common }) }));
       using page = parsePage({ html });
       const article = page.document.querySelector('[data-testid="docs-models-ollama"]');
-      expect([...article?.querySelectorAll('.ui-label') ?? []].some(node => node.textContent === expected)).toBe(true);
+      const labels = [...article?.querySelectorAll('.ui-label') ?? []].map(node => node.textContent);
+      expect(labels).toEqual(expect.arrayContaining([...expected]));
       expect(article?.textContent).not.toContain('［');
       expect(article?.textContent).not.toContain('］');
       expect(article?.querySelector('h2')?.textContent).not.toContain('［');

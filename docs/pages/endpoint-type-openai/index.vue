@@ -14,7 +14,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-models-openai-compatible">
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
-    <p class="app-entry-intro"><RenderText :node="s.open_app({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_app({ locale, destination: { kind: 'screen', screen: 'connection' } })" /></p>
     <p class="before-step">{{ s.server_prerequisite }}</p>
 
     <section class="walkthrough-step" aria-labelledby="openai-open">
@@ -47,8 +47,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <figure class="guide-figure"><OpenAiCompatibleSettingsStep stage="model" :messages="s" /><figcaption class="caption"><RenderText :node="s.choose_server_model_figure_caption()" /></figcaption></figure>
     </section>
 
+    <p><RenderText :node="s.start_chat_after_saving()" /></p>
+
     <h2>{{ s.server_troubleshooting_heading }}</h2>
     <p>{{ s.server_troubleshooting }}</p>
+    <h2>{{ s.alternate_entry_heading }}</h2>
+    <p><RenderText :node="s.alternate_entry_instructions()" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'local-ai-servers', title: s.local_server_guide_title, description: s.local_server_guide_description }]" />
   </article>
 </template>

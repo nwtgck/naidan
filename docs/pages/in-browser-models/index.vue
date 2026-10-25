@@ -52,6 +52,7 @@ defineExpose({
     </div>
 
     <h2>{{ s.start_gguf_chat_heading }}</h2>
+    <p class="app-entry-intro"><RenderText :node="s.open_app({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
     <ol class="guide-steps">
       <li v-for="step in steps" :key="step.title"><h3>{{ step.title }}</h3><p><RenderText :node="step.body()" /></p></li>
     </ol>

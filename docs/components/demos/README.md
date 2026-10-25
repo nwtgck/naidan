@@ -15,6 +15,7 @@ Old archives and earlier Docs versions do not define current app behavior.
 | Demonstration | Application counterparts |
 | --- | --- |
 | `NaidanAppFrame.vue`, `../HomeChatResponseDemo.vue` | `src/components/Sidebar.vue`, `src/components/ChatPaneHeader.vue`, `src/components/ChatInput.vue`, `src/components/MessageItem.vue`, `src/components/MessageActions.vue`; `src/components/ChatInput.test.ts`, `src/components/Sidebar.test.ts` |
+| `NaidanChatInput.vue` | `src/components/{ChatInput,ChatAttachMenu,ReasoningSettings}.vue`, `src/features/tools/components/ChatToolsMenu.vue`; `src/components/{ChatInput,ChatAttachMenu,ReasoningSettings}.test.ts`, `src/features/tools/components/ChatToolsMenu.test.ts` |
 | `FolderAccessDemo.vue` | `src/components/ChatAttachMenu.vue`, `src/components/VolumeMountList.vue`, folder link/copy entries; `src/features/tools/wesh/chat-workspace.test.ts` |
 | `FileExplorerStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/file-explorer/components/{FileExplorerModal,FileExplorerToolbar,FileExplorerBreadcrumbs,FileExplorerPreviewPanel,FileExplorerZipUploadDialog,FileExplorerDirectoryDownloadDialog}.vue`; `src/features/file-explorer/composables/` and component behavior tests |
 | `ShellWorkspaceDemo.vue` | `src/components/AssistantProcessSequence.vue`, `src/features/tools/components/ShellExecuteToolCall.vue`, `src/features/tools/components/ToolCallItem.vue`; `src/features/tools/components/ShellExecuteToolCall.test.ts` |
@@ -49,6 +50,9 @@ Old archives and earlier Docs versions do not define current app behavior.
 | `AudioCreationStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/audio-generation/{AudioGenerationView.vue,README.md,AudioGenerationView.test.ts,model-catalog.ts}`; `src/features/audio-generation/components/AudioHistoryResult.vue` |
 | `SuperEditStep.vue` | `src/components/ChatPaneHeader.vue`, `src/components/HistoryManipulationModal.vue`, `src/composables/chat/chat-scoped/chat-history-flow.ts`; `src/components/HistoryManipulationModal.test.ts` |
 | `NaidanRpcStep.vue` | `src/features/naidan-rpc-integration/components/{NaidanRpcFeatureRow,NaidanRpcTab,RpcPeerProvision}.vue`; `src/features/naidan-rpc-integration/runtime/connection-permits.ts`; `src/components/ConnectionTab.vue`; `src/features/image-generation/components/ImageInferenceLocation.vue` |
+
+`NaidanChatInput.vue` shares the composer's control order and static presentation;
+each calling scene owns its pointers and animation timeline through slots.
 
 `AppPermissionsDiagram.vue` explains general operating-system and browser access
 rather than replicating a Naidan control. Its article links the relevant primary

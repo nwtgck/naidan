@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, FolderIcon, FolderInputIcon, FolderPlusIcon, MessageSquarePlusIcon, MoreVerticalIcon, MousePointer2Icon, PencilIcon, SearchIcon, SquarePenIcon, XIcon } from 'lucide-vue-next';
+import NaidanChatInput from './NaidanChatInput.vue';
 
-defineProps<{ stage: 'create' | 'move' | 'add' | 'tidy'; messages: typeof import('../../pages/chat-groups/messages/en').messages }>();
+// These grouping and renaming scenes omit composer source badges; the settings
+// scenes explain inheritance. Model names still follow each chat's membership.
+defineProps<{ stage: 'create' | 'move' | 'add' | 'tidy'; messages: typeof import('../../pages/chat-groups/messages/en').messages; chrome: Readonly<typeof import('../../messages/replica-chrome/en').messages> }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
@@ -11,15 +14,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <aside class="app-sidebar">
         <div class="sidebar-actions"><span class="new-chat"><SquarePenIcon :size="15" />{{ messages.new_chat }}</span><span class="icon-action" :title="messages.search"><SearchIcon :size="15" /></span><span class="icon-action create-button" :title="messages.create_chat_group"><FolderPlusIcon :size="15" /><MousePointer2Icon v-if="stage === 'create'" class="pointer" :size="18" /></span></div>
         <div class="creation-row"><FolderIcon :size="14" /><span class="entry-name"><span class="entry-placeholder">{{ messages.group_name }}</span><strong class="entry-value">{{ messages.translation }}</strong></span><CheckIcon :size="16" :title="messages.create_group" /><MousePointer2Icon v-if="stage === 'create'" class="pointer confirm-pointer" :size="18" /></div>
-        <div class="group-block"><div class="group-row"><ChevronDownIcon class="group-chevron" :size="14" /><MousePointer2Icon v-if="stage === 'tidy'" class="pointer collapse-pointer" :size="18" /><FolderIcon :size="16" /><strong class="name-stack"><span class="old-name">{{ messages.translation }}</span><span class="new-name">{{ messages.english_translation }}</span></strong><span class="rename-input">{{ messages.english_translation }}<CheckIcon :size="13" /></span><PencilIcon class="rename-pencil" :title="messages.rename_group" :size="14" /><MousePointer2Icon v-if="stage === 'tidy'" class="pointer rename-pointer" :size="18" /></div>
+        <div class="group-block"><div class="group-row"><ChevronDownIcon class="group-chevron" :size="14" /><MousePointer2Icon v-if="stage === 'tidy'" class="pointer collapse-pointer" :size="18" /><FolderIcon :size="16" /><strong class="name-stack"><span class="old-name">{{ messages.translation }}</span><span class="new-name">{{ messages.english_translation }}</span></strong><PencilIcon class="rename-pencil" :title="messages.rename_group" :size="14" /><MousePointer2Icon v-if="stage === 'tidy'" class="pointer rename-pointer" :size="18" /></div>
           <div class="nested-items"><div class="add-chat"><MessageSquarePlusIcon :size="13" />{{ messages.add_chat }}<MousePointer2Icon v-if="stage === 'add'" class="pointer add-pointer" :size="18" /></div><div class="nested-chat first-chat">{{ messages.page_copy }}</div><div class="nested-chat second-chat">{{ messages.new_chat }}</div></div>
         </div>
         <div class="top-chat">{{ messages.page_copy }}</div>
       </aside>
-      <div class="app-main"><div class="chat-header"><strong class="title-stack"><span class="old-title">{{ messages.page_copy }}</span><span class="new-title">{{ messages.new_chat }}</span></strong><div class="header-actions"><span class="move-button" :title="messages.move_to_group"><FolderInputIcon :size="17" /><MousePointer2Icon v-if="stage === 'move'" class="pointer" :size="18" /></span><MoreVerticalIcon :size="17" /></div></div><div class="chat-body"><p class="user-message">{{ messages.translate_this_paragraph_into_english }}</p><p class="assistant-message">{{ messages.i_will_translate_it_while_keeping_the_meaning }}</p></div><div class="chat-input">{{ messages.type_a_message }}</div>
+      <div class="app-main"><div class="chat-header"><strong class="title-stack"><span class="old-title">{{ messages.page_copy }}</span><span class="new-title">{{ messages.new_chat }}</span></strong><div class="header-actions"><span class="more-trigger" :title="messages.more_actions"><MoreVerticalIcon :size="17" /><MousePointer2Icon v-if="stage === 'move'" class="pointer more-pointer" :size="18" /></span></div></div><div class="chat-body"><p class="user-message">{{ messages.translate_this_paragraph_into_english }}</p><p class="assistant-message">{{ messages.i_will_translate_it_while_keeping_the_meaning }}</p></div><div class="composer-position"><template v-if="stage === 'move'"><div class="composer-before"><NaidanChatInput :messages="chrome" :model="messages.gemma3n_e2b" status="idle">{{ messages.type_a_message }}</NaidanChatInput></div><div class="composer-after"><NaidanChatInput :messages="chrome" :model="messages.qwen3_4b" status="idle">{{ messages.type_a_message }}</NaidanChatInput></div></template><NaidanChatInput v-else :messages="chrome" :model="stage === 'create' ? messages.gemma3n_e2b : messages.qwen3_4b" status="idle">{{ messages.type_a_message }}</NaidanChatInput></div>
+        <div class="header-menu"><span>{{ messages.chat_settings }}</span><strong class="move-button"><FolderInputIcon :size="14" />{{ messages.move_to_group }}<MousePointer2Icon v-if="stage === 'move'" class="pointer move-choice-pointer" :size="18" /></strong></div>
         <div class="move-menu"><strong>{{ messages.move_to_group }}</strong><span><XIcon :size="14" />{{ messages.top_level }}</span><span class="group-option"><FolderIcon :size="14" />{{ messages.translation }}<ChevronRightIcon :size="13" /><MousePointer2Icon v-if="stage === 'move'" class="pointer menu-pointer" :size="18" /></span></div>
       </div>
     </div>
+    <template v-if="stage === 'tidy'"><div class="rename-shade" /><div class="rename-dialog" data-testid="group-rename-dialog"><strong>{{ messages.rename_group }}</strong><span class="rename-label">{{ messages.rename_group_name }}</span><span class="rename-input">{{ messages.english_translation }}</span><div class="rename-actions"><span>{{ messages.cancel }}</span><strong>{{ messages.save }}<MousePointer2Icon class="pointer rename-save-pointer" :size="18" /></strong></div></div></template>
   </div>
 </template>
 
@@ -170,20 +175,67 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .new-name {
   opacity: 0;
 }
-.rename-input {
+.rename-shade {
   position: absolute;
-  left: 43px;
-  right: 28px;
+  z-index: 6;
+  inset: 0;
+  background: #0006;
+  opacity: 0;
+  animation: rename-field 9s linear infinite;
+}
+.rename-dialog {
+  position: absolute;
+  z-index: 7;
+  top: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  width: min(320px,calc(100% - 30px));
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--panel-shadow);
+  opacity: 0;
+  animation: rename-field 9s linear infinite;
+  font-size: 13px;
+}
+.rename-label {
+  margin-top: 19px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.rename-input {
+  margin-top: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--blue);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.rename-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 3px 5px;
-  border: 1px solid var(--blue);
-  border-radius: 5px;
-  background: var(--surface);
-  color: var(--text);
-  opacity: 0;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-top: 20px;
+  font-size: 12px;
+}
+.rename-actions > span {
+  color: var(--muted);
+}
+.rename-actions > strong {
+  position: relative;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 500;
+}
+.rename-save-pointer {
+  animation: rename-save-pointer 9s linear infinite;
 }
 .rename-pencil {
   color: var(--muted);
@@ -274,8 +326,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  min-height: 30px;
   border-radius: 6px;
 }
 .chat-body {
@@ -300,15 +351,56 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   justify-self: start;
   color: var(--muted);
 }
-.chat-input {
+.composer-position {
+  --chat-input-control-size:25px;
+  --chat-input-font-size:10px;
   position: absolute;
   left: 17px;
   right: 17px;
   bottom: 14px;
-  padding: 8px 11px;
+  display: grid;
+}
+.composer-before,.composer-after {
+  grid-area: 1/1;
+  min-width: 0;
+}
+.composer-before {
+  opacity: 0;
+  animation: top-leave 9s linear infinite;
+}
+.composer-after {
+  opacity: 1;
+  animation: first-arrive 9s linear infinite;
+}
+.more-trigger {
+  position: relative;
+  display: flex;
+}
+.header-menu {
+  position: absolute;
+  z-index: 4;
+  right: 20px;
+  top: 46px;
+  width: 220px;
+  padding: 6px;
   border: 1px solid var(--line-strong);
-  border-radius: 9px;
-  color: var(--muted);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--panel-shadow);
+  opacity: 0;
+}
+.header-menu > * {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  padding: 8px;
+}
+.header-menu strong {
+  font-weight: 500;
+  color: var(--blue);
+  background: var(--surface-2);
+  border-radius: 6px;
 }
 .move-menu {
   position: absolute;
@@ -366,8 +458,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .stage-move .group-canvas {
   animation: camera-move 9s linear infinite;
 }
-.stage-move .move-button .pointer {
+.stage-move .more-pointer {
   animation: move-pointer 9s linear infinite;
+}
+.stage-move .move-choice-pointer {
+  animation: move-choice-pointer 9s linear infinite;
+}
+.stage-move .header-menu {
+  animation: header-menu 9s linear infinite;
 }
 .stage-move .move-menu {
   animation: menu-open 9s linear infinite;
@@ -419,9 +517,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .stage-tidy .old-name {
   animation: name-leave 9s linear infinite;
-}
-.stage-tidy .rename-input {
-  animation: rename-field 9s linear infinite;
 }
 .stage-tidy .nested-items {
   animation: collapse-items 9s linear infinite;
@@ -504,11 +599,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   }
 }
 @keyframes menu-open {
-  0%,29%,73%,100% {
+  0%,42%,73%,100% {
     opacity: 0;
     transform: translateY(-5px);
   }
-  40%,62% {
+  47%,62% {
     opacity: 1;
     transform: none;
   }
@@ -611,6 +706,32 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     transform: none;
   }
 }
+@keyframes header-menu {
+  0%,28%,45%,100% {
+    opacity: 0;
+  }
+  32%,40% {
+    opacity: 1;
+  }
+}
+@keyframes move-choice-pointer {
+  0%,31%,44%,100% {
+    opacity: 0;
+  }
+  35%,39% {
+    opacity: 1;
+  }
+}
+@keyframes rename-save-pointer {
+  0%,39%,56%,100% {
+    opacity: 0;
+    transform: translate(8px,8px);
+  }
+  44%,51% {
+    opacity: 1;
+    transform: none;
+  }
+}
 @keyframes rename-field {
   0%,28%,59%,100% {
     opacity: 0;
@@ -653,20 +774,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     transform: rotate(-90deg);
   }
 }
-html:has(#docs-pause-motion:checked) .group-viewport * {
+:global(html:has(#docs-pause-motion:checked) .group-viewport *) {
   animation: none!important;
 }
-html:has(#docs-pause-motion:checked) .stage-create .group-block,html:has(#docs-pause-motion:checked) .stage-move .first-chat,html:has(#docs-pause-motion:checked) .stage-add .second-chat,html:has(#docs-pause-motion:checked) .stage-add .new-title,html:has(#docs-pause-motion:checked) .stage-tidy .new-name {
+:global(html:has(#docs-pause-motion:checked) .stage-create .group-block),:global(html:has(#docs-pause-motion:checked) .stage-move .first-chat),:global(html:has(#docs-pause-motion:checked) .stage-add .second-chat),:global(html:has(#docs-pause-motion:checked) .stage-add .new-title),:global(html:has(#docs-pause-motion:checked) .stage-tidy .new-name) {
   opacity: 1;
   transform: none;
 }
-html:has(#docs-pause-motion:checked) .stage-create .creation-row,html:has(#docs-pause-motion:checked) .stage-move .top-chat,html:has(#docs-pause-motion:checked) .stage-add .old-title,html:has(#docs-pause-motion:checked) .stage-add .chat-body,html:has(#docs-pause-motion:checked) .stage-tidy .old-name,html:has(#docs-pause-motion:checked) .stage-tidy .nested-items {
+:global(html:has(#docs-pause-motion:checked) .stage-create .creation-row),:global(html:has(#docs-pause-motion:checked) .stage-move .top-chat),:global(html:has(#docs-pause-motion:checked) .stage-add .old-title),:global(html:has(#docs-pause-motion:checked) .stage-add .chat-body),:global(html:has(#docs-pause-motion:checked) .stage-tidy .old-name),:global(html:has(#docs-pause-motion:checked) .stage-tidy .nested-items) {
   opacity: 0;
 }
-html:has(#docs-pause-motion:checked) .stage-tidy .group-chevron {
+:global(html:has(#docs-pause-motion:checked) .stage-tidy .group-chevron) {
   transform: rotate(-90deg);
 }
-html:has(#docs-pause-motion:checked) .group-viewport .pointer {
+:global(html:has(#docs-pause-motion:checked) .group-viewport .pointer),
+:global(html:has(#docs-pause-motion:checked) .group-viewport .rename-shade),
+:global(html:has(#docs-pause-motion:checked) .group-viewport .rename-dialog) {
   display: none;
 }
 @media(prefers-reduced-motion:reduce) {
@@ -683,7 +806,7 @@ html:has(#docs-pause-motion:checked) .group-viewport .pointer {
   .stage-tidy .group-chevron {
     transform: rotate(-90deg);
   }
-  .group-viewport .pointer {
+  .group-viewport .pointer,.rename-shade,.rename-dialog {
     display: none;
   }
 }

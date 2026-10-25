@@ -26,11 +26,20 @@ describe('offline browser AI guide', () => {
     ]);
     expect(article?.querySelector('[data-testid="offline-step-model"]')?.textContent).toContain(s.model_file_name);
     expect(article?.querySelector('[data-testid="offline-step-verify"]')?.textContent).toContain(s.offline_status);
+    expect(article?.querySelector('[data-testid="offline-model-reload-guidance"]')?.textContent).toContain(locale === 'en' ? 'Use temporarily' : '一時的に使用');
+    const chatInputs = article?.querySelectorAll('[data-testid="docs-chat-input"]');
+    expect(chatInputs).toHaveLength(2);
+    for (const input of chatInputs ?? []) {
+      expect(input.querySelector('[data-testid="docs-chat-input-text"]')?.textContent).toBe(common.chrome_input_placeholder);
+      expect(input.querySelector('[data-testid="docs-chat-input-model"]')?.textContent).toBe(s.model_file_name);
+      expect(input.querySelector('[data-testid="docs-chat-input-send"] .lucide-arrow-up')).not.toBeNull();
+    }
     const update = article?.querySelector('[data-testid="offline-step-update"]');
     expect(update?.textContent).toContain(s.ready_update_label);
     expect(update?.querySelector('.update-warning')?.textContent).toBe(s.network_update_warning);
     expect(article?.textContent).toContain(s.offline_feature_limitations);
     expect(article?.querySelectorAll('figure button, figure input, figure a')).toHaveLength(0);
+    expect(article?.querySelectorAll('figure .lucide-send')).toHaveLength(0);
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
       `/docs/${locale}/endpoint-type-llama-cpp-browser/`,
       `/docs/${locale}/in-browser-models/`,

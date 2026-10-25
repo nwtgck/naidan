@@ -64,12 +64,16 @@ describe('source-derived conversation branching methods', () => {
     using demo = await createDemo({ copy: englishDemo, chrome: englishChrome });
     const resend = demo.wrapper.get('[data-testid="branch-method-resend"]');
     const regenerate = demo.wrapper.get('[data-testid="branch-method-regenerate"]');
+    await regenerate.get('[data-testid="branch-step-1"]').trigger('click');
+    expect(regenerate.get('[data-testid="docs-chat-input"]').attributes('data-status')).toBe('generating');
+    expect(regenerate.get('[data-testid="docs-chat-input-send"]').attributes('title')).toBe(englishChrome.chrome_stop);
     await resend.get('[data-testid="branch-resend"]').trigger('click');
     expect(resend.get('[data-testid="branch-prompt"]').text()).toBe(englishDemo.prompt);
     expect(resend.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.replies[1]);
     expect(resend.find('[data-testid="branch-user-versions"]').exists()).toBe(true);
     expect(resend.find('[data-testid="branch-assistant-versions"]').exists()).toBe(false);
     await regenerate.get('[data-testid="branch-regenerate"]').trigger('click');
+    expect(regenerate.get('[data-testid="docs-chat-input"]').attributes('data-status')).toBe('idle');
     expect(regenerate.get('[data-testid="branch-prompt"]').text()).toBe(englishDemo.prompt);
     expect(regenerate.find('[data-testid="branch-user-versions"]').exists()).toBe(false);
     expect(regenerate.get('[data-testid="branch-assistant-versions"]').text()).toBe('2 / 2');
@@ -109,6 +113,8 @@ describe('walkthrough motion and user selection', () => {
     expect(demo.wrapper.findAll('[data-testid^="branch-method-"]')).toHaveLength(4);
     for (const [index, method] of methods.entries()) {
       const section = demo.wrapper.get(`[data-testid="branch-method-${method}"]`);
+      expect(section.find('[data-testid="docs-chat-input-source"]').exists()).toBe(false);
+      expect(section.find('.replica-model-source').exists()).toBe(false);
       const reserve = section.get('[data-testid="branch-conversation-reserve"]');
       const element = reserve.element;
       expect(reserve.attributes('aria-hidden')).toBe('true');

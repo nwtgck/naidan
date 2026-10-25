@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ExternalLink from '../../components/ExternalLink.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
+import RenderText from '../../components/RenderText';
 import type { OpenSourceMessages, CommonMessages } from '../../messages/types';
 import type { DocsLocale } from '../../navigation/routes';
 
@@ -24,6 +25,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p>{{ s.license_body }}</p>
       <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/LICENSE" :locale="locale">{{ s.license_link }}</ExternalLink>
       <p class="open-source-note">{{ s.license_note }}</p>
+      <p><RenderText :node="s.dependency_license_guidance()" /></p>
     </section>
 
     <section class="open-source-section" aria-labelledby="open-source-source">

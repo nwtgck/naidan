@@ -366,13 +366,17 @@ describe('Docs search', () => {
     await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('検索しています… · 目的から探す'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/standalone/');
+    input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(page.document.activeElement).toBe(root.querySelector('[data-testid="docs-search-results"] a'));
     worker.emit({ response: { kind: 'error', requestId: requests[0]?.requestId ?? -1 } });
     await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('読み込めません'));
+    await vi.waitFor(() => expect(page.document.activeElement).toBe(input));
     root.querySelector<HTMLButtonElement>('.docs-search-retry')?.click();
     await vi.waitFor(() => expect(requests).toHaveLength(2));
     const matches = searchDocs({ index, query: 'バックアップ' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
     worker.emit({ response: { kind: 'results', requestId: requests[1]?.requestId ?? -1, results: matches } });
     await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-backup/'));
+    expect(page.document.activeElement).toBe(input);
     const first = root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a');
     expect(first?.getAttribute('href')).toBe('/docs/ja/data-backup/');
     input.focus();
@@ -402,6 +406,16 @@ describe('Docs search', () => {
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(root.querySelector('.search-status')?.textContent).not.toContain('前の検索結果');
+    const storageLinks = [...root.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a')];
+    const retainedBackup = storageLinks.find(link => link.getAttribute('href') === '/docs/ja/data-backup/');
+    expect(retainedBackup).toBe(first);
+    await vi.waitFor(() => expect(page.document.activeElement).toBe(retainedBackup));
+    for (let position = storageLinks.findIndex(link => link === first); position >= 0; position -= 1) {
+      storageLinks[position]?.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      expect(page.document.activeElement).toBe(position === 0 ? input : storageLinks[position - 1]);
+    }
+    input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(page.document.activeElement).toBe(storageLinks[0]);
     input.value = 'stale';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
     await vi.waitFor(() => expect(requests).toHaveLength(4));
@@ -415,6 +429,7 @@ describe('Docs search', () => {
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/standalone/');
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(worker.terminate).not.toHaveBeenCalled();
+    expect(page.document.activeElement).toBe(root.querySelector('[data-testid="docs-search-results"] a'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     input.focus();
     input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -423,8 +438,11 @@ describe('Docs search', () => {
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
     await vi.waitFor(() => expect(requests).toHaveLength(5));
     expect(workerConstructor).toHaveBeenCalledOnce();
-    worker.emit({ response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: storageMatches } });
+    const removedHref = page.document.activeElement?.getAttribute('href');
+    const replacementMatches = storageMatches.filter(result => result.href !== removedHref);
+    worker.emit({ response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: replacementMatches } });
     await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-storage/'));
+    await vi.waitFor(() => expect(page.document.activeElement).toBe(root.querySelector('[data-testid="docs-search-results"] a')));
     input.value = 'pending';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
     await vi.waitFor(() => expect(requests).toHaveLength(6));
@@ -444,6 +462,7 @@ describe('Docs search', () => {
     expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5);
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(worker.terminate).not.toHaveBeenCalled();
+    expect(page.document.activeElement).toBe(input);
     page.document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }));
     expect(root.querySelector('dialog')?.open).toBe(false);
     expect(workerConstructor).toHaveBeenCalledTimes(1);
@@ -452,6 +471,42 @@ describe('Docs search', () => {
     trigger?.click();
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
     expect(requests).toHaveLength(6);
+    await vi.waitFor(() => expect(page.document.activeElement).toBe(input));
+    const purposeFirst = root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a');
+    input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(page.document.activeElement).toBe(purposeFirst);
+    input.value = 'same destination';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(requests).toHaveLength(7));
+    worker.emit({ response: { kind: 'results', requestId: requests[6]?.requestId ?? -1, results: [...purposeMatches].reverse() } });
+    await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toBe('5件'));
+    await vi.waitFor(() => expect(page.document.activeElement).toBe(purposeFirst));
+    expect(purposeFirst?.getAttribute('href')).toBe(purposeMatches[0]?.href);
+
+    input.value = 'empty result';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(requests).toHaveLength(8));
+    worker.emit({ response: { kind: 'results', requestId: requests[7]?.requestId ?? -1, results: [] } });
+    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(0));
+    await vi.waitFor(() => expect(page.document.activeElement).toBe(input));
+
+    input.value = '';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
+    input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    input.value = 'focus moved';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(requests).toHaveLength(9));
+    const close = root.querySelector<HTMLButtonElement>('[data-testid="docs-search-close"]');
+    close?.focus();
+    worker.emit({ response: { kind: 'results', requestId: requests[8]?.requestId ?? -1, results: matches } });
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-backup/'));
+    expect(page.document.activeElement).toBe(close);
+
+    input.value = '';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
+    expect(page.document.activeElement).toBe(close);
     const onerror = worker.onerror as ((event: ErrorEvent) => void) | null;
     onerror?.(new dom.Event('error') as ErrorEvent);
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -464,6 +519,7 @@ describe('Docs search', () => {
     }
     app.unmount();
     expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(page.document.body.style.overflow).toBe('');
   });
 
   it('activates search only after the language-neutral home mounts its chosen locale', async () => {

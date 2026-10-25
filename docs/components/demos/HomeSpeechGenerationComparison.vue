@@ -20,13 +20,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <strong class="workspace-brand"><img :src="naidanLogo" width="28" height="28" alt=""><span class="brand-copy"><span class="brand-name brand-wordmark">Naidan</span><span class="brand-subtitle"><AudioLinesIcon :size="13" aria-hidden="true" />{{ messages.audio_generation_ui }}</span></span></strong>
             <div class="local-workspace-left">
               <div class="audio-editor" data-testid="docs-local-speech-input">
-                <small>{{ messages.audio_model_label }}</small><span class="select-field">{{ messages.qwen3_tts_1_7b_base }}<ChevronDownIcon :size="13" aria-hidden="true" /></span>
+                <small>{{ messages.audio_model_label }}</small><span class="select-field"><span class="model-id">{{ messages.qwen3_tts_model_id }}</span><ChevronDownIcon :size="13" aria-hidden="true" /></span>
                 <small>{{ messages.text_to_speak_label }}</small><p class="spoken-text"><HomeTypingText :text="messages.speech_text" /></p>
                 <div class="editor-footer"><span class="language-field"><small>{{ messages.audio_language_label }}</small><span>{{ messages.audio_language_choice }}<ChevronDownIcon :size="13" aria-hidden="true" /></span></span><span class="generate-action"><AudioLinesIcon :size="15" aria-hidden="true" />{{ messages.generate_audio }}</span></div>
               </div>
               <div class="model-region" data-testid="docs-local-speech-model"><span class="model-path" aria-hidden="true" /><div class="engine-core"><span class="model-copy"><strong>{{ messages.qwen3_tts_1_7b_base }}</strong><span class="received-text" aria-hidden="true">{{ messages.speech_text }}</span></span><span class="wav-slot" aria-hidden="true" /></div></div>
             </div>
-            <div class="audio-result" data-testid="docs-local-speech-result"><small>{{ messages.generated_audio_ui }}</small><div class="result-stage"><div class="result-card" data-testid="docs-local-speech-wav"><div class="result-heading"><span class="wav-slot" aria-hidden="true" /><span class="result-meta"><strong>{{ messages.qwen3_tts_1_7b_base }}</strong><small>24,000 Hz</small></span></div><p>{{ messages.speech_text }}</p><div class="player"><span class="play"><PlayIcon :size="15" fill="currentColor" aria-hidden="true" /></span><span class="player-track" /><small>0:00 / 0:04</small></div><span class="save-action"><DownloadIcon :size="15" aria-hidden="true" />{{ messages.save_wav }}</span></div></div></div>
+            <div class="audio-result" data-testid="docs-local-speech-result"><small>{{ messages.generated_audio_ui }}</small><div class="result-stage"><div class="result-card" data-testid="docs-local-speech-wav"><div class="result-heading"><span class="wav-slot" aria-hidden="true" /><span class="result-meta"><strong class="model-id">{{ messages.qwen3_tts_model_id }}</strong><small>24,000 Hz</small></span></div><p>{{ messages.speech_text }}</p><div class="player"><span class="play"><PlayIcon :size="15" fill="currentColor" aria-hidden="true" /></span><span class="player-track" /><small>0:00 / 0:04</small></div><span class="save-action"><DownloadIcon :size="15" aria-hidden="true" />{{ messages.save_wav }}</span></div></div></div>
             <div class="travel-layer local-travel" aria-hidden="true"><span class="moving-text">{{ messages.speech_text }}</span><span class="wav-artifact forming-wav"><AudioLinesIcon :size="18" /><b>WAV</b><span class="waveform"><i v-for="bar in 7" :key="bar" /></span></span><span class="wav-artifact moving-wav"><AudioLinesIcon :size="18" /><b>WAV</b><span class="waveform"><i v-for="bar in 7" :key="bar" /></span></span><span class="wav-artifact result-wav"><AudioLinesIcon :size="18" /><b>WAV</b><span class="waveform"><i v-for="bar in 7" :key="bar" /></span></span></div>
           </div>
         </HomeBrowserFrame>
@@ -275,6 +275,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   background: var(--surface-2);
   font-size: 12px;
   line-height: 1.35;
+}
+.model-id {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.3;
+  font-weight: 600;
 }
 .select-field svg,.language-field svg {
   flex: none;

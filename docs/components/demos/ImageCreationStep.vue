@@ -20,7 +20,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <div class="results-col"><div class="monitor card"><div class="panel-head"><strong>{{ messages.execution_previews_and_temporary_results }}</strong><span>{{ messages.visual_progress }}</span></div><div class="monitor-stack"><div class="empty">{{ messages.next_generation_appears_here }}</div><div class="progress"><div class="progress-track"><span /></div>{{ messages.generating_image }}</div><div class="complete"><div class="art"><img :src="catArtwork" alt="" /></div><div class="success"><CheckIcon :size="14" />{{ messages.completed }}</div></div></div></div><div class="gallery card"><div class="gallery-tabs"><strong>{{ messages.runs }}</strong><span>{{ messages.gallery }}</span></div><div class="asset"><div class="thumb"><img :src="catArtwork" alt="" /></div><div><strong>{{ messages.kitten_flying_through_blue_sky }}</strong><small>{{ messages.z_image_turbo }} · {{ messages.completed }} · 1</small></div><span>{{ messages.inspect }}</span></div></div></div>
           </div>
         </div>
-        <div v-if="stage === 'model'" class="models-overlay" data-testid="image-models-screen"><h3><FolderOpenIcon :size="19" />{{ messages.models }}</h3><section class="catalog"><div class="catalog-head"><FolderOpenIcon :size="17" /><strong>{{ messages.model_catalog }}</strong><ChevronDownIcon :size="16" /></div><div class="catalog-card"><div class="model-icon"><ImageIcon :size="28" /></div><div><strong>{{ messages.z_image_turbo }}</strong><small>{{ messages.model_components }}</small></div><div class="catalog-action-stack"><span class="primary catalog-download"><DownloadIcon :size="15" />{{ messages.download }}</span><span class="primary catalog-ready"><CheckIcon :size="15" />{{ messages.use_this_model }}</span></div></div><div class="available"><CheckIcon :size="14" />{{ messages.ready }}</div></section></div>
+        <div v-if="stage === 'model'" class="models-overlay" data-testid="image-models-screen"><h3><FolderOpenIcon :size="19" />{{ messages.models }}</h3><section class="catalog"><div class="catalog-head"><FolderOpenIcon :size="17" /><strong>{{ messages.model_catalog }}</strong><ChevronDownIcon :size="16" /></div><div class="download-destination"><span>{{ messages.download_to }}</span><strong>{{ messages.browser_storage }}<ChevronDownIcon :size="14" /></strong></div><div class="catalog-card"><div class="model-icon"><ImageIcon :size="28" /></div><div><strong>{{ messages.z_image_turbo }}</strong><small>{{ messages.model_components }}</small></div><div class="catalog-action-stack"><span class="primary catalog-download"><DownloadIcon :size="15" />{{ messages.download }}</span><span class="primary catalog-ready"><CheckIcon :size="15" />{{ messages.use_this_model }}</span></div></div><div class="available"><CheckIcon :size="14" />{{ messages.ready }}</div></section><section class="import-methods"><strong>{{ messages.import_local_models }}</strong><div><span class="selected">{{ messages.save_in_browser }}</span><span>{{ messages.link_folder }}</span><span>{{ messages.use_temporarily }}</span></div></section></div>
         <div v-if="stage === 'reuse'" class="viewer" data-testid="image-result-viewer"><div class="viewer-image"><div class="art"><img :src="catArtwork" alt="" /></div></div><div class="viewer-side"><div class="viewer-head"><strong>{{ messages.inspect }}</strong><span><DownloadIcon :size="15" />{{ messages.download_image }}</span></div><p>{{ messages.kitten_flying_through_blue_sky }}</p><div class="reuse-actions"><span>{{ messages.reuse_prompt_only }}</span><strong>{{ messages.reuse_saved_settings }}</strong></div><small>{{ messages.z_image_turbo }}</small></div></div>
       </main>
     </div>
@@ -275,9 +275,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 7px;
   padding: 9px 10px;
   border-radius: 8px;
-  background: var(--a);
-  color: white;
-  font-weight: 700;
+  border: 1px solid color-mix(in srgb,var(--a) 35%,var(--l));
+  background: color-mix(in srgb,var(--a) 6%,var(--p));
+  color: var(--t);
+  font-weight: 650;
   white-space: nowrap;
 }
 .prompt-field {
@@ -466,6 +467,51 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .catalog-head svg:last-child {
   margin-left: auto;
+}
+.download-destination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 11px;
+  color: var(--m);
+  font-size: 10px;
+}
+.download-destination strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--l);
+  border-radius: 7px;
+  color: var(--t);
+  font-weight: 550;
+}
+.import-methods {
+  margin-top: 13px;
+  padding: 12px 14px;
+  border: 1px solid var(--l);
+  border-radius: 12px;
+  background: var(--p);
+}
+.import-methods > strong {
+  font-size: 12px;
+}
+.import-methods > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+.import-methods span {
+  padding: 6px 9px;
+  border: 1px solid var(--l);
+  border-radius: 8px;
+  color: var(--m);
+}
+.import-methods .selected {
+  border-color: color-mix(in srgb,var(--a) 35%,var(--l));
+  background: color-mix(in srgb,var(--a) 7%,var(--p));
+  color: var(--a);
 }
 .catalog-card {
   display: flex;

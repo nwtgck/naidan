@@ -40,6 +40,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <AppEntryLink :destination="{ kind: 'model', model: item.model }" :locale="locale" display="label">{{ item.name }}</AppEntryLink>
         </li>
       </ul>
+      <p><RenderText :node="s.model_link_boundary()" /></p>
       <p><RenderText :node="s.custom_model_link_instructions()" /></p>
     </section>
     <p class="guide-context"><RenderText :node="s.availability()" /></p>
@@ -47,7 +48,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="walkthrough-step" aria-labelledby="llama-guide-open">
       <h2 id="llama-guide-open">{{ s.open_model_manager_heading }}</h2>
       <p class="app-entry-intro"><RenderText :node="s.open_model_manager({ locale, destination: { kind: 'screen', screen: 'gguf-manager' } })" /></p>
-      <p class="app-entry-onboarding"><RenderText :node="s.model_manager_first_run_note()" /></p>
       <p><RenderText :node="s.open_model_manager_instructions()" /></p>
       <figure class="guide-figure">
         <InBrowserModelSettingsStep mode="llama" stage="open" :messages="s" />
@@ -58,10 +58,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="walkthrough-step" aria-labelledby="llama-guide-import">
       <h2 id="llama-guide-import">{{ s.import_gguf_heading }}</h2>
       <p><RenderText :node="s.import_gguf_instructions()" /></p>
+      <ul class="storage-choices">
+        <li><RenderText :node="s.save_in_browser_description()" /></li>
+        <li><RenderText :node="s.link_folder_description()" /></li>
+        <li><RenderText :node="s.use_temporarily_description()" /></li>
+      </ul>
       <figure class="guide-figure">
         <InBrowserModelSettingsStep mode="llama" stage="import" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.import_gguf_figure_caption()" /></figcaption>
       </figure>
+      <p><RenderText :node="s.temporary_save_instructions()" /></p>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="llama-guide-download">
@@ -71,6 +77,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <InBrowserModelSettingsStep mode="llama" stage="download" :messages="s" />
         <figcaption class="caption">{{ s.download_gguf_figure_caption }}</figcaption>
       </figure>
+      <p><RenderText :node="s.download_progress_instructions()" /></p>
+      <p>{{ s.download_network_note }}</p>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="llama-guide-default">
@@ -91,6 +99,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <h2>{{ s.model_troubleshooting_heading }}</h2>
     <p><RenderText :node="s.model_troubleshooting()" /></p>
+    <p><RenderText :node="s.model_selection_recovery()" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
       { page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description },
       { page: 'image-generation', title: s.image_generation_guide_title, description: s.image_generation_guide_description },

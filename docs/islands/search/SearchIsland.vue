@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { SearchPayload } from './contracts';
 import { releaseSearchWorker, wrapSearchWorker } from './transport';
 import type { SearchWorkerRemote } from './transport';
@@ -22,6 +22,30 @@ const input = ref<HTMLInputElement>();
 const resultList = ref<HTMLElement>();
 const displayedQuery = ref('');
 const currentHref = docsHref({ locale: props.locale, page: props.currentPage });
+
+watch(results, nextResults => {
+  const links = [...(resultList.value?.querySelectorAll<HTMLAnchorElement>('a') ?? [])];
+  const offset = links.findIndex(link => link === document.activeElement);
+  const focused = links[offset];
+  if (!focused) {
+    return;
+  }
+  const href = focused.getAttribute('href');
+  void nextTick(() => {
+    if (!dialog.value?.open || results.value !== nextResults) {
+      return;
+    }
+    // Only repair focus lost with the old result. A reader who moved to another
+    // control while the list changed keeps that control's focus.
+    if (document.activeElement !== focused && document.activeElement !== document.body) {
+      return;
+    }
+    const nextLinks = [...(resultList.value?.querySelectorAll<HTMLAnchorElement>('a') ?? [])];
+    const target = nextLinks.find(link => link.getAttribute('href') === href)
+      ?? nextLinks[Math.min(offset, nextLinks.length - 1)] ?? input.value;
+    target?.focus();
+  });
+});
 
 function pageForResult({ href }: { href: string }): DocsPageId {
   const page = DOCS_PAGES.find(candidate => docsHref({ locale: props.locale, page: candidate.id }) === href);

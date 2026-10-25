@@ -71,30 +71,33 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
               <div v-else-if="stage === 'import'" class="compact-stack">
                 <div class="section-title"><FileUpIcon :size="18" />{{ llama.gguf_model_files }}</div>
+                <div class="import-modes"><span class="selected"><HardDriveIcon :size="14" />{{ llama.save_in_browser }}</span><span><FolderOpenIcon :size="14" />{{ llama.link_folder }}</span><span>{{ llama.use_temporarily }}</span></div>
                 <div class="drop-area">
                   <FileUpIcon :size="24" /><strong>{{ llama.drop_gguf_files_or_folders }}</strong>
+                  <p class="import-help">{{ llama.saved_import_help }}</p>
                   <div class="choice-row"><span class="secondary-action import-action"><FolderOpenIcon :size="16" />{{ llama.choose_gguf_files }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span><span class="secondary-action"><FolderOpenIcon :size="16" />{{ llama.choose_model_folder }}</span></div>
                 </div>
                 <div class="operation-status importing-status"><span>{{ llama.importing_model }}</span><span class="progress-track"><span /></span></div>
                 <div class="section-title"><HardDriveIcon :size="18" />{{ llama.imported_models }}</div>
-                <div class="model-row imported-result"><span class="model-name">{{ llama.sample_gguf_file }}</span><span class="tag">GGUF</span></div>
+                <div class="model-row imported-result"><span class="model-name code">{{ llama.sample_model_id }}</span><span class="tag">GGUF</span></div>
               </div>
 
               <div v-else-if="stage === 'download'" class="compact-stack">
                 <div class="section-title"><DownloadIcon :size="18" />{{ llama.hugging_face }}</div>
                 <div class="field"><span class="label">{{ llama.repository }}</span><div class="entry-row"><div class="input-look code animated-input"><span class="input-placeholder">{{ llama.sample_repository }}</span><span class="input-value">{{ llama.entered_repository }}</span></div><span class="secondary-action check-model"><SearchIcon :size="16" />{{ llama.check_model }}<MousePointer2Icon class="pointer check-pointer" :size="23" /></span></div></div>
+                <div class="repository-search"><SearchIcon :size="14" /><span>{{ llama.find_models }}</span><ChevronDownIcon :size="14" /></div>
                 <div class="choice-row wrap model-options"><span class="label">{{ llama.quantization }}</span><span class="input-look small-input quantization-choice"><span class="switch-label before">{{ llama.choose_model_files }}</span><span class="switch-label after">{{ llama.sample_quantization }}</span><ChevronDownIcon :size="16" /><span class="choice-menu quantization-menu"><span class="menu-option">{{ llama.choose_model_files }}</span><span class="menu-option target-option">{{ llama.sample_quantization }}<MousePointer2Icon class="pointer menu-pointer" :size="21" /></span></span></span><span class="label">{{ llama.download_destination }}</span><span class="input-look small-input">{{ llama.browser_storage }}<ChevronDownIcon :size="16" /></span></div>
                 <div class="choice-row end"><span class="action download-action"><DownloadIcon :size="16" />{{ llama.download }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
                 <div class="operation-status downloading-status"><span>{{ llama.downloading_model }}</span><span class="progress-track"><span /></span></div>
                 <div class="section-title downloaded-result"><HardDriveIcon :size="18" />{{ llama.imported_models }}</div>
-                <div class="model-row downloaded-result"><span class="model-name">{{ llama.sample_gguf_file }}</span><span class="tag">GGUF</span></div>
+                <div class="model-row downloaded-result"><span class="model-name code">{{ llama.downloaded_model_id }}</span><span class="tag">GGUF</span></div>
               </div>
 
               <div v-else-if="stage === 'default'" class="compact-stack">
-                <div class="previous-download-result"><div class="section-title"><HardDriveIcon :size="18" />{{ llama.imported_models }}</div><div class="model-row"><span class="model-name">{{ llama.sample_gguf_file }}</span><span class="tag">GGUF</span></div></div>
+                <div class="previous-download-result"><div class="section-title"><HardDriveIcon :size="18" />{{ llama.imported_models }}</div><div class="model-row"><span class="model-name code">{{ llama.downloaded_model_id }}</span><span class="tag">GGUF</span></div></div>
                 <div class="section-title"><HardDriveIcon :size="18" />{{ llama.imported_models }}</div>
-                <div class="model-row"><span class="model-name">{{ llama.sample_gguf_file }}</span><span class="action default-action"><span class="switch-label before">{{ llama.set_as_default }}</span><span class="switch-label after"><CheckIcon :size="14" />{{ llama.model_in_use }}</span><MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
-                <div class="confirm-panel"><strong>{{ llama.change_default_model }}</strong><div class="confirm-change"><span>—</span><span>→</span><b>{{ llama.sample_gguf_file }}</b></div><p>{{ llama.default_model_scope }}</p><div class="choice-row end"><span class="action confirm-action"><CheckIcon :size="16" />{{ llama.confirm_default_model }}<MousePointer2Icon class="pointer confirm-pointer" :size="23" /></span></div></div>
+                <div class="model-row"><span class="model-name code">{{ llama.downloaded_model_id }}</span><span class="action default-action"><span class="switch-label before">{{ llama.set_as_default }}</span><span class="switch-label after"><CheckIcon :size="14" />{{ llama.model_in_use }}</span><MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
+                <div class="confirm-panel"><strong>{{ llama.change_default_model }}</strong><div class="confirm-change"><span>—</span><span>→</span><b class="code">{{ llama.downloaded_model_id }}</b></div><p>{{ llama.default_model_scope }}</p><div class="choice-row end"><span class="action confirm-action"><CheckIcon :size="16" />{{ llama.confirm_default_model }}<MousePointer2Icon class="pointer confirm-pointer" :size="23" /></span></div></div>
               </div>
             </template>
 
@@ -131,9 +134,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               </div>
 
               <div v-if="stage === 'save'" class="compact-stack connection-content">
-                <div class="section-title"><GlobeIcon :size="18" />{{ transformers.endpoint_configuration }}</div>
-                <div class="field"><span class="label">{{ transformers.api_provider }}</span><div class="input-look provider-field"><span class="switch-label before">{{ transformers.openai_compatible }}</span><span class="switch-label after">{{ transformers.transformers_js_tab }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /><span class="choice-menu provider-menu"><span class="menu-option">{{ transformers.openai_compatible }}</span><span class="menu-option target-option">{{ transformers.transformers_js_tab }}</span></span></div></div>
-                <div class="field"><span class="label">{{ transformers.default_model }}</span><div class="input-look model-field"><span class="switch-label before">{{ transformers.none }}</span><span class="switch-label after code">{{ transformers.complete_model }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /><span class="choice-menu model-menu"><span class="menu-option">{{ transformers.none }}</span><span class="menu-option target-option code">{{ transformers.complete_model }}</span></span></div></div>
+                <div class="connection-setup">
+                  <div class="field connection-provider"><span class="connection-label">{{ transformers.connection }}</span><div class="input-look provider-field"><span class="switch-label before">{{ transformers.openai_compatible }}</span><span class="switch-label after">{{ transformers.transformers_js_tab }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /><span class="choice-menu provider-menu"><span class="menu-option">{{ transformers.openai_compatible }}</span><span class="menu-option target-option">{{ transformers.transformers_js_tab }}</span></span></div></div>
+                  <div class="field connection-model"><span class="connection-label">{{ transformers.default_model }}</span><div class="connection-model-controls"><div class="input-look model-field"><span class="switch-label before">{{ transformers.none }}</span><span class="switch-label after code">{{ transformers.complete_model }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /><span class="choice-menu model-menu"><span class="menu-option">{{ transformers.none }}</span><span class="menu-option target-option code">{{ transformers.complete_model }}</span></span></div><span class="model-management"><FolderOpenIcon :size="14" />{{ transformers.manage_models }}</span></div></div>
+                </div>
                 <div class="choice-row end"><span class="action save-action"><span class="switch-label before">{{ transformers.save_changes }}</span><span class="switch-label after">{{ transformers.settings_saved }}</span><MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
               </div>
             </template>
@@ -203,23 +207,23 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   --camera-focus-y:-35px;
   --camera-focus-z:1;
   --camera-end-x:-275px;
-  --camera-end-y:-97px;
+  --camera-end-y:-180px;
   --camera-end-z:1;
 }
 .mode-llama.stage-download {
   --camera-start-x:-275px;
-  --camera-start-y:-97px;
+  --camera-start-y:-180px;
   --camera-start-z:1;
   --camera-focus-x:-275px;
   --camera-focus-y:-18px;
   --camera-focus-z:1;
   --camera-end-x:-275px;
-  --camera-end-y:-160px;
+  --camera-end-y:-205px;
   --camera-end-z:1;
 }
 .mode-llama.stage-default {
   --camera-start-x:-275px;
-  --camera-start-y:-160px;
+  --camera-start-y:-205px;
   --camera-start-z:1;
   --camera-focus-x:-275px;
   --camera-focus-y:-32px;
@@ -258,7 +262,7 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   --camera-focus-y:-8px;
   --camera-focus-z:.9;
   --camera-end-x:-275px;
-  --camera-end-y:-22px;
+  --camera-end-y:-4px;
   --camera-end-z:1;
 }
 @keyframes camera-move {
@@ -425,6 +429,56 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   align-content: start;
   gap: 16px;
   min-width: 0;
+}
+.mode-llama.stage-import .compact-stack {
+  gap: 10px;
+}
+.import-modes {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--soft);
+}
+.import-modes > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 5px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 650;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.import-modes svg {
+  flex: none;
+}
+.import-modes .selected {
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: 0 1px 4px #0001;
+}
+.import-help {
+  margin: 0;
+  color: var(--soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.repository-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 650;
+}
+.repository-search span {
+  flex: 1;
 }
 .context-card {
   display: grid;
@@ -618,8 +672,8 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
 .drop-area {
   display: grid;
   justify-items: center;
-  gap: 10px;
-  padding: 22px;
+  gap: 8px;
+  padding: 16px;
   text-align: center;
   border-style: dashed;
 }
@@ -876,6 +930,47 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
 }
 .stage-save .connection-content {
   animation: connection-content 11s linear infinite;
+}
+.connection-setup {
+  display: grid;
+  grid-template-columns: minmax(0,5fr) minmax(0,6fr);
+  gap: 20px;
+  align-items: start;
+}
+.connection-label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.connection-model-controls {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--field);
+}
+.connection-model-controls .model-field {
+  flex: 1;
+  border: 0;
+  background: transparent;
+}
+.model-management {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 8px;
+  border-left: 1px solid var(--line);
+  color: var(--soft);
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0;
+  animation: provider-after 11s linear infinite;
+}
+.model-management svg {
+  flex: none;
 }
 .stage-save .manager-before-save {
   position: absolute;
@@ -1705,6 +1800,10 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   .compact-stack {
     max-width: 300px;
   }
+  .connection-setup {
+    grid-template-columns: minmax(0,1fr);
+    gap: 16px;
+  }
   .previous-download-result {
     top: 432px;
     left: 20px;
@@ -1744,23 +1843,23 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
     --camera-focus-y:-45px;
     --camera-focus-z:.85;
     --camera-end-x:-255px;
-    --camera-end-y:-100px;
+    --camera-end-y:-220px;
     --camera-end-z:.85;
   }
   .mode-llama.stage-download {
     --camera-start-x:-255px;
-    --camera-start-y:-100px;
+    --camera-start-y:-220px;
     --camera-start-z:.85;
     --camera-focus-x:-255px;
     --camera-focus-y:-20px;
     --camera-focus-z:.85;
     --camera-end-x:-255px;
-    --camera-end-y:-175px;
+    --camera-end-y:-240px;
     --camera-end-z:.85;
   }
   .mode-llama.stage-default {
     --camera-start-x:-255px;
-    --camera-start-y:-175px;
+    --camera-start-y:-240px;
     --camera-start-z:.85;
     --camera-focus-x:-255px;
     --camera-focus-y:-30px;
@@ -1799,7 +1898,7 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
     --camera-focus-y:-5px;
     --camera-focus-z:.85;
     --camera-end-x:-255px;
-    --camera-end-y:-30px;
+    --camera-end-y:-12px;
     --camera-end-z:.85;
   }
 }
@@ -1836,7 +1935,8 @@ html:has(#docs-pause-motion:checked) .browser-model-camera .incomplete-tag {
 html:has(#docs-pause-motion:checked) .browser-model-camera .input-value,
 html:has(#docs-pause-motion:checked) .browser-model-camera .switch-label.after,
 html:has(#docs-pause-motion:checked) .browser-model-camera .phase-ready,
-html:has(#docs-pause-motion:checked) .browser-model-camera .model-options {
+html:has(#docs-pause-motion:checked) .browser-model-camera .model-options,
+html:has(#docs-pause-motion:checked) .browser-model-camera .model-management {
   opacity: 1;
   clip-path: none;
 }
@@ -1859,7 +1959,7 @@ html:has(#docs-pause-motion:checked) .browser-model-camera .pointer {
   .camera-canvas {
     transform: translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z));
   }
-  .settings-panel,.imported-result,.downloaded-result,.progress-scene,.connection-content,.input-value,.switch-label.after,.phase-ready,.model-options {
+  .settings-panel,.imported-result,.downloaded-result,.progress-scene,.connection-content,.input-value,.switch-label.after,.phase-ready,.model-options,.model-management {
     opacity: 1;
     clip-path: none;
     transform: none;

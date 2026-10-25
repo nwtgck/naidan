@@ -97,6 +97,37 @@ describe('native anchor authoring guard', () => {
       .not.toThrow();
   });
 
+  it.each([
+    '<component :is="\'a\'" href="/docs/en/missing-page/">Missing</component>',
+    '<component is="a" href="/docs/en/missing-page/">Missing</component>',
+    '<Component v-bind:is="condition ? \'section\' : \'a\'" href="/docs/en/missing-page/">Missing</Component>',
+    '<div is="vue:a" href="/docs/en/missing-page/">Missing</div>',
+  ])('rejects a native anchor rendered with Vue tag selection: %s', template => {
+    for (const mode of ['static', 'island'] as const) {
+      expect(() => validateStaticComponent({ source: `<template>${template}</template>`, filename: 'components/LinkExample.vue', mode }))
+        .toThrow('Use a typed Docs link component');
+    }
+  });
+
+  it('rejects unchecked dynamic tag values and permits explicit native branches', async () => {
+    for (const expression of ['tag', 'getTag()', "condition ? 'section' : tag", "'DocsLink'", "'script'"]) {
+      expect(() => validateStaticComponent({
+        source: `<template><component :is="${expression}" /></template>`,
+        filename: 'components/Example.vue',
+        mode: 'static',
+      })).toThrow('require explicit native tag literals or conditional branches');
+    }
+    expect(() => validateStaticComponent({
+      source: '<template><component :is="condition ? (nested ? \'details\' : \'section\') : \'div\'">Content</component></template>',
+      filename: 'components/Example.vue',
+      mode: 'static',
+    })).not.toThrow();
+    for (const filename of ['components/DocsGuideTree.vue', 'components/DocsIsland.vue']) {
+      const source = await readFile(new URL(`../${filename}`, import.meta.url), 'utf8');
+      expect(() => validateStaticComponent({ source, filename, mode: 'static' })).not.toThrow();
+    }
+  });
+
   it('ignores escaped examples and SVG references', () => {
     expect(() => validateStaticComponent({
       source: '<template><p>&lt;a href="/docs/en/missing-page/"&gt;example&lt;/a&gt;</p><svg><use href="#icon" /></svg></template>',

@@ -35,6 +35,9 @@ describe('Wesh sysfs guide', () => {
     expect(start?.textContent).toContain(locale === 'en' ? 'Mount' : 'マウント');
     expect(article?.querySelector('.session-note')?.textContent).toContain(locale === 'en' ? 'Close Session' : 'セッションを閉じる');
 
+    const scope = article?.querySelector('#sysfs-scope')?.parentElement;
+    expect(scope?.textContent).toContain(locale === 'en' ? 'next answer the model starts generating' : '次に開始する回答');
+    expect(scope?.textContent).toContain(locale === 'en' ? 'already in progress keeps its initial mount scope' : '生成中の回答では、開始時のマウント範囲が維持');
     const rows = [...article?.querySelectorAll<HTMLTableRowElement>('[data-testid="docs-wesh-sysfs-scope"] tbody tr') ?? []];
     expect(rows).toHaveLength(4);
     expect(rows[1]?.cells[1]?.textContent).toMatch(locale === 'en' ? /other chats.*unavailable/i : /ほかのチャットの会話本文は読めません/);
