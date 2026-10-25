@@ -14,10 +14,12 @@ beforeEach(async () => {
 describe('AboutTab GitHub Link', () => {
   it('should contain GitHub link with correct structure', async () => {
     const wrapper = mount(AboutTab, {
+      props: { visibility: 'hidden' },
       global: {
         stubs: {
           'router-link': true,
           'Logo': true,
+          'OpenSourceLicenses': true,
           // Icons
           GithubIcon: true,
           ExternalLinkIcon: true,
@@ -28,6 +30,12 @@ describe('AboutTab GitHub Link', () => {
         },
       },
     });
+
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
 
     const githubLink = wrapper.find('a[href*="github.com/nwtgck/naidan"]');
     expect(githubLink.exists()).toBe(true);

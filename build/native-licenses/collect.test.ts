@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { NativeLicenseIndex } from './index-types';
 import type { NativeLicenseSource } from './collect';
 import { collectNativeLicenseDependencies } from './collect';
-import { serializeLicenseDependencies } from '../license-payload';
+import { serializeLicenseCatalogFactory } from '../license-payload';
+import { restoreLicenseCatalog } from '../test-support/license-catalog.test-support';
 
 function fixture() {
   const bodies = new Map<string, Uint8Array>([
@@ -84,8 +85,8 @@ Permission granted.\\r
     const llama = collectNativeLicenseDependencies(value);
     const image = collectNativeLicenseDependencies({ ...value, source: { ...value.source, runtime: 'stable-diffusion-cpp' } });
     const dependencies = [{ name: 'Core', version: '1', license: 'MIT', licenseText: 'JavaScript notice' }, ...llama, ...image];
-    const expression = serializeLicenseDependencies({ dependencies });
-    const reconstructed: unknown = new Function(`return (${expression})`)();
+    const expression = serializeLicenseCatalogFactory({ dependencies });
+    const reconstructed = restoreLicenseCatalog({ factory: new Function(`return (${expression})`)() });
     expect(reconstructed).toEqual(dependencies);
     expect(new Set([...llama, ...image].map(item => item.id)).size).toBe(4);
   });

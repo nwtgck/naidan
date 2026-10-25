@@ -133,9 +133,9 @@ vi.mock('@/components/SettingsModal.vue', () => ({
   __isTeleport: false,
   default: {
     name: 'SettingsModal',
-    props: ['isOpen', 'navigation', 'requestedTab'],
+    props: ['isOpen', 'navigation', 'requestedTab', 'suspended'],
     emits: ['close', 'openModelSupportInvestigation'],
-    template: '<div v-if="isOpen" data-testid="settings-modal"><button data-testid="settings-open-model-support-investigation-stub" @click="$emit(\'openModelSupportInvestigation\', \'\')">open</button></div>',
+    template: '<div v-if="isOpen" data-testid="settings-modal" :data-suspended="suspended"><button data-testid="settings-open-model-support-investigation-stub" @click="$emit(\'openModelSupportInvestigation\', \'\')">open</button></div>',
   },
 }));
 vi.mock('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue', () => ({
@@ -210,10 +210,12 @@ describe('AppAuxiliaryUi', () => {
     await wrapper.vm.TEST_ONLY.openLlamaCppPerformance({ defaultModel: 'local.gguf' });
     await flushPromises();
     expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(false);
+    expect(wrapper.get('[data-testid="settings-modal"]').attributes('data-suspended')).toBe('true');
     expect(wrapper.get('[data-testid="llama-performance-stub"]').attributes('data-open')).toBe('true');
     wrapper.vm.TEST_ONLY.closeLlamaCppPerformance();
     await flushPromises();
     expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-testid="settings-modal"]').attributes('data-suspended')).toBe('false');
     expect(document.activeElement).toBe(button.element);
     delete route.query.settings;
     await flushPromises();
@@ -309,6 +311,7 @@ describe('AppAuxiliaryUi', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="settings-modal-host"]').element.getAttribute('style')).toContain('display: none');
+    expect(wrapper.get('[data-testid="settings-modal"]').attributes('data-suspended')).toBe('true');
     expect(wrapper.find('[data-testid="model-support-investigation-modal-stub"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="model-support-investigation-modal-stub"]').attributes('data-model-id')).toBe('');
     expect(route.query).toEqual({ settings: 'developer' });

@@ -8,6 +8,8 @@ import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown';
 
 import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin.js';
 import { readSystemJsLicenseDependency } from './file-protocol-standalone/systemjs';
+import { restoreLicenseCatalog } from './test-support/license-catalog.test-support';
+import type { NaidanLicenseCatalog } from '../src/01-models/naidan-license';
 import type { BuildLicenseDependency } from './license-dependencies';
 import {
   createLicenseModulePlugins,
@@ -187,9 +189,9 @@ describe('createLicenseModulePlugins', () => {
       },
     };
     const loaded = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID) as {
-      default: readonly BuildLicenseDependency[],
+      default: () => NaidanLicenseCatalog,
     };
-    expect(loaded.default).toEqual([
+    expect(restoreLicenseCatalog({ factory: loaded.default })).toEqual([
       {
         name: 'prod-package',
         version: '1.0.0',
@@ -204,7 +206,7 @@ describe('createLicenseModulePlugins', () => {
         licenseText: 'transitive license text',
       },
     ]);
-    expect(loaded.default.some((dependency) => dependency.name === 'dev-only-package')).toBe(false);
+    expect(loaded.default().entries.some((dependency) => dependency.name === 'dev-only-package')).toBe(false);
   }, 30_000);
 
   it('injects current-build main and additional licenses into one lazy hosted chunk', async () => {
@@ -340,7 +342,7 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
     expect(licenseAsset === undefined ? false : containsDependencyName({ source: licenseAsset.source, name: 'zod' })).toBe(true);
     expect(licenseAsset?.source).not.toContain('__NAIDAN_LICENSE_PAYLOAD_');
     expect(licenseAsset?.source).not.toContain('JSON.parse');
-    expect(evaluateSystemRegisterDefault({ source: licenseAsset?.source ?? '' })).toEqual(
+    expect(restoreLicenseCatalog({ factory: evaluateSystemRegisterDefault({ source: licenseAsset?.source ?? '' }) })).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'systemjs' }),
         expect.objectContaining({ name: 'zod' }),
