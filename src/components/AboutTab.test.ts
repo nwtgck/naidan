@@ -99,6 +99,29 @@ describe('AboutTab licenses', () => {
     expect(scriptSetup).not.toMatch(/^import(?! type).*virtual:naidan-licenses/m);
   });
 
+  it.each([
+    { origin: 'https://naidan.pages.dev', external: false },
+    { origin: 'http://naidan.pages.dev', external: true },
+    { origin: 'https://naidan-local-only.pages.dev', external: true },
+    { origin: 'https://naidan-curated.pages.dev', external: true },
+    { origin: 'https://develop.naidan.pages.dev', external: true },
+    { origin: 'http://localhost:5173', external: true },
+    { origin: 'null', external: true },
+  ])('keeps the documentation URL fixed and sets its icon for $origin', async ({ origin, external }) => {
+    vi.stubGlobal('location', { origin });
+    const wrapper = await mountAboutTab({ isStandalone: origin === 'null' });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const link = wrapper.get('[data-testid="documentation-link"]');
+    expect(link.attributes('href')).toBe('https://naidan.pages.dev/docs');
+    expect(link.attributes('target')).toBe('_blank');
+    expect(link.attributes('rel')).toBe('noopener noreferrer');
+    expect(link.find('[data-testid="documentation-external-icon"]').exists()).toBe(external);
+  });
+
   it('destroys only the license section while About is hidden and recreates it collapsed on return', async () => {
     const wrapper = await mountAboutTab({ isStandalone: false });
     using _cleanup = {

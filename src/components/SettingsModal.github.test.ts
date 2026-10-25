@@ -43,7 +43,7 @@ describe('AboutTab GitHub Link', () => {
     // Check translated copy after the lazy string boundary is registered.
     await vi.waitFor(() => {
       expect(githubLink.text()).toContain('GitHub Repository');
-      expect(githubLink.text()).toContain('View source code & contribute');
+      expect(githubLink.text()).toContain('View source code');
     });
   });
 });

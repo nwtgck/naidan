@@ -46,14 +46,16 @@ import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/en';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/en';
 import { AboutTab__about_naidan } from '@/strings/messages/AboutTab__about_naidan/en';
 import { AboutTab__built_with_open_source_software } from '@/strings/messages/AboutTab__built_with_open_source_software/en';
+import { AboutTab__documentation } from '@/strings/messages/AboutTab__documentation/en';
 import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github_repository/en';
+import { AboutTab__learn_how_to_use_naidan } from '@/strings/messages/AboutTab__learn_how_to_use_naidan/en';
 import { AboutTab__loading_licenses } from '@/strings/messages/AboutTab__loading_licenses/en';
 import { AboutTab__open_source_licenses } from '@/strings/messages/AboutTab__open_source_licenses/en';
 import { AboutTab__privacy_focused_local_lm_interface } from '@/strings/messages/AboutTab__privacy_focused_local_lm_interface/en';
 import { AboutTab__unknown_package } from '@/strings/messages/AboutTab__unknown_package/en';
 import { AboutTab__version } from '@/strings/messages/AboutTab__version/en';
 import { AboutTab__view_license_text } from '@/strings/messages/AboutTab__view_license_text/en';
-import { AboutTab__view_source_code_and_contribute } from '@/strings/messages/AboutTab__view_source_code_and_contribute/en';
+import { AboutTab__view_source_code } from '@/strings/messages/AboutTab__view_source_code/en';
 import { AppCommandRuntime__could_not_create_chat } from '@/strings/messages/AppCommandRuntime__could_not_create_chat/en';
 import { AppCommandRuntime__retry } from '@/strings/messages/AppCommandRuntime__retry/en';
 import { AppEntrySurface__could_not_open_local_model } from '@/strings/messages/AppEntrySurface__could_not_open_local_model/en';
@@ -1813,6 +1815,11 @@ import { OnboardingModal__setup_endpoint_description } from '@/strings/messages/
 import { OnboardingModal__successfully_connected } from '@/strings/messages/OnboardingModal__successfully_connected/en';
 import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingModal__transformers_js/en';
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/en';
+import { OpenSourceLicenseFilter__clear_search } from '@/strings/messages/OpenSourceLicenseFilter__clear_search/en';
+import { OpenSourceLicenseFilter__filter_by_name } from '@/strings/messages/OpenSourceLicenseFilter__filter_by_name/en';
+import { OpenSourceLicenseFilter__filter_licenses } from '@/strings/messages/OpenSourceLicenseFilter__filter_licenses/en';
+import { OpenSourceLicenses__matching_packages } from '@/strings/messages/OpenSourceLicenses__matching_packages/en';
+import { OpenSourceLicenses__no_matching_packages } from '@/strings/messages/OpenSourceLicenses__no_matching_packages/en';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/en';
 import { PWAUpdateNotification__applying_update } from '@/strings/messages/PWAUpdateNotification__applying_update/en';
 import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/en';
@@ -3357,14 +3364,16 @@ export const catalog = {
   SHARED__writable_tmp_is_available_with_opfs_storage,
   AboutTab__about_naidan,
   AboutTab__built_with_open_source_software,
+  AboutTab__documentation,
   AboutTab__github_repository,
+  AboutTab__learn_how_to_use_naidan,
   AboutTab__loading_licenses,
   AboutTab__open_source_licenses,
   AboutTab__privacy_focused_local_lm_interface,
   AboutTab__unknown_package,
   AboutTab__version,
   AboutTab__view_license_text,
-  AboutTab__view_source_code_and_contribute,
+  AboutTab__view_source_code,
   AppCommandRuntime__could_not_create_chat,
   AppCommandRuntime__retry,
   AppEntrySurface__could_not_open_local_model,
@@ -5124,6 +5133,11 @@ export const catalog = {
   OnboardingModal__successfully_connected,
   OnboardingModal__transformers_js,
   OnboardingModal__value,
+  OpenSourceLicenseFilter__clear_search,
+  OpenSourceLicenseFilter__filter_by_name,
+  OpenSourceLicenseFilter__filter_licenses,
+  OpenSourceLicenses__matching_packages,
+  OpenSourceLicenses__no_matching_packages,
   PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__applying_update,
   PWAUpdateNotification__preparing_update,

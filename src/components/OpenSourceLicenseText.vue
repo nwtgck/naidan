@@ -27,5 +27,5 @@ defineExpose({
 </script>
 
 <template>
-  <pre data-testid="oss-license-text" tw-class="mt-4 p-4 bg-gray-50 dark:bg-black/20 rounded-xl text-[10px] font-mono text-gray-500 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap leading-relaxed border border-gray-100/50 dark:border-gray-800/50">{{ licenseText }}</pre>
+  <pre data-testid="oss-license-text" tw-class="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200/70 bg-gray-50/80 p-3 font-mono text-xs leading-relaxed text-gray-600 dark:border-gray-800 dark:bg-gray-950/35 dark:text-gray-300">{{ licenseText }}</pre>
 </template>

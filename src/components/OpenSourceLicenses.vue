@@ -1,13 +1,35 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, shallowRef } from 'vue';
-import { Loader2Icon, ShieldCheckIcon } from 'lucide-vue-next';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { ChevronRightIcon, Loader2Icon, ShieldCheckIcon } from 'lucide-vue-next';
 import type { NaidanLicenseCatalog } from '@/01-models/naidan-license';
 import { lazyStrings } from '@/strings';
 import OpenSourceLicenseText from './OpenSourceLicenseText.vue';
+import OpenSourceLicenseFilter from './OpenSourceLicenseFilter.vue';
 
 const catalog = shallowRef<NaidanLicenseCatalog>();
 const openIndexes = shallowRef<ReadonlySet<number>>(new Set());
 const isLoadingLicenses = shallowRef(true);
+const filterQuery = ref('');
+const listRoot = ref<HTMLDivElement>();
+const filteredEntries = computed(() => {
+  const terms = filterQuery.value.trim().toLowerCase().split(/\s+/u).filter(Boolean);
+  return (catalog.value?.entries ?? []).map((license, index) => ({ license, index })).filter(({ license }) => {
+    const { id: _id, name, version, origin, license: licenseName, ...unhandled } = license;
+    unhandled satisfies Record<PropertyKey, never>;
+    const text = [name, version, origin, licenseName].join(' ').toLowerCase();
+    return terms.every(term => text.includes(term));
+  });
+});
+// Evaluate during catalog teardown too, before Vue stops the watcher, so its
+// derived metadata cache is cleared along with the owned catalog.
+watch(filteredEntries, entries => {
+  const visibleIndexes = new Set(entries.map(entry => entry.index));
+  const next = new Set([...openIndexes.value].filter(index => visibleIndexes.has(index)));
+  if (next.size !== openIndexes.value.size) {
+    // Filtered-out bodies are released; restoring the row starts it collapsed.
+    openIndexes.value = next;
+  }
+}, { flush: 'sync' });
 let requestEpoch = 0;
 
 async function loadLicenses(): Promise<void> {
@@ -32,7 +54,8 @@ async function loadLicenses(): Promise<void> {
 
 function updateOpenLicense({ event, index }: { event: Event, index: number }): void {
   const details = event.currentTarget;
-  if (!(details instanceof HTMLDetailsElement) || details.open === openIndexes.value.has(index)) {
+  // A native toggle task can outlive the details node removed by filtering.
+  if (!(details instanceof HTMLDetailsElement) || !listRoot.value?.contains(details) || !filteredEntries.value.some(entry => entry.index === index) || details.open === openIndexes.value.has(index)) {
     return;
   }
   const next = new Set(openIndexes.value);
@@ -64,41 +87,49 @@ defineExpose({
 </script>
 
 <template>
-  <section tw-class="space-y-6">
-    <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-      <ShieldCheckIcon tw-class="w-5 h-5 text-blue-500" />
-      <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.AboutTab__open_source_licenses() }}</h2>
+  <section tw-class="@container space-y-4">
+    <div>
+      <div tw-class="flex items-center gap-2.5 border-b border-gray-200/70 pb-4 dark:border-gray-800">
+        <ShieldCheckIcon aria-hidden="true" tw-class="h-5 w-5 shrink-0 text-blue-500 dark:text-blue-400" />
+        <h2 tw-class="text-lg font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.AboutTab__open_source_licenses() }}</h2>
+      </div>
+      <p tw-class="mt-3 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.AboutTab__built_with_open_source_software() }}</p>
     </div>
 
-    <p tw-class="text-sm font-medium text-gray-500 dark:text-gray-400">
-      {{ lazyStrings.AboutTab__built_with_open_source_software() }}
-    </p>
+    <div tw-class="space-y-2">
+      <OpenSourceLicenseFilter
+        v-model="filterQuery"
+        :disabled="isLoadingLicenses"
+        data-testid="oss-license-filter"
+      />
+      <p v-if="!isLoadingLicenses && filterQuery.trim().length > 0" data-testid="oss-license-match-count" role="status" tw-class="text-xs text-gray-600 dark:text-gray-300">{{ lazyStrings.OpenSourceLicenses__matching_packages({ count: filteredEntries.length, total: catalog?.entries.length ?? 0 }) }}</p>
+    </div>
 
-    <div data-testid="oss-license-list" tw-class="border border-gray-100 dark:border-gray-800 rounded-3xl overflow-hidden bg-white dark:bg-gray-900 min-h-[100px] flex flex-col items-center justify-center">
-      <div v-if="isLoadingLicenses" data-testid="oss-license-loading" tw-class="p-12 flex flex-col items-center gap-3">
-        <Loader2Icon tw-class="w-6 h-6 text-blue-500 animate-spin" />
-        <p tw-class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.AboutTab__loading_licenses() }}</p>
+    <div ref="listRoot" data-testid="oss-license-list" :aria-busy="isLoadingLicenses" tw-class="min-h-24 overflow-hidden rounded-xl border border-gray-200/80 bg-white dark:border-gray-800 dark:bg-gray-900/30">
+      <div v-if="isLoadingLicenses" data-testid="oss-license-loading" role="status" tw-class="flex min-h-24 items-center justify-center gap-2 p-4">
+        <Loader2Icon aria-hidden="true" tw-class="h-4 w-4 shrink-0 animate-spin text-blue-500 dark:text-blue-400 motion-reduce:animate-none" />
+        <p tw-class="text-sm text-gray-600 dark:text-gray-300">{{ lazyStrings.AboutTab__loading_licenses() }}</p>
       </div>
-      <div v-else tw-class="w-full max-h-[400px] overflow-y-auto p-2 space-y-1 overscroll-contain">
+      <p v-else-if="filteredEntries.length === 0 && filterQuery.trim().length > 0" data-testid="oss-license-no-matches" tw-class="p-4 text-sm text-gray-600 dark:text-gray-300">{{ lazyStrings.OpenSourceLicenses__no_matching_packages() }}</p>
+      <div v-else tw-class="max-h-[400px] divide-y divide-gray-200/70 overflow-y-auto overscroll-contain dark:divide-gray-800">
         <div
-          v-for="(license, index) in catalog?.entries"
+          v-for="{ license, index } in filteredEntries"
           :key="index"
           data-testid="oss-license-item"
-          tw-class="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-2xl transition-colors group"
+          tw-class="min-w-0 px-4 py-2"
         >
-          <div tw-class="flex items-start justify-between gap-4">
-            <div tw-class="min-w-0">
-              <div tw-class="flex items-center gap-2">
-                <span tw-class="text-sm font-bold text-gray-800 dark:text-white truncate">{{ license.name || lazyStrings.AboutTab__unknown_package() }}</span>
-                <span v-if="license.version !== null" tw-class="text-[10px] font-bold text-gray-400">v{{ license.version }}</span>
-                <span v-if="license.origin" tw-class="text-[10px] font-bold text-gray-400">{{ license.origin }}</span>
-              </div>
-              <div tw-class="text-[10px] font-bold text-blue-600/70 dark:text-blue-400/60 uppercase tracking-tight mt-0.5">{{ license.license }}</div>
-            </div>
-          </div>
-          <details data-testid="oss-license-details" tw-class="mt-3" @toggle="updateOpenLicense({ event: $event, index })">
-            <summary tw-class="text-[10px] font-bold text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-200 transition-colors list-none flex items-center gap-1">
-              {{ lazyStrings.AboutTab__view_license_text() }}
+          <details data-testid="oss-license-details" :open="openIndexes.has(index)" tw-class="group" @toggle="updateOpenLicense({ event: $event, index })">
+            <summary tw-class="flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 [&::-webkit-details-marker]:hidden">
+              <span tw-class="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span tw-class="break-all text-sm font-medium text-gray-800 dark:text-gray-100">{{ license.name || lazyStrings.AboutTab__unknown_package() }}</span>
+                <span v-if="license.version !== null" tw-class="break-all text-xs text-gray-600 dark:text-gray-300">v{{ license.version }}</span>
+                <span v-if="license.origin" tw-class="break-all text-xs text-gray-600 dark:text-gray-300">{{ license.origin }}</span>
+                <span v-if="license.license" tw-class="break-words text-xs text-blue-600 dark:text-blue-400">{{ license.license }}</span>
+              </span>
+              <span tw-class="flex shrink-0 items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300">
+                <span tw-class="sr-only @md:not-sr-only">{{ lazyStrings.AboutTab__view_license_text() }}</span>
+                <ChevronRightIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-90 dark:text-gray-500 motion-reduce:transition-none" />
+              </span>
             </summary>
             <OpenSourceLicenseText
               v-if="catalog !== undefined && openIndexes.has(index)"
