@@ -22,7 +22,7 @@ import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synt
 import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
 import type { WorkerGenerateInput } from './types';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { profileSchema, type GenerationEvent } from '@/features/llama-cpp-browser/types';
+import { profileSchema, type GenerationEvent, type GenerationResult } from '@/features/llama-cpp-browser/types';
 import { diagnosticSchema, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { createProjectorTrace } from './projector-trace';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
@@ -89,6 +89,26 @@ afterAll(async () => {
 
 function request({ messages }: { messages: WorkerGenerateInput['messages'] }): WorkerGenerateInput {
   return { modelId: 'user/private-local-name-GGUF', resolvedModel: capturedModel({ modelId: 'user/private-local-name-GGUF' }), messages, temperature: 0, topP: 0.95, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: integrationProfile }, assetBaseURL: 'https://example.invalid/runtime/' };
+}
+
+// Independent native runs have different timings. Keep output, token counts and
+// measurement metadata in equivalence checks while leaving the real clocks intact.
+function generationResultWithoutTiming({ result }: { result: GenerationResult }) {
+  const { generationMetrics, ...output } = result;
+  if (generationMetrics === undefined) {
+    return output;
+  }
+  const { speed, ...counts } = generationMetrics;
+  const { perSecond: _perSecond, interval, ...measurement } = speed;
+  if (interval === undefined) {
+    return { ...output, generationMetrics: { ...counts, speed: measurement } };
+  }
+  const { durationMs: _durationMs, ...intervalCounts } = interval;
+  return { ...output, generationMetrics: { ...counts, speed: { ...measurement, interval: intervalCounts } } };
+}
+
+function expectSameGenerationResult({ actual, expected }: { actual: GenerationResult, expected: GenerationResult }): void {
+  expect(generationResultWithoutTiming({ result: actual })).toEqual(generationResultWithoutTiming({ result: expected }));
 }
 
 /** Copy mutable request data for mutation assertions. Native handle test doubles
@@ -198,7 +218,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     await releaseSession({ releaseRuntime: false });
     const cached = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const cachedStats = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-    expect(cached).toEqual(reference);
+    expectSameGenerationResult({ actual: cached, expected: reference });
     expect(await sequencePosition()).toBe(referencePosition);
     expect(cachedStats.decodedTokens).toBe(referenceStats.decodedTokens);
     expect(referenceStats.tokenRendering).toMatchObject({ cacheHits: 0, cacheMisses: 33, eogCalls: 33, pieceCalls: 33 });
@@ -241,7 +261,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
         log.mockRestore();
       },
     };
-    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(expected);
+    expectSameGenerationResult({ actual: await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} }), expected: expected });
     expect(await readNativeLogits()).toEqual(logits);
     expect(await sequencePosition()).toBe(position);
     expect(copy).toHaveBeenCalledOnce();
@@ -403,7 +423,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const frontier = await sequencePosition();
     await releaseSession({ releaseRuntime: false });
     const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(warm).toEqual(cold);
+    expectSameGenerationResult({ actual: warm, expected: cold });
     expect(await sequencePosition()).toBe(frontier);
     const coldLogits = await readNativeLogits();
     logits.forEach((value, index) => expect(value).toBeCloseTo(coldLogits[index]!, 5));
@@ -816,7 +836,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     batch.mockClear();
     accept.mockClear();
     const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(cold).toEqual(warm);
+    expectSameGenerationResult({ actual: cold, expected: warm });
     expect(await sequencePosition()).toBe(warmPosition);
     expect(batch.mock.calls.map(call => call[2])).toEqual([frontier + 8, 1, 1, 1, 1]);
     expect(accept.mock.calls.map(call => call[1])).toEqual(warmAccepted);
@@ -898,7 +918,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     batch.mockClear();
     const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const coldLogits = await readNativeLogits();
-    expect(cold).toEqual(warm);
+    expectSameGenerationResult({ actual: cold, expected: warm });
     expect(await sequencePosition()).toBe(warmPosition);
     expect(batch.mock.calls.map(call => call[2])).toEqual([11]);
     expect(warmLogits).toHaveLength(259);
@@ -1035,7 +1055,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     batches.length = 0;
     remove.mockClear();
     const repeated = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(repeated).toEqual(warm);
+    expectSameGenerationResult({ actual: repeated, expected: warm });
     expect(batches).toEqual([]);
     expect(remove).not.toHaveBeenCalled();
     expect(await readNativeLogits()).toEqual(warmLogits);
@@ -1045,7 +1065,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     batches.length = 0;
     const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const coldLogits = await readNativeLogits();
-    expect(cold).toEqual(warm);
+    expectSameGenerationResult({ actual: cold, expected: warm });
     expect(batches).toEqual([expectedTokens]);
     expect(await sequencePosition()).toBe(expectedTokens.length - 1);
     expect(warmLogits).toHaveLength(259);
@@ -1261,7 +1281,7 @@ user:Q ;assistant: R
     clear.mockClear();
     debug.mockClear();
     const repeated = await generate({ request: restoredRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(repeated).toEqual(first);
+    expectSameGenerationResult({ actual: repeated, expected: first });
     expect(decode).not.toHaveBeenCalled();
     expect(clear).not.toHaveBeenCalled();
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
@@ -1301,7 +1321,7 @@ user:Q ;assistant: R
     await prepareSession({ request: extension, signal: undefined, onProgress: () => {} });
     batches.length = 0;
     const cold = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(cold).toEqual(warm);
+    expectSameGenerationResult({ actual: cold, expected: warm });
     expect(batches.flat()).toEqual([...expectedTokens, ...suffix, 68, 68, 68, 68]);
     expect(await sequencePosition()).toBe(warmPosition);
   }, 30000);
@@ -1324,7 +1344,7 @@ user:Q ;assistant: R
       },
     };
     const repeated = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(repeated).toEqual(first);
+    expectSameGenerationResult({ actual: repeated, expected: first });
     expect(decode).not.toHaveBeenCalled();
     expect(clear).not.toHaveBeenCalled();
     expect(await sequencePosition()).toBe(frontier);
@@ -1858,10 +1878,26 @@ describe('structured delivery from the real CPU Wasm loop', () => {
         events.push(event);
       },
     });
-    expect(result).toEqual({ content: 'Answer  ', reasoningContent: 'Reason', finishReason: 'stop', toolCalls: [] });
+    const { generationMetrics, ...output } = result;
+    expect(output).toEqual({ content: 'Answer  ', reasoningContent: 'Reason', finishReason: 'stop', toolCalls: [] });
+    // Count native reasoning and visible tokens, excluding the final EOG token.
+    // Wall time varies, but the reported rate must match its measured interval.
+    expect(generationMetrics).toEqual({
+      nOutputTokens: generated.length,
+      speed: {
+        unit: 'tokens',
+        measurement: 'worker_sample_interval',
+        perSecond: expect.any(Number),
+        interval: { nUnits: generated.length - 1, durationMs: expect.any(Number) },
+      },
+    });
+    const speed = generationMetrics!.speed;
+    expect(Number.isFinite(speed.perSecond)).toBe(true);
+    expect(speed.interval!.durationMs).toBeGreaterThan(0);
+    expect(speed.perSecond).toBeCloseTo(speed.interval!.nUnits / speed.interval!.durationMs * 1000, 8);
     expect(events.filter(e => e.type === 'reasoning').map(e => e.text).join('')).toBe('Reason');
     expect(events.filter(e => e.type === 'text').map(e => e.text).join('')).toBe('Answer  ');
-    expect(events.every(e => e.type === 'reasoning' || e.type === 'text')).toBe(true);
+    expect(events.every(e => e.type === 'reasoning' || e.type === 'text' || e.type === 'generation_metrics')).toBe(true);
   }, 30000);
 });
 
@@ -1990,7 +2026,7 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
     batches.length = 0;
     const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(cold).toEqual(warm);
+    expectSameGenerationResult({ actual: cold, expected: warm });
     expect(batches.flat()).toEqual(expectedTokens);
     expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
@@ -2017,7 +2053,7 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     };
     for (let index = 0; index < 3; index++) {
       const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(retry).toEqual(initial);
+      expectSameGenerationResult({ actual: retry, expected: initial });
     }
     expect(restore).toHaveBeenCalledTimes(3);
     expect(capture).not.toHaveBeenCalled();
@@ -2027,7 +2063,7 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const warmPosition = await sequencePosition();
     await releaseSession({ releaseRuntime: false });
     const cold = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(cold).toEqual(initial);
+    expectSameGenerationResult({ actual: cold, expected: initial });
     expect(await sequencePosition()).toBe(warmPosition);
     expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
@@ -2063,7 +2099,7 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
     await releaseSession({ releaseRuntime: false });
     const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(cold).toEqual(warm);
+    expectSameGenerationResult({ actual: cold, expected: warm });
     expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
 
@@ -2276,7 +2312,7 @@ describe('bounded partial-output parsing in the native generation loop', () => {
         }
       },
     });
-    expect(perToken).toEqual(result);
+    expectSameGenerationResult({ actual: perToken, expected: result });
     expect(reference).toHaveLength(33);
     expect(await sequencePosition()).toBe(position);
     const referenceSession = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
@@ -2552,7 +2588,7 @@ describe('final-only prefill outputs with real native decoding', () => {
     const observed = observeOutputs({ core: session.core });
     const result = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-    expect(result).toEqual(before);
+    expectSameGenerationResult({ actual: result, expected: before });
     expect(await snapshot({ session })).toEqual(expected);
     expect(observed.selections.map(value => value.count)).toEqual(beforeDecode.selections.map(value => value.count));
     expect(report.prefillDecodedTokens).toBe(beforeReport.prefillDecodedTokens);
@@ -2613,7 +2649,7 @@ describe('final-only prefill outputs with real native decoding', () => {
     observed.spy.mockRestore();
     await releaseSession({ releaseRuntime: false });
     const next = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
-    expect(await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} })).toEqual(result);
+    expectSameGenerationResult({ actual: await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} }), expected: result });
     expect(await snapshot({ session: next })).toEqual(expected);
   }, 30000);
 
@@ -2674,7 +2710,7 @@ describe('final-only prefill outputs with real native decoding', () => {
     await releaseSession({ releaseRuntime: false });
     const coldSession = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
     const cold = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
-    expect(warm).toEqual(cold);
+    expectSameGenerationResult({ actual: warm, expected: cold });
     expect(recovered).toEqual(await snapshot({ session: coldSession }));
   }, 30000);
 
@@ -2763,7 +2799,7 @@ describe('bounded task yields through the native generation loop', () => {
     referenceMode = 'per-token';
     const reference = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     const other = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
-    expect(reference).toEqual(actual);
+    expectSameGenerationResult({ actual: reference, expected: actual });
     expect({ tokens: other.cache.tokens, position: await sequencePosition(), logits: await readNativeLogits() }).toEqual(state);
     const previous = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
     expect(previous.generationYield).toMatchObject({ mode: 'per-token', checks: 32, requestedYields: 32, completedYields: 32, coalescedYields: 0 });
@@ -2791,9 +2827,9 @@ describe('bounded task yields through the native generation loop', () => {
     const expected = { tokens: session.cache.tokens.slice(), position: await sequencePosition(), logits: await readNativeLogits() };
     await releaseSession({ releaseRuntime: false });
     referenceMode = 'per-token';
-    expect(await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} })).toEqual(first);
+    expectSameGenerationResult({ actual: await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} }), expected: first });
     expect(await readNativeLogits()).toEqual(firstLogits);
-    expect(await generate({ request: next, signal: undefined, onProgress: () => {}, onEvent: () => {} })).toEqual(second);
+    expectSameGenerationResult({ actual: await generate({ request: next, signal: undefined, onProgress: () => {}, onEvent: () => {} }), expected: second });
     const reference = await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
     expect({ tokens: reference.cache.tokens, position: await sequencePosition(), logits: await readNativeLogits() }).toEqual(expected);
   }, 30000);
@@ -3062,9 +3098,9 @@ describe('verified initial-memory reset elision with the supplied native runtime
       const actual = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(clear).not.toHaveBeenCalled();
       expect(optimizedSession.cache.initialMemoryState).toBe('unknown');
-      expect(actual).toEqual(reference);
+      expectSameGenerationResult({ actual: actual, expected: reference });
       expect(await state({ session: optimizedSession })).toEqual(expectedState);
-      expect(await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(referenceNext);
+      expectSameGenerationResult({ actual: await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} }), expected: referenceNext });
       expect(await state({ session: optimizedSession })).toEqual(expectedNextState);
     }, 30000,
   );
@@ -3220,9 +3256,9 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       await releaseSession({ releaseRuntime: false });
       mode = 'overlap';
       const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
-      expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(reference);
+      expectSameGenerationResult({ actual: await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} }), expected: reference });
       expect(await state({ session })).toEqual(expected);
-      expect(await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(referenceNext);
+      expectSameGenerationResult({ actual: await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} }), expected: referenceNext });
       expect(await state({ session })).toEqual(expectedNext);
     }, 30000,
   );
@@ -3485,12 +3521,12 @@ describe('text generation without eager companion allocation', () => {
     const actualRequest = { ...req, resolvedModel: capturedModel({ modelId: req.modelId }) };
     const actualNextRequest = { ...next, resolvedModel: actualRequest.resolvedModel };
     const actual = await generate({ request: actualRequest, signal: undefined, onProgress: () => {}, onEvent: () => {} });
-    expect(actual).toEqual(reference);
+    expectSameGenerationResult({ actual: actual, expected: reference });
     expect(await readNativeLogits()).toEqual(referenceLogits);
     expect(await sequencePosition()).toBe(referencePosition);
     expect(diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance?.sessionPreparation).toEqual({ projector: 'deferred', releasedTextContext: false });
     const actualNext = await generate({ request: actualNextRequest, signal: undefined, onProgress: () => {}, onEvent: () => {} });
-    expect(actualNext).toEqual(referenceNext);
+    expectSameGenerationResult({ actual: actualNext, expected: referenceNext });
     expect(await readNativeLogits()).toEqual(referenceNextLogits);
     expect(host.openCompanion).not.toHaveBeenCalled();
     expect(JSON.stringify(log.mock.calls)).not.toContain('companion deferral fixture');
@@ -3546,10 +3582,10 @@ describe('bounded native model-loading reads', () => {
     };
     const direct = await run({ mode: 'direct' });
     const cached = await run({ mode: 'read-ahead' });
-    expect(cached.output).toEqual(direct.output);
+    expectSameGenerationResult({ actual: cached.output, expected: direct.output });
     expect(cached.logits).toEqual(direct.logits);
     expect(cached.position).toBe(direct.position);
-    expect(cached.continuation).toEqual(direct.continuation);
+    expectSameGenerationResult({ actual: cached.continuation, expected: direct.continuation });
     expect(cached.reads.sourceCalls).toBeLessThan(direct.reads.sourceCalls);
     expect(cached.reads.hits).toBeGreaterThan(0);
     expect(cached.reads.peakBufferBytes).toBe(65536);
@@ -3703,7 +3739,7 @@ describe('measurement contracts with supplied native Wasm', () => {
     const referenceLogits = await readNativeLogits();
     const modelLoads = host.modelLoads;
     const first = await runMeasured({ input: req, sequence: 'fresh' });
-    expect(first.output).toEqual(reference);
+    expectSameGenerationResult({ actual: first.output, expected: reference });
     expect(await readNativeLogits()).toEqual(referenceLogits);
     expect(first.metrics.reusedTokens).toBe(0);
     // Investigation supplies the existing clocks even with debug off. Serial
@@ -3732,7 +3768,7 @@ describe('measurement contracts with supplied native Wasm', () => {
     expect(first.metrics.nonEogTokens).toBeLessThanOrEqual(8);
     expect(first.metrics.memoryReset?.requestedClears).toBe(1);
     const second = await runMeasured({ input: req, sequence: 'fresh' });
-    expect(second.output).toEqual(first.output);
+    expectSameGenerationResult({ actual: second.output, expected: first.output });
     expect(await readNativeLogits()).toEqual(referenceLogits);
     expect(second.metrics.reusedTokens).toBe(0);
     expect(host.modelLoads).toBe(modelLoads);
@@ -3746,7 +3782,7 @@ describe('measurement contracts with supplied native Wasm', () => {
     expect(continued.metrics.reusedTokens).toBeGreaterThan(0);
     const continuedLogits = await readNativeLogits();
     const full = await runMeasured({ input: followup, sequence: 'fresh' });
-    expect(full.output).toEqual(continued.output);
+    expectSameGenerationResult({ actual: full.output, expected: continued.output });
     const fullLogits = await readNativeLogits();
     expect(fullLogits).toHaveLength(continuedLogits.length);
     for (const [index, value] of fullLogits.entries()) {
@@ -3770,7 +3806,7 @@ describe('measurement contracts with supplied native Wasm', () => {
       onProgress: () => {},
       onSummary: ({ diagnostic }) => reports.push(diagnostic),
     });
-    expect(measured).toEqual(ordinary);
+    expectSameGenerationResult({ actual: measured, expected: ordinary });
     expect(factory).toHaveBeenCalledOnce();
     const checkpoint = diagnosticSchema.parse(reports[0]).performance?.checkpoint;
     expect(checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 0, retainedRestoredCaptures: 0 });
@@ -3833,7 +3869,7 @@ describe('isolated operation diagnostics with real native evaluation', () => {
     expect(diagnosticSchema.parse(reports[0])).toMatchObject({ stage: 'session', failureKind: 'type-error', performance: { outcome: 'failed' } });
     expect(JSON.stringify(reports)).not.toContain('private native detail');
     reader.mockRestore();
-    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
+    expectSameGenerationResult({ actual: await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} }), expected: ordinary });
   }, 30000);
 
   it.each(['attention', 'recurrent'] as const)('collects bounded %s operation completion observations and removes the callback before ordinary inference', async kind => {
@@ -3856,7 +3892,7 @@ describe('isolated operation diagnostics with real native evaluation', () => {
         reports.push(diagnostic);
       },
     });
-    expect(diagnosed).toEqual(ordinary);
+    expectSameGenerationResult({ actual: diagnosed, expected: ordinary });
     expect(await readNativeLogits()).toEqual(ordinaryLogits);
     const report = diagnosticSchema.parse(reports[0]);
     expect(report.performance?.nativeGraphCounters).toMatchObject({ method: 'llama-perf-context', errors: 0 });
@@ -3903,7 +3939,7 @@ describe('isolated operation diagnostics with real native evaluation', () => {
     expect(readerFactory).toHaveBeenCalledOnce();
     expect(host.reads).toBe(reads);
     expect(diagnosticSchema.parse(reports[1]).performance?.backendCensus).toBeUndefined();
-    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
+    expectSameGenerationResult({ actual: await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} }), expected: ordinary });
     expect(readerFactory).toHaveBeenCalledOnce();
   }, 30000);
 
@@ -3917,7 +3953,7 @@ describe('isolated operation diagnostics with real native evaluation', () => {
     const read = vi.spyOn(core.api, 'llama_perf_context');
     const reset = vi.spyOn(core.api, 'llama_perf_context_reset');
     const reports: unknown[] = [];
-    expect(await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, signal: undefined, onEvent: () => {}, onProgress: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) })).toEqual(ordinary);
+    expectSameGenerationResult({ actual: await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, signal: undefined, onEvent: () => {}, onProgress: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) }), expected: ordinary });
     expect(factory).toHaveBeenCalledOnce();
     expect(read).toHaveBeenCalledTimes(2);
     expect(reset).not.toHaveBeenCalled();
@@ -3927,10 +3963,10 @@ describe('isolated operation diagnostics with real native evaluation', () => {
       before: { n_reused: expect.any(Number) },
       after: { n_reused: expect.any(Number) },
     });
-    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
+    expectSameGenerationResult({ actual: await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} }), expected: ordinary });
     expect(read).toHaveBeenCalledTimes(2);
     read.mockRejectedValueOnce(new Error('optional native read failure'));
-    expect(await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, signal: undefined, onEvent: () => {}, onProgress: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) })).toEqual(ordinary);
+    expectSameGenerationResult({ actual: await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, signal: undefined, onEvent: () => {}, onProgress: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) }), expected: ordinary });
     expect(diagnosticSchema.parse(reports[1]).performance?.nativeGraphCounters).toMatchObject({ errors: 1, after: { n_reused: expect.any(Number) } });
     expect(diagnosticSchema.parse(reports[1]).performance?.nativeGraphCounters?.before).toBeUndefined();
   }, 30000);
