@@ -46,6 +46,9 @@ import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
 import { createPWABuild } from './build/pwa';
 import { readAppSourceForConfig } from './build/app-source';
+import { READ_ENV_VITEST } from './build/node-env';
+import { createAppSourceGitEnvironment } from './build/app-source-environment';
+import { createNodeEnvBoundaryPlugin } from './build/node-env-boundary';
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
@@ -222,9 +225,9 @@ export default defineConfig(({ mode, command }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
       __APP_SOURCE__: JSON.stringify(readAppSourceForConfig({
         mode,
-        executionContext: process.env.VITEST === 'true' ? 'vitest' : 'vite',
+        executionContext: READ_ENV_VITEST() === 'true' ? 'vitest' : 'vite',
         rootDir: __dirname,
-        environment: process.env,
+        environment: createAppSourceGitEnvironment(),
       })),
     },
     resolve: {
@@ -255,11 +258,12 @@ export default defineConfig(({ mode, command }) => {
     ...transformersJsFixes,
     worker: {
       ...transformersJsFixes.worker,
-      plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin()]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
+      plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin(), createNodeEnvBoundaryPlugin({ rootDir: __dirname })]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
     },
     plugins: [
       mode !== 'test' && createDocsDevBridge(),
       (mode !== 'test' || command === 'build') && createTestOnlyBoundaryPlugin(),
+      (mode !== 'test' || command === 'build') && createNodeEnvBoundaryPlugin({ rootDir: __dirname }),
       imageBuild.plugin,
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,

@@ -1,5 +1,6 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build entry is also checked without the app alias.
 import type { NativeLicenseSource } from '../../01-models/native-license-build-source';
+import { READ_ENV_NAIDAN_STABLE_DIFFUSION_CORE_DIR } from '../../../build/node-env';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -213,7 +214,7 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
     }
   })();
   let cached: ReturnType<typeof readImageArtifacts> | undefined;
-  const load = () => cached ??= readImageArtifacts({ rootDir, mode, artifactDir: process.env.NAIDAN_STABLE_DIFFUSION_CORE_DIR });
+  const load = () => cached ??= readImageArtifacts({ rootDir, mode, artifactDir: READ_ENV_NAIDAN_STABLE_DIFFUSION_CORE_DIR() });
   const plugin: Plugin = {
     name: 'naidan-stable-diffusion-cpp-browser',
     buildStart() {

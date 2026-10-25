@@ -1,6 +1,5 @@
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
-import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'vite';
 import type { ViteDevServer } from 'vite';
@@ -155,18 +154,9 @@ onMounted(() => {});`);
   });
 
   it('isolates a broken page and language, then recovers in the same SSR server', async () => {
-    const repository = process.cwd();
-    const fixture = await mkdtemp(path.join(os.tmpdir(), 'docs-registry-'));
-    await using _fixture = {
-      async [Symbol.asyncDispose]() {
-        await rm(fixture, { recursive: true, force: true });
-      },
-    };
-    await cp(path.join(repository, 'docs'), path.join(fixture, 'docs'), { recursive: true });
-    await cp(path.join(repository, 'tsconfig.node.json'), path.join(fixture, 'tsconfig.node.json'));
-    await symlink(path.join(repository, 'node_modules'), path.join(fixture, 'node_modules'), 'dir');
+    await using fixture = await createSiteFixture();
 
-    const pageFile = path.join(fixture, 'docs/pages/tool-browser-shell/index.vue');
+    const pageFile = path.join(fixture.docs, 'pages/tool-browser-shell/index.vue');
     const pageSource = await readFile(pageFile, 'utf8');
     const brokenPage = pageSource.replace('<script setup lang="ts">', `\
 <script setup lang="ts">
@@ -174,7 +164,7 @@ const broken = ;`);
     expect(brokenPage).not.toBe(pageSource);
     await writeFile(pageFile, brokenPage);
 
-    const parent = await createServer({ configFile: path.join(fixture, 'docs/vite.config.ts'), server: { middlewareMode: true, hmr: false, ws: false }, logLevel: 'silent' });
+    const parent = await createServer({ configFile: path.join(fixture.docs, 'vite.config.ts'), server: { middlewareMode: true, hmr: false, ws: false }, logLevel: 'silent' });
     await using _parent = {
       async [Symbol.asyncDispose]() {
         await parent.close();
@@ -185,7 +175,7 @@ const broken = ;`);
     };
     // The request plugin is under test; no HTTP or HMR socket is needed.
     const parentWithoutListener = { httpServer: undefined } as unknown as ViteDevServer;
-    const server = await factory.createDocsDevServer({ root: path.join(fixture, 'docs'), parentServer: parentWithoutListener });
+    const server = await factory.createDocsDevServer({ root: fixture.docs, parentServer: parentWithoutListener });
     await using _server = {
       async [Symbol.asyncDispose]() {
         await server.close();
@@ -201,7 +191,7 @@ const broken = ;`);
       expect((await renderer.renderPage({ locale: 'en', page: 'tool-browser-shell' })).body).toContain('<h1');
     }, { timeout: 5000, interval: 100 });
 
-    const japaneseFile = path.join(fixture, 'docs/pages/tool-browser-shell/messages/ja.tsx');
+    const japaneseFile = path.join(fixture.docs, 'pages/tool-browser-shell/messages/ja.tsx');
     const japaneseSource = await readFile(japaneseFile, 'utf8');
     await writeFile(japaneseFile, 'export const messages = { broken: ; };');
     server.watcher.emit('change', japaneseFile);

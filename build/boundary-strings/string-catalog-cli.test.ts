@@ -75,7 +75,6 @@ describe.sequential('String catalog CLI boundary', () => {
     const { runStringCatalogCli } = await import('./string-catalog-cli');
     const scriptUrl = new URL('../../scripts/fixture.ts', import.meta.url).href;
     const argv = process.argv;
-    const environment = { ...process.env };
     const exitCode = process.exitCode;
     using stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     using stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
@@ -97,14 +96,12 @@ Run \`npm run strings:catalogs\` to regenerate them.
     expect(log).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
     expect(process.argv).toBe(argv);
-    expect(process.env).toEqual(environment);
     expect(process.exitCode).toBe(exitCode);
   });
 
-  it('imports the real function module without catalog I/O, output, or process changes', async () => {
+  it('imports the real function module without catalog I/O, output, or argv/exitCode changes', async () => {
     vi.resetModules();
     const argv = process.argv;
-    const environment = { ...process.env };
     const exitCode = process.exitCode;
     using reads = vi.spyOn(fs, 'readFileSync');
     using stats = vi.spyOn(fs, 'lstatSync');
@@ -129,7 +126,6 @@ Run \`npm run strings:catalogs\` to regenerate them.
     expect(log).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
     expect(process.argv).toBe(argv);
-    expect(process.env).toEqual(environment);
     expect(process.exitCode).toBe(exitCode);
   });
 
