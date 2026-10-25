@@ -1,3 +1,4 @@
+import { generationMetricsState } from '@/composables/chat/global/generation-metrics-state';
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { reactive, toRaw } from 'vue';
 import { generateId } from '@/01-models/id';
@@ -233,6 +234,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       liveChatRegistry.delete(id);
       deleteChatTmpDirectory({ chatId: id });
       await storageService.deleteChat({ id });
+      generationMetricsState.clearChat({ chatId: id });
     };
 
     const toastId = (injectAddToast ?? addToast)({
@@ -315,6 +317,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
     await Promise.all(chats.map(async ({ id }) => {
       await storageService.deleteChat({ id });
+      generationMetricsState.clearChat({ chatId: id });
     }));
     await Promise.all(chatGroups.map(async ({ id }) => {
       await storageService.deleteChatGroup({ id });

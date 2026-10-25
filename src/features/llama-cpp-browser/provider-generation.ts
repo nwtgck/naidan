@@ -1,3 +1,4 @@
+import { reportGenerationMetrics } from '@/01-models/generation-metrics';
 import { UnsupportedReasoningError } from '@/01-models/lm-errors';
 import { customAlphabet } from 'nanoid';
 import type { ChatGenerationItem, LmProvider } from '@/01-models/lm';
@@ -15,7 +16,7 @@ export function createLlamaCppGeneration({ request, generate }: {
   request: Parameters<LmProvider['chat']>[0],
   generate: LlamaCppBrowserService['generate'],
 }): AsyncIterable<ChatGenerationItem> {
-  const { messages, parameters, tools, model, readBinaryObject, debug, signal, ...unhandled } = request;
+  const { messages, parameters, tools, model, readBinaryObject, debug, signal, onGenerationMetrics, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
   const snapshot = snapshotChatRequest({ messages, parameters, tools });
   return createChatGenerationStream({
@@ -36,6 +37,11 @@ export function createLlamaCppGeneration({ request, generate }: {
           onEvent: async ({ event }) => {
             const value = generationEventSchema.parse(event);
             switch (value.type) {
+            case 'generation_metrics':
+              if (!signal.aborted) {
+                reportGenerationMetrics({ observer: onGenerationMetrics, metrics: value.metrics });
+              }
+              break;
             case 'reasoning':
               switch (phase) {
               case 'reasoning': break;
@@ -107,9 +113,10 @@ export function createLlamaCppGeneration({ request, generate }: {
         if (signal.aborted) {
           return { type: 'interrupted', reason: 'aborted' };
         }
+        const metrics = result.generationMetrics === undefined ? {} : { generationMetrics: result.generationMetrics };
         switch (result.finishReason) {
-        case 'length': return { type: 'interrupted', reason: 'limit' };
-        case 'stop_sequence': return { type: 'interrupted', reason: 'stop_sequence' };
+        case 'length': return { type: 'interrupted', reason: 'limit', ...metrics };
+        case 'stop_sequence': return { type: 'interrupted', reason: 'stop_sequence', ...metrics };
         case 'stop':
           if (reserved !== result.toolCalls.length || completed.size !== reserved || result.toolCalls.some((call, index) => completed.get(index) !== JSON.stringify(call))) {
             throw new Error('Native result does not match completed calls.');
@@ -119,7 +126,7 @@ export function createLlamaCppGeneration({ request, generate }: {
           if (!replayable) {
             throw new LlamaCppBrowserError({ code: 'unsupported-input' });
           }
-          return { type: 'finished', next: result.toolCalls.length ? 'tool_results' : 'user' };
+          return { type: 'finished', next: result.toolCalls.length ? 'tool_results' : 'user', ...metrics };
         default: {
           const exhaustive: never = result.finishReason;
           throw new Error(`Unknown finish reason: ${exhaustive}`);
@@ -162,11 +169,11 @@ export function createScopedGeneration({ scope }: { scope: LlamaCppGenerationSco
     }
     }
   }
-  const chat: LmProvider['chat'] = ({ messages, model, parameters, tools, readBinaryObject, debug, signal }) => {
+  const chat: LmProvider['chat'] = ({ messages, model, parameters, tools, readBinaryObject, debug, signal, onGenerationMetrics }) => {
     assertOpen();
     const local = new AbortController();
     // Capture before the returned iterable is consumed or waits for the native lane.
-    const items = createLlamaCppGeneration({ request: { messages, model, parameters, tools, readBinaryObject, debug, signal: local.signal }, generate: scope.generate });
+    const items = createLlamaCppGeneration({ request: { messages, model, parameters, tools, readBinaryObject, debug, signal: local.signal, onGenerationMetrics }, generate: scope.generate });
     let claimed = false;
     return {
       [Symbol.asyncIterator](): AsyncIterator<ChatGenerationItem> {

@@ -1,3 +1,4 @@
+import { parseGenerationMetrics, type GenerationMetrics } from '@/01-models/generation-metrics';
 import { z } from 'zod';
 import type { LmProvider, ChatGenerationResult, ToolCallDraft } from '@/01-models/lm';
 import type { AssistantMessageNode, ChatMessage, LmParameters, ToolMessageNode } from '@/01-models/types';
@@ -10,8 +11,13 @@ import { zodToJsonSchema } from '@/utils/lm-tools';
 import { cloneLmParameters } from '@/utils/lm-parameters';
 import { copyChatMessage } from '@/01-models/chat-message';
 
+export type ChatGenerationTelemetryEvent =
+  | { type: 'started', messageId: MessageId }
+  | { type: 'sample', messageId: MessageId, metrics: GenerationMetrics }
+  | { type: 'finished', messageId: MessageId, result: ChatGenerationResult | undefined };
+
 /** Coordinates generation and tools against the caller's single owned history. */
-export async function generateChatTurn({ provider, debug, model, parameters, tools, readBinaryObject, abortController, approvalContext, createAssistantMessage, createToolMessage, buildMessages, onChange, onToolEvent, onToolCallDraftsChange, persistToolContent, describeError }: {
+export async function generateChatTurn({ provider, debug, model, parameters, tools, readBinaryObject, abortController, approvalContext, createAssistantMessage, createToolMessage, buildMessages, onChange, onToolEvent, onToolCallDraftsChange, onGenerationTelemetry, persistToolContent, describeError }: {
   provider: LmProvider,
   debug: Parameters<LmProvider['chat']>[0]['debug'],
   model: string,
@@ -27,8 +33,15 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
   onToolCallDraftsChange: (({ messageId, drafts }: { messageId: MessageId, drafts: readonly ToolCallDraft[] }) => void) | undefined,
   onToolEvent: ({ toolCallId, event }: { toolCallId: ToolCallId, event: ToolExecutionEvent }) => void | Promise<void>,
   persistToolContent: ({ toolCallId, type, text }: { toolCallId: ToolCallId, type: 'result' | 'error', text: string }) => Promise<TextOrBinaryObject>,
+  onGenerationTelemetry?: ({ event }: { event: ChatGenerationTelemetryEvent }) => void,
   describeError: ({ error }: { error: Error }) => string,
 }): Promise<ChatGenerationResult> {
+  function notify({ event }: { event: ChatGenerationTelemetryEvent }): void {
+    try {
+      // The callback is synchronous by contract; contain an accidental async rejection too.
+      void Promise.resolve(onGenerationTelemetry?.({ event })).catch(() => {});
+    } catch { /* Telemetry is never part of the generation transaction. */ }
+  }
   // Declaration values and execution references belong to this turn, including
   // time spent waiting for a stateful Provider's runtime lane.
   const acceptedParameters = cloneLmParameters({ lmParameters: parameters });
@@ -52,13 +65,40 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
       if (signal.aborted) {
         return { type: 'interrupted', reason: 'aborted' };
       }
-      const result = await consumeChatGeneration({
-        node: assistant,
-        items: chat({ messages, debug, model, parameters: acceptedParameters, tools: definitions.length ? definitions : undefined, readBinaryObject, signal }),
-        abortController: controller,
-        onChange,
-        onToolCallDraftsChange: onToolCallDraftsChange === undefined ? undefined : ({ drafts }) => onToolCallDraftsChange({ messageId: assistant.id, drafts }),
-      });
+      // Each closure belongs to this call, never the mutable assistant used by the tool loop.
+      const assistantForCall = assistant;
+      let acceptingMetrics = true;
+      let result: ChatGenerationResult | undefined;
+      notify({ event: { type: 'started', messageId: assistantForCall.id } });
+      try {
+        result = await consumeChatGeneration({
+          node: assistantForCall,
+          items: chat({
+            messages,
+            debug,
+            model,
+            parameters: acceptedParameters,
+            tools: definitions.length ? definitions : undefined,
+            readBinaryObject,
+            signal,
+            onGenerationMetrics: onGenerationTelemetry === undefined ? undefined : ({ metrics }) => {
+              if (!acceptingMetrics || signal.aborted) {
+                return;
+              }
+              const snapshot = parseGenerationMetrics({ value: metrics });
+              if (snapshot !== undefined) {
+                notify({ event: { type: 'sample', messageId: assistantForCall.id, metrics: snapshot } });
+              }
+            },
+          }),
+          abortController: controller,
+          onChange,
+          onToolCallDraftsChange: onToolCallDraftsChange === undefined ? undefined : ({ drafts }) => onToolCallDraftsChange({ messageId: assistantForCall.id, drafts }),
+        });
+      } finally {
+        acceptingMetrics = false;
+        notify({ event: { type: 'finished', messageId: assistantForCall.id, result } });
+      }
       switch (result.type) {
       case 'error':
         // This display text retains the language selected at recording time.

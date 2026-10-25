@@ -21,6 +21,8 @@ export function snapshotChatRequest({ messages, model, parameters, tools, readBi
     readBinaryObject,
     debug,
     signal,
+    // This provider deliberately does not collect generation metrics.
+    onGenerationMetrics: undefined,
   });
 }
 
@@ -31,7 +33,7 @@ export async function generateScopedMessage({ scope, request, signal, onEvent, c
   onEvent: InferenceGenerationCallback,
   continuationOwner: string,
 }): Promise<void> {
-  const { messages, model, parameters, tools, readBinaryObject, debug: _debug, signal: _requestSignal, ...unhandled } = request;
+  const { messages, model, parameters, tools, readBinaryObject, debug: _debug, signal: _requestSignal, onGenerationMetrics: _onGenerationMetrics, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
   scope.assertActive();
   signal.throwIfAborted();

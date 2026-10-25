@@ -674,6 +674,18 @@ import { FeatureFlagsSettings__tool_persistence_disabled_details } from '@/strin
 import { FeatureFlagsSettings__tool_persistence_enabled_details } from '@/strings/messages/FeatureFlagsSettings__tool_persistence_enabled_details/zh-Hans';
 import { FeatureFlagsSettings__use_fake_lm_endpoint } from '@/strings/messages/FeatureFlagsSettings__use_fake_lm_endpoint/zh-Hans';
 import { FeatureFlagsSettings__uses_bundled_fake_lm } from '@/strings/messages/FeatureFlagsSettings__uses_bundled_fake_lm/zh-Hans';
+import { GenerationSpeed__generation_details } from '@/strings/messages/GenerationSpeed__generation_details/zh-Hans';
+import { GenerationSpeed__generation_number } from '@/strings/messages/GenerationSpeed__generation_number/zh-Hans';
+import { GenerationSpeed__input_tokens } from '@/strings/messages/GenerationSpeed__input_tokens/zh-Hans';
+import { GenerationSpeed__measured_units } from '@/strings/messages/GenerationSpeed__measured_units/zh-Hans';
+import { GenerationSpeed__measurement_description } from '@/strings/messages/GenerationSpeed__measurement_description/zh-Hans';
+import { GenerationSpeed__measurement_interval } from '@/strings/messages/GenerationSpeed__measurement_interval/zh-Hans';
+import { GenerationSpeed__not_measured } from '@/strings/messages/GenerationSpeed__not_measured/zh-Hans';
+import { GenerationSpeed__output_tokens } from '@/strings/messages/GenerationSpeed__output_tokens/zh-Hans';
+import { GenerationSpeed__rate } from '@/strings/messages/GenerationSpeed__rate/zh-Hans';
+import { GenerationSpeed__scope } from '@/strings/messages/GenerationSpeed__scope/zh-Hans';
+import { GenerationSpeed__seconds } from '@/strings/messages/GenerationSpeed__seconds/zh-Hans';
+import { GenerationSpeed__speed } from '@/strings/messages/GenerationSpeed__speed/zh-Hans';
 import { GlobalSearchModal__all } from '@/strings/messages/GlobalSearchModal__all/zh-Hans';
 import { GlobalSearchModal__alt_branch } from '@/strings/messages/GlobalSearchModal__alt_branch/zh-Hans';
 import { GlobalSearchModal__assistant } from '@/strings/messages/GlobalSearchModal__assistant/zh-Hans';
@@ -3781,6 +3793,18 @@ export const catalog = {
   FeatureFlagsSettings__tool_persistence_enabled_details,
   FeatureFlagsSettings__use_fake_lm_endpoint,
   FeatureFlagsSettings__uses_bundled_fake_lm,
+  GenerationSpeed__generation_details,
+  GenerationSpeed__generation_number,
+  GenerationSpeed__input_tokens,
+  GenerationSpeed__measured_units,
+  GenerationSpeed__measurement_description,
+  GenerationSpeed__measurement_interval,
+  GenerationSpeed__not_measured,
+  GenerationSpeed__output_tokens,
+  GenerationSpeed__rate,
+  GenerationSpeed__scope,
+  GenerationSpeed__seconds,
+  GenerationSpeed__speed,
   GlobalSearchModal__all,
   GlobalSearchModal__alt_branch,
   GlobalSearchModal__assistant,

@@ -1,0 +1,1 @@
+export const GenerationSpeed__rate = ({ value, unit, approximate }: { value: string, unit: 'tokens' | 'characters', approximate: boolean }): string => `${approximate ? '≈' : ''}${value} ${{ tokens: 'tok/s', characters: "chars/s" }[unit]}`;

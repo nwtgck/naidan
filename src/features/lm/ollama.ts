@@ -1,3 +1,5 @@
+import { createMetricsReporter, createReceivedTextMeter } from '@/logic/generation-metrics/measurement';
+import { readOllamaMetrics } from './generation-metrics';
 /**
  * Ollama Service Provider
  *
@@ -185,11 +187,12 @@ export class OllamaProvider implements LmProvider {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
-  chat({ messages, model, parameters, tools, readBinaryObject, signal }: {
+  chat({ messages, model, parameters, tools, readBinaryObject, onGenerationMetrics, signal }: {
     messages: readonly ChatMessage[],
     model: string,
     parameters: LmParameters | undefined,
     tools: Parameters<LmProvider['chat']>[0]['tools'],
+    onGenerationMetrics?: Parameters<LmProvider['chat']>[0]['onGenerationMetrics'],
     readBinaryObject: (({ binaryObjectId, signal }: { binaryObjectId: BinaryObjectId, signal: AbortSignal | undefined }) => Promise<Blob>) | undefined,
     signal: AbortSignal | undefined,
   }): AsyncIterable<ChatGenerationItem> {
@@ -304,6 +307,8 @@ export class OllamaProvider implements LmProvider {
         if (!response.body) {
           throw new Error('No response body');
         }
+        const textMeter = createReceivedTextMeter();
+        const report = createMetricsReporter({ observer: onGenerationMetrics });
         let calls = 0;
         const ids = new Set<string>();
         try {
@@ -311,7 +316,8 @@ export class OllamaProvider implements LmProvider {
             if (!line.trim()) {
               continue;
             }
-            const chunk = OllamaChatChunkSchema.parse(JSON.parse(line));
+            const raw: unknown = JSON.parse(line);
+            const chunk = OllamaChatChunkSchema.parse(raw);
             if (chunk.message === undefined && chunk.done === undefined && chunk.error === undefined) {
               throw new Error('Ollama returned neither generation content nor a completion state.');
             }
@@ -320,6 +326,16 @@ export class OllamaProvider implements LmProvider {
                 throw new UnsupportedReasoningError({ message: chunk.error });
               }
               throw new Error(chunk.error);
+            }
+            textMeter.observe({
+              now: performance.now(),
+              fields: [
+                { key: 'reasoning', text: chunk.message?.thinking ?? '' },
+                { key: 'content', text: chunk.message?.content ?? '' },
+              ],
+            });
+            if (!chunk.done) {
+              report({ metrics: textMeter.snapshot() });
             }
             if (chunk.message?.thinking) {
               await writer.text({ type: 'reasoning', text: chunk.message.thinking });
@@ -350,10 +366,11 @@ export class OllamaProvider implements LmProvider {
               });
             }
             if (chunk.done) {
+              const generationMetrics = readOllamaMetrics({ value: raw }) ?? textMeter.snapshot();
               switch (chunk.done_reason) {
               case undefined:
-              case 'stop': return { type: 'finished', next: calls ? 'tool_results' : 'user' };
-              case 'length': return { type: 'interrupted', reason: 'limit' };
+              case 'stop': return { type: 'finished', next: calls ? 'tool_results' : 'user', ...(generationMetrics === undefined ? {} : { generationMetrics }) };
+              case 'length': return { type: 'interrupted', reason: 'limit', ...(generationMetrics === undefined ? {} : { generationMetrics }) };
               default: return { type: 'interrupted', reason: 'unknown' };
               }
             }

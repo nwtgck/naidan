@@ -1,3 +1,6 @@
+import { createMetricsReporter, createReceivedTextMeter } from '@/logic/generation-metrics/measurement';
+import type { GenerationMetrics } from '@/01-models/generation-metrics';
+import { readOpenAiMetrics } from './generation-metrics';
 /**
  * OpenAI Service Provider
  *
@@ -81,11 +84,12 @@ export class OpenAIProvider implements LmProvider {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
-  chat({ messages, model, parameters, tools, readBinaryObject, signal }: {
+  chat({ messages, model, parameters, tools, readBinaryObject, onGenerationMetrics, signal }: {
     messages: readonly ChatMessage[],
     model: string,
     parameters: LmParameters | undefined,
     tools: Parameters<LmProvider['chat']>[0]['tools'],
+    onGenerationMetrics?: Parameters<LmProvider['chat']>[0]['onGenerationMetrics'],
     readBinaryObject: (({ binaryObjectId, signal }: { binaryObjectId: BinaryObjectId, signal: AbortSignal | undefined }) => Promise<Blob>) | undefined,
     signal: AbortSignal | undefined,
   }): AsyncIterable<ChatGenerationItem> {
@@ -115,6 +119,7 @@ export class OpenAIProvider implements LmProvider {
         if (snapshot.tools?.length) {
           body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
         }
+        const requestStartedAt = performance.now();
         let response: Response;
         try {
           response = await fetcher(url, {
@@ -140,6 +145,33 @@ export class OpenAIProvider implements LmProvider {
           addErrorEvent({ source: 'OpenAIProvider', message, details: { status: response.status, url } });
           throw new Error(message);
         }
+        const textMeter = createReceivedTextMeter();
+        const report = createMetricsReporter({ observer: onGenerationMetrics });
+        // This controller owns only the optional statistics tail, not the generation request.
+        const tailController = new AbortController();
+        const readSignal = AbortSignal.any([signal, tailController.signal]);
+        let tailTimer: ReturnType<typeof setTimeout> | undefined;
+        let terminal: ChatGenerationResult | undefined;
+        let terminalAt = 0;
+        let finalMetrics: GenerationMetrics | undefined;
+        let nTailEvents = 0;
+        let nTailCodeUnits = 0;
+        function finish({ result }: { result: ChatGenerationResult }): ChatGenerationResult {
+          const generationMetrics = finalMetrics ?? textMeter.snapshot();
+          if (generationMetrics === undefined) {
+            return result;
+          }
+          switch (result.type) {
+          case 'finished': return { ...result, generationMetrics };
+          case 'interrupted':
+            return result.reason === 'limit' || result.reason === 'stop_sequence' ? { ...result, generationMetrics } : result;
+          case 'error': return result;
+          default: {
+            const exhaustive: never = result;
+            throw new Error(String(exhaustive));
+          }
+          }
+        }
         const drafts: { key: number, id: string | undefined, name: string, arguments: string }[] = [];
         const currentByIndex = new Map<number, typeof drafts[number]>();
         async function completeCalls(): Promise<void> {
@@ -156,10 +188,39 @@ export class OpenAIProvider implements LmProvider {
           }
         }
         try {
-          for await (const data of readSseData({ response, signal })) {
+          for await (const data of readSseData({ response, signal: readSignal })) {
+            const receivedAt = performance.now();
             if (data === '[DONE]') {
+              if (terminal !== undefined) {
+                return finish({ result: terminal });
+              }
               await completeCalls();
-              return { type: 'finished', next: drafts.length ? 'tool_results' : 'user' };
+              return finish({ result: { type: 'finished', next: drafts.length ? 'tool_results' : 'user' } });
+            }
+            if (terminal !== undefined) {
+              // After semantic completion, never append content or execute another call.
+              nTailCodeUnits += data.length;
+              if (++nTailEvents > 16 || nTailCodeUnits > 256 * 1024) {
+                return finish({ result: terminal });
+              }
+              const raw: unknown = JSON.parse(data);
+              const metadataOnly = z.object({ choices: z.array(z.unknown()).length(0) }).safeParse(raw);
+              if (metadataOnly.success) {
+                const metrics = readOpenAiMetrics({ value: raw, requestDurationMs: terminalAt - requestStartedAt });
+                if (metrics !== undefined) {
+                  finalMetrics = metrics;
+                  const measurement = metrics.speed.measurement;
+                  switch (measurement) {
+                  case 'llama_cpp_predicted': return finish({ result: terminal });
+                  case 'ollama_eval': case 'worker_sample_interval': case 'client_request': case 'received_text': break;
+                  default: {
+                    const exhaustive: never = measurement;
+                    throw new Error(String(exhaustive));
+                  }
+                  }
+                }
+              }
+              continue;
             }
             const raw: unknown = JSON.parse(data);
             if (body.reasoning_effort === 'none' && isReasoningErrorEnvelope({ value: raw, parameter: 'reasoning_effort' })) {
@@ -171,8 +232,13 @@ export class OpenAIProvider implements LmProvider {
             }
             const choice = chunk.choices[0];
             if (!choice) {
+              // Some compatible endpoints send their metadata before [DONE].
+              finalMetrics = readOpenAiMetrics({ value: raw, requestDurationMs: receivedAt - requestStartedAt }) ?? finalMetrics;
               continue;
-            } // Usage-only event.
+            }
+            // A subsequent choice invalidates any earlier metadata-only provisional total.
+            // Only a terminal choice or the metadata immediately preceding [DONE] can seal it.
+            finalMetrics = undefined;
             if (choice.index !== undefined && choice.index !== 0) {
               throw new Error('Unexpected choice index.');
             }
@@ -182,6 +248,17 @@ export class OpenAIProvider implements LmProvider {
                 throw new Error('Conflicting reasoning fields in the same response chunk.');
               }
               const reasoning = delta.reasoning ?? delta.reasoning_content;
+              textMeter.observe({
+                now: receivedAt,
+                fields: [
+                  { key: 'reasoning', text: reasoning ?? '' },
+                  { key: 'content', text: delta.content ?? '' },
+                  ...(delta.tool_calls ?? []).map(piece => ({ key: `tool-${piece.index}`, text: piece.function?.arguments ?? '' })),
+                ],
+              });
+              if (choice.finish_reason === undefined || choice.finish_reason === null) {
+                report({ metrics: readOpenAiMetrics({ value: raw }) ?? textMeter.snapshot() });
+              }
               // Empty deltas are API keep-alives/placeholders, not declared empty parts.
               if (reasoning) {
                 await writer.text({ type: 'reasoning', text: reasoning });
@@ -212,23 +289,44 @@ export class OpenAIProvider implements LmProvider {
               }
             }
             if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
+              terminalAt = receivedAt;
+              finalMetrics = readOpenAiMetrics({ value: raw, requestDurationMs: terminalAt - requestStartedAt }) ?? finalMetrics;
               switch (choice.finish_reason) {
               case 'stop':
               case 'tool_calls':
                 await completeCalls();
-                return { type: 'finished', next: drafts.length ? 'tool_results' : 'user' };
-              case 'length': return { type: 'interrupted', reason: 'limit' };
+                terminal = { type: 'finished', next: drafts.length ? 'tool_results' : 'user' };
+                break;
+              case 'length': terminal = { type: 'interrupted', reason: 'limit' };
+                break;
               default: return { type: 'interrupted', reason: 'unknown' };
               }
+              const finalMeasurement = finalMetrics?.speed.measurement;
+              switch (finalMeasurement) {
+              case 'llama_cpp_predicted': return finish({ result: terminal });
+              case 'ollama_eval': case 'worker_sample_interval': case 'client_request': case 'received_text': case undefined: break;
+              default: {
+                const exhaustive: never = finalMeasurement;
+                throw new Error(String(exhaustive));
+              }
+              }
+              // No include_usage request and no retry: preserve compatibility. A trailing
+              // metadata event is optional, so it must never hold up a completed answer.
+              tailTimer = setTimeout(() => tailController.abort(), 200);
             }
           }
-          // A socket closing by itself is not a model-level completion event.
-          return { type: 'interrupted', reason: 'unknown' } satisfies ChatGenerationResult;
+          // A socket closing before a semantic completion still means interruption.
+          return terminal === undefined ? { type: 'interrupted', reason: 'unknown' } : finish({ result: terminal });
         } catch (error) {
+          if (terminal !== undefined && !signal.aborted) {
+            return finish({ result: terminal });
+          }
           if (!signal.aborted && !isUnsupportedReasoningError({ error })) {
             addErrorEvent({ source: 'OpenAIProvider', message: 'Failed to read or validate the generation stream', details: { error: error instanceof Error ? error : String(error) } });
           }
           throw error;
+        } finally {
+          clearTimeout(tailTimer);
         }
       },
     });

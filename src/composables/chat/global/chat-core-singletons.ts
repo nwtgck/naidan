@@ -1,3 +1,4 @@
+import { generationMetricsState } from './generation-metrics-state';
 import { ref, toRaw, triggerRef } from 'vue';
 import { autoTitleScheduler, observeAutoTitleForeground } from './auto-title-runtime';
 import { type ContextCompactProgress } from '@/logic/context-compact';
@@ -57,7 +58,10 @@ export function getContextCompactProgress({
 }
 
 export const chatDataStore = createChatDataStore({
-  pruneVolatileAssistantErrorsForChat: chatVolatileState.pruneVolatileAssistantErrorsForChat,
+  pruneVolatileAssistantErrorsForChat: ({ chat }) => {
+    chatVolatileState.pruneVolatileAssistantErrorsForChat({ chat });
+    generationMetricsState.prune({ chat });
+  },
   hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
   isTaskRunning,
   onExternalGenerationStarted: ({ chatId }) => {
@@ -70,6 +74,7 @@ export const chatDataStore = createChatDataStore({
     chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
   },
   onMigration: () => {
+    generationMetricsState.clear();
     autoTitleScheduler.reset();
     for (const controller of chatRuntimeStore.activeTitleGenerations.values()) {
       controller.abort();

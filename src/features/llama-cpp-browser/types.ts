@@ -1,3 +1,4 @@
+import { parseGenerationMetrics } from '@/01-models/generation-metrics';
 import { z } from 'zod';
 
 export const chatProfileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm32']);
@@ -97,10 +98,13 @@ export const generationResultSchema = z.object({
   reasoningContent: z.string(),
   toolCalls: z.array(toolCallSchema),
   finishReason: z.enum(['stop', 'length', 'stop_sequence']),
+  generationMetrics: z.unknown().transform(value => parseGenerationMetrics({ value })).optional(),
 }).strict();
 // Draft arguments are native parser snapshots, which may normalize or revise
 // incomplete JSON. Suffix patches keep these previews separate from final calls.
 export const generationEventSchema = z.discriminatedUnion('type', [
+  // Telemetry alone is tolerant; content/call envelopes below remain strict.
+  z.object({ type: z.literal('generation_metrics'), metrics: z.unknown().transform(value => parseGenerationMetrics({ value })).optional() }),
   z.object({ type: z.literal('text'), text: z.string() }).strict(),
   z.object({ type: z.literal('reasoning'), text: z.string() }).strict(),
   z.object({ type: z.literal('tool_call_start'), index: z.number().int().nonnegative() }).strict(),

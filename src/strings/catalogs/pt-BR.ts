@@ -674,6 +674,18 @@ import { FeatureFlagsSettings__tool_persistence_disabled_details } from '@/strin
 import { FeatureFlagsSettings__tool_persistence_enabled_details } from '@/strings/messages/FeatureFlagsSettings__tool_persistence_enabled_details/pt-BR';
 import { FeatureFlagsSettings__use_fake_lm_endpoint } from '@/strings/messages/FeatureFlagsSettings__use_fake_lm_endpoint/pt-BR';
 import { FeatureFlagsSettings__uses_bundled_fake_lm } from '@/strings/messages/FeatureFlagsSettings__uses_bundled_fake_lm/pt-BR';
+import { GenerationSpeed__generation_details } from '@/strings/messages/GenerationSpeed__generation_details/pt-BR';
+import { GenerationSpeed__generation_number } from '@/strings/messages/GenerationSpeed__generation_number/pt-BR';
+import { GenerationSpeed__input_tokens } from '@/strings/messages/GenerationSpeed__input_tokens/pt-BR';
+import { GenerationSpeed__measured_units } from '@/strings/messages/GenerationSpeed__measured_units/pt-BR';
+import { GenerationSpeed__measurement_description } from '@/strings/messages/GenerationSpeed__measurement_description/pt-BR';
+import { GenerationSpeed__measurement_interval } from '@/strings/messages/GenerationSpeed__measurement_interval/pt-BR';
+import { GenerationSpeed__not_measured } from '@/strings/messages/GenerationSpeed__not_measured/pt-BR';
+import { GenerationSpeed__output_tokens } from '@/strings/messages/GenerationSpeed__output_tokens/pt-BR';
+import { GenerationSpeed__rate } from '@/strings/messages/GenerationSpeed__rate/pt-BR';
+import { GenerationSpeed__scope } from '@/strings/messages/GenerationSpeed__scope/pt-BR';
+import { GenerationSpeed__seconds } from '@/strings/messages/GenerationSpeed__seconds/pt-BR';
+import { GenerationSpeed__speed } from '@/strings/messages/GenerationSpeed__speed/pt-BR';
 import { GlobalSearchModal__all } from '@/strings/messages/GlobalSearchModal__all/pt-BR';
 import { GlobalSearchModal__alt_branch } from '@/strings/messages/GlobalSearchModal__alt_branch/pt-BR';
 import { GlobalSearchModal__assistant } from '@/strings/messages/GlobalSearchModal__assistant/pt-BR';
@@ -3781,6 +3793,18 @@ export const catalog = {
   FeatureFlagsSettings__tool_persistence_enabled_details,
   FeatureFlagsSettings__use_fake_lm_endpoint,
   FeatureFlagsSettings__uses_bundled_fake_lm,
+  GenerationSpeed__generation_details,
+  GenerationSpeed__generation_number,
+  GenerationSpeed__input_tokens,
+  GenerationSpeed__measured_units,
+  GenerationSpeed__measurement_description,
+  GenerationSpeed__measurement_interval,
+  GenerationSpeed__not_measured,
+  GenerationSpeed__output_tokens,
+  GenerationSpeed__rate,
+  GenerationSpeed__scope,
+  GenerationSpeed__seconds,
+  GenerationSpeed__speed,
   GlobalSearchModal__all,
   GlobalSearchModal__alt_branch,
   GlobalSearchModal__assistant,
