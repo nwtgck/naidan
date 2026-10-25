@@ -6,12 +6,12 @@ export const MIN_OBSERVED_INTERVAL_MS = 800;
 
 export function createMetricsReporter({ observer, now = () => performance.now() }: { observer: GenerationMetricsObserver | undefined, now?: () => number }) {
   let lastPublished = -Infinity;
-  return ({ metrics }: { metrics: GenerationMetrics | undefined }): void => {
+  return ({ metrics, force = false }: { metrics: GenerationMetrics | undefined, force?: boolean }): void => {
     if (metrics === undefined) {
       return;
     }
     const time = now();
-    if (time - lastPublished < LIVE_SPEED_INTERVAL_MS) {
+    if (!force && time - lastPublished < LIVE_SPEED_INTERVAL_MS) {
       return;
     }
     lastPublished = time;

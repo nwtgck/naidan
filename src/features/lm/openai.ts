@@ -1,3 +1,4 @@
+import { resolveLlamaCppServerTimings } from './llama-cpp-server-timings';
 import { createMetricsReporter, createReceivedTextMeter } from '@/logic/generation-metrics/measurement';
 import type { GenerationMetrics } from '@/01-models/generation-metrics';
 import { readOpenAiMetrics } from './generation-metrics';
@@ -15,7 +16,7 @@ import { isUnsupportedReasoningError, UnsupportedReasoningError } from '@/01-mod
 import { isReasoningErrorEnvelope, isReasoningRejection } from './reasoning-rejection';
 import { z } from 'zod';
 import { toToolCallId, type BinaryObjectId } from '@/01-models/ids';
-import type { LmParameters, ChatMessage } from '@/01-models/types';
+import type { LmParameters, ChatMessage, LlamaCppServerTimingsMode } from '@/01-models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { getDefaultLmFetch, type LmFetch } from '@/features/lm/fetch';
 import type { LmProvider, ChatGenerationItem, ChatGenerationResult, JsonValue } from '@/01-models/lm';
@@ -56,6 +57,7 @@ interface OpenAICompletionRequest {
   model: string,
   messages: ApiChatMessage[],
   stream: boolean,
+  timings_per_token?: true,
   temperature?: number,
   top_p?: number,
   max_completion_tokens?: number,
@@ -78,10 +80,11 @@ export class OpenAIProvider implements LmProvider {
     endpoint: string,
     headers?: [string, string][],
     fetcher: LmFetch,
+    llamaCppServerTimings: LlamaCppServerTimingsMode,
   };
 
-  constructor({ endpoint, headers, fetcher }: { endpoint: string, headers?: [string, string][], fetcher?: LmFetch }) {
-    this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
+  constructor({ endpoint, headers, fetcher, llamaCppServerTimings = 'disabled' }: { endpoint: string, headers?: [string, string][], fetcher?: LmFetch, llamaCppServerTimings?: LlamaCppServerTimingsMode }) {
+    this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch(), llamaCppServerTimings };
   }
 
   chat({ messages, model, parameters, tools, readBinaryObject, onGenerationMetrics, signal }: {
@@ -94,7 +97,7 @@ export class OpenAIProvider implements LmProvider {
     signal: AbortSignal | undefined,
   }): AsyncIterable<ChatGenerationItem> {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
-    const { endpoint, headers, fetcher } = this.config;
+    const { endpoint, headers, fetcher, llamaCppServerTimings } = this.config;
     const requestHeaders = headers?.map(([name, value]): [string, string] => [name, value]);
     return createChatGenerationStream({
       signal,
@@ -119,6 +122,10 @@ export class OpenAIProvider implements LmProvider {
         if (snapshot.tools?.length) {
           body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
         }
+        if (onGenerationMetrics !== undefined && await resolveLlamaCppServerTimings({ mode: llamaCppServerTimings, endpoint, headers: requestHeaders, fetcher, signal })) {
+          body.timings_per_token = true;
+        }
+        signal.throwIfAborted();
         const requestStartedAt = performance.now();
         let response: Response;
         try {
@@ -154,10 +161,20 @@ export class OpenAIProvider implements LmProvider {
         let terminal: ChatGenerationResult | undefined;
         let terminalAt = 0;
         let finalMetrics: GenerationMetrics | undefined;
+        let hasLiveServerMetrics = false;
+        function reportLive({ metrics, receivedText = false }: { metrics: GenerationMetrics | undefined, receivedText?: boolean }): void {
+          if (metrics !== undefined) {
+            const force = !hasLiveServerMetrics;
+            hasLiveServerMetrics = true;
+            report({ metrics, force });
+          } else if (!hasLiveServerMetrics && receivedText) {
+            report({ metrics: textMeter.snapshot() });
+          }
+        }
         let nTailEvents = 0;
         let nTailCodeUnits = 0;
         function finish({ result }: { result: ChatGenerationResult }): ChatGenerationResult {
-          const generationMetrics = finalMetrics ?? textMeter.snapshot();
+          const generationMetrics = finalMetrics ?? (hasLiveServerMetrics ? undefined : textMeter.snapshot());
           if (generationMetrics === undefined) {
             return result;
           }
@@ -233,7 +250,9 @@ export class OpenAIProvider implements LmProvider {
             const choice = chunk.choices[0];
             if (!choice) {
               // Some compatible endpoints send their metadata before [DONE].
-              finalMetrics = readOpenAiMetrics({ value: raw, requestDurationMs: receivedAt - requestStartedAt }) ?? finalMetrics;
+              const liveMetrics = readOpenAiMetrics({ value: raw });
+              reportLive({ metrics: liveMetrics });
+              finalMetrics = liveMetrics ?? readOpenAiMetrics({ value: raw, requestDurationMs: receivedAt - requestStartedAt }) ?? finalMetrics;
               continue;
             }
             // A subsequent choice invalidates any earlier metadata-only provisional total.
@@ -243,22 +262,19 @@ export class OpenAIProvider implements LmProvider {
               throw new Error('Unexpected choice index.');
             }
             const delta = choice.delta;
+            let receivedText = false;
             if (delta) {
               if (delta.reasoning !== undefined && delta.reasoning !== null && delta.reasoning_content !== undefined && delta.reasoning_content !== null && delta.reasoning !== delta.reasoning_content) {
                 throw new Error('Conflicting reasoning fields in the same response chunk.');
               }
               const reasoning = delta.reasoning ?? delta.reasoning_content;
-              textMeter.observe({
-                now: receivedAt,
-                fields: [
-                  { key: 'reasoning', text: reasoning ?? '' },
-                  { key: 'content', text: delta.content ?? '' },
-                  ...(delta.tool_calls ?? []).map(piece => ({ key: `tool-${piece.index}`, text: piece.function?.arguments ?? '' })),
-                ],
-              });
-              if (choice.finish_reason === undefined || choice.finish_reason === null) {
-                report({ metrics: readOpenAiMetrics({ value: raw }) ?? textMeter.snapshot() });
-              }
+              const fields = [
+                { key: 'reasoning', text: reasoning ?? '' },
+                { key: 'content', text: delta.content ?? '' },
+                ...(delta.tool_calls ?? []).map(piece => ({ key: `tool-${piece.index}`, text: piece.function?.arguments ?? '' })),
+              ];
+              receivedText = fields.some(field => field.text.length > 0);
+              textMeter.observe({ now: receivedAt, fields });
               // Empty deltas are API keep-alives/placeholders, not declared empty parts.
               if (reasoning) {
                 await writer.text({ type: 'reasoning', text: reasoning });
@@ -287,6 +303,9 @@ export class OpenAIProvider implements LmProvider {
                   arguments: piece.function?.arguments === undefined ? undefined : { offset: argumentsOffset, text: piece.function.arguments },
                 });
               }
+            }
+            if (choice.finish_reason === undefined || choice.finish_reason === null) {
+              reportLive({ metrics: readOpenAiMetrics({ value: raw }), receivedText });
             }
             if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
               terminalAt = receivedAt;

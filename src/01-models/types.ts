@@ -483,6 +483,8 @@ export const DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS = {
   bf16WeightType: 'f32',
 } satisfies BrowserImageGenerationSettings;
 
+export type LlamaCppServerTimingsMode = 'auto' | 'enabled' | 'disabled';
+
 export interface Settings {
   endpoint: Endpoint,
   /** Default model selection, with the same contract as Chat.modelId. */
@@ -511,10 +513,11 @@ export interface Settings {
     toolConfigs?: ToolConfig[],
     fakeLm?: 'disabled' | 'enabled',
     naidanRpc?: 'disabled' | 'enabled',
-    /** Display preferences only; generation measurements remain in memory. */
+    /** Display and collection preferences only; generation measurements remain in memory. */
     generationSpeed?: {
       status?: 'enabled' | 'disabled',
       inlineStats?: 'on_demand' | 'always',
+      llamaCppServerTimings?: LlamaCppServerTimingsMode,
     },
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
     globalSearch?: {

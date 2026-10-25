@@ -1,5 +1,5 @@
 import type { LmProvider } from '@/01-models/lm';
-import type { Endpoint, EndpointType } from '@/01-models/types';
+import type { Endpoint, EndpointType, LlamaCppServerTimingsMode } from '@/01-models/types';
 import type { FakeLmDebugModeStatus } from '@/features/fake-lm/runtime/fakeLmDebugMode';
 import { createLmFetch } from '@/features/lm/fetchFactory';
 import { createModuleLoader } from '@/utils/module-loader';
@@ -44,8 +44,9 @@ const naidanRpcProviderModuleLoader = createModuleLoader({
   onPrefetchError: () => console.warn('[naidan-rpc] provider-prefetch-failed'),
 });
 
-export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
+export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus, llamaCppServerTimings }: {
   endpoint: Endpoint,
+  llamaCppServerTimings?: LlamaCppServerTimingsMode,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): Promise<LmProvider> {
   switch (endpoint.type) {
@@ -56,6 +57,7 @@ export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
   case 'openai': {
     const { OpenAIProvider } = await openAiProviderModuleLoader.load();
     return new OpenAIProvider({
+      llamaCppServerTimings,
       endpoint: endpoint.url,
       headers: cloneEndpointHttpHeaders({ headers: endpoint.httpHeaders }),
       fetcher: createLmFetch({ endpointUrl: endpoint.url, fakeLmDebugModeStatus }),

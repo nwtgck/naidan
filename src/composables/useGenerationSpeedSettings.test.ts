@@ -33,6 +33,7 @@ describe('generation speed display preferences', () => {
     const api = useGenerationSpeedSettings();
     expect(api.status.value).toBe('enabled');
     expect(api.inlineStats.value).toBe('on_demand');
+    expect(api.llamaCppServerTimings.value).toBe('auto');
     expect(settings.value.experimental).toBeUndefined();
     expect(mocks.update).not.toHaveBeenCalled();
   });
@@ -92,5 +93,16 @@ describe('generation speed display preferences', () => {
     expect(api.status.value).toBe('enabled');
     expect(api.saving.value).toBe(false);
     expect(mocks.addToast).toHaveBeenCalledWith({ message: 'Could not save the display settings. Try again.' });
+  });
+
+  it('shares server timing preferences without resetting display or unrelated settings', async () => {
+    settings.value.experimental = { locale: 'ja', generationSpeed: { status: 'disabled', inlineStats: 'always' } };
+    const panel = useGenerationSpeedSettings();
+    const developer = useGenerationSpeedSettings();
+    await panel.update({ patch: { llamaCppServerTimings: 'enabled' } });
+    expect(developer.llamaCppServerTimings.value).toBe('enabled');
+    await developer.update({ patch: { status: 'enabled' } });
+    expect(panel.llamaCppServerTimings.value).toBe('enabled');
+    expect(settings.value.experimental).toEqual({ locale: 'ja', generationSpeed: { status: 'enabled', inlineStats: 'always', llamaCppServerTimings: 'enabled' } });
   });
 });

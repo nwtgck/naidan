@@ -13,6 +13,7 @@ import {
 } from '@/features/fake-lm';
 import ExperimentalFeatureRow from './ExperimentalFeatureRow.vue';
 import SettingsChoiceControl from './SettingsChoiceControl.vue';
+import GenerationSpeedServerSettings from './GenerationSpeedServerSettings.vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 const { isFeatureEnabled, setFeatureEnabled } = useFeatureFlags();
@@ -422,6 +423,9 @@ defineExpose({
           <span tw-class="ml-12">{{ lazyStrings.GenerationSpeed__always_show_token_count_and_interval() }}</span>
           <SettingsChoiceControl presentation="switch" tone="amber"><input type="checkbox" :checked="generationSpeedInlineStats === 'always'" :disabled="generationSpeedSaving" data-testid="feature-generation-speed-always-show-toggle" @change="updateGenerationSpeedSettings({ patch: { inlineStats: ($event.target as HTMLInputElement).checked ? 'always' : 'on_demand' } })" /></SettingsChoiceControl>
         </label>
+        <div tw-class="border-t border-gray-100 px-4 py-3 dark:border-gray-800 sm:px-5">
+          <GenerationSpeedServerSettings tw-class="sm:ml-12" />
+        </div>
       </div>
       <NaidanRpcFeatureRow />
     </div>

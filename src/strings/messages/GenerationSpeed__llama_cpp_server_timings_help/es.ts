@@ -1,0 +1,1 @@
+export const GenerationSpeed__llama_cpp_server_timings_help = (): string => "Ajuste global aplicado desde la siguiente respuesta si se muestra la velocidad. La detección automática consulta /props; si no está disponible, se usa la medición habitual.";

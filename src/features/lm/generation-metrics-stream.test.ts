@@ -155,3 +155,74 @@ describe('generation telemetry on remote streams', () => {
     expect(await stream.result).toEqual({ type: 'finished', next: 'user' });
   });
 });
+
+describe('OpenAI native timing priority during generation', () => {
+  it.each([
+    { choices: [] },
+    { choices: [{ delta: {} }] },
+    { choices: [{}] },
+  ])('accepts native updates without a text delta: %j', async shape => {
+    const observer = vi.fn();
+    using stream = createMetricsStreamForTest({ observer });
+    stream.send({ value: { ...shape, timings: { predicted_n: 40, predicted_ms: 1000 } } });
+    await flushPromises();
+    expect(observer).toHaveBeenCalledExactlyOnceWith({ metrics: expect.objectContaining({ speed: expect.objectContaining({ unit: 'tokens', perSecond: 40 }) }) });
+    stream.send({ value: { choices: [{ finish_reason: 'stop' }], timings: { predicted_n: 80, predicted_ms: 2000 } } });
+    expect(await stream.result).toMatchObject({ type: 'finished', generationMetrics: { nOutputTokens: 80 } });
+  });
+
+  it('upgrades immediately, never regresses to characters, and does not refresh a missing native sample', async () => {
+    let now = 0;
+    using clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const observer = vi.fn();
+    using stream = createMetricsStreamForTest({ observer });
+    stream.send({ value: { choices: [{ delta: { content: 'start' } }] } });
+    await flushPromises();
+    now = 1000;
+    stream.send({ value: { choices: [{ delta: { content: 'abc' } }] } });
+    await flushPromises();
+    expect(observer.mock.calls[0]?.[0].metrics.speed.unit).toBe('characters');
+    now = 1010;
+    stream.send({ value: { choices: [{ delta: { content: 'native' } }], timings: { predicted_n: 40, predicted_ms: 1000 } } });
+    await flushPromises();
+    expect(observer).toHaveBeenCalledTimes(2);
+    expect(observer.mock.calls[1]?.[0].metrics.speed.unit).toBe('tokens');
+    now = 3000;
+    stream.send({ value: { choices: [{ delta: { content: 'missing' } }], timings: { predicted_n: 'invalid' } } });
+    stream.send({ value: { choices: [] } });
+    await flushPromises();
+    expect(observer).toHaveBeenCalledTimes(2);
+    now = 4000;
+    stream.send({ value: { choices: [{ delta: { content: 'back' } }], timings: { predicted_n: 90, predicted_ms: 3000 } } });
+    await flushPromises();
+    expect(observer).toHaveBeenCalledTimes(3);
+    stream.send({ value: { choices: [{ finish_reason: 'stop' }] } });
+    stream.sendRaw({ text: 'data: [DONE]\n\n' });
+    // Keep the already published live value in the state layer as last_sample,
+    // never fabricate a final total or replace it with character throughput.
+    expect(await stream.result).toEqual({ type: 'finished', next: 'user' });
+    void clock;
+  });
+
+  it('does not keep character estimates alive with placeholder or metadata-only events', async () => {
+    let now = 0;
+    using clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const observer = vi.fn();
+    using stream = createMetricsStreamForTest({ observer });
+    stream.send({ value: { choices: [{ delta: { content: 'start' } }] } });
+    await flushPromises();
+    now = 1000;
+    stream.send({ value: { choices: [{ delta: { content: 'abc' } }] } });
+    await flushPromises();
+    expect(observer).toHaveBeenCalledOnce();
+    now = 6000;
+    stream.send({ value: { choices: [{ delta: {} }] } });
+    stream.send({ value: { choices: [] } });
+    await flushPromises();
+    expect(observer).toHaveBeenCalledOnce();
+    stream.send({ value: { choices: [{ finish_reason: 'stop' }] } });
+    stream.sendRaw({ text: 'data: [DONE]\n\n' });
+    await stream.result;
+    void clock;
+  });
+});

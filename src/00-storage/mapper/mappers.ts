@@ -2365,9 +2365,9 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       fakeLm: fakeLm ?? 'disabled',
       naidanRpc: naidanRpc ?? 'disabled',
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
-        const { status, inlineStats, ...unhandledGenerationSpeed } = generationSpeed;
+        const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<Settings['experimental']>['generationSpeed']>>()({ status, inlineStats });
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['generationSpeed']>>()({ status, inlineStats, llamaCppServerTimings });
       })(),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
@@ -2513,9 +2513,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         status: fakeLm,
       }),
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
-        const { status, inlineStats, ...unhandledGenerationSpeed } = generationSpeed;
+        const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['generationSpeed']>>()({ status, inlineStats });
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['generationSpeed']>>()({ status, inlineStats, llamaCppServerTimings });
       })(),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDto,

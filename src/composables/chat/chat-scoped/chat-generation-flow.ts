@@ -1174,6 +1174,18 @@ async function loadGenerationProvider({
   return await loadLmProvider({
     endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
+    llamaCppServerTimings: (() => {
+      const preferences = settings.value.experimental?.generationSpeed;
+      const status = preferences?.status;
+      switch (status) {
+      case 'disabled': return 'disabled';
+      case 'enabled': case undefined: return preferences?.llamaCppServerTimings ?? 'auto';
+      default: {
+        const exhaustive: never = status;
+        throw new Error(`Unhandled generation speed visibility: ${exhaustive}`);
+      }
+      }
+    })(),
   });
 }
 

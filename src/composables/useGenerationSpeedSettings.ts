@@ -11,6 +11,7 @@ export function useGenerationSpeedSettings() {
   const { settings, captureExperimentalStorage, updateExperimentalForStorage } = useSettings();
   const { addToast } = useToast();
   const status = computed(() => settings.value.experimental?.generationSpeed?.status ?? 'enabled');
+  const llamaCppServerTimings = computed(() => settings.value.experimental?.generationSpeed?.llamaCppServerTimings ?? 'auto');
   const inlineStats = computed(() => settings.value.experimental?.generationSpeed?.inlineStats ?? 'on_demand');
 
   async function update({ patch }: { patch: Partial<GenerationSpeedSettings> }): Promise<void> {
@@ -37,7 +38,7 @@ export function useGenerationSpeedSettings() {
     }
   }
 
-  return { status, inlineStats, saving: readonly(saving), update, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
+  return { status, inlineStats, llamaCppServerTimings, saving: readonly(saving), update, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
 
 export const TEST_ONLY = {

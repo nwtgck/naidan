@@ -1,0 +1,1 @@
+export const GenerationSpeed__llama_cpp_server_timings_warning = (): string => "„Immer anfordern“ sendet timings_per_token an alle für Chats verwendeten OpenAI-kompatiblen Verbindungen. Nicht unterstützte Server können die Generierung ablehnen.";

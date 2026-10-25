@@ -117,4 +117,19 @@ describe('generation speed measurement', () => {
       expect(aggregateGenerationMetrics({ calls })).toBeUndefined();
     }
   });
+
+  it('allows a single priority upgrade to reset the publication clock', () => {
+    let time = 0;
+    const observer = vi.fn();
+    const report = createMetricsReporter({ observer, now: () => time });
+    report({ metrics: native() });
+    time = 10;
+    report({ metrics: native(), force: true });
+    time = 1000;
+    report({ metrics: native() });
+    expect(observer).toHaveBeenCalledTimes(2);
+    time = 1010;
+    report({ metrics: native() });
+    expect(observer).toHaveBeenCalledTimes(3);
+  });
 });

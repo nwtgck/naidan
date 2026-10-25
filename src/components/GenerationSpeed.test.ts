@@ -8,8 +8,12 @@ import GenerationSpeed from './GenerationSpeed.vue';
 
 const status = ref<'enabled' | 'disabled'>('enabled');
 const inlineStats = ref<'on_demand' | 'always'>('on_demand');
+const llamaCppServerTimings = ref<'auto' | 'enabled' | 'disabled'>('auto');
 const saving = ref(false);
-const update = vi.fn(async ({ patch }: { patch: { status?: 'enabled' | 'disabled', inlineStats?: 'on_demand' | 'always' } }) => {
+const update = vi.fn(async ({ patch }: { patch: { status?: 'enabled' | 'disabled', inlineStats?: 'on_demand' | 'always', llamaCppServerTimings?: 'auto' | 'enabled' | 'disabled' } }) => {
+  if (patch.llamaCppServerTimings !== undefined) {
+    llamaCppServerTimings.value = patch.llamaCppServerTimings;
+  }
   if (patch.status !== undefined) {
     status.value = patch.status;
   }
@@ -17,11 +21,12 @@ const update = vi.fn(async ({ patch }: { patch: { status?: 'enabled' | 'disabled
     inlineStats.value = patch.inlineStats;
   }
 });
-vi.mock('@/composables/useGenerationSpeedSettings', () => ({ useGenerationSpeedSettings: () => ({ status, inlineStats, saving, update }) }));
+vi.mock('@/composables/useGenerationSpeedSettings', () => ({ useGenerationSpeedSettings: () => ({ status, inlineStats, llamaCppServerTimings, saving, update }) }));
 
 beforeEach(async () => {
   status.value = 'enabled';
   inlineStats.value = 'on_demand';
+  llamaCppServerTimings.value = 'auto';
   saving.value = false;
   update.mockClear();
   await ensureAllStringsForTest({ locale: 'en' });
@@ -210,5 +215,28 @@ describe('subtle generation speed details', () => {
     await view.wrapper.get('[data-testid="generation-speed-trigger"]').trigger('click');
     expect(view.wrapper.get('[data-testid="generation-speed-inline-stats"]').text()).toContain('Output — tok');
     expect(view.wrapper.get('[data-testid="generation-speed-trigger"]').text()).toBe('40 chars/s');
+  });
+
+  it('changes the global server option inside the details panel without closing it', async () => {
+    using view = mounted();
+    await view.wrapper.get('[data-testid="generation-speed-trigger"]').trigger('click');
+    await view.wrapper.get('[data-testid="generation-speed-details-trigger"]').trigger('click');
+    await flushPromises();
+    const element = document.querySelector<HTMLElement>('[data-testid="generation-speed-details"]')!;
+    const panel = new DOMWrapper(element);
+    const enabled = panel.get<HTMLInputElement>('input[type="radio"][value="enabled"]');
+    expect(panel.get<HTMLInputElement>('input[type="radio"][value="auto"]').element.checked).toBe(true);
+    await enabled.trigger('pointerdown');
+    await enabled.trigger('click');
+    await enabled.setValue();
+    await flushPromises();
+    expect(update).toHaveBeenCalledExactlyOnceWith({ patch: { llamaCppServerTimings: 'enabled' } });
+    expect(document.querySelector('[data-testid="generation-speed-details"]')).toBe(element);
+    expect(panel.get('[data-testid="generation-speed-server-warning"]').text()).toContain('Unsupported servers');
+    expect(view.wrapper.get('[data-testid="generation-speed-trigger"]').text()).toBe('40 tok/s');
+    saving.value = true;
+    await nextTick();
+    await panel.get('input[type="radio"][value="disabled"]').trigger('change');
+    expect(update).toHaveBeenCalledOnce();
   });
 });

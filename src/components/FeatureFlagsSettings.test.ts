@@ -257,4 +257,24 @@ describe('FeatureFlagsSettings.vue', () => {
       'Hosted build only. Standalone builds do not bundle fake LM.',
     );
   });
+
+  it('saves the same server mode from the developer section and preserves display preferences', async () => {
+    mockSettings.value.experimental = { generationSpeed: { status: 'disabled', inlineStats: 'always' } };
+    const wrapper = mount(FeatureFlagsSettings);
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const fieldset = wrapper.get('[data-testid="generation-speed-server-settings"]');
+    expect(fieldset.get<HTMLInputElement>('input[value="auto"]').element.checked).toBe(true);
+    await fieldset.get<HTMLInputElement>('input[value="enabled"]').setValue();
+    await flushPromises();
+    expect(mockSettings.value.experimental?.generationSpeed).toEqual({ status: 'disabled', inlineStats: 'always', llamaCppServerTimings: 'enabled' });
+    expect(fieldset.get('[data-testid="generation-speed-server-warning"]').text()).toContain('Unsupported servers');
+    await fieldset.get<HTMLInputElement>('input[value="disabled"]').setValue();
+    await flushPromises();
+    expect(fieldset.find('[data-testid="generation-speed-server-warning"]').exists()).toBe(false);
+    void cleanup;
+  });
 });

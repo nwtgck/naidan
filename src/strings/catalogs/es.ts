@@ -683,6 +683,10 @@ import { GenerationSpeed__enable_again_in_developer_settings } from '@/strings/m
 import { GenerationSpeed__generation_details } from '@/strings/messages/GenerationSpeed__generation_details/es';
 import { GenerationSpeed__generation_number } from '@/strings/messages/GenerationSpeed__generation_number/es';
 import { GenerationSpeed__input_tokens } from '@/strings/messages/GenerationSpeed__input_tokens/es';
+import { GenerationSpeed__llama_cpp_server_timings } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings/es';
+import { GenerationSpeed__llama_cpp_server_timings_help } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_help/es';
+import { GenerationSpeed__llama_cpp_server_timings_mode } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_mode/es';
+import { GenerationSpeed__llama_cpp_server_timings_warning } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_warning/es';
 import { GenerationSpeed__measured_interval } from '@/strings/messages/GenerationSpeed__measured_interval/es';
 import { GenerationSpeed__measured_units } from '@/strings/messages/GenerationSpeed__measured_units/es';
 import { GenerationSpeed__measurement_description } from '@/strings/messages/GenerationSpeed__measurement_description/es';
@@ -3812,6 +3816,10 @@ export const catalog = {
   GenerationSpeed__generation_details,
   GenerationSpeed__generation_number,
   GenerationSpeed__input_tokens,
+  GenerationSpeed__llama_cpp_server_timings,
+  GenerationSpeed__llama_cpp_server_timings_help,
+  GenerationSpeed__llama_cpp_server_timings_mode,
+  GenerationSpeed__llama_cpp_server_timings_warning,
   GenerationSpeed__measured_interval,
   GenerationSpeed__measured_units,
   GenerationSpeed__measurement_description,
