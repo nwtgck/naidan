@@ -1,4 +1,5 @@
-import { parseGenerationMetrics } from '@/01-models/generation-metrics';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Vite configuration imports these schemas before application aliases are available.
+import { parseGenerationMetrics } from '../../01-models/generation-metrics';
 import { z } from 'zod';
 
 export const chatProfileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm32']);
