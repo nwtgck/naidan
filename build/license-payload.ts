@@ -1,7 +1,7 @@
 import type { NaidanLicense } from '../src/01-models/naidan-license';
 
 /**
- * Serializes license dependencies as one self-contained JavaScript expression.
+ * Serializes a license catalog factory as one self-contained JavaScript expression.
  *
  * Compression deliberately uses the actual licenseText values rather than the
  * license identifiers: an identifier such as MIT is metadata, not proof that
@@ -17,8 +17,11 @@ import type { NaidanLicense } from '../src/01-models/naidan-license';
  *
  * Short texts use direct `"..." + d[index]` expressions. Highly fragmented
  * texts use a flat array join to bound syntax-tree depth for parsers and minifiers.
- * There is no generic runtime decoder or compressed public data shape, keeping
- * the generated virtual module portable and its default export unchanged.
+ * There is no generic runtime decoder or compressed public data shape. The
+ * factory creates metadata only; its reader reconstructs just the selected body.
+ * The dictionary array is local to that read, not to the module or catalog, so
+ * neither module caching nor a closed details element retains assembled bodies.
+ * Source literals and compiled code may still be retained by the JavaScript engine.
  */
 
 type LicenseTextOccurrence = Readonly<{
@@ -435,12 +438,13 @@ function createLicenseTextCandidates({ dependencies }: {
     .map(([text, occurrencesByLocation]) => {
       const occurrences = [...occurrencesByLocation.values()];
       const serializedTextBytes = getUtf8ByteLength({ value: JSON.stringify(text) });
-      // Even in the best case, every occurrence needs at least d[0], while the
-      // first dictionary item needs the self-contained arrow-function wrapper.
-      // This remains an upper bound; acceptance later measures exact JavaScript.
+      // Even in the best case, every occurrence needs at least d[0].
+      // A later entry can cost only its literal and a comma. Keep this an
+      // upper bound even after the dictionary declaration has been paid for;
+      // acceptance below measures the exact emitted JavaScript.
       const estimatedSavingBytes = (occurrences.length - 1) * serializedTextBytes
         - occurrences.length * getUtf8ByteLength({ value: 'd[0]' })
-        - getUtf8ByteLength({ value: '(d=>)([])' });
+        - getUtf8ByteLength({ value: ',' });
       return { text, occurrences, estimatedSavingBytes };
     })
     .filter(({ estimatedSavingBytes }) => estimatedSavingBytes > 0)
@@ -523,10 +527,10 @@ function getAdditionalDictionaryBytes({ dictionary, candidateText }: {
   candidateText: string,
 }): number {
   const serializedCandidate = JSON.stringify(candidateText);
-  // With the first entry, the expression changes from ARRAY to
-  // (d=>ARRAY)([ENTRY]). Later entries only add a comma and one string.
+  // Only the reader owns a dictionary array. The first entry adds its whole
+  // declaration; later entries add just a comma and one string literal.
   return dictionary.length === 0
-    ? getUtf8ByteLength({ value: `(d=>)([${serializedCandidate}])` })
+    ? getUtf8ByteLength({ value: `const ${dictionaryVariableName}=[${serializedCandidate}];` })
     : getUtf8ByteLength({ value: `,${serializedCandidate}` });
 }
 
@@ -601,11 +605,13 @@ function createCompressionPlan({ dependencies }: {
   return { dictionary, selectedOccurrencesByDependency };
 }
 
-function serializeLicenseArray({ dependencies, plan }: {
+export function serializeLicenseCatalogFactory({ dependencies }: {
   dependencies: readonly NaidanLicense[],
-  plan: CompressionPlan,
 }): string {
-  const records = dependencies.map((dependency, dependencyIndex) => {
+  const plan = createCompressionPlan({ dependencies });
+  const metadata: string[] = [];
+  const cases: string[] = [];
+  for (const [dependencyIndex, dependency] of dependencies.entries()) {
     const { id, origin, name, version, license, licenseText: originalText, ...unhandledDependency } = dependency;
     unhandledDependency satisfies Record<PropertyKey, never>;
     const licenseText = originalText === null
@@ -615,23 +621,17 @@ function serializeLicenseArray({ dependencies, plan }: {
         selectedOccurrences: plan.selectedOccurrencesByDependency[dependencyIndex] ?? [],
       });
     const identity = `${id === undefined ? '' : `id:${JSON.stringify(id)},`}${origin === undefined ? '' : `origin:${JSON.stringify(origin)},`}`;
-    return `{${identity}name:${JSON.stringify(name)},version:${JSON.stringify(version)},license:${JSON.stringify(license)},licenseText:${licenseText}}`;
-  });
-  return `[${records.join(',')}]`;
-}
-
-export function serializeLicenseDependencies({ dependencies }: {
-  dependencies: readonly NaidanLicense[],
-}): string {
-  const plan = createCompressionPlan({ dependencies });
-  const licenseArray = serializeLicenseArray({ dependencies, plan });
-  if (plan.dictionary.length === 0) {
-    return licenseArray;
+    metadata.push(`{${identity}name:${JSON.stringify(name)},version:${JSON.stringify(version)},license:${JSON.stringify(license)}}`);
+    cases.push(`case ${dependencyIndex}:return ${licenseText};`);
   }
+  const dictionaryDeclaration = plan.dictionary.length === 0
+    ? ''
+    : `const ${dictionaryVariableName}=${JSON.stringify(plan.dictionary)};`;
 
-  // Emit ordinary JavaScript string assembly instead of a generic runtime decoder.
-  // The generated virtual module is therefore portable and self-contained: it
-  // needs only its local dictionary, evaluates directly to NaidanLicense[], and
-  // exposes no compression format or reconstruction helper to application code.
-  return `(${dictionaryVariableName}=>${licenseArray})(${JSON.stringify(plan.dictionary)})`;
+  // Do not hoist this dictionary or memoize the result: the module stays cached
+  // after the view is destroyed. A switch avoids allocating a closure per body.
+  // Use an arrow-valued property instead of a method: it needs no home object
+  // pointing back at the catalog. Neither the catalog nor entries is captured.
+  // Keep the factory parenthesized so replacement is safe in any expression slot.
+  return `(()=>({entries:[${metadata.join(',')}],readLicenseText:({index})=>{${dictionaryDeclaration}switch(index){${cases.join('')}default:throw new RangeError("Unknown license index");}}}))`;
 }

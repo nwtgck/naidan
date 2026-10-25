@@ -419,7 +419,7 @@ defineExpose({
               />
 
               <!-- About Tab -->
-              <AboutTab v-if="activeTab === 'about'" />
+              <AboutTab v-if="activeTab === 'about'" :visibility="props.suspended ? 'hidden' : 'visible'" />
             </div>
           </div>
         </main>

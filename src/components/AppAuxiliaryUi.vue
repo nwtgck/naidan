@@ -195,7 +195,7 @@ defineExpose({
       :is-open="true"
       :navigation="appEntry.settingsOverlay.value === undefined ? 'route' : 'local'"
       :requested-tab="appEntry.settingsOverlay.value?.tab"
-      :suspended="llamaPerformanceVisible"
+      :suspended="llamaPerformanceVisible || modelSupportInvestigationModelId !== undefined"
       :performance-loading="llamaPerformanceLoading"
       :performance-error="llamaPerformanceLoadError"
       @open-llama-cpp-performance="openLlamaCppPerformance({ defaultModel: $event })"

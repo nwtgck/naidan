@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NormalizedOutputOptions, OutputChunk, PluginContext, FunctionPluginHooks } from 'rolldown';
 import type { ResolvedConfig } from 'vite';
+import { restoreLicenseCatalog } from '../test-support/license-catalog.test-support';
 import { createLicenseModulePlugins, NAIDAN_LICENSE_MODULE_ID } from '../license-module';
 import type { NaidanLicense } from '../../src/01-models/naidan-license';
 
@@ -41,8 +42,8 @@ describe('license module native payload hooks without application builds', () =>
     if (rendered === null || rendered === undefined || typeof rendered === 'string' || !('code' in rendered) || typeof rendered.code !== 'string') {
       throw new Error('Expected transformed source');
     }
-    const reconstructed: unknown = new Function(rendered.code.replace('export default licenses;', 'return licenses;'))();
-    expect(reconstructed).toEqual([packageNotice, nativeNotice]);
+    const reconstructed: unknown = new Function(rendered.code.replace('export default createLicenseCatalog;', 'return createLicenseCatalog;'))();
+    expect(restoreLicenseCatalog({ factory: reconstructed })).toEqual([packageNotice, nativeNotice]);
     expect(value.addWatchFile).toHaveBeenCalledWith('/verified/native-license-index.json');
     await plugin.generateBundle.call(context, options, { [chunk.fileName]: chunk }, false);
     expect(value.audit).toHaveBeenCalledWith({ dependencies: [packageNotice] });

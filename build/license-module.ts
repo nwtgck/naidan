@@ -4,7 +4,7 @@ import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-licens
 import type { FunctionPluginHooks, NormalizedOutputOptions, OutputChunk, PluginContext } from 'rolldown';
 import type { Plugin, ResolvedConfig } from 'vite';
 
-import { serializeLicenseDependencies } from './license-payload';
+import { serializeLicenseCatalogFactory } from './license-payload';
 import { collectRenderedModuleLicenseDependencies } from './rendered-module-license-dependencies';
 import {
   collectDevelopmentLicenseDependencies,
@@ -67,10 +67,10 @@ async function collectBundleLicenseDependencies({ root, context, outputOptions, 
   return mergeBuildLicenseDependencies({ dependencyGroups: [collected, renderedDependencies] });
 }
 
-function replaceLicensePayload({ code, fileName, serializedDependencies }: {
+function replaceLicensePayload({ code, fileName, serializedFactory }: {
   code: string,
   fileName: string,
-  serializedDependencies: string,
+  serializedFactory: string,
 }): string {
   const placeholderIndex = code.indexOf(licensePayloadPlaceholder);
   const placeholderEndIndex = placeholderIndex + licensePayloadPlaceholder.length;
@@ -82,7 +82,7 @@ function replaceLicensePayload({ code, fileName, serializedDependencies }: {
   ) {
     throw new Error(`[${pluginName}] Expected exactly one license payload placeholder in ${fileName}.`);
   }
-  return code.slice(0, placeholderIndex) + serializedDependencies + code.slice(placeholderEndIndex);
+  return code.slice(0, placeholderIndex) + serializedFactory + code.slice(placeholderEndIndex);
 }
 
 export function createLicenseModulePlugins({ getAdditionalDependencies, getNativeDependencies, onBuildDependenciesCollected }: {
@@ -119,10 +119,10 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, getNativ
           dependencyGroups: [await developmentDependenciesPromise, getAdditionalDependencies()],
         });
         const nativeDependencies = await getNativeDependencies?.({ watchFile: filePath => this.addWatchFile(filePath) }) ?? [];
-        return `const licenses = ${serializeLicenseDependencies({ dependencies: [...dependencies, ...nativeDependencies] })}; export default licenses;`;
+        return `const createLicenseCatalog = ${serializeLicenseCatalogFactory({ dependencies: [...dependencies, ...nativeDependencies] })}; export default createLicenseCatalog;`;
       }
       case 'build':
-        return `const licenses = ${licensePayloadPlaceholder}; export default licenses;`;
+        return `const createLicenseCatalog = ${licensePayloadPlaceholder}; export default createLicenseCatalog;`;
       default: {
         const _exhaustive: never = resolvedConfig.command;
         throw new Error(`[${pluginName}] Unsupported Vite command: ${_exhaustive}`);
@@ -157,7 +157,7 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, getNativ
         code: replaceLicensePayload({
           code,
           fileName: chunk.fileName,
-          serializedDependencies: serializeLicenseDependencies({ dependencies: [...buildDependencies, ...nativeDependencies] }),
+          serializedFactory: serializeLicenseCatalogFactory({ dependencies: [...buildDependencies, ...nativeDependencies] }),
         }),
         map: { mappings: '' },
       };
