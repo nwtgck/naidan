@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSearchParameterFilter, discoverRepository, groupModelFiles, parseRepository, searchModels } from './catalog';
+import { discoverRepository, groupModelFiles, parseRepository, searchModels } from './catalog';
+import { createSearchParameterFilter } from './parameter-filter';
 import { privacyFetchStream } from '@/features/privacy-fetch';
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 

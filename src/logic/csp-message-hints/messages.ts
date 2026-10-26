@@ -353,6 +353,7 @@ function requestsFor({ target, documentUrl, broker }: { target: CspHintTarget, d
     return target.resources.map(resource => requestForResource({ resource, documentUrl }));
   case 'wikipedia':
   case 'huggingface-metadata':
+  case 'onboarding-v2-huggingface-access':
   case 'huggingface-download': {
     const context = privacyContext({ broker });
     const requests: RequestDescription[] = [];
@@ -361,7 +362,19 @@ function requestsFor({ target, documentUrl, broker }: { target: CspHintTarget, d
       requests.push({ url: new URL('https://wikipedia.org/w/api.php'), fallback: connect, context, path: 'known', host: 'subdomains', stage: 'operation' });
       break;
     case 'huggingface-download':
-      requests.push({ url: documentUrl, fallback: ['worker-src', 'child-src', 'script-src', 'default-src'], context: 'document', path: 'unknown', host: 'exact', stage: 'operation' });
+    case 'onboarding-v2-huggingface-access':
+      // V2 chooses a welcome view from HF access evidence, not from whether
+      // the inference/download worker can start. Local models use workers too.
+      switch (target.kind) {
+      case 'huggingface-download':
+        requests.push({ url: documentUrl, fallback: ['worker-src', 'child-src', 'script-src', 'default-src'], context: 'document', path: 'unknown', host: 'exact', stage: 'operation' });
+        break;
+      case 'onboarding-v2-huggingface-access': break;
+      default: {
+        const exhaustive: never = target;
+        return exhaustive;
+      }
+      }
       // The display profile assumes delivery may use any HTTPS subdomain of
       // hf.co. This symbolic family does not define the transport allowlist.
       requests.push({ url: new URL('https://hf.co/'), fallback: connect, context, path: 'unknown', host: 'subdomains', stage: 'operation' });
@@ -390,6 +403,7 @@ function subjectFor({ target }: { target: CspHintTarget }): CspHintMessage['subj
   case 'relay': return 'connection';
   case 'wikipedia': return 'wikipedia';
   case 'huggingface-metadata':
+  case 'onboarding-v2-huggingface-access':
   case 'huggingface-download': return 'huggingface';
   case 'resource-list': return 'resource';
   case 'resource':
@@ -577,6 +591,7 @@ function withinTargetBudget({ target }: { target: CspHintTarget }): boolean {
   case 'relay': return (target.url?.length ?? 0) <= 4_096;
   case 'wikipedia':
   case 'huggingface-metadata':
+  case 'onboarding-v2-huggingface-access':
   case 'huggingface-download': return true;
   case 'resource': return target.url.length <= 4_096;
   case 'resource-list': return target.resources.length <= 16 && target.resources.reduce((total, resource) => total + resource.url.length, 0) <= 4_096;
@@ -663,6 +678,7 @@ function hasPortableTargetMeaning({ target, currentDocumentUrl }: { target: CspH
   case 'relay': return independentExternalUrl({ serialized: target.url, currentDocumentUrl });
   case 'wikipedia':
   case 'huggingface-metadata':
+  case 'onboarding-v2-huggingface-access':
   case 'huggingface-download': return true;
   case 'resource': return independentExternalUrl({ serialized: target.url, currentDocumentUrl });
   case 'resource-list': return target.resources.length > 0 && target.resources.every(resource => independentExternalUrl({ serialized: resource.url, currentDocumentUrl }));
@@ -681,6 +697,7 @@ function usesWorkerForReference({ target }: { target: CspHintTarget }): boolean 
   case 'connection':
   case 'relay':
   case 'wikipedia':
+  case 'onboarding-v2-huggingface-access':
   case 'huggingface-metadata': return false;
   default: {
     const exhaustive: never = target;

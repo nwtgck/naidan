@@ -29,23 +29,6 @@ export type ModelSearchPage = { results: ModelSearchResult[], nextCursor: string
 const searchExpandedFields = ['pipeline_tag', 'gguf', 'safetensors', 'downloads', 'likes', 'lastModified'];
 const searchCursorSchema = z.string().min(1).max(8192).regex(/^[^\p{Cc}]+$/u);
 
-export function createSearchParameterFilter({ minimumBillions, maximumBillions }: { minimumBillions: string, maximumBillions: string }): string | undefined {
-  if ([minimumBillions, maximumBillions].some(value => value.trim() && !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()))) {
-    throw new Error('Invalid parameter range');
-  }
-  const minimum = minimumBillions.trim().replace(/^\./, '0.').replace(/\.$/, '');
-  const maximum = maximumBillions.trim().replace(/^\./, '0.').replace(/\.$/, '');
-  if (!minimum && !maximum) {
-    return undefined;
-  }
-  const raw = [minimum ? `min:${minimum}B` : undefined, maximum ? `max:${maximum}B` : undefined].filter(bound => bound !== undefined).join(',');
-  const normalized = normalizeHuggingFaceParameterFilter({ value: raw });
-  if (normalized === undefined) {
-    throw new Error('Invalid parameter range');
-  }
-  return normalized;
-}
-
 function searchUrl({ query, cursor, numParameters }: { query: string, cursor: string | undefined, numParameters: string | undefined }): URL {
   const url = new URL('https://huggingface.co/api/models');
   url.searchParams.set('apps', 'llama.cpp');

@@ -27,6 +27,7 @@ const entry = {
   },
 };
 vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => entry }));
+vi.mock('@/composables/useCspMessageHintsOnly', () => ({ useCspMessageHintsOnly: () => ref(undefined) }));
 vi.mock('@/logic/startup/presentation-frame', () => ({ waitForPresentationPaint: waitForPaint }));
 vi.mock('@/logic/apply-model-connection', () => ({ applyModelConnectionSelection: applySelection }));
 vi.mock('./BrowserConnectionSelection.vue', () => ({

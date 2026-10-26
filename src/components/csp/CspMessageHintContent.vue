@@ -78,6 +78,7 @@ const targetForMessagesOnly = computed(() => {
   }
   case 'wikipedia':
   case 'huggingface-metadata':
+  case 'onboarding-v2-huggingface-access':
   case 'huggingface-download':
   case 'resource':
   case 'resource-list': return target;

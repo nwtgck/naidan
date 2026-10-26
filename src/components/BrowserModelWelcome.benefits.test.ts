@@ -34,7 +34,7 @@ afterEach(() => {
 
 function renderWelcome() {
   return mount(BrowserModelWelcome, {
-    props: { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined },
+    props: { modelSource: 'showcase', interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined },
     global: { stubs: { LanguageSelector: true } },
   });
 }

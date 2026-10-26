@@ -1329,9 +1329,6 @@ import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/string
 import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__url_copied } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__url_copied/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__architecture } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__architecture/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__at_least } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_least/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__at_least_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_least_parameters/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__at_most } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_most/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__downloads } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__downloads/zh-Hans';
@@ -1340,17 +1337,10 @@ import { LlamaCppBrowserHuggingFaceSearch__filters } from '@/strings/messages/Ll
 import { LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__likes } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__likes/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__loading_more_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__loading_more_models/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__new_results_start_here } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__new_results_start_here/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__no_maximum } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_maximum/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__no_minimum } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_minimum/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__no_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_models_found/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__no_parameter_limit } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_parameter_limit/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameters/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__parameters_between } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameters_between/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__results_for } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__results_for/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__search } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends/zh-Hans';
@@ -1359,7 +1349,6 @@ import { LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_fi
 import { LlamaCppBrowserHuggingFaceSearch__show_more } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__show_more/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__show_trending_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__show_trending_models/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__task } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__task/zh-Hans';
-import { LlamaCppBrowserHuggingFaceSearch__up_to_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__up_to_parameters/zh-Hans';
 import { LlamaCppBrowserHuggingFaceSearch__updated } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__updated/zh-Hans';
 import { LlamaCppBrowserImportedModelRow__details } from '@/strings/messages/LlamaCppBrowserImportedModelRow__details/zh-Hans';
 import { LlamaCppBrowserImportedModelRow__file } from '@/strings/messages/LlamaCppBrowserImportedModelRow__file/zh-Hans';
@@ -1408,6 +1397,17 @@ import { LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group } from
 import { LlamaCppBrowserModelLibrary__dismiss_just_added_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__dismiss_just_added_models/zh-Hans';
 import { LlamaCppBrowserModelLibrary__just_added_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__just_added_models/zh-Hans';
 import { LlamaCppBrowserModelLibrary__search_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__search_models/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__at_least } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__at_least/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__at_least_parameters } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__at_least_parameters/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__at_most } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__at_most/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__maximum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__maximum_parameters_in_billions/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__minimum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__minimum_parameters_in_billions/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__no_maximum } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__no_maximum/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__no_minimum } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__no_minimum/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__no_parameter_limit } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__no_parameter_limit/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__parameter_count_in_billions } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__parameter_count_in_billions/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__parameters_between } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__parameters_between/zh-Hans';
+import { LlamaCppBrowserModelParameterFilter__up_to_parameters } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__up_to_parameters/zh-Hans';
 import { LlamaCppBrowserQuantizationPicker__could_not_fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__could_not_fetch_options/zh-Hans';
 import { LlamaCppBrowserQuantizationPicker__fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetch_options/zh-Hans';
 import { LlamaCppBrowserQuantizationPicker__fetching_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetching_options/zh-Hans';
@@ -1761,7 +1761,26 @@ import { OllamaPsView__unload_requested } from '@/strings/messages/OllamaPsView_
 import { OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again } from '@/strings/messages/OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again/zh-Hans';
 import { OllamaPsView__unloading } from '@/strings/messages/OllamaPsView__unloading/zh-Hans';
 import { OllamaPsView__vram_size } from '@/strings/messages/OllamaPsView__vram_size/zh-Hans';
+import { OnBoardingModalV2LocalModelInput__could_not_open_local_model_files } from '@/strings/messages/OnBoardingModalV2LocalModelInput__could_not_open_local_model_files/zh-Hans';
+import { OnBoardingModalV2LocalModelInput__load_model } from '@/strings/messages/OnBoardingModalV2LocalModelInput__load_model/zh-Hans';
+import { OnBoardingModalV2LocalModelInput__start_without_copying_and_save_later } from '@/strings/messages/OnBoardingModalV2LocalModelInput__start_without_copying_and_save_later/zh-Hans';
+import { OnBoardingModalV2ModelSources__download_a_model } from '@/strings/messages/OnBoardingModalV2ModelSources__download_a_model/zh-Hans';
+import { OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites } from '@/strings/messages/OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites/zh-Hans';
+import { OnBoardingModalV2ModelSources__download_and_use_in_naidan } from '@/strings/messages/OnBoardingModalV2ModelSources__download_and_use_in_naidan/zh-Hans';
+import { OnBoardingModalV2ModelSources__download_from_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__download_from_hugging_face/zh-Hans';
+import { OnBoardingModalV2ModelSources__enter_a_valid_parameter_range } from '@/strings/messages/OnBoardingModalV2ModelSources__enter_a_valid_parameter_range/zh-Hans';
+import { OnBoardingModalV2ModelSources__find_models_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_on_hugging_face/zh-Hans';
+import { OnBoardingModalV2ModelSources__find_models_with_a_parameter_range_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_with_a_parameter_range_on_hugging_face/zh-Hans';
+import { OnBoardingModalV2ModelSources__find_models_with_at_least_billion_parameters_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_with_at_least_billion_parameters_on_hugging_face/zh-Hans';
+import { OnBoardingModalV2ModelSources__find_models_with_up_to_billion_parameters_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_with_up_to_billion_parameters_on_hugging_face/zh-Hans';
+import { OnBoardingModalV2ModelSources__load_the_downloaded_gguf_files_here } from '@/strings/messages/OnBoardingModalV2ModelSources__load_the_downloaded_gguf_files_here/zh-Hans';
 import { OnBoardingModalV2__could_not_open_connection_settings } from '@/strings/messages/OnBoardingModalV2__could_not_open_connection_settings/zh-Hans';
+import { OnBoardingModalV2__could_not_open_model_files_view } from '@/strings/messages/OnBoardingModalV2__could_not_open_model_files_view/zh-Hans';
+import { OnBoardingModalV2__download_and_run_in_naidan } from '@/strings/messages/OnBoardingModalV2__download_and_run_in_naidan/zh-Hans';
+import { OnBoardingModalV2__model_files } from '@/strings/messages/OnBoardingModalV2__model_files/zh-Hans';
+import { OnBoardingModalV2__model_source } from '@/strings/messages/OnBoardingModalV2__model_source/zh-Hans';
+import { OnBoardingModalV2__try_a_model } from '@/strings/messages/OnBoardingModalV2__try_a_model/zh-Hans';
+import { OnBoardingModalV2__use_downloaded_model_files } from '@/strings/messages/OnBoardingModalV2__use_downloaded_model_files/zh-Hans';
 import { OnboardingModal__add_header } from '@/strings/messages/OnboardingModal__add_header/zh-Hans';
 import { OnboardingModal__back } from '@/strings/messages/OnboardingModal__back/zh-Hans';
 import { OnboardingModal__cancel } from '@/strings/messages/OnboardingModal__cancel/zh-Hans';
@@ -4614,9 +4633,6 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
   LlamaCppBrowserHuggingFaceManager__url_copied,
   LlamaCppBrowserHuggingFaceSearch__architecture,
-  LlamaCppBrowserHuggingFaceSearch__at_least,
-  LlamaCppBrowserHuggingFaceSearch__at_least_parameters,
-  LlamaCppBrowserHuggingFaceSearch__at_most,
   LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again,
   LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again,
   LlamaCppBrowserHuggingFaceSearch__downloads,
@@ -4625,17 +4641,10 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face,
   LlamaCppBrowserHuggingFaceSearch__likes,
   LlamaCppBrowserHuggingFaceSearch__loading_more_models,
-  LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions,
-  LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions,
   LlamaCppBrowserHuggingFaceSearch__new_results_start_here,
-  LlamaCppBrowserHuggingFaceSearch__no_maximum,
-  LlamaCppBrowserHuggingFaceSearch__no_minimum,
   LlamaCppBrowserHuggingFaceSearch__no_models_found,
-  LlamaCppBrowserHuggingFaceSearch__no_parameter_limit,
   LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face,
-  LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions,
   LlamaCppBrowserHuggingFaceSearch__parameters,
-  LlamaCppBrowserHuggingFaceSearch__parameters_between,
   LlamaCppBrowserHuggingFaceSearch__results_for,
   LlamaCppBrowserHuggingFaceSearch__search,
   LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends,
@@ -4644,7 +4653,6 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceSearch__show_more,
   LlamaCppBrowserHuggingFaceSearch__show_trending_models,
   LlamaCppBrowserHuggingFaceSearch__task,
-  LlamaCppBrowserHuggingFaceSearch__up_to_parameters,
   LlamaCppBrowserHuggingFaceSearch__updated,
   LlamaCppBrowserImportedModelRow__details,
   LlamaCppBrowserImportedModelRow__file,
@@ -4693,6 +4701,17 @@ export const catalog = {
   LlamaCppBrowserModelLibrary__dismiss_just_added_models,
   LlamaCppBrowserModelLibrary__just_added_models,
   LlamaCppBrowserModelLibrary__search_models,
+  LlamaCppBrowserModelParameterFilter__at_least,
+  LlamaCppBrowserModelParameterFilter__at_least_parameters,
+  LlamaCppBrowserModelParameterFilter__at_most,
+  LlamaCppBrowserModelParameterFilter__maximum_parameters_in_billions,
+  LlamaCppBrowserModelParameterFilter__minimum_parameters_in_billions,
+  LlamaCppBrowserModelParameterFilter__no_maximum,
+  LlamaCppBrowserModelParameterFilter__no_minimum,
+  LlamaCppBrowserModelParameterFilter__no_parameter_limit,
+  LlamaCppBrowserModelParameterFilter__parameter_count_in_billions,
+  LlamaCppBrowserModelParameterFilter__parameters_between,
+  LlamaCppBrowserModelParameterFilter__up_to_parameters,
   LlamaCppBrowserQuantizationPicker__could_not_fetch_options,
   LlamaCppBrowserQuantizationPicker__fetch_options,
   LlamaCppBrowserQuantizationPicker__fetching_options,
@@ -5046,7 +5065,26 @@ export const catalog = {
   OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again,
   OllamaPsView__unloading,
   OllamaPsView__vram_size,
+  OnBoardingModalV2LocalModelInput__could_not_open_local_model_files,
+  OnBoardingModalV2LocalModelInput__load_model,
+  OnBoardingModalV2LocalModelInput__start_without_copying_and_save_later,
+  OnBoardingModalV2ModelSources__download_a_model,
+  OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites,
+  OnBoardingModalV2ModelSources__download_and_use_in_naidan,
+  OnBoardingModalV2ModelSources__download_from_hugging_face,
+  OnBoardingModalV2ModelSources__enter_a_valid_parameter_range,
+  OnBoardingModalV2ModelSources__find_models_on_hugging_face,
+  OnBoardingModalV2ModelSources__find_models_with_a_parameter_range_on_hugging_face,
+  OnBoardingModalV2ModelSources__find_models_with_at_least_billion_parameters_on_hugging_face,
+  OnBoardingModalV2ModelSources__find_models_with_up_to_billion_parameters_on_hugging_face,
+  OnBoardingModalV2ModelSources__load_the_downloaded_gguf_files_here,
   OnBoardingModalV2__could_not_open_connection_settings,
+  OnBoardingModalV2__could_not_open_model_files_view,
+  OnBoardingModalV2__download_and_run_in_naidan,
+  OnBoardingModalV2__model_files,
+  OnBoardingModalV2__model_source,
+  OnBoardingModalV2__try_a_model,
+  OnBoardingModalV2__use_downloaded_model_files,
   OnboardingModal__add_header,
   OnboardingModal__back,
   OnboardingModal__cancel,

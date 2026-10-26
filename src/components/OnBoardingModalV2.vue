@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, markRaw, nextTick, onScopeDispose, ref, shallowRef, watch, type Component } from 'vue';
-import { FolderInputIcon } from 'lucide-vue-next';
+import { computed, defineAsyncComponent, markRaw, nextTick, onScopeDispose, ref, shallowRef, watch, type Component } from 'vue';
+import { CirclePlayIcon, FolderInputIcon, FolderOpenIcon, Loader2Icon } from 'lucide-vue-next';
 import BrowserModelDialog from './BrowserModelDialog.vue';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
 import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import LlamaCppBrowserLocalFileRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue';
-import { browserModelRepositoryPresentation, browserModelSuggestionSelection, type BrowserModelLocalInput } from './browser-model-presentation';
+import { browserModelRepositoryPresentation, browserModelSuggestionSelection, type BrowserModelLocalInput, type BrowserModelSelection, type ModelDiscoveryTab } from './browser-model-presentation';
+import { useCspMessageHintsOnly } from '@/composables/useCspMessageHintsOnly';
+import type { CspHintTarget } from '@/logic/csp-message-hints/types';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { useToast } from '@/composables/useToast';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
@@ -23,6 +26,8 @@ const fileSelectionLoader = createModuleLoader({ importModule: () => import('./B
 const FileSelection = shallowRef<Component>();
 const connectionLoader = createModuleLoader({ importModule: () => import('./BrowserConnectionSelection.vue'), onPrefetchError: () => {} });
 const ConnectionSelection = shallowRef<Component>();
+const localModelInputLoader = createModuleLoader({ importModule: () => import('./OnBoardingModalV2LocalModelInput.vue'), onPrefetchError: () => {} });
+const OnBoardingModalV2LocalModelInput = defineAsyncComponent({ loader: localModelInputLoader.load });
 type ConnectionPresentation = {
   initialEndpoint: 'openai' | 'browser_provided_lm',
   isCurrent(): boolean,
@@ -55,6 +60,16 @@ const { addToast } = useToast();
 const operation = ref<symbol>();
 const files = shallowRef<Extract<ModelLaunchEntryState, { status: 'needs-selection' }>>();
 const dragVisibility = ref<'hidden' | 'visible'>('hidden');
+// This presentation choice is local to V2, not the chat pane's persisted
+// source-tab preference. Either view always remains manually available.
+const welcomeSource = ref<'showcase' | 'local-files'>('showcase');
+const welcomeSourceSelection = ref<'automatic' | 'manual'>('automatic');
+const localPanelBusy = ref(false);
+const localModelInputPrepared = ref(false);
+const localModelInputMounted = ref(false);
+const localModelInputLoading = ref(false);
+const localModelInputLoadFailed = ref(false);
+const localModelViewKey = ref(0);
 const localInputOpened = ref(false);
 const loadingFiles = ref<symbol>();
 const loadError = ref(false);
@@ -70,8 +85,74 @@ const busy = computed(() => openingConnection.value !== undefined || state.value
 const error = computed(() => connectionLoadFailed.value ? lazyStrings.OnBoardingModalV2__could_not_open_connection_settings() : state.value?.status === 'failed' || loadError.value ? lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() : undefined);
 const fileModel = computed(() => browserModelRepositoryPresentation({ repository: files.value?.input ?? '', bytes: undefined }));
 const open = computed(() => entry.modelSelection.value?.phase === 'open');
+const localSourceVisible = computed(() => open.value && welcomeSource.value === 'local-files' && files.value === undefined && connection.value === undefined && entry.discovery.value === undefined);
+const localSourceActive = computed(() => localSourceVisible.value && entry.interaction.value === 'ready' && entry.discovery.value === undefined);
 const dismissible = computed(() => savingConnection.value === undefined && !(state.value?.status === 'checking' && state.value.phase === 'opening-chat'));
-const canDrop = computed(() => open.value && entry.interaction.value === 'ready' && !busy.value && files.value === undefined && connection.value === undefined);
+// The local view's file and linked-folder controls own their respective drops.
+// A directory dropped for linking must not also start the welcome-file path.
+const canDrop = computed(() => open.value && entry.interaction.value === 'ready' && !busy.value && welcomeSource.value === 'showcase' && files.value === undefined && connection.value === undefined);
+const huggingFaceAccessHint = useCspMessageHintsOnly({ target: computed<CspHintTarget | undefined>(() => open.value && welcomeSourceSelection.value === 'automatic' ? { kind: 'onboarding-v2-huggingface-access' } : undefined) });
+
+function recordWelcomeInteraction(): void {
+  welcomeSourceSelection.value = 'manual';
+}
+
+async function prepareLocalModelInput(): Promise<void> {
+  if (disposed || localModelInputPrepared.value || localModelInputLoading.value) {
+    return;
+  }
+  localModelInputLoading.value = true;
+  localModelInputLoadFailed.value = false;
+  try {
+    await localModelInputLoader.load();
+    if (!disposed) {
+      localModelInputPrepared.value = true;
+    }
+  } catch {
+    if (!disposed) {
+      localModelInputLoadFailed.value = true;
+    }
+  } finally {
+    if (!disposed) {
+      localModelInputLoading.value = false;
+    }
+  }
+}
+
+function selectWelcomeModel({ selection }: { selection: BrowserModelSelection }): void {
+  recordWelcomeInteraction();
+  entry.selectModel({ selection });
+}
+
+function selectWelcomeBrowserModel({ selection }: { selection: 'selected' | 'unselected' }): void {
+  recordWelcomeInteraction();
+  browserSelection.value = selection;
+}
+
+async function openModelDiscovery({ tab }: { tab: ModelDiscoveryTab | undefined }): Promise<void> {
+  if (!open.value || entry.interaction.value !== 'ready' || busy.value || localPanelBusy.value) {
+    return;
+  }
+  recordWelcomeInteraction();
+  await entry.openDiscovery({ tab });
+}
+
+function selectWelcomeSource({ source }: { source: 'showcase' | 'local-files' }): void {
+  if (!open.value || entry.interaction.value !== 'ready' || busy.value || localPanelBusy.value) {
+    return;
+  }
+  recordWelcomeInteraction();
+  if (source === welcomeSource.value) {
+    return;
+  }
+  welcomeSource.value = source;
+  dragVisibility.value = 'hidden';
+  // A failed card attempt is no longer the active operation after switching
+  // to local input. Keep the browsed model selection for the return journey.
+  retire();
+  loadError.value = false;
+  connectionLoadFailed.value = false;
+}
 
 watch(state, (current, previous) => {
   if (current?.status !== 'failed' || current.problem !== 'failed' || previous?.status === 'failed') {
@@ -112,8 +193,33 @@ watch(() => entry.modelSelection.value?.target, (target, previous) => {
     savingConnection.value = undefined;
     browserAvailability.value = 'unchecked';
     browserSelection.value = 'unselected';
+    welcomeSource.value = 'showcase';
+    welcomeSourceSelection.value = 'automatic';
+    localPanelBusy.value = false;
+    localModelInputMounted.value = false;
+    localModelViewKey.value++;
   }
 });
+
+// Explicit exception requested by the project owner: OnBoardingModalV2
+// may use CSP diagnostics to choose its initial welcome view.
+// Keep both views and their actions available; respect manual selection.
+// Elsewhere, CSP diagnostics are for explanatory hints only and must not
+// control feature behavior or enable/disable actions.
+watch([huggingFaceAccessHint, () => entry.modelSelection.value?.target], ([hint]) => {
+  if (hint !== undefined && welcomeSourceSelection.value === 'automatic' && open.value && !busy.value && !localPanelBusy.value && files.value === undefined && connection.value === undefined && entry.discovery.value === undefined) {
+    welcomeSource.value = 'local-files';
+    dragVisibility.value = 'hidden';
+  }
+  // Missing or failed diagnostics preserve the normal default. Once shown,
+  // local input is not removed because later evidence becomes unavailable.
+}, { immediate: true });
+
+watch(localSourceVisible, visible => {
+  if (visible) {
+    void prepareLocalModelInput();
+  }
+}, { immediate: true });
 
 watch([entry.interaction, open, () => entry.modelSelection.value?.target], async ([interaction, visible, target], _previous, onCleanup) => {
   prefetch?.cancel();
@@ -140,7 +246,7 @@ watch([entry.interaction, open, () => entry.modelSelection.value?.target], async
     void detectBrowserModel({ isCurrent: () => current && !disposed && open.value && entry.modelSelection.value?.target === target });
     prefetch = scheduleIdleTask({
       task: async () => {
-        await Promise.all([fileSelectionLoader.prefetch(), connectionLoader.prefetch()]);
+        await Promise.all([fileSelectionLoader.prefetch(), connectionLoader.prefetch(), localModelInputLoader.prefetch()]);
       },
       timeoutMs: 1500,
       fallbackDelayMs: 200,
@@ -212,9 +318,10 @@ async function detectBrowserModel({ isCurrent }: { isCurrent(): boolean }): Prom
 
 async function openConnections({ endpoint }: { endpoint: 'openai' | 'browser_provided_lm' }): Promise<void> {
   const selection = entry.modelSelection.value;
-  if (selection?.phase !== 'open' || entry.interaction.value !== 'ready' || busy.value) {
+  if (selection?.phase !== 'open' || entry.interaction.value !== 'ready' || busy.value || localPanelBusy.value) {
     return;
   }
+  recordWelcomeInteraction();
   const context = entry.captureModelLaunchContext();
   const target = selection.target;
   const current = () => !disposed && context.isCurrent() && entry.modelSelection.value?.phase === 'open' && entry.modelSelection.value.target === target;
@@ -270,9 +377,10 @@ function backFromConnections(): void {
 }
 
 function start(): void {
-  if (!open.value || entry.interaction.value !== 'ready' || busy.value) {
+  if (!open.value || entry.interaction.value !== 'ready' || busy.value || localPanelBusy.value) {
     return;
   }
+  recordWelcomeInteraction();
   const selected = browserModelSuggestionSelection({ selection: selection.value });
   if (selected !== undefined) {
     loadError.value = false;
@@ -295,6 +403,7 @@ async function localInput({ directories, controller }: { directories: BrowserMod
     controller.abort();
     return;
   }
+  recordWelcomeInteraction();
   const target = selection.target;
   switch (target.kind) {
   case 'chat':
@@ -339,6 +448,7 @@ async function localInput({ directories, controller }: { directories: BrowserMod
 
 function dragOver({ event }: { event: DragEvent }): void {
   if (canDrop.value && event.dataTransfer?.types.includes('Files')) {
+    recordWelcomeInteraction();
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
     dragVisibility.value = 'visible';
@@ -391,7 +501,28 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <Transition name="browser-model-step" mode="out-in" @enter="dialog?.focusPanel()">
       <FileSelection v-if="files" key="files" :model="fileModel" :selection="files" :busy="entry.interaction.value !== 'ready' || busy" :error="error" :action="state?.status === 'failed' ? 'retry' : 'confirm'" @back="back" @confirm="confirm" @retry="retryModelLaunch" />
       <ConnectionSelection v-else-if="connection && ConnectionSelection" key="connections" :initial-endpoint="connection.initialEndpoint" :active="connectionActive" :apply-selection="connection.applySelection" @back="backFromConnections" />
-      <BrowserModelWelcome v-else key="models" :selection="selection" :browser-provided-model="browserProvidedModel" :interaction="entry.interaction.value" :start-status="busy ? 'starting' : 'idle'" :start-error="error" @select="entry.selectModel({ selection: $event })" @select-browser-model="browserSelection = $event" @open-connections="openConnections({ endpoint: $event })" @start="start" @open-discovery="entry.openDiscovery" @local-input="localInput" @dragover="dragOver({ event: $event })" @dragleave="dragLeave({ event: $event })" @drop="drop({ event: $event })" @dragend="dragVisibility = 'hidden'">
+      <BrowserModelWelcome v-else key="models" :model-source="welcomeSource" :selection="selection" :browser-provided-model="browserProvidedModel" :interaction="entry.interaction.value" :start-status="busy || localPanelBusy ? 'starting' : 'idle'" :start-error="error" @select="selectWelcomeModel({ selection: $event })" @select-browser-model="selectWelcomeBrowserModel({ selection: $event })" @open-connections="openConnections({ endpoint: $event })" @start="start" @open-discovery="openModelDiscovery" @browse-models="recordWelcomeInteraction" @local-input="localInput" @dragover="dragOver({ event: $event })" @dragleave="dragLeave({ event: $event })" @drop="drop({ event: $event })" @dragend="dragVisibility = 'hidden'">
+        <template #display-controls>
+          <!-- Label only the other destination and keep the total
+               width fixed so switching does not move the adjacent controls. -->
+          <div role="group" :aria-label="lazyStrings.OnBoardingModalV2__model_source()" data-testid="onboarding-model-source" tw-class="relative flex w-[8.75rem] shrink-0 rounded-xl border border-gray-300 bg-gray-200 p-0.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.15)] dark:border-gray-800 dark:bg-black">
+            <span aria-hidden="true" :tw-class="['pointer-events-none absolute inset-y-0.5 w-8 rounded-lg border border-gray-200 bg-white shadow-[0_2px_0_rgba(0,0,0,0.05),0_4px_6px_rgba(0,0,0,0.15)] transition-[left] duration-200 ease-out dark:border-gray-600 dark:bg-gray-700 dark:shadow-[0_4px_10px_rgba(0,0,0,0.5)] motion-reduce:transition-none', welcomeSource === 'local-files' ? 'left-[calc(100%-2.125rem)]' : 'left-0.5']" />
+            <button type="button" data-testid="onboarding-showcase-toggle" :aria-pressed="welcomeSource === 'showcase'" :aria-label="lazyStrings.OnBoardingModalV2__try_a_model()" :title="lazyStrings.OnBoardingModalV2__download_and_run_in_naidan()" :disabled="entry.interaction.value !== 'ready' || busy || localPanelBusy" :tw-class="['relative z-10 inline-flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-1.5 py-1.5 text-xs font-medium leading-none transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 motion-reduce:transition-none disabled:opacity-50', welcomeSource === 'showcase' ? 'w-8 shrink-0 text-blue-600 dark:text-blue-300' : 'flex-1 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100']" @click="selectWelcomeSource({ source: 'showcase' })"><CirclePlayIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0" /><span v-if="welcomeSource !== 'showcase'" tw-class="min-w-0 truncate">{{ lazyStrings.OnBoardingModalV2__try_a_model() }}</span></button>
+            <button type="button" data-testid="onboarding-local-model-toggle" :aria-pressed="welcomeSource === 'local-files'" :aria-label="lazyStrings.OnBoardingModalV2__model_files()" :title="lazyStrings.OnBoardingModalV2__use_downloaded_model_files()" :disabled="entry.interaction.value !== 'ready' || busy || localPanelBusy" :tw-class="['relative z-10 inline-flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-1.5 py-1.5 text-xs font-medium leading-none transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 motion-reduce:transition-none disabled:opacity-50', welcomeSource === 'local-files' ? 'w-8 shrink-0 text-blue-600 dark:text-blue-300' : 'flex-1 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100']" @click="selectWelcomeSource({ source: 'local-files' })"><FolderOpenIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0" /><span v-if="welcomeSource !== 'local-files'" tw-class="min-w-0 truncate">{{ lazyStrings.OnBoardingModalV2__model_files() }}</span></button>
+          </div>
+        </template>
+        <template #local-model-source>
+          <!-- Prefetch code without mounting UI. After its first visible mount,
+               the welcome frame retains this source with v-show and inert. -->
+          <OnBoardingModalV2LocalModelInput v-if="localModelInputPrepared && (localSourceVisible || localModelInputMounted)" :key="localModelViewKey" :active="localSourceActive" :disabled="entry.interaction.value !== 'ready' || busy" :accept-local-input="localInput" @busy="localPanelBusy = $event" @vue:mounted="localModelInputMounted = true" @vue:unmounted="localModelInputMounted = false" />
+          <div v-else-if="localModelInputLoadFailed" role="alert" tw-class="mx-auto w-full max-w-xl space-y-2 rounded-xl border border-gray-200 p-4 text-left text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300"><p>{{ lazyStrings.OnBoardingModalV2__could_not_open_model_files_view() }}</p><button type="button" :disabled="entry.interaction.value !== 'ready' || localModelInputLoading" tw-class="min-h-9 rounded-lg px-3 py-2 font-medium text-blue-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-blue-400 dark:hover:bg-gray-800 disabled:opacity-50" @click="prepareLocalModelInput">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button></div>
+          <p v-else role="status" tw-class="mx-auto flex min-h-44 w-full max-w-xl items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2Icon aria-hidden="true" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ lazyStrings.llamaCppBrowser__loading() }}</p>
+        </template>
+        <template #model-preflight-hint>
+          <!-- Preflight guidance is intentional: people can switch to local
+               files, while every model action stays available to try. -->
+          <CspMessageHint v-if="!connectionLoadFailed && state?.status !== 'failed' && !loadError && browserSelection !== 'selected'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" tw-class="mx-auto w-full max-w-md" />
+        </template>
         <template #start-error-hint>
           <!-- Only a failed model attempt owned by OnBoardingModalV2 gets recovery guidance, not local or connection UI failures. -->
           <HuggingFaceDownloadFailureHint v-if="state?.status === 'failed' && state.problem === 'failed' && !connectionLoadFailed && !loadError"><LlamaCppBrowserLocalFileRecovery :disabled="entry.interaction.value !== 'ready' || busy" :accept-local-input="localInput" /></HuggingFaceDownloadFailureHint>

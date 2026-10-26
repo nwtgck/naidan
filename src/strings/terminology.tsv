@@ -9,6 +9,7 @@ developer	developer role,developer-facing UI	デベロッパー
 directory	filesystem directory,parent directory,subdirectory,portable directory	ディレクトリ	
 editor	editing UI,editor tool	エディタ	
 explorer	file explorer,resource explorer	エクスプローラー	
+find	model discovery,model discovery navigation	見つける	モデルを発見する入口では「探す」より「見つける」を使う。検索操作やアプリ内部の構成ファイル探索には機械的に適用しない。
 filter	search filter,data filter,filter UI	フィルター	
 folder	user-visible folder,file explorer folder,folder settings	フォルダ	
 header	HTTP header,request header,response header,UI header	ヘッダー	

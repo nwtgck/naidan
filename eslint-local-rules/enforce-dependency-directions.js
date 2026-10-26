@@ -160,6 +160,9 @@ const cspMessageComposable = 'composables/useCspMessageHintsOnly';
 const cspMessageConsumers = new Set([
   'components/csp/CspMessageHintContent.vue',
 ]);
+// The project owner explicitly permits V2 to choose its initial welcome view
+// from message-only HF diagnostics. Do not extend ordinary UI permissions.
+const cspOnboardingV2Consumer = 'components/OnBoardingModalV2.vue';
 const cspDeveloperConsumer = 'components/csp/DeveloperCspDiagnosticsContent.vue';
 const cspDeploymentGuidanceConsumer = 'components/csp/CspDeploymentGuidance.vue';
 const developmentMetaDirectory = 'logic/development-meta-csp';
@@ -182,6 +185,7 @@ const developmentMetaSettingOwners = new Set([
 ]);
 const cspMessageTypeConsumers = new Set([
   ...cspMessageConsumers,
+  cspOnboardingV2Consumer,
   cspDeveloperConsumer,
   cspDeploymentGuidanceConsumer,
   'components/csp/CspMessageHint.vue',
@@ -221,9 +225,11 @@ function importsOnlyNamedCspComposables({ node, names }) {
 }
 
 function importsOnlyCspMessageTypes({ node, source }) {
-  const names = source === cspDeploymentGuidanceConsumer
-    ? ['CspHintMessage']
-    : ['CspHintTarget', 'CspHintMessage', 'CspHintDetail', 'CspSourceDescription'];
+  const names = source === cspOnboardingV2Consumer
+    ? ['CspHintTarget']
+    : source === cspDeploymentGuidanceConsumer
+      ? ['CspHintMessage']
+      : ['CspHintTarget', 'CspHintMessage', 'CspHintDetail', 'CspSourceDescription'];
   if (node.type === 'TSImportType') {
     return node.qualifier?.type === 'Identifier' && names.includes(node.qualifier.name);
   }
@@ -324,6 +330,9 @@ function isForbiddenCspDependency({ rootDir, sourcePath, targetPath, node }) {
       || (source !== cspDeveloperConsumer && !importsOnlyCspMessageTypes({ node, source }));
   }
   if (targetWithoutExtension === cspMessageComposable) {
+    if (source === cspOnboardingV2Consumer) {
+      return !importsOnlyNamedCspComposables({ node, names: ['useCspMessageHintsOnly'] });
+    }
     if (source === cspDeveloperConsumer) {
       return !importsOnlyNamedCspComposables({ node, names: ['useCspMessageHintsOnly', 'useCachedCspParseResultForDeveloperDisplayOnly'] });
     }

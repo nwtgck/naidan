@@ -2,6 +2,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import type { CspHintMessage } from '@/logic/csp-message-hints/types';
 import { modelLaunchCommand, setModelLaunchEntryState, TEST_ONLY as launchTest } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
 import LlamaCppBrowserModelConfiguration from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelConfiguration.vue';
@@ -11,6 +12,7 @@ enableAutoUnmount(afterEach);
 const localInput = vi.hoisted(() => vi.fn());
 const captureDrop = vi.hoisted(() => vi.fn());
 const captureFiles = vi.hoisted(() => vi.fn());
+const initialViewCspHint = ref<CspHintMessage>();
 const entry = {
   intent: ref({ kind: 'home', input: undefined as string | undefined }),
   interaction: ref('ready'),
@@ -25,6 +27,9 @@ const entry = {
   captureModelLaunchContext: () => ({ isCurrent: () => true }),
 };
 vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => entry }));
+// These owner tests control diagnostics locally rather than starting the
+// document-header observation as an unrelated network side effect.
+vi.mock('@/composables/useCspMessageHintsOnly', () => ({ useCspMessageHintsOnly: () => initialViewCspHint }));
 vi.mock('@/composables/useLocalModelStart', () => ({ startLocalModelInput: localInput }));
 vi.mock('@/features/llama-cpp-browser/logic/local-model-input', () => ({ captureDroppedLocalModels: captureDrop, localModelDirectoriesFromFiles: captureFiles }));
 vi.mock('./LocalModelSelectionDialog.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div />' } }));
@@ -40,6 +45,7 @@ beforeEach(async () => {
   localInput.mockReset().mockResolvedValue(undefined);
   captureDrop.mockReset().mockResolvedValue([]);
   captureFiles.mockReset().mockReturnValue([]);
+  initialViewCspHint.value = undefined;
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
@@ -60,6 +66,47 @@ function mountWelcomeEntry({ cspHint }: { cspHint: 'visible' | 'absent' }) {
     },
   });
 }
+
+it('lets people switch to local files and back before late CSP evidence arrives', async () => {
+  const wrapper = mountWelcomeEntry({ cspHint: 'absent' });
+  const toggle = wrapper.get('[data-testid="onboarding-local-model-toggle"]');
+  expect(toggle.attributes('aria-pressed')).toBe('false');
+  await toggle.trigger('click');
+  await vi.waitFor(() => expect(wrapper.find('[data-testid="onboarding-local-model-input"]').exists()).toBe(true));
+  const local = wrapper.get('[data-testid="onboarding-local-model-input"]');
+  await ensureAllStringsForTest({ locale: 'en' });
+  await flushPromises();
+  expect(local.get('[data-testid="llama-import-mode-temp"]').text()).toBe('Load model');
+  expect(local.get('[data-testid="llama-import-mode-host"]').text()).toBe('Link folder');
+  expect(wrapper.get('[data-testid="model-swipe"]').isVisible()).toBe(false);
+  expect(wrapper.find('[data-testid="open-connections"]').exists()).toBe(true);
+  await wrapper.get('[data-testid="onboarding-showcase-toggle"]').trigger('click');
+  expect(wrapper.get('[data-testid="onboarding-local-model-input"]').element).toBe(local.element);
+  expect(local.isVisible()).toBe(false);
+  expect(wrapper.get('[data-testid="onboarding-local-model-toggle"]').element).toBe(toggle.element);
+  expect(wrapper.find('[data-testid="model-swipe"]').exists()).toBe(true);
+  initialViewCspHint.value = { tone: 'caution', subject: 'huggingface', details: [], suggestedDeployments: [] };
+  await flushPromises();
+  expect(toggle.attributes('aria-pressed')).toBe('false');
+  expect(wrapper.find('[data-testid="model-swipe"]').exists()).toBe(true);
+  expect(modelLaunchCommand.value).toBeUndefined();
+});
+
+it('defaults to local files with HF restriction evidence and keeps the cards manually available', async () => {
+  initialViewCspHint.value = { tone: 'caution', subject: 'huggingface', details: [], suggestedDeployments: [] };
+  const wrapper = mountWelcomeEntry({ cspHint: 'absent' });
+  const toggle = wrapper.get('[data-testid="onboarding-local-model-toggle"]');
+  expect(toggle.attributes('aria-pressed')).toBe('true');
+  await vi.waitFor(() => expect(wrapper.find('[data-testid="onboarding-local-model-input"]').exists()).toBe(true));
+  expect(wrapper.find('[data-testid="onboarding-local-model-input"]').exists()).toBe(true);
+  await wrapper.get('[data-testid="onboarding-showcase-toggle"]').trigger('click');
+  expect(toggle.attributes('aria-pressed')).toBe('false');
+  expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeUndefined();
+  initialViewCspHint.value = undefined;
+  await flushPromises();
+  expect(wrapper.find('[data-testid="model-swipe"]').exists()).toBe(true);
+  expect(modelLaunchCommand.value).toBeUndefined();
+});
 
 it('offers owned preparation failure guidance directly after the error without changing the model action', async () => {
   using fetch = vi.spyOn(globalThis, 'fetch');
@@ -85,7 +132,7 @@ it('offers owned preparation failure guidance directly after the error without c
     content.scrollTop = top;
   });
   Object.defineProperty(content, 'scrollTo', { configurable: true, value: scroll });
-  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(wrapper.get('[data-testid="welcome-csp-guidance"]').attributes()).toMatchObject({ 'data-target': 'huggingface-download', 'data-presentation': 'compact' });
   await wrapper.get('[data-testid="start-model"]').trigger('click');
   const command = modelLaunchCommand.value;
   if (command?.kind !== 'start') {
@@ -175,10 +222,12 @@ it.each(['invalid-input', 'variant-unavailable', 'companion-required'] as const)
 
 it('ignores another model attempt when deciding whether welcome needs failure guidance', async () => {
   const wrapper = mountWelcomeEntry({ cspHint: 'visible' });
+  const preflight = wrapper.get('[data-testid="welcome-csp-guidance"]');
   setModelLaunchEntryState({ state: { status: 'failed', operation: Symbol('another model attempt'), input: 'owner/another-model', problem: 'failed' } });
   await flushPromises();
   expect(wrapper.find('[data-testid="welcome-start-error"]').exists()).toBe(false);
-  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(wrapper.get('[data-testid="welcome-csp-guidance"]').element).toBe(preflight.element);
+  expect(preflight.attributes('data-presentation')).toBe('compact');
   expect(wrapper.find('[data-testid="hf-download-failure-hint"]').exists()).toBe(false);
 });
 
@@ -195,10 +244,13 @@ it('does not present a local file opening failure as an HF failure', async () =>
   using error = vi.spyOn(console, 'error').mockImplementation(() => {});
   localInput.mockRejectedValueOnce(new Error('Could not read the local file'));
   const wrapper = mountWelcomeEntry({ cspHint: 'visible' });
+  const preflight = wrapper.get('[data-testid="welcome-csp-guidance"]');
   wrapper.getComponent(BrowserModelWelcome).vm.$emit('local-input', { directories: Promise.resolve([]), controller: new AbortController() });
   await vi.waitFor(() => expect(error).toHaveBeenCalled());
   expect(localInput).toHaveBeenCalledOnce();
-  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(wrapper.getComponent(BrowserModelWelcome).props('startError')).toBeUndefined();
+  expect(wrapper.get('[data-testid="welcome-csp-guidance"]').element).toBe(preflight.element);
+  expect(preflight.attributes('data-presentation')).toBe('compact');
   expect(wrapper.find('[data-testid="hf-download-failure-hint"]').exists()).toBe(false);
   expect(modelLaunchCommand.value).toBeUndefined();
 });

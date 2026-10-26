@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { ArrowRightIcon, ChevronDownIcon, ClockIcon, CpuIcon, DownloadIcon, ExternalLinkIcon, HeartIcon, LayersIcon, Loader2Icon, RefreshCwIcon, SearchIcon, SlidersHorizontalIcon, TrendingUpIcon, WorkflowIcon } from 'lucide-vue-next';
-import { createSearchParameterFilter, searchModels, type ModelSearchResult } from '@/features/llama-cpp-browser/hugging-face/catalog';
+import { searchModels, type ModelSearchResult } from '@/features/llama-cpp-browser/hugging-face/catalog';
+import { createSearchParameterFilter } from '@/features/llama-cpp-browser/hugging-face/parameter-filter';
 import { formatSearchUpdated } from '@/features/llama-cpp-browser/hugging-face/search-updated';
 import { repositoryUrlPath } from '@/features/llama-cpp-browser/hugging-face/types';
 import { currentLocale, lazyStrings } from '@/strings';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
+import LlamaCppBrowserModelParameterFilter from './LlamaCppBrowserModelParameterFilter.vue';
 
 const props = defineProps<{ disabled: boolean, repositoryInput: string, scrollOwner: 'results' | 'parent' }>();
 const emit = defineEmits<{ select: [repository: string], busy: [value: boolean] }>();
@@ -38,21 +40,6 @@ const draftNumParameters = computed(() => {
   }
 });
 const draftParameterSummary = computed(() => parameterSummary({ filter: draftNumParameters.value }));
-const parameterPresets = computed(() => [
-  { minimumBillions: '', maximumBillions: '1', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__up_to_parameters({ count: '1' }) },
-  { minimumBillions: '1', maximumBillions: '4', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameters_between({ minimum: '1', maximum: '4' }) },
-  { minimumBillions: '4', maximumBillions: '8', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameters_between({ minimum: '4', maximum: '8' }) },
-  { minimumBillions: '8', maximumBillions: '16', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameters_between({ minimum: '8', maximum: '16' }) },
-  { minimumBillions: '16', maximumBillions: '32', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameters_between({ minimum: '16', maximum: '32' }) },
-  { minimumBillions: '32', maximumBillions: '70', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameters_between({ minimum: '32', maximum: '70' }) },
-  { minimumBillions: '70', maximumBillions: '128', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameters_between({ minimum: '70', maximum: '128' }) },
-  { minimumBillions: '128', maximumBillions: '', label: lazyStrings.LlamaCppBrowserHuggingFaceSearch__at_least_parameters({ count: '128' }) },
-]);
-
-function setParameterPreset({ minimumBillions: minimum, maximumBillions: maximum }: { minimumBillions: string, maximumBillions: string }): void {
-  minimumBillions.value = minimum;
-  maximumBillions.value = maximum;
-}
 
 function parameterSummary({ filter }: { filter: string | undefined }): string | undefined {
   const minimum = filter?.match(/min:([^B]+)B/)?.[1];
@@ -232,18 +219,7 @@ defineExpose({
     </div>
     <!-- Only the search controls stay sticky; expanded guidance scrolls with the parent content. -->
     <CspMessageHint v-if="status !== 'failed' && status !== 'more-failed'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-search" presentation="compact" />
-    <fieldset v-if="filtersOpen" :id="`${id}-filters`" :disabled="disabled" tw-class="min-w-0 space-y-2">
-      <legend tw-class="mb-1 text-[10px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions() }}</legend>
-      <div tw-class="flex min-w-0 items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 focus-within:ring-2 focus-within:ring-blue-500/40">
-        <div tw-class="min-w-0 flex-1"><label :for="`${id}-minimum`" tw-class="block text-[10px] text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__at_least() }}</label><input :id="`${id}-minimum`" v-model="minimumBillions" type="text" inputmode="decimal" :disabled="disabled" :aria-label="lazyStrings.LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions()" :aria-invalid="filterError" :aria-describedby="filterError ? `${id}-filter-error` : undefined" :placeholder="lazyStrings.LlamaCppBrowserHuggingFaceSearch__no_minimum()" data-testid="llama-hf-search-minimum" tw-class="w-full min-w-0 bg-transparent py-1 text-xs text-gray-800 dark:text-gray-100 outline-none disabled:opacity-50" /></div>
-        <span aria-hidden="true" tw-class="shrink-0 text-xs text-gray-400">–</span>
-        <div tw-class="min-w-0 flex-1"><label :for="`${id}-maximum`" tw-class="block text-[10px] text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__at_most() }}</label><input :id="`${id}-maximum`" v-model="maximumBillions" type="text" inputmode="decimal" :disabled="disabled" :aria-label="lazyStrings.LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions()" :aria-invalid="filterError" :aria-describedby="filterError ? `${id}-filter-error` : undefined" :placeholder="lazyStrings.LlamaCppBrowserHuggingFaceSearch__no_maximum()" data-testid="llama-hf-search-maximum" tw-class="w-full min-w-0 bg-transparent py-1 text-xs text-gray-800 dark:text-gray-100 outline-none disabled:opacity-50" /></div>
-      </div>
-      <div tw-class="flex flex-wrap gap-1.5">
-        <button v-for="preset in parameterPresets" :key="`${preset.minimumBillions}:${preset.maximumBillions}`" type="button" data-testid="llama-hf-search-preset" :disabled="disabled" :aria-pressed="draftNumParameters === createSearchParameterFilter({ minimumBillions: preset.minimumBillions, maximumBillions: preset.maximumBillions })" :tw-class="['rounded-full px-2 py-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50', draftNumParameters === createSearchParameterFilter({ minimumBillions: preset.minimumBillions, maximumBillions: preset.maximumBillions }) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400']" @click="setParameterPreset({ minimumBillions: preset.minimumBillions, maximumBillions: preset.maximumBillions })">{{ preset.label }}</button>
-        <button type="button" data-testid="llama-hf-search-clear-parameters" :disabled="disabled" :aria-pressed="minimumBillions.trim() === '' && maximumBillions.trim() === ''" :tw-class="['rounded-full px-2 py-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50', minimumBillions.trim() === '' && maximumBillions.trim() === '' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400']" @click="setParameterPreset({ minimumBillions: '', maximumBillions: '' })">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__no_parameter_limit() }}</button>
-      </div>
-    </fieldset>
+    <LlamaCppBrowserModelParameterFilter v-if="filtersOpen" :id="`${id}-filters`" v-model:minimum-billions="minimumBillions" v-model:maximum-billions="maximumBillions" :disabled="disabled" :invalid="filterError" :error-described-by="filterError ? `${id}-filter-error` : undefined" />
     <p v-if="filterError" :id="`${id}-filter-error`" role="alert" data-testid="llama-hf-search-filter-error" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range() }}</p>
     <div v-if="status === 'searching'" role="status" tw-class="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
       <span tw-class="inline-flex items-center gap-2"><Loader2Icon aria-hidden="true" tw-class="w-4 h-4 animate-spin shrink-0" />{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__searching_models() }}</span>

@@ -13,6 +13,9 @@ export type CspHintTarget =
   | Readonly<{ kind: 'wikipedia' }>
   | Readonly<{ kind: 'huggingface-metadata' }>
   | Readonly<{ kind: 'huggingface-download' }>
+  // Explicit owner-requested exception for V2's initial view only. Neither
+  // this target nor any other diagnostic authorizes or disables operations.
+  | Readonly<{ kind: 'onboarding-v2-huggingface-access' }>
   | Readonly<{ kind: 'resource' } & CspResourceDescription>
   | Readonly<{ kind: 'resource-list', resources: readonly CspResourceDescription[] }>;
 

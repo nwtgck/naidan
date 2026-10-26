@@ -131,6 +131,7 @@ function targetActivityForDisplayOnly({ target }: { target: CspHintTarget | unde
     return undefined;
   }
   switch (target.kind) {
+  case 'onboarding-v2-huggingface-access':
   case 'huggingface-download': return 'download';
   case 'huggingface-metadata': return 'model-information';
   case 'wikipedia': return 'wikipedia';
@@ -208,6 +209,7 @@ function destinationUrlForDisplayOnly({ target }: { target: CspHintTarget | unde
       break;
     case 'wikipedia':
     case 'huggingface-metadata':
+    case 'onboarding-v2-huggingface-access':
     case 'huggingface-download':
     case 'resource-list': return undefined;
     default: {

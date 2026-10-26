@@ -202,6 +202,8 @@ describe('production entry module boundaries', () => {
     expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/BrowserModelFileSelection.vue', kind: 'dynamic' });
     expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'dynamic' });
     expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).not.toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'static' });
+    expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/OnBoardingModalV2LocalModelInput.vue', kind: 'dynamic' });
+    expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).not.toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/OnBoardingModalV2LocalModelInput.vue', kind: 'static' });
   });
 
   it('keeps the root home behind MainApp and loads its creation action only on demand', () => {

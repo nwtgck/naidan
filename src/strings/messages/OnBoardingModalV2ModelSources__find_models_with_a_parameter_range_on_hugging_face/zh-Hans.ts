@@ -1,0 +1,1 @@
+export const OnBoardingModalV2ModelSources__find_models_with_a_parameter_range_on_hugging_face = ({ minimum, maximum }: { minimum: string, maximum: string }): string => `在Hugging Face上查找参数量为${minimum}–${maximum}B的模型`;

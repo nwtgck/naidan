@@ -16,6 +16,18 @@ function hint({ serialized, target, broker }: { serialized: string, target: CspH
 }
 
 describe('display-only CSP evidence', () => {
+  it('uses only HF access and broker evidence for the explicit V2 initial-view exception', () => {
+    const target: CspHintTarget = { kind: 'onboarding-v2-huggingface-access' };
+    expect(hint({ serialized: "connect-src 'self' http://localhost:*", target, broker: 'hosted' })).toBeDefined();
+    expect(hint({ serialized: 'connect-src https://huggingface.co https://*.hf.co', target, broker: 'hosted' })).toBeUndefined();
+    expect(hint({ serialized: 'connect-src https://huggingface.co', target, broker: 'hosted' })).toBeDefined();
+    expect(hint({ serialized: "worker-src 'none'; connect-src https:", target, broker: 'hosted' })).toBeUndefined();
+    expect(hint({ serialized: "worker-src 'none'; connect-src https:", target: { kind: 'huggingface-download' }, broker: 'hosted' })).toBeDefined();
+    expect(hint({ serialized: "frame-src 'none'; connect-src https:", target, broker: 'hosted' })).toBeDefined();
+    expect(hint({ serialized: "frame-src 'none'; connect-src https:", target, broker: 'absent' })).toBeUndefined();
+    expect(hint({ serialized: "connect-src 'future-allow-expression'", target, broker: 'hosted' })).toBeUndefined();
+  });
+
   it('describes an excluded endpoint while leaving loopback and self without a notice', () => {
     const serialized = "connect-src 'self' http://localhost:* http://127.0.0.1:*";
     expect(hint({ serialized, target: { kind: 'connection', endpoint: 'https://api.openai.com/v1', apiPath: '/models' }, broker: 'hosted' })).toMatchObject({ tone: 'caution', subject: 'connection', details: [{ directive: 'connect-src' }] });
