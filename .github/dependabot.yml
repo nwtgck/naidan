@@ -1,0 +1,61 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+      time: "09:00"
+      timezone: Asia/Tokyo
+    # This delay applies only to version updates; security updates are immediate.
+    cooldown:
+      default-days: 5
+    assignees:
+      - nwtgck
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    # Review breaking updates separately from routine minor/patch updates.
+    groups:
+      production-minor-patch:
+        dependency-type: production
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      development-minor-patch:
+        dependency-type: development
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    # These two packages intentionally share a pinned browser-inference-core
+    # commit. Update both hashes together after compatibility testing.
+    # Ignore also suppresses security update PRs for these dependencies.
+    ignore:
+      - dependency-name: llama-cpp-browser-core
+      - dependency-name: stable-diffusion-cpp-browser-core
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: "09:00"
+      timezone: Asia/Tokyo
+    # This delay applies only to version updates; security updates are immediate.
+    cooldown:
+      default-days: 5
+    assignees:
+      - nwtgck
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
