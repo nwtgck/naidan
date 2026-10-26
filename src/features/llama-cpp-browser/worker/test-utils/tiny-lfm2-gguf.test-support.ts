@@ -1,9 +1,20 @@
+import { createByteBpeVocabulary } from './byte-bpe-vocabulary.test-support';
+
 /**
  * A self-authored, untrained GGUF exercising llama.cpp's LFM2 architecture.
  * All weights and the byte vocabulary are synthetic; no published model,
  * tokenizer, or chat-template artifacts are copied or redistributed here.
  */
 export function createTinyLfm2Gguf({ chatTemplate }: { chatTemplate: string | undefined }): Uint8Array {
+  return createFixtureGguf({ chatTemplate, preTokenizer: undefined });
+}
+
+/** The same hybrid state machinery with a self-authored BPE vocabulary. */
+export function createTinyByteBpeLfm2Gguf({ chatTemplate, preTokenizer }: { chatTemplate: string, preTokenizer: 'gpt-2' | 'qwen35' }): Uint8Array {
+  return createFixtureGguf({ chatTemplate, preTokenizer });
+}
+
+function createFixtureGguf({ chatTemplate, preTokenizer }: { chatTemplate: string | undefined, preTokenizer: 'gpt-2' | 'qwen35' | undefined }): Uint8Array {
   function join({ parts }: { parts: Uint8Array[] }): Uint8Array {
     const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
     let offset = 0;
@@ -41,12 +52,13 @@ export function createTinyLfm2Gguf({ chatTemplate }: { chatTemplate: string | un
 
   const embedding = 16;
   const feedForward = 32;
-  const vocab = ['<unk>', '<s>', '</s>', ...Array.from({ length: 256 }, (_, index) => `<0x${index.toString(16).toUpperCase().padStart(2, '0')}>`)];
+  const bpe = preTokenizer === undefined ? undefined : createByteBpeVocabulary();
+  const vocab = bpe?.tokens ?? ['<unk>', '<s>', '</s>', ...Array.from({ length: 256 }, (_, index) => `<0x${index.toString(16).toUpperCase().padStart(2, '0')}>`)];
   const metadata: Uint8Array[] = [];
   for (const [name, value] of [
     ['general.architecture', 'lfm2'],
     ['general.name', 'untrained native hybrid checkpoint fixture'],
-    ['tokenizer.ggml.model', 'llama'],
+    ['tokenizer.ggml.model', bpe ? 'gpt2' : 'llama'],
   ] satisfies [string, string][]) {
     metadata.push(entry({ name, type: 8, data: text({ value }) }));
   }
@@ -72,9 +84,15 @@ export function createTinyLfm2Gguf({ chatTemplate }: { chatTemplate: string | un
   }
   metadata.push(entry({ name: 'lfm2.attention.layer_norm_rms_epsilon', type: 6, data: f32({ value: 1e-5 }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.add_space_prefix', type: 7, data: new Uint8Array([0]) }));
+  if (bpe && preTokenizer !== undefined) {
+    metadata.push(entry({ name: 'tokenizer.ggml.pre', type: 8, data: text({ value: preTokenizer }) }));
+    metadata.push(entry({ name: 'tokenizer.ggml.add_bos_token', type: 7, data: new Uint8Array([0]) }));
+    metadata.push(entry({ name: 'tokenizer.ggml.add_eos_token', type: 7, data: new Uint8Array([0]) }));
+    metadata.push(entry({ name: 'tokenizer.ggml.merges', type: 9, data: array({ type: 8, values: bpe.merges.map(value => text({ value })) }) }));
+  }
   metadata.push(entry({ name: 'tokenizer.ggml.tokens', type: 9, data: array({ type: 8, values: vocab.map(value => text({ value })) }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.scores', type: 9, data: array({ type: 6, values: vocab.map(() => f32({ value: 0 })) }) }));
-  metadata.push(entry({ name: 'tokenizer.ggml.token_type', type: 9, data: array({ type: 5, values: vocab.map((_, index) => u32({ value: index === 0 ? 2 : index < 3 ? 3 : 6 })) }) }));
+  metadata.push(entry({ name: 'tokenizer.ggml.token_type', type: 9, data: array({ type: 5, values: vocab.map((_, index) => u32({ value: index === 0 ? 2 : index < 3 ? 3 : bpe ? 1 : 6 })) }) }));
 
   const shapes: [string, number[]][] = [
     ['token_embd.weight', [embedding, vocab.length]],

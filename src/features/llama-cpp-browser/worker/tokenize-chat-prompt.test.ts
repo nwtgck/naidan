@@ -413,11 +413,65 @@ describe('segmented native chat prompt tokenization', () => {
     f.policy.mergeWhitespace = true;
     f.policy.eos = true;
     f.policy.sep = true;
-    await expect(f.run({ contextTokens: 10 })).rejects.toThrow('context-full');
+    await expect(f.run({ contextTokens: 9 })).rejects.toThrow('context-full');
     expect(f.allocations.size).toBe(0);
-    const result = await f.run({ contextTokens: 11 });
+    const result = await f.run({ contextTokens: 10 });
     expect(result.tokens).toEqual([1, 114, 111, 118, 118, 121, 695, 2, 3]);
     expect(result.parts).toEqual([{ byteOffset: 0, byteLength: 7, parseSpecial: false, tokenOffset: 1, tokenCount: 6, addSpecial: false }]);
+  });
+
+  it('rejects a candidate whose actual final tokens still fill the context', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    await expect(f.run({ contextTokens: 8 })).rejects.toThrow('context-full');
+    expect(f.core.api.llama_token_to_piece).toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
+    const result = await f.run({ contextTokens: 9 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it.each(['attributes', 'bytes', 'allocation'] as const)('checks the real context budget after an unsafe merge falls back: %s', async condition => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    switch (condition) {
+    case 'attributes': f.policy.ordinaryAttrs = 64;
+      break;
+    case 'bytes': f.policy.roundTripMismatch = true;
+      break;
+    case 'allocation': {
+      const allocate = f.core.tryAlloc.getMockImplementation()!;
+      f.core.tryAlloc.mockImplementation(args => Number(args.bytes) === 256 ? undefined : allocate(args));
+      break;
+    }
+    default: {
+      const exhaustive: never = condition;
+      throw new Error(`Unknown fallback: ${exhaustive}`);
+    }
+    }
+    await expect(f.run({ contextTokens: 8 })).rejects.toThrow('context-full');
+    expect(f.core.api.llama_vocab_get_attr).toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
+    const result = await f.run({ contextTokens: 9 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it.each(['no-boundary', 'non-bpe'] as const)('stops at the first oversized span without inspecting later spans: %s', async condition => {
+    using f = fixture({ parts: [{ text: condition === 'no-boundary' ? 'hello' : 'hello ', isInput: true }, { text: '\n', isInput: false }, { text: 'later', isInput: true }] });
+    f.policy.vocabType = condition === 'non-bpe' ? 1 : 2;
+    await expect(f.run({ contextTokens: 4 })).rejects.toThrow('context-full');
+    expect(f.core.api.llama_tokenize).toHaveBeenCalledOnce();
+    expect(f.core.api.llama_vocab_get_attr).not.toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('propagates a native candidate query failure before allocating span buffers', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    const failure = new WebAssembly.RuntimeError('vocabulary query failed');
+    f.core.api.llama_vocab_type.mockRejectedValueOnce(failure);
+    await expect(f.run({ contextTokens: 32 })).rejects.toBe(failure);
+    expect(f.core.api.llama_tokenize).not.toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
   });
 
   it('propagates a native inspection failure and releases every owned allocation', async () => {

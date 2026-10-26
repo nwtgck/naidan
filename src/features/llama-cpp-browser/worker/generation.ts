@@ -72,8 +72,9 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
   let stage: DiagnosticStage = 'session';
   let session: Awaited<ReturnType<typeof prepareGenerationSession>> | undefined;
   let graphCounters: ReturnType<typeof createNativeGraphCounters> | undefined;
-  const measurements = createGenerationPerformance({ enabled: request.debug === 'on' || request.measurement !== undefined, now: () => performance.now() });
-  const checkpointObservation = request.measurement ? createCheckpointPerformance({ now: () => performance.now() }) : undefined;
+  const measurementsEnabled = request.debug === 'on' || request.measurement !== undefined;
+  const measurements = createGenerationPerformance({ enabled: measurementsEnabled, now: () => performance.now() });
+  const checkpointObservation = measurementsEnabled ? createCheckpointPerformance({ now: () => performance.now() }) : undefined;
   measurements.counters.runtimeAssetBaseURL = request.assetBaseURL;
   measurements.counters.sampling = {
     temperature: request.temperature,
@@ -459,6 +460,24 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       discardCheckpoint();
     }
     measurements.counters.reusedTokens = reusedTokens;
+    if (measurementsEnabled) {
+      measurements.counters.cacheReuse = {
+        reusedTokens,
+        evaluatedTokens: tokenCount - reusedTokens,
+        tokens: tokenCount,
+        cachedTokens,
+        commonPrefixTokens,
+        cacheComparison,
+        nativeMemoryKind,
+        nativePositionMin,
+        nativePositionMax,
+        nativeRollbackTokens,
+        reason,
+        cacheRemoval: sequenceRemoval,
+        checkpointTokens: cache.checkpoint?.tokens.length ?? 0,
+        checkpointBytes: cache.checkpoint?.bytes ?? 0,
+      };
+    }
     logDiagnostic({
       diagnostic: {
         event: 'cache-reuse',

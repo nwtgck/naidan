@@ -29,7 +29,16 @@ export function createImageSessionKeys() {
         path: model.relativePath ?? model.file.name,
         // Library identity covers the publication and all companions. Manual
         // File objects with identical names/size/time are still distinct.
-        source: model.modelFilesReuseKey ?? [token({ file: model.file }), ...(model.companions ?? []).map(entry => [entry.relativePath, token({ file: entry.file })])],
+        source: model.modelFilesReuseKey ?? [token({ file: model.file }), ...(model.companions ?? []).toSorted((left, right) => {
+          // File paths are exact identities, including distinct Unicode spellings.
+          if (left.relativePath < right.relativePath) {
+            return -1;
+          }
+          if (left.relativePath > right.relativePath) {
+            return 1;
+          }
+          return 0;
+        }).map(entry => [entry.relativePath, token({ file: entry.file })])],
       })).sort((a, b) => a.slot.localeCompare(b.slot)),
       // Strength is per generation. Files stay mounted while their native
       // adapter state is retained, including a temporary strength of zero.

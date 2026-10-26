@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createImageWorker } from './impl';
+import * as previewOutputModule from './preview-output';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import type { CoreFactory } from './core-types';
 import type { createImageGenerationSession } from './session';
@@ -261,6 +262,64 @@ it('delivers an early cancellation after initialization and retains the same ses
   expect(source.create).toHaveBeenCalledOnce();
   expect(mocks.createSession).toHaveBeenCalledOnce();
   expect(mocks.cancel).toHaveBeenCalledOnce();
+});
+
+it.each(['cancelled', 'native-abort'] as const)('settles cancellation during preview draining before starting final encoding: %s', async outcome => {
+  const source = loaded(), draining = Promise.withResolvers<void>();
+  const encoded = Promise.withResolvers<{ png: Blob, width: number, height: number }>();
+  const createOutput = previewOutputModule.createPreviewOutput;
+  using _finish = vi.spyOn(previewOutputModule, 'createPreviewOutput').mockImplementation(options => {
+    const output = createOutput(options);
+    return {
+      ...output,
+      async finish() {
+        draining.resolve();
+        await output.finish();
+      },
+    };
+  });
+  mocks.encode.mockReturnValueOnce(encoded.promise);
+  mocks.generate.mockImplementationOnce(async ({ run: { onPreview } }) => {
+    if (!onPreview) {
+      throw new Error('Expected preview capture');
+    }
+    onPreview({ capture: { image: pixels(), step: 2, steps: 20, revision: 0, maxEdge: 256, mode: 'projection' } });
+    return pixels();
+  });
+  const reportPreview = vi.fn(), reportProgress = vi.fn();
+  const worker = createImageWorker({ reportDiagnostic: undefined, reportPreview });
+  const request = requestFixture();
+  request.runId = 41;
+  request.preview.enabled = true;
+  request.preview.mode = 'projection';
+  const task = worker.generate(request, reportProgress);
+  // Observe the real drain boundary, so cancellation cannot be handled by the
+  // earlier check immediately after native generation returns.
+  await draining.promise;
+  expect(mocks.encode).toHaveBeenCalledOnce();
+  worker.cancel({ control: { type: 'naidan-image-cancel-v1', runId: request.runId } });
+  if (outcome === 'native-abort') {
+    source.callbacks().onAbort('Native abort while a preview encoder is pending');
+  }
+  encoded.resolve({ png: new Blob(['preview'], { type: 'image/png' }), width: 256, height: 256 });
+  if (outcome === 'native-abort') {
+    await expect(task).rejects.toThrow('aborted during preview encoding');
+  } else {
+    await expect(task).resolves.toEqual({ cancelled: true, modelResident: true });
+  }
+  expect(mocks.encode).toHaveBeenCalledOnce();
+  expect(reportPreview).not.toHaveBeenCalled();
+  expect(reportProgress).not.toHaveBeenCalledWith({ event: expect.objectContaining({ phase: 'encoding' }) });
+  if (outcome === 'native-abort') {
+    await expect(worker.generate({ ...request, runId: 42 }, vi.fn())).rejects.toThrow('failed');
+  } else {
+    mocks.generate.mockResolvedValueOnce(pixels());
+    await worker.generate({ ...request, runId: 42 }, vi.fn());
+    expect(mocks.encode).toHaveBeenCalledTimes(2);
+  }
+  expect(source.create).toHaveBeenCalledOnce();
+  expect(mocks.createSession).toHaveBeenCalledOnce();
+  expect(mocks.close).not.toHaveBeenCalled();
 });
 
 it('discards a late-cancelled encoded image without discarding the context', async () => {

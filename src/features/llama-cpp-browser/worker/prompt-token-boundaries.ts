@@ -1,6 +1,6 @@
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
-import type { TokenizedPromptPart } from './tokenize-chat-prompt';
+import type { EncodedPromptPart, TokenizedPromptPart } from './tokenize-chat-prompt';
 import { tryTokenizePrompt } from './tokenize-prompt';
 
 const maximumPieceBytes = 1024 * 1024;
@@ -24,18 +24,17 @@ function matchesBytes({ piece, source, offset, end }: { piece: Uint8Array, sourc
   return piece.length > 0 && piece.length <= end - offset && piece.every((byte, index) => byte === source[offset + index]);
 }
 
-/** Native tokenization remains the authority for special-token recognition.
- * Join only byte-exact ordinary runs; retain the original result whenever the
- * vocabulary strips/normalizes bytes or joining would recognize another special. */
-export async function coalescePromptTokenBoundaries({ core, vocab, prompt, tokens, parts, contextTokens, onTokenize }: {
-  core: PromptBoundaryCore, vocab: bigint, prompt: bigint, tokens: number[], parts: readonly TokenizedPromptPart[],
-  contextTokens: number, onTokenize: () => void,
-}): Promise<{ tokens: number[], parts: TokenizedPromptPart[] } | undefined> {
+/** Candidates may reduce the final token count; byte fidelity and special-token
+ * checks still decide whether coalescing is safe after native tokenization. */
+export async function findPromptTokenBoundaryCandidates({ core, vocab, prompt, parts }: {
+  core: PromptBoundaryCore, vocab: bigint, prompt: bigint,
+  parts: readonly EncodedPromptPart[],
+}): Promise<ReadonlySet<number>> {
   const joinedBoundaries = new Set<number>();
   for (let index = 1; index < parts.length; index++) {
     const left = parts[index - 1]!;
     const right = parts[index]!;
-    if (left.parseSpecial === right.parseSpecial || !left.byteLength || !right.byteLength) {
+    if (left.isInput === right.isInput || !left.byteLength || !right.byteLength) {
       continue;
     }
     const boundary = right.byteOffset;
@@ -44,7 +43,20 @@ export async function coalescePromptTokenBoundaries({ core, vocab, prompt, token
       joinedBoundaries.add(boundary);
     }
   }
-  if (!joinedBoundaries.size || await core.api.llama_vocab_type(vocab) !== core.constant({ name: 'LLAMA_VOCAB_TYPE_BPE' })) {
+  if (joinedBoundaries.size && await core.api.llama_vocab_type(vocab) === core.constant({ name: 'LLAMA_VOCAB_TYPE_BPE' })) {
+    return joinedBoundaries;
+  }
+  return new Set<number>();
+}
+
+/** Native tokenization remains the authority for special-token recognition.
+ * Join only byte-exact ordinary runs; retain the original result whenever the
+ * vocabulary strips/normalizes bytes or joining would recognize another special. */
+export async function coalescePromptTokenBoundaries({ core, vocab, prompt, tokens, parts, joinedBoundaries, contextTokens, onTokenize }: {
+  core: PromptBoundaryCore, vocab: bigint, prompt: bigint, tokens: number[], parts: readonly TokenizedPromptPart[],
+  joinedBoundaries: ReadonlySet<number>, contextTokens: number, onTokenize: () => void,
+}): Promise<{ tokens: number[], parts: TokenizedPromptPart[] } | undefined> {
+  if (!joinedBoundaries.size) {
     return undefined;
   }
   const first = parts[0]!;

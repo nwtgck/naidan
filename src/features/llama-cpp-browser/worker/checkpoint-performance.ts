@@ -2,8 +2,8 @@ import type { CheckpointPerformance, CheckpointPhase } from '@/features/llama-cp
 
 export type CheckpointObserver = { enter: ({ phase }: { phase: CheckpointPhase }) => void, end: () => void };
 
-/** Request-local, phase-level wall timings. Construct only for explicit
- * investigation, never install native callbacks or per-token clocks. These are
+/** Request-local, phase-level wall timings. Construct only for debug logging or
+ * explicit measurement, never install native callbacks or per-token clocks. These are
  * children of cache-checkpoint, not additional exclusive GPU/CPU durations. */
 export function createCheckpointPerformance({ now }: { now: () => number }) {
   const phases = new Map<CheckpointPhase, CheckpointPerformance['phases'][number]>();

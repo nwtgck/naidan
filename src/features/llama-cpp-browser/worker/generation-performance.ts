@@ -24,6 +24,7 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   const counters = {
     gpuProfile: undefined as PerformanceSummary['gpuProfile'],
     checkpoint: undefined as PerformanceSummary['checkpoint'],
+    cacheReuse: undefined as PerformanceSummary['cacheReuse'],
     backendCensus: undefined as PerformanceSummary['backendCensus'],
     nativeGraphCounters: undefined as PerformanceSummary['nativeGraphCounters'],
     memoryObservation: undefined as PerformanceSummary['memoryObservation'],
@@ -166,6 +167,7 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
           sampleWindows: counters.sampleWindows?.map(window => ({ ...window })),
           sampling: counters.sampling ? { ...counters.sampling } : undefined,
           sessionPreparation: counters.sessionPreparation ? { ...counters.sessionPreparation } : undefined,
+          cacheReuse: counters.cacheReuse ? { ...counters.cacheReuse } : undefined,
           streaming: counters.streaming ? { ...counters.streaming } : undefined,
           tokenRendering: counters.tokenRendering ? { ...counters.tokenRendering } : undefined,
           memoryReset: counters.memoryReset ? { ...counters.memoryReset } : undefined,

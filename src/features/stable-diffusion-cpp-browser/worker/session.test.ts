@@ -989,6 +989,205 @@ it.each([4, 8] as const)('keeps image pixels until native return, updates and cl
   await session.close();
 });
 
+it.each(([4, 8] as const).flatMap(pointerBytes => (['decode', 'allocation', 'cancel'] as const).map(outcome => ({ pointerBytes, outcome }))))('releases partially prepared input images after a late $outcome with $pointerBytes-byte pointers', async ({ pointerBytes, outcome }) => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  const bitmaps = Array.from({ length: 3 }, () => ({ width: 2, height: 1, close: vi.fn() }));
+  const gate = Promise.withResolvers<typeof bitmaps[number]>();
+  const entered = Promise.withResolvers<void>();
+  const decode = vi.fn().mockResolvedValueOnce(bitmaps[0]).mockResolvedValueOnce(bitmaps[1]).mockImplementationOnce(() => {
+    entered.resolve();
+    return gate.promise;
+  });
+  vi.stubGlobal('createImageBitmap', decode);
+  const canvases: { width: number, height: number }[] = [];
+  vi.stubGlobal('OffscreenCanvas', class {
+    width: number;
+    height: number;
+
+    constructor(width: number, height: number) {
+      this.width = width;
+      this.height = height;
+      canvases.push(this);
+    }
+
+    getContext() {
+      return { fillStyle: '', fillRect() {}, drawImage() {}, getImageData: () => ({ data: new Uint8ClampedArray([1, 2, 3, 255, 4, 5, 6, 255]) }) };
+    }
+  });
+  using _globals = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  const allocate = vi.mocked(h.core.alloc).getMockImplementation()!;
+  const inputBuffers: bigint[] = [];
+  let rgbAllocations = 0;
+  using _allocation = vi.spyOn(h.core, 'alloc').mockImplementation(bytes => {
+    if (Number(bytes) === 6 && ++rgbAllocations === 3 && outcome === 'allocation') {
+      return 0n;
+    }
+    const pointer = allocate(bytes);
+    if (Number(bytes) === 6 || Number(bytes) === h.core.recordSize('sd_image_t') * 2) {
+      inputBuffers.push(pointer);
+    }
+    return pointer;
+  });
+  const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
+  const request = requestFixture();
+  request.runId = 5;
+  const file = new File(['synthetic encoded pixels'], 'input.png', { type: 'image/png' });
+  request.imageInputs = { initImage: file, strength: 0.5, referenceImages: [file, file] };
+  const pending = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  const settled = pending.catch(() => undefined);
+  await using _session = {
+    async [Symbol.asyncDispose]() {
+      gate.resolve(bitmaps[2]!);
+      await settled;
+      await session.close();
+    },
+  };
+  await Promise.race([entered.promise, pending]);
+  expect(decode).toHaveBeenCalledTimes(3);
+  const params = h.recordPointers.get('sd_img_gen_params_t')!;
+  expect(inputBuffers).toHaveLength(3); // init RGB, reference records, first reference RGB.
+  for (const pointer of [params, ...inputBuffers]) {
+    expect(h.core.free).not.toHaveBeenCalledWith(pointer);
+  }
+  expect(h.api.generate_image).not.toHaveBeenCalled();
+  switch (outcome) {
+  case 'decode': {
+    const failure = new Error('Second reference decode failed');
+    const rejected = expect(pending).rejects.toBe(failure);
+    gate.reject(failure);
+    await rejected;
+    break;
+  }
+  case 'allocation': {
+    const rejected = expect(pending).rejects.toThrow('allocate input image pixels');
+    gate.resolve(bitmaps[2]!);
+    await rejected;
+    break;
+  }
+  case 'cancel': {
+    expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: request.runId } })).toBe(true);
+    gate.resolve(bitmaps[2]!);
+    await expect(pending).resolves.toEqual({ cancelled: true, modelResident: true });
+    break;
+  }
+  default: {
+    const exhaustive: never = outcome;
+    throw new Error(`Unknown partial-input outcome: ${exhaustive}`);
+  }
+  }
+  expect(h.api.generate_image).not.toHaveBeenCalled();
+  for (const pointer of [params, ...inputBuffers]) {
+    expect(vi.mocked(h.core.free).mock.calls.filter(([freed]) => freed === pointer)).toHaveLength(1);
+  }
+  expect(bitmaps[0]!.close).toHaveBeenCalledOnce();
+  expect(bitmaps[1]!.close).toHaveBeenCalledOnce();
+  expect(bitmaps[2]!.close).toHaveBeenCalledTimes(outcome === 'decode' ? 0 : 1);
+  expect(canvases.every(canvas => canvas.width === 0 && canvas.height === 0)).toBe(true);
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
+  const next = { ...request, runId: request.runId + 1, imageInputs: { initImage: undefined, strength: 0.5, referenceImages: [] } };
+  switch (outcome) {
+  case 'cancel': {
+    const output = await session.generate({ run: { request: next, onProgress: vi.fn(), onLog: vi.fn() } });
+    expect(output).toHaveProperty('pixels');
+    expect(h.api.generate_image).toHaveBeenCalledOnce();
+    break;
+  }
+  case 'decode': case 'allocation':
+    await expect(session.generate({ run: { request: next, onProgress: vi.fn(), onLog: vi.fn() } })).rejects.toThrow('failed or released');
+    expect(h.api.generate_image).not.toHaveBeenCalled();
+    break;
+  default: {
+    const exhaustive: never = outcome;
+    throw new Error(`Unknown partial-input outcome: ${exhaustive}`);
+  }
+  }
+  expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
+});
+
+it.each([4, 8] as const)('clears stale image inputs when the allocator recycles the same parameter record with %i-byte pointers', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
+  let value = 31;
+  const bitmap = { width: 2, height: 1, close: vi.fn() };
+  vi.stubGlobal('createImageBitmap', vi.fn(async () => bitmap));
+  vi.stubGlobal('OffscreenCanvas', class {
+    getContext() {
+      return { fillStyle: '', fillRect() {}, drawImage() {}, getImageData: () => ({ data: new Uint8ClampedArray([value, 2, 3, 255, 4, 5, 6, 255]) }) };
+    }
+  });
+  using _globals = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  const allocate = vi.mocked(h.core.allocRecord).getMockImplementation()!;
+  let recycled: bigint | undefined;
+  using _records = vi.spyOn(h.core, 'allocRecord').mockImplementation(name => {
+    if (name === 'sd_img_gen_params_t' && recycled !== undefined) {
+      return recycled;
+    }
+    const pointer = allocate(name);
+    if (name === 'sd_img_gen_params_t') {
+      recycled = pointer;
+    }
+    return pointer;
+  });
+  using _defaults = vi.spyOn(h.api, 'sd_img_gen_params_init').mockImplementation(async params => {
+    // Model the native zero/default initialization on reused storage. The
+    // ordinary harness's monotonically increasing pointers hide stale fields.
+    const initial = h.core.fieldAddress('sd_img_gen_params_t', params, 'init_image');
+    for (const field of ['width', 'height', 'channel', 'data']) {
+      h.fields.set(`sd_image_t:${initial}:${field}`, 0);
+    }
+    h.fields.set(`sd_img_gen_params_t:${params}:ref_images`, 0n);
+    h.fields.set(`sd_img_gen_params_t:${params}:ref_images_count`, 0);
+  });
+  const nativeGenerate = vi.mocked(h.api.generate_image).getMockImplementation()!;
+  const observed: { params: bigint, initial: number | undefined, reference: number | undefined, referenceCount: number }[] = [];
+  using _generate = vi.spyOn(h.api, 'generate_image').mockImplementation(async (context, params, imagesOut, countOut) => {
+    const initial = h.core.fieldAddress('sd_img_gen_params_t', params, 'init_image');
+    const initialData = BigInt(h.core.getField('sd_image_t', initial, 'data'));
+    const references = BigInt(h.core.getField('sd_img_gen_params_t', params, 'ref_images'));
+    const referenceCount = Number(h.core.getField('sd_img_gen_params_t', params, 'ref_images_count'));
+    const referenceData = references ? BigInt(h.core.getField('sd_image_t', references, 'data')) : 0n;
+    observed.push({
+      params,
+      initial: initialData ? h.core.bytes(initialData, 1)[0] : undefined,
+      reference: referenceData ? h.core.bytes(referenceData, 1)[0] : undefined,
+      referenceCount,
+    });
+    return nativeGenerate(context, params, imagesOut, countOut);
+  });
+  const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
+  await using _session = {
+    async [Symbol.asyncDispose]() {
+      await session.close();
+    },
+  };
+  const request = requestFixture();
+  const first = new File(['first encoded image'], 'image.png', { type: 'image/png' });
+  const second = new File(['second encoded image'], 'image.png', { type: 'image/png' });
+  request.imageInputs = { initImage: first, strength: 0.4, referenceImages: [first] };
+  await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  request.imageInputs = { initImage: undefined, strength: 0.4, referenceImages: [] };
+  await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  value = 47;
+  request.imageInputs = { initImage: second, strength: 0.4, referenceImages: [second] };
+  await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  expect(observed).toEqual([
+    { params: recycled, initial: 31, reference: 31, referenceCount: 1 },
+    { params: recycled, initial: undefined, reference: undefined, referenceCount: 0 },
+    { params: recycled, initial: 47, reference: 47, referenceCount: 1 },
+  ]);
+  expect(h.api.sd_img_gen_params_init).toHaveBeenCalledTimes(3);
+  expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
+  expect(bitmap.close).toHaveBeenCalledTimes(4);
+  expect(vi.mocked(h.core.free).mock.calls.filter(([pointer]) => pointer === recycled)).toHaveLength(3);
+});
+
 it('settles cancellation during input decode without entering native generation or leaking the bitmap', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
   const bitmap = { width: 2, height: 1, close: vi.fn() };
