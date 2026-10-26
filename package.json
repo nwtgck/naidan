@@ -34,7 +34,7 @@
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
     "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#6d71458ec7b620b2bc1f6998e76827a9f2d493dd",
-    "lucide-vue-next": "^0.562.0",
+    "lucide-vue-next": "^1.0.0",
     "marked": "^18.0.5",
     "marked-highlight": "^2.2.4",
     "marked-katex-extension": "^5.1.10",
