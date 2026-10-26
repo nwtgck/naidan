@@ -3,8 +3,18 @@ import { mount } from '@vue/test-utils';
 import ToolConfigHierarchySettings from './ToolConfigHierarchySettings.vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { ToolConfig } from '@/01-models/tool';
+import type { CspHintMessage } from '@/logic/csp-message-hints/types';
 
 const featureState = vi.hoisted(() => ({ weshEnabled: true }));
+const cspState = vi.hoisted(() => ({ message: undefined as CspHintMessage | undefined }));
+
+vi.mock('@/composables/useCspMessageHintsOnly', () => ({
+  useCspMessageHintsOnly: () => ({
+    get value() {
+      return cspState.message;
+    },
+  }),
+}));
 
 vi.mock('@/composables/useFeatureFlags', () => ({
   useFeatureFlags: () => ({
@@ -25,6 +35,7 @@ vi.mock('@/composables/useSettings', () => ({
 vi.mock('lucide-vue-next', () => ({
   BookOpenIcon: { template: '<span />' },
   CalculatorIcon: { template: '<span />' },
+  ChevronDownIcon: { template: '<span />' },
   InfoIcon: { template: '<span />' },
   ListIcon: { template: '<span />' },
   RotateCcwIcon: { template: '<span />' },
@@ -86,6 +97,7 @@ function withToolConfig({
 describe('ToolConfigHierarchySettings', () => {
   beforeEach(() => {
     featureState.weshEnabled = true;
+    cspState.message = undefined;
   });
 
   it('uses one effective-state toggle and keeps a separated fixed reset slot', async () => {
@@ -149,6 +161,43 @@ describe('ToolConfigHierarchySettings', () => {
     });
 
     expect(wrapper.get('[data-testid="tool-config-builtin.wikipedia-toggle"]').attributes('aria-checked')).toBe('false');
+  });
+
+  it('keeps Wikipedia enabled and allows normal toggling while a connection hint is shown', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+    cspState.message = {
+      tone: 'caution',
+      subject: 'wikipedia',
+      suggestedDeployments: [],
+      details: [{ directive: 'connect-src', sources: ["'none'"], sourceDescriptions: [{ kind: 'none' }], context: 'privacy-broker' }],
+    };
+    const effectiveToolConfigs = defaults.map(config => {
+      switch (config.key) {
+      case 'builtin.wikipedia': return { ...config, status: 'enabled' as const };
+      case 'builtin.wesh': return { ...config, status: 'enabled' as const, naidanSysfs: { accessScope: 'current_chat_only' as const } };
+      case 'builtin.calculator':
+      case 'builtin.choices': return config;
+      default: {
+        const exhaustive: never = config;
+        return exhaustive;
+      }
+      }
+    });
+    using mounted = {
+      wrapper: mountSettings({ scope: 'global', effectiveToolConfigs }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    await vi.dynamicImportSettled();
+    await mounted.wrapper.vm.$nextTick();
+    const toggle = mounted.wrapper.get('[data-testid="tool-config-builtin.wikipedia-toggle"]');
+    expect(mounted.wrapper.find('[data-csp-tool-notice]').exists()).toBe(true);
+    expect(toggle.attributes('aria-checked')).toBe('true');
+    expect(toggle.attributes('disabled')).toBeUndefined();
+    expect(toggle.classes()).toContain('bg-blue-500');
+    await toggle.trigger('click');
+    expect(mounted.wrapper.emitted('set-status')).toEqual([[{ key: 'builtin.wikipedia', status: 'disabled' }]]);
   });
 
   it('disables all controls and explains persistence when the layer is read-only', () => {

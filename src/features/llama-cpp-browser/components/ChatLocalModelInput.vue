@@ -2,10 +2,14 @@
 import { computed, nextTick, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { ChevronDownIcon, CpuIcon, FolderPlusIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from './LlamaCppBrowserLocalFileRecovery.vue';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { createModuleLoader } from '@/utils/module-loader';
 import { scheduleIdleTask, type ScheduledIdleTask } from '@/utils/idle-task';
 import type { ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
+import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import { localModelDisplayName } from '@/components/browser-model-presentation';
 import { captureDroppedLocalModels, localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
@@ -369,6 +373,18 @@ function dropLocal({ event }: { event: DragEvent }): void {
   void props.state.accept({ directories, controller });
 }
 
+function acceptFailedDownloadFiles({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }): Promise<void> {
+  void directories.catch(() => {});
+  const state = props.state;
+  const operation = state.operation.value;
+  if (props.availability === 'unavailable' || props.expansion !== 'open'
+    || operation?.phase !== 'error' || state.downloadJob.value?.status !== 'failed') {
+    controller.abort();
+    return Promise.resolve();
+  }
+  return state.acceptAfterFailedDownload({ directories, controller, operationId: operation.id });
+}
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
@@ -433,6 +449,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <button v-for="candidate in state.operation.value.candidates" :key="candidate.modelId" type="button" tw-class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.choose({ modelId: candidate.modelId })"><span tw-class="min-w-0 truncate">{{ localModelDisplayName({ model: candidate }) }}</span><span tw-class="shrink-0 tabular-nums text-gray-400">{{ formatDownloadBytes({ bytes: candidate.size }) }}</span></button>
             </div>
             <p v-if="failure" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ failure }}</p>
+            <HuggingFaceDownloadFailureHint v-if="failure && state.downloadJob.value?.status === 'failed'" :key="state.operation.value?.id"><LlamaCppBrowserLocalFileRecovery :disabled="availability === 'unavailable' || expansion === 'closed' || state.operation.value?.phase !== 'error'" :accept-local-input="acceptFailedDownloadFiles" /></HuggingFaceDownloadFailureHint>
+            <CspMessageHint v-else-if="state.downloadJob.value?.status === 'paused'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
             <button v-if="state.operation.value?.phase === 'error'" type="button" data-testid="chat-local-model-retry" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.retry()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
             <button v-if="state.operation.value" type="button" :disabled="state.operation.value.phase === 'cancelling' || state.operation.value.phase === 'committing'" data-testid="chat-local-model-cancel" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="state.cancel()">{{ lazyStrings.SHARED__cancel() }}</button>
           </div>

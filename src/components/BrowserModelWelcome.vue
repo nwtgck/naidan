@@ -450,6 +450,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <p v-if="browserProvidedModel?.selection === 'selected'" role="status" tw-class="sr-only">{{ lazyStrings.BrowserModelWelcome__browser_provided_model() }}</p>
           <p v-else-if="selected" role="status" tw-class="sr-only">{{ selected.suggestion.name }} {{ modelSize({ bytes: selected.quantization.approximateModelBytes }) }}</p>
+          <!-- The welcome showcase intentionally has no CSP preflight warning.
+               Let people try a model first, then offer guidance beside a preparation error. -->
           <div class="model-stage" tw-class="relative isolate">
             <div class="model-deck" :class="{ 'model-deck-dragging': swipeStart?.phase === 'dragging' }" :style="{ '--model-drag': `${swipeOffset}px` }" data-testid="model-swipe" tw-class="relative select-none [touch-action:pan-y_pinch-zoom]" @pointerdown="beginSwipe({ event: $event })" @pointermove="moveSwipe({ event: $event })" @pointerup="finishSwipe({ event: $event })" @pointercancel="cancelPointerSwipe({ event: $event })" @lostpointercapture="loseSwipeCapture({ event: $event })" @touchstart.passive="beginTouchSwipe({ event: $event })" @touchmove="moveTouchSwipe({ event: $event })" @touchend="finishTouchSwipe({ event: $event })" @touchcancel="cancelTouchSwipe({ event: $event })" @keydown.left.prevent="moveModel({ step: -1 })" @keydown.right.prevent="moveModel({ step: 1 })">
               <!-- Capability detection can append a browser model after first paint.
@@ -480,7 +482,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                Browser-provided deliberately remains available in the destination,
                even though this wording can suggest it also runs outside the browser. -->
           <button type="button" :disabled="disabled" data-testid="open-connections" tw-class="group mx-auto flex min-h-12 w-full max-w-md items-center gap-3 rounded-xl px-3 py-2 text-left text-gray-500 transition-colors hover:bg-gray-100/50 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-500 dark:hover:bg-gray-800/40 dark:hover:text-gray-300 disabled:opacity-50" @click="emit('open-connections', 'openai')"><span tw-class="flex h-8 w-8 shrink-0 items-center justify-center text-gray-400 dark:text-gray-600"><PlugZapIcon aria-hidden="true" :stroke-width="1.5" tw-class="h-3.5 w-3.5" /></span><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs">{{ lazyStrings.BrowserModelWelcome__use_openai_ollama_and_more() }}</span><span tw-class="mt-0.5 block text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ lazyStrings.BrowserModelWelcome__connect_to_ai_running_outside_the_web_browser() }}</span></span><ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-600 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></button>
-          <p v-if="startError" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ startError }}</p>
+          <div v-if="startError" data-browser-model-preparation-error data-testid="welcome-start-error" tw-class="space-y-2">
+            <p role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ startError }}</p>
+            <slot name="start-error-hint" />
+          </div>
           <input ref="fileInput" type="file" :disabled="disabled" accept=".gguf" multiple tabindex="-1" tw-class="sr-only" :aria-label="lazyStrings.BrowserModelWelcome__choose_gguf_files()" @change="pickFiles({ event: $event, selection: 'files' })" />
           <input ref="directoryInput" type="file" :disabled="disabled" webkitdirectory multiple tabindex="-1" tw-class="sr-only" :aria-label="lazyStrings.BrowserModelWelcome__choose_a_model_folder()" @change="pickFiles({ event: $event, selection: 'directory' })" />
         </div>

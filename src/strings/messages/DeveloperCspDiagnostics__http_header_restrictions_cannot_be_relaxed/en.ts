@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__http_header_restrictions_cannot_be_relaxed = (): string => 'The browser enforces HTTP header restrictions. This action can add stricter restrictions, but cannot weaken them or allow access denied by the server policy.';

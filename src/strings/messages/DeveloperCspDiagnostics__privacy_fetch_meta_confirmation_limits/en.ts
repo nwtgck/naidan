@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__privacy_fetch_meta_confirmation_limits = (): string => 'This confirms meta additions only. It does not reproduce restrictions before initial document loading, separate Workers, or directives unsupported in meta.';

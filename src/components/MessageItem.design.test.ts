@@ -46,7 +46,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
 
   it('applies thinking-gradient-border element when thinking is active', () => {
     const message = createMessage('<think>Deep thought...');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'thinking', isGenerating: true } });
 
     const border = wrapper.find('.thinking-gradient-border');
     expect(border.exists()).toBe(true);
@@ -125,7 +125,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     const message = createMessage('<think>thought</think>');
     const nestedFlow = { position: 'standalone' as const, nesting: 'inside-group' as const };
     const wrapper = mount(MessageItem, {
-      props: { message, mode: 'thinking', isGenerating: true, flow: nestedFlow, isLastInNode: true },
+      props: { endpoint: undefined, message, mode: 'thinking', isGenerating: true, flow: nestedFlow, isLastInNode: true },
     });
 
     // MessageThinking should have no bottom margin (no mb-3)
@@ -142,7 +142,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
   it('uses mt-3 on controls when not nested (normal case)', () => {
     const message = createMessage('<think>thought</think>');
     const wrapper = mount(MessageItem, {
-      props: { message, mode: 'thinking', isGenerating: true, isLastInNode: true },
+      props: { endpoint: undefined, message, mode: 'thinking', isGenerating: true, isLastInNode: true },
     });
 
     const controls = wrapper.find('[data-testid="message-actions-wrapper"]');
@@ -153,7 +153,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
 
   it('maintains the thinking border during expansion if thinking is active', async () => {
     const message = createMessage('<think>Ongoing thought...');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'thinking', isGenerating: true } });
 
     const container = wrapper.find('[data-testid="toggle-thinking"]');
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(true);

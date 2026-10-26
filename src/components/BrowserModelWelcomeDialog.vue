@@ -3,6 +3,8 @@ import { computed, markRaw, nextTick, onScopeDispose, ref, shallowRef, watch, ty
 import { FolderInputIcon } from 'lucide-vue-next';
 import BrowserModelDialog from './BrowserModelDialog.vue';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue';
 import { browserModelRepositoryPresentation, browserModelSuggestionSelection, type BrowserModelLocalInput } from './browser-model-presentation';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { useToast } from '@/composables/useToast';
@@ -70,6 +72,15 @@ const fileModel = computed(() => browserModelRepositoryPresentation({ repository
 const open = computed(() => entry.modelSelection.value?.phase === 'open');
 const dismissible = computed(() => savingConnection.value === undefined && !(state.value?.status === 'checking' && state.value.phase === 'opening-chat'));
 const canDrop = computed(() => open.value && entry.interaction.value === 'ready' && !busy.value && files.value === undefined && connection.value === undefined);
+
+watch(state, (current, previous) => {
+  if (current?.status !== 'failed' || current.problem !== 'failed' || previous?.status === 'failed') {
+    return;
+  }
+  // Reveal a real failed attempt once. Optional CSP updates and changes to
+  // locale or the currently browsed card must never take over manual scrolling.
+  void dialog.value?.revealPreparationError({ isCurrent: () => state.value === current && open.value && entry.interaction.value === 'ready' && files.value === undefined && connection.value === undefined && !connectionLoadFailed.value && !loadError.value });
+});
 
 watch(modelLaunchEntryState, async current => {
   if (current.status === 'needs-selection' && current.operation === operation.value) {
@@ -380,7 +391,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <Transition name="browser-model-step" mode="out-in" @enter="dialog?.focusPanel()">
       <FileSelection v-if="files" key="files" :model="fileModel" :selection="files" :busy="entry.interaction.value !== 'ready' || busy" :error="error" :action="state?.status === 'failed' ? 'retry' : 'confirm'" @back="back" @confirm="confirm" @retry="retryModelLaunch" />
       <ConnectionSelection v-else-if="connection && ConnectionSelection" key="connections" :initial-endpoint="connection.initialEndpoint" :active="connectionActive" :apply-selection="connection.applySelection" @back="backFromConnections" />
-      <BrowserModelWelcome v-else key="models" :selection="selection" :browser-provided-model="browserProvidedModel" :interaction="entry.interaction.value" :start-status="busy ? 'starting' : 'idle'" :start-error="error" @select="entry.selectModel({ selection: $event })" @select-browser-model="browserSelection = $event" @open-connections="openConnections({ endpoint: $event })" @start="start" @open-discovery="entry.openDiscovery" @local-input="localInput" @dragover="dragOver({ event: $event })" @dragleave="dragLeave({ event: $event })" @drop="drop({ event: $event })" @dragend="dragVisibility = 'hidden'" />
+      <BrowserModelWelcome v-else key="models" :selection="selection" :browser-provided-model="browserProvidedModel" :interaction="entry.interaction.value" :start-status="busy ? 'starting' : 'idle'" :start-error="error" @select="entry.selectModel({ selection: $event })" @select-browser-model="browserSelection = $event" @open-connections="openConnections({ endpoint: $event })" @start="start" @open-discovery="entry.openDiscovery" @local-input="localInput" @dragover="dragOver({ event: $event })" @dragleave="dragLeave({ event: $event })" @drop="drop({ event: $event })" @dragend="dragVisibility = 'hidden'">
+        <template #start-error-hint>
+          <!-- Only this dialog's failed model attempt gets recovery guidance, not local or connection UI failures. -->
+          <HuggingFaceDownloadFailureHint v-if="state?.status === 'failed' && state.problem === 'failed' && !connectionLoadFailed && !loadError"><LlamaCppBrowserLocalFileRecovery :disabled="entry.interaction.value !== 'ready' || busy" :accept-local-input="localInput" /></HuggingFaceDownloadFailureHint>
+        </template>
+      </BrowserModelWelcome>
     </Transition>
     <template #overlay>
       <div v-if="dragVisibility === 'visible'" data-testid="model-drop-overlay" tw-class="pointer-events-none absolute inset-0 z-50 flex items-center justify-center border-2 border-dashed border-blue-500 bg-blue-500/10"><div tw-class="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-xl dark:bg-gray-800"><FolderInputIcon aria-hidden="true" tw-class="h-6 w-6 text-blue-500" /><span tw-class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.AppEntrySurface__drop_gguf_files_or_model_folders() }}</span></div></div>

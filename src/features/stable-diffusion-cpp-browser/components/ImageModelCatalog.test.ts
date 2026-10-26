@@ -11,6 +11,8 @@ import { downloadImageRecipe, type ImageRecipeDownloadRequest } from '@/features
 vi.mock('@/components/SettingsSelect.vue', async () => ({
   default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
 }));
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({ default: { name: 'CspMessageHint', render: () => undefined } }));
+vi.mock('./ImageModelLocalFileRecovery.vue', () => ({ default: { name: 'ImageModelLocalFileRecovery', props: ['view', 'disabled'], template: '<div data-testid="image-local-recovery-probe" />' } }));
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
@@ -97,6 +99,31 @@ it('shows all static recipes without networking or remote resources when opened'
   expect(fetch).not.toHaveBeenCalled();
   expect(xhr).not.toHaveBeenCalled();
   expect(worker).not.toHaveBeenCalled();
+});
+
+it('keeps connection guidance outside the metadata toolbar without replacing its controls', async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  wrapper = mount(ImageModelCatalog, {
+    props: { disabled: false, downloadDisabled: false, view: createDisabledImageLibrary() },
+    global: { stubs: { CspMessageHint: { template: '<details data-testid="recipe-guidance"><summary>Connection guidance</summary><button>Export data</button></details>' } } },
+  });
+  const card = wrapper.get('[data-testid="image-recipe-z-image-turbo"]');
+  const metadata = card.get('[data-testid="image-recipe-metadata"]');
+  const toggle = card.get('[data-testid="recipe-details-toggle-z-image-turbo"]');
+  const download = card.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
+  const disabled = download.element.disabled;
+  const guidance = card.get('[data-testid="recipe-guidance"]');
+  expect(metadata.element.contains(toggle.element)).toBe(true);
+  expect(metadata.element.contains(guidance.element)).toBe(false);
+  expect(guidance.element.parentElement).toBe(card.element);
+  guidance.element.setAttribute('open', '');
+  await toggle.trigger('click');
+  expect(card.get('[data-testid="recipe-details-toggle-z-image-turbo"]').element).toBe(toggle.element);
+  expect(card.get('[data-testid="recipe-download-selected-z-image-turbo"]').element).toBe(download.element);
+  expect(download.element.disabled).toBe(disabled);
+  expect(card.get('[data-testid="image-recipe-details"]').attributes('inert')).toBeUndefined();
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 it('uses only explicit, referrer-free browser links with pinned revisions except the provisional Turbo source', () => {
@@ -334,6 +361,25 @@ it('removes non-active queue entries during import without enabling retry or sta
   await wrapper.setProps({ downloadDisabled: true });
   expect(queued.element.disabled).toBe(true);
   expect(failed.element.disabled).toBe(true);
+});
+
+it('keeps failed queue recovery local to image models and independent of download guards', async () => {
+  const view = createDisabledImageLibrary();
+  view.downloadQueue = computed<ImageDownloadQueueEntry[]>(() => [{ id: 'failed', label: 'SDXL', destination: 'OPFS', state: 'failed', error: 'Connection lost' }]);
+  view.retryQueuedDownload = vi.fn(async () => {});
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: true, view } });
+  const row = wrapper.get('[data-testid="image-download-queue-failed"]');
+  expect(row.find('[data-testid="image-local-recovery-probe"]').exists()).toBe(false);
+  await row.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+  const recovery = row.getComponent({ name: 'ImageModelLocalFileRecovery' });
+  expect(recovery.props('view')).toBe(view);
+  expect(recovery.props('disabled')).toBe(false);
+  expect(row.get<HTMLButtonElement>('[data-testid="image-download-queue-retry-failed"]').element.disabled).toBe(true);
+  expect(row.text()).toContain('Connection lost');
+  expect(view.retryQueuedDownload).not.toHaveBeenCalled();
+  await wrapper.setProps({ disabled: true, downloadDisabled: false });
+  expect(recovery.props('disabled')).toBe(true);
+  expect(row.get<HTMLButtonElement>('[data-testid="image-download-queue-retry-failed"]').element.disabled).toBe(false);
 });
 
 it('keeps destination selection independent of the editor and moves folder mutations out of the catalog', async () => {

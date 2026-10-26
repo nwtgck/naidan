@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { XIcon, SparklesIcon, SquareIcon } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
+import type { Endpoint } from '@/01-models/types';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import { UNTITLED_CHAT_TITLE } from '@/constants';
 import { lazyStrings } from '@/strings';
 
@@ -16,6 +18,7 @@ const props = defineProps<{
   generatedTitles: readonly string[],
   generatingTitle: boolean,
   fetchingModels: boolean,
+  endpoint: Endpoint | undefined,
 }>();
 
 const emit = defineEmits<{
@@ -163,12 +166,12 @@ defineExpose({
   <Transition name="modal">
     <div
       v-if="isOpen"
-      tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 dark:bg-black/50 backdrop-blur-sm px-4"
+      tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 dark:bg-black/50 backdrop-blur-sm px-4 py-4"
       data-testid="chat-title-dialog"
       @click.self="emit('close')"
     >
-      <div tw-class="w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
-        <div tw-class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+      <div tw-class="flex max-h-[90dvh] w-full max-w-lg flex-col bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
+        <div tw-class="flex shrink-0 items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <div>
             <h3 tw-class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ lazyStrings.ChatTitleDialog__chat_title() }}</h3>
             <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{{ lazyStrings.ChatTitleDialog__edit_the_title_directly_or_generate_a_new_one_from_the_conversation() }}</p>
@@ -184,7 +187,7 @@ defineExpose({
           </button>
         </div>
 
-        <div tw-class="p-5 space-y-5">
+        <div tw-class="min-h-0 overflow-y-auto overscroll-contain p-5 space-y-5">
           <div tw-class="space-y-2">
             <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title() }}</label>
             <div tw-class="relative">
@@ -223,6 +226,7 @@ defineExpose({
                 <span>{{ lazyStrings.ChatTitleDialog__generate() }}</span>
               </button>
             </div>
+            <CspLmEndpointHint activity-for-display-only="title-generation" :fake-lm-debug-mode-status="undefined" :endpoint="endpoint" operation="chat" presentation="compact" />
           </div>
 
           <div tw-class="border-t border-gray-100 dark:border-gray-800 pt-3">

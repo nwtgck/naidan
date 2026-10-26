@@ -98,6 +98,36 @@ it('starts saved automatic policy only after app-ready and keeps an empty regist
   expect(fixture.create).toHaveBeenCalledOnce();
 });
 
+it('keeps display-only relay lookups passive before and during manager initialization', async () => {
+  const feature = await import('./feature');
+  const registrationId = toNaidanRpcRegistrationId({ raw: 'display-registration' });
+  expect(feature.readLoadedRpcRelayForDisplayOnly({ registrationId })).toBeUndefined();
+  const listener = vi.fn(), unsubscribe = feature.subscribeRpcState({ listener });
+  expect(fixture.create).not.toHaveBeenCalled();
+  expect(fixture.list).not.toHaveBeenCalled();
+  expect(fixture.setEnabled).not.toHaveBeenCalled();
+  expect(channels).toHaveLength(0);
+  unsubscribe();
+
+  await feature.configureRpcFeature({ status: 'enabled', settings });
+  const pending = Promise.withResolvers<{ setEnabled: typeof fixture.setEnabled, list: ReturnType<typeof vi.fn> }>();
+  const localList = vi.fn().mockReturnValue([{ registration: { id: registrationId, transport: { serverUrl: 'https://display.example', headers: [{ name: 'Authorization', value: 'secret' }] } } }]);
+  fixture.create.mockReturnValueOnce(pending.promise);
+  const initializing = feature.getRpcManager();
+  await vi.waitFor(() => expect(fixture.create).toHaveBeenCalledOnce());
+  const display = feature.readLoadedRpcRelayForDisplayOnly({ registrationId });
+  expect(fixture.setEnabled).not.toHaveBeenCalled();
+  pending.resolve({ setEnabled: fixture.setEnabled, list: localList });
+  await initializing;
+  const enableCount = fixture.setEnabled.mock.calls.length;
+  expect(await display).toBe('https://display.example');
+  expect(await feature.readLoadedRpcRelayForDisplayOnly({ registrationId })).toBe('https://display.example');
+  expect(await feature.readLoadedRpcRelayForDisplayOnly({ registrationId: toNaidanRpcRegistrationId({ raw: 'missing' }) })).toBeUndefined();
+  expect(fixture.setEnabled).toHaveBeenCalledTimes(enableCount);
+  expect(fixture.create).toHaveBeenCalledOnce();
+  expect(fixture.list).not.toHaveBeenCalled();
+});
+
 it.each(['empty', 'disabled', 'session'] as const)('does not load a manager for an automatic %s registry', async variant => {
   vi.useFakeTimers();
   const feature = await import('./feature');

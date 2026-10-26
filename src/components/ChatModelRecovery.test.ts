@@ -46,6 +46,7 @@ function render({ notice }: { notice: ChatModelRecoveryNotice | undefined }) {
     pauseDownload: vi.fn(),
     maySend: computed(() => operation.value === undefined),
     accept: vi.fn(async () => {}),
+    acceptAfterFailedDownload: vi.fn(async () => {}),
     choose: vi.fn(async () => {}),
     retry: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),

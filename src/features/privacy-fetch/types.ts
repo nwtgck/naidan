@@ -1,4 +1,5 @@
 import type { PRIVACY_FETCH_PROTOCOL } from './protocol';
+import type { DevelopmentMetaCspResultMessage, DevelopmentMetaCspSyncMessage } from './development-meta-csp-protocol';
 
 export type PrivacyFetchRequest = {
   url: string,
@@ -118,10 +119,12 @@ export type PrivacyFetchErrorMessage = {
 };
 
 export type PrivacyFetchParentToBrokerMessage =
+  | DevelopmentMetaCspSyncMessage
   | PrivacyFetchRequestMessage
   | PrivacyFetchCancelMessage;
 
 export type PrivacyFetchBrokerToParentMessage =
+  | DevelopmentMetaCspResultMessage
   | PrivacyFetchReadyMessage
   | PrivacyFetchResponseMessage
   | PrivacyFetchRejectedMessage

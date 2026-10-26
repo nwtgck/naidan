@@ -4,6 +4,13 @@ import NaidanRpcTab from './NaidanRpcTab.vue';
 import type { RpcRegistrationView, NaidanPeerManager } from '@/features/naidan-rpc-integration/runtime/manager';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({
+  default: {
+    props: ['target', 'presentation'],
+    template: '<div v-if="target" data-testid="csp-hint" :data-presentation="presentation" :data-relay="target.url" />',
+  },
+}));
+
 const fixture = vi.hoisted(() => ({
   rows: [] as RpcRegistrationView[],
   reload: vi.fn(),
@@ -116,6 +123,21 @@ it('does not treat a failed registry load as an empty registry', async () => {
   expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(false);
   expect(fixture.pair).not.toHaveBeenCalled();
   expect(fixture.connect).not.toHaveBeenCalled();
+  expect(wrapper.find('[data-testid="csp-hint"][data-presentation="error"]').exists()).toBe(false);
+});
+
+it('keeps pairing failures tied to the attempted relay while the draft can be edited and retried', async () => {
+  fixture.pair.mockRejectedValueOnce(new TypeError('Network request failed'));
+  const wrapper = panel();
+  await flushPromises();
+  await wrapper.get('[data-testid="rpc-code"]').setValue('0042');
+  await wrapper.get('[data-testid="rpc-server"]').setValue('https://attempted.example');
+  await wrapper.get('[data-testid="rpc-start"]').trigger('click');
+  await flushPromises();
+  await wrapper.get('[data-testid="rpc-server"]').setValue('https://edited.example');
+  expect(wrapper.get('[data-testid="csp-hint"][data-presentation="error"]').attributes('data-relay')).toBe('https://attempted.example');
+  expect(wrapper.get('[data-testid="rpc-start"]').element).toHaveProperty('disabled', false);
+  expect(fixture.pair).toHaveBeenCalledOnce();
 });
 
 it('preserves an open pairing form when the registry is refreshed', async () => {

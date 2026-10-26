@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
-import { computed, onScopeDispose, ref, watch } from 'vue';
+import { computed, onScopeDispose, ref, useId, watch } from 'vue';
 import { ChevronDownIcon, PlusIcon, XIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { idToRaw } from '@/01-models/ids';
@@ -17,11 +17,14 @@ import { ensureStrings, lazyStrings } from '@/strings';
 import type { ImageGenerationWorkspaceView } from '@/features/image-generation/composables/use-image-generation-workspace';
 import { cloneImagePromptTranslationOverride, imagePromptTranslationEndpointLabel, resolveImagePromptTranslation } from '@/features/image-generation/translation/settings';
 import ImageSettingsSection from './ImageSettingsSection.vue';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 const props = defineProps<{ workspace: ImageGenerationWorkspaceView, scope: 'session' | 'workspace' }>();
+const endpointUrlId = useId();
 const { settings } = useSettings();
 const rpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const draft = ref<ImageGenerationTranslationOverride>({ endpoint: undefined, modelId: undefined, lmParameters: undefined });
 const models = ref<string[]>([]), loading = ref(false), saving = ref(false), failure = ref(''), saved = ref(false);
+const requestFailureEndpoint = ref<Endpoint>();
 let controller: AbortController | undefined, epoch = 0, disposed = false;
 const isSessionScope = computed(() => {
   switch (props.scope) {
@@ -41,6 +44,7 @@ watch(() => JSON.stringify([owner.value, stored.value]), () => {
   loading.value = false;
   models.value = [];
   failure.value = '';
+  requestFailureEndpoint.value = undefined;
   saved.value = false;
   draft.value = cloneImagePromptTranslationOverride({ value: stored.value }) ?? { endpoint: undefined, modelId: undefined, lmParameters: undefined };
 }, { immediate: true });
@@ -123,6 +127,7 @@ watch(() => JSON.stringify(effective.value.endpoint), () => {
   controller?.abort();
   loading.value = false;
   models.value = [];
+  requestFailureEndpoint.value = undefined;
 }, { flush: 'sync' });
 
 async function fetchModels(): Promise<void> {
@@ -135,8 +140,11 @@ async function fetchModels(): Promise<void> {
   const token = ++epoch;
   loading.value = true;
   failure.value = '';
+  requestFailureEndpoint.value = undefined;
+  let requestedEndpoint: Endpoint | undefined;
   try {
     const endpoint: Endpoint = cloneEndpoint({ endpoint: effective.value.endpoint });
+    requestedEndpoint = endpoint;
     const provider = await loadLmProvider({ endpoint, fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled' });
     abort.signal.throwIfAborted();
     const values = await provider.listModels({ signal: abort.signal });
@@ -146,6 +154,7 @@ async function fetchModels(): Promise<void> {
   } catch (error) {
     if (!disposed && token === epoch && !abort.signal.aborted) {
       failure.value = error instanceof Error ? error.message : String(error);
+      requestFailureEndpoint.value = requestedEndpoint;
     }
   } finally {
     if (!disposed && token === epoch) {
@@ -160,6 +169,7 @@ async function save(): Promise<void> {
   }
   saving.value = true;
   failure.value = '';
+  requestFailureEndpoint.value = undefined;
   saved.value = false;
   const ownerKey = JSON.stringify(owner.value), submitted = JSON.stringify(draft.value);
   const stillCurrent = () => !disposed && JSON.stringify(owner.value) === ownerKey && JSON.stringify(draft.value) === submitted;
@@ -206,7 +216,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </label>
     <RpcRegistrationSelect v-if="draft.endpoint?.type === 'naidan_rpc'" v-model="draft.endpoint.registrationId" />
     <template v-if="httpEndpoint">
-      <label tw-class="block space-y-1"><span>URL</span><input v-model="httpEndpoint.url" type="url" spellcheck="false" data-testid="translation-endpoint-url" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /></label>
+      <div tw-class="space-y-1"><label :for="endpointUrlId" tw-class="block">URL</label><input :id="endpointUrlId" v-model="httpEndpoint.url" type="url" spellcheck="false" data-testid="translation-endpoint-url" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" /><CspLmEndpointHint activity-for-display-only="connection" :fake-lm-debug-mode-status="undefined" :endpoint="effective.endpoint" operation="models" presentation="compact" /></div>
       <ImageSettingsSection compact :title="lazyStrings.imageGeneration__translation_headers()" :summary="undefined">
         <div v-for="(header, index) in httpEndpoint.httpHeaders" :key="index" tw-class="flex items-center gap-2">
           <input v-model="header[0]" :aria-label="lazyStrings.imageGeneration__translation_header_name()" spellcheck="false" tw-class="w-1/3 min-w-0 rounded-lg border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-2 py-1.5" />
@@ -222,12 +232,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <ReasoningSettings :selected-effort="draft.lmParameters?.reasoning.effort" :default-label="lazyStrings.imageGeneration__translation_inherit()" surface="card" @update:effort="changeReasoning({ effort: $event })" />
     <LmParametersEditor v-model="draft.lmParameters" :inheritance-label="lazyStrings.imageGeneration__translation_inherit()" />
-    <p tw-class="break-words text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__translation_effective() }}: {{ endpointLabel }} · {{ effective.modelId || '—' }}</p>
+    <div tw-class="space-y-1"><p tw-class="break-words text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__translation_effective() }}: {{ endpointLabel }} · {{ effective.modelId || '—' }}</p><CspLmEndpointHint activity-for-display-only="connection" :fake-lm-debug-mode-status="undefined" v-if="!httpEndpoint" :endpoint="effective.endpoint" operation="models" presentation="compact" /></div>
     <div tw-class="flex flex-wrap items-center gap-2">
       <button type="button" @click="save" :disabled="saving || workspace.busy.value || !workspace.available.value" data-testid="translation-settings-save" tw-class="rounded-lg px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__translation_save_settings() }}</button>
       <button type="button" @click="draft = { endpoint: undefined, modelId: undefined, lmParameters: undefined }" :disabled="saving" tw-class="rounded-lg px-2 py-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.imageGeneration__translation_reset() }}</button>
       <span v-if="saved" role="status" tw-class="text-green-600 dark:text-green-400">{{ lazyStrings.imageGeneration__draft_saved() }}</span>
     </div>
     <p v-if="failure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ failure }}</p>
+    <CspLmEndpointHint activity-for-display-only="model-list" :fake-lm-debug-mode-status="undefined" v-if="failure" :endpoint="requestFailureEndpoint" operation="models" presentation="error" />
   </fieldset>
 </template>

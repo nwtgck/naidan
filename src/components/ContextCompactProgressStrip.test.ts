@@ -16,6 +16,7 @@ describe('ContextCompactProgressStrip', () => {
   it('renders request and output previews while compacting', async () => {
     const wrapper = mount(ContextCompactProgressStrip, {
       props: {
+        endpoint: undefined,
         progress: {
           phase: 'receiving_compact',
           compactedMessageCount: 4,
@@ -53,6 +54,7 @@ Question`,
 
     const wrapper = mount(ContextCompactProgressStrip, {
       props: {
+        endpoint: undefined,
         progress: {
           phase: 'requesting_model',
           compactedMessageCount: 4,
@@ -84,6 +86,7 @@ Question`,
 
     const wrapper = mount(ContextCompactProgressStrip, {
       props: {
+        endpoint: undefined,
         progress: {
           phase: 'complete',
           requestPreview: undefined,
@@ -106,5 +109,37 @@ Question`,
 
     requestAnimationFrameSpy.mockRestore();
     cancelAnimationFrameSpy.mockRestore();
+  });
+
+  it('keeps the request endpoint for its supplement and omits it after branch application fails', async () => {
+    const wrapper = mount(ContextCompactProgressStrip, {
+      props: {
+        endpoint: { type: 'openai', url: 'https://requested.example/v1' },
+        progress: { phase: 'requesting_model', compactedMessageCount: 4, suffixMessageCount: 2, requestPreview: undefined },
+      },
+      global: {
+        stubs: {
+          CspLmEndpointHint: {
+            name: 'CspLmEndpointHint',
+            props: ['endpoint', 'operation', 'presentation', 'activityForDisplayOnly'],
+            template: '<span data-testid="compact-csp-probe" />',
+          },
+        },
+      },
+    });
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+
+    await wrapper.setProps({ endpoint: { type: 'ollama', url: 'https://edited.example' } });
+    await wrapper.setProps({ progress: { phase: 'failed', message: 'Original request error' } });
+    expect(wrapper.text()).toContain('Original request error');
+    expect(wrapper.getComponent({ name: 'CspLmEndpointHint' }).props('endpoint')).toEqual({ type: 'openai', url: 'https://requested.example/v1' });
+    expect(wrapper.getComponent({ name: 'CspLmEndpointHint' }).props('presentation')).toBe('error');
+    expect(wrapper.getComponent({ name: 'CspLmEndpointHint' }).props('activityForDisplayOnly')).toBe('context-summary');
+
+    await wrapper.setProps({ progress: { phase: 'applying_branch', outputChars: 3, requestPreview: undefined, outputPreview: 'abc' } });
+    await wrapper.setProps({ progress: { phase: 'failed', message: 'Original storage error' } });
+    expect(wrapper.text()).toContain('Original storage error');
+    expect(wrapper.find('[data-testid="compact-csp-probe"]').exists()).toBe(false);
+    expect(wrapper.emitted('abort')).toBeUndefined();
   });
 });

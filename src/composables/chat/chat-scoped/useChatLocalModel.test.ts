@@ -8,6 +8,7 @@ import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-laun
 import type { ModelLaunchDestinationAuthorization } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import type { DownloadDestination } from '@/01-models/download';
 import type { LocalModel, ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import type { DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   installed: vi.fn(),
   enqueue: vi.fn(),
   pause: vi.fn(),
+  jobs: [] as DownloadJob[],
   storageCurrent: true,
   sourceCurrent: true,
 }));
@@ -50,7 +52,17 @@ vi.mock('@/features/llama-cpp-browser/composables/useLocalModelLaunchChat', () =
 vi.mock('@/features/llama-cpp-browser/composables/useTemporaryModelSave', () => ({ offerTemporaryModelSave: mocks.offer }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedSelection: mocks.installed }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download-plan', () => ({ selectionKey: () => 'target-key' }));
-vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', () => ({ getDownloadQueue: () => ({ jobs: { value: [] }, enqueue: mocks.enqueue, cancel: mocks.pause }) }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', () => ({
+  getDownloadQueue: () => ({
+    jobs: {
+      get value() {
+        return mocks.jobs;
+      },
+    },
+    enqueue: mocks.enqueue,
+    cancel: mocks.pause,
+  }),
+}));
 import { useChatLocalModel } from './useChatLocalModel';
 import { chatLocalModelInputs } from './chat-local-model-input';
 
@@ -77,6 +89,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.storageCurrent = true;
   mocks.sourceCurrent = true;
+  mocks.jobs = [];
   mocks.items = ref([]);
   mocks.chat = ref({ id: chatId, title: null, root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false });
   mocks.settings = ref({ ...structuredClone(DEFAULT_SETTINGS), storageType: 'memory', endpoint: { type: 'openai', url: 'https://example.invalid' }, defaultModelId: 'remote' });
@@ -338,6 +351,145 @@ it.each(['failed', 'paused', 'cancelled'])('does not apply a %s download', async
   await command.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
   expect(mocks.apply).not.toHaveBeenCalled();
   expect(command.operation.value?.phase).toBe('error');
+});
+
+async function failedDownload({ command, error }: { command: ReturnType<typeof useChatLocalModel>, error: DownloadJob['error'] }) {
+  mocks.installed.mockResolvedValue(undefined);
+  mocks.jobs = [{ id: 3, key: 'target-key', repository: target.selection.repository, source: 'repository', destination: { kind: 'opfs' }, status: 'failed', selection: target.selection, progress: undefined, error }];
+  mocks.enqueue.mockReturnValue({ id: 3, done: Promise.resolve({ status: 'failed' }) });
+  await command.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
+  const input = chatLocalModelInputs.value.get(chatId);
+  if (input === undefined || input.state.phase !== 'error') {
+    throw new Error('Expected a retained failed download');
+  }
+  return input;
+}
+
+it.each(['failed', 'projector-conflict', 'selection-unavailable'] as const)('replaces its captured %s download failure with explicit local files through the existing chat binding', async error => {
+  const { command } = render({ binding: 'empty-chat' });
+  const failed = await failedDownload({ command, error });
+  const controller = new AbortController();
+  expect(failed.controller.signal.aborted).toBe(false);
+  expect(mocks.importFiles).not.toHaveBeenCalled();
+  const pending = command.acceptAfterFailedDownload({ operationId: failed.state.id, directories: Promise.resolve([directory]), controller });
+  expect(failed.controller.signal.aborted).toBe(true);
+  await pending;
+  expect(controller.signal.aborted).toBe(false);
+  expect(mocks.importFiles).toHaveBeenCalledExactlyOnceWith({ directories: [directory], signal: controller.signal });
+  expect(mocks.chat?.value?.modelId).toBe(model.modelId);
+  expect(mocks.settings?.value.defaultModelId).toBe('remote');
+  expect(command.operation.value).toBeUndefined();
+  expect(mocks.enqueue).toHaveBeenCalledOnce();
+  expect(mocks.pause).not.toHaveBeenCalled();
+});
+
+it.each(['chat-change', 'chat-roundtrip', 'storage-change', 'dispose'] as const)('discards failed-download local replacement after %s while cancellation is pending', async interruption => {
+  const { command, scope, selected } = render({ binding: 'empty-chat' });
+  const failed = await failedDownload({ command, error: 'failed' });
+  const cancelled = Promise.withResolvers<void>();
+  failed.pending = cancelled.promise;
+  const controller = new AbortController();
+  const pending = command.acceptAfterFailedDownload({ operationId: failed.state.id, directories: Promise.resolve([directory]), controller });
+  expect(failed.controller.signal.aborted).toBe(true);
+  switch (interruption) {
+  case 'chat-change': selected.value = toChatId({ raw: 'another-chat' });
+    break;
+  case 'chat-roundtrip':
+    selected.value = toChatId({ raw: 'another-chat' });
+    selected.value = chatId;
+    break;
+  case 'storage-change': mocks.storageCurrent = false;
+    break;
+  case 'dispose': scope.stop();
+    break;
+  default: {
+    const exhaustive: never = interruption;
+    throw new Error(exhaustive);
+  }
+  }
+  cancelled.resolve();
+  await pending;
+  expect(controller.signal.aborted).toBe(true);
+  expect(mocks.importFiles).not.toHaveBeenCalled();
+  expect(mocks.apply).not.toHaveBeenCalled();
+  expect(mocks.applyChat).not.toHaveBeenCalled();
+});
+
+it('does not overwrite a newer input accepted after the failed download finishes cancellation', async () => {
+  const { command } = render({ binding: 'empty-chat' });
+  const failed = await failedDownload({ command, error: 'failed' });
+  const cancelled = Promise.withResolvers<void>();
+  failed.pending = cancelled.promise;
+  const controller = new AbortController();
+  const pending = command.acceptAfterFailedDownload({ operationId: failed.state.id, directories: Promise.resolve([directory]), controller });
+  const newerFiles = Promise.withResolvers<ModelDirectoryInput[]>();
+  const newerController = new AbortController();
+  const newer = cancelled.promise.then(() => command.accept({ directories: newerFiles.promise, controller: newerController }));
+  cancelled.resolve();
+  await pending;
+  expect(controller.signal.aborted).toBe(true);
+  expect(newerController.signal.aborted).toBe(false);
+  expect(chatLocalModelInputs.value.get(chatId)?.controller).toBe(newerController);
+  expect(mocks.importFiles).not.toHaveBeenCalled();
+  newerFiles.resolve([directory]);
+  await newer;
+  expect(mocks.importFiles).toHaveBeenCalledExactlyOnceWith({ directories: [directory], signal: newerController.signal });
+  expect(mocks.chat?.value?.modelId).toBe(model.modelId);
+});
+
+it.each(['old-operation', 'another-owner'] as const)('rejects a local replacement from %s without cancelling the failed input', async interruption => {
+  const { command } = render({ binding: 'empty-chat' });
+  const failed = await failedDownload({ command, error: 'failed' });
+  const controller = new AbortController();
+  const directories = Promise.reject<ModelDirectoryInput[]>(new Error('Late traversal failure'));
+  switch (interruption) {
+  case 'old-operation':
+    await command.acceptAfterFailedDownload({ operationId: failed.state.id - 1, directories, controller });
+    break;
+  case 'another-owner': {
+    const other = render({ binding: 'empty-chat' });
+    await other.command.acceptAfterFailedDownload({ operationId: failed.state.id, directories, controller });
+    break;
+  }
+  default: {
+    const exhaustive: never = interruption;
+    throw new Error(exhaustive);
+  }
+  }
+  expect(controller.signal.aborted).toBe(true);
+  expect(failed.controller.signal.aborted).toBe(false);
+  expect(chatLocalModelInputs.value.get(chatId)).toBe(failed);
+  expect(mocks.importFiles).not.toHaveBeenCalled();
+});
+
+it.each(['paused', 'cancelled', 'complete'] as const)('does not replace an error operation whose download is now %s', async status => {
+  const { command } = render({ binding: 'empty-chat' });
+  const failed = await failedDownload({ command, error: 'projector-conflict' });
+  mocks.jobs = mocks.jobs.map(job => ({ ...job, status }));
+  const controller = new AbortController();
+  await command.acceptAfterFailedDownload({ operationId: failed.state.id, directories: Promise.resolve([directory]), controller });
+  expect(controller.signal.aborted).toBe(true);
+  expect(failed.controller.signal.aborted).toBe(false);
+  expect(chatLocalModelInputs.value.get(chatId)).toBe(failed);
+  expect(mocks.importFiles).not.toHaveBeenCalled();
+  expect(mocks.apply).not.toHaveBeenCalled();
+});
+
+it('does not replace a local file error that has no failed download', async () => {
+  const { command } = render({ binding: 'empty-chat' });
+  mocks.inspect.mockResolvedValueOnce('missing');
+  await accept({ command });
+  const input = chatLocalModelInputs.value.get(chatId);
+  if (input === undefined || input.state.phase !== 'error') {
+    throw new Error('Expected a retained local file error');
+  }
+  const controller = new AbortController();
+  await command.acceptAfterFailedDownload({ operationId: input.state.id, directories: Promise.resolve([directory]), controller });
+  expect(controller.signal.aborted).toBe(true);
+  expect(input.controller.signal.aborted).toBe(false);
+  expect(chatLocalModelInputs.value.get(chatId)).toBe(input);
+  expect(mocks.importFiles).toHaveBeenCalledOnce();
+  expect(mocks.apply).not.toHaveBeenCalled();
 });
 
 it('leaving the picker cancels its wait without cancelling the shared download', async () => {

@@ -2313,6 +2313,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   const experimentalDomain = (() => {
     const {
       locale,
+      metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
@@ -2357,6 +2358,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
 
     return exactObject<NonNullable<Settings['experimental']>>()({
       locale,
+      metaCspForDevelopmentNotForSecurity: metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
@@ -2448,6 +2450,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
   const experimentalDto = (() => {
     const {
       locale,
+      metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
@@ -2490,8 +2493,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       });
     })();
 
-    return exactObject<NonNullable<SettingsDto['experimental']>>()({
+    const value = exactObject<NonNullable<SettingsDto['experimental']>>()({
       locale,
+      metaCsp: metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
@@ -2517,7 +2521,16 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
         return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['generationSpeed']>>()({ status, inlineStats, llamaCppServerTimings });
       })(),
-      sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
+      sidebarSendMessageReorder: (() => {
+        switch (sidebarSendMessageReorder) {
+        case 'move_sent_chat': return 'move_sent_chat';
+        case 'disabled': case undefined: return undefined;
+        default: {
+          const exhaustive: never = sidebarSendMessageReorder;
+          return exhaustive;
+        }
+        }
+      })(),
       globalSearch: globalSearchDto,
       llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
@@ -2530,6 +2543,10 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         });
       }),
     });
+
+    // Omit default-only experimental settings after the last saved value is
+    // cleared. Explicit arrays and nested preference objects remain intact.
+    return Object.values(value).every(field => field === undefined) ? undefined : value;
   })();
 
   const profileDtos = (providerProfiles ?? []).map(profile => {

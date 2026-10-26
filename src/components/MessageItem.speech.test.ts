@@ -54,7 +54,7 @@ describe('MessageItem Speech Controls', () => {
   it('renders speech buttons if supported', () => {
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, {
-      props: { message, isFirstInTurn: true },
+      props: { endpoint: undefined, message, isFirstInTurn: true },
     });
 
     // Header and footer toggle buttons
@@ -65,7 +65,7 @@ describe('MessageItem Speech Controls', () => {
   it('does not render speech buttons if not supported', () => {
     vi.spyOn(webSpeechService, 'isSupported').mockReturnValue(false);
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     expect(wrapper.find('[data-testid="speech-toggle-mini"]').exists()).toBe(false);
   });
@@ -73,7 +73,7 @@ describe('MessageItem Speech Controls', () => {
   it('starts speaking when toggle button is clicked', async () => {
     const speakSpy = vi.spyOn(webSpeechService, 'speak');
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Click header toggle
     await wrapper.findAll('[data-testid="speech-toggle-mini"]')[0]!.trigger('click');
@@ -83,7 +83,7 @@ describe('MessageItem Speech Controls', () => {
 
   it('shows control group when speech is active in footer', async () => {
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Simulate active state
     webSpeechService.state.activeMessageId = message.id;
@@ -99,7 +99,7 @@ describe('MessageItem Speech Controls', () => {
     const pauseSpy = vi.spyOn(webSpeechService, 'pause');
     const speakSpy = vi.spyOn(webSpeechService, 'speak');
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Start playing
     webSpeechService.state.activeMessageId = message.id;
@@ -122,7 +122,7 @@ describe('MessageItem Speech Controls', () => {
   it('stops speech when stop button is clicked', async () => {
     const stopSpy = vi.spyOn(webSpeechService, 'stop');
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Simulate active state
     webSpeechService.state.activeMessageId = message.id;
@@ -136,7 +136,7 @@ describe('MessageItem Speech Controls', () => {
   it('restarts speech when restart button is clicked', async () => {
     const speakSpy = vi.spyOn(webSpeechService, 'speak');
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Simulate active state
     webSpeechService.state.activeMessageId = message.id;
@@ -150,7 +150,7 @@ describe('MessageItem Speech Controls', () => {
   it('does NOT call speech service when content updates if not playing', async () => {
     const speakSpy = vi.spyOn(webSpeechService, 'speak');
     const message = createMessage('Initial content');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Ensure we start from zero calls
     speakSpy.mockClear();

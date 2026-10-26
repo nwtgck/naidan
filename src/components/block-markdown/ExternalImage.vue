@@ -3,6 +3,8 @@ import { lazyStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import { ImageIcon, EyeIcon, GlobeIcon } from 'lucide-vue-next';
 import { useExternalResourceSettings } from '@/composables/useExternalResourceSettings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import ResourceLoadCspHint from '@/components/ResourceLoadCspHint.vue';
 
 const props = defineProps<{
   src: string,
@@ -12,6 +14,7 @@ const props = defineProps<{
 
 const { allowAllExternalImages, setAllowAllExternalImages } = useExternalResourceSettings();
 const showThisImage = ref(false);
+const imageElement = ref<HTMLImageElement>();
 
 const isExternal = computed(() => {
   try {
@@ -62,9 +65,12 @@ defineExpose({
   </span>
   <img
     v-else
+    ref="imageElement"
     :src="src"
     :alt="alt"
     :title="title"
     tw-class="max-w-full h-auto rounded-lg shadow-sm my-2 inline-block align-middle"
   />
+  <CspMessageHint v-if="!shouldShow" :target="{ kind: 'resource', url: src, destination: 'image', realm: 'document' }" presentation="compact" :activity-for-display-only="undefined" />
+  <ResourceLoadCspHint :resources="[{ element: imageElement, url: src, destination: 'image' }]" />
 </template>

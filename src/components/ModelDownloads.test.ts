@@ -4,6 +4,9 @@ import { nextTick } from 'vue';
 import ModelDownloads from './ModelDownloads.vue';
 import { getDownloadManager, TEST_ONLY } from '@/logic/download-manager';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({ default: { props: ['target', 'presentation'], template: '<aside data-testid="shared-download-csp" :data-presentation="presentation" />' } }));
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue', () => ({ default: { props: ['disabled', 'acceptLocalInput'], template: '<section data-testid="shared-download-local-recovery" />' } }));
+vi.mock('@/features/stable-diffusion-cpp-browser/components/ImageModelLocalFileRecovery.vue', () => ({ default: { props: ['view', 'disabled'], template: '<section data-testid="shared-image-download-local-recovery" />' } }));
 
 function panel() {
   return document.querySelector<HTMLElement>('[data-testid="model-downloads-panel"]')!;
@@ -135,4 +138,48 @@ it('expands a completed download in place without replacing the other list entri
   expect(panel().querySelector(`[data-download-detail="${done.id}"]`)?.getAttribute('aria-controls')).toBeTruthy();
   gate.resolve();
   await active.done;
+});
+
+it('limits the shared failure supplement to the known llama and image HF owners', async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+  const manager = getDownloadManager();
+  for (const key of ['llama:failed', 'image:failed', 'transformers:failed', 'other:failed']) {
+    await manager.enqueue({
+      key,
+      title: key,
+      category: 'language-model',
+      destination: { kind: 'opfs' },
+      files,
+      run: async () => {
+        throw new Error('Download failed');
+      },
+    }).done;
+  }
+  using view = mountPanel();
+  await view.wrapper.get('[data-testid="model-downloads-trigger"]').trigger('click');
+  await flushPromises();
+  const rows = [...panel().querySelectorAll<HTMLElement>('[data-download-id]')];
+  expect(rows).toHaveLength(4);
+  expect(rows.map(row => row.querySelector('[data-testid="hf-download-failure-trigger"]') !== null)).toEqual([true, true, false, false]);
+  expect(rows.map(row => row.querySelector('[data-testid="shared-download-local-recovery"]') !== null)).toEqual([false, false, false, false]);
+  expect(rows.map(row => row.querySelector('[data-testid="shared-image-download-local-recovery"]') !== null)).toEqual([false, false, false, false]);
+  expect(rows.map(row => row.querySelector('[data-testid="shared-download-csp"]') !== null)).toEqual([false, false, false, false]);
+  const trigger = rows[0]?.querySelector<HTMLButtonElement>('[data-testid="hf-download-failure-trigger"]');
+  if (trigger === undefined || trigger === null) {
+    throw new Error('Expected the GGUF download recovery disclosure');
+  }
+  trigger.click();
+  await nextTick();
+  expect(rows.map(row => row.querySelector('[data-testid="shared-download-local-recovery"]') !== null)).toEqual([true, false, false, false]);
+  expect(rows.map(row => row.querySelector('[data-testid="shared-download-csp"]') !== null)).toEqual([true, false, false, false]);
+  const imageTrigger = rows[1]?.querySelector<HTMLButtonElement>('[data-testid="hf-download-failure-trigger"]');
+  if (imageTrigger === undefined || imageTrigger === null) {
+    throw new Error('Expected the image download recovery disclosure');
+  }
+  imageTrigger.click();
+  await nextTick();
+  expect(rows.map(row => row.querySelector('[data-testid="shared-download-local-recovery"]') !== null)).toEqual([true, false, false, false]);
+  expect(rows.map(row => row.querySelector('[data-testid="shared-image-download-local-recovery"]') !== null)).toEqual([false, true, false, false]);
+  expect(rows.map(row => row.querySelector('[data-testid="shared-download-csp"]') !== null)).toEqual([true, true, false, false]);
+  expect(manager.snapshot().every(job => job.status === 'failed' && job.error === 'Download failed')).toBe(true);
 });

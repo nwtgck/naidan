@@ -6,6 +6,7 @@ import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon, SearchCheckIc
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import DeveloperDataDeletionPanel from '@/features/data-deletion/components/DeveloperDataDeletionPanel.vue';
+import DeveloperCspDiagnostics from './DeveloperCspDiagnostics.vue';
 import { lazyStrings } from '@/strings';
 import { isModelSupportInvestigationAvailable } from '@/features/transformers-js/model-support-investigation';
 
@@ -141,6 +142,8 @@ defineExpose({
         </div>
 
         <DeveloperOpenStateLinks />
+
+        <DeveloperCspDiagnostics />
 
         <div tw-class="space-y-2">
           <button

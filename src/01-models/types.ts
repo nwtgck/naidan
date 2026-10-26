@@ -498,6 +498,13 @@ export interface Settings {
   lmParameters?: LmParameters,
   experimental?: {
     locale?: UiLocale,
+    /**
+     * Only makes development behavior checks easier; it does not improve
+     * security and MUST NOT be used for security. A late-applied CSP meta cannot
+     * prevent loads that already occurred. NEVER use this value for feature
+     * permissions or ON/OFF decisions. Undefined clears the saved setting.
+     */
+    metaCspForDevelopmentNotForSecurity?: string,
     chatBrowserModelPickerTab?: 'files' | 'linked-folders' | 'hugging-face' | 'saved',
     modelDiscoveryTab?: 'candidates' | 'hugging_face' | 'local_files',
     markdownRendering?: 'block_markdown' | 'monolithic_html',

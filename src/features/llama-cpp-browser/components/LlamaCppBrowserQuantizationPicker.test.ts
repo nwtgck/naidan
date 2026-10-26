@@ -116,3 +116,35 @@ it('requires an explicit action outside the model-link page', async () => {
   await flushPromises();
   expect(inspect).toHaveBeenCalledExactlyOnceWith({ input: 'owner/Model-GGUF', signal: expect.any(AbortSignal), freshness: 'refresh' });
 });
+
+it('keeps guidance and choices in one content area while preserving their separate keyboard controls', async () => {
+  const wrapper = mount(LlamaCppBrowserQuantizationPicker, {
+    attachTo: document.body,
+    props: { repository: 'owner/Model-GGUF', variant: 'Q4_K_M', disabled: false, inspection: 'model-url' },
+    global: { stubs: { Teleport: true, CspMessageHint: { template: '<details data-testid="picker-guidance"><summary>Connection guidance</summary><button data-testid="guidance-action">Export data</button></details>' } } },
+  });
+  await flushPromises();
+  const trigger = wrapper.get('[data-testid="model-preview-quantization"]');
+  await trigger.trigger('click');
+  const content = wrapper.get('[data-testid="quantization-picker-content"]');
+  const guidance = wrapper.get('[data-testid="picker-guidance"]');
+  const list = wrapper.get('[role="listbox"]');
+  expect(content.element.contains(guidance.element)).toBe(true);
+  expect(content.element.contains(list.element)).toBe(true);
+  expect(list.element.contains(guidance.element)).toBe(false);
+  guidance.element.setAttribute('open', '');
+  const action = wrapper.get<HTMLButtonElement>('[data-testid="guidance-action"]');
+  action.element.focus();
+  await action.trigger('keydown', { key: 'Tab' });
+  await action.trigger('keydown', { key: 'ArrowDown' });
+  expect(wrapper.find('[data-testid="quantization-picker"]').exists()).toBe(true);
+  expect(document.activeElement).toBe(action.element);
+  const options = wrapper.findAll<HTMLButtonElement>('[role="option"]');
+  options[0]!.element.focus();
+  await options[0]!.trigger('keydown', { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(options[1]!.element);
+  expect(inspect).toHaveBeenCalledOnce();
+  await options[1]!.trigger('keydown', { key: 'Escape' });
+  expect(wrapper.find('[data-testid="quantization-picker"]').exists()).toBe(false);
+  expect(document.activeElement).toBe(trigger.element);
+});

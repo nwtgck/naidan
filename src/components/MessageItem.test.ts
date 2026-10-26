@@ -82,7 +82,7 @@ describe('MessageItem Rendering', () => {
 
   it('renders basic markdown correctly', () => {
     const message = createMessage('**bold text** and [link](https://example.com)');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     const html = wrapper.html();
     expect(html).toContain('<strong>bold text</strong>');
@@ -94,7 +94,7 @@ describe('MessageItem Rendering', () => {
 \`\`\`python
 print("hello")
 \`\`\``);
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     expect(wrapper.html()).toContain('print("hello")');
     expect(wrapper.html()).not.toContain('hljs');
@@ -112,7 +112,7 @@ print("hello")
 
   it('sanitizes dangerous HTML', () => {
     const message = createMessage('Dangerous <script>alert("xss")</script><img src=x onerror=alert(1)>');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     const html = wrapper.html();
     expect(html).not.toContain('<script>');
@@ -131,7 +131,7 @@ print("hello")
       lmParameters: undefined,
       interruption: undefined,
     };
-    const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isFirstInTurn: true } });
 
     expect(wrapper.text()).toContain(modelId);
     expect(wrapper.text()).not.toContain(modelId.toUpperCase());
@@ -141,7 +141,7 @@ print("hello")
 
   it('displays "You" for user messages with correct styling', () => {
     const message = createMessage('Hello', 'user');
-    const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isFirstInTurn: true } });
 
     const youSpan = wrapper.find('.uppercase.tracking-widest');
     expect(youSpan.exists()).toBe(true);
@@ -152,11 +152,11 @@ print("hello")
     const message = createMessage('<think>Internal thought</think>Actual response');
 
     // 1. Thinking Part
-    const thinkingWrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const thinkingWrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'thinking' } });
     expect(thinkingWrapper.text()).toContain('Thought Process');
 
     // 2. Content Part
-    const contentWrapper = mount(MessageItem, { props: { message, mode: 'content' } });
+    const contentWrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'content' } });
     const contentArea = contentWrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toBe('Actual response');
     expect(contentArea.text()).not.toContain('Internal thought');
@@ -164,7 +164,7 @@ print("hello")
 
   it('detects active thinking state (isThinkingNow)', () => {
     const message = createMessage('<think>Ongoing thought...');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'thinking', isGenerating: true } });
 
     // Should show "Thinking..." instead of "Show Thought Process"
     expect(wrapper.text()).toContain('Thinking...');
@@ -175,7 +175,7 @@ print("hello")
     const message = createMessage('<THINK>Thought 1</THINK>Response 1<think>Thought 2</think>Response 2');
 
     // 1. Content Part
-    const contentWrapper = mount(MessageItem, { props: { message, mode: 'content' } });
+    const contentWrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'content' } });
     const contentArea = contentWrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toContain('Response 1');
     expect(contentArea.text()).toContain('Response 2');
@@ -183,7 +183,7 @@ print("hello")
     expect(contentArea.text()).not.toContain('Thought 2');
 
     // 2. Thinking Part
-    const thinkingWrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const thinkingWrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'thinking' } });
     const toggle = thinkingWrapper.find('[data-testid="toggle-thinking"]');
     await toggle.trigger('click');
 
@@ -196,7 +196,7 @@ print("hello")
   it('hides loading indicator when thinking is active', () => {
     // Content is empty, but <think> is present
     const message = createMessage('<think>Thinking only');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'thinking' } });
 
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="thinking-block"]').exists()).toBe(true);
@@ -204,7 +204,7 @@ print("hello")
 
   it('copies clean message content to clipboard (excluding markers and thinking)', async () => {
     const message = createMessage('<think>Secret thought</think><!-- naidan_experimental_image_request {} -->Copy me');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Mock clipboard
     const writeText = vi.fn().mockImplementation(() => Promise.resolve());
@@ -228,7 +228,7 @@ print("hello")
   it('copies raw message content to clipboard via more actions menu', async () => {
     const content = '<think>Secret thought</think>Raw message';
     const message = createMessage(content);
-    const wrapper = mount(MessageItem, { props: { message }, attachTo: document.body });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message }, attachTo: document.body });
 
     // Mock clipboard
     const writeText = vi.fn().mockImplementation(() => Promise.resolve());
@@ -254,7 +254,7 @@ print("hello")
 
   it('copies a message link via more actions menu', async () => {
     const message = createMessage('Linkable message');
-    const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'chat-1' }), message }, attachTo: document.body });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, chatId: toChatId({ raw: 'chat-1' }), message }, attachTo: document.body });
 
     const writeText = vi.fn().mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', {
@@ -281,7 +281,7 @@ print("hello")
 \`\`\`mermaid
 graph TD; A-->B;
 \`\`\``);
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
     await nextTick();
 
     // Default mode: preview area exists
@@ -305,7 +305,7 @@ graph TD; A-->B;
 \`\`\`mermaid
 graph TD; A-->B;
 \`\`\``);
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
       await nextTick();
       await nextTick();
 
@@ -319,7 +319,7 @@ graph TD; A-->B;
 \`\`\`mermaid
 graph TD; A-->B;
 \`\`\``);
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
       await nextTick();
       await nextTick();
 
@@ -335,7 +335,7 @@ graph TD; A-->B;
 graph TD; A-->B;
 \`\`\``);
       const wrapper = mount(MessageItem, {
-        props: { message },
+        props: { endpoint: undefined, message },
         attachTo: document.body,
       });
       await nextTick();
@@ -370,7 +370,7 @@ graph TD; A-->B;
 \`\`\`mermaid
 graph TD; A-->B;
 \`\`\``);
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
       await nextTick();
       await nextTick();
 
@@ -386,7 +386,7 @@ graph TD; A-->B;
 \`\`\`javascript
 const a = 1;
 \`\`\``);
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
       const html = wrapper.html();
 
       // Check for wrapper structure
@@ -403,7 +403,7 @@ const a = 1;
 \`\`\`python
 print("test")
 \`\`\``);
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
       const html = wrapper.html();
 
       // Check for key classes that prevent white frame issue
@@ -423,7 +423,7 @@ print("test")
 const x: number = 42;
 \`\`\``);
       const wrapper = mount(MessageItem, {
-        props: { message },
+        props: { endpoint: undefined, message },
         attachTo: document.body,
       });
 
@@ -459,7 +459,7 @@ const x: number = 42;
 \`\`\`js
 console.log(1);
 \`\`\``);
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
       const copyBtn = wrapper.find('button[title="Copy code"]');
 
       expect(copyBtn.exists()).toBe(true);
@@ -485,7 +485,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
   it('cancels editing on Escape key', async () => {
     const message = createMessage('Original content');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -503,7 +503,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
   it('saves and branches on Ctrl+Enter', async () => {
     const message = createMessage('Original content');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     const textarea = wrapper.find('[data-testid="edit-textarea"]');
@@ -520,7 +520,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
   it('saves and branches on Cmd+Enter', async () => {
     const message = createMessage('Original content');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     const textarea = wrapper.find('[data-testid="edit-textarea"]');
@@ -535,7 +535,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
   it('clears all content when Clear button is clicked', async () => {
     const message = createMessage('Original content');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -586,7 +586,7 @@ describe('MessageItem Attachment Rendering', () => {
       uploadedAt: Date.now(),
     }]);
 
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
     await nextTick();
     await nextTick();
 
@@ -610,7 +610,7 @@ describe('MessageItem Attachment Rendering', () => {
       uploadedAt: Date.now(),
     }]);
 
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
     await nextTick();
     await nextTick();
     await nextTick(); // Wait for loadAttachments async
@@ -630,7 +630,7 @@ describe('MessageItem Attachment Rendering', () => {
       uploadedAt: Date.now(),
     }]);
 
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
     await nextTick();
 
     expect(wrapper.text()).toContain('Image missing');
@@ -650,7 +650,7 @@ describe('MessageItem Attachment Rendering', () => {
       uploadedAt: Date.now(),
     }]);
 
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
     await nextTick();
     await nextTick();
 
@@ -675,7 +675,7 @@ describe('MessageItem States', () => {
 
   it('displays loading indicator when waiting for response', async () => {
     const message = createAssistantMessage('');
-    const wrapper = mount(MessageItem, { props: { message, mode: 'waiting', isFirstInTurn: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, mode: 'waiting', isFirstInTurn: true } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(true);
@@ -684,7 +684,7 @@ describe('MessageItem States', () => {
 
   it('does NOT display loading indicator when content exists', () => {
     const message = createAssistantMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(true);
@@ -692,7 +692,7 @@ describe('MessageItem States', () => {
 
   it('displays error message when generation failed', () => {
     const message = createAssistantMessage('', 'Network Error');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     const errorEl = wrapper.find('[data-testid="error-message"]');
     expect(errorEl.exists()).toBe(true);
@@ -703,7 +703,7 @@ describe('MessageItem States', () => {
 
   it('displays partial content AND error message', () => {
     const message = createAssistantMessage('Partial content', 'Stream Error');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     expect(wrapper.find('[data-testid="message-content"]').text()).toBe('Partial content');
 
@@ -714,7 +714,7 @@ describe('MessageItem States', () => {
 
   it('emits regenerate event when button clicked', async () => {
     const message = createAssistantMessage('', 'Error');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     await wrapper.find('[data-testid="retry-button"]').trigger('click');
 
@@ -724,7 +724,7 @@ describe('MessageItem States', () => {
 
   it('emits regenerate event when action bar button clicked', async () => {
     const message = createAssistantMessage('Existing content');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     await wrapper.find('[data-testid="regenerate-button"]').trigger('click');
 
@@ -760,7 +760,7 @@ describe('MessageItem Edit Labels', () => {
 
   it('shows "Send & Branch" when editing a user message', async () => {
     const message = createMessage('user');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -771,7 +771,7 @@ describe('MessageItem Edit Labels', () => {
 
   it('shows "Update & Branch" when editing an assistant message', async () => {
     const message = createMessage('assistant');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -782,7 +782,7 @@ describe('MessageItem Edit Labels', () => {
 
   it('allows "Send & Branch" even if content is NOT edited', async () => {
     const message = createMessage('user');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
 
@@ -795,7 +795,7 @@ describe('MessageItem Edit Labels', () => {
 
   it('shows "Resend" button for user messages and emits edit event', async () => {
     const message = createMessage('user');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     const resendBtn = wrapper.find('[data-testid="resend-button"]');
     expect(resendBtn.exists()).toBe(true);
@@ -818,7 +818,7 @@ describe('MessageItem Edit Labels', () => {
       createdAt: Date.now(),
       modelId: undefined,
     };
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     await wrapper.find('[data-testid="resend-button"]').trigger('click');
 
@@ -828,7 +828,7 @@ describe('MessageItem Edit Labels', () => {
 
   it('does NOT show "Resend" button for assistant messages', () => {
     const message = createMessage('assistant');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     expect(wrapper.find('[data-testid="resend-button"]').exists()).toBe(false);
   });
@@ -861,7 +861,7 @@ describe('MessageItem Action Visibility', () => {
 
   it('ensures message actions are always visible (no hover-only opacity classes)', () => {
     const message = createMessage('assistant');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
     // Find the container of message actions. It's the sibling of version paging or an empty div.
     // In our template it's: <div class="flex items-center gap-1">
@@ -898,7 +898,7 @@ describe('MessageItem Touch Support', () => {
     const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('mock-url');
     const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
     await nextTick();
     await nextTick();
 
@@ -924,7 +924,7 @@ describe('MessageItem Abort Button', () => {
 
   it('renders the abort button when isGenerating is true', () => {
     const message = createAssistantMessage('Generation in progress...');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: true, isFirstInTurn: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isGenerating: true, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     expect(abortBtn.exists()).toBe(true);
@@ -933,7 +933,7 @@ describe('MessageItem Abort Button', () => {
 
   it('does not render the abort button when isGenerating is false', () => {
     const message = createAssistantMessage('Generation finished');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: false, isFirstInTurn: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isGenerating: false, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     expect(abortBtn.exists()).toBe(false);
@@ -941,7 +941,7 @@ describe('MessageItem Abort Button', () => {
 
   it('emits abort event when abort button is clicked', async () => {
     const message = createAssistantMessage('Generation in progress...');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: true, isFirstInTurn: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isGenerating: true, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     await abortBtn.trigger('click');
@@ -951,7 +951,7 @@ describe('MessageItem Abort Button', () => {
 
   it('has the correct subtle styling for the abort button', () => {
     const message = createAssistantMessage('Generation in progress...');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: true, isFirstInTurn: true } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isGenerating: true, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     const cls = abortBtn.classes();
@@ -972,7 +972,7 @@ describe('MessageItem Abort Button', () => {
         modelId: undefined,
         interruption: undefined,
       } as AssistantMessageNode;
-      const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isFirstInTurn: true } });
 
       const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
 
@@ -992,7 +992,7 @@ describe('MessageItem Abort Button', () => {
         modelId: undefined,
         interruption: undefined,
       } as AssistantMessageNode;
-      const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message, isFirstInTurn: true } });
 
       const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
 
@@ -1013,7 +1013,7 @@ describe('MessageItem Abort Button', () => {
         interruption: undefined,
       } as AssistantMessageNode;
 
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
       const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
 
       expect(badge.exists()).toBe(false);
@@ -1032,7 +1032,7 @@ describe('MessageItem Abort Button', () => {
         modelId: undefined,
       } as UserMessageNode;
 
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
       // Enter edit mode
       await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -1054,7 +1054,7 @@ describe('MessageItem Abort Button', () => {
         modelId: undefined,
       } as UserMessageNode;
 
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
       await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
       await nextTick();
@@ -1079,7 +1079,7 @@ describe('MessageItem Actions Menu', () => {
 
   it('toggles the actions menu when the more-actions button is clicked', async () => {
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message }, attachTo: document.body });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message }, attachTo: document.body });
 
     const menuButton = wrapper.find('[data-testid="message-more-actions-button"]');
     expect(menuButton.exists()).toBe(true);
@@ -1102,7 +1102,7 @@ describe('MessageItem Actions Menu', () => {
   it('opens the MessageDiffModal when "Compare Versions" is clicked', async () => {
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, {
-      props: { message },
+      props: { endpoint: undefined, message },
       attachTo: document.body,
       global: {
         stubs: {
@@ -1132,7 +1132,7 @@ describe('MessageItem Actions Menu', () => {
 
   it('emits fork event when "Fork Chat" is clicked in the more actions menu', async () => {
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message }, attachTo: document.body });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, message }, attachTo: document.body });
 
     // Open menu
     await wrapper.find('[data-testid="message-more-actions-button"]').trigger('click');
@@ -1175,7 +1175,7 @@ describe('MessageItem showGeneratingIndicator', () => {
     it('shows generating indicator when showGeneratingIndicator=true and content is present', () => {
       const message = createAssistantMessage('Hello world');
       const wrapper = mount(MessageItem, {
-        props: { message, mode: 'content', showGeneratingIndicator: true },
+        props: { endpoint: undefined, message, mode: 'content', showGeneratingIndicator: true },
       });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
@@ -1184,7 +1184,7 @@ describe('MessageItem showGeneratingIndicator', () => {
     it('does not show generating indicator when showGeneratingIndicator=false', () => {
       const message = createAssistantMessage('Hello world');
       const wrapper = mount(MessageItem, {
-        props: { message, mode: 'content', showGeneratingIndicator: false },
+        props: { endpoint: undefined, message, mode: 'content', showGeneratingIndicator: false },
       });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
@@ -1194,7 +1194,7 @@ describe('MessageItem showGeneratingIndicator', () => {
       // Empty content → BlockMarkdownRenderer not rendered, so no indicator
       const message = createAssistantMessage('');
       const wrapper = mount(MessageItem, {
-        props: { message, mode: 'content', showGeneratingIndicator: true },
+        props: { endpoint: undefined, message, mode: 'content', showGeneratingIndicator: true },
       });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
@@ -1206,7 +1206,7 @@ describe('MessageItem showGeneratingIndicator', () => {
       // Unclosed think tag → collapsed-active → indicator renders inline
       const message = createAssistantMessage('<think>Streaming...');
       const wrapper = mount(MessageItem, {
-        props: { message, mode: 'thinking', showGeneratingIndicator: true },
+        props: { endpoint: undefined, message, mode: 'thinking', showGeneratingIndicator: true },
       });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
@@ -1215,7 +1215,7 @@ describe('MessageItem showGeneratingIndicator', () => {
     it('shows generating indicator after thinking pill (collapsed-finished) when showGeneratingIndicator=true', () => {
       const message = createAssistantMessage('Response', 'Completed thought');
       const wrapper = mount(MessageItem, {
-        props: { message, mode: 'thinking', showGeneratingIndicator: true },
+        props: { endpoint: undefined, message, mode: 'thinking', showGeneratingIndicator: true },
       });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
@@ -1224,7 +1224,7 @@ describe('MessageItem showGeneratingIndicator', () => {
     it('does not show generating indicator in thinking mode when showGeneratingIndicator=false', () => {
       const message = createAssistantMessage('<think>Streaming...');
       const wrapper = mount(MessageItem, {
-        props: { message, mode: 'thinking', showGeneratingIndicator: false },
+        props: { endpoint: undefined, message, mode: 'thinking', showGeneratingIndicator: false },
       });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
@@ -1236,7 +1236,7 @@ describe('MessageItem showGeneratingIndicator', () => {
       // waiting mode intentionally never shows the indicator
       const message = createAssistantMessage('');
       const wrapper = mount(MessageItem, {
-        props: { message, mode: 'waiting', showGeneratingIndicator: true },
+        props: { endpoint: undefined, message, mode: 'waiting', showGeneratingIndicator: true },
       });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
@@ -1246,7 +1246,7 @@ describe('MessageItem showGeneratingIndicator', () => {
   describe('default prop value', () => {
     it('defaults showGeneratingIndicator to false', () => {
       const message = createAssistantMessage('Hello');
-      const wrapper = mount(MessageItem, { props: { message } });
+      const wrapper = mount(MessageItem, { props: { endpoint: undefined, message } });
 
       expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
     });

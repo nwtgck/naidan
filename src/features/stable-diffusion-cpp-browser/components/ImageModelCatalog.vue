@@ -4,12 +4,15 @@ import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import { computed, reactive, ref, useId } from 'vue';
 import { ChevronDownIcon, DownloadIcon, ExternalLinkIcon, LibraryBigIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import { imageModelRecipes, imageRecipeLink, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 import { imageCatalogLoras, type ImageCatalogLora } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 import type { ImageDownloadQueueEntry, ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
 import ImageHostModelDirectories from './ImageHostModelDirectories.vue';
+import ImageModelLocalFileRecovery from './ImageModelLocalFileRecovery.vue';
 const props = defineProps<{ disabled: boolean, downloadDisabled: boolean, view: ImageLibraryView }>();
 const emit = defineEmits<{ selected: [] }>();
 const { downloading, importing, downloadState, downloadRecipeId, downloadLoraId, scanState } = props.view;
@@ -148,6 +151,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                   <button v-if="job.state === 'failed' || job.state === 'incomplete'" type="button" :disabled="downloadDisabled || importing" :data-testid="'image-download-queue-retry-' + job.id" @click="view.retryQueuedDownload({ id: job.id })" tw-class="rounded-md px-2 py-1 font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50">{{ lazyStrings.llamaCppBrowserDownloads__retry() }}</button>
                   <button type="button" :disabled="downloadDisabled" :data-testid="'image-download-queue-remove-' + job.id" @click="view.removeQueuedDownload({ id: job.id })" tw-class="rounded-md px-2 py-1 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">{{ lazyStrings.stableDiffusionCppBrowser__remove() }}</button>
                   <p v-if="job.error" tw-class="w-full break-words text-amber-700 dark:text-amber-400">{{ job.error }}</p>
+                  <HuggingFaceDownloadFailureHint v-if="job.state === 'failed'" tw-class="w-full">
+                    <ImageModelLocalFileRecovery :view="view" :disabled="disabled" />
+                  </HuggingFaceDownloadFailureHint>
+                  <CspMessageHint v-else-if="job.state === 'paused'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
                 </li>
               </ul>
             </div>
@@ -166,12 +173,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                 <button v-else type="button" :disabled="downloadDisabled || importing || downloadDestinationUnavailable" @click="download({ recipeId: card.recipe.id })" :data-testid="'recipe-download-selected-' + card.recipe.id" tw-class="ml-auto group inline-flex min-h-9 max-w-full items-center justify-center gap-2 rounded-lg border border-gray-200/90 bg-white/80 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700/80 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-gray-800"><DownloadIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
               </div>
               <p v-if="scanState === 'scanning'" role="status" data-testid="image-catalog-scan-status" tw-class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageModelCatalog__checking_saved_models() }}</p>
-              <div tw-class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
+              <div data-testid="image-recipe-metadata" tw-class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
                 <span tw-class="tabular-nums">{{ card.availability.available === card.availability.total ? formatDownloadBytes({ bytes: card.availability.bytes }) : lazyStrings.llamaCppBrowserDownloads__approximately_size({ size: formatDownloadBytes({ bytes: card.bytes }) }) }} · {{ lazyStrings.stableDiffusionCppBrowser__file_count({ count: card.files.length }) }}</span>
                 <span v-if="card.availability.available > 0 && card.availability.available < card.availability.total">{{ lazyStrings.stableDiffusionCppBrowser__files_available({ available: card.availability.available, total: card.availability.total }) }}</span>
                 <button type="button" :aria-expanded="!!detailsOpen[card.recipe.id]" :aria-controls="id + card.recipe.id + '-details'" :data-testid="'recipe-details-toggle-' + card.recipe.id" @click="detailsOpen[card.recipe.id] = !detailsOpen[card.recipe.id]" tw-class="inline-flex items-center gap-1 rounded-md px-1 py-1 text-xs hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.llamaCppBrowserDownloads__details() }}<ChevronDownIcon :tw-class="['w-3 h-3 transition-transform motion-reduce:transition-none', { 'rotate-180': detailsOpen[card.recipe.id] }]" /></button>
               </div>
-              <ImageCatalogDownloadStatus v-if="downloadRecipeId === card.recipe.id && downloadState !== 'idle'" :view="view" :disabled="downloadDisabled || importing" />
+              <!-- Keep full-width guidance outside the inline metadata and Details toolbar. -->
+              <CspMessageHint v-if="(card.availability.available !== card.availability.total || card.loras.some(lora => !view.loraAvailable({ id: lora.id }))) && !(downloadState === 'failed' && (downloadRecipeId === card.recipe.id || card.loras.some(lora => downloadLoraId === lora.id)))" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
+              <ImageCatalogDownloadStatus v-if="downloadRecipeId === card.recipe.id && downloadState !== 'idle'" :view="view" :disabled="downloadDisabled || importing" :local-input-disabled="disabled" />
               <div :id="id + card.recipe.id + '-details'" class="catalog-disclosure" :class="{ 'catalog-disclosure-open': detailsOpen[card.recipe.id] }" :inert="detailsOpen[card.recipe.id] ? undefined : true" :aria-hidden="!detailsOpen[card.recipe.id]" data-testid="image-recipe-details">
                 <SettingsSelectScope :active="!!detailsOpen[card.recipe.id]" :return-focus="undefined">
                   <div class="catalog-disclosure-inner">
@@ -201,7 +210,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                   <span v-if="view.loraAvailable({ id: lora.id })" :data-testid="'catalog-lora-saved-' + lora.id">{{ lazyStrings.ImageModelCatalog__saved_choose_in_lora_controls() }}</span>
                   <button v-else type="button" :disabled="downloadDisabled || importing || downloadDestinationUnavailable" @click="downloadLora({ id: lora.id })" :data-testid="'catalog-lora-download-' + lora.id" tw-class="group inline-flex min-h-9 max-w-full items-center justify-center gap-2 rounded-lg border border-gray-200/90 bg-white/80 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700/80 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-gray-800">{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
                 </div>
-                <ImageCatalogDownloadStatus v-if="downloadLoraId === lora.id && downloadState !== 'idle'" :view="view" :disabled="downloadDisabled || importing" />
+                <ImageCatalogDownloadStatus v-if="downloadLoraId === lora.id && downloadState !== 'idle'" :view="view" :disabled="downloadDisabled || importing" :local-input-disabled="disabled" />
               </div>
             </article>
           </div>

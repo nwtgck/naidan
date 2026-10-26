@@ -21,6 +21,9 @@ const metadata = vi.hoisted(() => ({ inspect: vi.fn(), installed: vi.fn() }));
 vi.mock('../hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: metadata.inspect }) }));
 vi.mock('../hugging-face/storage', () => ({ installedSelection: metadata.installed }));
+// This suite owns picker loading and HF requests. Optional document-policy
+// observation is verified separately from the inactive-picker privacy boundary.
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({ default: { render: () => undefined } }));
 vi.mock('../composables/useChatBrowserModelPickerTab', () => ({ useChatBrowserModelPickerTab: () => ({ remembered: computed(() => 'hugging-face'), remember: vi.fn(async () => {}) }) }));
 
 const results = Array.from({ length: 40 }, (_, index) => ({ id: `owner/model-${index}`, downloads: index + 1 }));
@@ -50,6 +53,7 @@ function renderPicker({ layout }: { layout: 'welcome' | 'embedded' }) {
     pauseDownload: vi.fn(),
     maySend: computed(() => true),
     accept: vi.fn(async () => {}),
+    acceptAfterFailedDownload: vi.fn(async () => {}),
     choose: vi.fn(async () => {}),
     retry: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),

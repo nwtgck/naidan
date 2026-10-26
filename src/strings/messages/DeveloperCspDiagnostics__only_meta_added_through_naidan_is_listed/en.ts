@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__only_meta_added_through_naidan_is_listed = (): string => 'This records meta CSP actually added to the page through the Naidan API. Meta added manually in developer tools is outside its scope.';

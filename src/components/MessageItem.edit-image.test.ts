@@ -88,6 +88,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const wrapper = mount(MessageItem, {
       props: {
+        endpoint: undefined,
         message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1', 'x/other-model:v1'],
@@ -126,6 +127,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const wrapper = mount(MessageItem, {
       props: {
+        endpoint: undefined,
         message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1'],
@@ -165,6 +167,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const wrapper = mount(MessageItem, {
       props: {
+        endpoint: undefined,
         message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1'],
@@ -204,6 +207,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const wrapper = mount(MessageItem, {
       props: {
+        endpoint: undefined,
         message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1'],
@@ -233,7 +237,7 @@ describe('MessageItem Edit Image Generation', () => {
   it('toggles the embedded experimental tools panel when the tool button is clicked', async () => {
     const message = createMessage('Some text');
     const wrapper = mount(MessageItem, {
-      props: { message, canGenerateImage: true },
+      props: { endpoint: undefined, message, canGenerateImage: true },
       global: { stubs },
     });
 
@@ -261,7 +265,7 @@ describe('MessageItem Edit Image Generation', () => {
   it('shows only the toggle button when tools are opened, then settings when toggle is clicked', async () => {
     const message = createMessage('Regular text');
     const wrapper = mount(MessageItem, {
-      props: { message, canGenerateImage: true },
+      props: { endpoint: undefined, message, canGenerateImage: true },
       global: {
         stubs: {
           ImageGenerationSettings: {
@@ -302,7 +306,7 @@ describe('MessageItem Edit Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, canGenerateImage: false },
+      props: { endpoint: undefined, message, canGenerateImage: false },
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');

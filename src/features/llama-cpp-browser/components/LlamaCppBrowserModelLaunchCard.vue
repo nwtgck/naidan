@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { PlayIcon, RefreshCcwIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import type { ModelLaunchChatUi } from '@/features/llama-cpp-browser/composables/useModelLaunchChat';
 import { browserModelRepositoryPresentation } from '@/components/browser-model-presentation';
 import { modelLaunchPreparationStage } from '@/features/llama-cpp-browser/model-launch/presentation';
@@ -82,7 +83,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <button type="button" data-testid="model-launch-refresh-choices" :disabled="state.launch.value === undefined || state.busy.value || !state.isActive.value" :aria-label="lazyStrings.LlamaCppBrowserModelLaunch__refresh_choices()" :title="lazyStrings.LlamaCppBrowserModelLaunch__refresh_choices()" tw-class="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600 dark:hover:bg-gray-800 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="state.refreshChoices()"><RefreshCcwIcon aria-hidden="true" tw-class="h-3 w-3" /></button>
       </template>
       <template #progress>
-        <LlamaCppBrowserDownloadJob v-if="displayedJob && state.readiness.value !== 'ready'" :job="displayedJob" :disabled="state.busy.value || state.verification.value === 'checking' || !state.isActive.value || state.runtimeUnavailable.value" appearance="welcome" sources-visibility="hidden" @resume="state.adoptAndDownload()" />
+        <LlamaCppBrowserDownloadJob :accept-local-input="undefined" v-if="displayedJob && state.readiness.value !== 'ready'" :job="displayedJob" :disabled="state.busy.value || state.verification.value === 'checking' || !state.isActive.value || state.runtimeUnavailable.value" appearance="welcome" sources-visibility="hidden" @resume="state.adoptAndDownload()" />
         <div v-else-if="state.observedDownload.value" data-testid="model-launch-observed-download" tw-class="space-y-1">
           <div tw-class="flex min-h-9 items-center justify-between gap-2">
             <span role="status" tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.llamaCppBrowserDownloads__paused() }}</span>
@@ -95,6 +96,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <button v-if="state.warmup.value === 'deferred'" type="button" tw-class="min-h-11 w-full rounded-xl px-4 text-sm text-blue-600 dark:text-blue-400" @click="state.retryWarmup()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
       </template>
       <template #details>
+        <!-- Download jobs own their transport errors. Generic preparation errors may be local. -->
+        <CspMessageHint v-if="displayedJob === undefined && (state.readiness.value === 'missing' || state.observedDownload.value !== undefined || state.launch.value !== undefined)" :target="{ kind: state.readiness.value === 'missing' || state.observedDownload.value !== undefined ? 'huggingface-download' : 'huggingface-metadata' }" :activity-for-display-only="state.readiness.value === 'missing' || state.observedDownload.value !== undefined ? 'download' : 'model-information'" presentation="compact" />
         <LlamaCppBrowserDownloadSources v-if="displayedJob" :job="displayedJob" appearance="quiet" />
         <button v-if="state.readiness.value === 'failed'" type="button" data-testid="model-launch-check-retry" tw-class="min-h-11 w-full rounded-xl px-4 text-sm text-blue-600 dark:text-blue-400" @click="state.refresh()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
         <p v-if="state.defaultWarning.value" role="status" tw-class="text-xs leading-relaxed text-amber-600 dark:text-amber-400">{{ lazyStrings.LlamaCppBrowserModelLaunch__global_defaults_not_saved() }}</p>

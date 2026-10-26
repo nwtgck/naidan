@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import type { DownloadDestination } from '@/01-models/download';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
@@ -33,6 +34,7 @@ const catalog = shallowRef<RepositoryCatalog>();
 watch(() => catalog.value === undefined ? 'search' : 'configuration', view => emit('view-change', view), { flush: 'sync' });
 const active = shallowRef<AbortController>();
 const error = ref(false);
+const failureContext = ref<'metadata'>();
 const mainPath = ref('');
 const companionPath = ref('');
 const multimodal = ref<'on' | 'off'>('off');
@@ -118,6 +120,7 @@ function reset(): void {
   active.value = undefined;
   catalog.value = undefined;
   error.value = false;
+  failureContext.value = undefined;
 }
 
 watch(input, reset, { flush: 'sync' });
@@ -136,10 +139,13 @@ async function checkRepository({ value }: { value: string }): Promise<void> {
   reset();
   const controller = new AbortController();
   active.value = controller;
+  let readingMetadata = false;
   try {
     const parsed = parseRepository({ input: value });
     // This explicit repository/search-result action authorizes metadata only.
+    readingMetadata = true;
     const found = await getMetadataSession().inspect({ input: value, signal: controller.signal, freshness: 'reuse' });
+    readingMetadata = false;
     if (controller.signal.aborted || active.value !== controller) {
       return;
     }
@@ -172,6 +178,7 @@ async function checkRepository({ value }: { value: string }): Promise<void> {
   } catch {
     if (!controller.signal.aborted) {
       error.value = true;
+      failureContext.value = readingMetadata ? 'metadata' : undefined;
     }
   } finally {
     if (active.value === controller) {
@@ -199,6 +206,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
     </div>
     <p v-if="error" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__could_not_check_repository() }}</p>
+    <CspMessageHint v-if="error && failureContext === 'metadata'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-information" presentation="error" />
     <section v-if="catalog" data-testid="chat-model-configuration" tw-class="space-y-4">
       <div tw-class="space-y-2">
         <button type="button" data-testid="chat-model-back-to-search" :disabled="disabled" tw-class="group -ml-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100" @click="catalog = undefined"><ArrowLeftIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-hover:-translate-x-0.5 motion-reduce:transform-none" />{{ lazyStrings.LlamaCppBrowserRepositoryPicker__back_to_search() }}</button>
@@ -216,6 +224,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="destinationFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
         <p v-else-if="saved.status === 'unavailable'" role="status" data-testid="chat-model-destination-unavailable" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ destination.kind === 'host' ? lazyStrings.LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings() : lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() }}</p>
         <LlamaCppBrowserModelActionButton data-testid="chat-use-repository-model" appearance="primary" size="large" :aria-busy="target !== undefined && !disabled && destinationPersistence !== 'failed' && saved.status === 'checking' || undefined" :disabled="disabled || destinationBusy || destinationUnavailable || target === undefined || (saved.status !== 'saved' && saved.status !== 'missing')" tw-class="w-full" @click="select"><span tw-class="grid w-full grid-cols-[1.5rem_minmax(0,1fr)_1.5rem] items-center gap-3"><span tw-class="col-start-2 min-w-0 text-center">{{ lazyStrings.SHARED__use_model_in_this_chat() }}</span><span aria-hidden="true" tw-class="flex h-6 w-6 items-center justify-center rounded-lg bg-gray-100/80 text-blue-500 transition-[background-color,color] duration-200 group-hover:bg-blue-100/80 group-hover:text-blue-600 dark:bg-gray-700/60 dark:text-blue-400 dark:group-hover:bg-blue-500/15 dark:group-hover:text-blue-300 motion-reduce:transition-none"><ArrowRightIcon tw-class="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none" /></span></span></LlamaCppBrowserModelActionButton>
+        <CspMessageHint v-if="saved.status === 'missing'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
       </div>
     </section>
     <LlamaCppBrowserHuggingFaceSearch v-show="catalog === undefined" :disabled="disabled || active !== undefined || catalog !== undefined" :repository-input="input" scroll-owner="parent" @select="checkRepository({ value: $event })" />

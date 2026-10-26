@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__clearing_the_setting_keeps_current_meta = (): string => 'Clearing the saved setting leaves meta CSP already added to this page in effect. Reload the page yourself to remove those policies.';

@@ -12,6 +12,178 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [], closed: [] }>();
 const panel = ref<HTMLElement>();
+const content = ref<HTMLElement>();
+let revealVersion = 0;
+let stopWaiting: (() => void) | undefined;
+
+function interruptReveal(): void {
+  ++revealVersion;
+  stopWaiting?.();
+  stopWaiting = undefined;
+}
+
+watch([() => props.open, () => props.suspended], async ([open, suspended], _previous, onCleanup) => {
+  let current = true;
+  let mutations: MutationObserver | undefined;
+  onCleanup(() => {
+    current = false;
+    interruptReveal();
+    mutations?.disconnect();
+  });
+  interruptReveal();
+  if (!open || suspended) {
+    return;
+  }
+  await nextTick();
+  const element = content.value;
+  if (!current || element === undefined) {
+    return;
+  }
+  let roots = Array.from(element.children);
+  const observeView = (): void => {
+    try {
+      const children = Array.from(element.children);
+      if (children.length !== roots.length || children.some((child, index) => child !== roots[index])) {
+        // A replaced step must not receive a previous step's delayed reveal.
+        interruptReveal();
+        roots = children;
+      }
+    } catch {
+      // Optional step tracking must not interrupt model selection.
+    }
+  };
+  // Observe step replacement only to cancel its pending reveal. Expanding a
+  // hint reveals its beginning; an additional continuation cue is unnecessary.
+  try {
+    if (typeof MutationObserver !== 'undefined') {
+      mutations = new MutationObserver(observeView);
+      mutations.observe(element, { childList: true });
+    }
+  } catch {
+    mutations?.disconnect();
+  }
+}, { immediate: true });
+
+function revealBeginning({ heading, body }: { heading: HTMLElement, body: HTMLElement }): void {
+  try {
+    const element = content.value;
+    if (!props.open || props.suspended || element === undefined || !element.contains(heading) || !element.contains(body) || element.clientHeight <= 0) {
+      return;
+    }
+    const controls = Array.from(body.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled):not([tabindex="-1"]), select:not(:disabled), textarea:not(:disabled), summary'));
+    const firstAction = controls.find(control => control !== heading && !control.closest('[inert], [hidden], [aria-hidden="true"]') && control.getBoundingClientRect().height > 0);
+    const firstHeading = body.querySelector<HTMLElement>('h1, h2, h3, h4, h5, h6, p');
+    const top = heading.getBoundingClientRect().top;
+    const bottom = Math.max(heading.getBoundingClientRect().bottom, firstHeading?.getBoundingClientRect().bottom ?? top, firstAction?.getBoundingClientRect().bottom ?? top);
+    const viewportTop = element.getBoundingClientRect().top + element.clientTop;
+    const padding = Math.min(24, element.clientHeight / 8);
+    const beginningBottom = Math.min(bottom, top + element.clientHeight - padding * 2);
+    let scrollTop = element.scrollTop;
+    if (top < viewportTop + padding) {
+      scrollTop += top - viewportTop - padding;
+    } else if (beginningBottom > viewportTop + element.clientHeight - padding) {
+      scrollTop += beginningBottom - viewportTop - element.clientHeight + padding;
+    }
+    scrollTop = Math.max(0, Math.min(element.scrollHeight - element.clientHeight, scrollTop));
+    if (Math.abs(scrollTop - element.scrollTop) > 1) {
+      // One immediate move respects reduced motion and leaves no native smooth
+      // animation to keep moving after manual scrolling, closing, or a new step.
+      if (typeof element.scrollTo === 'function') {
+        element.scrollTo({ top: scrollTop, behavior: 'auto' });
+      } else {
+        element.scrollTop = scrollTop;
+      }
+    }
+  } catch {
+    // Keep the original error and controls usable if scrolling is unavailable.
+  }
+}
+
+async function revealPreparationError({ isCurrent }: { isCurrent: () => boolean }): Promise<void> {
+  interruptReveal();
+  try {
+    const version = revealVersion;
+    const element = content.value;
+    const originalScrollTop = element?.scrollTop;
+    await nextTick();
+    if (version !== revealVersion || !props.open || props.suspended || element === undefined || content.value !== element || element.scrollTop !== originalScrollTop || !isCurrent()) {
+      return;
+    }
+    const error = element.querySelector<HTMLElement>('[data-browser-model-preparation-error]');
+    if (error?.firstElementChild instanceof HTMLElement) {
+      revealBeginning({ heading: error.firstElementChild, body: error });
+    }
+  } catch {
+    // A failed optional reveal must not replace the original preparation error.
+  }
+}
+
+async function revealDisclosure({ event }: { event: MouseEvent }): Promise<void> {
+  interruptReveal();
+  try {
+    const element = content.value;
+    const trigger = event.target instanceof Element ? event.target.closest<HTMLElement>('button[aria-expanded="false"], summary') : undefined;
+    const error = trigger?.closest('[data-browser-model-preparation-error]');
+    const details = trigger?.parentElement instanceof HTMLDetailsElement ? trigger.parentElement : undefined;
+    if (!props.open || props.suspended || element === undefined || trigger === undefined || trigger === null || !element.contains(trigger) || !error || details?.open) {
+      return;
+    }
+    const version = revealVersion;
+    const originalScrollTop = element.scrollTop;
+    // A native event can run microtasks between its listeners. Wait for the
+    // next task, then for the target's Vue update and native default action.
+    await new Promise<void>(resolve => {
+      const timer = window.setTimeout(resolve, 0);
+      stopWaiting = () => {
+        window.clearTimeout(timer);
+        resolve();
+      };
+    });
+    if (version !== revealVersion) {
+      return;
+    }
+    stopWaiting = undefined;
+    await nextTick();
+    if (version !== revealVersion || !props.open || props.suspended || content.value !== element || !element.contains(error) || element.scrollTop !== originalScrollTop) {
+      return;
+    }
+    const controls = trigger.getAttribute('aria-controls');
+    const body = details?.open ? details : trigger.getAttribute('aria-expanded') === 'true' && controls !== null ? Array.from(error.querySelectorAll<HTMLElement>('[id]')).find(candidate => candidate.id === controls) : undefined;
+    if (body === undefined) {
+      return;
+    }
+    const finish = (): void => {
+      stopWaiting?.();
+      stopWaiting = undefined;
+      if (version === revealVersion && props.open && !props.suspended && content.value === element && element.scrollTop === originalScrollTop && element.contains(error) && (details?.open || trigger?.getAttribute('aria-expanded') === 'true')) {
+        revealBeginning({ heading: trigger, body });
+      }
+    };
+    const style = window.getComputedStyle(body);
+    const durations = style.transitionDuration.split(',').map(value => value.trim().endsWith('ms') ? Number.parseFloat(value) : Number.parseFloat(value) * 1000);
+    const duration = Math.max(0, ...durations.filter(Number.isFinite));
+    if (duration === 0) {
+      finish();
+      return;
+    }
+    // Wait once for the explicit expansion, never repeatedly chase its size.
+    // Manual input, scrolling, another step, closing, or suspension cancels it.
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Native addEventListener passes its TransitionEvent positionally.
+    const transitionEnd = (transition: TransitionEvent) => {
+      if (transition.target === body && transition.propertyName === 'grid-template-rows') {
+        finish();
+      }
+    };
+    body.addEventListener('transitionend', transitionEnd);
+    const timer = window.setTimeout(finish, duration + 32);
+    stopWaiting = () => {
+      window.clearTimeout(timer);
+      body.removeEventListener('transitionend', transitionEnd);
+    };
+  } catch {
+    // Disclosure behavior and focus do not depend on optional reveal geometry.
+  }
+}
 
 watch(() => props.open, async open => {
   if (open) {
@@ -34,6 +206,7 @@ function focusPanel(): void {
 
 function close(): void {
   if (props.dismissible && props.open && !props.suspended) {
+    interruptReveal();
     emit('close');
   }
 }
@@ -66,7 +239,7 @@ function keydown({ event }: { event: KeyboardEvent }): void {
   }
 }
 
-defineExpose({ focusPanel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
+defineExpose({ focusPanel, revealPreparationError, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
@@ -76,7 +249,7 @@ defineExpose({ focusPanel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || 
         <div class="browser-model-dialog-backdrop" aria-hidden="true" tw-class="absolute inset-0 bg-gray-950/35 backdrop-blur-[6px] dark:bg-black/50" @click="close" />
         <section ref="panel" class="browser-model-dialog-panel" role="dialog" :aria-modal="!suspended || undefined" :aria-hidden="suspended || undefined" :inert="suspended || undefined" :aria-label="lazyStrings.BrowserModelWelcome__choose_a_model()" tabindex="-1" tw-class="relative flex h-full min-h-0 flex-col bg-[#fcfcfd] outline-none dark:bg-gray-900" @keydown="keydown({ event: $event })">
           <button type="button" class="browser-model-dialog-close" :disabled="!dismissible || suspended" :aria-label="lazyStrings.BrowserModelDialog__close()" data-testid="browser-model-dialog-close" tw-class="absolute right-3 top-3 z-30 grid h-9 w-9 place-items-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-30 dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:right-4 sm:top-4" @click="close"><XIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
-          <div class="browser-model-dialog-content" tw-class="relative min-h-0 flex-1">
+          <div ref="content" class="browser-model-dialog-content" data-testid="browser-model-dialog-content" tw-class="relative min-h-0 flex-1" @click.capture="revealDisclosure({ event: $event })" @scroll="interruptReveal" @wheel.passive="interruptReveal" @touchstart.passive="interruptReveal" @pointerdown="interruptReveal" @keydown.capture="interruptReveal">
             <slot />
           </div>
           <slot name="overlay" />

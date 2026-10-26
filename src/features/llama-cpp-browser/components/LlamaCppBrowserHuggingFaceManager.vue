@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
@@ -41,6 +42,7 @@ const queue = getDownloadQueue();
 const repositoryJobs = computed(() => queue.jobs.value.filter(job => job.source === 'repository' && job.status !== 'complete' && job.status !== 'cancelled'));
 const queuedDownloadBusy = computed(() => queue.jobs.value.some(job => jobIsBusy({ job })));
 const error = ref<DownloadConflict | 'failed' | 'changed'>();
+const failureContext = ref<'metadata'>();
 const pending = shallowRef<(DownloadJournal & { destination: ModelDestination })[]>([]);
 const errorMessage = computed(() => {
   switch (error.value) {
@@ -182,6 +184,9 @@ async function refresh(): Promise<void> {
     }
   } catch {
     if (!disposed && version === refreshVersion) {
+      if (error.value === undefined) {
+        failureContext.value = undefined;
+      }
       error.value ??= 'failed';
     }
   }
@@ -196,12 +201,16 @@ async function inspect(): Promise<void> {
   const controller = new AbortController();
   active.value = controller;
   error.value = undefined;
+  failureContext.value = undefined;
+  let readingMetadata = false;
   try {
     const submittedInput = input.value.trim();
     const { requestedVariant } = parseRepository({ input: submittedInput });
     const previousCandidate = selected.value?.label;
     const previousProjector = selectedProjector.value?.path ?? projector.value;
+    readingMetadata = true;
     const next = await getMetadataSession().inspect({ input: submittedInput, signal: controller.signal, freshness: 'refresh' });
+    readingMetadata = false;
     if (controller.signal.aborted || disposed) {
       return;
     }
@@ -236,6 +245,7 @@ async function inspect(): Promise<void> {
   } catch {
     if (!controller.signal.aborted) {
       error.value = 'failed';
+      failureContext.value = readingMetadata ? 'metadata' : undefined;
     }
   } finally {
     inspecting = false;
@@ -248,6 +258,7 @@ async function download({ selection, destination: requestedDestination }: { sele
     return;
   }
   error.value = undefined;
+  failureContext.value = undefined;
   authorizing.value = true;
   try {
     // Permission can yield to another selector change. The captured destination
@@ -281,6 +292,7 @@ async function remove({ repository, destination: requestedDestination }: { repos
   }
   deleting.value = true;
   error.value = undefined;
+  failureContext.value = undefined;
   try {
     await downloadDestination.authorize({ destination: requestedDestination });
     const location = (() => {
@@ -361,6 +373,7 @@ watch([selectionToCheck, () => props.disabled, active, deleting, localCheckVersi
     if (!cancelled && !disposed) {
       localAvailability.value = 'unavailable';
       error.value = 'failed';
+      failureContext.value = undefined;
     }
   }
 }, { immediate: true });
@@ -464,9 +477,10 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
       <span tw-class="inline-flex items-center gap-2"><Loader2Icon tw-class="w-4 h-4 animate-spin" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__checking_model() }}</span>
       <button type="button" tw-class="px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800" @click="active?.abort()">{{ lazyStrings.SHARED__cancel() }}</button>
     </div>
+    <CspMessageHint v-if="catalog && localAvailability === 'missing'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
     <div v-for="job in repositoryJobs" :key="job.id" data-testid="llama-hf-download-job" tw-class="space-y-2 rounded-xl border border-gray-100 dark:border-gray-800 p-3">
       <p tw-class="text-[10px] text-gray-500 dark:text-gray-400 break-all">Hugging Face · {{ job.repository }} · {{ downloadDestination.label({ destination: job.destination }) }}</p>
-      <LlamaCppBrowserDownloadJob appearance="manager" :job="job" :disabled="disabled || deleting" @resume="job.selection && download({ selection: job.selection, destination: job.destination })" />
+      <LlamaCppBrowserDownloadJob :accept-local-input="undefined" appearance="manager" :job="job" :disabled="disabled || deleting" @resume="job.selection && download({ selection: job.selection, destination: job.destination })" />
       <button v-if="job.status === 'paused' || job.status === 'failed'" type="button" data-testid="llama-hf-delete" :disabled="disabled || active !== undefined || deleting || queuedDownloadBusy" tw-class="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-bold text-gray-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed" @click="remove({ repository: job.repository, destination: job.destination })"><Trash2Icon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__cancel_and_delete() }}</button>
     </div>
     <details v-if="catalog" ref="details" data-testid="llama-hf-details" tw-class="text-xs text-gray-500 dark:text-gray-400">
@@ -496,6 +510,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
       </div>
     </details>
     <p v-if="error" role="alert" tw-class="flex items-start gap-2 rounded-xl p-3 bg-red-50 dark:bg-red-900/10 text-xs text-red-700 dark:text-red-400"><AlertCircleIcon tw-class="w-4 h-4 shrink-0" />{{ errorMessage }}</p>
+    <CspMessageHint v-if="error === 'failed' && failureContext === 'metadata'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-information" presentation="error" />
     <ul v-if="visiblePending.length" tw-class="space-y-4">
       <li v-for="job in visiblePending" :key="destinationKey({ destination: job.destination }) + job.selection.repository" data-testid="llama-hf-pending" tw-class="space-y-3 py-2">
         <div tw-class="flex items-center gap-3">
@@ -515,6 +530,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
             <button type="button" :disabled="disabled || active !== undefined || deleting || queuedDownloadBusy" data-testid="llama-hf-delete" tw-class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" @click="remove({ repository: job.selection.repository, destination: job.destination })"><Trash2Icon tw-class="w-3 h-3" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__cancel_and_delete() }}</button>
           </div>
         </div>
+        <CspMessageHint :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
       </li>
     </ul>
   </section>

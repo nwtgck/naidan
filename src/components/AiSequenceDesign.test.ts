@@ -77,7 +77,7 @@ describe('AI Sequence Design', () => {
     it('hides header when position is middle or end', () => {
       const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('middle') },
+        props: { endpoint: undefined, message, flow: flow('middle') },
       });
 
       // showHeader is false for middle
@@ -87,7 +87,7 @@ describe('AI Sequence Design', () => {
     it('shows header when position is standalone or start', () => {
       const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('start'), isFirstInTurn: true },
+        props: { endpoint: undefined, message, flow: flow('start'), isFirstInTurn: true },
       });
 
       expect(wrapper.find('.flex.items-center.gap-3.mb-1').exists()).toBe(true);
@@ -96,7 +96,7 @@ describe('AI Sequence Design', () => {
     it('applies pt-2 when position is middle or end', () => {
       const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('middle') },
+        props: { endpoint: undefined, message, flow: flow('middle') },
       });
 
       const root = wrapper.find('.flex.flex-col');
@@ -106,7 +106,7 @@ describe('AI Sequence Design', () => {
     it('applies border-t when position is standalone or start for assistant', () => {
       const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('start') },
+        props: { endpoint: undefined, message, flow: flow('start') },
       });
 
       const root = wrapper.find('.flex.flex-col');
@@ -117,12 +117,12 @@ describe('AI Sequence Design', () => {
       const message = createAssistantMessage({ content: 'Hello' });
 
       const lastWrapper = mount(MessageItem, {
-        props: { message, flow: flow('end') },
+        props: { endpoint: undefined, message, flow: flow('end') },
       });
       expect(lastWrapper.find('.flex.flex-col').classes()).toContain('border-b');
 
       const notLastWrapper = mount(MessageItem, {
-        props: { message, flow: flow('start') },
+        props: { endpoint: undefined, message, flow: flow('start') },
       });
       expect(notLastWrapper.find('.flex.flex-col').classes()).not.toContain('border-b');
     });
@@ -130,7 +130,7 @@ describe('AI Sequence Design', () => {
     it('applies pb-2 when NOT last in sequence', () => {
       const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('start') }, // Not end or standalone
+        props: { endpoint: undefined, message, flow: flow('start') }, // Not end or standalone
       });
 
       expect(wrapper.find('.flex.flex-col').classes()).toContain('pb-2');
@@ -139,7 +139,7 @@ describe('AI Sequence Design', () => {
     it('removes specialized styling when nested inside a group', () => {
       const message = createAssistantMessage({ content: 'Hello' });
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('middle', 'inside-group') },
+        props: { endpoint: undefined, message, flow: flow('middle', 'inside-group') },
       });
 
       const root = wrapper.find('.flex.flex-col');

@@ -49,6 +49,7 @@ defineExpose({
       :provider="provider"
       :endpoint-url="props.endpointUrl"
       :presentation="presentation"
+      :fake-lm-debug-mode-status="fakeLmDebugModeStatus"
     />
   </section>
 </template>
