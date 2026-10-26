@@ -81,7 +81,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div tw-class="flex flex-wrap gap-3">
         <button type="button" @click="manage" tw-class="text-xs font-semibold text-blue-600 dark:text-blue-400">{{ lazyStrings.naidanRpc__manage() }}</button>
         <button type="button" @click="refreshConnections" :disabled="disabled" data-testid="image-inference-location-refresh" tw-class="text-xs text-blue-600 dark:text-blue-400 disabled:opacity-40">{{ lazyStrings.ImageInferenceLocation__refresh_connections() }}</button>
-        <button type="button" @click="requestModels" :disabled="disabled || !inferenceLocation.connected.value || inferenceLocation.loading.value" data-testid="image-inference-location-models" tw-class="text-xs text-blue-600 dark:text-blue-400 disabled:opacity-40">{{ lazyStrings.ImageInferenceLocation__list_remote_models() }}</button>
+        <button type="button" @click="requestModels" :disabled="disabled || !enabled || !inferenceLocation.connected.value || inferenceLocation.loading.value" data-testid="image-inference-location-models" tw-class="text-xs text-blue-600 dark:text-blue-400 disabled:opacity-40">{{ lazyStrings.ImageInferenceLocation__list_remote_models() }}</button>
       </div>
       <CspMessageHint activity-for-display-only="model-list" :target="{ kind: 'relay', url: selectedRelay }" presentation="compact" />
       <p v-if="inferenceLocation.selection.value" tw-class="text-xs break-all" data-testid="image-inference-location-selected-model">{{ inferenceLocation.selection.value.primary.file.location.path }}</p>
@@ -94,6 +94,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
            management. Download/import/delete and settings writes are deliberately
            not offered by this RPC surface. -->
       <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageInferenceLocation__remote_models_are_read_only() }}</p>
+      <p v-if="inferenceLocation.saveFailure.value" role="alert" tw-class="text-xs text-red-600 break-words">{{ inferenceLocation.saveFailure.value }}</p>
       <p v-if="inferenceLocation.failure.value" role="alert" tw-class="text-xs text-red-600 break-words">{{ inferenceLocation.failure.value }}</p>
       <CspMessageHint activity-for-display-only="model-list" v-if="inferenceLocation.failure.value && inferenceLocation.connected.value && modelsRequestRelay !== undefined && modelsRequestRelay === selectedRelay" :target="{ kind: 'relay', url: modelsRequestRelay }" presentation="error" />
     </template>

@@ -8,6 +8,12 @@ import type { ImageInferenceLocationView } from '@/features/image-generation/com
 const props = defineProps<{ inferenceLocation: ImageInferenceLocationView, disabled: boolean, active: boolean }>();
 const lora = ref('');
 
+function changeAutomatic({ slot, event }: { slot: Parameters<ImageInferenceLocationView['setComponentAutomatic']>[0]['slot'], event: Event }): void {
+  if (!props.disabled && event.target instanceof HTMLInputElement) {
+    props.inferenceLocation.setComponentAutomatic({ slot, automatic: event.target.checked });
+  }
+}
+
 function addLora(): void {
   if (props.disabled) {
     return;
@@ -44,7 +50,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div tw-class="min-w-0 space-y-4" data-testid="image-remote-model-configuration">
     <div tw-class="min-w-0 space-y-3">
-      <ImageModelPicker v-for="component in inferenceLocation.components.value" :key="component.slot" :active="active" :model-value="component.selectedCandidateKey" :choices="component.choices" :required="component.required" :label="componentLabel({ slot: component.slot })" :disabled="disabled || !inferenceLocation.peerPublicKey.value || inferenceLocation.loading.value" @update:model-value="inferenceLocation.chooseComponent({ slot: component.slot, id: $event })" :data-testid="'image-component-' + component.slot" />
+      <div v-for="component in inferenceLocation.components.value" :key="component.slot" tw-class="space-y-2">
+        <ImageModelPicker :active="active" :model-value="component.selectedCandidateKey" :choices="component.choices" :required="component.required" :label="componentLabel({ slot: component.slot })" :disabled="disabled || !inferenceLocation.peerPublicKey.value || inferenceLocation.loading.value" @update:model-value="inferenceLocation.chooseComponent({ slot: component.slot, id: $event })" :data-testid="'image-component-' + component.slot" />
+        <label tw-class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <input type="checkbox" :checked="component.automatic" :disabled="disabled || inferenceLocation.loading.value || !component.automatic && !component.canSelectAutomatically" @change="changeAutomatic({ slot: component.slot, event: $event })" :data-testid="'image-component-automatic-' + component.slot" />
+          {{ lazyStrings.ImageRemoteModelConfiguration__select_automatically() }}
+        </label>
+      </div>
     </div>
     <p v-if="inferenceLocation.editor.value.primary && !inferenceLocation.ready.value" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__incomplete_components() }}</p>
     <div tw-class="flex items-center justify-between gap-2">

@@ -3,9 +3,10 @@ import SettingsSelectScope from '@/components/SettingsSelectScope.vue';
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import ImageRecommendedFieldHint from './ImageRecommendedFieldHint.vue';
-import { applyImageRecommendedField, type ImageRecommendedField } from '@/features/image-generation/recommended-fields';
+import { imageRecommendedHint, applyImageRecommendedField, type ImageRecommendedField } from '@/features/image-generation/recommended-fields';
 import type { ImageGenerationRecommendation } from '@/features/stable-diffusion-cpp-browser/recommendations';
-import { computed, ref, useId } from 'vue';
+import { computed, ref, useId, watch } from 'vue';
+import { useSettings } from '@/composables/useSettings';
 import { ArrowLeftRightIcon, DicesIcon, FileUpIcon, ImageIcon, SquareIcon, OctagonXIcon, ExternalLinkIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { profileOptions, samplerOptions, schedulerOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
@@ -27,6 +28,11 @@ const configurationOpen = ref(false);
 const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
 const remote = computed(() => props.view.inferenceLocation?.kind.value === 'naidan_rpc');
+const { settings } = useSettings();
+watch([() => props.view.inferenceLocation, () => props.active, () => settings.value.experimental?.naidanRpc === 'enabled'], ([location, active, enabled], _previous, onCleanup) => {
+  location?.setCatalogActivity({ active, enabled });
+  onCleanup(() => location?.setCatalogActivity({ active: false, enabled }));
+}, { immediate: true });
 const hasModel = computed(() => remote.value ? !!props.view.inferenceLocation?.ready.value && !!props.view.inferenceLocation?.connected.value : !!library.selectedCandidateKey.value || !!files.value.model || !!files.value.diffusion);
 const slots = computed(() => {
   switch (layout.value) {
@@ -117,6 +123,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <section :aria-label="lazyStrings.stableDiffusionCppBrowser__selected_model()" tw-class="space-y-3 rounded-2xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800/80 dark:bg-gray-900/40" data-testid="image-model-setup">
         <ImageModelPicker v-if="remote && view.inferenceLocation" :active="active" :model-value="view.inferenceLocation.primaryKey.value" :choices="view.inferenceLocation.primaryChoices.value" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" :disabled="formDisabled || view.inferenceLocation.loading.value || !view.inferenceLocation.peerPublicKey.value" compact @update:model-value="view.inferenceLocation.choosePrimary({ id: $event })" data-testid="image-main-model" />
         <ImageModelLibrary v-else :active="active" :manual-name="(files.model || files.diffusion)?.name" :view="library" :disabled="formDisabled" @prepare="emit('manageModels')" />
+        <template v-if="remote && view.inferenceLocation">
+          <p v-if="view.inferenceLocation.catalogStale.value" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300" data-testid="image-remote-catalog-stale">{{ lazyStrings.ImageGenerationEditor__remote_catalog_is_out_of_date() }}</p>
+          <p v-else-if="view.inferenceLocation.catalogFresh.value && !view.inferenceLocation.canAutomaticallySelect.value" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300" data-testid="image-remote-automatic-unavailable">{{ lazyStrings.ImageGenerationEditor__remote_catalog_requires_manual_selection() }}</p>
+          <p v-if="view.inferenceLocation.selectedFilesChanged.value" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300" data-testid="image-remote-files-changed">{{ lazyStrings.ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed() }}</p>
+        </template>
         <ImageSettingsSection embedded v-model:open="configurationOpen" :title="lazyStrings.ImageGenerationEditor__model_configuration()" :summary="componentSummary" data-testid="image-component-settings">
           <ImageInferenceLocation v-if="view.inferenceLocation" :inference-location="view.inferenceLocation" :disabled="busy || view.historyActions.busy.value || !!view.draftRestoreDisabled?.value" />
           <ImageRemoteModelConfiguration v-if="remote && view.inferenceLocation" :inference-location="view.inferenceLocation" :disabled="formDisabled" :active="active" />
@@ -261,18 +272,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <input :id="id + '-recommended-modelArguments'" v-model="parameters.modelArguments" type="text" maxlength="4096" placeholder="qwen_image_2_1_prefix_cache=false" tw-class="outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-gray-800 dark:text-gray-100  transition-colors hover:border-blue-200/80 dark:hover:border-blue-500/35" />
           </div>
         </ImageSettingsSection>
-        <div v-if="!remote && recommendation" tw-class="flex flex-wrap items-start gap-2" data-testid="image-recommendation">
+        <div v-if="recommendation" tw-class="flex flex-wrap items-start gap-2" data-testid="image-recommendation">
           <ImageSettingsSection :title="lazyStrings.stableDiffusionCppBrowser__recommended_settings()" :summary="recommendation.title" tw-class="basis-64 flex-1 min-w-0">
-            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ recommendation.parameters.steps }} · {{ lazyStrings.stableDiffusionCppBrowser__guidance() }} {{ recommendation.parameters.guidance }} · {{ recommendation.parameters.sampler }}</p>
-            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__recommended_preview_summary() }} {{ recommendation.preview.mode === 'vae' ? lazyStrings.stableDiffusionCppBrowser__preview_vae() : lazyStrings.stableDiffusionCppBrowser__preview_projection() }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_interval() }} {{ recommendation.preview.interval }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_after_step() }} {{ recommendation.preview.startStep }}</p>
+            <p tw-class="flex flex-wrap gap-x-3 text-xs text-gray-500 dark:text-gray-400">
+              <span v-if="imageRecommendedHint({ recommendation, field: 'steps' })">{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ recommendation.parameters.steps }}</span>
+              <span v-if="imageRecommendedHint({ recommendation, field: 'guidance' })">{{ lazyStrings.stableDiffusionCppBrowser__guidance() }} {{ recommendation.parameters.guidance }}</span>
+              <span v-if="imageRecommendedHint({ recommendation, field: 'sampler' })">{{ recommendation.parameters.sampler }}</span>
+            </p>
+            <p v-if="!recommendation.recommendedFieldsOnly" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__recommended_preview_summary() }} {{ recommendation.preview.mode === 'vae' ? lazyStrings.stableDiffusionCppBrowser__preview_vae() : lazyStrings.stableDiffusionCppBrowser__preview_projection() }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_interval() }} {{ recommendation.preview.interval }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_after_step() }} {{ recommendation.preview.startStep }}</p>
             <ImageSettingsSection embedded compact :title="lazyStrings.stableDiffusionCppBrowser__preset_sources()" :summary="undefined" data-testid="image-recommendation-sources">
-              <p data-testid="image-recommendation-policy" tw-class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.stableDiffusionCppBrowser__preset_policy() }}</p>
-              <p v-if="recommendation.id === 'qwen-image-2.1'" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__qwen_preset_policy() }}</p>
+              <p data-testid="image-recommendation-policy" tw-class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{{ remote ? lazyStrings.ImageGenerationEditor__remote_presets_only_apply_shared_settings() : lazyStrings.stableDiffusionCppBrowser__preset_policy() }}</p>
+              <p v-if="!remote && recommendation.id === 'qwen-image-2.1'" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__qwen_preset_policy() }}</p>
               <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ recommendation.checkedAt }}</p>
               <a v-for="source in recommendation.sources" :key="source.url" :href="source.url" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" data-testid="image-recommendation-source" tw-class="flex w-fit max-w-full items-start gap-1.5 rounded-sm text-xs text-blue-600 dark:text-blue-400 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span tw-class="min-w-0 [overflow-wrap:anywhere]">{{ source.label }}</span><ExternalLinkIcon aria-hidden="true" tw-class="mt-0.5 w-3 h-3 shrink-0" /></a>
             </ImageSettingsSection>
           </ImageSettingsSection>
-          <button type="button" @click="applyRecommendedSettings" :disabled="draftDisabled || library.importing.value" data-testid="image-apply-recommendation" tw-class="ml-auto shrink-0 min-h-12 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-medium text-blue-600 dark:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">{{ lazyStrings.stableDiffusionCppBrowser__apply_recommended_settings() }}</button>
+          <button type="button" @click="applyRecommendedSettings" :disabled="draftDisabled || !remote && library.importing.value" data-testid="image-apply-recommendation" tw-class="ml-auto shrink-0 min-h-12 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-medium text-blue-600 dark:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">{{ lazyStrings.stableDiffusionCppBrowser__apply_recommended_settings() }}</button>
         </div>
         <p v-else-if="!remote && manualInspectionState === 'scanning'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }}</p>
         <p v-else-if="!remote && (library.selectedCandidateKey.value || files.model || files.diffusion)" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_unknown() }}</p>

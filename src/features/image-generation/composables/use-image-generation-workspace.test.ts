@@ -343,7 +343,7 @@ describe('Image Generation composition and lifetime', () => {
     const b = (await h.view.newSession({ preserveDraft: false }))!;
     const registration = { registrationId: toNaidanRpcRegistrationId({ raw: 'session-peer' }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) }) };
     const file = { location: { kind: 'opfs' as const, path: 'models/session.gguf' } };
-    location.restoreLocation({ location: { kind: 'naidan_rpc', registration }, modelEditor: { primary: { slot: 'model', file, family: undefined }, components: [], loras: [{ file, enabled: 'disabled', strength: 0.8 }] } });
+    location.restoreLocation({ location: { kind: 'naidan_rpc', registration }, modelEditor: { automaticSlots: [], primary: { slot: 'model', file, family: undefined }, components: [], loras: [{ file, enabled: 'disabled', strength: 0.8 }] } });
     h.generation.parameters.value.prompt = 'Selected peer';
     await h.view.flushDraft();
     // Disabled adapter edits do not change the generated model selection.

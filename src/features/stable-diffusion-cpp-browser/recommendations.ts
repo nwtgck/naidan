@@ -9,6 +9,7 @@ export type ImageGenerationRecommendation = {
   sources: readonly { label: string, url: string }[];
   checkedAt: string;
   recommendedFields?: readonly (keyof ImageGenerationRecommendation['parameters'])[];
+  applicableFields?: readonly (keyof ImageGenerationRecommendation['parameters'])[];
   // For an incomplete inference preset, expose and apply only validated fields.
   // In particular, Turbo's custom sigma schedule is not yet supported.
   recommendedFieldsOnly?: boolean;

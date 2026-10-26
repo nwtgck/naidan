@@ -1,0 +1,1 @@
+export const ImageGenerationEditor__remote_presets_only_apply_shared_settings = (): string => "Entfernte Voreinstellungen gelten nur für Einstellungen, die von der Bild-RPC-Methode unterstützt werden. Gerätespezifische Einstellungen verwaltet der Anbieter.";

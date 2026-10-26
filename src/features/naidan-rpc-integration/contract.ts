@@ -99,6 +99,13 @@ export const peerImagePreviewSchema = z.object({
   maxEdge: z.number().int().min(0).max(1024),
 });
 
+export const imageSelectionHintsSchema = z.object({
+  version: z.literal(1),
+  repositoryGroup: z.number().int().min(0).max(255),
+  totalBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  tieBreakRank: z.number().int().min(0).max(255),
+});
+
 export const imageCatalogItemSchema = z.object({
   label: z.string().min(1).max(1024),
   file: imageFileSchema,
@@ -107,7 +114,11 @@ export const imageCatalogItemSchema = z.object({
   facts: z.object({
     family: z.string().min(1).max(64),
     classes: z.array(z.string().min(1).max(64)).max(16),
+    variant: z.enum(['turbo', 'base', 'distilled', 'unknown']).optional(),
+    evidence: z.array(z.string().max(256)).max(8).optional(),
   }).optional(),
+  // Unknown versions may change their payload; keep the manual catalog usable.
+  selectionHints: z.union([imageSelectionHintsSchema, z.object({ version: z.number().int().min(2).max(255) })]).optional(),
 });
 
 export type PeerImageCatalogItem = z.infer<typeof imageCatalogItemSchema>;

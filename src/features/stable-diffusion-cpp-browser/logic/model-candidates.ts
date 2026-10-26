@@ -8,7 +8,7 @@ import { parseGgufSplitPath } from '@/utils/gguf-file-paths';
 import { hasLoraTensors } from './lora-metadata';
 import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
-import { componentMatch } from '@/features/image-generation/model-configuration';
+import { chooseImageCompanion, type ImageSelectionCandidate } from '@/features/image-generation/model-selection';
 import type { ImageFamily, ComponentClass } from '@/features/image-generation/model-configuration';
 export { componentRequirements, componentMatch } from '@/features/image-generation/model-configuration';
 export type { ImageFamily, ComponentClass } from '@/features/image-generation/model-configuration';
@@ -430,11 +430,29 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
   return { candidates, issues };
 }
 
+export function imageSelectionCandidates({ candidates }: { candidates: readonly ModelCandidate[] }): ImageSelectionCandidate[] {
+  const ranks = new Map([...candidates].sort((a, b) => a.candidateKey.localeCompare(b.candidateKey)).map((candidate, rank) => [candidate.candidateKey, rank]));
+  return candidates.map(candidate => ({
+    key: candidate.candidateKey,
+    repositoryGroup: candidate.repositoryKey,
+    totalBytes: candidate.size,
+    tieBreakRank: ranks.get(candidate.candidateKey)!,
+    family: candidate.family,
+    roles: candidate.roles,
+    classes: candidate.classes,
+    issue: candidate.issue,
+  }));
+}
+
 export function defaultCompanion({ main, candidates, requirement }: { main: ModelCandidate, candidates: ModelCandidate[], requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): string | undefined {
-  const entries = candidates.filter(candidate => candidate.candidateKey !== main.candidateKey && componentMatch({ candidate, requirement }) === 'matching');
-  // Smaller files are a footprint preference, not a quality or memory guarantee.
-  entries.sort((a, b) => Number(b.repositoryKey === main.repositoryKey) - Number(a.repositoryKey === main.repositoryKey) || a.size - b.size || a.candidateKey.localeCompare(b.candidateKey));
-  return entries[0]?.candidateKey;
+  // Kept as an adapter for callers outside the library; selection rules live in
+  // the shared pure selector rather than another local-only implementation.
+  const mapped = imageSelectionCandidates({ candidates: candidates.some(candidate => candidate.candidateKey === main.candidateKey) ? candidates : [...candidates, main] });
+  const primary = mapped.find(candidate => candidate.key === main.candidateKey)!;
+  if (requirement.slot === 'model' || requirement.slot === 'diffusion') {
+    return undefined;
+  }
+  return chooseImageCompanion({ primary, candidates: mapped, requirement: { ...requirement, slot: requirement.slot, required: true } });
 }
 
 export const TEST_ONLY = {

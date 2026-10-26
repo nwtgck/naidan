@@ -1,3 +1,4 @@
+import { imageSelectionHintsSchema } from '@/features/naidan-rpc-integration/contract';
 import { temporaryModelFiles } from '@/logic/temporary-model-files';
 import type { LocalImageRepository } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -429,4 +430,40 @@ it('can list temporary image models when OPFS is unavailable', async () => {
     },
   };
   expect((await resources.value.listImageModels({ signal: new AbortController().signal }))[0]?.file.location).toEqual({ kind: 'temp', path: 'temp/shared/model.gguf' });
+});
+
+it('publishes whole-model sizes, opaque repository affinity and source tie ranks without loading models', async () => {
+  const z = { ...candidate({ path: 'z.gguf', roles: ['diffusion'] }), repositoryKey: 'repository-one', family: 'z-image' as const, variant: 'turbo' as const, size: 160, evidence: ['header evidence'] };
+  const a = { ...candidate({ path: 'a.gguf', roles: ['vae'] }), repositoryKey: 'repository-one', family: 'unknown' as const, classes: ['vae-flux16' as const] };
+  const m = { ...candidate({ path: 'm.gguf', roles: ['lm'] }), repositoryKey: 'repository-two', family: 'unknown' as const, classes: ['lm-qwen3-4b' as const] };
+  mocks.scan.mockResolvedValue({ candidates: [z, m, a] });
+  const catalog = await resource().listImageModels({ signal: new AbortController().signal });
+  expect(catalog.map(item => item.selectionHints)).toEqual([
+    { version: 1, totalBytes: 160, repositoryGroup: 0, tieBreakRank: 2 },
+    { version: 1, totalBytes: 16, repositoryGroup: 1, tieBreakRank: 1 },
+    { version: 1, totalBytes: 16, repositoryGroup: 0, tieBreakRank: 0 },
+  ]);
+  expect(catalog[0]?.file.expected?.size).toBe(16);
+  expect(catalog[0]?.facts).toMatchObject({ family: 'z-image', variant: 'turbo', evidence: ['header evidence'] });
+  expect(catalog[0]?.selection).toBeUndefined();
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(mocks.scan).toHaveBeenCalledOnce();
+});
+
+it('assigns dense ranks after filtering broken or non-model entries and bounds diagnostic evidence', async () => {
+  const broken = { ...candidate({ path: 'a.gguf', roles: ['model'] }), issue: 'Missing shard' };
+  const hidden = candidate({ path: 'b.gguf', roles: [] });
+  const valid = { ...candidate({ path: 'c.gguf', roles: ['model'] }), evidence: Array.from({ length: 10 }, () => 'x'.repeat(300)) };
+  mocks.scan.mockResolvedValue({ candidates: [broken, hidden, valid] });
+  const catalog = await resource().listImageModels({ signal: new AbortController().signal });
+  expect(catalog).toHaveLength(1);
+  expect(imageSelectionHintsSchema.parse(catalog[0]?.selectionHints).tieBreakRank).toBe(0);
+  expect(catalog[0]?.facts?.evidence).toHaveLength(8);
+  expect(catalog[0]?.facts?.evidence?.[0]).toHaveLength(256);
+});
+
+it('rejects an oversized image inventory rather than providing a misleading truncated default', async () => {
+  mocks.scan.mockResolvedValue({ candidates: Array.from({ length: 257 }, (_, index) => candidate({ path: `${index}.gguf`, roles: ['model'] })) });
+  await expect(resource().listImageModels({ signal: new AbortController().signal })).rejects.toThrow();
+  expect(mocks.create).not.toHaveBeenCalled();
 });

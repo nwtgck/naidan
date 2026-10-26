@@ -166,7 +166,7 @@ it('restores a missing peer reference and explicit empty editor without replacin
   const savedPeer = toNaidanRpcPeerPublicKey({ raw: 'D'.repeat(43) });
   h.inferenceLocation.restorePreferences({
     inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId: h.registration.id, peerPublicKey: savedPeer } },
-    remoteModelEditors: [{ registrationId: h.registration.id, peerPublicKey: savedPeer, editor: { primary: undefined, components: [], loras: [] } }],
+    remoteModelEditors: [{ registrationId: h.registration.id, peerPublicKey: savedPeer, editor: { primary: undefined, components: [], loras: [], automaticSlots: [] } }],
   });
   await h.inferenceLocation.refresh({ fromStorage: true });
   expect(h.inferenceLocation.peerPublicKey.value).toBe(savedPeer);

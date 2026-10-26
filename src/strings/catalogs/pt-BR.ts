@@ -989,8 +989,12 @@ import { ImageGenerationEditor__model_configuration } from '@/strings/messages/I
 import { ImageGenerationEditor__new_seed_each_time } from '@/strings/messages/ImageGenerationEditor__new_seed_each_time/pt-BR';
 import { ImageGenerationEditor__pick_new_seed } from '@/strings/messages/ImageGenerationEditor__pick_new_seed/pt-BR';
 import { ImageGenerationEditor__prepare_model } from '@/strings/messages/ImageGenerationEditor__prepare_model/pt-BR';
+import { ImageGenerationEditor__remote_catalog_is_out_of_date } from '@/strings/messages/ImageGenerationEditor__remote_catalog_is_out_of_date/pt-BR';
+import { ImageGenerationEditor__remote_catalog_requires_manual_selection } from '@/strings/messages/ImageGenerationEditor__remote_catalog_requires_manual_selection/pt-BR';
+import { ImageGenerationEditor__remote_presets_only_apply_shared_settings } from '@/strings/messages/ImageGenerationEditor__remote_presets_only_apply_shared_settings/pt-BR';
 import { ImageGenerationEditor__resolution_must_use_supported_dimensions } from '@/strings/messages/ImageGenerationEditor__resolution_must_use_supported_dimensions/pt-BR';
 import { ImageGenerationEditor__sampling_settings } from '@/strings/messages/ImageGenerationEditor__sampling_settings/pt-BR';
+import { ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed } from '@/strings/messages/ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed/pt-BR';
 import { ImageGenerationEditor__swap_width_and_height } from '@/strings/messages/ImageGenerationEditor__swap_width_and_height/pt-BR';
 import { ImageGenerationEditor__view_result } from '@/strings/messages/ImageGenerationEditor__view_result/pt-BR';
 import { ImageGenerationHistory__backup_does_not_include_history } from '@/strings/messages/ImageGenerationHistory__backup_does_not_include_history/pt-BR';
@@ -1183,6 +1187,7 @@ import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/message
 import { ImageRecoveredOutputs__recovery_explanation } from '@/strings/messages/ImageRecoveredOutputs__recovery_explanation/pt-BR';
 import { ImageRecoveredOutputs__unconfirmed } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed/pt-BR';
 import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed_images/pt-BR';
+import { ImageRemoteModelConfiguration__select_automatically } from '@/strings/messages/ImageRemoteModelConfiguration__select_automatically/pt-BR';
 import { ImageRepositoryImport__choose_files } from '@/strings/messages/ImageRepositoryImport__choose_files/pt-BR';
 import { ImageRepositoryImport__drop_help } from '@/strings/messages/ImageRepositoryImport__drop_help/pt-BR';
 import { ImportExportModal__add_new } from '@/strings/messages/ImportExportModal__add_new/pt-BR';
@@ -4269,8 +4274,12 @@ export const catalog = {
   ImageGenerationEditor__new_seed_each_time,
   ImageGenerationEditor__pick_new_seed,
   ImageGenerationEditor__prepare_model,
+  ImageGenerationEditor__remote_catalog_is_out_of_date,
+  ImageGenerationEditor__remote_catalog_requires_manual_selection,
+  ImageGenerationEditor__remote_presets_only_apply_shared_settings,
   ImageGenerationEditor__resolution_must_use_supported_dimensions,
   ImageGenerationEditor__sampling_settings,
+  ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed,
   ImageGenerationEditor__swap_width_and_height,
   ImageGenerationEditor__view_result,
   ImageGenerationHistory__backup_does_not_include_history,
@@ -4463,6 +4472,7 @@ export const catalog = {
   ImageRecoveredOutputs__recovery_explanation,
   ImageRecoveredOutputs__unconfirmed,
   ImageRecoveredOutputs__unconfirmed_images,
+  ImageRemoteModelConfiguration__select_automatically,
   ImageRepositoryImport__choose_files,
   ImageRepositoryImport__drop_help,
   ImportExportModal__add_new,

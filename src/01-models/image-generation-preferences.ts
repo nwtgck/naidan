@@ -7,6 +7,7 @@ export type RemoteImageModelEditor = {
   primary: { slot: 'model' | 'diffusion', file: RemoteImageModelFile, family: string | undefined } | undefined,
   components: { slot: 'vae' | 'clipL' | 'clipG' | 't5' | 'lm', file: RemoteImageModelFile }[],
   loras: { file: RemoteImageModelFile, strength: number, enabled: 'enabled' | 'disabled' }[],
+  automaticSlots: ('vae' | 'clipL' | 'clipG' | 't5' | 'lm')[],
 };
 
 export type ImageInferenceLocationPreference =

@@ -1,11 +1,12 @@
 import type { RemoteImageModelSelection } from '@/01-models/image-generation-history';
 
-type ModelSlot = RemoteImageModelSelection['primary']['slot'] | RemoteImageModelSelection['components'][number]['slot'];
+type ComponentSlot = RemoteImageModelSelection['components'][number]['slot'];
+type ModelSlot = RemoteImageModelSelection['primary']['slot'] | ComponentSlot;
 
 export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image' | 'unknown';
 export type ComponentClass = 'vae-flux16' | 'vae-flux32' | 'vae-sd4' | 'vae-qwen21' | 'vae-wan16' | 'lm-qwen3-4b' | 'lm-qwen3-06b' | 'lm-qwen3vl-8b' | 'lm-qwen3vl-4b' | 'lm-ministral3-3b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae' | 'lora';
 
-export function componentRequirements({ family }: { family: ImageFamily }): { slot: ModelSlot, accepts: ComponentClass[], required: boolean }[] {
+export function componentRequirements({ family }: { family: ImageFamily }): { slot: ComponentSlot, accepts: ComponentClass[], required: boolean }[] {
   switch (family) {
   case 'z-image': return [{ slot: 'vae', accepts: ['vae-flux16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-4b'], required: true }];
   case 'qwen-image-2.1': return [{ slot: 'vae', accepts: ['vae-qwen21'], required: true }, { slot: 'lm', accepts: ['lm-qwen3vl-8b'], required: true }];

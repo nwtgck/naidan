@@ -58,9 +58,11 @@ function registration(): RpcRegistrationView {
 }
 
 async function panel() {
-  const row = registration();
+  const row = registration(), stop = new AbortController();
+  row.connectionToken = stop.signal;
+  cleanups.push(() => stop.abort());
   const reload = vi.fn(async () => {}), listImageModels = vi.fn();
-  const bindClient = vi.fn(() => ({ registration: row.registration, signal: new AbortController().signal, client: { listImageModels } }));
+  const bindClient = vi.fn(() => ({ registration: row.registration, signal: stop.signal, client: { listImageModels } }));
   fixture.get.mockResolvedValue({ reload, list: () => [row], bindClient });
   const scope = effectScope();
   cleanups.push(() => scope.stop());

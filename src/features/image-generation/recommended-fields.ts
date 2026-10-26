@@ -6,7 +6,8 @@ export type ImageRecommendedHint = { value: Parameters[ImageRecommendedField], o
 
 /** Passive presentation of the same values used by the existing preset action. */
 export function imageRecommendedHint({ recommendation, field }: { recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): ImageRecommendedHint | undefined {
-  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
+  if (recommendation.applicableFields && !recommendation.applicableFields.includes(field)
+    || recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
     return undefined;
   }
   const range = (() => {
@@ -35,10 +36,16 @@ export function differsFromImageRecommendation({ current, hint }: { current: unk
 
 export function applyImageRecommendedField({ parameters, recommendation, field }: { parameters: Parameters, recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): Parameters {
   // Explicitly update one field; a tile size action never enables tiling, etc.
-  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
+  if (recommendation.applicableFields && !recommendation.applicableFields.includes(field)
+    || recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
     return parameters;
   }
   return { ...parameters, [field]: recommendation.parameters[field] };
+}
+
+/** Native-only fields must neither be advertised nor applied remotely. */
+export function remoteImageRecommendation({ recommendation }: { recommendation: ImageGenerationRecommendation | undefined }): ImageGenerationRecommendation | undefined {
+  return recommendation && { ...recommendation, applicableFields: ['width', 'height', 'steps', 'guidance', 'sampler', 'scheduler', 'distilledGuidance'] };
 }
 
 export const TEST_ONLY = {

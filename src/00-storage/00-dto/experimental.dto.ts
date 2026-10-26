@@ -149,6 +149,7 @@ export const ExperimentalRemoteImageModelFileSchemaDto = dtozod.object({
 
 
 export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  automaticSlots: dtozod.array(dtozod.enum(['vae', 'clipL', 'clipG', 't5', 'lm'])).optional(),
   primary: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     slot: dtozod.enum(['model', 'diffusion']),
     file: ExperimentalRemoteImageModelFileSchemaDto,
