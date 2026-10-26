@@ -118,10 +118,13 @@ export function createGenerationMetricsState({ now = () => performance.now() }: 
         return;
       }
       const time = now();
-      if (time - entry.updatedAt < LIVE_SPEED_INTERVAL_MS) {
+      const metrics = parseGenerationMetrics({ value: event.metrics });
+      // The provider also throttles samples. Preserve its one-time promotion from
+      // received characters to native tokens instead of dropping it a second time.
+      const nativeUpgrade = entry.metrics?.speed.measurement === 'received_text' && metrics?.speed.measurement === 'llama_cpp_predicted';
+      if (time < entry.updatedAt || (!nativeUpgrade && time - entry.updatedAt < LIVE_SPEED_INTERVAL_MS)) {
         return;
       }
-      const metrics = parseGenerationMetrics({ value: event.metrics });
       if (metrics !== undefined) {
         run.entries.set(node.id, { ...entry, metrics, updatedAt: time });
       }

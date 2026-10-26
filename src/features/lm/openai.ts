@@ -1,7 +1,7 @@
 import { resolveLlamaCppServerTimings } from './llama-cpp-server-timings';
 import { createMetricsReporter, createReceivedTextMeter } from '@/logic/generation-metrics/measurement';
 import type { GenerationMetrics } from '@/01-models/generation-metrics';
-import { readOpenAiMetrics } from './generation-metrics';
+import { createOpenAiGenerationMetricsReader } from './openai-generation-metrics';
 /**
  * OpenAI Service Provider
  *
@@ -153,6 +153,7 @@ export class OpenAIProvider implements LmProvider {
           throw new Error(message);
         }
         const textMeter = createReceivedTextMeter();
+        const metricsReader = createOpenAiGenerationMetricsReader();
         const report = createMetricsReporter({ observer: onGenerationMetrics });
         // This controller owns only the optional statistics tail, not the generation request.
         const tailController = new AbortController();
@@ -167,14 +168,14 @@ export class OpenAIProvider implements LmProvider {
             const force = !hasLiveServerMetrics;
             hasLiveServerMetrics = true;
             report({ metrics, force });
-          } else if (!hasLiveServerMetrics && receivedText) {
+          } else if (!metricsReader.hasNativeTiming() && receivedText) {
             report({ metrics: textMeter.snapshot() });
           }
         }
         let nTailEvents = 0;
         let nTailCodeUnits = 0;
         function finish({ result }: { result: ChatGenerationResult }): ChatGenerationResult {
-          const generationMetrics = finalMetrics ?? (hasLiveServerMetrics ? undefined : textMeter.snapshot());
+          const generationMetrics = finalMetrics ?? (metricsReader.hasNativeTiming() ? undefined : textMeter.snapshot());
           if (generationMetrics === undefined) {
             return result;
           }
@@ -223,13 +224,13 @@ export class OpenAIProvider implements LmProvider {
               const raw: unknown = JSON.parse(data);
               const metadataOnly = z.object({ choices: z.array(z.unknown()).length(0) }).safeParse(raw);
               if (metadataOnly.success) {
-                const metrics = readOpenAiMetrics({ value: raw, requestDurationMs: terminalAt - requestStartedAt });
+                const metrics = metricsReader.final({ value: raw, requestDurationMs: terminalAt - requestStartedAt });
                 if (metrics !== undefined) {
-                  finalMetrics = metrics;
-                  const measurement = metrics.speed.measurement;
+                  finalMetrics = metrics ?? undefined;
+                  const measurement = metrics?.speed.measurement;
                   switch (measurement) {
                   case 'llama_cpp_predicted': return finish({ result: terminal });
-                  case 'ollama_eval': case 'worker_sample_interval': case 'client_request': case 'received_text': break;
+                  case 'ollama_eval': case 'worker_sample_interval': case 'client_request': case 'received_text': case undefined: break;
                   default: {
                     const exhaustive: never = measurement;
                     throw new Error(String(exhaustive));
@@ -250,9 +251,12 @@ export class OpenAIProvider implements LmProvider {
             const choice = chunk.choices[0];
             if (!choice) {
               // Some compatible endpoints send their metadata before [DONE].
-              const liveMetrics = readOpenAiMetrics({ value: raw });
+              const liveMetrics = metricsReader.live({ value: raw, now: receivedAt });
               reportLive({ metrics: liveMetrics });
-              finalMetrics = liveMetrics ?? readOpenAiMetrics({ value: raw, requestDurationMs: receivedAt - requestStartedAt }) ?? finalMetrics;
+              const provisional = metricsReader.final({ value: raw, requestDurationMs: receivedAt - requestStartedAt });
+              if (provisional !== undefined) {
+                finalMetrics = provisional ?? undefined;
+              }
               continue;
             }
             // A subsequent choice invalidates any earlier metadata-only provisional total.
@@ -305,11 +309,11 @@ export class OpenAIProvider implements LmProvider {
               }
             }
             if (choice.finish_reason === undefined || choice.finish_reason === null) {
-              reportLive({ metrics: readOpenAiMetrics({ value: raw }), receivedText });
+              reportLive({ metrics: metricsReader.live({ value: raw, now: receivedAt }), receivedText });
             }
             if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
               terminalAt = receivedAt;
-              finalMetrics = readOpenAiMetrics({ value: raw, requestDurationMs: terminalAt - requestStartedAt }) ?? finalMetrics;
+              finalMetrics = metricsReader.final({ value: raw, requestDurationMs: terminalAt - requestStartedAt }) ?? undefined;
               switch (choice.finish_reason) {
               case 'stop':
               case 'tool_calls':

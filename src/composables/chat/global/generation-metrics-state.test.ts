@@ -90,6 +90,23 @@ describe('memory-only generation metrics ownership', () => {
     void cleanup;
   });
 
+  it('accepts the first native speed upgrade without losing it to the state throttle', () => {
+    const f = fixture();
+    f.started();
+    f.sampled({ value: { speed: { unit: 'characters', measurement: 'received_text', perSecond: 20, interval: { nUnits: 20, durationMs: 1000 } } } });
+    f.tick({ value: 10 });
+    const native = createTokenMetrics({ measurement: 'llama_cpp_predicted', nOutputTokens: 101, nMeasuredTokens: 100, durationMs: 1000 })!;
+    f.sampled({ value: native });
+    expect(f.state.presentations({ chat: f.chat })[0]?.presentation.metrics).toEqual(native);
+    f.tick({ value: 20 });
+    const next = createTokenMetrics({ measurement: 'llama_cpp_predicted', nOutputTokens: 103, nMeasuredTokens: 102, durationMs: 1000 })!;
+    f.sampled({ value: next });
+    expect(f.state.presentations({ chat: f.chat })[0]?.presentation.metrics).toEqual(native);
+    f.tick({ value: 1010 });
+    f.sampled({ value: next });
+    expect(f.state.presentations({ chat: f.chat })[0]?.presentation.metrics).toEqual(next);
+  });
+
   it('does not modify chat data and does not survive a fresh state instance', () => {
     const f = fixture();
     const before = JSON.stringify(f.chat);

@@ -121,11 +121,22 @@ export function aggregateGenerationMetrics({ calls }: { calls: readonly (Generat
   if (last === undefined || calls.length < 2 || last.speed.measurement === 'received_text' || last.speed.measurement === 'client_request') {
     return undefined;
   }
+  // Reported llama.cpp-compatible rates may count all output tokens or exclude
+  // the first token. Never combine those definitions in one turn's statistic.
+  const serverOffset = last.speed.measurement === 'llama_cpp_predicted' && last.nOutputTokens !== undefined && last.speed.interval !== undefined
+    ? last.nOutputTokens - last.speed.interval.nUnits
+    : undefined;
+  if (serverOffset !== undefined && serverOffset !== 0 && serverOffset !== 1) {
+    return undefined;
+  }
   let nUnits = 0;
   let durationMs = 0;
   let nOutputTokens = 0;
   for (const call of calls) {
     if (call === undefined || call.speed.measurement !== last.speed.measurement || call.speed.unit !== last.speed.unit || call.speed.interval === undefined || call.nOutputTokens === undefined) {
+      return undefined;
+    }
+    if (serverOffset !== undefined && call.nOutputTokens - call.speed.interval.nUnits !== serverOffset) {
       return undefined;
     }
     nUnits += call.speed.interval.nUnits;
