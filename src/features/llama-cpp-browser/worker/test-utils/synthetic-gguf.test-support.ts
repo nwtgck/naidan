@@ -1,19 +1,31 @@
+import { createByteBpeVocabulary } from './byte-bpe-vocabulary.test-support';
+
 /** A deterministic, untrained one-layer F32 fixture. Never used by application code. */
 export function createSyntheticGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
-  return createFixtureGguf({ chatTemplate, weights: 'constant-output', vocabulary: 'byte-spm' });
+  return createFixtureGguf({ chatTemplate, weights: 'constant-output', vocabulary: 'byte-spm', preTokenizer: 'gpt-2' });
 }
 
 /** Uniform causal attention makes logits depend on the complete decoded prefix. */
 export function createInputSensitiveGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
-  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive', vocabulary: 'byte-spm' });
+  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive', vocabulary: 'byte-spm', preTokenizer: 'gpt-2' });
 }
 
-/** A self-authored vocabulary-only GPT-2 byte fixture with one whitespace merge. */
-export function createByteBpeMetadataGguf(): Uint8Array {
-  return createFixtureGguf({ chatTemplate: 'chatml', weights: 'constant-output', vocabulary: 'byte-bpe-metadata-only' });
+/** Nonzero Q/K and RoPE make equal token multisets sensitive to their order. */
+export function createPositionSensitiveGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
+  return createFixtureGguf({ chatTemplate, weights: 'position-sensitive', vocabulary: 'byte-spm', preTokenizer: 'gpt-2' });
 }
 
-function createFixtureGguf({ chatTemplate, weights, vocabulary }: { chatTemplate: string, weights: 'constant-output' | 'input-sensitive', vocabulary: 'byte-spm' | 'byte-bpe-metadata-only' }): Uint8Array {
+/** A self-authored vocabulary-only byte fixture with one whitespace merge. */
+export function createByteBpeMetadataGguf({ preTokenizer }: { preTokenizer: 'gpt-2' | 'qwen35' }): Uint8Array {
+  return createFixtureGguf({ chatTemplate: 'chatml', weights: 'constant-output', vocabulary: 'byte-bpe-metadata-only', preTokenizer });
+}
+
+/** Small input-sensitive attention weights paired with the self-authored BPE. */
+export function createInputSensitiveByteBpeGguf({ chatTemplate, preTokenizer }: { chatTemplate: string, preTokenizer: 'gpt-2' | 'qwen35' }): Uint8Array {
+  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive', vocabulary: 'byte-bpe', preTokenizer });
+}
+
+function createFixtureGguf({ chatTemplate, weights, vocabulary, preTokenizer }: { chatTemplate: string, weights: 'constant-output' | 'input-sensitive' | 'position-sensitive', vocabulary: 'byte-spm' | 'byte-bpe' | 'byte-bpe-metadata-only', preTokenizer: 'gpt-2' | 'qwen35' }): Uint8Array {
   function join({ parts }: { parts: Uint8Array[] }): Uint8Array {
     const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
     let offset = 0;
@@ -45,25 +57,18 @@ function createFixtureGguf({ chatTemplate, weights, vocabulary }: { chatTemplate
   function entry({ name, type, data }: { name: string, type: number, data: Uint8Array }): Uint8Array {
     return join({ parts: [text({ value: name }), u32({ value: type }), data] });
   }
-  // GPT-2 represents non-printable source bytes with additional Unicode code points.
-  const byteCharacters: string[] = [];
-  let nextCharacter = 256;
-  for (let byte = 0; byte < 256; byte++) {
-    const visible = byte >= 33 && byte <= 126 || byte >= 161 && byte <= 172 || byte >= 174;
-    byteCharacters.push(String.fromCodePoint(visible ? byte : nextCharacter++));
-  }
-  const bpe = (() => {
+  const { bpe, includeWeights } = (() => {
     switch (vocabulary) {
-    case 'byte-spm': return false;
-    case 'byte-bpe-metadata-only': return true;
+    case 'byte-spm': return { bpe: undefined, includeWeights: true };
+    case 'byte-bpe': return { bpe: createByteBpeVocabulary(), includeWeights: true };
+    case 'byte-bpe-metadata-only': return { bpe: createByteBpeVocabulary(), includeWeights: false };
     default: {
       const exhaustive: never = vocabulary;
       throw new Error(`Unknown fixture vocabulary: ${exhaustive}`);
     }
     }
   })();
-  const vocab = ['<unk>', '<s>', '</s>', ...Array.from({ length: 256 }, (_, i) => bpe ? byteCharacters[i]! : `<0x${i.toString(16).toUpperCase().padStart(2, '0')}>`),
-    ...(bpe ? [byteCharacters[32]! + byteCharacters[10]!] : [])];
+  const vocab = bpe?.tokens ?? ['<unk>', '<s>', '</s>', ...Array.from({ length: 256 }, (_, i) => `<0x${i.toString(16).toUpperCase().padStart(2, '0')}>`)];
   const metadata: Uint8Array[] = [];
   for (const [name, value] of [['general.architecture', 'llama'], ['general.name', 'untrained integration fixture'], ['tokenizer.ggml.model', bpe ? 'gpt2' : 'llama'], ['tokenizer.chat_template', chatTemplate]] satisfies [string, string][]) {
     metadata.push(entry({ name, type: 8, data: text({ value }) }));
@@ -74,16 +79,16 @@ function createFixtureGguf({ chatTemplate, weights, vocabulary }: { chatTemplate
   // Byte fixtures must not silently prepend a space to each separately tokenized marker.
   metadata.push(entry({ name: 'tokenizer.ggml.add_space_prefix', type: 7, data: new Uint8Array([0]) }));
   if (bpe) {
-    metadata.push(entry({ name: 'tokenizer.ggml.pre', type: 8, data: text({ value: 'gpt-2' }) }));
+    metadata.push(entry({ name: 'tokenizer.ggml.pre', type: 8, data: text({ value: preTokenizer }) }));
     metadata.push(entry({ name: 'tokenizer.ggml.add_bos_token', type: 7, data: new Uint8Array([0]) }));
     metadata.push(entry({ name: 'tokenizer.ggml.add_eos_token', type: 7, data: new Uint8Array([0]) }));
-    metadata.push(entry({ name: 'tokenizer.ggml.merges', type: 9, data: join({ parts: [u32({ value: 8 }), u64({ value: 1 }), text({ value: `${byteCharacters[32]} ${byteCharacters[10]}` })] }) }));
+    metadata.push(entry({ name: 'tokenizer.ggml.merges', type: 9, data: join({ parts: [u32({ value: 8 }), u64({ value: bpe.merges.length }), ...bpe.merges.map(value => text({ value }))] }) }));
   }
   metadata.push(entry({ name: 'llama.attention.layer_norm_rms_epsilon', type: 6, data: f32({ value: 1e-5 }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.tokens', type: 9, data: join({ parts: [u32({ value: 8 }), u64({ value: vocab.length }), ...vocab.map(value => text({ value }))] }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.scores', type: 9, data: join({ parts: [u32({ value: 6 }), u64({ value: vocab.length }), ...vocab.map(() => f32({ value: 0 }))] }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.token_type', type: 9, data: join({ parts: [u32({ value: 5 }), u64({ value: vocab.length }), ...vocab.map((_, i) => u32({ value: i === 0 ? 2 : i < 3 ? 3 : bpe ? 1 : 6 }))] }) }));
-  const shapes: [string, number[]][] = bpe ? [] : [
+  const shapes: [string, number[]][] = !includeWeights ? [] : [
     ['token_embd.weight', [32, vocab.length]], ['output_norm.weight', [32]], ['output.weight', [32, vocab.length]],
     ['blk.0.attn_norm.weight', [32]], ['blk.0.attn_q.weight', [32, 32]], ['blk.0.attn_k.weight', [32, 32]],
     ['blk.0.attn_v.weight', [32, 32]], ['blk.0.attn_output.weight', [32, 32]], ['blk.0.ffn_norm.weight', [32]],
@@ -116,7 +121,7 @@ function createFixtureGguf({ chatTemplate, weights, vocabulary }: { chatTemplate
     }
     switch (weights) {
     case 'constant-output': break;
-    case 'input-sensitive': {
+    case 'input-sensitive': case 'position-sensitive': {
       // Odd/even bytes have opposite embeddings. Uniform causal attention
       // carries earlier values into the final-token logits for A and B.
       const view = new DataView(data.buffer);
@@ -133,6 +138,11 @@ function createFixtureGguf({ chatTemplate, weights, vocabulary }: { chatTemplate
       if (name === 'blk.0.attn_v.weight' || name === 'blk.0.attn_output.weight') {
         for (let i = 0; i < 32; i++) {
           view.setFloat32((i * 32 + i) * 4, 1, true);
+        }
+      }
+      if (weights === 'position-sensitive' && (name === 'blk.0.attn_q.weight' || name === 'blk.0.attn_k.weight')) {
+        for (let i = 0; i < 32; i++) {
+          view.setFloat32((i * 32 + i) * 4, 0.25, true);
         }
       }
       break;

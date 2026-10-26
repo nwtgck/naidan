@@ -5,6 +5,7 @@ import * as chatPromptModule from './tokenize-chat-prompt';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { File as NodeFile } from 'node:buffer';
 import { invalidateStoredModel, prepareSession, releaseSession, TEST_ONLY as sessionTesting } from './session';
+import * as sessionModule from './session';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -19,8 +20,8 @@ import * as yieldModule from './generation-yield-pacing';
 import * as renderingModule from './token-renderer';
 import * as prefillOutputsModule from './prefill-outputs';
 import { tokenizePrompt } from './tokenize-prompt';
-import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf.test-support';
-import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
+import { createInputSensitiveByteBpeGguf, createInputSensitiveGguf, createPositionSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf.test-support';
+import { createTinyByteBpeLfm2Gguf, createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
 import type { WorkerGenerateInput } from './types';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { profileSchema, type GenerationEvent, type GenerationResult } from '@/features/llama-cpp-browser/types';
@@ -1615,6 +1616,415 @@ describe('native image boundaries', () => {
     expect(completions).toHaveLength(starts.length);
     expect(starts[0]).toEqual(expect.objectContaining({ nativeOp: expect.any(Number), nativeOpName: expect.stringMatching(/^GGML_OP_/), nativeTensorType: expect.any(Number), nativeTensorShape: expect.any(Array) }));
     expect(entries.some(entry => entry.stage === 'projector-trace')).toBe(false);
+  }, 30000);
+});
+
+describe('native tool history and BPE cache contracts', () => {
+  // Self-authored syntax: input values and template separators have distinct
+  // ownership, while the generated stream contains their ordinary BPE merge.
+  const template = `\
+{%- for tool in tools -%}{{- tool.function.name + '\\n' -}}{%- endfor -%}
+{%- for message in messages -%}
+{{- '<|im_start|>' + message.role + '\\n' -}}
+{%- if message.role == 'assistant' -%}
+{%- if message.reasoning_content -%}{{- '<think>\\n' + message.reasoning_content + '</think>\\n\\n' -}}{%- endif -%}
+{{- message.content -}}
+{%- for call in message.tool_calls -%}
+{{- '<tool_call>\\n<function=' + call.function.name + '>\\n' -}}
+{%- for name, value in call.function.arguments.items() -%}
+{{- '<parameter=' + name + '>\\n' -}}{{- value -}}{{- '\\n</parameter>\\n' -}}
+{%- endfor -%}
+{{- '</function>\\n</tool_call>' -}}
+{%- endfor -%}
+{%- elif message.role == 'tool' -%}{{- '<tool_response>\\n' + message.content + '\\n</tool_response>' -}}
+{%- else -%}{{- message.content -}}{%- endif -%}
+{{- '<|im_end|>\\n' -}}
+{%- endfor -%}
+{%- if add_generation_prompt -%}{{- '<|im_start|>assistant\\n' -}}{%- endif -%}`;
+  const tools: NonNullable<WorkerGenerateInput['tools']> = [{
+    type: 'function',
+    function: { name: 'lookup', description: 'Return a value', parameters: { type: 'object', properties: { value: { type: 'string' } }, required: ['value'], additionalProperties: false } },
+  }];
+
+  beforeEach(async () => {
+    await releaseSession({ releaseRuntime: true });
+    host.companion = false;
+    host.sameFile = true;
+    host.revision++;
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await releaseSession({ releaseRuntime: true });
+  });
+
+  function ordinaryTokens({ text }: { text: string }): number[] {
+    const bytes = new TextEncoder().encode(text);
+    const tokens: number[] = [];
+    for (let index = 0; index < bytes.length; index++) {
+      // This fixture has exactly one merge, independently of the production tokenizer.
+      if (bytes[index] === 32 && bytes[index + 1] === 10) {
+        tokens.push(259);
+        index++;
+      } else {
+        tokens.push(bytes[index]! + 3);
+      }
+    }
+    return tokens;
+  }
+  function callOutput({ value }: { value: string }): string {
+    return `<think>\nplan</think>\n\n<tool_call>\n<function=lookup>\n<parameter=value>\n${value}\n</parameter>\n</function>\n</tool_call>`;
+  }
+  async function makeRequest({ chat }: { chat: ChatContent }): Promise<WorkerGenerateInput> {
+    return {
+      ...request({ messages: [] }),
+      ...await prepareLlamaCppRequest({
+        model: 'user/private-local-name-GGUF',
+        messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
+        parameters: { temperature: 0, topP: 0.95, maxCompletionTokens: 256, presencePenalty: undefined, frequencyPenalty: undefined, stop: [], reasoning: { effort: undefined } },
+        tools: tools.map(tool => tool.function),
+        debug: undefined,
+        signal: undefined,
+        readBinaryObject: async () => {
+          throw new Error('No binary objects in the self-authored fixture');
+        },
+      }),
+      measurement: { sequence: 'continue' },
+    };
+  }
+  async function run({ input, sampledTokens }: { input: WorkerGenerateInput, sampledTokens: number[] }) {
+    const session = await prepareSession({ request: input, signal: undefined, onProgress: () => {} });
+    const { core, context } = session;
+    const cached = session.cache.tokens.slice();
+    const checkpoint = session.cache.checkpoint;
+    const chat = prepareChat({ core, model: session.model, request: input });
+    const prompt = chat.prompt;
+    const parts = chat.promptParts.map(part => ({ ...part }));
+    chat.dispose();
+    const batches: number[][] = [];
+    const nativeBatch = core.api.llama_batch_get_one;
+    const batch = vi.spyOn(core.api, 'llama_batch_get_one').mockImplementation(async (destination, pointer, count) => {
+      const bytes = core.bytes({ pointer, length: count * 4 });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      batches.push(Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true)));
+      return nativeBatch(destination, pointer, count);
+    });
+    const clear = vi.spyOn(core.api, 'llama_memory_clear');
+    const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
+    const capture = vi.spyOn(core.api, 'llama_state_seq_get_data_ext');
+    const restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext');
+    let sampled = 0;
+    let prefillLogits: number[] | undefined;
+    const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => {
+      if (sampled === 0) {
+        prefillLogits = await readNativeLogits();
+      }
+      return sampledTokens[sampled++] ?? 2;
+    });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        batch.mockRestore();
+        clear.mockRestore();
+        remove.mockRestore();
+        capture.mockRestore();
+        restore.mockRestore();
+        sample.mockRestore();
+      },
+    };
+    const reports: unknown[] = [];
+    const result = await generate({ request: input, signal: undefined, onEvent: () => {}, onProgress: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) });
+    expect(sampled).toBe(sampledTokens.length + 1); // The last sample is EOG, never decoded.
+    expect(reports).toHaveLength(1);
+    const metrics = diagnosticSchema.parse(reports[0]).performance!;
+    expect(metrics).toBeDefined();
+    expect(prefillLogits).toHaveLength(260);
+    expect(await core.api.llama_memory_seq_pos_max(session.memory, 0)).toBe(session.cache.tokens.length - 1);
+    expect(session.cache.validity).toBe('valid');
+    return {
+      result,
+      metrics,
+      prefillLogits: prefillLogits!,
+      prompt,
+      parts,
+      cached,
+      decoded: batches.flat(),
+      tokens: session.cache.tokens.slice(),
+      clearCalls: clear.mock.calls.length,
+      removeCalls: remove.mock.calls.length,
+      captureCalls: capture.mock.calls.length,
+      restoreCalls: restore.mock.calls.length,
+      checkpointUnchanged: checkpoint === session.cache.checkpoint,
+      checkpointPresent: session.cache.checkpoint !== undefined,
+      position: await core.api.llama_memory_seq_pos_max(session.memory, 0),
+      nativeContext: context,
+    };
+  }
+
+  const cases = (['attention', 'hybrid'] as const).flatMap(kind => (['canonical', 'separate-whitespace'] as const).map(sampleMode => ({ kind, sampleMode })));
+
+  it.each(cases)('preserves correct state and avoids historical prefill through two tool round trips: $kind / $sampleMode', async ({ kind, sampleMode }) => {
+    host.bytes = Uint8Array.from(kind === 'attention'
+      ? createInputSensitiveByteBpeGguf({ chatTemplate: template, preTokenizer: 'qwen35' })
+      : createTinyByteBpeLfm2Gguf({ chatTemplate: template, preTokenizer: 'qwen35' }));
+    const key = kind === 'attention' ? 'llama.context_length' : 'lfm2.context_length';
+    const offset = Buffer.from(host.bytes).indexOf(key) + key.length;
+    expect(offset).toBeGreaterThan(key.length);
+    new DataView(host.bytes.buffer, host.bytes.byteOffset, host.bytes.byteLength).setUint32(offset + 4, 2048, true);
+    const user: UserMessageNode = {
+      id: toMessageId({ raw: 'initial-user' }),
+      role: 'user',
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'text', text: 'Q <s> 日本語\0😀', completeness: 'complete' }],
+      replies: { items: [] },
+    };
+    const content: ChatContent = { root: { items: [user] }, currentLeafId: user.id };
+    const initial = await prepareSession({ request: await makeRequest({ chat: content }), signal: undefined, onProgress: () => {} });
+    const nativeDefaults = initial.core.api.llama_context_default_params;
+    using _precision = vi.spyOn(initial.core.api, 'llama_context_default_params').mockImplementation(async pointer => {
+      await nativeDefaults(pointer);
+      // Keep the state oracle independent of Flash Attention's different
+      // accumulator precision for different CPU query counts.
+      for (const field of ['type_k', 'type_v'] as const) {
+        initial.core.setField({ name: 'llama_context_params', pointer, field, value: initial.core.constant({ name: 'GGML_TYPE_F32' }) });
+      }
+      initial.core.setField({ name: 'llama_context_params', pointer, field: 'flash_attn_type', value: initial.core.constant({ name: 'LLAMA_FLASH_ATTN_TYPE_DISABLED' }) });
+    });
+    await releaseSession({ releaseRuntime: false });
+    let leaf: UserMessageNode | ToolMessageNode = user;
+    const requests: WorkerGenerateInput[] = [];
+    const warmRuns: Awaited<ReturnType<typeof run>>[] = [];
+    const sampledOutputs: number[][] = [];
+    for (let round = 0; round < 3; round++) {
+      const input = await makeRequest({ chat: roundTripChatContentPersistenceSerialization({ content }).restored });
+      const raw = round < 2 ? callOutput({ value: round === 0 ? 'hello ' : 'world ' }) : 'done';
+      const canonicalTokens = ordinaryTokens({ text: raw });
+      const sampledTokens = sampleMode === 'canonical' ? canonicalTokens : canonicalTokens.flatMap(token => token === 259 ? [35, 13] : [token]);
+      const warm = await run({ input, sampledTokens });
+      requests.push(input);
+      warmRuns.push(warm);
+      sampledOutputs.push(sampledTokens);
+      const expectedPrompt = ordinaryTokens({ text: warm.prompt });
+      expect(warm.metrics.promptTokens).toBe(expectedPrompt.length);
+      expect(warm.decoded).toEqual([...expectedPrompt.slice(warm.metrics.reusedTokens), ...sampledTokens]);
+      expect(warm.tokens).toEqual([...expectedPrompt, ...sampledTokens]);
+      expect(warm.result.finishReason).toBe('stop');
+      if (round > 0) {
+        expect(warm.nativeContext).toBe(warmRuns[0]!.nativeContext);
+        expect(warm.parts.some((part, index) => part.isInput && part.text.endsWith(' ') && !warm.parts[index + 1]?.isInput && warm.parts[index + 1]?.text.startsWith('\n'))).toBe(true);
+        if (sampleMode === 'canonical') {
+          expect(expectedPrompt.slice(0, warm.cached.length)).toEqual(warm.cached);
+          expect(warm.metrics.reusedTokens).toBe(warm.cached.length);
+          expect(warm.metrics.prefillDecodedTokens).toBe(expectedPrompt.length - warm.cached.length);
+          expect(warm.clearCalls + warm.removeCalls + warm.restoreCalls + warm.captureCalls).toBe(0);
+          expect(warm.checkpointUnchanged).toBe(true);
+        } else {
+          // Equal rendered bytes do not justify reuse of different sampled IDs.
+          expect(expectedPrompt.slice(0, warm.cached.length)).not.toEqual(warm.cached);
+          expect(warm.metrics.reusedTokens).toBeLessThan(warm.cached.length);
+        }
+      }
+      if (kind === 'hybrid') {
+        expect(warm.checkpointPresent).toBe(true);
+      }
+      if (round < 2) {
+        expect(warm.result.reasoningContent).toBe('plan');
+        expect(warm.result.toolCalls).toHaveLength(1);
+        const parsed = warm.result.toolCalls[0]!;
+        expect(JSON.parse(parsed.function.arguments)).toEqual({ value: round === 0 ? 'hello ' : 'world ' });
+        const toolCall = { ...parsed, id: toToolCallId({ raw: `call-${round}` }) };
+        const tool: ToolMessageNode = {
+          id: toMessageId({ raw: `tool-${round}` }),
+          role: 'tool',
+          createdAt: round * 2 + 2,
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'tool_result', result: { toolCallId: toolCall.id, status: 'success', content: { type: 'text', text: 'ok' } } }],
+          replies: { items: [] },
+        };
+        const assistant: AssistantMessageNode = {
+          id: toMessageId({ raw: `assistant-${round}` }),
+          role: 'assistant',
+          createdAt: round * 2 + 1,
+          modelId: undefined,
+          lmParameters: undefined,
+          interruption: undefined,
+          parts: [
+            { type: 'reasoning', text: warm.result.reasoningContent, completeness: 'complete' },
+            { type: 'text', text: warm.result.content, completeness: 'complete' },
+            { type: 'tool_call', toolCall },
+          ],
+          replies: { items: [tool] },
+        };
+        leaf.replies.items.push(assistant);
+        leaf = tool;
+        content.currentLeafId = tool.id;
+        const restored = roundTripChatContentPersistenceSerialization({ content }).restored;
+        expect(restored).toEqual(content);
+        const projected = await makeRequest({ chat: restored });
+        expect(projected.messages.at(-2)?.tool_calls?.[0]?.function.arguments).toBe(parsed.function.arguments);
+      }
+    }
+    // Cold comparisons are performed after all warm appends, preserving one
+    // resident cache through both tool iterations above.
+    for (const [index, input] of requests.entries()) {
+      await releaseSession({ releaseRuntime: false });
+      const cold = await run({ input, sampledTokens: sampledOutputs[index]! });
+      const warm = warmRuns[index]!;
+      expect(cold.metrics.reusedTokens).toBe(0);
+      expectSameGenerationResult({ actual: cold.result, expected: warm.result });
+      expect(cold.tokens).toEqual(warm.tokens);
+      expect(cold.position).toBe(warm.position);
+      cold.prefillLogits.forEach((logit, token) => expect(logit, `cold round ${index}, token ${token}`).toBeCloseTo(warm.prefillLogits[token]!, 5));
+    }
+  }, 30000);
+});
+
+describe('native inference across batching and cache lifecycle transitions', () => {
+  const template = '{% for message in messages %}{% if message.role == "assistant" %}GG{% endif %}{{ message.content }}{% endfor %}{% if add_generation_prompt %}GG{% endif %}';
+
+  beforeEach(async () => {
+    await releaseSession({ releaseRuntime: true });
+    host.companion = false;
+    host.sameFile = true;
+    host.revision++;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await releaseSession({ releaseRuntime: true });
+  });
+
+  function nextRequest({ previous, output, text }: { previous: WorkerGenerateInput, output: GenerationResult, text: string }): WorkerGenerateInput {
+    return { ...previous, messages: [...previous.messages, { role: 'assistant', content: output.content }, { role: 'user', content: text }] };
+  }
+  async function run({ input }: { input: WorkerGenerateInput }) {
+    const session = await prepareSession({ request: input, signal: undefined, onProgress: () => {} });
+    const cached = session.cache.tokens.slice();
+    using decode = vi.spyOn(session.core.api, 'llama_decode');
+    const reports: unknown[] = [];
+    const result = await generate({ request: input, signal: undefined, onProgress: () => {}, onEvent: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) });
+    expect(reports).toHaveLength(1);
+    const metrics = diagnosticSchema.parse(reports[0]).performance!;
+    expect(metrics).toBeDefined();
+    // A one-token completion leaves its sample outside the native cache. All
+    // native evaluations counted here therefore belong to the prompt.
+    const { promptTokens, reusedTokens } = metrics;
+    if (promptTokens === undefined || reusedTokens === undefined) {
+      throw new Error('Expected prompt and reuse counts from native inference');
+    }
+    expect(metrics.terminalDecodeDeferred).toBe(true);
+    expect(decode).toHaveBeenCalledTimes(metrics.prefillDecodeCalls);
+    expect(metrics.decodedTokens).toBe(0);
+    expect(metrics.prefillDecodedTokens).toBe(promptTokens - reusedTokens);
+    expect(session.cache.validity).toBe('valid');
+    const position = await sequencePosition();
+    expect(position).toBe(session.cache.tokens.length - 1);
+    return { result, metrics: { ...metrics, promptTokens, reusedTokens }, logits: await readNativeLogits(), cached, tokens: session.cache.tokens.slice(), position };
+  }
+  function expectEquivalent({ actual, expected }: { actual: Awaited<ReturnType<typeof run>>, expected: Awaited<ReturnType<typeof run>> }): void {
+    expectSameGenerationResult({ actual: actual.result, expected: expected.result });
+    expect(actual.tokens).toEqual(expected.tokens);
+    expect(actual.position).toBe(expected.position);
+    expect(actual.logits).toHaveLength(expected.logits.length);
+    actual.logits.forEach((logit, index) => {
+      expect(Number.isFinite(logit)).toBe(true);
+      expect(logit).toBeCloseTo(expected.logits[index]!, 5);
+    });
+  }
+
+  it.each(['attention', 'hybrid'] as const)('matches serial cold inference across batch partitions, failed warm decoding and subsequent appends: %s', async kind => {
+    host.bytes = Uint8Array.from(kind === 'attention'
+      ? createPositionSensitiveGguf({ chatTemplate: template })
+      : createTinyLfm2Gguf({ chatTemplate: template }));
+    const input: WorkerGenerateInput = {
+      ...request({ messages: [{ role: 'user', content: 'ab'.repeat(64) + 'x' }] }),
+      maxTokens: 1,
+      measurement: { sequence: 'continue' },
+    };
+    const initial = await prepareSession({ request: input, signal: undefined, onProgress: () => {} });
+    const nativeDefaults = initial.core.api.llama_context_default_params;
+    using _precision = vi.spyOn(initial.core.api, 'llama_context_default_params').mockImplementation(async pointer => {
+      await nativeDefaults(pointer);
+      for (const field of ['type_k', 'type_v'] as const) {
+        initial.core.setField({ name: 'llama_context_params', pointer, field, value: initial.core.constant({ name: 'GGML_TYPE_F32' }) });
+      }
+      // Flash Attention's CPU kernels accumulate at different precisions for
+      // different query counts. Keep this oracle focused on state and positions.
+      initial.core.setField({ name: 'llama_context_params', pointer, field: 'flash_attn_type', value: initial.core.constant({ name: 'LLAMA_FLASH_ATTN_TYPE_DISABLED' }) });
+    });
+    await releaseSession({ releaseRuntime: false });
+    let batchTokens = 1;
+    const nativePrepare = sessionModule.prepareGenerationSession;
+    using _batching = vi.spyOn(sessionModule, 'prepareGenerationSession').mockImplementation(async args => {
+      const session = await nativePrepare(args);
+      return { ...session, prefillBatchTokens: Math.min(batchTokens, session.prefillBatchTokens) };
+    });
+    const baseline = await run({ input });
+    const followup = nextRequest({ previous: input, output: baseline.result, text: 'tail 日本語\0😀' });
+    await releaseSession({ releaseRuntime: false });
+    const continuedBaseline = await run({ input: followup });
+    const finalInput = nextRequest({ previous: followup, output: continuedBaseline.result, text: 'final append' });
+    await releaseSession({ releaseRuntime: false });
+    const finalBaseline = await run({ input: finalInput });
+    await releaseSession({ releaseRuntime: false });
+    const reordered = await run({ input: { ...input, messages: [{ role: 'user', content: 'ab'.repeat(63) + 'xba' }] } });
+    expect(reordered.tokens).not.toEqual(baseline.tokens);
+    expect(reordered.tokens.toSorted((a, b) => a - b)).toEqual(baseline.tokens.toSorted((a, b) => a - b));
+    expect(reordered.tokens.at(-1)).toBe(baseline.tokens.at(-1));
+    // Prove that a wrong order/position can be observed by this fixture. A
+    // uniform-attention bag of tokens would make the control indistinguishable.
+    expect(Math.max(...reordered.logits.map((logit, index) => Math.abs(logit - baseline.logits[index]!)))).toBeGreaterThan(1e-4);
+
+    for (const partition of [7, 64, 512]) {
+      batchTokens = partition;
+      await releaseSession({ releaseRuntime: false });
+      const cold = await run({ input });
+      expectEquivalent({ actual: cold, expected: baseline });
+      expect(cold.metrics.reusedTokens).toBe(0);
+      expect(cold.metrics.prefillDecodeCalls).toBeLessThan(baseline.metrics.prefillDecodeCalls);
+      expect(cold.metrics.maximumPrefillBatchTokens).toBe(Math.min(partition, cold.metrics.promptTokens - (kind === 'hybrid' ? 2 : 0)));
+      expect(cold.metrics.prefillDecodeCalls).toBe(kind === 'hybrid'
+        ? Math.ceil((cold.metrics.promptTokens - 2) / partition) + 1
+        : Math.ceil(cold.metrics.promptTokens / partition));
+      const repeated = await run({ input });
+      expectEquivalent({ actual: repeated, expected: baseline });
+      expect(repeated.metrics.reusedTokens).toBe(cold.tokens.length);
+      expect(repeated.metrics.prefillDecodeCalls).toBe(0);
+      const continued = await run({ input: followup });
+      expectEquivalent({ actual: continued, expected: continuedBaseline });
+      expect(continued.metrics.reusedTokens).toBe(repeated.tokens.length);
+
+      // Fail only after a real generation decode has advanced the native state.
+      // Then retry the same history and append again, exercising both recovery
+      // and the next cache hit on the recovered context.
+      const controller = new AbortController();
+      const session = await prepareSession({ request: followup, signal: undefined, onProgress: () => {} });
+      const context = session.context;
+      await expect(generate({
+        request: { ...followup, maxTokens: 3 },
+        signal: controller.signal,
+        onEvent: () => {},
+        onProgress: ({ progress }) => {
+          if (progress.phase === 'generating' && progress.completed === 1) {
+            controller.abort();
+          }
+        },
+      })).rejects.toThrow();
+      expect(controller.signal.aborted).toBe(true);
+      expect(await sequencePosition()).toBeGreaterThan(continued.position);
+      expect(session.cache.validity).toBe('invalid');
+      expect(sessionTesting.residentContext()).toBe(context);
+      const retry = await run({ input: followup });
+      expectEquivalent({ actual: retry, expected: continuedBaseline });
+      expect(retry.metrics.reusedTokens).toBe(0);
+      expect(retry.metrics.prefillDecodedTokens).toBe(retry.metrics.promptTokens);
+      const final = await run({ input: finalInput });
+      expectEquivalent({ actual: final, expected: finalBaseline });
+      expect(final.metrics.reusedTokens).toBe(retry.tokens.length);
+    }
   }, 30000);
 });
 
