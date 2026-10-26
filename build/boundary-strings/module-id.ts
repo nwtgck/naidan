@@ -1,5 +1,9 @@
 import path from 'node:path';
 
+import { UI_LOCALES } from '../../src/01-models/ui-locale';
+
+const localeModuleFileNames = new Set<string>(UI_LOCALES.map((locale) => `${locale}.ts`));
+
 const supportedSourceExtensions = new Set([
   '.cjs',
   '.cts',
@@ -47,7 +51,7 @@ export function messageKeyFromLocaleModuleId({ moduleId }: {
     return undefined;
   }
   const [key, fileName] = segments;
-  if (key === undefined || key.length === 0 || (fileName !== 'en.ts' && fileName !== 'ja.ts')) {
+  if (key === undefined || key.length === 0 || fileName === undefined || !localeModuleFileNames.has(fileName)) {
     return undefined;
   }
   return key;

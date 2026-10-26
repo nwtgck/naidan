@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { assertCssRegistrationBundleIntegrity, createTwClassVitePlugin } from './tw-class-vite-plugin';
 
 const temporaryDirectories: string[] = [];
@@ -21,7 +21,7 @@ function getHookHandler<TArguments extends unknown[], TResult>({ hook, name }: {
   throw new TypeError(`Expected ${name} to be a callable Vite hook.`);
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -1235,6 +1235,386 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     })).resolves.toEqual([]);
     expect(plugin.api.getPlan()).toBe(appliedPlan);
     expect(reloads).toHaveLength(reloadCountAfterRecovery);
+  });
+
+  it('restores the last applied source after a partially delivered CSS update fails', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const originalSource = fs.readFileSync(featureA, 'utf8');
+    const load = getHookHandler<[string], string>({ hook: plugin.load, name: 'load' });
+    const deliveredModules = new Map<string, string>();
+    const originalModules = new Map((plugin.api.getImportsByModule().get(featureA) ?? []).map((id) => [
+      `\0${id}`, load.call({} as never, `\0${id}`),
+    ]));
+    let failReload = true;
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById(id: string) {
+            return { id };
+          },
+          getModulesByFile() {
+            return undefined;
+          },
+        },
+        async reloadModule({ id }: { id: string }) {
+          deliveredModules.set(id, load.call({} as never, id));
+          if (failReload) {
+            throw new Error('interrupted CSS delivery');
+          }
+        },
+        hot: { send() {} },
+      },
+    };
+
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 6000,
+      modules: [],
+    })).rejects.toThrow('interrupted CSS delivery');
+    expect(plugin.api.getPlan()?.candidates).toContain('p-4');
+    expect(deliveredModules.size).toBeGreaterThan(0);
+
+    failReload = false;
+    fs.writeFileSync(featureA, originalSource);
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 6001, modules: [] });
+
+    expect(plugin.api.getPlan()?.candidates).toContain('p-2');
+    expect(plugin.api.getPlan()?.candidates).not.toContain('p-4');
+    for (const [id, originalModule] of originalModules) {
+      expect(deliveredModules.get(id)).toBe(originalModule);
+    }
+  });
+
+  it('reinstalls a restored registration after its retirement notification failed', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const originalSource = fs.readFileSync(featureA, 'utf8');
+    const originalImports = plugin.api.getImportsByModule().get(featureA) ?? [];
+    expect(originalImports.length).toBeGreaterThan(0);
+    const load = getHookHandler<[string], string>({ hook: plugin.load, name: 'load' });
+    const deliveredModules = new Map<string, string>();
+    const retirements: unknown[] = [];
+    let failRetirement = true;
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById(id: string) {
+            return { id };
+          },
+          getModulesByFile() {
+            return undefined;
+          },
+        },
+        async reloadModule({ id }: { id: string }) {
+          deliveredModules.set(id, load.call({} as never, id));
+        },
+        hot: {
+          send(payload: unknown) {
+            if (failRetirement) {
+              throw new Error('interrupted CSS retirement');
+            }
+            retirements.push(payload);
+          },
+        },
+      },
+    };
+
+    fs.writeFileSync(featureA, '<template><div>A</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 6002,
+      modules: [],
+    })).rejects.toThrow('interrupted CSS retirement');
+    expect(deliveredModules.get(`\0${originalImports[0]}`)).toBe('export {};');
+
+    failRetirement = false;
+    fs.writeFileSync(featureA, originalSource);
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 6003, modules: [] });
+
+    expect(plugin.api.getImportsByModule().get(featureA)).toEqual(originalImports);
+    for (const id of originalImports) {
+      expect(deliveredModules.get(`\0${id}`)).toContain('registerTailwindCssModule');
+    }
+    expect(retirements).toHaveLength(0);
+  });
+
+  it('rechecks a stylesheet save whose notification arrives after compilation', async () => {
+    const root = createFixture();
+    const entry = path.join(root, 'src/style.css');
+    const source = path.join(root, 'src/FeatureA.vue');
+    const red = `\
+@import "tailwindcss" source(none);
+.snapshot-marker { color: red; }
+`;
+    const blue = red.replace('color: red', 'color: blue');
+    fs.writeFileSync(entry, red);
+    const { plugin, hotUpdate } = await createServeHarness({ root });
+    const context = createHotUpdateContext({ environmentName: 'client', reloads: [], sentPayloads: [], onSend: undefined });
+    const originalRead = fs.readFileSync;
+    let reads = 0;
+    const read = vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
+      const result = Reflect.apply(originalRead, fs, args) as ReturnType<typeof fs.readFileSync>;
+      if (args[0] === entry && args[1] === 'utf8') {
+        reads += 1;
+        // The snapshot, validator, baseline, and global compiler have now read
+        // red. Save blue before compilation returns, but deliver its event later.
+        if (reads === 4) {
+          fs.writeFileSync(entry, blue);
+        }
+      }
+      return result;
+    });
+    using _restore = {
+      [Symbol.dispose]() {
+        read.mockRestore();
+      },
+    };
+    fs.writeFileSync(source, '<template><div tw-class="p-4">A</div></template>');
+    await hotUpdate.call(context as never, { file: source, timestamp: 6100, modules: [] });
+    read.mockRestore();
+    expect(fs.readFileSync(entry, 'utf8')).toBe(blue);
+    expect(plugin.api.getPlan()?.baselineCss).toContain('color: red');
+
+    await hotUpdate.call(context as never, { file: entry, timestamp: 6101, modules: [] });
+    expect(plugin.api.getPlan()?.baselineCss).toContain('color: blue');
+    expect(plugin.api.getPlan()?.baselineCss).not.toContain('color: red');
+  });
+
+  it('refreshes an imported stylesheet outside the source directory and skips its repeated save', async () => {
+    const root = createFixture();
+    const stylesheet = path.join(root, 'theme.css');
+    fs.writeFileSync(stylesheet, '.external-theme-marker { color: red; }\n');
+    fs.appendFileSync(path.join(root, 'src/style.css'), '@import "../theme.css";\n');
+    const { hotUpdate, plugin } = await createServeHarness({ root });
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    expect(plugin.api.getPlan()?.baselineCss).toContain('color: red');
+
+    fs.writeFileSync(stylesheet, '.external-theme-marker { color: blue; }\n');
+    await hotUpdate.call(context as never, { file: stylesheet, timestamp: 6004, modules: [] });
+
+    expect(plugin.api.getPlan()?.baselineCss).toContain('color: blue');
+    expect(plugin.api.getPlan()?.baselineCss).not.toContain('color: red');
+    const appliedPlan = plugin.api.getPlan();
+    await hotUpdate.call(context as never, { file: stylesheet, timestamp: 6005, modules: [] });
+    expect(plugin.api.getPlan()).toBe(appliedPlan);
+  });
+
+  it('recovers when a missing imported project stylesheet outside src is created', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const stylesheet = path.join(root, 'late-theme.css');
+    const stylePath = path.join(sourceRoot, 'style.css');
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    fs.appendFileSync(stylePath, '@import "../late-theme.css";\n');
+    await expect(hotUpdate.call(context as never, {
+      file: stylePath,
+      timestamp: 6006,
+      modules: [],
+    })).rejects.toThrow(/late-theme\.css/u);
+
+    fs.writeFileSync(stylesheet, '.external-theme-marker { color: purple; }\n');
+    await hotUpdate.call(context as never, { file: stylesheet, timestamp: 6007, modules: [] });
+
+    expect(plugin.api.getPlan()?.stylesheetDependencies).toContain(stylesheet);
+    expect(plugin.api.getPlan()?.baselineCss).toContain('color: purple');
+    const recoveredPlan = plugin.api.getPlan();
+    const unrelatedPath = path.join(root, 'unrelated.css');
+    fs.writeFileSync(unrelatedPath, '.unrelated { color: orange; }\n');
+    await hotUpdate.call(context as never, { file: unrelatedPath, timestamp: 6008, modules: [] });
+    expect(plugin.api.getPlan()).toBe(recoveredPlan);
+  });
+
+  it('retries a restored global stylesheet after single-asset CSS delivery failed', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const stylePath = path.join(sourceRoot, 'style.css');
+    const plugin = createTwClassVitePlugin({
+      projectRoot: root,
+      sourceRoot,
+      entryModule: path.join(sourceRoot, 'main.ts'),
+      tailwindCssPath: stylePath,
+      debugOutputDirectory: undefined,
+      outputMode: 'single',
+      cssPlanning: 'enabled',
+      maxSplitCssGroups: undefined,
+    });
+    getHookHandler<[unknown], void>({ hook: plugin.configResolved, name: 'configResolved' })
+      .call({} as never, { command: 'serve' });
+    await getHookHandler<[unknown], Promise<void>>({ hook: plugin.buildStart, name: 'buildStart' })
+      .call({ info() {} } as never, {});
+    const hotUpdate = getHookHandler<[unknown], Promise<unknown>>({ hook: plugin.hotUpdate, name: 'hotUpdate' });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const originalSource = fs.readFileSync(featureA, 'utf8');
+    const originalCss = plugin.api.getPlan()?.entryCss;
+    const load = getHookHandler<[string], string>({ hook: plugin.load, name: 'load' });
+    const deliveredCss: string[] = [];
+    let failReload = true;
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById() {
+            return undefined;
+          },
+          getModulesByFile(filename: string) {
+            return filename === stylePath ? new Set([{ id: filename }]) : undefined;
+          },
+        },
+        async reloadModule({ id }: { id: string }) {
+          deliveredCss.push(load.call({} as never, id));
+          if (failReload) {
+            throw new Error('interrupted global stylesheet update');
+          }
+        },
+        hot: { send() {} },
+      },
+    };
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 6009,
+      modules: [],
+    })).rejects.toThrow('interrupted global stylesheet update');
+    expect(deliveredCss).toHaveLength(1);
+    expect(deliveredCss[0]).not.toBe(originalCss);
+
+    failReload = false;
+    fs.writeFileSync(featureA, originalSource);
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 6010, modules: [] });
+
+    expect(deliveredCss).toHaveLength(2);
+    expect(deliveredCss[1]).toBe(originalCss);
+    expect(plugin.api.getPlan()?.entryCss).toBe(originalCss);
+  });
+
+  it('retires intermediate shared registrations after repeated failures and an exact source restoration', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const featureB = path.join(sourceRoot, 'FeatureB.vue');
+    const originalA = fs.readFileSync(featureA, 'utf8');
+    const originalB = fs.readFileSync(featureB, 'utf8');
+    const originalImports = new Map(plugin.api.getImportsByModule());
+    const initialIds = new Set([...originalImports.values()].flat());
+    const reloads: string[] = [];
+    const retirements: unknown[] = [];
+    let failure: 'owner' | 'first' | undefined = 'owner';
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById(id: string) {
+            return { id };
+          },
+          getModulesByFile(filename: string) {
+            return new Set([{ id: filename }]);
+          },
+        },
+        async reloadModule({ id }: { id: string }) {
+          reloads.push(id);
+          if (failure === 'first' || (failure === 'owner' && !id.startsWith('\0'))) {
+            throw new Error('interrupted ownership update');
+          }
+        },
+        hot: {
+          send(payload: unknown) {
+            retirements.push(payload);
+          },
+        },
+      },
+    };
+
+    fs.writeFileSync(featureB, '<template><div tw-class="text-blue-500 p-2">B</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureB,
+      timestamp: 6011,
+      modules: [],
+    })).rejects.toThrow('interrupted ownership update');
+    const intermediateIds = [...new Set([...plugin.api.getImportsByModule().values()].flat())]
+      .filter((id) => !initialIds.has(id));
+    expect(intermediateIds.length).toBeGreaterThan(0);
+
+    failure = 'first';
+    fs.writeFileSync(featureB, originalB);
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 6012,
+      modules: [],
+    })).rejects.toThrow('interrupted ownership update');
+
+    failure = undefined;
+    reloads.length = 0;
+    retirements.length = 0;
+    fs.writeFileSync(featureA, originalA);
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 6013, modules: [] });
+
+    expect(plugin.api.getImportsByModule()).toEqual(originalImports);
+    expect(reloads).toContain(featureA);
+    expect(reloads).toContain(featureB);
+    expect(retirements).toContainEqual({
+      type: 'custom',
+      event: 'naidan-tailwind:retire-css',
+      data: { moduleIds: expect.arrayContaining(intermediateIds.map((id) => `\0${id}`)) },
+    });
+  });
+
+  it('forgets failed outside stylesheet dependencies after a successful source restoration', async () => {
+    const root = createFixture();
+    const outsideDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-abandoned-stylesheet-'));
+    temporaryDirectories.push(outsideDirectory);
+    const stylesheet = path.join(outsideDirectory, 'theme.css');
+    const { plugin, hotUpdate } = await createServeHarness({ root });
+    const reloads: unknown[] = [];
+    const sentPayloads: unknown[] = [];
+    const context = createHotUpdateContext({ environmentName: 'client', reloads, sentPayloads, onSend: undefined });
+    const entry = path.join(root, 'src/style.css');
+    const original = fs.readFileSync(entry, 'utf8');
+    fs.appendFileSync(entry, `@import ${JSON.stringify(stylesheet)};\n`);
+    await expect(hotUpdate.call(context as never, {
+      file: entry,
+      modules: [],
+      timestamp: 1,
+      type: 'update',
+    })).rejects.toThrow();
+    fs.writeFileSync(entry, original);
+    await hotUpdate.call(context as never, {
+      file: entry,
+      modules: [],
+      timestamp: 2,
+      type: 'update',
+    });
+    const restoredPlan = plugin.api.getPlan();
+    expect(restoredPlan?.stylesheetDependencies).not.toContain(stylesheet);
+    reloads.length = 0;
+    sentPayloads.length = 0;
+
+    fs.writeFileSync(stylesheet, '.unused-theme-marker { color: purple; }\n');
+    await hotUpdate.call(context as never, {
+      file: stylesheet,
+      modules: [],
+      timestamp: 3,
+      type: 'create',
+    });
+    expect(plugin.api.getPlan()).toBe(restoredPlan);
+    expect(reloads).toEqual([]);
+    expect(sentPayloads).toEqual([]);
   });
 
   it('reloads the global stylesheet when single-asset candidate CSS changes', async () => {

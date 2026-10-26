@@ -59,8 +59,9 @@ export const lazyStrings = new Proxy({}, {
     source: `\
 const registrations: unknown[] = [];
 
-export function registerStringBoundary(args: unknown): void {
+export function registerStringBoundary(args: unknown) {
   registrations.push(args);
+  return { unregister() {}, updateLocale() {} };
 }
 `,
   });
@@ -796,5 +797,37 @@ export const value = 2;
     });
 
     await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+  });
+
+  it('does not add reverse owner imports to development boundary and locale-pack modules', async () => {
+    const root = createFixtureRoot();
+    const mainPath = path.join(root, 'src/main.ts');
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+    const transformed = await server.transformRequest('/src/main.ts');
+    if (transformed === null) {
+      throw new Error('Expected the owner module.');
+    }
+    const boundaryId = boundaryVirtualModuleId({ code: transformed.code });
+    const identity = boundaryId.slice('virtual:naidan-boundary-strings/boundary/'.length);
+    const packId = `virtual:naidan-boundary-strings/pack/en/${identity}`;
+    await server.transformRequest(boundaryId);
+    await server.transformRequest(packId);
+
+    const registration = server.moduleGraph.getModuleById(`\0${boundaryId}`);
+    const pack = server.moduleGraph.getModuleById(`\0${packId}`);
+    if (registration === undefined || pack === undefined) {
+      throw new Error('Expected both virtual modules.');
+    }
+    expect([...registration.importedModules].map((module) => module.id)).not.toContain(mainPath);
+    expect([...pack.importedModules].map((module) => module.id)).not.toContain(mainPath);
+    expect([...pack.importedModules].map((module) => module.id))
+      .toContain(path.join(root, `src/strings/messages/${messageKey}/en.ts`));
   });
 });

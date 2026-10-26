@@ -82,6 +82,19 @@ function stripPrivacyFetchBrokerDevInjectedScriptsPlugin(): import('vite').Plugi
     name: 'strip-privacy-fetch-broker-dev-injected-scripts',
     apply: 'serve',
     enforce: 'post',
+    hotUpdate(options) {
+      if (
+        this.environment.name === 'client'
+        && this.environment.config.server.hmr !== false
+        && path.resolve(options.file) === path.resolve(this.environment.config.root, 'privacy-fetch-broker.html')
+      ) {
+        // The sandbox intentionally has no HMR client. A path-scoped HTML reload
+        // is ignored by the parent page, so recreate both execution contexts.
+        this.environment.hot.send({ type: 'full-reload' });
+        return [];
+      }
+      return options.modules;
+    },
     transformIndexHtml(html, context) {
       if (context.path !== '/privacy-fetch-broker.html') {
         return html;
@@ -441,8 +454,9 @@ const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
   outDir: string,
   zipFileName: string,
   folderName: string,
-}) => ({
+}): Plugin => ({
   name: `zip-packager-plugin-${zipFileName}`,
+  apply: 'build',
   async closeBundle() {
     await createZipPackage({ outDir, zipFileName, folderName });
   },

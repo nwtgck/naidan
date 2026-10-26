@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { STANDALONE_PACKAGE_LOCALE_META_NAME } from '@/features/file-protocol-standalone/logic/package-locale';
@@ -26,8 +26,8 @@ function registerTestStringBoundary({ boundaryId, keys, loaders }: {
   boundaryId: string;
   keys: readonly string[];
   loaders: Pick<StringBoundaryLoaders, 'en' | 'ja'>;
-}): void {
-  registerStringBoundary({
+}): ReturnType<typeof registerStringBoundary> {
+  return registerStringBoundary({
     boundaryId,
     keys,
     loaders: {
@@ -574,6 +574,245 @@ describe('Boundary Strings runtime', () => {
     await expect(ensureStrings.ChatInput__type_a_message()).resolves.toBe('Second message');
   });
 
+  it('keeps outgoing template messages until the hot update has replaced their owner', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Cancel');
+    const wrapper = mount(defineComponent({
+      setup: () => () => h('span', lazyStrings.ChatInput__cancel()),
+    }));
+    try {
+      TEST_ONLY.beginBoundaryUpdate();
+      registerTestStringBoundary({
+        boundaryId: 'owner',
+        keys: ['ChatInput__type_a_message'],
+        loaders: {
+          en: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message' } }),
+          ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力' } }),
+        },
+      });
+      await wrapper.vm.$nextTick();
+      expect(wrapper.text()).toBe('Cancel');
+      expect(errorSpy).not.toHaveBeenCalled();
+      wrapper.unmount();
+      await TEST_ONLY.finishBoundaryUpdate();
+      expect(TEST_ONLY.registries.en.ChatInput__cancel).toBeUndefined();
+      await expect(ensureStrings.ChatInput__type_a_message()).resolves.toBe('Type a message');
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      wrapper.unmount();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('releases deferred removal after a successful batch follows an update without afterUpdate', async () => {
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'removed',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Cancel');
+    TEST_ONLY.beginBoundaryUpdate();
+    // An accept callback can throw before Vite emits afterUpdate.
+    unregister();
+    await nextTick();
+    expect(lazyStrings.ChatInput__cancel()).toBe('Cancel');
+    TEST_ONLY.beginBoundaryUpdate();
+    await TEST_ONLY.finishBoundaryUpdate();
+    expect(TEST_ONLY.registries.en.ChatInput__cancel).toBeUndefined();
+  });
+
+  it('cancels a scheduled warmup when its boundary is removed', async () => {
+    vi.useFakeTimers();
+    const loader = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }));
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'removed',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: loader, ja: loader },
+    });
+
+    unregister();
+    unregister();
+    await vi.advanceTimersByTimeAsync(200);
+    await setLocale({ locale: 'ja' });
+
+    expect(loader).not.toHaveBeenCalled();
+    expect(TEST_ONLY.boundaryRegistrations.has('removed')).toBe(false);
+    expect(TEST_ONLY.boundaryIdsByKey.has('ChatInput__cancel')).toBe(false);
+    expect(TEST_ONLY.scheduledBoundaryWarmups.has('removed')).toBe(false);
+    expect(TEST_ONLY.usedBoundaryIds.has('removed')).toBe(false);
+    expect(TEST_ONLY.warmedBoundaryIds.has('removed')).toBe(false);
+  });
+
+  it('removes loaded messages and locale preparation membership with the boundary', async () => {
+    vi.useFakeTimers();
+    const english = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }));
+    const japanese = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }));
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'removed',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: english, ja: japanese },
+    });
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Cancel');
+    await vi.advanceTimersByTimeAsync(200);
+    await setLocale({ locale: 'ja' });
+    expect(TEST_ONLY.usedBoundaryIds.has('removed')).toBe(true);
+    expect(TEST_ONLY.warmedBoundaryIds.has('removed')).toBe(true);
+
+    unregister();
+    await setLocale({ locale: 'en' });
+    await setLocale({ locale: 'ja' });
+
+    expect(TEST_ONLY.registries.en.ChatInput__cancel).toBeUndefined();
+    expect(TEST_ONLY.registries.ja.ChatInput__cancel).toBeUndefined();
+    expect(TEST_ONLY.loadedBoundaryModules.en.has('removed')).toBe(false);
+    expect(TEST_ONLY.loadedBoundaryModules.ja.has('removed')).toBe(false);
+    expect(TEST_ONLY.usedBoundaryIds.has('removed')).toBe(false);
+    expect(TEST_ONLY.warmedBoundaryIds.has('removed')).toBe(false);
+    expect(english).toHaveBeenCalledTimes(1);
+    expect(japanese).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a shared message from another loaded boundary after removal', async () => {
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'removed',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Removed' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '削除' } }),
+      },
+    });
+    registerTestStringBoundary({
+      boundaryId: 'retained',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Retained' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '保持' } }),
+      },
+    });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'retained', locale: 'en' });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'removed', locale: 'en' });
+    unregister();
+
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Retained');
+    expect(TEST_ONLY.boundaryIdsByKey.get('ChatInput__cancel')).toEqual(new Set(['retained']));
+  });
+
+  it('ignores cleanup from an obsolete registration of the same boundary', async () => {
+    const { unregister: unregisterOld } = registerTestStringBoundary({
+      boundaryId: 'replaced',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧' } }),
+      },
+    });
+    const { unregister: unregisterNew } = registerTestStringBoundary({
+      boundaryId: 'replaced',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'New' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '新' } }),
+      },
+    });
+    unregisterOld();
+    unregisterOld();
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('New');
+    expect(TEST_ONLY.boundaryRegistrations.has('replaced')).toBe(true);
+
+    unregisterNew();
+    expect(TEST_ONLY.boundaryRegistrations.has('replaced')).toBe(false);
+  });
+
+  it('finishes a locale switch without waiting for a removed boundary load', async () => {
+    let completeLoad: ((module: StringBoundaryModule) => void) | undefined;
+    const pending = new Promise<StringBoundaryModule>((resolve) => {
+      completeLoad = resolve;
+    });
+    const japanese = vi.fn(async () => pending);
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'removed',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: japanese,
+      },
+    });
+    const switching = setLocale({ locale: 'ja' });
+    expect(japanese).toHaveBeenCalledTimes(1);
+    unregister();
+    await switching;
+
+    expect(currentLocale.value).toBe('ja');
+    expect(TEST_ONLY.loadingBoundaries.size).toBe(0);
+    completeLoad?.({ ChatInput__cancel: () => 'Obsolete' });
+    await pending;
+    await Promise.resolve();
+    expect(TEST_ONLY.registries.ja.ChatInput__cancel).toBeUndefined();
+    expect(TEST_ONLY.loadedBoundaryModules.ja.has('removed')).toBe(false);
+  });
+
+  it('moves an imperative shared-key request to a remaining boundary after removal', async () => {
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'first',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: () => new Promise<StringBoundaryModule>(() => {}),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧' } }),
+      },
+    });
+    registerTestStringBoundary({
+      boundaryId: 'second',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Remaining' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '保持' } }),
+      },
+    });
+    const message = ensureStrings.ChatInput__cancel();
+    unregister();
+    await expect(message).resolves.toBe('Remaining');
+    expect(TEST_ONLY.loadingBoundaries.size).toBe(0);
+  });
+
+  it('uses a replacement without waiting for an obsolete load that later fails', async () => {
+    let rejectOld: ((error: Error) => void) | undefined;
+    const pending = new Promise<StringBoundaryModule>((_resolve, reject) => {
+      rejectOld = reject;
+    });
+    registerTestStringBoundary({
+      boundaryId: 'replaced',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: async () => pending,
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧' } }),
+      },
+    });
+    const message = ensureStrings.ChatInput__cancel();
+    registerTestStringBoundary({
+      boundaryId: 'replaced',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'New' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '新' } }),
+      },
+    });
+    await expect(message).resolves.toBe('New');
+    rejectOld?.(new Error('Obsolete loader failed'));
+    await Promise.resolve();
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('New');
+  });
+
   it('loads warmed boundaries before atomically changing locale', async () => {
     vi.useFakeTimers();
     const japaneseLoader = vi.fn(resolvedModule({
@@ -742,5 +981,987 @@ describe('Boundary Strings runtime', () => {
     resolveJapanese?.({ LanguageSelector__language: () => '言語' });
     await japaneseSwitch;
     expect(currentLocale.value).toBe('en');
+  });
+
+  it('updates message content without recreating the consumer or resetting its local state', async () => {
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    const setup = vi.fn(() => {
+      const count = ref(0);
+      return () => h('button', {
+        'data-testid': 'counter',
+        onClick: () => count.value++,
+      }, `${count.value} ${lazyStrings.ChatInput__cancel()}`);
+    });
+    const wrapper = mount(defineComponent({ setup }));
+    try {
+      await wrapper.get('[data-testid="counter"]').trigger('click');
+      expect(wrapper.text()).toBe('1 Cancel');
+
+      updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'Updated cancel' } });
+      await nextTick();
+
+      expect(wrapper.text()).toBe('1 Updated cancel');
+      expect(setup).toHaveBeenCalledTimes(1);
+      expect(TEST_ONLY.boundaryRegistrations.size).toBe(1);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('updates an inactive locale without clearing another loaded locale or refetching either', async () => {
+    const english = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }));
+    const japanese = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }));
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: english, ja: japanese },
+    });
+    await ensureStrings.ChatInput__cancel();
+    await setLocale({ locale: 'ja' });
+    await setLocale({ locale: 'en' });
+
+    updateLocale({ locale: 'ja', module: { ChatInput__cancel: () => '取り消す' } });
+
+    expect(lazyStrings.ChatInput__cancel()).toBe('Cancel');
+    expect(TEST_ONLY.loadedBoundaryModules.en.has('chat-input')).toBe(true);
+    await setLocale({ locale: 'ja' });
+    expect(lazyStrings.ChatInput__cancel()).toBe('取り消す');
+    expect(english).toHaveBeenCalledTimes(1);
+    expect(japanese).toHaveBeenCalledTimes(1);
+    expect(TEST_ONLY.usedBoundaryIds.has('chat-input')).toBe(true);
+    expect(TEST_ONLY.warmedBoundaryIds.has('chat-input')).toBe(true);
+  });
+
+  it.each(['resolve', 'reject'] as const)('releases all callers before an obsolete import can %s', async (settlement) => {
+    let resolveOld: ((module: StringBoundaryModule) => void) | undefined;
+    let rejectOld: ((error: Error) => void) | undefined;
+    const oldModule = new Promise<StringBoundaryModule>((resolve, reject) => {
+      resolveOld = resolve;
+      rejectOld = reject;
+    });
+    const english = vi.fn(async () => oldModule);
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: english,
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    const first = ensureStrings.ChatInput__cancel();
+    const second = ensureStrings.ChatInput__cancel();
+
+    updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'New cancel' } });
+
+    await expect(first).resolves.toBe('New cancel');
+    await expect(second).resolves.toBe('New cancel');
+    expect(TEST_ONLY.loadingBoundaries.size).toBe(0);
+    if (settlement === 'resolve') {
+      resolveOld?.({ ChatInput__cancel: () => 'Obsolete cancel' });
+    } else {
+      rejectOld?.(new Error('Obsolete import failed'));
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(lazyStrings.ChatInput__cancel()).toBe('New cancel');
+    expect(english).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a current import failure to every waiting caller without silently retrying', async () => {
+    let rejectLoad: ((error: Error) => void) | undefined;
+    const pending = new Promise<StringBoundaryModule>((_resolve, reject) => {
+      rejectLoad = reject;
+    });
+    const english = vi.fn(async () => pending);
+    registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: english,
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    const first = expect(ensureStrings.ChatInput__cancel()).rejects.toThrow('Current import failed');
+    const second = expect(ensureStrings.ChatInput__cancel()).rejects.toThrow('Current import failed');
+    rejectLoad?.(new Error('Current import failed'));
+    await first;
+    await second;
+    expect(english).toHaveBeenCalledTimes(1);
+    expect(TEST_ONLY.loadingBoundaries.size).toBe(0);
+  });
+
+  it('releases only the updated locale while another locale import is still pending', async () => {
+    let resolveJapanese: ((module: StringBoundaryModule) => void) | undefined;
+    const japanese = vi.fn(() => new Promise<StringBoundaryModule>((resolve) => {
+      resolveJapanese = resolve;
+    }));
+    const english = vi.fn(() => new Promise<StringBoundaryModule>(() => {}));
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: english, ja: japanese },
+    });
+    const reading = ensureStrings.ChatInput__cancel();
+    const switching = setLocale({ locale: 'ja' });
+    updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'New cancel' } });
+    await expect(reading).resolves.toBe('New cancel');
+    expect(TEST_ONLY.loadingBoundaries.has('ja:chat-input')).toBe(true);
+    expect(currentLocale.value).toBe('en');
+    resolveJapanese?.({ ChatInput__cancel: () => 'キャンセル' });
+    await switching;
+    expect(currentLocale.value).toBe('ja');
+    expect(lazyStrings.ChatInput__cancel()).toBe('キャンセル');
+    expect(japanese).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores locale updates from a replaced or unregistered boundary', async () => {
+    const old = registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧' } }),
+      },
+    });
+    const replacement = registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Replacement' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '新' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    old.updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'Stale update' } });
+    expect(lazyStrings.ChatInput__cancel()).toBe('Replacement');
+
+    replacement.unregister();
+    replacement.updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'After removal' } });
+    expect(TEST_ONLY.boundaryRegistrations.size).toBe(0);
+    expect(TEST_ONLY.registries.en.ChatInput__cancel).toBeUndefined();
+    expect(TEST_ONLY.loadedBoundaryModules.en.size).toBe(0);
+  });
+
+  it('retains the last valid locale when an update lacks a registered message', async () => {
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__cancel', 'ChatInput__type_a_message'],
+      loaders: {
+        en: resolvedModule({
+          module: {
+            ChatInput__cancel: () => 'Cancel',
+            ChatInput__type_a_message: () => 'Type a message',
+          },
+        }),
+        ja: resolvedModule({
+          module: {
+            ChatInput__cancel: () => 'キャンセル',
+            ChatInput__type_a_message: () => '入力',
+          },
+        }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    expect(() => updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'Partial update' } }))
+      .toThrow('did not provide message ChatInput__type_a_message for locale en');
+    expect(lazyStrings.ChatInput__cancel()).toBe('Cancel');
+    expect(lazyStrings.ChatInput__type_a_message()).toBe('Type a message');
+  });
+
+  it('waits for the replacement pack instead of returning an outgoing rendered message', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    const completedMessage = await ensureStrings.ChatInput__cancel();
+    const wrapper = mount(defineComponent({
+      setup: () => () => h('span', lazyStrings.ChatInput__cancel()),
+    }));
+    const replacement = Promise.withResolvers<StringBoundaryModule>();
+    const loader = vi.fn(() => replacement.promise);
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      registerTestStringBoundary({
+        boundaryId: 'owner',
+        keys: ['ChatInput__cancel', 'ChatInput__type_a_message'],
+        loaders: { en: loader, ja: loader },
+      });
+      const pendingMessage = ensureStrings.ChatInput__cancel();
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(wrapper.text()).toBe('Old cancel');
+      replacement.resolve({
+        ChatInput__cancel: () => 'New cancel',
+        ChatInput__type_a_message: () => 'Type a message',
+      });
+      await expect(pendingMessage).resolves.toBe('New cancel');
+      expect(completedMessage).toBe('Old cancel');
+      await nextTick();
+      expect(wrapper.text()).toBe('New cancel');
+    } finally {
+      wrapper.unmount();
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it('rejects imperative reads after removal while retaining outgoing render text', async () => {
+    vi.useFakeTimers();
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      unregister();
+      expect(lazyStrings.ChatInput__cancel()).toBe('Cancel');
+      await expect(ensureStrings.ChatInput__cancel()).rejects.toThrow(
+        'Boundary Strings key ChatInput__cancel has not been registered by a loaded module.',
+      );
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it('uses the surviving loaded owner for imperative reads during deferred removal', async () => {
+    vi.useFakeTimers();
+    const retainedLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'Retained cancel' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'retained',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: retainedLoader, ja: retainedLoader },
+    });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'retained', locale: 'en' });
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'removed',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Outgoing cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'removed', locale: 'en' });
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      unregister();
+      expect(lazyStrings.ChatInput__cancel()).toBe('Outgoing cancel');
+      await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Retained cancel');
+      expect(retainedLoader).toHaveBeenCalledTimes(1);
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+    expect(lazyStrings.ChatInput__cancel()).toBe('Retained cancel');
+  });
+
+  it('reports replacement loading errors instead of returning deferred old text', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    const failure = new Error('The replacement pack failed');
+    const loader = vi.fn(async () => {
+      throw failure;
+    });
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      registerTestStringBoundary({
+        boundaryId: 'owner',
+        keys: ['ChatInput__cancel'],
+        loaders: { en: loader, ja: loader },
+      });
+      await expect(ensureStrings.ChatInput__cancel()).rejects.toBe(failure);
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(lazyStrings.ChatInput__cancel()).toBe('Old cancel');
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it('keeps completed imperative messages unchanged after a locale pack update', async () => {
+    vi.useFakeTimers();
+    const loader = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }));
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: loader, ja: loader },
+    });
+    const completedMessage = await ensureStrings.ChatInput__cancel();
+    updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'Updated cancel' } });
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Updated cancel');
+    expect(completedMessage).toBe('Cancel');
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares the replacement import between imperative calls during a hot update', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    const replacement = Promise.withResolvers<StringBoundaryModule>();
+    const loader = vi.fn(() => replacement.promise);
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      registerTestStringBoundary({
+        boundaryId: 'owner',
+        keys: ['ChatInput__cancel'],
+        loaders: { en: loader, ja: loader },
+      });
+      const first = ensureStrings.ChatInput__cancel();
+      const second = ensureStrings.ChatInput__cancel();
+      expect(loader).toHaveBeenCalledTimes(1);
+      replacement.resolve({ ChatInput__cancel: () => 'New cancel' });
+      await expect(first).resolves.toBe('New cancel');
+      await expect(second).resolves.toBe('New cancel');
+      expect(loader).toHaveBeenCalledTimes(1);
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it('preserves the latest loaded shared message while both owners remain active', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'first',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'First cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '最初のキャンセル' } }),
+      },
+    });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'first', locale: 'en' });
+    registerTestStringBoundary({
+      boundaryId: 'second',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Latest cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '最新のキャンセル' } }),
+      },
+    });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'second', locale: 'en' });
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Latest cancel');
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Latest cancel');
+      expect(lazyStrings.ChatInput__cancel()).toBe('Latest cancel');
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it.each(['immediate', 'deferred'] as const)(
+    'rechecks a loaded imperative read after an owner replacement with %s render cleanup',
+    async (cleanup) => {
+      vi.useFakeTimers();
+      registerTestStringBoundary({
+        boundaryId: 'owner',
+        keys: ['ChatInput__cancel'],
+        loaders: {
+          en: resolvedModule({ module: { ChatInput__cancel: () => 'Old cancel' } }),
+          ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+        },
+      });
+      const completedMessage = await ensureStrings.ChatInput__cancel();
+      const replacement = Promise.withResolvers<StringBoundaryModule>();
+      const loader = vi.fn(() => replacement.promise);
+      if (cleanup === 'deferred') {
+        TEST_ONLY.beginBoundaryUpdate();
+      }
+      try {
+        // The loaded check succeeds synchronously, but the accessor resumes later.
+        const pendingMessage = ensureStrings.ChatInput__cancel();
+        const result = expect(pendingMessage).resolves.toBe('New cancel');
+        registerTestStringBoundary({
+          boundaryId: 'owner',
+          keys: ['ChatInput__cancel'],
+          loaders: { en: loader, ja: loader },
+        });
+        replacement.resolve({ ChatInput__cancel: () => 'New cancel' });
+        await result;
+        expect(loader).toHaveBeenCalledTimes(1);
+        expect(completedMessage).toBe('Old cancel');
+      } finally {
+        if (cleanup === 'deferred') {
+          await TEST_ONLY.finishBoundaryUpdate();
+        }
+      }
+    },
+  );
+
+  it('propagates the replacement failure when the owner changes after the loaded check', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    const failure = new Error('The replacement import failed');
+    const loader = vi.fn(async () => {
+      throw failure;
+    });
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      const pendingMessage = ensureStrings.ChatInput__cancel();
+      const result = expect(pendingMessage).rejects.toBe(failure);
+      registerTestStringBoundary({
+        boundaryId: 'owner',
+        keys: ['ChatInput__cancel'],
+        loaders: { en: loader, ja: loader },
+      });
+      await result;
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(lazyStrings.ChatInput__cancel()).toBe('Old cancel');
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it('loads a surviving cold owner after removal between the loaded check and read', async () => {
+    vi.useFakeTimers();
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'outgoing',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Outgoing cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    const retainedLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'Retained cancel' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'retained',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: retainedLoader, ja: retainedLoader },
+    });
+    const pendingMessage = ensureStrings.ChatInput__cancel();
+    unregister();
+    await expect(pendingMessage).resolves.toBe('Retained cancel');
+    expect(retainedLoader).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a loaded imperative read when its last owner disappears before consumption', async () => {
+    vi.useFakeTimers();
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      const pendingMessage = ensureStrings.ChatInput__cancel();
+      unregister();
+      await expect(pendingMessage).rejects.toThrow('Boundary Strings');
+      expect(lazyStrings.ChatInput__cancel()).toBe('Cancel');
+      expect(TEST_ONLY.loadingBoundaries.size).toBe(0);
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it('uses an in-place locale update between the loaded check and imperative consumption', async () => {
+    vi.useFakeTimers();
+    const loader = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }));
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: loader, ja: loader },
+    });
+    await ensureStrings.ChatInput__cancel();
+    const pendingMessage = ensureStrings.ChatInput__cancel();
+    updateLocale({ locale: 'en', module: { ChatInput__cancel: () => 'Updated cancel' } });
+    await expect(pendingMessage).resolves.toBe('Updated cancel');
+    expect(loader).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows successive owner replacements without waiting for an abandoned import', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    const abandoned = Promise.withResolvers<StringBoundaryModule>();
+    const middleLoader = vi.fn(() => abandoned.promise);
+    const pendingMessage = ensureStrings.ChatInput__cancel();
+    const result = expect(pendingMessage).resolves.toBe('Latest cancel');
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: middleLoader, ja: middleLoader },
+    });
+    // Let the waiting accessor reach the middle generation, without running warmups.
+    await Promise.resolve();
+    const latestLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'Latest cancel' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: latestLoader, ja: latestLoader },
+    });
+    await result;
+    expect(middleLoader).toHaveBeenCalledTimes(1);
+    expect(latestLoader).toHaveBeenCalledTimes(1);
+    abandoned.resolve({ ChatInput__cancel: () => 'Abandoned cancel' });
+    await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Latest cancel');
+  });
+
+  it('waits for a boundary registered after preparation before committing the locale', async () => {
+    vi.useFakeTimers();
+    const japanese = Promise.withResolvers<StringBoundaryModule>();
+    const loader = vi.fn(() => japanese.promise);
+    const switching = setLocale({ locale: 'ja' });
+    // The empty preparation resumes first; the locale-switch continuation is still queued.
+    await Promise.resolve();
+    registerTestStringBoundary({
+      boundaryId: 'newly-evaluated-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: loader,
+      },
+    });
+    await Promise.resolve();
+    expect(currentLocale.value).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
+    japanese.resolve({ ChatInput__cancel: () => 'キャンセル' });
+    await switching;
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(currentLocale.value).toBe('ja');
+    expect(document.documentElement.lang).toBe('ja');
+    expect(lazyStrings.ChatInput__cancel()).toBe('キャンセル');
+  });
+
+  it('rechecks a warmed owner replaced after its target locale was prepared', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Old cancel' } }),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => '旧キャンセル' } }),
+      },
+    });
+    await ensureStrings.ChatInput__cancel();
+    await prepareLocale({ locale: 'ja' });
+    const japanese = Promise.withResolvers<StringBoundaryModule>();
+    const loader = vi.fn(() => japanese.promise);
+    const switching = setLocale({ locale: 'ja' });
+    // Resume the loaded owner, the aggregate, then preparation. Commit remains queued.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    TEST_ONLY.beginBoundaryUpdate();
+    try {
+      registerTestStringBoundary({
+        boundaryId: 'owner',
+        keys: ['ChatInput__cancel'],
+        loaders: {
+          en: resolvedModule({ module: { ChatInput__cancel: () => 'New cancel' } }),
+          ja: loader,
+        },
+      });
+      await Promise.resolve();
+      expect(currentLocale.value).toBe('en');
+      expect(document.documentElement.lang).toBe('en');
+      expect(lazyStrings.ChatInput__cancel()).toBe('Old cancel');
+      japanese.resolve({ ChatInput__cancel: () => '新キャンセル' });
+      await switching;
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(currentLocale.value).toBe('ja');
+      expect(lazyStrings.ChatInput__cancel()).toBe('新キャンセル');
+    } finally {
+      await TEST_ONLY.finishBoundaryUpdate();
+    }
+  });
+
+  it('preserves the active locale and original error when a late boundary cannot be prepared', async () => {
+    vi.useFakeTimers();
+    const failure = new Error('Late target locale failed');
+    const loader = vi.fn(async () => {
+      throw failure;
+    });
+    const switching = setLocale({ locale: 'ja' });
+    const result = expect(switching).rejects.toBe(failure);
+    await Promise.resolve();
+    registerTestStringBoundary({
+      boundaryId: 'late-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: loader,
+      },
+    });
+    await result;
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(currentLocale.value).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
+  });
+
+  it('does not await a late owner removed before the locale-switch continuation', async () => {
+    vi.useFakeTimers();
+    const loader = vi.fn(async () => ({ ChatInput__cancel: () => 'キャンセル' }));
+    const switching = setLocale({ locale: 'ja' });
+    await Promise.resolve();
+    const { unregister } = registerTestStringBoundary({
+      boundaryId: 'removed-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: loader, ja: loader },
+    });
+    unregister();
+    await switching;
+    expect(currentLocale.value).toBe('ja');
+    expect(loader).not.toHaveBeenCalled();
+    expect(TEST_ONLY.loadingBoundaries.size).toBe(0);
+  });
+
+  it('uses a hot-installed late locale pack without fetching it again', async () => {
+    vi.useFakeTimers();
+    const loader = vi.fn(async () => ({ ChatInput__cancel: () => 'Unused' }));
+    const switching = setLocale({ locale: 'ja' });
+    await Promise.resolve();
+    const { updateLocale } = registerTestStringBoundary({
+      boundaryId: 'late-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: loader, ja: loader },
+    });
+    updateLocale({ locale: 'ja', module: { ChatInput__cancel: () => '更新済み' } });
+    await switching;
+    expect(currentLocale.value).toBe('ja');
+    expect(lazyStrings.ChatInput__cancel()).toBe('更新済み');
+    expect(loader).not.toHaveBeenCalled();
+  });
+
+  it('keeps a newer locale request while a late target pack is pending', async () => {
+    vi.useFakeTimers();
+    const japanese = Promise.withResolvers<StringBoundaryModule>();
+    const japaneseLoader = vi.fn(() => japanese.promise);
+    const switching = setLocale({ locale: 'ja' });
+    await Promise.resolve();
+    registerTestStringBoundary({
+      boundaryId: 'late-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: japaneseLoader,
+      },
+    });
+    await Promise.resolve();
+    await setLocale({ locale: 'en' });
+    expect(currentLocale.value).toBe('en');
+    japanese.resolve({ ChatInput__cancel: () => 'キャンセル' });
+    await switching;
+    expect(currentLocale.value).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
+    expect(lazyStrings.ChatInput__cancel()).toBe('Cancel');
+  });
+
+  it('shares late target loading with a simultaneous imperative read in the active locale', async () => {
+    vi.useFakeTimers();
+    const pending = Promise.withResolvers<StringBoundaryModule>();
+    const loader = vi.fn(() => pending.promise);
+    // Re-selecting the active locale still prepares newly discovered boundaries.
+    const switching = setLocale({ locale: 'en' });
+    await Promise.resolve();
+    registerTestStringBoundary({
+      boundaryId: 'late-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: loader, ja: loader },
+    });
+    await Promise.resolve();
+    let switchFinished = false;
+    const completion = switching.then(() => {
+      switchFinished = true;
+    });
+    const message = ensureStrings.ChatInput__cancel();
+    await Promise.resolve();
+    expect(switchFinished).toBe(false);
+    expect(loader).toHaveBeenCalledTimes(1);
+    pending.resolve({ ChatInput__cancel: () => 'Ready cancel' });
+    await completion;
+    await expect(message).resolves.toBe('Ready cancel');
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(lazyStrings.ChatInput__cancel()).toBe('Ready cancel');
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'moves an in-flight key read when its owner drops the key without awaiting an unrelated %s',
+    async (replacementOutcome) => {
+      vi.useFakeTimers();
+      const abandoned = Promise.withResolvers<StringBoundaryModule>();
+      registerTestStringBoundary({
+        boundaryId: 'first-owner',
+        keys: ['ChatInput__cancel'],
+        loaders: { en: () => abandoned.promise, ja: () => abandoned.promise },
+      });
+      const remainingLoader = vi.fn(resolvedModule({
+        module: { ChatInput__cancel: () => 'Remaining cancel' },
+      }));
+      registerTestStringBoundary({
+        boundaryId: 'second-owner',
+        keys: ['ChatInput__cancel'],
+        loaders: { en: remainingLoader, ja: remainingLoader },
+      });
+      const pendingMessage = ensureStrings.ChatInput__cancel();
+      const unrelatedLoader = vi.fn(async () => {
+        if (replacementOutcome === 'failure') {
+          throw new Error('Unrelated message failed');
+        }
+        return { ChatInput__type_a_message: () => 'Unrelated message' };
+      });
+      registerTestStringBoundary({
+        boundaryId: 'first-owner',
+        keys: ['ChatInput__type_a_message'],
+        loaders: { en: unrelatedLoader, ja: unrelatedLoader },
+      });
+
+      await expect(pendingMessage).resolves.toBe('Remaining cancel');
+      expect(remainingLoader).toHaveBeenCalledTimes(1);
+      expect(unrelatedLoader).not.toHaveBeenCalled();
+      expect(TEST_ONLY.loadedBoundaryModules.en.has('first-owner')).toBe(false);
+      abandoned.reject(new Error('Obsolete import failed'));
+      await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Remaining cancel');
+      expect(remainingLoader).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('reports a removed key without evaluating the replacement owner of another key', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: () => new Promise<StringBoundaryModule>(() => {}),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    const pendingMessage = ensureStrings.ChatInput__cancel();
+    const unrelatedLoader = vi.fn(async () => {
+      throw new Error('Unrelated message failed');
+    });
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__type_a_message'],
+      loaders: { en: unrelatedLoader, ja: unrelatedLoader },
+    });
+
+    await expect(pendingMessage).rejects.toThrow(
+      'Boundary Strings key ChatInput__cancel has not been registered by a loaded module.',
+    );
+    expect(unrelatedLoader).not.toHaveBeenCalled();
+    expect(TEST_ONLY.loadingBoundaries.size).toBe(0);
+  });
+
+  it('shares the remaining owner load between concurrent reads after their old owner drops the key', async () => {
+    vi.useFakeTimers();
+    const abandonedLoader = vi.fn(() => new Promise<StringBoundaryModule>(() => {}));
+    registerTestStringBoundary({
+      boundaryId: 'first-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: abandonedLoader, ja: abandonedLoader },
+    });
+    const remainingLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'Remaining cancel' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'second-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: remainingLoader, ja: remainingLoader },
+    });
+    const first = ensureStrings.ChatInput__cancel();
+    const second = ensureStrings.ChatInput__cancel();
+    const unrelatedLoader = vi.fn(async () => {
+      throw new Error('Unrelated message failed');
+    });
+    registerTestStringBoundary({
+      boundaryId: 'first-owner',
+      keys: ['ChatInput__type_a_message'],
+      loaders: { en: unrelatedLoader, ja: unrelatedLoader },
+    });
+
+    await Promise.all([
+      expect(first).resolves.toBe('Remaining cancel'),
+      expect(second).resolves.toBe('Remaining cancel'),
+    ]);
+    expect(abandonedLoader).toHaveBeenCalledTimes(1);
+    expect(remainingLoader).toHaveBeenCalledTimes(1);
+    expect(unrelatedLoader).not.toHaveBeenCalled();
+  });
+
+  it('still propagates a replacement load failure when the replacement retains the requested key', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: () => new Promise<StringBoundaryModule>(() => {}),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    const pendingMessage = ensureStrings.ChatInput__cancel();
+    const failure = new Error('Required replacement failed');
+    const replacementLoader = vi.fn(async () => {
+      throw failure;
+    });
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel', 'ChatInput__type_a_message'],
+      loaders: { en: replacementLoader, ja: replacementLoader },
+    });
+    await expect(pendingMessage).rejects.toBe(failure);
+    expect(replacementLoader).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps full locale preparation independent from a key read whose owner changes keys', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'first-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: () => new Promise<StringBoundaryModule>(() => {}),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    const remainingLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'Remaining cancel' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'second-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: remainingLoader, ja: remainingLoader },
+    });
+    const pendingMessage = ensureStrings.ChatInput__cancel();
+    const preparing = prepareLocale({ locale: 'en' });
+    const failure = new Error('Another required boundary failed');
+    const replacementLoader = vi.fn(async () => {
+      throw failure;
+    });
+    registerTestStringBoundary({
+      boundaryId: 'first-owner',
+      keys: ['ChatInput__type_a_message'],
+      loaders: { en: replacementLoader, ja: replacementLoader },
+    });
+
+    await Promise.all([
+      expect(pendingMessage).resolves.toBe('Remaining cancel'),
+      expect(preparing).rejects.toBe(failure),
+    ]);
+    expect(remainingLoader).toHaveBeenCalledTimes(1);
+    expect(replacementLoader).toHaveBeenCalledTimes(1);
+    expect(currentLocale.value).toBe('en');
+  });
+
+  it('rerenders a moved lazy key without loading the old owner replacement', async () => {
+    vi.useFakeTimers();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    registerTestStringBoundary({
+      boundaryId: 'first-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: () => new Promise<StringBoundaryModule>(() => {}),
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+    const remainingLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'Remaining cancel' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'second-owner',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: remainingLoader, ja: remainingLoader },
+    });
+    const owner = mount(defineComponent({
+      setup: () => () => h('span', lazyStrings.ChatInput__cancel()),
+    }));
+    try {
+      expect(owner.text()).toBe('');
+      const unrelatedLoader = vi.fn(async () => {
+        throw new Error('Unrelated message failed');
+      });
+      registerTestStringBoundary({
+        boundaryId: 'first-owner',
+        keys: ['ChatInput__type_a_message'],
+        loaders: { en: unrelatedLoader, ja: unrelatedLoader },
+      });
+      // Await the same key's real loading path, not idle warming of all owners.
+      await expect(ensureStrings.ChatInput__cancel()).resolves.toBe('Remaining cancel');
+      await nextTick();
+      expect(owner.text()).toBe('Remaining cancel');
+      expect(remainingLoader).toHaveBeenCalledTimes(1);
+      expect(unrelatedLoader).not.toHaveBeenCalled();
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      owner.unmount();
+      errors.mockRestore();
+    }
+  });
+
+  it('still prepares a replacement boundary in full when its original key was removed', async () => {
+    vi.useFakeTimers();
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: () => new Promise<StringBoundaryModule>(() => {}),
+      },
+    });
+    const switching = setLocale({ locale: 'ja' });
+    const replacementLoader = vi.fn(resolvedModule({
+      module: { ChatInput__type_a_message: () => 'メッセージを入力...' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'owner',
+      keys: ['ChatInput__type_a_message'],
+      loaders: { en: replacementLoader, ja: replacementLoader },
+    });
+    await switching;
+    expect(replacementLoader).toHaveBeenCalledTimes(1);
+    expect(currentLocale.value).toBe('ja');
+    expect(document.documentElement.lang).toBe('ja');
+    expect(lazyStrings.ChatInput__type_a_message()).toBe('メッセージを入力...');
+    expect(TEST_ONLY.registries.ja.ChatInput__cancel).toBeUndefined();
   });
 });

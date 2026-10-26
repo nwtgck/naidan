@@ -446,6 +446,7 @@ describe('candidate validation', () => {
       projectRoot,
       cssEntryPath: path.join(projectRoot, 'src/style.css'),
       expectedTailwindVersion: '0.0.0',
+      onDependency: undefined,
     })).rejects.toThrow(/Tailwind version mismatch/u);
   });
 
@@ -455,6 +456,7 @@ describe('candidate validation', () => {
       projectRoot,
       cssEntryPath: path.join(projectRoot, 'src/style.css'),
       expectedTailwindVersion: '4.3.2',
+      onDependency: undefined,
     });
     const result = validator.classify({ candidates: ['flex', 'group/card', 'not-prose', 'bg-reed-500'] });
     expect(result.generatedCandidates).toContain('flex');

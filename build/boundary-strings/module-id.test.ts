@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { UI_LOCALES } from '../../src/01-models/ui-locale';
+
 import {
   isSupportedSourceModuleId,
   messageKeyFromLocaleModuleId,
@@ -21,6 +23,12 @@ describe('Boundary Strings module IDs', () => {
     expect(isSupportedSourceModuleId({ moduleId: '/src/example.mts' })).toBe(true);
     expect(isSupportedSourceModuleId({ moduleId: '/src/example.vue?vue&type=script' })).toBe(true);
     expect(isSupportedSourceModuleId({ moduleId: '/src/example.json' })).toBe(false);
+  });
+
+  it.each(UI_LOCALES)('recognizes the message implementation for %s', (locale) => {
+    expect(messageKeyFromLocaleModuleId({
+      moduleId: `/repo/src/strings/messages/ChatInput__type_a_message/${locale}.ts?direct`,
+    })).toBe('ChatInput__type_a_message');
   });
 
   it('extracts a key only from an exact locale message module path', () => {

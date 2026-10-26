@@ -1,4 +1,4 @@
-import { readonly, shallowReactive, shallowRef } from 'vue';
+import { nextTick, readonly, shallowReactive, shallowRef } from 'vue';
 
 import { UI_LOCALES } from '@/01-models/ui-locale';
 import type { Strings, StringKey } from '@/strings/catalogs/en';
@@ -38,7 +38,12 @@ const loadedBoundaryModules: Record<UiLocale, Map<string, StringBoundaryModule>>
   ko: new Map(),
   de: new Map(),
 };
-const loadingBoundaries = new Map<string, Promise<void>>();
+type StringBoundaryLoad = {
+  promise: Promise<void>;
+  cancel: () => void;
+  cancellationState: 'active' | 'cancelled';
+};
+const loadingBoundaries = new Map<string, StringBoundaryLoad>();
 const usedBoundaryIds = new Set<string>();
 const warmedBoundaryIds = new Set<string>();
 const scheduledBoundaryWarmups = new Map<string, () => void>();
@@ -55,6 +60,33 @@ type EnsureStringAccessor = (...args: readonly unknown[]) => Promise<string>;
 const lazyStringAccessorCache = new Map<string, LazyStringAccessor>();
 const ensureStringAccessorCache = new Map<string, EnsureStringAccessor>();
 let localeSwitchRequest = 0;
+let boundaryUpdateState: 'idle' | 'updating' = 'idle';
+const deferredRegistryKeys = new Set<string>();
+
+function beginBoundaryUpdate(): void {
+  // Vite serializes update messages. A rejected accept callback can skip the
+  // matching afterUpdate, so the next batch replaces that unfinished state.
+  boundaryUpdateState = 'updating';
+}
+
+async function finishBoundaryUpdate(): Promise<void> {
+  // Vue queues owner replacement during HMR. Keep old rendered strings available
+  // until that render finishes, rather than waking the outgoing template early.
+  await nextTick();
+  boundaryUpdateState = 'idle';
+  const keys = [...deferredRegistryKeys];
+  deferredRegistryKeys.clear();
+  for (const key of keys) {
+    for (const locale of UI_LOCALES) {
+      rebuildRegistryMessage({ key, locale });
+    }
+  }
+}
+
+if (import.meta.hot) {
+  import.meta.hot.on('vite:beforeUpdate', beginBoundaryUpdate);
+  import.meta.hot.on('vite:afterUpdate', finishBoundaryUpdate);
+}
 
 export function resolveBrowserLocale(): UiLocale {
   const browserLocale = typeof navigator === 'undefined' ? undefined : navigator.language;
@@ -114,51 +146,106 @@ function boundaryLoadKey({ boundaryId, locale }: {
   return `${locale}:${boundaryId}`;
 }
 
+function installBoundaryModule({ registration, locale, module }: {
+  registration: StringBoundaryRegistration;
+  locale: UiLocale;
+  module: StringBoundaryModule;
+}): void {
+  const loadedMessages: StringBoundaryModule = {};
+  for (const key of registration.keys) {
+    const message = module[key];
+    if (typeof message !== 'function') {
+      throw new Error(
+        `Boundary Strings boundary ${registration.boundaryId} did not provide message ${key} for locale ${locale}.`,
+      );
+    }
+    loadedMessages[key] = message;
+  }
+  loadedBoundaryModules[locale].set(registration.boundaryId, loadedMessages);
+  Object.assign(registries[locale], loadedMessages);
+}
+
+async function loadBoundaryGeneration({ boundaryId, locale }: {
+  boundaryId: string;
+  locale: UiLocale;
+}): Promise<void> {
+  if (loadedBoundaryModules[locale].has(boundaryId)) {
+    return;
+  }
+  const loadKey = boundaryLoadKey({ boundaryId, locale });
+  const registration = boundaryRegistrations.get(boundaryId);
+  if (registration === undefined) {
+    // A locale preparation may already have captured a boundary removed by HMR.
+    return;
+  }
+  const existing = loadingBoundaries.get(loadKey);
+  if (existing !== undefined) {
+    try {
+      await existing.promise;
+    } catch (error) {
+      if (boundaryRegistrations.get(boundaryId) === registration
+        && existing.cancellationState === 'active') {
+        throw error;
+      }
+    }
+    return;
+  }
+
+  let cancel = () => {};
+  const cancelled = new Promise<void>((resolve) => {
+    cancel = resolve;
+  });
+  async function loadModule({ registration }: { registration: StringBoundaryRegistration }): Promise<void> {
+    const result = await Promise.race([
+      registration.loaders[locale]().then((module) => ({ status: 'loaded' as const, module })),
+      cancelled.then(() => ({ status: 'cancelled' as const })),
+    ]);
+    switch (result.status) {
+    case 'cancelled':
+      return;
+    case 'loaded':
+      break;
+    default: {
+      const exhaustive: never = result;
+      throw new Error(`Unexpected Boundary Strings load result: ${String(exhaustive)}`);
+    }
+    }
+    const { module } = result;
+    if (boundaryRegistrations.get(boundaryId) !== registration
+      || loadingBoundaries.get(loadKey) !== load) {
+      return;
+    }
+    installBoundaryModule({ registration, locale, module });
+  }
+  const load: StringBoundaryLoad = {
+    cancel: () => {
+      load.cancellationState = 'cancelled';
+      cancel();
+    },
+    cancellationState: 'active',
+    promise: loadModule({ registration }),
+  };
+  loadingBoundaries.set(loadKey, load);
+  try {
+    await load.promise;
+  } catch (error) {
+    if (boundaryRegistrations.get(boundaryId) === registration
+      && load.cancellationState === 'active') {
+      throw error;
+    }
+  } finally {
+    if (loadingBoundaries.get(loadKey) === load) {
+      loadingBoundaries.delete(loadKey);
+    }
+  }
+}
+
 async function ensureBoundaryLoaded({ boundaryId, locale }: {
   boundaryId: string;
   locale: UiLocale;
 }): Promise<void> {
-  const loadKey = boundaryLoadKey({ boundaryId, locale });
-
-  while (!loadedBoundaryModules[locale].has(boundaryId)) {
-    const existing = loadingBoundaries.get(loadKey);
-    if (existing !== undefined) {
-      await existing;
-      continue;
-    }
-
-    const registration = boundaryRegistrations.get(boundaryId);
-    if (registration === undefined) {
-      throw new Error(`Missing Boundary Strings registration for ${boundaryId}.`);
-    }
-
-    const promise = (async () => {
-      const module = await registration.loaders[locale]();
-      if (boundaryRegistrations.get(boundaryId) !== registration) {
-        return;
-      }
-
-      const loadedMessages: StringBoundaryModule = {};
-      for (const key of registration.keys) {
-        const message = module[key];
-        if (typeof message !== 'function') {
-          throw new Error(
-            `Boundary Strings boundary ${boundaryId} did not provide message ${key} for locale ${locale}.`,
-          );
-        }
-        loadedMessages[key] = message;
-      }
-      loadedBoundaryModules[locale].set(boundaryId, loadedMessages);
-      Object.assign(registries[locale], loadedMessages);
-    })();
-    loadingBoundaries.set(loadKey, promise);
-    try {
-      await promise;
-    } finally {
-      if (loadingBoundaries.get(loadKey) === promise) {
-        loadingBoundaries.delete(loadKey);
-      }
-    }
+  while (boundaryRegistrations.has(boundaryId) && !loadedBoundaryModules[locale].has(boundaryId)) {
+    await loadBoundaryGeneration({ boundaryId, locale });
   }
 }
 
@@ -201,13 +288,13 @@ async function ensureKeyLoaded({ key, locale }: {
   key: string;
   locale: UiLocale;
 }): Promise<void> {
-  if (registries[locale][key] !== undefined) {
-    return;
+  while (getActiveMessage({ key, locale }) === undefined) {
+    const boundaryId = resolveBoundaryId({ key, locale });
+    usedBoundaryIds.add(boundaryId);
+    // Replacement may remove this key from the selected owner. After each
+    // generation, resolve the key again rather than loading unrelated messages.
+    await loadBoundaryGeneration({ boundaryId, locale });
   }
-
-  const boundaryId = resolveBoundaryId({ key, locale });
-  usedBoundaryIds.add(boundaryId);
-  await ensureBoundaryLoaded({ boundaryId, locale });
 }
 
 function getLoadedMessage({ key, locale }: {
@@ -215,6 +302,28 @@ function getLoadedMessage({ key, locale }: {
   locale: UiLocale;
 }): Strings[StringKey] | undefined {
   return registries[locale][key];
+}
+
+function getActiveMessage({ key, locale }: {
+  key: string;
+  locale: UiLocale;
+}): Strings[StringKey] | undefined {
+  // During HMR, the render registry can retain an outgoing owner's message.
+  // Imperative reads must use a still-registered, loaded owner instead.
+  const renderedMessage = getLoadedMessage({ key, locale });
+  let firstLoadedMessage: Strings[StringKey] | undefined;
+  for (const boundaryId of boundaryIdsByKey.get(key) ?? []) {
+    const message = loadedBoundaryModules[locale].get(boundaryId)?.[key];
+    if (message === undefined) {
+      continue;
+    }
+    // Preserve the current shared-message choice whenever it is still active.
+    if (message === renderedMessage) {
+      return message;
+    }
+    firstLoadedMessage ??= message;
+  }
+  return firstLoadedMessage;
 }
 
 function scheduleBoundaryWarmup({ boundaryId }: {
@@ -276,6 +385,17 @@ function rebuildRegistryMessage({ key, locale }: {
   key: string;
   locale: UiLocale;
 }): void {
+  switch (boundaryUpdateState) {
+  case 'updating':
+    deferredRegistryKeys.add(key);
+    return;
+  case 'idle':
+    break;
+  default: {
+    const _exhaustive: never = boundaryUpdateState;
+    throw new Error(`Unexpected Boundary Strings update state: ${_exhaustive}`);
+  }
+  }
   const boundaryIds = boundaryIdsByKey.get(key);
   if (boundaryIds !== undefined) {
     for (const boundaryId of boundaryIds) {
@@ -322,52 +442,91 @@ function getLazyStringAccessor({ key }: {
   return accessor;
 }
 
+function removeStringBoundary({ registration }: {
+  registration: StringBoundaryRegistration;
+}): void {
+  const { boundaryId, keys } = registration;
+  if (boundaryRegistrations.get(boundaryId) !== registration) {
+    return;
+  }
+
+  boundaryRegistrations.delete(boundaryId);
+  scheduledBoundaryWarmups.get(boundaryId)?.();
+  scheduledBoundaryWarmups.delete(boundaryId);
+  usedBoundaryIds.delete(boundaryId);
+  warmedBoundaryIds.delete(boundaryId);
+  for (const key of keys) {
+    const boundaryIds = boundaryIdsByKey.get(key);
+    boundaryIds?.delete(boundaryId);
+    if (boundaryIds?.size === 0) {
+      boundaryIdsByKey.delete(key);
+    }
+  }
+  for (const locale of UI_LOCALES) {
+    loadedBoundaryModules[locale].delete(boundaryId);
+    const loadKey = boundaryLoadKey({ boundaryId, locale });
+    loadingBoundaries.get(loadKey)?.cancel();
+    loadingBoundaries.delete(loadKey);
+    for (const key of keys) {
+      rebuildRegistryMessage({ key, locale });
+    }
+  }
+}
+
 export function registerStringBoundary({ boundaryId, keys, loaders }: {
   boundaryId: string;
   keys: readonly string[];
   loaders: StringBoundaryLoaders;
-}): void {
+}): {
+  unregister: () => void;
+  updateLocale: ({ locale, module }: { locale: UiLocale; module: StringBoundaryModule }) => void;
+} {
   if (keys.length === 0 || new Set(keys).size !== keys.length) {
     throw new Error(
       `Boundary Strings boundary ${boundaryId} must register a non-empty list of unique message keys.`,
     );
   }
 
+  const wasUsed = usedBoundaryIds.has(boundaryId);
+  const wasWarmed = warmedBoundaryIds.has(boundaryId);
   const previous = boundaryRegistrations.get(boundaryId);
   if (previous !== undefined) {
-    for (const key of previous.keys) {
-      const boundaryIds = boundaryIdsByKey.get(key);
-      boundaryIds?.delete(boundaryId);
-      if (boundaryIds?.size === 0) {
-        boundaryIdsByKey.delete(key);
-      }
-    }
-    scheduledBoundaryWarmups.get(boundaryId)?.();
-    scheduledBoundaryWarmups.delete(boundaryId);
-    for (const locale of UI_LOCALES) {
-      loadedBoundaryModules[locale].delete(boundaryId);
-      loadingBoundaries.delete(boundaryLoadKey({ boundaryId, locale }));
-      for (const key of previous.keys) {
-        rebuildRegistryMessage({ key, locale });
-      }
-    }
+    removeStringBoundary({ registration: previous });
   }
 
-  boundaryRegistrations.set(boundaryId, {
-    boundaryId,
-    keys,
-    loaders,
-  });
+  const registration = { boundaryId, keys, loaders };
+  boundaryRegistrations.set(boundaryId, registration);
   for (const key of keys) {
     const boundaryIds = boundaryIdsByKey.get(key) ?? new Set<string>();
     boundaryIds.add(boundaryId);
     boundaryIdsByKey.set(key, boundaryIds);
+  }
+  if (wasUsed) {
+    usedBoundaryIds.add(boundaryId);
+  }
+  if (wasWarmed) {
+    warmedBoundaryIds.add(boundaryId);
   }
 
   // Naidan already evaluates async child modules while their parent is idle.
   // Scheduling from registration therefore follows real code proximity and
   // reduces empty first renders without handwritten component-specific hints.
   scheduleBoundaryWarmup({ boundaryId });
+
+  // Both callbacks belong to this registration, not to a later version of the owner.
+  return {
+    unregister: () => removeStringBoundary({ registration }),
+    updateLocale: ({ locale, module }) => {
+      if (boundaryRegistrations.get(boundaryId) !== registration) {
+        return;
+      }
+      installBoundaryModule({ registration, locale, module });
+      const loadKey = boundaryLoadKey({ boundaryId, locale });
+      // Release callers awaiting the obsolete import even if it never settles.
+      loadingBoundaries.get(loadKey)?.cancel();
+      loadingBoundaries.delete(loadKey);
+    },
+  };
 }
 
 /**
@@ -427,12 +586,15 @@ function getEnsureStringAccessor({ key }: {
   // eslint-disable-next-line local-rules-named-args/require-named-args
   const accessor = async (...args: readonly unknown[]): Promise<string> => {
     const locale = currentLocaleState.value;
-    await ensureKeyLoaded({ key, locale });
-    const message = getLoadedMessage({ key, locale });
-    if (message === undefined) {
-      throw new Error(`Boundary Strings message ${String(key)} was not registered.`);
+    while (true) {
+      await ensureKeyLoaded({ key, locale });
+      const message = getActiveMessage({ key, locale });
+      if (message !== undefined) {
+        return Reflect.apply(message, undefined, args) as string;
+      }
+      // HMR can replace the owner after the loaded check but before this
+      // continuation resumes. Recheck that owner without masking load errors.
     }
-    return Reflect.apply(message, undefined, args) as string;
   };
   ensureStringAccessorCache.set(key, accessor);
   return accessor;
@@ -458,6 +620,13 @@ export const ensureStrings = new Proxy({}, {
   },
 }) as EnsureStrings;
 
+function hasUnpreparedLocaleBoundaries({ locale }: { locale: UiLocale }): boolean {
+  return scheduledBoundaryWarmups.size !== 0
+    || [...usedBoundaryIds, ...warmedBoundaryIds].some((boundaryId) => (
+      !loadedBoundaryModules[locale].has(boundaryId)
+    ));
+}
+
 export async function prepareLocale({ locale }: {
   locale: UiLocale;
 }): Promise<void> {
@@ -472,10 +641,7 @@ export async function prepareLocale({ locale }: {
       await ensureBoundaryLoaded({ boundaryId, locale: effectiveLocale });
     }));
 
-    const hasUnpreparedBoundary = [...usedBoundaryIds, ...warmedBoundaryIds].some((boundaryId) => {
-      return !loadedBoundaryModules[effectiveLocale].has(boundaryId);
-    });
-    if (!hasUnpreparedBoundary && scheduledBoundaryWarmups.size === 0) {
+    if (!hasUnpreparedLocaleBoundaries({ locale: effectiveLocale })) {
       return;
     }
   }
@@ -486,10 +652,14 @@ export async function setLocale({ locale }: {
 }): Promise<void> {
   const effectiveLocale = resolveEffectiveLocale({ locale });
   const request = ++localeSwitchRequest;
-  await prepareLocale({ locale: effectiveLocale });
-  if (request !== localeSwitchRequest) {
-    return;
-  }
+  do {
+    await prepareLocale({ locale: effectiveLocale });
+    if (request !== localeSwitchRequest) {
+      return;
+    }
+    // A module can register or replace a boundary after preparation completes
+    // but before this continuation runs. Recheck readiness before committing.
+  } while (hasUnpreparedLocaleBoundaries({ locale: effectiveLocale }));
 
   if (currentLocaleState.value !== effectiveLocale) {
     currentLocaleState.value = effectiveLocale;
@@ -498,6 +668,8 @@ export async function setLocale({ locale }: {
 }
 
 export const TEST_ONLY = {
+  beginBoundaryUpdate,
+  finishBoundaryUpdate,
   boundaryIdsByKey,
   boundaryRegistrations,
   ensureBoundaryLoaded,
@@ -519,6 +691,9 @@ export const TEST_ONLY = {
     for (const registry of Object.values(registries)) {
       clearRegistry({ registry });
     }
+    for (const load of loadingBoundaries.values()) {
+      load.cancel();
+    }
     boundaryRegistrations.clear();
     boundaryIdsByKey.clear();
     for (const modules of Object.values(loadedBoundaryModules)) {
@@ -532,6 +707,8 @@ export const TEST_ONLY = {
     usedBoundaryIds.clear();
     warmedBoundaryIds.clear();
     localeSwitchRequest = 0;
+    boundaryUpdateState = 'idle';
+    deferredRegistryKeys.clear();
     currentLocaleState.value = 'en';
     applyDocumentLocale({ locale: 'en' });
   },
