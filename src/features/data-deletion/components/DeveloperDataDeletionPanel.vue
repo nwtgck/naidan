@@ -253,7 +253,7 @@ defineExpose({
         <AlertTriangleIcon aria-hidden="true" tw-class="mt-0.5 h-5 w-5 shrink-0 text-red-500 dark:text-red-400" />
         <div tw-class="min-w-0">
           <h4 tw-class="text-sm font-semibold text-red-800 dark:text-red-400">{{ lazyStrings.dataDeletion__delete_application_data() }}</h4>
-          <p tw-class="mt-1 text-xs leading-relaxed text-red-700/80 dark:text-red-300/70">
+          <p tw-class="mt-1 text-xs leading-relaxed text-red-700 dark:text-red-300">
             {{ lazyStrings.dataDeletion__choose_a_preset_or_select_items_individually() }}
           </p>
         </div>
@@ -262,11 +262,12 @@ defineExpose({
       <div tw-class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] gap-4">
         <div tw-class="space-y-4 min-w-0">
           <fieldset tw-class="flex min-w-0 flex-wrap items-center gap-2.5 rounded-lg border border-red-100 bg-white/70 p-3 dark:border-red-900/20 dark:bg-gray-900/40">
-            <legend tw-class="px-1 text-[11px] font-semibold text-red-800 dark:text-red-300">{{ lazyStrings.dataDeletion__selection_presets() }}</legend>
+            <legend tw-class="px-1 text-sm font-semibold text-red-800 dark:text-red-300">{{ lazyStrings.dataDeletion__selection_presets() }}</legend>
             <ActionButton
               :disabled="false"
               appearance="primary"
               icon-tone="red"
+              tw-class="text-sm!"
               @click="applyFactoryResetPreset"
               data-testid="data-deletion-factory-reset-preset-button"
             >
@@ -277,12 +278,13 @@ defineExpose({
               :icon-tone="undefined"
               :disabled="!canDeleteSelectedData"
               appearance="secondary"
+              tw-class="text-sm!"
               @click="clearAllSelections"
               data-testid="data-deletion-clear-all-selections-button"
             >
               {{ lazyStrings.dataDeletion__clear_all_selections() }}
             </ActionButton>
-            <label tw-class="inline-flex cursor-pointer select-none items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300 sm:ml-auto">
+            <label tw-class="inline-flex cursor-pointer select-none items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300 sm:ml-auto">
               <SettingsChoiceControl presentation="checkbox" tone="red">
                 <input v-model="advancedMode" type="checkbox" data-testid="data-deletion-advanced-mode-checkbox">
               </SettingsChoiceControl>
@@ -293,20 +295,20 @@ defineExpose({
           <section
             v-for="group in visibleGroups"
             :key="group.group"
-            tw-class="overflow-hidden rounded-lg border border-red-100 dark:border-red-900/20 bg-white/80 dark:bg-gray-900/40"
+            tw-class="@container overflow-hidden rounded-lg border border-red-100 dark:border-red-900/20 bg-white/80 dark:bg-gray-900/40"
           >
             <div tw-class="flex flex-wrap items-center justify-between gap-3 border-b border-red-100 dark:border-red-900/20 bg-red-50/40 dark:bg-red-900/10 px-3 py-2.5">
               <div tw-class="flex items-center gap-2 min-w-0">
                 <DatabaseIcon v-if="group.group === 'indexedDb'" tw-class="w-4 h-4 text-red-500 shrink-0" />
                 <HardDriveIcon v-else-if="group.group === 'opfs'" tw-class="w-4 h-4 text-red-500 shrink-0" />
                 <ListTreeIcon v-else tw-class="w-4 h-4 text-red-500 shrink-0" />
-                <h5 tw-class="truncate text-xs font-medium text-red-800 dark:text-red-300">
+                <h5 tw-class="break-words text-sm font-medium text-red-800 dark:text-red-300">
                   {{ getGroupLabel({ group: group.group }) }}
                 </h5>
               </div>
               <div tw-class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                <span tw-class="text-[10px] font-medium text-red-500/70 dark:text-red-300/60">{{ getGroupMeta({ group: group.group }) }}</span>
-                <label tw-class="inline-flex cursor-pointer items-center gap-2 text-[11px] font-medium text-red-700 dark:text-red-300">
+                <span tw-class="text-xs font-medium text-red-600 dark:text-red-300">{{ getGroupMeta({ group: group.group }) }}</span>
+                <label tw-class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-red-700 dark:text-red-300">
                   <SettingsChoiceControl presentation="checkbox" tone="red">
                     <input
                       type="checkbox"
@@ -325,7 +327,7 @@ defineExpose({
               <label
                 v-for="option in group.options"
                 :key="option.id"
-                tw-class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-3 py-2.5 transition-colors hover:bg-red-50/30 dark:hover:bg-red-900/5"
+                tw-class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1 px-3 py-2.5 transition-colors hover:bg-red-50/30 dark:hover:bg-red-900/5 @sm:grid-cols-[auto_minmax(0,1fr)_auto]"
                 :data-testid="`data-deletion-option-${option.id}`"
               >
                 <SettingsChoiceControl presentation="checkbox" tone="red" tw-class="mt-0.5">
@@ -337,15 +339,15 @@ defineExpose({
                   >
                 </SettingsChoiceControl>
                 <span tw-class="min-w-0">
-                  <span tw-class="block font-mono text-xs font-medium text-gray-800 dark:text-gray-100 break-words">
+                  <span tw-class="block font-mono text-sm font-medium text-gray-800 dark:text-gray-100 break-words">
                     {{ option.label }}
                   </span>
-                  <span tw-class="mt-0.5 block text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  <span tw-class="mt-0.5 block text-xs leading-relaxed text-gray-600 dark:text-gray-300">
                     {{ option.description }}
                   </span>
                   <span
                     v-if="isOptionUnsupported({ id: option.id })"
-                    tw-class="mt-2 inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300"
+                    tw-class="mt-2 inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300"
                     :title="getOptionSupportMessage({ id: option.id })"
                     :data-testid="`data-deletion-option-warning-${option.id}`"
                   >
@@ -355,7 +357,7 @@ defineExpose({
                 </span>
                 <span
                   v-if="option.advanced"
-                  tw-class="mt-0.5 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-[9px] font-medium text-gray-400 dark:text-gray-500"
+                  tw-class="col-start-2 mt-0.5 justify-self-start rounded-md border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300 @sm:col-auto"
                 >
                   Advanced
                 </span>
@@ -370,7 +372,7 @@ defineExpose({
             :disabled="!canDeleteSelectedData"
             appearance="danger-filled"
             @click="handleDeleteSelectedData"
-            tw-class="w-full"
+            tw-class="w-full text-sm!"
             data-testid="setting-reset-data-button"
           >
             <Trash2Icon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
@@ -383,23 +385,23 @@ defineExpose({
 
           <div tw-class="rounded-lg border border-red-100 dark:border-red-900/20 bg-white/80 dark:bg-gray-900/40 overflow-hidden" data-testid="data-deletion-preview-panel">
             <div tw-class="border-b border-red-100 dark:border-red-900/20 bg-red-50/40 dark:bg-red-900/10 px-3 py-2.5">
-              <h5 tw-class="text-xs font-semibold text-red-800 dark:text-red-300">{{ lazyStrings.dataDeletion__deletion_preview() }}</h5>
-              <p tw-class="mt-1 text-[11px] leading-relaxed text-red-700/80 dark:text-red-300/70">
+              <h5 tw-class="text-sm font-semibold text-red-800 dark:text-red-300">{{ lazyStrings.dataDeletion__deletion_preview() }}</h5>
+              <p tw-class="mt-1 text-xs leading-relaxed text-red-700 dark:text-red-300">
                 {{ lazyStrings.dataDeletion__checked_selectors_matching_entries() }}
               </p>
             </div>
 
             <div tw-class="space-y-3 p-3">
               <div tw-class="space-y-2" aria-live="polite" :aria-busy="previewStatus === 'scanning'">
-                <h6 tw-class="text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.dataDeletion__preview_entries() }}</h6>
-                <div v-if="previewStatus === 'scanning'" tw-class="flex items-center gap-2 py-2 text-xs text-gray-500 dark:text-gray-400">
+                <h6 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.dataDeletion__preview_entries() }}</h6>
+                <div v-if="previewStatus === 'scanning'" tw-class="flex items-center gap-2 py-2 text-xs text-gray-600 dark:text-gray-300">
                   <Loader2Icon class="data-deletion-spinner" aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />
                   <span>{{ lazyStrings.dataDeletion__scanning_storage() }}</span>
                 </div>
                 <div v-else-if="previewErrorMessage" role="alert" tw-class="whitespace-pre-wrap rounded-lg border border-red-100 dark:border-red-900/20 bg-red-50 dark:bg-red-900/10 px-3 py-2.5 text-xs leading-relaxed text-red-700 dark:text-red-300">
                   {{ previewErrorMessage }}
                 </div>
-                <div v-else-if="preview.entries.length === 0" tw-class="py-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                <div v-else-if="preview.entries.length === 0" tw-class="py-2 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
                   {{ lazyStrings.dataDeletion__no_matching_entries() }}
                 </div>
                 <ul v-else tw-class="max-h-96 divide-y divide-red-100 overflow-auto dark:divide-red-900/20">
@@ -408,8 +410,8 @@ defineExpose({
                     :key="`${entry.location}:${entry.path}`"
                     tw-class="py-2"
                   >
-                    <div tw-class="break-all font-mono text-[11px] text-gray-800 dark:text-gray-100">{{ entry.path }}</div>
-                    <div tw-class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                    <div tw-class="break-all font-mono text-xs text-gray-800 dark:text-gray-100">{{ entry.path }}</div>
+                    <div tw-class="mt-1 text-xs text-gray-600 dark:text-gray-300">
                       {{ entry.location }}
                     </div>
                   </li>
@@ -420,7 +422,7 @@ defineExpose({
                 <div
                   v-for="note in preview.notes"
                   :key="note"
-                  tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400"
+                  tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-300"
                 >
                   {{ note }}
                 </div>

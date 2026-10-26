@@ -105,7 +105,7 @@ defineExpose({
               :disabled="false"
               appearance="primary"
               @click="createSampleChat"
-              tw-class="w-full sm:w-auto"
+              tw-class="w-full text-sm! sm:w-auto"
               data-testid="setting-create-sample-button"
             >
               <FlaskConicalIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
@@ -116,20 +116,20 @@ defineExpose({
               :disabled="false"
               appearance="primary"
               @click="createLongSampleChat"
-              tw-class="w-full sm:w-auto"
+              tw-class="w-full text-sm! sm:w-auto"
               data-testid="setting-create-long-sample-button"
             >
               <ScrollTextIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
               {{ lazyStrings.DeveloperTab__create_long_sample_chat() }}
             </ActionButton>
           </div>
-          <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
+          <p tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
         </section>
 
         <section v-if="canOpenModelSupportInvestigation" tw-class="space-y-3 border-t border-gray-200/70 pt-5 dark:border-gray-800">
           <div>
             <h3 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}</h3>
-            <p tw-class="mt-1.5 max-w-2xl text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            <p tw-class="mt-1.5 max-w-2xl text-xs leading-relaxed text-gray-600 dark:text-gray-300">
               {{ lazyStrings.ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation() }}
             </p>
           </div>
@@ -138,7 +138,7 @@ defineExpose({
             :disabled="false"
             appearance="primary"
             data-testid="open-model-support-investigation-button"
-            tw-class="w-full sm:w-auto"
+            tw-class="w-full text-sm! sm:w-auto"
             @click="openModelSupportInvestigation"
           >
             <SearchCheckIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
@@ -158,14 +158,14 @@ defineExpose({
               appearance="primary"
               :aria-pressed="hasPWAUpdate"
               @click="togglePWAUpdate"
-              tw-class="w-full"
+              tw-class="w-full text-sm!"
               data-testid="toggle-pwa-update-button"
             >
               <RefreshCwIcon :class="hasPWAUpdate ? 'animate-spin-slow' : ''" aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
               <span tw-class="min-w-0 flex-1 text-left">{{ lazyStrings.DeveloperTab__simulate_pwa_update() }}</span>
               <span v-if="hasPWAUpdate" aria-hidden="true" tw-class="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400" />
             </ActionButton>
-            <p tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</p>
+            <p tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</p>
           </div>
 
           <div tw-class="min-w-0 space-y-2">
@@ -174,13 +174,13 @@ defineExpose({
               :disabled="false"
               appearance="secondary"
               @click="handleReload"
-              tw-class="w-full"
+              tw-class="w-full text-sm!"
               data-testid="reload-app-button"
             >
               <RefreshCwIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
               <span tw-class="min-w-0 flex-1 text-left">{{ lazyStrings.DeveloperTab__reload_application() }}</span>
             </ActionButton>
-            <p tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.DeveloperTab__perform_window_reload() }}</p>
+            <p tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.DeveloperTab__perform_window_reload() }}</p>
           </div>
         </section>
 

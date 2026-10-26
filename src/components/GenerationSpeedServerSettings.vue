@@ -5,6 +5,10 @@ import { useGenerationSpeedSettings } from '@/composables/useGenerationSpeedSett
 import { lazyStrings } from '@/strings';
 import RadioButton from './RadioButton.vue';
 
+const props = defineProps<{
+  presentation: 'settings' | 'popover',
+}>();
+
 const groupName = useId();
 const { llamaCppServerTimings, saving, update } = useGenerationSpeedSettings();
 const options = computed(() => (['auto', 'enabled', 'disabled'] as const).map(mode => ({
@@ -22,15 +26,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <fieldset :disabled="saving" tw-class="min-w-0 space-y-2 text-[11px]" data-testid="generation-speed-server-settings">
+  <fieldset :disabled="saving" :tw-class="['min-w-0 space-y-2', props.presentation === 'settings' ? 'text-xs' : 'text-[11px]']" data-testid="generation-speed-server-settings">
     <legend tw-class="mb-2 font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.GenerationSpeed__llama_cpp_server_timings() }}</legend>
     <div tw-class="flex flex-wrap gap-x-4 gap-y-2">
-      <label v-for="option in options" :key="option.mode" tw-class="flex cursor-pointer items-center gap-1.5 text-gray-600 dark:text-gray-300">
+      <label v-for="option in options" :key="option.mode" :tw-class="['flex cursor-pointer items-center gap-1.5 text-gray-600', props.presentation === 'settings' ? 'dark:text-gray-400' : 'dark:text-gray-300']">
         <RadioButton tone="amber" :name="groupName" :value="option.mode" :checked="llamaCppServerTimings === option.mode" @change="choose({ mode: option.mode })" />
         <span>{{ option.label }}</span>
       </label>
     </div>
-    <p tw-class="text-[10px] leading-relaxed text-gray-400 dark:text-gray-500">{{ lazyStrings.GenerationSpeed__llama_cpp_server_timings_help() }}</p>
-    <p v-if="llamaCppServerTimings === 'enabled'" tw-class="text-[10px] leading-relaxed text-amber-700 dark:text-amber-400" data-testid="generation-speed-server-warning">{{ lazyStrings.GenerationSpeed__llama_cpp_server_timings_warning() }}</p>
+    <p :tw-class="['leading-relaxed', props.presentation === 'settings' ? 'text-xs text-gray-600 dark:text-gray-400' : 'text-[10px] text-gray-400 dark:text-gray-500']">{{ lazyStrings.GenerationSpeed__llama_cpp_server_timings_help() }}</p>
+    <p v-if="llamaCppServerTimings === 'enabled'" :tw-class="['leading-relaxed text-amber-700 dark:text-amber-400', props.presentation === 'settings' ? 'text-xs' : 'text-[10px]']" data-testid="generation-speed-server-warning">{{ lazyStrings.GenerationSpeed__llama_cpp_server_timings_warning() }}</p>
   </fieldset>
 </template>
