@@ -2,6 +2,7 @@ import type { ChatPromptPart } from '@/features/llama-cpp-browser/runtime/chat-b
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { tokenizePrompt } from './tokenize-prompt';
+import { coalescePromptTokenBoundaries, type PromptBoundaryCore } from './prompt-token-boundaries';
 
 export type EncodedPromptPart = {
   byteOffset: number,
@@ -9,10 +10,13 @@ export type EncodedPromptPart = {
   isInput: boolean,
 };
 
-export type TokenizedPromptPart = EncodedPromptPart & {
+export type TokenizedPromptPart = {
+  byteOffset: number,
+  byteLength: number,
   tokenOffset: number,
   tokenCount: number,
   addSpecial: boolean,
+  parseSpecial: boolean,
 };
 
 /** Encode each native segment once. Only offsets, not views into Wasm memory,
@@ -52,8 +56,8 @@ export function encodeChatPrompt({ parts }: { parts: readonly ChatPromptPart[] }
   return { data, parts: spans };
 }
 
-type PromptCore = Pick<Core, 'alloc' | 'tryAlloc' | 'bytes' | 'free'> & {
-  api: Pick<Core['api'], 'llama_tokenize' | 'llama_vocab_get_add_bos' | 'llama_vocab_get_add_eos'
+type PromptCore = Pick<Core, 'alloc' | 'tryAlloc' | 'bytes' | 'free' | 'constant'> & {
+  api: PromptBoundaryCore['api'] & Pick<Core['api'], 'llama_vocab_get_add_bos' | 'llama_vocab_get_add_eos'
     | 'llama_vocab_get_add_sep' | 'llama_vocab_bos' | 'llama_vocab_eos' | 'llama_vocab_sep'>,
 };
 
@@ -75,11 +79,22 @@ export async function tokenizeChatPrompt({ core, vocab, prompt, parts, contextTo
     length += part.byteLength;
   }
   if (parts.length === 1) {
-    const part = parts[0]!;
-    const result = await tokenizePrompt({ core, vocab, prompt, promptBytes: part.byteLength, contextTokens, addSpecial: true, parseSpecial: !part.isInput, onTokenize });
-    return { ...result, parts: [{ ...part, tokenOffset: 0, tokenCount: result.tokens.length, addSpecial: true }] };
+    const { byteOffset, byteLength, isInput, ...unhandled } = parts[0]!;
+    unhandled satisfies Record<PropertyKey, never>;
+    const result = await tokenizePrompt({ core, vocab, prompt, promptBytes: byteLength, contextTokens, addSpecial: true, parseSpecial: !isInput, onTokenize });
+    return {
+      ...result,
+      parts: [{
+        byteOffset,
+        byteLength,
+        parseSpecial: !isInput,
+        tokenOffset: 0,
+        tokenCount: result.tokens.length,
+        addSpecial: true,
+      }],
+    };
   }
-  const tokens: number[] = [];
+  let tokens: number[] = [];
   const suffix: number[] = [];
   const api = core.api;
   if (await api.llama_vocab_get_add_bos(vocab)) {
@@ -99,20 +114,29 @@ export async function tokenizeChatPrompt({ core, vocab, prompt, parts, contextTo
   if (tokens.length + suffix.length >= contextTokens) {
     throw new LlamaCppBrowserError({ code: 'context-full' });
   }
-  const tokenizedParts: TokenizedPromptPart[] = [];
+  let tokenizedParts: TokenizedPromptPart[] = [];
   for (const part of parts) {
+    const { byteOffset, byteLength, isInput, ...unhandled } = part;
+    unhandled satisfies Record<PropertyKey, never>;
     const result = await tokenizePrompt({
       core,
       vocab,
-      prompt: prompt + BigInt(part.byteOffset),
-      promptBytes: part.byteLength,
+      prompt: prompt + BigInt(byteOffset),
+      promptBytes: byteLength,
       contextTokens: contextTokens - tokens.length - suffix.length,
       addSpecial: false,
-      parseSpecial: !part.isInput,
+      parseSpecial: !isInput,
       onTokenize,
     });
     try {
-      tokenizedParts.push({ ...part, tokenOffset: tokens.length, tokenCount: result.tokens.length, addSpecial: false });
+      tokenizedParts.push({
+        byteOffset,
+        byteLength,
+        parseSpecial: !isInput,
+        tokenOffset: tokens.length,
+        tokenCount: result.tokens.length,
+        addSpecial: false,
+      });
       // Do not spread an unbounded token array into function arguments.
       for (const token of result.tokens) {
         tokens.push(token);
@@ -122,6 +146,11 @@ export async function tokenizeChatPrompt({ core, vocab, prompt, parts, contextTo
     }
   }
   tokens.push(...suffix);
+  const canonical = await coalescePromptTokenBoundaries({ core, vocab, prompt, tokens, parts: tokenizedParts, contextTokens, onTokenize });
+  if (canonical) {
+    tokens = canonical.tokens;
+    tokenizedParts = canonical.parts;
+  }
   if (!tokens.length) {
     throw new LlamaCppBrowserError({ code: 'context-full' });
   }

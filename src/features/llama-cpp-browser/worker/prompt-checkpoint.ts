@@ -158,7 +158,7 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
     // view after it settles because tokenization can grow Wasm memory.
     core.bytes({ pointer, length: capacity * 4 });
     onTokenize();
-    let count = await core.api.llama_tokenize(vocab, textPointer, textLength, pointer, capacity, Number(part.addSpecial), Number(!part.isInput));
+    let count = await core.api.llama_tokenize(vocab, textPointer, textLength, pointer, capacity, Number(part.addSpecial), Number(part.parseSpecial));
     if (Number.isInteger(count) && count >= -2147483647 && count < -capacity && count >= -maximumCount) {
       const required = -count;
       const previous = pointer;
@@ -171,7 +171,7 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
       }
       core.bytes({ pointer, length: capacity * 4 });
       onTokenize();
-      count = await core.api.llama_tokenize(vocab, textPointer, textLength, pointer, capacity, Number(part.addSpecial), Number(!part.isInput));
+      count = await core.api.llama_tokenize(vocab, textPointer, textLength, pointer, capacity, Number(part.addSpecial), Number(part.parseSpecial));
       if (count !== required) {
         return fallback;
       }

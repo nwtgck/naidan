@@ -18,6 +18,26 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
   core: TokenizeCore, vocab: bigint, prompt: bigint, promptBytes: number, contextTokens: number,
   addSpecial: boolean, parseSpecial: boolean, onTokenize: () => void,
 }): Promise<{ pointer: bigint, tokens: number[] }> {
+  const result = await tokenizePromptWithAllocation({ core, vocab, prompt, promptBytes, contextTokens, addSpecial, parseSpecial, onTokenize, allocation: 'required' });
+  if (!result) {
+    throw new LlamaCppBrowserError({ code: 'runtime-error' });
+  }
+  return result;
+}
+
+/** Optional optimization buffers must not turn a successful baseline into an
+ * allocation failure. Native errors still propagate without being retried. */
+export async function tryTokenizePrompt({ core, vocab, prompt, promptBytes, contextTokens, addSpecial, parseSpecial, onTokenize }: {
+  core: TokenizeCore, vocab: bigint, prompt: bigint, promptBytes: number, contextTokens: number,
+  addSpecial: boolean, parseSpecial: boolean, onTokenize: () => void,
+}): Promise<{ pointer: bigint, tokens: number[] } | undefined> {
+  return tokenizePromptWithAllocation({ core, vocab, prompt, promptBytes, contextTokens, addSpecial, parseSpecial, onTokenize, allocation: 'optional' });
+}
+
+async function tokenizePromptWithAllocation({ core, vocab, prompt, promptBytes, contextTokens, addSpecial, parseSpecial, onTokenize, allocation }: {
+  core: TokenizeCore, vocab: bigint, prompt: bigint, promptBytes: number, contextTokens: number,
+  addSpecial: boolean, parseSpecial: boolean, onTokenize: () => void, allocation: 'required' | 'optional',
+}): Promise<{ pointer: bigint, tokens: number[] } | undefined> {
   if (!Number.isInteger(contextTokens) || contextTokens < (addSpecial ? 2 : 1) || contextTokens > maximumNativeCount
     || !Number.isInteger(promptBytes) || promptBytes < 0 || promptBytes > maximumNativeCount) {
     throw new LlamaCppBrowserError({ code: 'runtime-error' });
@@ -28,6 +48,16 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
   // still trigger the exact-size retry, including unusual tokenizer families.
   let capacity = Math.max(1, Math.min(maximumTokens, speculativeTokens, promptBytes + 8));
   let pointer = core.tryAlloc({ bytes: capacity * 4 });
+  if (pointer === undefined) {
+    switch (allocation) {
+    case 'required': break;
+    case 'optional': return undefined;
+    default: {
+      const exhaustive: never = allocation;
+      throw new Error(`Unknown allocation policy: ${exhaustive}`);
+    }
+    }
+  }
   let transferred = false;
   const tokenize = async (): Promise<number> => {
     // Do not retain a view across native execution: Wasm memory may grow.
@@ -63,7 +93,14 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
       capacity = required;
       pointer = core.tryAlloc({ bytes: capacity * 4 });
       if (pointer === undefined) {
-        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+        switch (allocation) {
+        case 'required': throw new LlamaCppBrowserError({ code: 'runtime-error' });
+        case 'optional': return undefined;
+        default: {
+          const exhaustive: never = allocation;
+          throw new Error(`Unknown allocation policy: ${exhaustive}`);
+        }
+        }
       }
       count = await tokenize();
       if (count !== required) {
