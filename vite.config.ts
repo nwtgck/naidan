@@ -15,7 +15,7 @@ import { createRequire } from 'node:module';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream';
 import { promisify } from 'node:util';
-import { JSDOM } from 'jsdom';
+import { createBuildDom } from './build/jsdom';
 import pkg from './package.json';
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
 import { createNaidanStandalonePlugin } from './build/file-protocol-standalone/plugin.js';
@@ -37,7 +37,6 @@ import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './
 import { createZipPackages } from './build/zip-packages';
 import { standaloneZipDefinitions } from './build/standalone-zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
-import { createLlamaCppRuntimeAssetsPlugin } from './src/features/llama-cpp-browser/build-runtime-assets';
 import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
 import { createTransformersJsFixesViteConfig } from './build/transformers-js-fixes/plugin';
 import { UI_LOCALES } from './src/01-models/ui-locale';
@@ -82,12 +81,25 @@ function stripPrivacyFetchBrokerDevInjectedScriptsPlugin(): import('vite').Plugi
     name: 'strip-privacy-fetch-broker-dev-injected-scripts',
     apply: 'serve',
     enforce: 'post',
+    hotUpdate(options) {
+      if (
+        this.environment.name === 'client'
+        && this.environment.config.server.hmr !== false
+        && path.resolve(options.file) === path.resolve(this.environment.config.root, 'privacy-fetch-broker.html')
+      ) {
+        // The sandbox intentionally has no HMR client. A path-scoped HTML reload
+        // is ignored by the parent page, so recreate both execution contexts.
+        this.environment.hot.send({ type: 'full-reload' });
+        return [];
+      }
+      return options.modules;
+    },
     transformIndexHtml(html, context) {
       if (context.path !== '/privacy-fetch-broker.html') {
         return html;
       }
 
-      const dom = new JSDOM(html);
+      const dom = createBuildDom({ html, options: undefined });
       const { document } = dom.window;
       const devInjectedScriptSourceMarkers = [
         '/@vite/client',
@@ -309,7 +321,7 @@ export default defineConfig(({ mode, command }) => {
         ],
       }),
       isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: __dirname }),
-      !isStandalone && createLlamaCppRuntimeAssetsPlugin({ rootDir: __dirname }),
+      !isStandalone && llamaCppBuild.runtimeAssetsPlugin,
       llamaCppBuild.corePlugin,
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
@@ -441,8 +453,9 @@ const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
   outDir: string,
   zipFileName: string,
   folderName: string,
-}) => ({
+}): Plugin => ({
   name: `zip-packager-plugin-${zipFileName}`,
+  apply: 'build',
   async closeBundle() {
     await createZipPackage({ outDir, zipFileName, folderName });
   },

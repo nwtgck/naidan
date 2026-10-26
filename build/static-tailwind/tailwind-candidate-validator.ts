@@ -13,6 +13,8 @@ const require = createRequire(import.meta.url);
 
 type TailwindCompileOptions = NonNullable<Parameters<typeof compile>[1]>;
 type LoadedModule = Awaited<ReturnType<NonNullable<TailwindCompileOptions['loadModule']>>>;
+export type TailwindDependencyObserver = ((options: { filename: string }) => void) | undefined;
+
 type LoadedStylesheet = Awaited<ReturnType<NonNullable<TailwindCompileOptions['loadStylesheet']>>>;
 
 export type TailwindCandidateClassification = {
@@ -66,13 +68,15 @@ async function loadModule({ id, base }: {
   };
 }
 
-function loadStylesheet({ id, base, stylesheetDependencies }: {
+function loadStylesheet({ id, base, stylesheetDependencies, onDependency }: {
   id: string;
   base: string;
   stylesheetDependencies: Set<string>;
+  onDependency: TailwindDependencyObserver;
 }): LoadedStylesheet {
   const resolvedPath = resolveDependency({ id, base, stylesheet: true });
   stylesheetDependencies.add(resolvedPath);
+  onDependency?.({ filename: resolvedPath });
   return {
     path: resolvedPath,
     base: path.dirname(resolvedPath),
@@ -107,15 +111,16 @@ function assertTailwindVersion({ expectedTailwindVersion }: {
   return installedTailwindVersion;
 }
 
-function compileOptions({ absoluteCssEntryPath, stylesheetDependencies }: {
+function compileOptions({ absoluteCssEntryPath, stylesheetDependencies, onDependency }: {
   absoluteCssEntryPath: string;
   stylesheetDependencies: Set<string>;
+  onDependency: TailwindDependencyObserver;
 }): TailwindCompileOptions {
   return {
     base: path.dirname(absoluteCssEntryPath),
     from: absoluteCssEntryPath,
     loadModule: async (id, base) => loadModule({ id, base }),
-    loadStylesheet: async (id, base) => loadStylesheet({ id, base, stylesheetDependencies }),
+    loadStylesheet: async (id, base) => loadStylesheet({ id, base, stylesheetDependencies, onDependency }),
   };
 }
 
@@ -123,10 +128,12 @@ export async function compileTailwindCss({
   cssEntryPath,
   candidates,
   expectedTailwindVersion,
+  onDependency,
 }: {
   cssEntryPath: string;
   candidates: string[];
   expectedTailwindVersion: string | undefined;
+  onDependency: TailwindDependencyObserver;
 }): Promise<{ css: string; tailwindVersion: string; stylesheetDependencies: string[] }> {
   const installedTailwindVersion = assertTailwindVersion({ expectedTailwindVersion });
   if (typeof compile !== 'function') {
@@ -134,8 +141,9 @@ export async function compileTailwindCss({
   }
   const absoluteCssEntryPath = path.resolve(cssEntryPath);
   const stylesheetDependencies = new Set([absoluteCssEntryPath]);
+  onDependency?.({ filename: absoluteCssEntryPath });
   const css = fs.readFileSync(absoluteCssEntryPath, 'utf8');
-  const compiler = await compile(css, compileOptions({ absoluteCssEntryPath, stylesheetDependencies }));
+  const compiler = await compile(css, compileOptions({ absoluteCssEntryPath, stylesheetDependencies, onDependency }));
   return {
     css: postprocessStaticTailwindCss({
       css: compiler.build([...new Set(candidates)].sort()),
@@ -149,10 +157,12 @@ export async function createTailwindCandidateValidator({
   projectRoot,
   cssEntryPath,
   expectedTailwindVersion,
+  onDependency,
 }: {
   projectRoot: string;
   cssEntryPath: string;
   expectedTailwindVersion: string | undefined;
+  onDependency: TailwindDependencyObserver;
 }): Promise<TailwindCandidateValidator> {
   const absoluteProjectRoot = path.resolve(projectRoot);
   if (!fs.existsSync(absoluteProjectRoot)) {
@@ -164,12 +174,14 @@ export async function createTailwindCandidateValidator({
     throw new Error('[tw-class] Tailwind __unstable__loadDesignSystem() is unavailable.');
   }
   const absoluteCssEntryPath = path.resolve(cssEntryPath);
+  onDependency?.({ filename: absoluteCssEntryPath });
   const css = fs.readFileSync(absoluteCssEntryPath, 'utf8');
   const designSystem = await __unstable__loadDesignSystem(
     css,
     compileOptions({
       absoluteCssEntryPath,
       stylesheetDependencies: new Set([absoluteCssEntryPath]),
+      onDependency,
     }),
   );
 

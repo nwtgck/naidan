@@ -1,25 +1,26 @@
-import { gzipSync } from 'node:zlib';
 import type { Plugin } from 'vite';
-import { hostedArtifactProfiles, readLlamaArtifactPackage } from './build-artifact-package';
+import { createGzipAsset } from '../../../build/gzip-asset';
+import type { readLlamaArtifactPackage } from './build-artifact-package';
+import type { LlamaCppProfile } from './types';
 
 /** Copy the installed artifact, never compile llama.cpp as part of Naidan's build. */
-export function createLlamaCppRuntimeAssetsPlugin({ rootDir }: { rootDir: string }): Plugin {
+export function createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }: { artifact: ReturnType<typeof readLlamaArtifactPackage>, profiles: readonly LlamaCppProfile[] }): Plugin {
   const prefix = 'llama-cpp-browser-runtime/';
-  function assets(): Map<string, Uint8Array> {
-    const result = new Map<string, Uint8Array>();
-    const artifact = readLlamaArtifactPackage({ rootDir });
-    const { readArtifact } = artifact;
-    for (const profile of hostedArtifactProfiles(artifact)) {
+  function assets(): Map<string, () => Promise<Uint8Array>> {
+    const result = new Map<string, () => Promise<Uint8Array>>();
+    for (const profile of profiles) {
       const relative = `profiles/${profile}/browser/core.wasm`;
-      const { data } = readArtifact({ relative });
-      result.set(`profiles/${profile}/core.wasm.gz`, gzipSync(data, { level: 9 }));
+      result.set(`profiles/${profile}/core.wasm.gz`, createGzipAsset({ read: () => artifact.readArtifact({ relative }).data }));
     }
     return result;
   }
+  let files = assets();
   return {
     name: 'naidan-llama-cpp-runtime-assets',
+    buildStart() {
+      files = assets();
+    },
     configureServer(server) {
-      const files = assets();
       server.middlewares.use((req, res, next) => {
         const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
         const base = new URL(server.config.base, 'http://localhost/').pathname;
@@ -29,20 +30,22 @@ export function createLlamaCppRuntimeAssetsPlugin({ rootDir }: { rootDir: string
           return;
         }
         const relative = pathname.slice(start.length);
-        const bytes = files.get(relative);
-        if (!bytes) {
+        const readAsset = files.get(relative);
+        if (readAsset === undefined) {
           res.statusCode = 404;
           res.end();
           return;
         }
-        // The loader explicitly decompresses .gz. Do not add Content-Encoding.
-        res.setHeader('Content-Type', relative.endsWith('.gz') ? 'application/gzip' : 'text/javascript');
-        res.end(bytes);
+        void readAsset().then(bytes => {
+          // The loader explicitly decompresses .gz. Do not add Content-Encoding.
+          res.setHeader('Content-Type', relative.endsWith('.gz') ? 'application/gzip' : 'text/javascript');
+          res.end(bytes);
+        }, next);
       });
     },
-    generateBundle() {
-      for (const [fileName, bytes] of assets()) {
-        this.emitFile({ type: 'asset', fileName: prefix + fileName, source: bytes });
+    async generateBundle() {
+      for (const [fileName, readAsset] of files) {
+        this.emitFile({ type: 'asset', fileName: prefix + fileName, source: await readAsset() });
       }
     },
   };

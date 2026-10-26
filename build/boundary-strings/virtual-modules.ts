@@ -193,14 +193,46 @@ export function createBoundaryRegistrationModuleSource({ boundary, compactionSta
     return `  ${JSON.stringify(locale)}: ${loader}`;
   }).join(',\n')}\n}`;
 
+  // Keep literal accept calls so Vite can discover locale-pack HMR boundaries.
+  const localeUpdates = compactionState === undefined
+    ? BOUNDARY_STRING_LOCALES.map((locale) => `\
+  import.meta.hot.accept(${JSON.stringify(packModuleId({ boundaryId: boundary.id, locale, version: boundary.version }))}, (module) => {
+    if (module === undefined) return;
+    try {
+      updateLocale({ locale: ${JSON.stringify(locale)}, module });
+    } catch (error) {
+      // Preserve the last valid messages without interrupting the HMR batch.
+      console.error('[Boundary Strings] Failed to update a message boundary.', error);
+    }
+  });`).join('\n')
+    : '';
+
   return `\
 import { registerStringBoundary } from "/src/strings/runtime.ts";
 
-registerStringBoundary({
+const { unregister, updateLocale } = registerStringBoundary({
   boundaryId: ${JSON.stringify(boundary.id)},
   keys: ${JSON.stringify(keys, undefined, 2)},
   loaders: ${serializedLoaders},
 });
+
+if (import.meta.hot) {
+${localeUpdates}
+  const hot = import.meta.hot;
+  const onPrune = ({ paths }) => {
+    // Vite can send an unwrapped virtual ID while hot contexts use /@id/ URLs.
+    if (paths.includes(${JSON.stringify(`\0${boundaryModuleId({ boundaryId: boundary.id, version: boundary.version })}`)})) {
+      cleanup();
+    }
+  };
+  const cleanup = () => {
+    hot.off('vite:beforePrune', onPrune);
+    unregister();
+  };
+  hot.on('vite:beforePrune', onPrune);
+  hot.prune(cleanup);
+  hot.dispose(() => hot.off('vite:beforePrune', onPrune));
+}
 `;
 }
 

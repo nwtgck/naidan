@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type { NaidanLicense } from '../src/01-models/naidan-license';
 import license from 'rollup-plugin-license';
 import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-license';
@@ -92,7 +94,6 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, getNativ
 }): readonly Plugin[] {
   let resolvedConfig: ResolvedConfig | undefined;
   let buildDependencies: readonly BuildLicenseDependency[] | undefined;
-  let developmentDependenciesPromise: Promise<readonly BuildLicenseDependency[]> | undefined;
 
   const modulePlugin: Plugin = {
     name: pluginName,
@@ -114,9 +115,13 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, getNativ
       }
       switch (resolvedConfig.command) {
       case 'serve': {
-        developmentDependenciesPromise ??= collectDevelopmentLicenseDependencies({ root: resolvedConfig.root });
+        // Vite caches the transformed module. Recollect whenever that module is
+        // invalidated instead of retaining stale data or a rejected promise.
+        this.addWatchFile(path.resolve(resolvedConfig.root, 'package.json'));
+        this.addWatchFile(path.resolve(resolvedConfig.root, 'package-lock.json'));
+        const developmentDependencies = await collectDevelopmentLicenseDependencies({ root: resolvedConfig.root });
         const dependencies = mergeBuildLicenseDependencies({
-          dependencyGroups: [await developmentDependenciesPromise, getAdditionalDependencies()],
+          dependencyGroups: [developmentDependencies, getAdditionalDependencies()],
         });
         const nativeDependencies = await getNativeDependencies?.({ watchFile: filePath => this.addWatchFile(filePath) }) ?? [];
         return `const createLicenseCatalog = ${serializeLicenseCatalogFactory({ dependencies: [...dependencies, ...nativeDependencies] })}; export default createLicenseCatalog;`;

@@ -172,9 +172,10 @@ describe('message implementation locale isolation', () => {
     expect((await buildLocaleFixture({ root: createFixture() })).sort()).toEqual([...BOUNDARY_STRING_LOCALES].sort());
   });
 
-  it('still rejects a foreign message re-export instead of weakening package safety', async () => {
+  it('rejects a foreign message re-export during compaction before package planning', async () => {
     const root = createFixture();
     writeFile({ root, file: `src/strings/messages/${keys[0]}/zh-Hans.ts`, source: `export { ${keys[0]} } from './en';\n` });
-    await expect(buildLocaleFixture({ root })).rejects.toThrow(/Foreign Boundary Strings payload would remain in zh-Hans package/);
+    // Compaction validates every locale implementation before the package planner.
+    await expect(buildLocaleFixture({ root })).rejects.toThrow(`[naidan-boundary-strings] Message module must export exactly one function named "${keys[0]}".`);
   });
 });

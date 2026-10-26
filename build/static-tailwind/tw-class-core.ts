@@ -449,7 +449,7 @@ function assertSupportedVueTemplateBlock({ template, filename }: { template: SFC
 }
 
 export function collectTwCandidateOccurrencesFromVueSource({ source, filename }: { source: string; filename: string }): TailwindCandidateOccurrence[] {
-  const { descriptor, errors } = parseSfc(source, { filename });
+  const { descriptor, errors } = parseSfc(source, { filename, sourceMap: false });
   if (errors.length > 0) {
     fail({ filename, message: `Unable to parse Vue SFC: ${errors.map(String).join('; ')}` });
   }
@@ -903,7 +903,7 @@ export function transformTwCallsInModule({ source, filename, sourceType, blockSt
 }
 
 export function transformTwCallsInVueSource({ source, filename, additionalImports }: { source: string; filename: string; additionalImports: string[] }) {
-  const { descriptor, errors } = parseSfc(source, { filename });
+  const { descriptor, errors } = parseSfc(source, { filename, sourceMap: false });
   if (errors.length > 0) {
     fail({ filename, message: `Unable to parse Vue SFC: ${errors.map(String).join('; ')}` });
   }

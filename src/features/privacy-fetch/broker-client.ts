@@ -490,17 +490,32 @@ export function getPrivacyFetchBrokerClient(): PrivacyFetchBrokerClient {
       windowObject: window,
       documentObject: document,
     });
-    sharedPrivacyFetchBrokerClient = {
+    const sharedClient: PrivacyFetchBrokerClient = {
       fetch: client.fetch,
       fetchStream: client.fetchStream,
       dispose: () => {
         client.dispose();
-        sharedPrivacyFetchBrokerClient = undefined;
+        if (sharedPrivacyFetchBrokerClient === sharedClient) {
+          sharedPrivacyFetchBrokerClient = undefined;
+        }
       },
     };
+    sharedPrivacyFetchBrokerClient = sharedClient;
   }
 
   return sharedPrivacyFetchBrokerClient;
+}
+
+if (import.meta.hot && import.meta.hot.data !== undefined) {
+  // A Vue owner may accept the update while this dependency is re-evaluated
+  // without its dispose hook running. Retire that instance through HMR data too.
+  const disposePrevious: unknown = import.meta.hot.data.disposePrivacyFetchBrokerClient;
+  if (typeof disposePrevious === 'function') {
+    disposePrevious();
+  }
+  const dispose = () => sharedPrivacyFetchBrokerClient?.dispose();
+  import.meta.hot.data.disposePrivacyFetchBrokerClient = dispose;
+  import.meta.hot.dispose(dispose);
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

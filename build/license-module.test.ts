@@ -172,6 +172,57 @@ afterEach(async () => {
 });
 
 describe('createLicenseModulePlugins', () => {
+  it('recollects license text after virtual-module invalidation and server restart', async () => {
+    const root = await createDevelopmentFixture();
+    const server = await createViteServer({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      server: { middlewareMode: true, hmr: false },
+      plugins: [...createLicenseModulePlugins({ getAdditionalDependencies: () => [] })],
+    });
+    try {
+      const first = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: first.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('prod license text');
+      await fs.writeFile(path.join(root, 'node_modules/prod-package/LICENSE'), 'edited license text');
+      server.moduleGraph.invalidateAll();
+      const updated = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: updated.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('edited license text');
+
+      await fs.writeFile(path.join(root, 'node_modules/prod-package/LICENSE'), 'restarted license text');
+      await server.restart();
+      const restarted = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: restarted.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('restarted license text');
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('retries a failed license collection after a dependency is restored', async () => {
+    const root = await createDevelopmentFixture();
+    const packagePath = path.join(root, 'node_modules/prod-package/package.json');
+    const packageContents = await fs.readFile(packagePath);
+    await fs.rm(packagePath);
+    const server = await createViteServer({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      server: { middlewareMode: true, hmr: false },
+      plugins: [...createLicenseModulePlugins({ getAdditionalDependencies: () => [] })],
+    });
+    try {
+      await expect(server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID)).rejects.toThrow(
+        'Required development license dependency is not installed: prod-package',
+      );
+      await fs.writeFile(packagePath, packageContents);
+      server.moduleGraph.invalidateAll();
+      const restored = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: restored.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('prod license text');
+    } finally {
+      await server.close();
+    }
+  });
+
   it('serves installed production licenses from the virtual module during development', async () => {
     const root = await createDevelopmentFixture();
     const server = await createViteServer({

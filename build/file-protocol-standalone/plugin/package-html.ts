@@ -1,4 +1,5 @@
-import { JSDOM } from 'jsdom';
+import type { JSDOM } from 'jsdom';
+import { createBuildDom } from '../../jsdom';
 
 import { STANDALONE_PACKAGE_LOCALE_META_NAME } from '../../../src/features/file-protocol-standalone/logic/package-locale-contract.js';
 
@@ -44,7 +45,7 @@ export function insertPackageLocaleMetadata({ html, locale }: Readonly<{
   html: string;
   locale: string;
 }>): string {
-  const dom = new JSDOM(html, { includeNodeLocations: true });
+  const dom = createBuildDom({ html, options: { includeNodeLocations: true } });
   try {
     const document = dom.window.document;
     if (document.querySelector(`meta[name=${JSON.stringify(PACKAGE_LOCALE_META_NAME)}]`) !== null) {
@@ -79,7 +80,7 @@ export function assertPackageLocaleMetadata({ html, expectedLocale }: Readonly<{
   html: string;
   expectedLocale: string | undefined;
 }>): void {
-  const dom = new JSDOM(html);
+  const dom = createBuildDom({ html, options: undefined });
   try {
     const metas = [...dom.window.document.querySelectorAll(`meta[name=${JSON.stringify(PACKAGE_LOCALE_META_NAME)}]`)];
     if (expectedLocale === undefined) {

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createBoundaryStringsCompactionState } from './compaction';
 import {
@@ -115,6 +115,76 @@ describe('Boundary Strings virtual modules', () => {
       expect(registration).toContain(`${JSON.stringify(locale)}:`);
     }
     expect(registration).not.toContain('.then((module) => module.default)');
+    expect(registration).toContain('const { unregister, updateLocale } = registerStringBoundary(');
+    expect(registration).toContain('hot.prune(cleanup)');
+    expect(registration).toContain("hot.on('vite:beforePrune', onPrune)");
+  });
+
+  it.each(['raw', 'normalized'])('cleans up a boundary for the %s virtual-module prune path', (pathForm) => {
+    const boundary: BoundaryStringBoundaryDefinition = {
+      id: '0123456789abcdef',
+      keys: [messageKey],
+      moduleId: '/src/components/Example.vue',
+      version: 'fedcba9876543210',
+    };
+    const unregister = vi.fn();
+    const register = vi.fn(() => ({ unregister, updateLocale: vi.fn() }));
+    let beforePrune: ((event: { paths: string[] }) => void) | undefined;
+    let prune: (() => void) | undefined;
+    const off = vi.fn();
+    const hot = {
+      accept: vi.fn(),
+      on: vi.fn((_event, callback) => {
+        beforePrune = callback;
+      }),
+      off,
+      prune: vi.fn((callback) => {
+        prune = callback;
+      }),
+      dispose: vi.fn(),
+    };
+    const source = createBoundaryRegistrationModuleSource({ boundary, compactionState: undefined })
+      .replace('import { registerStringBoundary } from "/src/strings/runtime.ts";', '')
+      .replaceAll('import.meta.hot', 'testHot');
+    new Function('registerStringBoundary', 'testHot', source)(register, hot);
+    expect(register).toHaveBeenCalledTimes(1);
+    beforePrune?.({ paths: ['\0virtual:naidan-boundary-strings/boundary/another/version'] });
+    expect(unregister).not.toHaveBeenCalled();
+
+    if (pathForm === 'raw') {
+      beforePrune?.({ paths: ['\0virtual:naidan-boundary-strings/boundary/0123456789abcdef/fedcba9876543210'] });
+    } else {
+      prune?.();
+    }
+    expect(unregister).toHaveBeenCalledTimes(1);
+    expect(off).toHaveBeenCalledWith('vite:beforePrune', beforePrune);
+  });
+
+  it('removes the old prune listener without unregistering during a module update', () => {
+    const boundary: BoundaryStringBoundaryDefinition = {
+      id: '0123456789abcdef',
+      keys: [messageKey],
+      moduleId: '/src/components/Example.vue',
+      version: 'fedcba9876543210',
+    };
+    const unregister = vi.fn();
+    const off = vi.fn();
+    let dispose: (() => void) | undefined;
+    const source = createBoundaryRegistrationModuleSource({ boundary, compactionState: undefined })
+      .replace('import { registerStringBoundary } from "/src/strings/runtime.ts";', '')
+      .replaceAll('import.meta.hot', 'testHot');
+    new Function('registerStringBoundary', 'testHot', source)(() => ({ unregister, updateLocale: vi.fn() }), {
+      accept: vi.fn(),
+      on: vi.fn(),
+      off,
+      prune: vi.fn(),
+      dispose: (callback: () => void) => {
+        dispose = callback;
+      },
+    });
+    dispose?.();
+    expect(off).toHaveBeenCalledTimes(1);
+    expect(unregister).not.toHaveBeenCalled();
   });
 
   it('creates compact default-export packs and loaders for production', () => {
@@ -162,5 +232,77 @@ describe('Boundary Strings virtual modules', () => {
       locale: 'en',
       messagesByKey: new Map(),
     })).toThrow('Unknown message key "ChatInput__unknown"');
+  });
+
+  it('accepts locale packs at the registration without eagerly loading them', () => {
+    const boundary: BoundaryStringBoundaryDefinition = {
+      id: '0123456789abcdef',
+      keys: [messageKey],
+      moduleId: '/src/components/Example.vue',
+      version: 'fedcba9876543210',
+    };
+    const updateLocale = vi.fn();
+    const callbacks = new Map<string, (module: unknown) => void>();
+    const source = createBoundaryRegistrationModuleSource({ boundary, compactionState: undefined })
+      .replace('import { registerStringBoundary } from "/src/strings/runtime.ts";', '')
+      .replaceAll('import.meta.hot', 'testHot');
+    new Function('registerStringBoundary', 'testHot', source)(() => ({ unregister: vi.fn(), updateLocale }), {
+      accept: (id: string, callback: (module: unknown) => void) => callbacks.set(id, callback),
+      on: vi.fn(),
+      off: vi.fn(),
+      prune: vi.fn(),
+      dispose: vi.fn(),
+    });
+    expect(callbacks.size).toBe(7);
+    expect(updateLocale).not.toHaveBeenCalled();
+    for (const locale of BOUNDARY_STRING_LOCALES) {
+      const callback = callbacks.get(`virtual:naidan-boundary-strings/pack/${locale}/0123456789abcdef/fedcba9876543210`);
+      expect(callback).toBeDefined();
+      callback?.(undefined);
+      expect(updateLocale).not.toHaveBeenCalled();
+      const module = { [messageKey]: () => 'Updated message' };
+      callback?.(module);
+      expect(updateLocale).toHaveBeenCalledExactlyOnceWith({ locale, module });
+      updateLocale.mockClear();
+    }
+  });
+
+  it('reports an invalid pack without aborting the update batch or preventing a later correction', () => {
+    const boundary: BoundaryStringBoundaryDefinition = {
+      id: '0123456789abcdef',
+      keys: [messageKey],
+      moduleId: '/src/components/Example.vue',
+      version: 'fedcba9876543210',
+    };
+    const failure = new Error('Invalid message implementation');
+    const updateLocale = vi.fn().mockImplementationOnce(() => {
+      throw failure;
+    });
+    const callbacks = new Map<string, (module: unknown) => void>();
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const source = createBoundaryRegistrationModuleSource({ boundary, compactionState: undefined })
+        .replace('import { registerStringBoundary } from "/src/strings/runtime.ts";', '')
+        .replaceAll('import.meta.hot', 'testHot');
+      new Function('registerStringBoundary', 'testHot', source)(() => ({ unregister: vi.fn(), updateLocale }), {
+        accept: (id: string, callback: (module: unknown) => void) => callbacks.set(id, callback),
+        on: vi.fn(),
+        off: vi.fn(),
+        prune: vi.fn(),
+        dispose: vi.fn(),
+      });
+      const callback = callbacks.get('virtual:naidan-boundary-strings/pack/en/0123456789abcdef/fedcba9876543210');
+      if (callback === undefined) {
+        throw new Error('Expected the English pack callback.');
+      }
+      expect(() => callback({ [messageKey]: 123 })).not.toThrow();
+      expect(error).toHaveBeenCalledExactlyOnceWith('[Boundary Strings] Failed to update a message boundary.', failure);
+      const corrected = { [messageKey]: () => 'Corrected message' };
+      callback(corrected);
+      expect(updateLocale).toHaveBeenLastCalledWith({ locale: 'en', module: corrected });
+      expect(updateLocale).toHaveBeenCalledTimes(2);
+    } finally {
+      error.mockRestore();
+    }
   });
 });
