@@ -1,0 +1,1 @@
+export const ScopedMountSettings__remove_from_this_chat_group = (): string => "Remove this folder from this chat group's own settings. The folder registration and files will be kept. Inherited folder settings will not change.";

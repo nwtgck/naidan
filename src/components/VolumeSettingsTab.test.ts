@@ -6,6 +6,8 @@ import { storageService } from '@/00-storage/service';
 import type { Volume, Mount } from '@/01-models/types';
 import { toVolumeId } from '@/01-models/ids';
 
+const mockShowConfirm = vi.hoisted(() => vi.fn());
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
@@ -22,7 +24,7 @@ vi.mock('../composables/useToast', () => ({
 }));
 
 vi.mock('../composables/useConfirm', () => ({
-  useConfirm: vi.fn(() => ({ showConfirm: vi.fn() })),
+  useConfirm: vi.fn(() => ({ showConfirm: mockShowConfirm })),
 }));
 
 vi.mock('../00-storage/service', () => ({
@@ -522,5 +524,53 @@ describe('VolumeSettingsTab - Permission re-request on save', () => {
     await flushPromises();
 
     expect(storageService.getVolumeDirectoryHandle).not.toHaveBeenCalled();
+  });
+});
+
+describe('VolumeSettingsTab - Registered volume removal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockShowConfirm.mockReset().mockResolvedValue(true);
+    vi.mocked(storageService.unmountVolume).mockResolvedValue(undefined);
+    vi.mocked(storageService.deleteVolume).mockResolvedValue(undefined);
+  });
+
+  it.each(['host', 'opfs'] as const)('confirms registration removal before deleting a %s volume', async type => {
+    const volume = makeVolume({ type });
+    const wrapper = await mountTab([volume], [makeMount(volume.id)]);
+    await wrapper.get('[data-testid="volume-delete-btn"]').trigger('click');
+    await flushPromises();
+    expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({ confirmButtonVariant: 'danger' }));
+    expect(storageService.unmountVolume).toHaveBeenCalledWith({ volumeId: volume.id });
+    expect(storageService.deleteVolume).toHaveBeenCalledWith({ volumeId: volume.id });
+  });
+
+  it('keeps a registered volume and its mount when deletion is cancelled', async () => {
+    mockShowConfirm.mockResolvedValue(false);
+    const volume = makeVolume();
+    const wrapper = await mountTab([volume], [makeMount(volume.id)]);
+    await wrapper.get('[data-testid="volume-delete-btn"]').trigger('click');
+    await flushPromises();
+    expect(storageService.unmountVolume).not.toHaveBeenCalled();
+    expect(storageService.deleteVolume).not.toHaveBeenCalled();
+  });
+
+  it('does not overwrite one registration confirmation by starting another', async () => {
+    const approval = Promise.withResolvers<boolean>();
+    mockShowConfirm.mockReturnValue(approval.promise);
+    const first = makeVolume();
+    const second = makeVolume({ id: toVolumeId({ raw: 'second-volume' }), name: 'Second' });
+    const wrapper = await mountTab([first, second]);
+    const buttons = wrapper.findAll('[data-testid="volume-delete-btn"]');
+    expect(buttons).toHaveLength(2);
+    await buttons[0]?.trigger('click');
+    await flushPromises();
+    expect(buttons[1]?.attributes('disabled')).toBeDefined();
+    await buttons[1]?.trigger('click');
+    expect(mockShowConfirm).toHaveBeenCalledTimes(1);
+    approval.resolve(false);
+    await flushPromises();
+    expect(buttons.every(button => button.attributes('disabled') === undefined)).toBe(true);
+    expect(storageService.deleteVolume).not.toHaveBeenCalled();
   });
 });

@@ -1950,7 +1950,10 @@ import { ScopedMountSettings__inherited_folders } from '@/strings/messages/Scope
 import { ScopedMountSettings__overridden_here } from '@/strings/messages/ScopedMountSettings__overridden_here/pt-BR';
 import { ScopedMountSettings__read_and_write } from '@/strings/messages/ScopedMountSettings__read_and_write/pt-BR';
 import { ScopedMountSettings__read_only } from '@/strings/messages/ScopedMountSettings__read_only/pt-BR';
+import { ScopedMountSettings__remove } from '@/strings/messages/ScopedMountSettings__remove/pt-BR';
 import { ScopedMountSettings__remove_folder } from '@/strings/messages/ScopedMountSettings__remove_folder/pt-BR';
+import { ScopedMountSettings__remove_from_this_chat } from '@/strings/messages/ScopedMountSettings__remove_from_this_chat/pt-BR';
+import { ScopedMountSettings__remove_from_this_chat_group } from '@/strings/messages/ScopedMountSettings__remove_from_this_chat_group/pt-BR';
 import { ScopedMountSettings__removing_a_folder_does_not_delete_files } from '@/strings/messages/ScopedMountSettings__removing_a_folder_does_not_delete_files/pt-BR';
 import { SearchPreview__alt_branch } from '@/strings/messages/SearchPreview__alt_branch/pt-BR';
 import { SearchPreview__conversation_match } from '@/strings/messages/SearchPreview__conversation_match/pt-BR';
@@ -5267,7 +5270,10 @@ export const catalog = {
   ScopedMountSettings__overridden_here,
   ScopedMountSettings__read_and_write,
   ScopedMountSettings__read_only,
+  ScopedMountSettings__remove,
   ScopedMountSettings__remove_folder,
+  ScopedMountSettings__remove_from_this_chat,
+  ScopedMountSettings__remove_from_this_chat_group,
   ScopedMountSettings__removing_a_folder_does_not_delete_files,
   SearchPreview__alt_branch,
   SearchPreview__conversation_match,

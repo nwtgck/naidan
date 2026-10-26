@@ -4,27 +4,32 @@ export type MountSettingsOwner = { type: 'chat', id: ChatId } | { type: 'chat_gr
 </script>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { EyeIcon, PencilIcon, FolderIcon, XIcon } from 'lucide-vue-next';
+import { XIcon } from 'lucide-vue-next';
 import type { Mount, Volume } from '@/01-models/types';
 import { idToRaw, type VolumeId } from '@/01-models/ids';
 import { storageService } from '@/00-storage/service';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
+import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import type { WeshMount } from '@/features/wesh/types';
 import { settingsSourcePresentation, type SettingsSource } from '@/logic/settings-labels';
 import { ensureStrings, lazyStrings } from '@/strings';
 import SettingsSourceBadge from './SettingsSourceBadge.vue';
 import VolumeCreator from './VolumeCreator.vue';
+import MountAccessModeSelector from './MountAccessModeSelector.vue';
+import VolumeListItem from './VolumeListItem.vue';
 const props = defineProps<{ owner: MountSettingsOwner, mounts: readonly Mount[], inheritedMounts: readonly { mount: Mount, source: SettingsSource }[] }>();
 const emit = defineEmits<{ (e: 'status', status: { pending: boolean, error: string | undefined }): void }>();
 const chatMounts = useChatMounts();
 const chatGroupMounts = useChatGroupMounts();
 const { openFileExplorer } = useFileExplorerModal();
+const { showConfirm } = useConfirm();
 const volumes = ref<Volume[]>([]);
 const errors = ref<Record<string, string | undefined>>({});
 const pending = ref<Record<string, number>>({});
 const busyMounts = ref<Set<string>>(new Set());
+const removalPending = ref(false);
 let mounted = true;
 onUnmounted(() => {
   mounted = false;
@@ -146,12 +151,44 @@ async function created({ volumeId, mountPath, readOnly, operationContext }: { vo
 }
 
 async function remove({ mount }: { mount: Mount }) {
+  if (removalPending.value) {
+    return;
+  }
+  removalPending.value = true;
+  try {
+    await confirmAndRemoveMount({ mount });
+  } finally {
+    removalPending.value = false;
+  }
+}
+
+async function confirmAndRemoveMount({ mount }: { mount: Mount }) {
   const owner = { ...props.owner };
   const key = contextKey.value;
+  const revision = viewRevision;
   await runMountOperation({
     key,
     volumeId: mount.volumeId,
     action: async () => {
+      const title = await ensureStrings.ScopedMountSettings__remove_folder({ path: mount.mountPath });
+      const message = await (() => {
+        switch (owner.type) {
+        case 'chat': return ensureStrings.ScopedMountSettings__remove_from_this_chat();
+        case 'chat_group': return ensureStrings.ScopedMountSettings__remove_from_this_chat_group();
+        default: {
+          const _ex: never = owner;
+          throw new Error(`Unhandled mount owner: ${_ex}`);
+        }
+        }
+      })();
+      const confirmButtonText = await ensureStrings.ScopedMountSettings__remove();
+      if (!mounted || revision !== viewRevision) {
+        return;
+      }
+      const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'default' });
+      if (!confirmed || !mounted || revision !== viewRevision) {
+        return;
+      }
       switch (owner.type) {
       case 'chat': await chatMounts.removeMount({ chatId: owner.id, volumeId: mount.volumeId });
         return;
@@ -261,13 +298,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div tw-class="space-y-4">
     <p v-if="error" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ error }}</p>
     <div tw-class="space-y-2">
-      <div v-for="mount in mounts" :key="idToRaw({ id: mount.volumeId })" class="mount-settings-row" data-testid="own-mount-row" :aria-busy="mountBusy({ mount })" tw-class="rounded-xl border border-gray-200/60 bg-gray-50/50 px-3 py-2 dark:border-gray-700/40 dark:bg-gray-800/35">
-        <button type="button" class="mount-settings-name" data-testid="mount-open" :title="mount.mountPath" tw-class="flex min-w-0 items-start gap-2.5 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30" @click="openExplorer({ mount })"><FolderIcon tw-class="mt-0.5 h-4 w-4 shrink-0 text-blue-500" /><span tw-class="block min-w-0"><span tw-class="flex items-center gap-2"><span tw-class="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{{ volumeFor({ volumeId: mount.volumeId })?.name ?? mount.mountPath.split('/').at(-1) }}</span><span tw-class="shrink-0 text-[11px] text-gray-400">{{ volumeFor({ volumeId: mount.volumeId })?.type }}</span></span><span tw-class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ mount.mountPath }}</span></span></button>
-        <div class="mount-settings-permissions" role="group" :aria-label="lazyStrings.ScopedMountSettings__folder_permissions({ path: mount.mountPath })" tw-class="inline-flex max-w-full overflow-x-auto rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800 inset-ring-1 inset-ring-gray-200/50 dark:inset-ring-gray-700/50">
-          <button v-for="readOnly in [true, false]" :key="String(readOnly)" type="button" :aria-pressed="mount.readOnly === readOnly" :data-testid="readOnly ? 'mount-read-only' : 'mount-read-write'" :disabled="mountBusy({ mount })" :tw-class="['inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/35', mount.readOnly === readOnly ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 inset-ring-1 inset-ring-gray-200 dark:inset-ring-gray-600' : 'text-gray-500 dark:text-gray-400 enabled:hover:bg-gray-100 dark:enabled:hover:bg-gray-700/40 enabled:hover:text-gray-700 dark:enabled:hover:text-gray-200']" @click="setReadOnly({ mount, readOnly })"><EyeIcon v-if="readOnly" tw-class="h-3.5 w-3.5 shrink-0" /><PencilIcon v-else tw-class="h-3.5 w-3.5 shrink-0" />{{ readOnly ? lazyStrings.ScopedMountSettings__read_only() : lazyStrings.ScopedMountSettings__read_and_write() }}</button>
-        </div>
-        <button type="button" class="mount-settings-remove" data-testid="mount-remove" :disabled="mountBusy({ mount })" :aria-label="lazyStrings.ScopedMountSettings__remove_folder({ path: mount.mountPath })" tw-class="grid h-10 w-10 place-items-center rounded-lg text-gray-400 hover:text-red-500 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30" @click="remove({ mount })"><XIcon tw-class="h-4 w-4" /></button>
-      </div>
+      <VolumeListItem v-for="mount in mounts" :key="idToRaw({ id: mount.volumeId })" data-testid="own-mount-row" :aria-busy="mountBusy({ mount })" :name="volumeFor({ volumeId: mount.volumeId })?.name ?? mount.mountPath.split('/').at(-1)" :path="mount.mountPath" :source-label="volumeFor({ volumeId: mount.volumeId })?.type" activation="open" primary-test-id="mount-open" @open="openExplorer({ mount })">
+        <template #permissions><MountAccessModeSelector :model-value="mount.readOnly ? 'read-only' : 'read-write'" :disabled="removalPending || mountBusy({ mount })" :label="lazyStrings.ScopedMountSettings__folder_permissions({ path: mount.mountPath })" :read-only-label="lazyStrings.ScopedMountSettings__read_only()" :read-write-label="lazyStrings.ScopedMountSettings__read_and_write()" test-id-prefix="mount" @update:model-value="mode => setReadOnly({ mount, readOnly: mode === 'read-only' })" /></template>
+        <template #actions><button type="button" data-testid="mount-remove" :disabled="removalPending || mountBusy({ mount })" :aria-label="lazyStrings.ScopedMountSettings__remove_folder({ path: mount.mountPath })" tw-class="grid h-10 w-10 place-items-center rounded-lg text-gray-400 hover:text-red-500 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30" @click="remove({ mount })"><XIcon aria-hidden="true" tw-class="h-4 w-4" /></button></template>
+      </VolumeListItem>
     </div>
     <VolumeCreator :existing-mount-paths="existingPaths" mount-path-prefix="/home/user/" :operation-context="contextKey" :complete-creation="created" @operation-state="operationState($event)" />
     <div v-if="inheritedMounts.length" tw-class="space-y-2 border-t border-gray-200/60 pt-4 dark:border-gray-800">
@@ -277,37 +311,3 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p tw-class="text-[11px] leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.ScopedMountSettings__removing_a_folder_does_not_delete_files() }}</p>
   </div>
 </template>
-<style scoped>
-.mount-settings-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 0.75rem;
-  row-gap: 0.5rem;
-}
-.mount-settings-name {
-  grid-column: 1;
-  grid-row: 1;
-}
-.mount-settings-permissions {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  justify-self: start;
-}
-.mount-settings-remove {
-  grid-column: 2;
-  grid-row: 1;
-}
-@container (min-width: 38rem) {
-  .mount-settings-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-  }
-  .mount-settings-permissions {
-    grid-column: 2;
-    grid-row: 1;
-  }
-  .mount-settings-remove {
-    grid-column: 3;
-  }
-}
-</style>
