@@ -13,6 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { attachCore, createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { generate } from './generation';
 import * as checkpointPerformanceModule from './checkpoint-performance';
+import * as generationPerformanceModule from './generation-performance';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import * as pacingModule from './output-pacing';
 import * as deliveryDecodeModule from './delivery-decode';
@@ -2620,12 +2621,17 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
 
-  it('keeps the original checkpoint across full-prefix tool-like continuations', async () => {
+  it.each(['on', 'off', undefined] as const)('keeps the original checkpoint and request-local diagnostics across full-prefix tool-like continuations: debug %s', async debug => {
     await releaseSession({ releaseRuntime: false });
     host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: template }));
-    const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] });
+    using log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    using observation = vi.spyOn(checkpointPerformanceModule, 'createCheckpointPerformance');
+    using summaryFactory = vi.spyOn(generationPerformanceModule, 'createGenerationPerformance');
+    using graphObservation = vi.spyOn(graphCountersModule, 'createNativeGraphCounters');
+    const first = { ...request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] }), debug };
     const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
     const old = await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const firstCachedTokens = session.cache.tokens.length;
     const checkpoint = session.cache.checkpoint;
     if (!checkpoint) {
       throw new Error('Expected initial checkpoint');
@@ -2638,17 +2644,67 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
         restore.mockRestore();
       },
     };
-    const continuation = request({ messages: [{ role: 'user', content: 'aaaaaaaaGG' + old.content + 'tool-result' }] });
+    const continuation = { ...request({ messages: [{ role: 'user', content: 'aaaaaaaaGG' + old.content + 'tool-result' }] }), debug };
     const continued = await generate({ request: continuation, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(continued.content.length).toBe(5);
     expect(session.cache.checkpoint).toBe(checkpoint);
     expect(capture).not.toHaveBeenCalled();
     expect(restore).not.toHaveBeenCalled();
-    const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] });
+    const continuedCachedTokens = session.cache.tokens.length;
+    const next = { ...request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }), debug };
     next.stop = ['A', 'B'];
     const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const warmLogits = await readNativeLogits();
     expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
+    const summaries = readDiagnostics({ calls: log.mock.calls })
+      .filter(item => item.event === 'generation-performance').map(item => diagnosticSchema.parse(item).performance!);
+    expect(summaryFactory).toHaveBeenCalledTimes(3);
+    expect(graphObservation).not.toHaveBeenCalled();
+    if (debug === 'on') {
+      expect(observation).toHaveBeenCalledTimes(3);
+      expect(summaries).toHaveLength(3);
+      const [initial, appended, restored] = summaries;
+      expect(initial!.cacheReuse).toMatchObject({ reason: 'cache-invalid', cachedTokens: 0, checkpointTokens: 0, checkpointBytes: 0 });
+      expect(initial!.checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 0 });
+      expect(initial!.checkpoint!.phases.map(phase => phase.phase)).toContain('capture-readback');
+      expect(appended!.cacheReuse).toMatchObject({
+        reason: 'prefix-match',
+        cacheComparison: 'prompt-extension',
+        cachedTokens: firstCachedTokens,
+        commonPrefixTokens: firstCachedTokens,
+        reusedTokens: firstCachedTokens,
+        checkpointTokens: checkpoint.tokens.length,
+        checkpointBytes: checkpoint.bytes,
+        cacheRemoval: 'full-only',
+        nativeMemoryKind: 'hybrid',
+      });
+      expect(appended!.checkpoint).toEqual({ captureAttempts: 0, restoreAttempts: 0, retainedRestoredCaptures: 0, phases: [] });
+      expect(restored!.cacheReuse).toMatchObject({
+        reason: 'checkpoint-match',
+        cacheComparison: 'token-mismatch',
+        cachedTokens: continuedCachedTokens,
+        reusedTokens: checkpoint.tokens.length,
+        checkpointTokens: checkpoint.tokens.length,
+        checkpointBytes: checkpoint.bytes,
+      });
+      expect(restored!.cacheReuse!.commonPrefixTokens).toBeLessThan(continuedCachedTokens);
+      expect(restored!.checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 1 });
+      expect(restored!.checkpoint!.phases.map(phase => phase.phase)).toEqual(expect.arrayContaining(['restore-memory', 'restore-write', 'restore-trim', 'restore-verify']));
+      for (const summary of summaries) {
+        expect(summary.cacheReuse!.tokens).toBe(summary.promptTokens);
+        expect(summary.cacheReuse!.reusedTokens).toBe(summary.reusedTokens);
+        expect(summary.cacheReuse!.evaluatedTokens).toBe(summary.prefillDecodedTokens);
+      }
+    } else {
+      expect(observation).not.toHaveBeenCalled();
+      expect(summaries).toEqual([]);
+      for (const result of summaryFactory.mock.results) {
+        expect(result.type).toBe('return');
+        if (result.type === 'return') {
+          expect(result.value.counters.cacheReuse).toBeUndefined();
+        }
+      }
+    }
     await releaseSession({ releaseRuntime: false });
     const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expectSameGenerationResult({ actual: cold, expected: warm });

@@ -39,6 +39,25 @@ const fileReadSchema = z.object({
   sourceReadMs: z.number().finite().nonnegative().optional(),
 }).strict();
 
+// A request-local decision, before prefill and any new checkpoint capture.
+// Keep it in the final summary so unrelated console lines need not be paired.
+const cacheReuseSchema = z.object({
+  tokens: z.number().int().nonnegative(),
+  cachedTokens: z.number().int().nonnegative(),
+  commonPrefixTokens: z.number().int().nonnegative(),
+  reusedTokens: z.number().int().nonnegative(),
+  evaluatedTokens: z.number().int().nonnegative(),
+  cacheComparison: z.enum(['empty-cache', 'identical', 'prompt-extension', 'prompt-shorter', 'token-mismatch']),
+  reason: z.enum(['prefix-match', 'prefix-partial-match', 'prefix-mismatch', 'cache-invalid', 'cache-position', 'cache-window', 'cache-rollback-failed', 'checkpoint-match', 'checkpoint-invalid']),
+  nativeMemoryKind: z.enum(['none', 'attention', 'recurrent', 'hybrid']),
+  nativePositionMin: z.number().int().min(-1).optional(),
+  nativePositionMax: z.number().int().min(-1).optional(),
+  nativeRollbackTokens: z.number().int().nonnegative(),
+  cacheRemoval: z.enum(['none', 'full-only', 'bounded', 'partial']),
+  checkpointTokens: z.number().int().nonnegative(),
+  checkpointBytes: z.number().int().nonnegative(),
+}).strict();
+
 /** Native request and AUTO-resolution are distinct observations, not execution proof. */
 export const nativeFlashAttentionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('requested'), mode: z.enum(['auto', 'enabled', 'disabled']) }).strict(),
@@ -84,6 +103,7 @@ export const diagnosticSchema = z.object({
     gpuProfile: gpuProfileSchema.optional(),
     nativeGraphCounters: nativeGraphCountersSchema.optional(),
     checkpoint: checkpointPerformanceSchema.optional(),
+    cacheReuse: cacheReuseSchema.optional(),
     memoryObservation: z.object({
       wasmHeapBeforeBytes: z.number().int().nonnegative(),
       wasmHeapAfterBytes: z.number().int().nonnegative().optional(),

@@ -5,6 +5,7 @@ import { performanceEnvironment, performancePlan, performanceReport } from '@/fe
 import { performanceArchive } from './archive';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 import { runtimeBuildEvidence } from './runtime-evidence';
+import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
 import type { PerformanceSnapshot } from './types';
 
 function snapshot(): PerformanceSnapshot {
@@ -50,6 +51,39 @@ describe('portable performance results', () => {
     expect(JSON.parse(await zip.file('environment.json')!.async('string')).timeOrigin).toBe(1000);
     expect(Object.keys(zip.files).some(name => name.endsWith('.gguf'))).toBe(false);
     expect(source.trials[0]?.output?.content).toBe('answer');
+  });
+
+  it('preserves the request-local cache decision and checkpoint phases in the existing trials export', async () => {
+    const source = snapshot();
+    const metrics = source.trials[0]!.summary!.performance!;
+    metrics.cacheReuse = {
+      tokens: 80,
+      cachedTokens: 60,
+      commonPrefixTokens: 24,
+      reusedTokens: 20,
+      evaluatedTokens: 60,
+      cacheComparison: 'token-mismatch',
+      reason: 'checkpoint-match',
+      nativeMemoryKind: 'hybrid',
+      nativePositionMin: 0,
+      nativePositionMax: 59,
+      nativeRollbackTokens: 0,
+      cacheRemoval: 'full-only',
+      checkpointTokens: 20,
+      checkpointBytes: 4096,
+    };
+    metrics.checkpoint = {
+      captureAttempts: 0,
+      restoreAttempts: 1,
+      retainedRestoredCaptures: 1,
+      phases: [{ phase: 'restore-write', visits: 1, elapsedMs: 123 }],
+    };
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    const record = JSON.parse(await zip.file('trials.jsonl')!.async('string'));
+    const exported = diagnosticSchema.parse(record.summary).performance!;
+    expect(exported.cacheReuse).toEqual(metrics.cacheReuse);
+    expect(exported.checkpoint).toEqual(metrics.checkpoint);
+    expect(await zip.file('README.md')!.async('string')).toContain('cacheReuse records the cache decision before prefill');
   });
 
   it.each(['clean', 'dirty', 'unknown'] as const)('preserves the run app identity with a %s working tree at export', async workingTree => {
