@@ -106,6 +106,46 @@ it('invalidates on manual companion identity or path but does not depend on mode
   expect(keys.key({ request })).toBe(reordered);
 });
 
+it.each([
+  { label: 'ASCII paths', paths: ['part-a.safetensors', 'part-b.safetensors'] },
+  { label: 'distinct Unicode paths', paths: ['caf\u00e9.safetensors', 'cafe\u0301.safetensors'] },
+])('retains manual companion groups across reorderings without mutating $label', ({ paths }) => {
+  const keys = createImageSessionKeys(), request = requestFixture();
+  const companions = paths.map(relativePath => ({ relativePath, file: new File([new Uint8Array(8)], relativePath) }));
+  request.models[0]!.companions = companions;
+  const expected = keys.key({ request });
+  expect(request.models[0]!.companions).toEqual(companions);
+  request.models[0]!.companions = [...companions].reverse();
+  const reversed = request.models[0]!.companions.slice();
+  expect(keys.key({ request })).toBe(expected);
+  expect(request.models[0]!.companions).toEqual(reversed);
+});
+
+it.each(['association', 'path', 'addition', 'removal', 'identity'] as const)('preserves manual companion invalidation after canonical ordering: %s', change => {
+  const keys = createImageSessionKeys(), request = requestFixture();
+  const first = { relativePath: 'a.safetensors', file: new File([new Uint8Array(8)], 'same.safetensors', { lastModified: 1 }) };
+  const second = { relativePath: 'b.safetensors', file: new File([new Uint8Array(8)], 'same.safetensors', { lastModified: 1 }) };
+  request.models[0]!.companions = [second, first];
+  const before = keys.key({ request });
+  switch (change) {
+  case 'association': request.models[0]!.companions = [{ ...first, file: second.file }, { ...second, file: first.file }];
+    break;
+  case 'path': request.models[0]!.companions = [{ ...first, relativePath: 'renamed.safetensors' }, second];
+    break;
+  case 'addition': request.models[0]!.companions = [first, second, { relativePath: 'c.safetensors', file: first.file }];
+    break;
+  case 'removal': request.models[0]!.companions = [first];
+    break;
+  case 'identity': request.models[0]!.companions = [{ ...first, file: new File([first.file], first.file.name, { lastModified: first.file.lastModified }) }, second];
+    break;
+  default: {
+    const exhaustive: never = change;
+    throw new Error(`Unknown companion change: ${exhaustive}`);
+  }
+  }
+  expect(keys.key({ request })).not.toBe(before);
+});
+
 it('retains the model context for new input images, changed strength and removal', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   const before = keys.key({ request });

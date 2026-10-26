@@ -310,6 +310,10 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         if (failed) {
           throw new Error('Image runtime aborted during preview encoding');
         }
+        if (operation.cancelRequested) {
+          outcome = 'cancelled';
+          return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
+        }
         if (previews.dropped()) {
           trace.emit({ event: 'native', stage: 'encoding', message: 'Preview encoder dropped superseded frames to bound memory', fields: { previewFramesDropped: previews.dropped() } });
         }
