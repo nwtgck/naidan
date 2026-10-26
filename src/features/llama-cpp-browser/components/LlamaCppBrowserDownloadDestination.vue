@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
 import { computed, ref, useId } from 'vue';
 import { FolderIcon, FolderPlusIcon, HardDriveIcon } from 'lucide-vue-next';
 import LinkedModelDirectories from '@/components/LinkedModelDirectories.vue';
@@ -111,6 +112,8 @@ function selectDestination({ value }: { value: string }): void {
   }
 }
 
+const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
@@ -119,24 +122,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
        the management panel spans the following row without moving the heading. -->
   <div data-testid="llama-host-model-directories" tw-class="contents">
     <div :tw-class="['flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1', layout === 'field' ? 'w-full' : 'w-fit justify-end justify-self-end sm:col-start-2']">
-      <label :for="`${id}-destination`" tw-class="shrink-0 whitespace-nowrap text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserDownloadDestination__download_to() }}</label>
+      <label :for="`${id}-destination`" :tw-class="['shrink-0 whitespace-nowrap font-medium text-gray-500 dark:text-gray-400', isSettingsTypography ? 'text-sm' : 'text-[11px]']">{{ lazyStrings.LlamaCppBrowserDownloadDestination__download_to() }}</label>
       <div :tw-class="['flex min-w-0 max-w-full items-stretch rounded-lg border border-gray-200/80 bg-white/70 dark:border-gray-700/70 dark:bg-gray-800/50', layout === 'field' && 'flex-1']">
         <div :tw-class="['flex min-w-0 max-w-full overflow-hidden rounded-l-lg', layout === 'field' ? 'flex-1' : 'w-40']">
-          <SettingsSelect :id="`${id}-destination`" :model-value="selectedValue" :options="choices" :label="lazyStrings.LlamaCppBrowserDownloadDestination__download_to()" :disabled="disabled || busy" surface="embedded" presentation="toolbar" size="compact" :menu-width-rem="21" data-testid="llama-download-destination" @update:model-value="selectDestination({ value: $event })">
+          <SettingsSelect :tw-class="[isSettingsTypography && '[&_.settings-select-value]:text-sm [&_.settings-select-value]:leading-5 dark:[&_.settings-select-value]:text-gray-300']" :id="`${id}-destination`" :model-value="selectedValue" :options="choices" :label="lazyStrings.LlamaCppBrowserDownloadDestination__download_to()" :disabled="disabled || busy" surface="embedded" presentation="toolbar" size="compact" :menu-width-rem="21" data-testid="llama-download-destination" @update:model-value="selectDestination({ value: $event })">
             <template #leading="{ option }"><HardDriveIcon v-if="option?.value === 'opfs'" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><FolderIcon v-else aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0', selectedNeedsAttention ? 'text-amber-500 dark:text-amber-400' : 'text-blue-500 dark:text-blue-400']" /></template>
             <template #option="{ option }">
               <span tw-class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-50/70 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><HardDriveIcon v-if="option.value === 'opfs'" aria-hidden="true" tw-class="h-3.5 w-3.5" /><FolderIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5" /></span>
-              <span tw-class="min-w-0 flex-1"><span tw-class="block break-words text-xs font-medium leading-5">{{ option.label }}</span><span v-if="option.detail" tw-class="mt-0.5 block break-words text-[11px] leading-4 text-gray-500 dark:text-gray-400">{{ option.detail }}</span></span>
+              <span tw-class="min-w-0 flex-1"><span :tw-class="['block break-words font-medium leading-5', isSettingsTypography ? 'text-sm' : 'text-xs']">{{ option.label }}</span><span v-if="option.detail" :tw-class="['mt-0.5 block break-words leading-4 text-gray-500 dark:text-gray-400', isSettingsTypography ? 'text-xs' : 'text-[11px]']">{{ option.detail }}</span></span>
             </template>
           </SettingsSelect>
         </div>
-        <button type="button" :aria-expanded="managementOpen" :aria-controls="`${id}-registrations`" :title="unavailableReason" data-testid="llama-manage-model-directories" :tw-class="['flex min-h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-r-lg border-l border-gray-200/80 px-2 py-1.5 text-[11px] font-medium text-gray-600 transition-colors duration-200 hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:border-gray-700/70 dark:text-gray-300 dark:hover:bg-blue-500/10 motion-reduce:transition-none', managementOpen && 'bg-blue-50/60 dark:bg-blue-500/10']" @click="managementOpen = !managementOpen"><FolderPlusIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.SHARED__model_import_link_folder() }}</button>
+        <button type="button" :aria-expanded="managementOpen" :aria-controls="`${id}-registrations`" :title="unavailableReason" data-testid="llama-manage-model-directories" :tw-class="[['flex min-h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-r-lg border-l border-gray-200/80 px-2 py-1.5 font-medium text-gray-600 transition-colors duration-200 hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:border-gray-700/70 dark:text-gray-300 dark:hover:bg-blue-500/10 motion-reduce:transition-none', isSettingsTypography ? 'text-sm' : 'text-[11px]'], managementOpen && 'bg-blue-50/60 dark:bg-blue-500/10']" @click="managementOpen = !managementOpen"><FolderPlusIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.SHARED__model_import_link_folder() }}</button>
       </div>
     </div>
     <!-- Folder access remains available beside every download selector. Opening
          this panel only reveals controls; linking requires its own action. -->
     <div :id="`${id}-registrations`" class="destination-management" :class="{ 'destination-management-open': managementOpen }" :inert="managementOpen ? undefined : true" :aria-hidden="!managementOpen" data-testid="llama-model-directory-registrations" tw-class="col-span-full min-w-0">
-      <div class="destination-management-inner"><LinkedModelDirectories :view="view" :disabled="disabled" :layout-file="layoutFile" /></div>
+      <div class="destination-management-inner"><LinkedModelDirectories :tw-class="[isSettingsTypography && '[&_.linked-model-directory-caption]:text-xs [&_.linked-model-directory-entry]:text-sm']" :view="view" :disabled="disabled" :layout-file="layoutFile" /></div>
     </div>
   </div>
 </template>

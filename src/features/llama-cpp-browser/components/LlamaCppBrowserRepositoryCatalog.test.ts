@@ -41,7 +41,7 @@ const families = [
 
 function render(): VueWrapper {
   wrapper = mount(LlamaCppBrowserManager, {
-    props: { suggestions: 'none' },
+    props: { presentation: 'embedded', suggestions: 'none' },
     slots: {
       catalog: ({ disabled, inspect }: { disabled: boolean, inspect: ({ input }: { input: string }) => Promise<void> }) =>
         h(LlamaCppBrowserRepositoryCatalog, {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
 import ModelFileDropZone from '@/components/ModelFileDropZone.vue';
 import { ref, useId, watch } from 'vue';
 import { FileUpIcon, FolderOpenIcon } from 'lucide-vue-next';
@@ -59,6 +60,8 @@ watch(() => props.mode, () => {
   dragDepth.value = 0;
   emit('drag-active', 'idle');
 });
+const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
@@ -69,8 +72,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <input ref="fileInput" :disabled="disabled" type="file" accept=".gguf" multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_gguf_files()" :aria-describedby="`${id}-file-help`" data-testid="llama-cpp-browser-file" tw-class="sr-only" @change="emit('files', $event)" />
       <input ref="directoryInput" :disabled="disabled" type="file" webkitdirectory multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_model_folder()" data-testid="llama-cpp-browser-directory" tw-class="sr-only" @change="emit('directory', $event)" />
       <div tw-class="flex flex-wrap items-center justify-center gap-2">
-        <button type="button" :disabled="disabled" data-testid="llama-cpp-browser-choose-directory" tw-class="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50" @click="directoryInput?.click()"><FolderOpenIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400" />{{ lazyStrings.llamaCppBrowser__choose_model_folder() }}</button>
-        <button type="button" :disabled="disabled" data-testid="llama-cpp-browser-choose-files" tw-class="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50" @click="fileInput?.click()"><FileUpIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400" />{{ lazyStrings.llamaCppBrowser__choose_gguf_files() }}</button>
+        <button type="button" :disabled="disabled" data-testid="llama-cpp-browser-choose-directory" :tw-class="['inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50', isSettingsTypography ? 'text-sm' : 'text-xs']" @click="directoryInput?.click()"><FolderOpenIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400" />{{ lazyStrings.llamaCppBrowser__choose_model_folder() }}</button>
+        <button type="button" :disabled="disabled" data-testid="llama-cpp-browser-choose-files" :tw-class="['inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50', isSettingsTypography ? 'text-sm' : 'text-xs']" @click="fileInput?.click()"><FileUpIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400" />{{ lazyStrings.llamaCppBrowser__choose_gguf_files() }}</button>
       </div>
     </ModelFileDropZone>
   </div>

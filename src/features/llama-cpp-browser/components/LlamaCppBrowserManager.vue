@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useRecentModelImports } from '@/features/llama-cpp-browser/composables/useRecentModelImports';
+import { provideLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import type { EngineState, LocalModel } from '@/features/llama-cpp-browser/types';
 import type { ApplyDefaultModel, DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
@@ -13,7 +14,8 @@ import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManag
 import LlamaCppBrowserRuntimeSettings from './LlamaCppBrowserRuntimeSettings.vue';
 
 // Settings keeps its catalog and runtime controls around the shared file library.
-const props = defineProps<{ suspended?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
+const props = defineProps<{ presentation: 'settings' | 'embedded', suspended?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
+provideLlamaCppBrowserSettingsTypography({ presentation: () => props.presentation });
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [modelId: string], runtimeReady: [ready: boolean] }>();
 const library = ref<InstanceType<typeof LlamaCppBrowserModelLibrary>>();
 const repositoryManager = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceManager>>();

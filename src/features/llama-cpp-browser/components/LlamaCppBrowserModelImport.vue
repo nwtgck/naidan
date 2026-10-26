@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
 import TemporaryModelFolders from '@/components/TemporaryModelFolders.vue';
 import { computed, defineAsyncComponent, onUnmounted, ref, watch } from 'vue';
 import { AlertCircleIcon, FileUpIcon, Loader2Icon } from 'lucide-vue-next';
@@ -150,6 +151,8 @@ onUnmounted(() => {
   disposed = true;
   active.value?.abort();
 });
+const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
@@ -157,7 +160,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <fieldset :disabled="active !== undefined || linkBusy" tw-class="space-y-3 disabled:opacity-50">
       <legend tw-class="w-full flex items-center gap-2 pb-2 mb-3 border-b border-gray-100 dark:border-gray-800">
         <FileUpIcon tw-class="w-5 h-5 text-blue-500" />
-        <span tw-class="text-sm font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.llamaCppBrowser__gguf_model_files() }}</span>
+        <span :tw-class="['text-sm font-bold text-gray-800 tracking-tight', isSettingsTypography ? 'dark:text-gray-300' : 'dark:text-white']">{{ lazyStrings.llamaCppBrowser__gguf_model_files() }}</span>
       </legend>
       <LlamaCppBrowserModelImportModes v-model="mode" :modes="modes" :disabled="active !== undefined || linkBusy" />
       <LlamaCppBrowserModelImportLinkedFolders v-if="mode === 'host'" :disabled="disabled || active !== undefined" @busy="linkBusy = $event; emit('busy', $event)" @changed="emit('changed')" />
@@ -172,7 +175,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <template v-if="percentage !== undefined">
         <div role="progressbar" :aria-label="lazyStrings.llamaCppBrowser__importing()" :aria-valuenow="percentage" :aria-valuemin="0" :aria-valuemax="100" tw-class="h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div tw-class="h-full rounded-full bg-blue-500/80 dark:bg-blue-400/80 transition-[width] duration-300 ease-out motion-reduce:transition-none" :style="{ width: `${percentage}%` }"></div></div>
       </template>
-      <div tw-class="flex justify-end"><button type="button" data-testid="llama-cpp-browser-cancel" tw-class="px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="cancel">{{ lazyStrings.SHARED__cancel() }}</button></div>
+      <div tw-class="flex justify-end"><button type="button" data-testid="llama-cpp-browser-cancel" :tw-class="['px-3 py-1.5 rounded-lg font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors', isSettingsTypography ? 'text-sm' : 'text-xs']" @click="cancel">{{ lazyStrings.SHARED__cancel() }}</button></div>
     </div>
     <div v-if="localError" role="alert" tw-class="flex items-start gap-3 rounded-2xl p-4 border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400">
       <AlertCircleIcon tw-class="w-4 h-4 shrink-0 mt-0.5" /><div tw-class="text-xs space-y-1"><p>{{ localError === 'invalid-gguf' ? lazyStrings.llamaCppBrowser__gguf_files_only() : lazyStrings.llamaCppBrowser__operation_failed() }}</p><code tw-class="font-mono">{{ localError }}</code></div>
