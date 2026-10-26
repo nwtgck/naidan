@@ -123,6 +123,22 @@ const ChatInput__type_a_message = (): string => 'Type a message';
     });
   });
 
+  it('rejects a foreign message re-export during locale implementation compaction', () => {
+    const key = 'ChatPaneHeader__model_and_chat_settings';
+    const state: BoundaryStringsCompactionState = {
+      compactionByMessageKey: new Map([[key, { messageId: 'a', parameterIdsByName: new Map() }]]),
+      messageKeyByCompactedId: new Map([['a', key]]),
+    };
+    expect(() => compactBoundaryStringsModule({
+      allowedBindingNames: [],
+      code: `\
+export { ${key} } from './en';
+`,
+      moduleId: `/src/strings/messages/${key}/zh-Hans.ts`,
+      state,
+    })).toThrow(new Error(`[naidan-boundary-strings] Message module must export exactly one function named "${key}".`));
+  });
+
   it('compacts zero-argument and named-argument calls', () => {
     const result = compactBoundaryStringsModule({
       allowedBindingNames: ['lazyStrings', 'ensureStrings'],
