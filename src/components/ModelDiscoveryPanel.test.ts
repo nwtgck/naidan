@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
 import type { ModelDiscoveryTab } from './browser-model-presentation';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { modelLaunchEntryState, TEST_ONLY as launchTest } from '@/features/llama-cpp-browser/model-launch/entry-state';
+import { modelLaunchCommand, modelLaunchEntryState, setModelLaunchEntryState, TEST_ONLY as launchTest } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import ModelDiscoveryPanel from './ModelDiscoveryPanel.vue';
+import HuggingFaceDownloadFailureHint from './HuggingFaceDownloadFailureHint.vue';
 import { modelSuggestions } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 
 const tabPreference = vi.hoisted(() => ({
@@ -248,6 +249,93 @@ describe('browser model discovery', () => {
     await wrapper.get('[data-testid="model-discovery-close"]').trigger('click');
     expect(wrapper.emitted('close')).toHaveLength(1);
     expect(modelLaunchEntryState.value.status).toBe('idle');
+  });
+
+  it('keeps expandable guidance in the detail viewport and leaves the action footer stable', async () => {
+    const wrapper = mount(ModelDiscoveryPanel, {
+      props: { visibility: 'open', tab: 'hugging-face' },
+      global: { stubs: { Teleport: true, CspMessageHint: { template: '<details data-testid="discovery-guidance"><summary>Connection guidance</summary><button>Export data</button></details>' } } },
+    });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/model:Q8_0');
+    await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    const guidance = wrapper.get('[data-testid="discovery-guidance"]');
+    const viewport = wrapper.get('[data-testid="discovery-detail-viewport"]');
+    const start = wrapper.get('[data-testid="discovery-start"]');
+    expect(viewport.element.contains(guidance.element)).toBe(true);
+    expect(guidance.element.closest('footer')).toBeNull();
+    expect(start.element.closest('footer')).not.toBeNull();
+    guidance.element.setAttribute('open', '');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="discovery-start"]').element).toBe(start.element);
+    expect(modelLaunchEntryState.value.status).toBe('idle');
+  });
+
+  it('puts the original failure immediately before its hint in the same scrollable message area', async () => {
+    using fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const wrapper = mount(ModelDiscoveryPanel, {
+      props: { visibility: 'open', tab: 'hugging-face' },
+      global: { stubs: { Teleport: true, CspMessageHint: { props: ['presentation', 'activityForDisplayOnly'], template: '<details data-testid="discovery-guidance" :data-presentation="presentation" :data-activity="activityForDisplayOnly"><summary>Connection guidance</summary><button>Export data</button></details>' }, LlamaCppBrowserLocalFileRecovery: { name: 'LlamaCppBrowserLocalFileRecovery', props: ['disabled', 'acceptLocalInput'], template: '<section data-testid="discovery-local-recovery"><button>Use local files</button></section>' } } },
+    });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/model:Q8_0');
+    await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    const start = wrapper.get('[data-testid="discovery-start"]');
+    await start.trigger('click');
+    const request = modelLaunchEntryState.value;
+    if (request.status !== 'checking') {
+      throw new Error('Expected an explicitly started model request');
+    }
+    setModelLaunchEntryState({ state: { status: 'failed', operation: request.operation, input: request.input, problem: 'failed' } });
+    await flushPromises();
+    const messages = wrapper.get('[data-testid="discovery-messages"]');
+    const error = messages.get('[role="alert"]');
+    const guidance = wrapper.getComponent(HuggingFaceDownloadFailureHint);
+    const retryBeforeHint = wrapper.get('[data-testid="discovery-start"]');
+    const launchBeforeHint = modelLaunchCommand.value;
+    expect(error.element.nextElementSibling).toBe(guidance.element);
+    expect(messages.find('[data-testid="discovery-local-recovery"]').exists()).toBe(false);
+    await guidance.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('disabled')).toBe(false);
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('acceptLocalInput')).toBeUndefined();
+    expect(wrapper.get('[data-testid="discovery-detail-viewport"]').element.contains(messages.element)).toBe(true);
+    expect(messages.element.closest('footer')).toBeNull();
+    expect(retryBeforeHint.element.closest('footer')).not.toBeNull();
+    expect(wrapper.get('[data-testid="discovery-start"]').element).toBe(retryBeforeHint.element);
+    await guidance.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+    expect(wrapper.get('[data-testid="discovery-start"]').element).toBe(retryBeforeHint.element);
+    expect(modelLaunchCommand.value).toBe(launchBeforeHint);
+    await guidance.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+    expect(wrapper.get('[data-testid="discovery-start"]').element).toBe(retryBeforeHint.element);
+    await wrapper.setProps({ interaction: 'blocked' });
+    expect(wrapper.get('[data-testid="model-discovery"]').attributes('inert')).toBeDefined();
+    // Inspect lazy recovery only after explicitly opening the current disclosure.
+    const blockedTrigger = wrapper.getComponent(HuggingFaceDownloadFailureHint).get('[data-testid="hf-download-failure-trigger"]');
+    if (blockedTrigger.attributes('aria-expanded') === 'false') {
+      await blockedTrigger.trigger('click');
+    }
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('disabled')).toBe(true);
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('acceptLocalInput')).toBeUndefined();
+    const blockedStart = wrapper.get('[data-testid="discovery-start"]');
+    expect(blockedStart.attributes('aria-busy')).toBe('false');
+    const previousCommand = modelLaunchCommand.value;
+    await blockedStart.trigger('click');
+    expect(modelLaunchCommand.value).toBe(previousCommand);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    setModelLaunchEntryState({ state: { status: 'failed', operation: request.operation, input: request.input, problem: 'variant-unavailable' } });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="discovery-messages"]').find('[role="alert"]').exists()).toBe(true);
+    expect(wrapper.findComponent(HuggingFaceDownloadFailureHint).exists()).toBe(false);
   });
 
   it('restores the opener and does not consume Escape from a nested dialog', async () => {

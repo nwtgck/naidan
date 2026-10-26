@@ -497,6 +497,7 @@ describe('ChatInput Integration', () => {
     textSubmissionAction?: ChatTextSubmissionAction,
   } = {}) => mount(ChatInput, {
     props: {
+      endpoint: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chat: mockCurrentChat.value!,
       chatGroup: mockCurrentChatGroup.value,
@@ -524,6 +525,92 @@ describe('ChatInput Integration', () => {
         },
       },
     },
+  });
+
+  it('leaves connection notice content to the parent slot and preserves input controls when endpoints change', async () => {
+    const wrapper = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    const textarea = wrapper.get('[data-testid="chat-input"]').element;
+    const selector = wrapper.getComponent({ name: 'ModelSelector' }).element;
+    const send = wrapper.get('[data-testid="send-button"]');
+    const card = wrapper.get('[data-testid="chat-input-card"]');
+    const initialChildren = Array.from(card.element.children);
+    const initialFetches = mockChatStore.fetchAvailableModels.mock.calls.length;
+    await wrapper.setProps({ endpoint: { type: 'openai', url: 'https://configured.example/v1' } });
+    expect(wrapper.findComponent({ name: 'CspLmEndpointHint' }).exists()).toBe(false);
+    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
+    await nextTick();
+    expect(wrapper.findComponent({ name: 'CspLmEndpointHint' }).exists()).toBe(false);
+    expect(Array.from(card.element.children)).toEqual(initialChildren);
+    expect(card.element.lastElementChild?.contains(send.element)).toBe(true);
+    expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea);
+    expect(wrapper.getComponent({ name: 'ModelSelector' }).element).toBe(selector);
+    expect(mockChatStore.fetchAvailableModels).toHaveBeenCalledTimes(initialFetches);
+    await wrapper.get('[data-testid="chat-input"]').setValue('Send without a composer notice row');
+    expect(send.element).toHaveProperty('disabled', false);
+    await send.trigger('click');
+    await flushPromises();
+    expect(mockSendMessageForChat).toHaveBeenCalledOnce();
+    void cleanup;
+  });
+
+  it('keeps an evaluated but empty above-input slot eligible for zero-space hiding', async () => {
+    const wrapper = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const card = wrapper.get('[data-testid="chat-input-card"]');
+    const children = Array.from(card.element.children);
+    const textarea = wrapper.get('[data-testid="chat-input"]').element;
+    await wrapper.setProps({ aboveInputVisibility: 'visible' });
+    const aboveInput = wrapper.get('[data-testid="chat-input-above-slot"]');
+    expect(aboveInput.element.matches(':not(:has(> *))'), JSON.stringify({ html: aboveInput.element.innerHTML, nodes: Array.from(aboveInput.element.childNodes, node => ({ type: node.nodeType, text: node.textContent })) })).toBe(true);
+    expect(aboveInput.element.textContent).toBe('');
+    expect(aboveInput.element.childElementCount).toBe(0);
+    expect(aboveInput.element.nextElementSibling).toBe(card.element);
+    expect(Array.from(card.element.children)).toEqual(children);
+    expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea);
+    void cleanup;
+  });
+
+  it('keeps an existing element notice visible in the above-input slot', async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        endpoint: undefined,
+        chatId: toChatId({ raw: 'chat-1' }),
+        chat: mockCurrentChat.value!,
+        chatGroup: mockCurrentChatGroup.value,
+        resolvedLmParameters: undefined,
+        inheritedModelId: undefined,
+        inheritedModelSource: undefined,
+        visibility: 'active',
+        aboveInputVisibility: 'visible',
+        isStreaming: false,
+        canGenerateImage: true,
+        hasImageModel: true,
+        availableImageModels: [],
+        isAnimatingHeight: false,
+      },
+      slots: { 'above-input': '<p data-testid="existing-notice">An existing notice</p>' },
+      global: { stubs: { Teleport: true, ImageEditor: true } },
+    });
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const aboveInput = wrapper.get('[data-testid="chat-input-above-slot"]');
+    expect(aboveInput.element.matches(':not(:has(> *))')).toBe(false);
+    expect(aboveInput.get('[data-testid="existing-notice"]').text()).toBe('An existing notice');
+    expect(aboveInput.element.nextElementSibling).toBe(wrapper.get('[data-testid="chat-input-card"]').element);
+    void cleanup;
   });
 
   it('reports actual input but not programmatic draft changes or focus', async () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
 import { quantizationName } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
@@ -375,6 +376,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
          Wrap the metadata first on narrow panels or in longer translations. -->
     <div tw-class="ml-11 mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="llama-suggestion-metadata">
       <p tw-class="min-w-0 break-words text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">{{ suggestion.developer }} · {{ totalLabel }}</p>
+      <CspMessageHint v-if="!installed && !previewError && job?.status !== 'failed' && job?.status !== 'paused'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
       <div tw-class="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1" data-testid="llama-suggestion-options">
         <span v-if="companionRequired" data-testid="llama-suggestion-companion-required" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__required_companion_included() }}</span>
         <div v-else-if="quantization.approximateMultimodalBytes !== undefined || canUseMultimodal || multimodal === 'on'" tw-class="flex items-center gap-2">
@@ -394,10 +396,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </button>
       </div>
     </div>
-    <LlamaCppBrowserDownloadJob appearance="manager" v-if="job && (!installed || busy) && job.status !== 'complete' && job.status !== 'cancelled'" :job="job" :disabled="disabled || destinationUnavailable || authorizing || checkingLocal || localError" tw-class="mt-2" @resume="download" />
+    <LlamaCppBrowserDownloadJob :accept-local-input="undefined" appearance="manager" v-if="job && (!installed || busy) && job.status !== 'complete' && job.status !== 'cancelled'" :job="job" :disabled="disabled || destinationUnavailable || authorizing || checkingLocal || localError" tw-class="mt-2" @resume="download" />
     <div v-for="boundJob in otherDestinationJobs" :key="boundJob.id" data-testid="llama-suggestion-other-destination-job" tw-class="mt-2 space-y-1">
       <p tw-class="text-[10px] text-gray-500 dark:text-gray-400">{{ destinationLabel ? destinationLabel({ destination: boundJob.destination }) : destinationKey({ destination: boundJob.destination }) }} · {{ boundJob.repository }}</p>
-      <LlamaCppBrowserDownloadJob appearance="manager" :job="boundJob" :disabled="disabled || authorizing" @resume="resumeOtherDestination({ job: boundJob })" />
+      <LlamaCppBrowserDownloadJob :accept-local-input="undefined" appearance="manager" :job="boundJob" :disabled="disabled || authorizing" @resume="resumeOtherDestination({ job: boundJob })" />
     </div>
     <p v-if="authorizationFailed" role="alert" data-testid="llama-suggestion-destination-error" tw-class="mt-2 text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     <p v-if="localError" role="alert" tw-class="mt-2 text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
@@ -420,12 +422,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               {{ inspecting ? lazyStrings.llamaCppBrowserDownloads__checking_hugging_face() : plan ? lazyStrings.llamaCppBrowserDownloads__refresh_download_contents() : lazyStrings.llamaCppBrowserDownloads__check_download_contents() }}
             </LlamaCppBrowserModelActionButton>
           </div>
+          <CspMessageHint v-if="installed && !previewError" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-information" presentation="compact" />
           <template v-if="plan">
             <LlamaCppBrowserDownloadPlanFiles :repository="plan.repository" :revision="plan.revision" :files="plan.files" />
             <p tw-class="text-right tabular-nums font-medium">{{ lazyStrings.llamaCppBrowserDownloads__total() }} {{ formatDownloadBytes({ bytes: plan.files.reduce((sum, file) => sum + file.size, 0) }) }}</p>
           </template>
           <p v-if="preview.status === 'unavailable'" role="alert" tw-class="flex gap-2 text-amber-700 dark:text-amber-400"><AlertCircleIcon tw-class="w-3.5 h-3.5 shrink-0" />{{ lazyStrings.llamaCppBrowserDownloads__plan_needs_review() }}</p>
           <p v-if="previewError" role="alert" tw-class="text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume() }}</p>
+          <CspMessageHint v-if="previewError" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-information" presentation="error" />
         </div>
       </div>
     </div>

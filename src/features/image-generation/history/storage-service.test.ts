@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { finishImageGenerationSnapshot, snapshotImageGeneration } from './snapshot';
 import { idToRaw } from '@/01-models/ids';
 const mocks = vi.hoisted(() => ({ commit: vi.fn() }));
-vi.mock('@/strings', () => ({ ensureStrings: {} }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addInfoEvent() {}, addErrorEvent() {} }) }));
 vi.mock('@/utils/opfs-detection', () => ({ checkOPFSSupport: async () => true }));
 vi.mock('@/00-storage/service/image-generation-history', () => ({ saveImageGenerationRecord: mocks.commit, captureImageGenerationHistoryTarget: async () => ({}) }));
@@ -19,7 +19,8 @@ function generation() {
   return finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['final'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false }, previews: [], elapsedMs: 1 });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   images.clear();
   mocks.commit.mockReset().mockImplementation(async ({ writeImages }: { writeImages: () => Promise<void> }) => writeImages());
   vi.stubGlobal('navigator', { locks: { request: async (_name: string, callback: () => Promise<unknown>) => callback() } });

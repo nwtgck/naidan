@@ -1,0 +1,1 @@
+export const CspDeploymentGuidance__saved_development_csp_may_be_reapplied_after_restoring_settings = (): string => "If you saved a development CSP, it may be applied again when you restore settings on the other site.";

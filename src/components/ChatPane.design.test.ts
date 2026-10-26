@@ -176,7 +176,7 @@ describe('ChatPane Design Specifications', () => {
     const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    const container = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    const container = wrapper.find('[data-testid="chat-input-card"]');
     expect(container.classes()).toContain('rounded-2xl');
   });
 
@@ -210,7 +210,7 @@ describe('ChatPane Design Specifications', () => {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
 
-    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    const inputContainer = wrapper.find('[data-testid="chat-input-card"]');
     expect(inputContainer.classes()).toContain('flex-col');
 
     const textarea = inputContainer.find('[data-testid="chat-input"]');
@@ -292,7 +292,7 @@ describe('ChatPane Design Specifications', () => {
     const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    const inputCard = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    const inputCard = wrapper.find('[data-testid="chat-input-card"]');
     expect(inputCard.classes()).toContain('bg-white');
     // It should not have backdrop-blur on the card itself anymore
     expect(inputCard.classes()).not.toContain('backdrop-blur-md');

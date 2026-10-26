@@ -17,6 +17,11 @@ import { createInferenceBudget } from '@/features/naidan-rpc-integration/handler
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const bridge = vi.hoisted(() => ({ manager: undefined as NaidanPeerManager | undefined, listeners: new Set<() => void>() }));
+// Policy observation has its own document request. Keep that display-only
+// request outside the finite-relay fixture while the real RPC controls run.
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({
+  default: { props: ['target', 'presentation'], template: '<small v-if="target" data-testid="csp-hint">Current environment information</small>' },
+}));
 // Only inject the app-owned manager. Its state machine, transport adapter,
 // encrypted handshake, RPC and the Vue controls all remain production code.
 vi.mock('../runtime/feature', () => ({

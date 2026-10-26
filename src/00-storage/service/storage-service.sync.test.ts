@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { ChatContentBindingChangedError, StorageService, type ChatContentWrite } from './index';
 import { MemoryStorageProvider } from './memory-storage';
 import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
@@ -6,13 +8,6 @@ import { toBinaryObjectId, toChatGroupId, toChatId, toVolumeId } from '@/01-mode
 import { DEFAULT_SETTINGS, type ChatMeta, type Hierarchy, type Settings, type StorageSnapshot } from '@/01-models/types';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import type { ChangeListener, StorageChangeEvent } from './synchronizer';
-
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only generic mock keeps Boundary Strings loading out of storage service tests without adding a runtime dependency.
-vi.mock('@/strings', () => ({
-  ensureStrings: new Proxy({}, {
-    get: () => async () => 'test boundary string',
-  }),
-}));
 
 // We mock the synchronizer to track calls to withLock and notify
 const { mockWithLock, mockNotify, mockSubscribe, mockSynchronizers } = vi.hoisted(() => ({
@@ -140,6 +135,7 @@ describe('StorageService Synchronization Wrapper', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    await ensureAllStringsForTest({ locale: 'en' });
     mockSynchronizers.length = 0;
 
     // Restore default mock implementations after reset
@@ -827,7 +823,7 @@ describe('StorageService Synchronization Wrapper', () => {
     await expect(service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => ({} as any) })).rejects.toThrow(diskError);
 
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
-      message: 'test boundary string',
+      message: 'An error occurred during a storage operation.',
       details: diskError,
     }));
   });

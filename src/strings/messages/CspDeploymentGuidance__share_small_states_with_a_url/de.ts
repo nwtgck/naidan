@@ -1,0 +1,1 @@
+export const CspDeploymentGuidance__share_small_states_with_a_url = (): string => "For small amounts of data, you can also create a link in the same format as URL sharing. Create the link, then open it on the chosen site.";

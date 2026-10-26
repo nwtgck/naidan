@@ -11,6 +11,7 @@ describe('ContextCompactSettingsDialog', () => {
   it('prevents confirming when there are no messages to compact', async () => {
     const wrapper = mount(ContextCompactSettingsDialog, {
       props: {
+        endpoint: undefined,
         isOpen: true,
         totalMessages: 6,
         initialKeepCount: 6,
@@ -31,6 +32,7 @@ describe('ContextCompactSettingsDialog', () => {
   it('shows an instruction preview and emits edited instruction on confirm', async () => {
     const wrapper = mount(ContextCompactSettingsDialog, {
       props: {
+        endpoint: undefined,
         isOpen: true,
         totalMessages: 9,
         initialKeepCount: 6,

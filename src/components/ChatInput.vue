@@ -45,7 +45,7 @@ import {
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import type { Attachment, Chat, ChatGroup, LmParameters, Reasoning } from '@/01-models/types';
+import type { Attachment, Chat, ChatGroup, Endpoint, LmParameters, Reasoning } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
 import type { AttachmentId, BinaryObjectId, ChatId, VolumeCopyOperationId, VolumeId } from '@/01-models/ids';
 
@@ -68,6 +68,7 @@ const props = defineProps<{
   chat: Chat,
   chatGroup: ChatGroup | null,
   resolvedLmParameters: LmParameters | undefined,
+  endpoint: Endpoint | undefined,
   inheritedModelId: string | undefined,
   inheritedModelSource: SettingsSource | undefined,
   inheritedReasoningEffort?: Reasoning['effort'],
@@ -1401,6 +1402,7 @@ defineExpose({
     <div
       v-if="props.aboveInputVisibility === 'visible'"
       ref="aboveInputElement"
+      class="composer-above-input"
       tw-class="mx-auto mb-2 w-full max-w-4xl pointer-events-auto shrink-0 overflow-y-auto"
       :style="{ maxHeight: availableSpace && availableSpace.height > 0 ? `${availableSpace.height * 0.5}px` : undefined }"
       data-testid="chat-input-above-slot"
@@ -1684,6 +1686,10 @@ defineExpose({
 </template>
 
 <style scoped>
+/* Existing notices have element roots; an empty Vue slot can retain text anchors. */
+.composer-above-input:not(:has(> *)) {
+  display: none;
+}
 .chat-composer {
   container-type: inline-size;
   container-name: chat-composer;

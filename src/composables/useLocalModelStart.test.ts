@@ -4,6 +4,7 @@ import { defineComponent, ref } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { idToRaw } from '@/01-models/ids';
 import { DEFAULT_SETTINGS, type Chat } from '@/01-models/types';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { ModelLaunchStartContext } from './useAppEntry';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { startLocalModelInput, useBrowserModelLocalInputSelection, useLocalModelStart } from './useLocalModelStart';
@@ -30,7 +31,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/00-storage/service', () => ({ storageService: { captureModelLaunchStorage: () => () => mocks.storageCurrent, prepareLocalModelChat: mocks.prepare } }));
 vi.mock('@/composables/useAppEntry', () => ({ handoffAppEntryToChat: mocks.navigate, useAppEntry: () => ({ captureModelLaunchContext: () => ({ homeOriginId: undefined }) }) }));
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ addToast: mocks.warning }) }));
-vi.mock('@/strings', () => ({ ensureStrings: { useLocalModelStart__could_not_save_the_default_model_your_chat_is_ready: async () => 'Could not save the default model. Your chat is ready.' } }));
 vi.mock('@/features/llama-cpp-browser/composables/local-model-launch-session', () => ({ registerLocalModelLaunchSession: mocks.registerSession }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: ref(DEFAULT_SETTINGS), captureModelLaunchDefaults: mocks.captureDefaults, initializeModelLaunchDefaults: mocks.initializeDefaults }) }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({ registerLiveInstance: mocks.registerLive, loadData: mocks.loadData }));
@@ -86,8 +86,9 @@ async function render() {
   return { router, wrapper, ...command };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
+  await ensureAllStringsForTest({ locale: 'en' });
   useBrowserModelLocalInputSelection().cancel();
   mocks.storageCurrent = true;
   mocks.modelListeners.clear();

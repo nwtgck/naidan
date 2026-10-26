@@ -2,10 +2,13 @@
 import { computed } from 'vue';
 import { Loader2Icon, PauseIcon, PlayIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import ImageModelLocalFileRecovery from './ImageModelLocalFileRecovery.vue';
 import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import type { DownloadProgress } from '@/features/llama-cpp-browser/hugging-face/types';
-const props = defineProps<{ view: ImageLibraryView, disabled: boolean }>();
+const props = defineProps<{ view: ImageLibraryView, disabled: boolean, localInputDisabled: boolean }>();
 const { downloadState, downloadProgress, downloading } = props.view;
 const progress = computed<DownloadProgress | undefined>(() => {
   const value = downloadProgress.value;
@@ -59,6 +62,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <button v-if="downloading" type="button" :disabled="disabled" @click="view.cancelDownload()" data-testid="image-cancel-download" tw-class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"><PauseIcon tw-class="w-3 h-3" />{{ lazyStrings.llamaCppBrowserDownloads__pause() }}</button>
       <button v-else-if="downloadState === 'paused' || downloadState === 'failed'" type="button" :disabled="disabled" @click="view.resumeDownload()" data-testid="image-resume-download" tw-class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"><PlayIcon tw-class="w-3 h-3" />{{ downloadState === 'paused' ? lazyStrings.llamaCppBrowserDownloads__resume() : lazyStrings.llamaCppBrowserDownloads__retry() }}</button>
     </div>
+    <HuggingFaceDownloadFailureHint v-if="downloadState === 'failed'">
+      <ImageModelLocalFileRecovery :view="view" :disabled="localInputDisabled" />
+    </HuggingFaceDownloadFailureHint>
+    <CspMessageHint v-else-if="downloadState === 'paused'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
     <template v-if="downloading && downloadProgress">
       <p tw-class="min-w-0 truncate text-[11px] text-gray-500 dark:text-gray-400" :title="downloadProgress.path">{{ downloadProgress.index + 1 }}/{{ downloadProgress.count }} · {{ downloadProgress.path.split('/').at(-1) }}</p>
       <LlamaCppBrowserDownloadProgress appearance="manager" v-if="progress" :key="downloadProgress.phase" :progress="progress" />

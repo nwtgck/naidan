@@ -10,6 +10,7 @@ import BrowserModelWelcomeDialog from './BrowserModelWelcomeDialog.vue';
 enableAutoUnmount(afterEach);
 const localInput = vi.hoisted(() => vi.fn());
 const captureDrop = vi.hoisted(() => vi.fn());
+const captureFiles = vi.hoisted(() => vi.fn());
 const entry = {
   intent: ref({ kind: 'home', input: undefined as string | undefined }),
   interaction: ref('ready'),
@@ -21,11 +22,15 @@ const entry = {
   homeSelection: ref({ suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }),
   openDiscovery: vi.fn(),
   captureModelLaunchStartContext: () => ({ isCurrent: () => true }),
+  captureModelLaunchContext: () => ({ isCurrent: () => true }),
 };
 vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => entry }));
 vi.mock('@/composables/useLocalModelStart', () => ({ startLocalModelInput: localInput }));
-vi.mock('@/features/llama-cpp-browser/logic/local-model-input', () => ({ captureDroppedLocalModels: captureDrop }));
+vi.mock('@/features/llama-cpp-browser/logic/local-model-input', () => ({ captureDroppedLocalModels: captureDrop, localModelDirectoriesFromFiles: captureFiles }));
 vi.mock('./LocalModelSelectionDialog.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div />' } }));
+vi.mock('./BrowserConnectionSelection.vue', () => {
+  throw new Error('Connection settings module failed to load');
+});
 
 beforeEach(async () => {
   launchTest.reset();
@@ -34,12 +39,169 @@ beforeEach(async () => {
   entry.modelSelection.value = { phase: 'open', target: { kind: 'home' }, selection: entry.homeSelection.value };
   localInput.mockReset().mockResolvedValue(undefined);
   captureDrop.mockReset().mockResolvedValue([]);
+  captureFiles.mockReset().mockReturnValue([]);
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
 function mountEntry() {
   return mount(BrowserModelWelcomeDialog, { global: { stubs: { teleport: true, BrowserModelWelcome: { template: '<div data-testid="welcome-model-surface" />' } } } });
 }
+
+function mountWelcomeEntry({ cspHint }: { cspHint: 'visible' | 'absent' }) {
+  return mount(BrowserModelWelcomeDialog, {
+    global: {
+      stubs: {
+        teleport: true,
+        CspMessageHint: {
+          props: ['target', 'activityForDisplayOnly', 'presentation'],
+          template: cspHint === 'visible' ? '<details data-testid="welcome-csp-guidance" :data-target="target.kind" :data-activity="activityForDisplayOnly" :data-presentation="presentation"><summary>Preparation guidance</summary><p>Connection restrictions</p></details>' : '<!-- No CSP guidance -->',
+        },
+      },
+    },
+  });
+}
+
+it('offers owned preparation failure guidance directly after the error without changing the model action', async () => {
+  using fetch = vi.spyOn(globalThis, 'fetch');
+  const wrapper = mountWelcomeEntry({ cspHint: 'visible' });
+  const dialog = wrapper.get('[data-testid="browser-model-dialog"]').element;
+  const start = wrapper.get('[data-testid="start-model"]').element;
+  const content = wrapper.get<HTMLElement>('[data-testid="browser-model-dialog-content"]').element;
+  Object.defineProperties(content, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, value: 1000 } });
+  const getRect = HTMLElement.prototype.getBoundingClientRect;
+  using _geometry = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this === content) {
+      return new DOMRect(0, 100, 600, 200);
+    }
+    if (this.tagName === 'P' && this.parentElement?.dataset.testid === 'welcome-start-error') {
+      return new DOMRect(0, 800 - content.scrollTop, 600, 20);
+    }
+    if (this.dataset.testid === 'hf-download-failure-trigger') {
+      return new DOMRect(0, 840 - content.scrollTop, 600, 20);
+    }
+    return getRect.call(this);
+  });
+  const scroll = vi.fn(({ top }: { top: number, behavior: ScrollBehavior }) => {
+    content.scrollTop = top;
+  });
+  Object.defineProperty(content, 'scrollTo', { configurable: true, value: scroll });
+  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="start-model"]').trigger('click');
+  const command = modelLaunchCommand.value;
+  if (command?.kind !== 'start') {
+    throw new Error('Expected Start');
+  }
+  setModelLaunchEntryState({ state: { status: 'failed', operation: command.operation, input: command.request.input, problem: 'failed' } });
+  await flushPromises();
+  const error = wrapper.get('[data-testid="welcome-start-error"]');
+  const failure = error.get('[data-testid="hf-download-failure-hint"]');
+  expect(error.get('[role="alert"]').element.nextElementSibling).toBe(failure.element);
+  expect(error.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(error.find('[data-testid="gguf-local-recovery"]').exists()).toBe(false);
+  expect(scroll).toHaveBeenCalledExactlyOnceWith({ top: 584, behavior: 'auto' });
+  await failure.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+  const guidance = error.get('[data-testid="welcome-csp-guidance"]');
+  expect(error.get('[role="alert"]').element.nextElementSibling?.contains(guidance.element)).toBe(true);
+  expect(guidance.attributes()).toMatchObject({ 'data-target': 'huggingface-download', 'data-activity': 'download', 'data-presentation': 'error-details' });
+  expect(error.find('[data-testid="gguf-local-recovery"]').exists()).toBe(true);
+  expect(wrapper.get('[data-testid="browser-model-dialog"]').element).toBe(dialog);
+  expect(wrapper.get('[data-testid="start-model"]').element).toBe(start);
+  expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeUndefined();
+  expect(guidance.element.closest('.browser-model-dialog-content')).toBe(error.element.closest('.browser-model-dialog-content'));
+  expect(modelLaunchCommand.value).toBe(command);
+  expect(fetch).not.toHaveBeenCalled();
+
+  const selection = entry.modelSelection.value;
+  if (selection === undefined) {
+    throw new Error('Expected an open selection');
+  }
+  selection.selection = { suggestionId: 'gpt-oss-20b', quantizationId: 'mxfp4' };
+  await flushPromises();
+  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(true);
+  expect(modelLaunchCommand.value).toBe(command);
+  expect(scroll).toHaveBeenCalledOnce();
+  setModelLaunchEntryState({ state: { status: 'failed', operation: command.operation, input: command.request.input, problem: 'failed' } });
+  await flushPromises();
+  expect(scroll).toHaveBeenCalledOnce();
+});
+
+it('offers local GGUF recovery without CSP guidance and forwards only an explicit file choice to the existing owner', async () => {
+  const wrapper = mountWelcomeEntry({ cspHint: 'absent' });
+  await wrapper.get('[data-testid="start-model"]').trigger('click');
+  const command = modelLaunchCommand.value;
+  if (command?.kind !== 'start') {
+    throw new Error('Expected Start');
+  }
+  setModelLaunchEntryState({ state: { status: 'failed', operation: command.operation, input: command.request.input, problem: 'failed' } });
+  await flushPromises();
+  expect(wrapper.find('[data-testid="gguf-local-recovery"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+  const recovery = wrapper.get('[data-testid="welcome-start-error"]').get('[data-testid="gguf-local-recovery"]');
+  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(localInput).not.toHaveBeenCalled();
+  expect(captureFiles).not.toHaveBeenCalled();
+  expect(modelLaunchCommand.value).toBe(command);
+
+  const file = new File(['model'], 'model.gguf');
+  const input = recovery.get<HTMLInputElement>('[data-testid="llama-cpp-browser-file"]');
+  entry.interaction.value = 'blocked';
+  await flushPromises();
+  expect(input.attributes('disabled')).toBeDefined();
+  entry.interaction.value = 'ready';
+  await flushPromises();
+  expect(recovery.get('[data-testid="llama-cpp-browser-file"]').element).toBe(input.element);
+  expect(input.attributes('disabled')).toBeUndefined();
+  Object.defineProperty(input.element, 'files', { configurable: true, value: [file] });
+  await input.trigger('change');
+  await vi.waitFor(() => expect(localInput).toHaveBeenCalledOnce());
+  expect(captureFiles).toHaveBeenCalledWith({ files: [file], selection: 'files' });
+  expect(localInput.mock.calls[0]?.[0]).toMatchObject({ directories: expect.any(Promise), controller: expect.any(AbortController), context: { isCurrent: expect.any(Function) } });
+  expect(modelLaunchCommand.value).toBe(command);
+});
+
+it.each(['invalid-input', 'variant-unavailable', 'companion-required'] as const)('keeps a known preparation problem separate from connection guidance: %s', async problem => {
+  const wrapper = mountWelcomeEntry({ cspHint: 'visible' });
+  await wrapper.get('[data-testid="start-model"]').trigger('click');
+  const command = modelLaunchCommand.value;
+  if (command?.kind !== 'start') {
+    throw new Error('Expected Start');
+  }
+  setModelLaunchEntryState({ state: { status: 'failed', operation: command.operation, input: command.request.input, problem } });
+  await flushPromises();
+  expect(wrapper.get('[data-testid="welcome-start-error"]').get('[role="alert"]').text()).not.toBe('');
+  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="hf-download-failure-hint"]').exists()).toBe(false);
+});
+
+it('ignores another model attempt when deciding whether welcome needs failure guidance', async () => {
+  const wrapper = mountWelcomeEntry({ cspHint: 'visible' });
+  setModelLaunchEntryState({ state: { status: 'failed', operation: Symbol('another model attempt'), input: 'owner/another-model', problem: 'failed' } });
+  await flushPromises();
+  expect(wrapper.find('[data-testid="welcome-start-error"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="hf-download-failure-hint"]').exists()).toBe(false);
+});
+
+it.each(['openai', 'browser_provided_lm'] as const)('does not present a connection UI loading failure as an HF failure: %s', async endpoint => {
+  const wrapper = mountWelcomeEntry({ cspHint: 'visible' });
+  wrapper.getComponent(BrowserModelWelcome).vm.$emit('open-connections', endpoint);
+  await vi.waitFor(() => expect(wrapper.getComponent(BrowserModelWelcome).props('startError')).toBe('Could not open connection settings. Please try again.'));
+  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="hf-download-failure-hint"]').exists()).toBe(false);
+  expect(modelLaunchCommand.value).toBeUndefined();
+});
+
+it('does not present a local file opening failure as an HF failure', async () => {
+  using error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  localInput.mockRejectedValueOnce(new Error('Could not read the local file'));
+  const wrapper = mountWelcomeEntry({ cspHint: 'visible' });
+  wrapper.getComponent(BrowserModelWelcome).vm.$emit('local-input', { directories: Promise.resolve([]), controller: new AbortController() });
+  await vi.waitFor(() => expect(error).toHaveBeenCalled());
+  expect(localInput).toHaveBeenCalledOnce();
+  expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="hf-download-failure-hint"]').exists()).toBe(false);
+  expect(modelLaunchCommand.value).toBeUndefined();
+});
 
 it('shows a full-pane model drop hint and keeps it when moving between children', async () => {
   const wrapper = mountEntry();

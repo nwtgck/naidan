@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { urlImportExportLogic } from './url-logic';
 import type { ExportExclusions } from './types';
+import { createMemoryHistory, createRouter } from 'vue-router';
+import { readFirstQueryValue, resolveInitialRoute } from '@/logic/startup/startup-route';
 
 const { mockExportData, mockVerify, mockExecuteImport } = vi.hoisted(() => ({
   mockExportData: vi.fn(),
@@ -23,6 +25,36 @@ vi.mock('./service', () => {
     },
   };
 });
+
+function readStartupPayloadFromAnchor({ url }: { url: string }): string {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  const history = createMemoryHistory();
+  // Hash history exposes the fragment after '#'; startup resolves it once.
+  history.replace(new URL(anchor.href).hash.slice(1));
+  const router = createRouter({ history, routes: [{ path: '/', component: { template: '<div />' } }] });
+  const route = resolveInitialRoute({ router });
+  const payload = readFirstQueryValue({ value: route.query['data-zip'] });
+  if (payload === undefined) {
+    throw new Error('Expected the generated data-zip query');
+  }
+  return payload;
+}
+
+function readBlobBytes({ blob }: { blob: Blob }): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(new Uint8Array(reader.result));
+      } else {
+        reject(new Error('Expected binary Blob data'));
+      }
+    };
+    reader.readAsArrayBuffer(blob);
+  });
+}
 
 describe('URLImportExportLogic', () => {
   beforeEach(() => {
@@ -158,6 +190,74 @@ describe('URLImportExportLogic', () => {
       expect(firstCall).toBeDefined();
       expect(firstCall![0].query).not.toHaveProperty('data-zip');
       expect(firstCall![0].query).toHaveProperty('storage-type', 'opfs');
+    });
+  });
+
+  describe('binary payload transport through the startup router', () => {
+    beforeEach(() => {
+      mockExportData.mockReset();
+      mockVerify.mockReset().mockResolvedValue(undefined);
+      mockExecuteImport.mockReset().mockResolvedValue(undefined);
+    });
+
+    it('roundtrips every byte through generated URL, anchor, startup query parsing and atob', async () => {
+      const bytes = Uint8Array.from({ length: 256 }, (_, index) => index);
+      mockExportData.mockResolvedValue({
+        stream: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes.slice(0, 127));
+            controller.enqueue(bytes.slice(127));
+            controller.close();
+          },
+        }),
+      });
+      const url = await urlImportExportLogic.getExportURL({ exclude: [], baseUrl: 'https://naidan.pages.dev/' });
+      const payload = readStartupPayloadFromAnchor({ url });
+      const expected = btoa(String.fromCharCode(...bytes));
+      expect(expected).toContain('+');
+      expect(expected).toContain('/');
+      expect(expected).toContain('=');
+      expect(url).toContain('%2B');
+      expect(url).toContain('%2F');
+      expect(url).toContain('%3D');
+      expect(payload).toBe(expected);
+      await urlImportExportLogic.importFromBase64({ zipBase64: payload });
+      expect(mockVerify).toHaveBeenCalledOnce();
+      expect(mockExecuteImport).toHaveBeenCalledOnce();
+      const importedBlob: Blob = mockVerify.mock.calls[0]?.[0].zipFile;
+      expect(await readBlobBytes({ blob: importedBlob })).toEqual(bytes);
+    });
+
+    it('preserves an encoded plus, slash and padding without a second query decoding step', async () => {
+      const bytes = Uint8Array.of(0xfb, 0xff);
+      mockExportData.mockResolvedValue({
+        stream: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
+      });
+      const url = await urlImportExportLogic.getExportURL({ exclude: ['chat', 'binary_object'], baseUrl: 'https://naidan-curated.pages.dev/' });
+      expect(new URL(url).hash).toContain('data-zip=%2B%2F8%3D');
+      const payload = readStartupPayloadFromAnchor({ url });
+      expect(payload).toBe('+/8=');
+      await urlImportExportLogic.importFromBase64({ zipBase64: payload });
+      expect(mockVerify).toHaveBeenCalledOnce();
+      const importedBlob: Blob = mockVerify.mock.calls[0]?.[0].zipFile;
+      expect(await readBlobBytes({ blob: importedBlob })).toEqual(bytes);
+    });
+
+    it.each([
+      { corruption: 'raw plus', encodedPayload: '+%2F8%3D', parsedPayload: ' /8=' },
+      { corruption: 'double percent encoding', encodedPayload: '%252B%252F8%253D', parsedPayload: '%2B%2F8%3D' },
+      { corruption: 'truncation to a one-character remainder', encodedPayload: 'A', parsedPayload: 'A' },
+    ])('rejects $corruption before ZIP verification', async ({ encodedPayload, parsedPayload }) => {
+      const payload = readStartupPayloadFromAnchor({ url: `https://naidan.pages.dev/#/?storage-type=local&data-zip=${encodedPayload}` });
+      expect(payload).toBe(parsedPayload);
+      await expect(urlImportExportLogic.importFromBase64({ zipBase64: payload })).rejects.toMatchObject({ name: 'InvalidCharacterError' });
+      expect(mockVerify).not.toHaveBeenCalled();
+      expect(mockExecuteImport).not.toHaveBeenCalled();
     });
   });
 });

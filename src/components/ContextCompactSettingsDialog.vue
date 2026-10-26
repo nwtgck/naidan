@@ -2,12 +2,15 @@
 import { computed, ref, watch } from 'vue';
 import { XIcon, BrainIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import type { Endpoint } from '@/01-models/types';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 
 const props = defineProps<{
   isOpen: boolean,
   totalMessages: number,
   initialKeepCount: number,
   initialInstruction: string,
+  endpoint: Endpoint | undefined,
 }>();
 
 const emit = defineEmits<{
@@ -101,6 +104,7 @@ defineExpose({
 
         <!-- Content -->
         <div tw-class="flex-1 overflow-y-auto p-6 space-y-8">
+          <CspLmEndpointHint activity-for-display-only="context-summary" :fake-lm-debug-mode-status="undefined" :endpoint="endpoint" operation="chat" presentation="compact" />
           <!-- Visualization -->
           <div tw-class="relative h-20 flex items-end gap-1 px-2">
             <div

@@ -121,7 +121,7 @@ describe('MessageItem Image Generation', () => {
   it('shows ImageConjuringLoader when generation is pending', () => {
     const message = createMessage(SENTINEL_IMAGE_PENDING);
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     expect(wrapper.findComponent({ name: 'ImageConjuringLoader' }).exists()).toBe(true);
@@ -130,7 +130,7 @@ describe('MessageItem Image Generation', () => {
   it('shows ImageConjuringLoader for initial pending image generation in waiting mode', () => {
     const message = createMessage(SENTINEL_IMAGE_PENDING);
     const wrapper = mount(MessageItem, {
-      props: { message, mode: 'waiting', isGenerating: true },
+      props: { endpoint: undefined, message, mode: 'waiting', isGenerating: true },
     });
 
     expect(wrapper.findComponent({ name: 'ImageConjuringLoader' }).exists()).toBe(true);
@@ -145,7 +145,7 @@ describe('MessageItem Image Generation', () => {
     });
 
     const wrapper = mount(MessageItem, {
-      props: { message, mode: 'waiting', isGenerating: true },
+      props: { endpoint: undefined, message, mode: 'waiting', isGenerating: true },
     });
 
     expect(wrapper.find('[data-testid="step-display"]').text()).toContain('1/ 25');
@@ -157,7 +157,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     const img = wrapper.find('img');
@@ -177,7 +177,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton },
       },
@@ -220,7 +220,7 @@ describe('MessageItem Image Generation', () => {
     });
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton },
       },
@@ -267,7 +267,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -282,7 +282,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -297,7 +297,7 @@ describe('MessageItem Image Generation', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(null);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
     });
 
     await flushPromises();
@@ -314,7 +314,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
     });
 
     await flushPromises();
@@ -333,7 +333,7 @@ describe('MessageItem Image Generation', () => {
   it('hides speech controls for pending image generation', () => {
     const message = createMessage(SENTINEL_IMAGE_PENDING);
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     // SpeechControl should be hidden or not rendered
@@ -344,7 +344,7 @@ describe('MessageItem Image Generation', () => {
     const content = `${SENTINEL_IMAGE_PROCESSED}<img src="blob:test">`;
     const message = createMessage(content);
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     const speechControl = wrapper.findComponent({ name: 'SpeechControl' });
@@ -366,7 +366,7 @@ describe('MessageItem Image Generation', () => {
     });
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton },
       },
@@ -425,7 +425,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton },
       },
@@ -481,7 +481,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'parallel-test' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'parallel-test' }) },
     });
 
     // Check skeletons immediately after mount
@@ -534,7 +534,7 @@ describe('MessageItem Image Generation', () => {
     };
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'cache-test' }) },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'cache-test' }) },
     });
 
     // 1. Wait for first hydration

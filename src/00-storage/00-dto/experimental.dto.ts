@@ -248,6 +248,13 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
 
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
   locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
+  /**
+   * Development convenience only. This does not improve security and MUST NOT
+   * be used for security. A late-applied CSP meta cannot prevent loads that
+   * already occurred. NEVER use this value for feature permissions or ON/OFF
+   * decisions. Clearing the setting means undefined, not an empty string.
+   */
+  metaCsp: missingAsUndefined(dtozod.string()),
   chatBrowserModelPickerTab: missingAsUndefined(dtozod.enum(['files', 'linked-folders', 'hugging-face', 'saved'])),
   modelDiscoveryTab: missingAsUndefined(dtozod.enum(['candidates', 'hugging_face', 'local_files'])),
   markdownRendering: missingAsUndefined(dtozod.union([

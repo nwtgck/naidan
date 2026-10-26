@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__privacy_fetch_confirmation_unavailable_description = (): string => 'Only the prefix shown here is confirmed. The state of later additions could not be confirmed.';

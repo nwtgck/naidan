@@ -1,0 +1,1 @@
+export const ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model = (): string => 'Add image model files already on your device or link their folder, then select the model in image generation.';

@@ -9,6 +9,9 @@ import type { ImageGenerationView } from '@/features/image-generation/use-image-
 vi.mock('@/components/SettingsSelect.vue', async () => ({
   default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
 }));
+// CSP observation has its own tests. Keep its optional document fetch outside
+// this fixture's checks for standalone inference and history side effects.
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({ default: { name: 'CspMessageHint', inheritAttrs: false, render: () => undefined } }));
 
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-benchmark', () => import('@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone'));
 vi.mock('@/features/image-generation/use-image-generation', () => import('@/features/image-generation/use-image-generation-standalone'));

@@ -8,6 +8,7 @@ import type { PrivacyFetchRequestId } from '@/01-models/ids';
 import { createPrivacyFetchError } from './errors';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 import { privacyFetchBrokerToParentMessageSchema } from './schemas';
+import { getDevelopmentMetaCspPrivacyBrokerSyncNotForSecurity } from '@/logic/development-meta-csp/privacy-broker-sync';
 import type {
   PrivacyFetchBrokerClient,
   PrivacyFetchResponse,
@@ -27,6 +28,9 @@ type Deferred<T> = ReturnType<typeof Promise.withResolvers<T>>;
 const PRIVACY_FETCH_BROKER_PATH = '/privacy-fetch-broker.html';
 
 let sharedPrivacyFetchBrokerClient: PrivacyFetchBrokerClient | undefined;
+let developmentMetaCspSessionSequence = 0;
+
+type DevelopmentMetaCspSyncOwner = ReturnType<typeof getDevelopmentMetaCspPrivacyBrokerSyncNotForSecurity>;
 
 function createDeferred<T>(): Deferred<T> {
   let resolve!: Deferred<T>['resolve'];
@@ -99,6 +103,51 @@ function createPrivacyFetchBrokerClient({
   let disposed = false;
   let readyResolved = false;
   let iframe: HTMLIFrameElement | undefined;
+  let developmentMetaCspOwner: DevelopmentMetaCspSyncOwner | undefined;
+  let developmentMetaCspSessionId: string | undefined;
+  let developmentMetaCspSyncSequence = 0;
+  let unsubscribeDevelopmentMetaCsp: (() => void) | undefined;
+
+  const syncDevelopmentMetaCsp = () => {
+    const owner = developmentMetaCspOwner;
+    const sessionId = developmentMetaCspSessionId;
+    if (disposed || owner === undefined || sessionId === undefined) {
+      return;
+    }
+    const syncId = `sync-${++developmentMetaCspSyncSequence}`;
+    try {
+      const policies = owner.getSuccessfulPolicies();
+      if (policies.length === 0) {
+        return;
+      }
+      owner.recordSending({ sessionId, syncId, policyCount: policies.length });
+      const contentWindow = iframe?.contentWindow;
+      if (contentWindow === null || contentWindow === undefined) {
+        throw new Error('Development meta CSP broker is unavailable');
+      }
+      contentWindow.postMessage({
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'development-meta-csp-sync',
+        sessionId,
+        syncId,
+        policies,
+      }, '*');
+    } catch {
+      try {
+        owner.recordSendFailure({ sessionId, syncId });
+      } catch {
+        // Development state publication must not interrupt normal transport.
+      }
+    }
+  };
+
+  const prepareDevelopmentMetaCsp = () => {
+    developmentMetaCspSessionId = `privacy-broker-${++developmentMetaCspSessionSequence}`;
+    developmentMetaCspOwner ??= getDevelopmentMetaCspPrivacyBrokerSyncNotForSecurity();
+    developmentMetaCspOwner.beginSession({ sessionId: developmentMetaCspSessionId });
+    unsubscribeDevelopmentMetaCsp ??= developmentMetaCspOwner.subscribeSuccessfulAdditions({ listener: syncDevelopmentMetaCsp });
+    syncDevelopmentMetaCsp();
+  };
 
   const resolvePendingRequest = ({
     requestId,
@@ -130,9 +179,36 @@ function createPrivacyFetchBrokerClient({
     const message = parsed.data;
     switch (message.type) {
     case 'ready':
-      if (!readyResolved) {
-        readyResolved = true;
-        readyDeferred.resolve();
+      try {
+        // Queue the full raw history before resolving existing readiness.
+        // Its result is display-only; no ACK participates in fetch readiness.
+        prepareDevelopmentMetaCsp();
+      } catch {
+        // Development owner access must fail open even on the first ready.
+        try {
+          if (developmentMetaCspSessionId !== undefined) {
+            developmentMetaCspOwner?.recordSendFailure({ sessionId: developmentMetaCspSessionId, syncId: `sync-${++developmentMetaCspSyncSequence}` });
+          }
+        } catch {
+          // Even failure-state publication is outside normal readiness.
+        }
+      } finally {
+        if (!readyResolved) {
+          readyResolved = true;
+          readyDeferred.resolve();
+        }
+      }
+      return;
+    case 'development-meta-csp-result':
+      try {
+        developmentMetaCspOwner?.recordResult({
+          sessionId: message.sessionId,
+          syncId: message.syncId,
+          confirmedPolicyCount: message.confirmedPolicyCount,
+          outcome: message.outcome,
+        });
+      } catch {
+        // ACKs only update developer diagnostics, never request processing.
       }
       return;
     case 'response':
@@ -196,6 +272,21 @@ function createPrivacyFetchBrokerClient({
     }
 
     disposed = true;
+    try {
+      unsubscribeDevelopmentMetaCsp?.();
+    } catch {
+      // Continue normal disposal even if development cleanup fails.
+    }
+    unsubscribeDevelopmentMetaCsp = undefined;
+    try {
+      if (developmentMetaCspSessionId !== undefined) {
+        developmentMetaCspOwner?.disposeSession({ sessionId: developmentMetaCspSessionId });
+      }
+    } catch {
+      // Continue normal disposal even if development publication fails.
+    }
+    developmentMetaCspOwner = undefined;
+    developmentMetaCspSessionId = undefined;
     for (const disposeStream of activeStreams) {
       disposeStream();
     }

@@ -1,15 +1,19 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { StorageService, ChatContentBindingChangedError } from './index';
 import { MemoryStorageProvider } from './memory-storage';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type ChatContent, type MessageNode } from '@/01-models/types';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import { chatContentFingerprint, snapshotChatContent } from './chat-content-binding';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- Persistence contracts do not exercise string loading.
-vi.mock('@/strings', () => ({ ensureStrings: new Proxy({}, { get: () => async () => 'storage error' }) }));
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Observe persistence without application notifications.
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
 
 const chatId = toChatId({ raw: 'content-owner' });
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 function node({ text }: { text: string }): MessageNode {
   return { id: toMessageId({ raw: text }), role: 'assistant', modelId: 'temp/source:Q4', createdAt: 1, lmParameters: undefined, interruption: undefined, parts: [{ type: 'text', text, completeness: 'complete' }], replies: { items: [] } };

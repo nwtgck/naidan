@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, useId, watch } from 'vue';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from './LlamaCppBrowserLocalFileRecovery.vue';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { usePageDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
@@ -263,6 +266,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </section>
         <BrowserModelPreparation v-if="presentation" :model="model" entry="model-url" :stage="stage" :interaction="interaction" :variant="displayedVariant" :quantization-options="[]" :start-status="state?.status === 'checking' ? 'starting' : 'idle'" :error="error" :selection-state="selectionState" @start="start" @select-quantization="selectVariant({ value: $event })" @confirm-selection="confirmModelLaunchSelection($event)">
           <template #quantization="{ disabled }"><LlamaCppBrowserQuantizationPicker :key="entryOwner" :repository="repository" :variant="displayedVariant" :disabled="disabled" :inspection="metadataInspection" @select="selectVariant({ value: $event })" @inspected="inspectedCatalog = $event" /></template>
+          <template #details>
+            <HuggingFaceDownloadFailureHint v-if="state?.status === 'failed' && state.problem === 'failed'" :key="state.operation"><LlamaCppBrowserLocalFileRecovery :disabled="interaction !== 'ready'" :accept-local-input="undefined" /></HuggingFaceDownloadFailureHint>
+            <CspMessageHint v-else :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
+          </template>
         </BrowserModelPreparation>
       </div>
     </WelcomeScreenFrame>

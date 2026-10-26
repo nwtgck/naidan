@@ -1,0 +1,1 @@
+export const ImportExportModal__base64_contains_the_same_zip_data_without_a_url = (): string => "Prepare the same selected ZIP data as a Base64 string, then copy it. The data is not placed in a URL.";

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue';
 import { computed, nextTick, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
 import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, CheckIcon, CpuIcon, HardDriveIcon, Loader2Icon, SearchIcon, ShieldCheckIcon, XIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
@@ -694,14 +697,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
           <Transition name="discovery-detail">
             <section v-if="preview && previewModel" key="detail" data-testid="discovery-detail" tw-class="absolute inset-0 flex min-h-0 flex-col">
-              <div tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-5 sm:px-8 sm:pt-8">
+              <div data-testid="discovery-detail-viewport" tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-5 sm:px-8 sm:pt-8">
                 <div tw-class="space-y-4">
                   <p tw-class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400"><span>{{ previewModel.developer }}</span><span v-if="previewCurrent || previewSaved" data-testid="model-preview-availability" tw-class="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"><CheckIcon aria-hidden="true" tw-class="h-3 w-3" />{{ previewCurrent ? lazyStrings.ModelDiscoveryPanel__in_use_in_this_chat() : lazyStrings.ModelDiscoveryPanel__saved() }}</span></p>
                   <h3 ref="previewHeading" tabindex="-1" tw-class="text-[clamp(28px,6vw,36px)] font-semibold leading-[1.15] tracking-tight text-gray-900 outline-none dark:text-gray-100 [overflow-wrap:anywhere]">{{ previewModel.name }}</h3>
                   <p tw-class="break-all text-xs leading-relaxed text-gray-400 dark:text-gray-500">{{ previewRepository }}</p>
                   <p tw-class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><ShieldCheckIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />{{ lazyStrings.llamaCppBrowser__runs_in_your_browser() }}</p>
                 </div>
-                <BrowserModelPreparation v-if="selectionState" :model="previewModel" entry="discovery" stage="needs-selection" interaction="ready" :variant="preview.variant" :quantization-options="[]" start-status="idle" :error="undefined" :selection-state="selectionState" @confirm-selection="confirmModelLaunchSelection($event)" /><div v-else tw-class="mt-8 space-y-5 border-t border-gray-100 pt-6 dark:border-gray-800">
+                <BrowserModelPreparation v-if="selectionState" :model="previewModel" entry="discovery" stage="needs-selection" interaction="ready" :variant="preview.variant" :quantization-options="[]" start-status="idle" :error="undefined" :selection-state="selectionState" @confirm-selection="confirmModelLaunchSelection($event)">
+                  <template #details><CspMessageHint v-if="!previewSaved" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" /></template>
+                </BrowserModelPreparation><div v-else tw-class="mt-8 space-y-5 border-t border-gray-100 pt-6 dark:border-gray-800">
                   <div tw-class="space-y-2.5">
                     <p tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserModelLaunch__quantization() }}</p>
                     <SettingsSelect v-if="quantizationOptions.length" :model-value="previewHint?.id ?? preview.variant" :options="quantizationOptions" :label="lazyStrings.LlamaCppBrowserModelLaunch__quantization()" :disabled="starting === 'starting'" data-testid="discovery-quantization" @update:model-value="value => selectQuantization({ value })" />
@@ -713,9 +718,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   </dl>
                   <p v-if="previewModel.memoryGiB !== undefined" tw-class="text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ lazyStrings.ModelDiscoveryPanel__memory_depends_on_context_and_settings() }}</p>
                 </div>
+                <!-- Keep the original failure and its guidance together in the scrollable message area. -->
+                <div v-if="!selectionState" data-testid="discovery-messages">
+                  <p v-if="startError && starting === 'idle'" role="alert" tw-class="mt-5 text-xs text-red-600 dark:text-red-400">{{ startError }}</p>
+                  <HuggingFaceDownloadFailureHint v-if="!previewSaved && launchState?.status === 'failed' && launchState.problem === 'failed'" :key="launchState.operation" tw-class="mt-2"><LlamaCppBrowserLocalFileRecovery :disabled="interaction === 'blocked'" :accept-local-input="undefined" /></HuggingFaceDownloadFailureHint>
+                  <CspMessageHint v-else-if="!previewSaved && !startError" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" tw-class="mt-5" />
+                </div>
               </div>
               <footer v-if="!selectionState" tw-class="shrink-0 space-y-3 border-t border-gray-100 bg-white px-5 pb-5 pt-4 dark:border-gray-800 dark:bg-gray-900 sm:px-8 sm:pb-6">
-                <p v-if="startError && starting === 'idle'" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ startError }}</p>
                 <button type="button" data-testid="discovery-start" :disabled="starting === 'starting' || globalStarting === 'creating'" :aria-busy="starting === 'starting'" class="discovery-start" tw-class="group relative flex min-h-16 w-full items-center justify-center rounded-2xl border border-blue-400/80 bg-white px-14 py-4 text-center text-base font-bold text-gray-900 transition-[border-color,box-shadow,transform] duration-300 hover:border-blue-500 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait dark:border-blue-500/70 dark:bg-gray-800 dark:text-gray-100 motion-reduce:transition-none" @click="startPreview">
                   {{ lazyStrings.SHARED__run_in_your_browser() }}<span aria-hidden="true" tw-class="absolute right-3 grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white dark:bg-blue-500"><Loader2Icon v-if="starting === 'starting'" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" /><ArrowRightIcon v-else tw-class="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span>
                 </button>

@@ -3,6 +3,7 @@ import { lazyStrings } from '@/strings';
 import { ref, onMounted, watch, nextTick } from 'vue';
 import mermaid from 'mermaid';
 import { CheckIcon, CopyIcon, CodeIcon, LayoutIcon, ColumnsIcon } from 'lucide-vue-next';
+import MarkdownResourceCspHints from './MarkdownResourceCspHints.vue';
 
 const props = defineProps<{
   code: string,
@@ -13,6 +14,7 @@ const renderRef = ref<HTMLElement | null>(null);
 const mode = ref<'preview' | 'code' | 'both'>('preview');
 const copied = ref(false);
 const renderError = ref(false);
+const resourceRevision = ref(0);
 
 mermaid.initialize({
   startOnLoad: false,
@@ -29,6 +31,7 @@ async function render() {
   renderError.value = false;
   renderRef.value.textContent = props.code;
   renderRef.value.removeAttribute('data-processed');
+  resourceRevision.value++;
 
   try {
     await mermaid.run({
@@ -37,6 +40,9 @@ async function render() {
   } catch (e) {
     console.error('Mermaid render error:', e);
     renderError.value = true;
+  } finally {
+    // Observing already rendered resource URLs must never delay diagram rendering.
+    resourceRevision.value++;
   }
 }
 
@@ -152,6 +158,8 @@ defineExpose({
         <div v-if="renderError" tw-class="text-red-500 text-xs p-2">{{ lazyStrings.blockMarkdown__failed_to_render_mermaid_diagram() }}</div>
         <div ref="renderRef" class="mermaid" :tw-class="{ hidden: renderError }"></div>
       </div>
+
+      <MarkdownResourceCspHints v-if="mode !== 'code'" :element="renderRef ?? undefined" :revision="resourceRevision" :presentation="renderError ? 'error' : 'compact'" />
 
       <!-- Code Area -->
       <div v-show="mode !== 'preview'" tw-class="bg-[#0d1117] p-4 overflow-auto max-h-[300px]">

@@ -1,6 +1,7 @@
 import { ImportExportService } from './service';
 import { storageService } from '@/00-storage/service';
 import type { ExportExclusions, ImportConfig } from './types';
+import { decodeZipBase64, encodeZipStreamAsBase64 } from './zip-base64';
 
 export const APPEND_ONLY_CONFIG: ImportConfig = {
   settings: {
@@ -32,52 +33,21 @@ export class URLImportExportLogic {
     exclude: ExportExclusions | undefined,
   }): Promise<{ zipBase64: string, size: number }> {
     const { stream } = await this.service.exportData({ exclude });
-
-    // Collect stream chunks into an array to create a Blob
-    const chunks: Uint8Array[] = [];
-    const streamReader = stream.getReader();
-    while (true) {
-      const { done, value } = await streamReader.read();
-      if (done) {
-        break;
-      }
-      if (value) {
-        chunks.push(value);
-      }
+    const zipBase64 = await encodeZipStreamAsBase64({ stream, signal: undefined });
+    if (zipBase64.length === 0) {
+      throw new Error('Failed to encode to Base64');
     }
-    const blob = new Blob(chunks as unknown as BlobPart[], { type: 'application/zip' });
-
-    return new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onloadend = () => {
-        const zipBase64 = (fr.result as string).split(',')[1];
-        if (zipBase64) {
-          resolve({ zipBase64, size: zipBase64.length });
-        } else {
-          reject(new Error('Failed to encode to Base64'));
-        }
-      };
-      fr.onerror = reject;
-      fr.readAsDataURL(blob);
-    });
+    return { zipBase64, size: zipBase64.length };
   }
 
   /**
    * Decodes Base64 ZIP and imports it (append mode).
    */
   async importFromBase64({ zipBase64 }: { zipBase64: string }): Promise<void> {
-    const binaryString = atob(zipBase64);
-    let bytes: Uint8Array | null = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const blob = new Blob([bytes] as unknown as BlobPart[], { type: 'application/zip' });
+    const blob = decodeZipBase64({ serialized: zipBase64 });
 
     await this.service.verify({ zipFile: blob, config: APPEND_ONLY_CONFIG });
     await this.service.executeImport({ zipFile: blob, config: APPEND_ONLY_CONFIG });
-
-    // Explicitly help GC by clearing references to large data
-    bytes = null;
   }
 
   /**

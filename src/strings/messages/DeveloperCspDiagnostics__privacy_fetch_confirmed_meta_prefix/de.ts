@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__privacy_fetch_confirmed_meta_prefix = ({ confirmed, requested }: { confirmed: number, requested: number }): string => `Confirmed meta prefix: ${confirmed} of ${requested}.`;

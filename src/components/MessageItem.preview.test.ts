@@ -92,6 +92,7 @@ describe('MessageItem.vue Preview Integration', () => {
 
     const wrapper = mount(MessageItem, {
       props: {
+        endpoint: undefined,
         message: mockMessage,
       },
     });
@@ -142,6 +143,7 @@ describe('MessageItem.vue Preview Integration', () => {
 
     const wrapper = mount(MessageItem, {
       props: {
+        endpoint: undefined,
         message: genImageMsg,
       },
       global: {

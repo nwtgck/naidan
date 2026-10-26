@@ -4,6 +4,7 @@ import { onBeforeUnmount, ref } from 'vue';
 import { Trash2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { AudioReferenceEntry } from '@/features/audio-generation/composables/useAudioReferences';
+import ResourceLoadCspHint from '@/components/ResourceLoadCspHint.vue';
 const props = defineProps<{ entry: AudioReferenceEntry, selected: boolean, disabled: boolean }>();
 const emit = defineEmits<{ select: [checked: boolean], remove: [] }>();
 const player = ref<HTMLAudioElement>();
@@ -34,5 +35,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <button type="button" :disabled="disabled" @click="emit('remove')" :aria-label="lazyStrings.audioGeneration__delete_reference()" :title="lazyStrings.audioGeneration__delete_reference()" data-testid="audio-reference-delete" tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 disabled:opacity-40 dark:hover:bg-red-500/10"><Trash2Icon tw-class="h-4 w-4" /></button>
     </div>
     <audio ref="player" :src="entry.url" controls preload="none" :aria-label="entry.file.name" data-testid="audio-reference-player" tw-class="w-full min-w-0" />
+    <ResourceLoadCspHint :resources="[{ element: player, url: entry.url, destination: 'media' }]" />
   </div>
 </template>

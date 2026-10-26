@@ -52,6 +52,7 @@ vi.mock('@/composables/useHostModelDirectories', () => ({
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: mocks.inspect }) }));
 vi.mock('../hugging-face/storage', () => ({ installedSelection: mocks.installed }));
 vi.mock('./LlamaCppBrowserHuggingFaceSearch.vue', () => ({ default: { template: '<div />', props: ['disabled', 'repositoryInput'] } }));
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({ default: { props: ['target', 'presentation'], template: '<aside data-testid="repository-csp-message" :data-presentation="presentation" />' } }));
 const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: ['Q4_K_M', 'Q8_0'].map(label => ({ label, files: [{ path: `Model-${label}.gguf`, size: 256 }], size: 256 })) };
 
 beforeEach(async () => {
@@ -106,6 +107,27 @@ it('shows saved state for the exact local selection without enqueueing a downloa
   await wrapper.get('[data-testid="chat-use-repository-model"]').trigger('click');
   expect(wrapper.emitted('select-model')?.[0]?.[0]).toMatchObject({ modelId: 'hf.co/owner/Model-GGUF:Q4_K_M' });
   expect(mocks.permission).not.toHaveBeenCalled();
+});
+
+it('supplements a metadata failure without treating invalid input as a connection failure', async () => {
+  mocks.inspect.mockRejectedValue(new Error('Network unavailable'));
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false } });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
+  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await flushPromises();
+  expect(wrapper.get('[data-testid="repository-csp-message"]').attributes('data-presentation')).toBe('error');
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="chat-model-repository-check"]').element.disabled).toBe(false);
+  await wrapper.get('[data-testid="chat-model-repository"]').setValue('not a repository');
+  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await flushPromises();
+  expect(mocks.inspect).toHaveBeenCalledOnce();
+  expect(wrapper.find('[data-testid="repository-csp-message"]').exists()).toBe(false);
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
 });
 
 it('abandons late metadata when the source tab is left', async () => {

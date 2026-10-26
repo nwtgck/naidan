@@ -5,6 +5,10 @@ import { useRoute, useRouter } from 'vue-router';
 import type { PrintMode } from '@/composables/usePrint';
 import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
 
+vi.mock('@/components/csp/DevelopmentMetaCspRecovery.vue', () => ({
+  default: { name: 'DevelopmentMetaCspRecovery', template: '<!-- resident recovery host -->' },
+}));
+
 const activePrintMode = ref<PrintMode>(undefined);
 
 vi.mock('vue-router', async importOriginal => ({

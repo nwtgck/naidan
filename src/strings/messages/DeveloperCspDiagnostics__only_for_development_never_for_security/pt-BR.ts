@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__only_for_development_never_for_security = (): string => 'Only for testing Naidan during development. This does not improve security and must never be used for security purposes.';

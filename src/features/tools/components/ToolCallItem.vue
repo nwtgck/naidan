@@ -6,6 +6,7 @@ import type { CombinedToolCall } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
+import WikipediaToolErrorCspHint from './WikipediaToolErrorCspHint.vue';
 import type { BinaryObjectId } from '@/01-models/ids';
 
 const props = defineProps<{
@@ -307,6 +308,7 @@ defineExpose({
             </div>
           </template>
         </div>
+        <WikipediaToolErrorCspHint :tool-call="toolCall" tw-class="mx-3 mb-3" />
       </div>
     </Transition>
   </div>

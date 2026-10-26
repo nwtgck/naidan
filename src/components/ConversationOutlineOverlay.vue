@@ -262,6 +262,7 @@ defineExpose({
                   <MessageItem
                     :chat-id="props.chatId"
                     :message="item.node"
+                    :endpoint="undefined"
                     :part-content="item.partContent"
                     :flow="{ position: 'standalone', nesting: 'none' }"
                     :mode="'content'"

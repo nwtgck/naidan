@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h, useId } from 'vue';
@@ -1061,6 +1062,7 @@ defineExpose({
                 </div>
                 <span v-if="connectionSuccess" role="status" tw-class="sr-only" data-testid="setting-connection-success">{{ lazyStrings.ConnectionTab__connected() }}</span>
                 <input :id="`${settingsId}-url`" v-model="endpointUrl" class="connection-input" type="url" :placeholder="endpointUrlPlaceholder({ endpointType })" spellcheck="false" data-testid="setting-url-input" />
+                <CspLmEndpointHint activity-for-display-only="connection" :fake-lm-debug-mode-status="undefined" :endpoint="form.endpoint" operation="models" presentation="compact" />
                 <p tw-class="mt-2 text-xs leading-5 text-gray-400 dark:text-gray-500" data-testid="setting-auto-check-hint">{{ lazyStrings.ConnectionTab__connection_check_for_localhost_only() }}</p>
               </div>
               <HttpHeadersEditor :model-value="endpointHttpHeaders ?? []" @update:model-value="value => endpointHttpHeaders = value" test-id-prefix="setting-http-header" :name-placeholder="lazyStrings.ConnectionTab__header_name_example()" />
@@ -1095,7 +1097,7 @@ defineExpose({
                 <ReasoningSettings :selected-effort="reasoningEffortFromTitleReasoningValue({ value: globalTitleReasoningSelectValue })" :selected-value="globalTitleReasoningSelectValue" :leading-options="globalTitleReasoningLeadingOptions" :heading="lazyStrings.ConnectionTab__title_reasoning()" :disabled="!globalTitleGenerationEnabled" surface="plain" notice="inline-help" @update:value="value => setGlobalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })" data-testid="setting-title-reasoning-select" />
                 <RpcRegistrationSelect v-if="globalTitleEndpoint !== 'same_scope' && globalTitleEndpoint.type === 'naidan_rpc'" :model-value="globalTitleEndpoint.registrationId" surface="settings" @update:model-value="registrationId => setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', registrationId }, model: explicitSettingsTitleModel({ modelId: globalTitleModelId }) } })" />
                 <template v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)">
-                  <label tw-class="block space-y-2"><span class="connection-field-label">{{ lazyStrings.ConnectionTab__endpoint_url() }}</span><input v-model="globalTitleEndpointUrl" @keyup.enter="($event.target as HTMLInputElement).blur()" type="url" class="connection-input" :placeholder="endpointUrlPlaceholder({ endpointType: globalEffectiveTitleEndpoint.type })" data-testid="setting-title-endpoint-url-input" /></label>
+                  <div tw-class="space-y-2"><label :for="`${settingsId}-title-url`" class="connection-field-label">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label><input :id="`${settingsId}-title-url`" v-model="globalTitleEndpointUrl" @keyup.enter="($event.target as HTMLInputElement).blur()" type="url" class="connection-input" :placeholder="endpointUrlPlaceholder({ endpointType: globalEffectiveTitleEndpoint.type })" data-testid="setting-title-endpoint-url-input" /><CspLmEndpointHint activity-for-display-only="connection" :fake-lm-debug-mode-status="undefined" :endpoint="globalEffectiveTitleEndpoint" operation="models" presentation="compact" /></div>
                   <p tw-class="text-xs leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.ConnectionTab__connection_check_for_localhost_only() }}</p>
                   <HttpHeadersEditor :model-value="globalTitleEndpointHttpHeaders ?? []" @update:model-value="value => setGlobalTitleEndpointHttpHeaders({ httpHeaders: value })" test-id-prefix="setting-title-http-header" :name-placeholder="lazyStrings.ConnectionTab__header_name_example()" />
                 </template>

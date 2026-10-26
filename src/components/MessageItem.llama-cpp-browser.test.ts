@@ -36,6 +36,7 @@ describe('message-local llama.cpp preparation status', () => {
   it('mounts preparation UI only inside the generating message and removes it after completion', async () => {
     const wrapper = shallowMount(MessageItem, {
       props: {
+        endpoint: undefined,
         chatId: toChatId({ raw: 'local-chat' }),
         message,
         endpointType: 'llama_cpp_browser',
@@ -53,6 +54,7 @@ describe('message-local llama.cpp preparation status', () => {
   it('does not mount listeners in historic messages, other providers, or non-tail pieces', async () => {
     const wrapper = shallowMount(MessageItem, {
       props: {
+        endpoint: undefined,
         chatId: toChatId({ raw: 'local-chat' }),
         message,
         endpointType: 'llama_cpp_browser',
@@ -71,6 +73,7 @@ describe('message-local llama.cpp preparation status', () => {
   it('delegates waiting and preparation to one status owner without duplicate waiters', async () => {
     const wrapper = shallowMount(MessageItem, {
       props: {
+        endpoint: undefined,
         chatId: toChatId({ raw: 'local-chat' }),
         message,
         endpointType: 'llama_cpp_browser',

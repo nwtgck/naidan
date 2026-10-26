@@ -187,6 +187,8 @@ async function run({ input }: { input: ChatLocalModelInput }): Promise<void> {
 
 export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<ChatId>>, binding: 'empty-chat' | 'chat' }) {
   const owner = {};
+  let disposed = false;
+  let chatRevision = 0;
   function begin({ controller }: { controller: AbortController }): ChatLocalModelInput | undefined {
     const context = contextFor({ chatId: chatId.value });
     if (context === undefined || (binding === 'empty-chat' && context.chat.root.items.length !== 0) || controller.signal.aborted || chatLocalModelInputs.value.has(chatId.value)) {
@@ -228,8 +230,14 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
       }
     }
   }
-  onScopeDispose(cancelOwned);
-  watch(chatId, cancelOwned, { flush: 'sync' });
+  onScopeDispose(() => {
+    disposed = true;
+    cancelOwned();
+  });
+  watch(chatId, () => {
+    chatRevision++;
+    cancelOwned();
+  }, { flush: 'sync' });
 
   function accept({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }): Promise<void> {
     void directories.catch(() => {});
@@ -252,6 +260,29 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
       }
     };
     return run({ input });
+  }
+  async function acceptAfterFailedDownload({ directories, controller, operationId }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, operationId: number }): Promise<void> {
+    void directories.catch(() => {});
+    const requestedChatId = chatId.value;
+    const requestedChatRevision = chatRevision;
+    const input = chatLocalModelInputs.value.get(requestedChatId);
+    const isStorageCurrent = storageService.captureSettingsStorage();
+    if (disposed || controller.signal.aborted || input === undefined || input.owner !== owner
+      || input.state.id !== operationId || input.state.phase !== 'error' || input.state.downloadJobId === undefined
+      || downloadQueue.value?.jobs.value.find(job => job.id === input.state.downloadJobId)?.status !== 'failed'
+      || !current({ input }) || !isStorageCurrent()) {
+      controller.abort();
+      return;
+    }
+    // Only this explicit replacement retires the captured failed operation.
+    // Never cancel whichever operation happens to be current after an await.
+    await cancelInput({ input });
+    if (disposed || controller.signal.aborted || chatId.value !== requestedChatId || chatRevision !== requestedChatRevision
+      || !input.isStorageCurrent() || !isStorageCurrent() || chatLocalModelInputs.value.has(requestedChatId)) {
+      controller.abort();
+      return;
+    }
+    await accept({ directories, controller });
   }
   function choose({ modelId }: { modelId: string }): Promise<void> {
     const input = chatLocalModelInputs.value.get(chatId.value);
@@ -344,7 +375,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
   }
   const operation = computed(() => chatLocalModelInputs.value.get(chatId.value)?.state);
   const downloadJob = computed(() => downloadQueue.value?.jobs.value.find(job => job.id === operation.value?.downloadJobId));
-  return { operation, downloadJob, maySend: computed(() => !chatLocalModelInputs.value.has(chatId.value)), accept, choose, useModel, useRepositoryModel, retry, cancel, pauseDownload, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
+  return { operation, downloadJob, maySend: computed(() => !chatLocalModelInputs.value.has(chatId.value)), accept, acceptAfterFailedDownload, choose, useModel, useRepositoryModel, retry, cancel, pauseDownload, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
 
 export type ChatLocalModelUi = ReturnType<typeof useChatLocalModel>;

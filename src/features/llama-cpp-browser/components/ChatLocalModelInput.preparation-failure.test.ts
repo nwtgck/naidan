@@ -28,6 +28,7 @@ it('keeps the panel usable and offers retry when the active tab import fails', a
     useRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     accept: vi.fn(async () => {}),
+    acceptAfterFailedDownload: vi.fn(async () => {}),
     choose: vi.fn(async () => {}),
     retry: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),

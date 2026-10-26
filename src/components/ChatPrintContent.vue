@@ -57,6 +57,7 @@ defineExpose({
         :key="idToRaw({ id: msg.id })"
         :chat-id="currentChat.id"
         :message="msg"
+        :endpoint="undefined"
         :siblings="getCurrentChatSiblings({ messageId: msg.id })"
         class="chat-print-message-item"
       />

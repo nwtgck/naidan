@@ -5,6 +5,7 @@ import { createSearchParameterFilter, searchModels, type ModelSearchResult } fro
 import { formatSearchUpdated } from '@/features/llama-cpp-browser/hugging-face/search-updated';
 import { repositoryUrlPath } from '@/features/llama-cpp-browser/hugging-face/types';
 import { currentLocale, lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 
 const props = defineProps<{ disabled: boolean, repositoryInput: string, scrollOwner: 'results' | 'parent' }>();
@@ -229,6 +230,8 @@ defineExpose({
         <LlamaCppBrowserModelActionButton :disabled="disabled || status === 'searching'" data-testid="llama-hf-search-submit" size="regular" tw-class="shrink-0" @click="submit"><Loader2Icon v-if="status === 'searching'" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500 dark:text-blue-400 motion-reduce:animate-none" /><SearchIcon v-else-if="query.trim()" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><TrendingUpIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ query.trim() ? lazyStrings.LlamaCppBrowserHuggingFaceSearch__search() : lazyStrings.LlamaCppBrowserHuggingFaceSearch__show_trending_models() }}</LlamaCppBrowserModelActionButton>
       </div>
     </div>
+    <!-- Only the search controls stay sticky; expanded guidance scrolls with the parent content. -->
+    <CspMessageHint v-if="status !== 'failed' && status !== 'more-failed'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-search" presentation="compact" />
     <fieldset v-if="filtersOpen" :id="`${id}-filters`" :disabled="disabled" tw-class="min-w-0 space-y-2">
       <legend tw-class="mb-1 text-[10px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions() }}</legend>
       <div tw-class="flex min-w-0 items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 focus-within:ring-2 focus-within:ring-blue-500/40">
@@ -248,6 +251,7 @@ defineExpose({
     </div>
     <p v-else-if="status === 'failed'" role="alert" data-testid="llama-hf-search-error" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again() }}</p>
     <p v-else-if="status === 'ready' && !results.length" role="status" data-testid="llama-hf-search-empty" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__no_models_found() }}</p>
+    <CspMessageHint v-if="status === 'failed'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-search" presentation="error" />
     <div v-if="results.length" tw-class="space-y-2">
       <p v-if="resultQuery || resultNumParameters" data-testid="llama-hf-search-result-query" tw-class="text-xs font-semibold text-gray-700 dark:text-gray-200"><span v-if="resultQuery">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__results_for({ query: resultQuery }) }}</span><span v-if="resultNumParameters" tw-class="font-normal text-gray-500 dark:text-gray-400">{{ resultQuery ? ' · ' : '' }}{{ parameterSummary({ filter: resultNumParameters }) }}</span></p>
       <p tw-class="text-[10px] text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_files() }}</p>
@@ -282,5 +286,6 @@ defineExpose({
     </div>
     <!-- Keep the retry action in place when the failure message appears. -->
     <p v-if="status === 'more-failed'" :id="`${id}-more-error`" role="alert" data-testid="llama-hf-search-more-error" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again() }}</p>
+    <CspMessageHint v-if="status === 'more-failed'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-search" presentation="error" />
   </div>
 </template>

@@ -7,6 +7,10 @@ import { useRoute, useRouter } from 'vue-router';
 import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
 import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
+vi.mock('@/components/csp/DevelopmentMetaCspRecovery.vue', () => ({
+  default: { name: 'DevelopmentMetaCspRecovery', template: '<!-- resident recovery host -->' },
+}));
+
 const timingMocks = vi.hoisted(() => ({ snapshot: vi.fn() }));
 vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({ useCurrentChatState: () => ({ resolvedSettings: ref(null) }) }));
 const entryIntent = shallowRef({ kind: 'ordinary' });
@@ -199,6 +203,24 @@ describe('AppAuxiliaryUi', () => {
     isRecentOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
     vi.mocked(useRouter).mockReturnValue({ push, replace, currentRoute: shallowRef(route) } as unknown as ReturnType<typeof useRouter>);
+  });
+
+  it('keeps recovery and the independent export host mounted across settings navigation', async () => {
+    using mounted = {
+      wrapper: mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    const recovery = mounted.wrapper.getComponent({ name: 'DevelopmentMetaCspRecovery' }).vm;
+    expect(mounted.wrapper.findComponent({ name: 'ImportExportModalHost' }).exists()).toBe(true);
+    route.query = { settings: 'developer' };
+    await flushPromises();
+    expect(mounted.wrapper.getComponent({ name: 'DevelopmentMetaCspRecovery' }).vm).toBe(recovery);
+    route.query = {};
+    await flushPromises();
+    expect(mounted.wrapper.getComponent({ name: 'DevelopmentMetaCspRecovery' }).vm).toBe(recovery);
+    expect(mounted.wrapper.findComponent({ name: 'ImportExportModalHost' }).exists()).toBe(true);
   });
 
   it('opens performance inside Settings, restores the origin and retains the mounted results host', async () => {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { flushPromises, mount } from '@vue/test-utils';
 import { shallowRef } from 'vue';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
@@ -34,11 +35,10 @@ vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', () => ({
   jobIsBusy: () => false,
 }));
 vi.mock('@/features/llama-cpp-browser/performance/archive', () => ({ performanceArchive: mocks.archive }));
-// This suite tests workflow, not asynchronous string loading. No inference is mocked inside the runner.
-vi.mock('@/strings', () => ({ lazyStrings: new Proxy({}, { get: (_target, key) => () => String(key) }) }));
+// String loading is outside this workflow suite; retain the real English UI.
 let wrapper: ReturnType<typeof mount<typeof LlamaCppBrowserPerformanceModal>> | undefined;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
   mocks.hosted.mockReturnValue(true);
   mocks.getOptions.mockReturnValue({ profile: 'auto' });
@@ -73,6 +73,7 @@ beforeEach(() => {
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:result') });
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() });
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 async function saveManually(): Promise<void> {
@@ -381,7 +382,7 @@ describe('profiling modes and safe result actions', () => {
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-standard"]').element.checked).toBe(true);
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-gpu-profile"]').element.disabled).toBe(true);
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-both"]').element.disabled).toBe(true);
-    expect(wrapper!.text()).toContain('llamaCppPerformance__profiling_runtime_not_installed');
+    expect(wrapper!.text()).toContain('The installed runtime package does not include GPU profiling.');
   });
 
   it('never enables profiling in standalone, even if a stale capability report says available', async () => {
@@ -390,7 +391,7 @@ describe('profiling modes and safe result actions', () => {
     await open();
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-standard"]').element.checked).toBe(true);
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-both"]').element.disabled).toBe(true);
-    expect(wrapper!.text()).toContain('llamaCppPerformance__profiling_requires_hosted_mode');
+    expect(wrapper!.text()).toContain('GPU profiling is available in Hosted mode only.');
   });
 
   it('rechecks capabilities on Start instead of silently replacing a requested diagnostic run', async () => {
@@ -471,7 +472,7 @@ describe('current-trial interruption controls', () => {
     await wrapper.get('[data-testid="llama-performance-interrupt"]').trigger('click');
     await flushPromises();
     expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]').element.disabled).toBe(true);
-    expect(wrapper.get('[data-testid="llama-performance-interrupting"]').text()).toContain('interrupting_and_preparing_next');
+    expect(wrapper.get('[data-testid="llama-performance-interrupting"]').text()).toContain('Interrupting and preparing the next trial…');
     expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-stop"]').element.disabled).toBe(false);
     expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-download"]').element.disabled).toBe(true);
     expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce();

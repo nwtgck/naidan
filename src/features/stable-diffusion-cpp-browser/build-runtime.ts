@@ -180,6 +180,9 @@ const standaloneUiFiles = new Set([
   'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'benchmark-form.ts', 'use-image-benchmark-standalone.ts',
   'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
   'components/ImageModelCatalog.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts', 'lora-catalog.ts',
+  // Local recovery obtains its disabled standalone view through the existing
+  // local-environment facade; it does not import the hosted library directly.
+  'components/ImageModelLocalFileRecovery.vue',
   'components/ImageLoraControls.vue', 'components/ImageModelConfiguration.vue',
   // Local presentation helpers only. Disabled standalone inputs never invoke
   // clipboard access; these modules do not load native code or open storage.

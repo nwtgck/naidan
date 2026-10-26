@@ -56,7 +56,7 @@ describe('MessageItem Image Generation Progress', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -77,7 +77,7 @@ describe('MessageItem Image Generation Progress', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -100,7 +100,7 @@ describe('MessageItem Image Generation Progress', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false },
+      props: { endpoint: undefined, message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
