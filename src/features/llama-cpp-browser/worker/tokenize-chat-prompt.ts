@@ -2,7 +2,7 @@ import type { ChatPromptPart } from '@/features/llama-cpp-browser/runtime/chat-b
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { tokenizePrompt } from './tokenize-prompt';
-import { coalescePromptTokenBoundaries, type PromptBoundaryCore } from './prompt-token-boundaries';
+import { coalescePromptTokenBoundaries, findPromptTokenBoundaryCandidates, type PromptBoundaryCore } from './prompt-token-boundaries';
 
 export type EncodedPromptPart = {
   byteOffset: number,
@@ -114,6 +114,7 @@ export async function tokenizeChatPrompt({ core, vocab, prompt, parts, contextTo
   if (tokens.length + suffix.length >= contextTokens) {
     throw new LlamaCppBrowserError({ code: 'context-full' });
   }
+  const joinedBoundaries = await findPromptTokenBoundaryCandidates({ core, vocab, prompt, parts });
   let tokenizedParts: TokenizedPromptPart[] = [];
   for (const part of parts) {
     const { byteOffset, byteLength, isInput, ...unhandled } = part;
@@ -123,7 +124,10 @@ export async function tokenizeChatPrompt({ core, vocab, prompt, parts, contextTo
       vocab,
       prompt: prompt + BigInt(byteOffset),
       promptBytes: byteLength,
-      contextTokens: contextTokens - tokens.length - suffix.length,
+      // A candidate BPE merge can make the final prompt fit even when these
+      // temporary span tokens do not. Bound the temporary pass by source bytes,
+      // then enforce the real context limit after coalescing or safe fallback.
+      contextTokens: joinedBoundaries.size ? Math.max(contextTokens, byteLength + 9) : contextTokens - tokens.length - suffix.length,
       addSpecial: false,
       parseSpecial: !isInput,
       onTokenize,
@@ -146,12 +150,12 @@ export async function tokenizeChatPrompt({ core, vocab, prompt, parts, contextTo
     }
   }
   tokens.push(...suffix);
-  const canonical = await coalescePromptTokenBoundaries({ core, vocab, prompt, tokens, parts: tokenizedParts, contextTokens, onTokenize });
+  const canonical = await coalescePromptTokenBoundaries({ core, vocab, prompt, tokens, parts: tokenizedParts, joinedBoundaries, contextTokens, onTokenize });
   if (canonical) {
     tokens = canonical.tokens;
     tokenizedParts = canonical.parts;
   }
-  if (!tokens.length) {
+  if (!tokens.length || tokens.length >= contextTokens) {
     throw new LlamaCppBrowserError({ code: 'context-full' });
   }
   const pointer = core.alloc({ bytes: tokens.length * 4 });

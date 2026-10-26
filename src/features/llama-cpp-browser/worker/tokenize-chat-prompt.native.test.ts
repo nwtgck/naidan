@@ -85,13 +85,13 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
     return result.tokens;
   }
 
-  async function preparedPrompt({ parts }: { parts: ChatPromptPart[] }) {
+  async function preparedPrompt({ parts, contextTokens }: { parts: ChatPromptPart[], contextTokens: number }) {
     const encoded = encodeChatPrompt({ parts });
     const prompt = core.alloc({ bytes: Math.max(1, encoded.data.length) });
     core.bytes({ pointer: prompt, length: encoded.data.length }).set(encoded.data);
     let transferred = false;
     try {
-      const result = await tokenizeChatPrompt({ core, vocab, prompt, parts: encoded.parts, contextTokens: 4096, onTokenize: () => {} });
+      const result = await tokenizeChatPrompt({ core, vocab, prompt, parts: encoded.parts, contextTokens, onTokenize: () => {} });
       transferred = true;
       return {
         ...result,
@@ -119,13 +119,13 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
       expect(oldSegments).not.toEqual(whole);
       // The self-authored vocabulary puts its only merged token after the 256 bytes.
       expect(whole.at(-1)).toBe(259);
-      using result = await preparedPrompt({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+      using result = await preparedPrompt({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }], contextTokens: 4096 });
       expect(result.tokens).toEqual(whole);
       expect(result.parts).toEqual([{ byteOffset: 0, byteLength: 7, parseSpecial: false, tokenOffset: 0, tokenCount: 6, addSpecial: false }]);
     });
 
     it('keeps trusted controls and identical literal input text distinct', async () => {
-      using result = await preparedPrompt({ parts: [{ text: '<s>', isInput: false }, { text: '<s>hello ', isInput: true }, { text: '\n</s>', isInput: false }] });
+      using result = await preparedPrompt({ parts: [{ text: '<s>', isInput: false }, { text: '<s>hello ', isInput: true }, { text: '\n</s>', isInput: false }], contextTokens: 4096 });
       const ordinary = await nativeTokens({ text: '<s>hello \n', parseSpecial: false });
       expect(result.tokens).toEqual([1, ...ordinary, 2]);
       expect(result.tokens.filter(token => token === 1)).toHaveLength(1);
@@ -136,7 +136,7 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
 
     it('preserves Unicode and NUL bytes while allowing the final whitespace merge', async () => {
       const text = '日本語\0😀 \n';
-      using result = await preparedPrompt({ parts: [{ text: '日本語\0😀 ', isInput: true }, { text: '\n', isInput: false }] });
+      using result = await preparedPrompt({ parts: [{ text: '日本語\0😀 ', isInput: true }, { text: '\n', isInput: false }], contextTokens: 4096 });
       expect(result.tokens).toEqual(await nativeTokens({ text, parseSpecial: false }));
       expect(result.tokens.at(-1)).toBe(259);
       expect(Array.from(core.bytes({ pointer: result.prompt, length: new TextEncoder().encode(text).length }))).toEqual(Array.from(new TextEncoder().encode(text)));
@@ -144,7 +144,7 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
 
     it('uses canonical run metadata to checkpoint before the generation marker', async () => {
       const generationPrompt = '<s>assistant\n';
-      using result = await preparedPrompt({ parts: [{ text: 'hello ', isInput: true }, { text: `\n${generationPrompt}`, isInput: false }] });
+      using result = await preparedPrompt({ parts: [{ text: 'hello ', isInput: true }, { text: `\n${generationPrompt}`, isInput: false }], contextTokens: 4096 });
       const prefix = await nativeTokens({ text: 'hello \n', parseSpecial: false });
       const boundary = await promptCheckpointBoundary({
         core,
@@ -161,7 +161,7 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
     });
 
     it('places a checkpoint before a token that crosses the generation suffix boundary', async () => {
-      using result = await preparedPrompt({ parts: [{ text: 'hello ', isInput: true }, { text: '\n<s>assistant\n', isInput: false }] });
+      using result = await preparedPrompt({ parts: [{ text: 'hello ', isInput: true }, { text: '\n<s>assistant\n', isInput: false }], contextTokens: 4096 });
       const prefix = await nativeTokens({ text: 'hello', parseSpecial: false });
       const boundary = await promptCheckpointBoundary({
         core,
@@ -185,6 +185,7 @@ hello
 </s>`;
       const cached = [...await nativeTokens({ text: initial, parseSpecial: true }), ...await nativeTokens({ text: generated, parseSpecial: true })];
       using continuation = await preparedPrompt({
+        contextTokens: 4096,
         parts: [{ text: initial, isInput: false }, { text: 'hello ', isInput: true }, {
           text: `\
 
@@ -196,6 +197,23 @@ ok</s><s>assistant
       });
       expect(continuation.tokens.slice(0, cached.length)).toEqual(cached);
       expect(continuation.tokens.length).toBeGreaterThan(cached.length);
+    });
+
+    it.each(['hello', '日本語\0😀', 'e\u0301'])('reserves exactly one generation slot after canonicalizing %j', async prefix => {
+      const parts = [{ text: prefix + ' ', isInput: true }, { text: '\n', isInput: false }];
+      const whole = await nativeTokens({ text: prefix + ' \n', parseSpecial: false });
+      using result = await preparedPrompt({ parts, contextTokens: whole.length + 1 });
+      expect(result.tokens).toEqual(whole);
+      await expect(preparedPrompt({ parts, contextTokens: whole.length })).rejects.toThrow('context-full');
+    });
+
+    it('allows multiple boundary merges to fit the final context budget', async () => {
+      const parts = [{ text: 'a ', isInput: true }, { text: '\n ', isInput: false }, { text: '\n ', isInput: true }, { text: '\n', isInput: false }];
+      const whole = await nativeTokens({ text: 'a \n \n \n', parseSpecial: false });
+      expect(whole).toEqual([100, 259, 259, 259]);
+      using result = await preparedPrompt({ parts, contextTokens: 5 });
+      expect(result.tokens).toEqual(whole);
+      await expect(preparedPrompt({ parts, contextTokens: 4 })).rejects.toThrow('context-full');
     });
   });
 });
