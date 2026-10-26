@@ -2,30 +2,30 @@ import { createByteBpeVocabulary } from './byte-bpe-vocabulary.test-support';
 
 /** A deterministic, untrained one-layer F32 fixture. Never used by application code. */
 export function createSyntheticGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
-  return createFixtureGguf({ chatTemplate, weights: 'constant-output', vocabulary: 'byte-spm', preTokenizer: 'gpt-2' });
+  return createFixtureGguf({ chatTemplate, weights: 'constant-output', vocabulary: 'byte-spm', preTokenizer: 'gpt-2', userDefinedTokens: [] });
 }
 
 /** Uniform causal attention makes logits depend on the complete decoded prefix. */
 export function createInputSensitiveGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
-  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive', vocabulary: 'byte-spm', preTokenizer: 'gpt-2' });
+  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive', vocabulary: 'byte-spm', preTokenizer: 'gpt-2', userDefinedTokens: [] });
 }
 
 /** Nonzero Q/K and RoPE make equal token multisets sensitive to their order. */
 export function createPositionSensitiveGguf({ chatTemplate }: { chatTemplate: string }): Uint8Array {
-  return createFixtureGguf({ chatTemplate, weights: 'position-sensitive', vocabulary: 'byte-spm', preTokenizer: 'gpt-2' });
+  return createFixtureGguf({ chatTemplate, weights: 'position-sensitive', vocabulary: 'byte-spm', preTokenizer: 'gpt-2', userDefinedTokens: [] });
 }
 
-/** A self-authored vocabulary-only byte fixture with one whitespace merge. */
-export function createByteBpeMetadataGguf({ preTokenizer }: { preTokenizer: 'gpt-2' | 'qwen35' }): Uint8Array {
-  return createFixtureGguf({ chatTemplate: 'chatml', weights: 'constant-output', vocabulary: 'byte-bpe-metadata-only', preTokenizer });
+/** Self-authored BPE metadata with one whitespace merge and explicit user tokens. */
+export function createByteBpeMetadataGguf({ preTokenizer, userDefinedTokens }: { preTokenizer: 'gpt-2' | 'qwen35', userDefinedTokens: readonly string[] }): Uint8Array {
+  return createFixtureGguf({ chatTemplate: 'chatml', weights: 'constant-output', vocabulary: 'byte-bpe-metadata-only', preTokenizer, userDefinedTokens });
 }
 
 /** Small input-sensitive attention weights paired with the self-authored BPE. */
 export function createInputSensitiveByteBpeGguf({ chatTemplate, preTokenizer }: { chatTemplate: string, preTokenizer: 'gpt-2' | 'qwen35' }): Uint8Array {
-  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive', vocabulary: 'byte-bpe', preTokenizer });
+  return createFixtureGguf({ chatTemplate, weights: 'input-sensitive', vocabulary: 'byte-bpe', preTokenizer, userDefinedTokens: [] });
 }
 
-function createFixtureGguf({ chatTemplate, weights, vocabulary, preTokenizer }: { chatTemplate: string, weights: 'constant-output' | 'input-sensitive' | 'position-sensitive', vocabulary: 'byte-spm' | 'byte-bpe' | 'byte-bpe-metadata-only', preTokenizer: 'gpt-2' | 'qwen35' }): Uint8Array {
+function createFixtureGguf({ chatTemplate, weights, vocabulary, preTokenizer, userDefinedTokens }: { chatTemplate: string, weights: 'constant-output' | 'input-sensitive' | 'position-sensitive', vocabulary: 'byte-spm' | 'byte-bpe' | 'byte-bpe-metadata-only', preTokenizer: 'gpt-2' | 'qwen35', userDefinedTokens: readonly string[] }): Uint8Array {
   function join({ parts }: { parts: Uint8Array[] }): Uint8Array {
     const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
     let offset = 0;
@@ -68,7 +68,7 @@ function createFixtureGguf({ chatTemplate, weights, vocabulary, preTokenizer }: 
     }
     }
   })();
-  const vocab = bpe?.tokens ?? ['<unk>', '<s>', '</s>', ...Array.from({ length: 256 }, (_, i) => `<0x${i.toString(16).toUpperCase().padStart(2, '0')}>`)];
+  const vocab = [...(bpe?.tokens ?? ['<unk>', '<s>', '</s>', ...Array.from({ length: 256 }, (_, i) => `<0x${i.toString(16).toUpperCase().padStart(2, '0')}>`)]), ...userDefinedTokens];
   const metadata: Uint8Array[] = [];
   for (const [name, value] of [['general.architecture', 'llama'], ['general.name', 'untrained integration fixture'], ['tokenizer.ggml.model', bpe ? 'gpt2' : 'llama'], ['tokenizer.chat_template', chatTemplate]] satisfies [string, string][]) {
     metadata.push(entry({ name, type: 8, data: text({ value }) }));
@@ -87,7 +87,7 @@ function createFixtureGguf({ chatTemplate, weights, vocabulary, preTokenizer }: 
   metadata.push(entry({ name: 'llama.attention.layer_norm_rms_epsilon', type: 6, data: f32({ value: 1e-5 }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.tokens', type: 9, data: join({ parts: [u32({ value: 8 }), u64({ value: vocab.length }), ...vocab.map(value => text({ value }))] }) }));
   metadata.push(entry({ name: 'tokenizer.ggml.scores', type: 9, data: join({ parts: [u32({ value: 6 }), u64({ value: vocab.length }), ...vocab.map(() => f32({ value: 0 }))] }) }));
-  metadata.push(entry({ name: 'tokenizer.ggml.token_type', type: 9, data: join({ parts: [u32({ value: 5 }), u64({ value: vocab.length }), ...vocab.map((_, i) => u32({ value: i === 0 ? 2 : i < 3 ? 3 : bpe ? 1 : 6 }))] }) }));
+  metadata.push(entry({ name: 'tokenizer.ggml.token_type', type: 9, data: join({ parts: [u32({ value: 5 }), u64({ value: vocab.length }), ...vocab.map((_, i) => u32({ value: i === 0 ? 2 : i < 3 ? 3 : i >= vocab.length - userDefinedTokens.length ? 4 : bpe ? 1 : 6 }))] }) }));
   const shapes: [string, number[]][] = !includeWeights ? [] : [
     ['token_embd.weight', [32, vocab.length]], ['output_norm.weight', [32]], ['output.weight', [32, vocab.length]],
     ['blk.0.attn_norm.weight', [32]], ['blk.0.attn_q.weight', [32, 32]], ['blk.0.attn_k.weight', [32, 32]],

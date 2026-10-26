@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import createNativeModule from 'llama-cpp-browser-core/profiles/cpu-wasm32/test/core.mjs';
@@ -12,6 +12,11 @@ import { promptCheckpointBoundary } from './prompt-checkpoint';
 
 describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTokenizer => {
   const filename = '/byte-bpe-token-boundaries.gguf';
+  const shortUserDefined = '<fixture>';
+  const crossingUserDefined = `\
+JOIN\u0020
+NEXT`;
+  const longUserDefined = '<fixture:' + '日'.repeat(100) + '>';
   let core: ReturnType<typeof attachCore>;
   let model = 0n;
   let vocab = 0n;
@@ -25,7 +30,7 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
     });
     core = attachCore({ module, callMode: 'direct' });
     await core.api.llama_backend_init();
-    core.module.FS.writeFile(filename, createByteBpeMetadataGguf({ preTokenizer }));
+    core.module.FS.writeFile(filename, createByteBpeMetadataGguf({ preTokenizer, userDefinedTokens: [shortUserDefined, crossingUserDefined, longUserDefined] }));
     const source = core.utf8({ text: filename });
     const params = core.allocRecord({ name: 'llama_model_params' });
     using _cleanup = {
@@ -41,7 +46,7 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
     expect(model).not.toBe(0n);
     vocab = await core.api.llama_model_get_vocab(model);
     expect(await core.api.llama_vocab_type(vocab)).toBe(core.constant({ name: 'LLAMA_VOCAB_TYPE_BPE' }));
-    expect(await core.api.llama_vocab_n_tokens(vocab)).toBe(260);
+    expect(await core.api.llama_vocab_n_tokens(vocab)).toBe(263);
   });
 
   afterAll(async () => {
@@ -140,6 +145,104 @@ describe.each(['gpt-2', 'qwen35'] as const)('native BPE pretokenizer %s', preTok
       expect(result.tokens).toEqual(await nativeTokens({ text, parseSpecial: false }));
       expect(result.tokens.at(-1)).toBe(259);
       expect(Array.from(core.bytes({ pointer: result.prompt, length: new TextEncoder().encode(text).length }))).toEqual(Array.from(new TextEncoder().encode(text)));
+    });
+
+    it('keeps native USER_DEFINED input tokens as barriers even when parseSpecial is false', async () => {
+      expect(await nativeTokens({ text: shortUserDefined, parseSpecial: false })).toEqual([260]);
+      expect(await core.api.llama_vocab_get_attr(vocab, 260) & core.constant({ name: 'LLAMA_TOKEN_ATTR_USER_DEFINED' })).not.toBe(0);
+      using result = await preparedPrompt({ parts: [{ text: `hello ${shortUserDefined}tail `, isInput: true }, { text: '\n', isInput: false }], contextTokens: 4096 });
+      expect(result.tokens).toEqual(await nativeTokens({ text: `hello ${shortUserDefined}tail \n`, parseSpecial: false }));
+      const special = result.parts.find(part => result.tokens[part.tokenOffset] === 260);
+      expect(special).toMatchObject({ byteLength: shortUserDefined.length, parseSpecial: true, tokenCount: 1 });
+      expect(result.tokens.at(-1)).toBe(259);
+    });
+
+    it('retains original spans when joining whitespace would newly recognize a USER_DEFINED token', async () => {
+      expect(await nativeTokens({ text: crossingUserDefined, parseSpecial: false })).toEqual([261]);
+      const baseline = [...await nativeTokens({ text: 'JOIN ', parseSpecial: false }), ...await nativeTokens({ text: '\nNEXT', parseSpecial: true })];
+      using result = await preparedPrompt({ parts: [{ text: 'JOIN ', isInput: true }, { text: '\nNEXT', isInput: false }], contextTokens: 4096 });
+      expect(result.tokens).toEqual(baseline);
+      expect(result.tokens).not.toContain(261);
+      expect(result.parts.map(part => part.parseSpecial)).toEqual([false, true]);
+    });
+
+    it.each(['memory-growth', 'allocation-refused'] as const)('handles real long UTF-8 native token pieces and %s without retaining scratch views', async scenario => {
+      const length = new TextEncoder().encode(longUserDefined).length;
+      expect(length).toBeGreaterThan(256);
+      const parts = [{ text: `prefix ${longUserDefined}tail `, isInput: true }, { text: '\n', isInput: false }];
+      const whole = await nativeTokens({ text: parts.map(part => part.text).join(''), parseSpecial: false });
+      const baseline = [...await nativeTokens({ text: parts[0]!.text, parseSpecial: false }), ...await nativeTokens({ text: parts[1]!.text, parseSpecial: true })];
+      expect(whole).not.toEqual(baseline);
+      const nativePiece = core.api.llama_token_to_piece;
+      const allocate = core.tryAlloc;
+      const allocateRequired = core.alloc;
+      const reads: { capacity: number, returned: number, pointer: bigint }[] = [];
+      const allocations: bigint[] = [];
+      using freed = vi.spyOn(core, 'free');
+      let refused = false;
+      {
+        let growth: bigint | undefined;
+        using _growth = {
+          [Symbol.dispose]() {
+            if (growth !== undefined) {
+              core.free({ pointer: growth });
+            }
+          },
+        };
+        using _allocation = vi.spyOn(core, 'tryAlloc').mockImplementation(args => {
+          if (scenario === 'allocation-refused' && !refused && args.bytes === length) {
+            refused = true;
+            return undefined;
+          }
+          const pointer = allocate(args);
+          if (pointer !== undefined) {
+            allocations.push(pointer);
+          }
+          return pointer;
+        });
+        using _requiredAllocation = vi.spyOn(core, 'alloc').mockImplementation(args => {
+          const pointer = allocateRequired(args);
+          allocations.push(pointer);
+          return pointer;
+        });
+        using _pieces = vi.spyOn(core.api, 'llama_token_to_piece').mockImplementation(async (...args) => {
+          const returned = await nativePiece(...args);
+          if (args[1] === 262) {
+            reads.push({ capacity: args[3], returned, pointer: args[2] });
+            if (scenario === 'memory-growth' && returned === length && growth === undefined) {
+              const before = core.module.HEAPU8.buffer;
+              // Force actual allocator-driven Wasm growth after the native write,
+              // before the awaited caller reads the piece from its numeric pointer.
+              expect(before.byteLength).toBeLessThanOrEqual(128 * 1024 * 1024);
+              growth = core.alloc({ bytes: before.byteLength + 1 });
+              expect(core.module.HEAPU8.buffer).not.toBe(before);
+              expect(before.byteLength).toBe(0);
+            }
+          }
+          return returned;
+        });
+        {
+          using result = await preparedPrompt({ parts, contextTokens: 4096 });
+          expect(reads[0]).toMatchObject({ capacity: 256, returned: -length });
+          if (scenario === 'memory-growth') {
+            expect(growth).toBeDefined();
+            expect(reads).toHaveLength(2);
+            expect(reads[1]).toMatchObject({ capacity: length, returned: length });
+            expect(result.tokens).toEqual(whole);
+            expect(result.parts.find(part => result.tokens[part.tokenOffset] === 262)).toMatchObject({ byteLength: length, parseSpecial: true, tokenCount: 1 });
+          } else {
+            expect(refused).toBe(true);
+            expect(reads).toHaveLength(1);
+            expect(result.tokens).toEqual(baseline);
+          }
+        }
+      }
+      for (const read of reads) {
+        // The allocator may reuse an address; each corresponding allocation
+        // must have one free, rather than requiring distinct numeric pointers.
+        const count = allocations.filter(pointer => pointer === read.pointer).length;
+        expect(freed.mock.calls.filter(([args]) => args.pointer === read.pointer)).toHaveLength(count);
+      }
     });
 
     it('uses canonical run metadata to checkpoint before the generation marker', async () => {
