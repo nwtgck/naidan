@@ -147,7 +147,7 @@ defineExpose({
 <template>
   <div tw-class="space-y-3">
     <div
-      v-if="settings.experimental?.toolConfigPersistence !== 'enabled'"
+      v-if="settings.experimental?.toolConfigPersistence === 'disabled'"
       tw-class="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-blue-900 dark:border-blue-500/20 dark:bg-blue-500/5 dark:text-blue-200"
       data-testid="chat-tool-runtime-note"
     >

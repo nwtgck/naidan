@@ -100,6 +100,22 @@ describe('ToolConfigHierarchySettings', () => {
     cspState.message = undefined;
   });
 
+  it('shows supplied persistence guidance while editing is enabled', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+    using fixture = {
+      wrapper: mount(ToolConfigHierarchySettings, {
+        props: { scope: 'global', toolConfigs: undefined, effectiveToolConfigs: defaults, isEditable: true },
+        slots: { 'persistence-note': '<p>Tool settings may reset after an update.</p>' },
+      }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    expect(fixture.wrapper.get('[data-testid="tool-config-persistence-note"]').text()).toBe('Tool settings may reset after an update.');
+    expect(fixture.wrapper.find('[data-testid="tool-config-read-only-note"]').exists()).toBe(false);
+    expect(fixture.wrapper.get('[data-testid="tool-config-builtin.calculator-toggle"]').attributes('disabled')).toBeUndefined();
+  });
+
   it('uses one effective-state toggle and keeps a separated fixed reset slot', async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     const inheritedWrapper = mountSettings();

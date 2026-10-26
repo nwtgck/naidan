@@ -861,6 +861,7 @@ import { GlobalSearchModal__type_to_search } from '@/strings/messages/GlobalSear
 import { GlobalSearchModal__user } from '@/strings/messages/GlobalSearchModal__user/en';
 import { GlobalToolsSettings__global_settings } from '@/strings/messages/GlobalToolsSettings__global_settings/en';
 import { GlobalToolsSettings__tool_defaults_can_be_overridden } from '@/strings/messages/GlobalToolsSettings__tool_defaults_can_be_overridden/en';
+import { GlobalToolsSettings__tool_settings_may_reset_after_updates } from '@/strings/messages/GlobalToolsSettings__tool_settings_may_reset_after_updates/en';
 import { GlobalToolsSettings__tools } from '@/strings/messages/GlobalToolsSettings__tools/en';
 import { HistoryManipulationModal__add_first_message } from '@/strings/messages/HistoryManipulationModal__add_first_message/en';
 import { HistoryManipulationModal__add_message_after } from '@/strings/messages/HistoryManipulationModal__add_message_after/en';
@@ -4184,6 +4185,7 @@ export const catalog = {
   GlobalSearchModal__user,
   GlobalToolsSettings__global_settings,
   GlobalToolsSettings__tool_defaults_can_be_overridden,
+  GlobalToolsSettings__tool_settings_may_reset_after_updates,
   GlobalToolsSettings__tools,
   HistoryManipulationModal__add_first_message,
   HistoryManipulationModal__add_message_after,

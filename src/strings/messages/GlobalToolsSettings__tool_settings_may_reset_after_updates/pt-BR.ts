@@ -1,0 +1,1 @@
+export const GlobalToolsSettings__tool_settings_may_reset_after_updates = (): string => 'As configurações de ferramentas são experimentais e podem voltar aos valores padrão após uma atualização do Naidan.';

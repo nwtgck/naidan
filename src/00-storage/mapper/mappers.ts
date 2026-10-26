@@ -68,7 +68,6 @@ import type {
   LmParameters,
   Mount,
   Volume,
-  ToolConfigPersistence,
   SettingsTitleGeneration,
   ScopedTitleGeneration,
 } from '@/01-models/types';
@@ -345,24 +344,6 @@ const scopedTitleGenerationToDto = ({
   }
 };
 
-
-const toolConfigPersistenceToExperimentalDto = ({
-  persistence,
-}: {
-  persistence: ToolConfigPersistence | undefined,
-}): 'enabled' | undefined => {
-  const normalized = persistence ?? 'disabled';
-  switch (normalized) {
-  case 'disabled':
-    return undefined;
-  case 'enabled':
-    return 'enabled';
-  default: {
-    const _exhaustive: never = normalized;
-    throw new Error(`Unhandled tool config persistence setting: ${String(_exhaustive)}`);
-  }
-  }
-};
 
 const fakeLmToExperimentalDto = ({
   status,
@@ -2362,7 +2343,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
-      toolConfigPersistence: toolConfigPersistence ?? 'disabled',
+      toolConfigPersistence: toolConfigPersistence ?? 'enabled',
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
       fakeLm: fakeLm ?? 'disabled',
       naidanRpc: naidanRpc ?? 'disabled',
@@ -2499,9 +2480,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
-      toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
-        persistence: toolConfigPersistence,
-      }),
+      toolConfigPersistence,
       toolConfigs: toolConfigs?.map(domain => toolConfigToDto({ domain })),
       naidanRpc: (() => {
         switch (naidanRpc) {

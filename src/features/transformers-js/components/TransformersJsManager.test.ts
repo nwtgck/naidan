@@ -130,7 +130,7 @@ describe('TransformersJsManager.vue', () => {
   });
 
   it('renders idle state correctly', async () => {
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
 
     expect(wrapper.text()).toContain('Engine Idle');
     expect(wrapper.text()).toContain('Load a model from the list below');
@@ -141,7 +141,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     expect(wrapper.text()).toContain('hf.co/org/model1');
@@ -153,7 +153,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     const investigateButton = wrapper.find('[data-testid="model-support-investigate-hf.co/org/model1"]');
@@ -166,7 +166,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     await wrapper.get('[data-testid="model-support-investigate-hf.co/org/model1"]').trigger('click');
@@ -177,7 +177,7 @@ describe('TransformersJsManager.vue', () => {
   });
 
   it('shows Gemma 4 in the preset model list', async () => {
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     const input = wrapper.find('input[placeholder*="Hugging Face model ID"]');
@@ -191,7 +191,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     expect(wrapper.text()).toContain('hf.co/org/incomplete');
@@ -204,7 +204,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     const input = wrapper.find('input[placeholder*="Hugging Face model ID"]');
@@ -223,7 +223,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     const resumeButton = wrapper.findAll('button').find(button => button.text() === 'Resume');
@@ -242,7 +242,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     const loadBtn = wrapper.find('button.bg-purple-50');
@@ -258,7 +258,7 @@ describe('TransformersJsManager.vue', () => {
       activeModelId: 'some-model',
     });
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     const unloadBtn = wrapper.find('button[title="Unload model and release resources"]');
@@ -274,7 +274,7 @@ describe('TransformersJsManager.vue', () => {
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
     await flushPromises();
 
     const deleteBtn = wrapper.find('button[title="Delete model"]');
@@ -292,7 +292,7 @@ describe('TransformersJsManager.vue', () => {
       progress: 45,
     });
 
-    const wrapper = mount(TransformersJsManager);
+    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
 
     expect(wrapper.text()).toContain('Initializing Engine...');
     expect(wrapper.text()).toContain('45%');
@@ -304,7 +304,7 @@ describe('TransformersJsManager.vue', () => {
   describe('Standalone Mode', () => {
     it('does not show standalone warning in hosted mode', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
-      const wrapper = mount(TransformersJsManager);
+      const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
 
       expect(wrapper.text()).not.toContain('In-browser AI (Transformers.js) is not available in the Standalone build');
 
@@ -314,7 +314,7 @@ describe('TransformersJsManager.vue', () => {
 
     it('renders with restrictions and warning in standalone mode', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = true;
-      const wrapper = mount(TransformersJsManager);
+      const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
 
       // Standalone warning SHOULD be visible
       expect(wrapper.text()).toContain('In-browser AI (Transformers.js) is not available in the Standalone build');
@@ -333,7 +333,7 @@ describe('TransformersJsManager.vue', () => {
 
     it('disables native controls and avoids storage probes while explaining standalone restrictions', async () => {
       vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
-      const wrapper = mount(TransformersJsManager);
+      const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
       using _cleanupResource = {
         [Symbol.dispose]() {
           wrapper.unmount();
@@ -349,7 +349,7 @@ describe('TransformersJsManager.vue', () => {
 
     it('displays the correct reason for unavailability in standalone mode', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = true;
-      const wrapper = mount(TransformersJsManager);
+      const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
 
       expect(wrapper.text()).toContain('due to browser restrictions on Web Workers and WebAssembly');
     });
@@ -360,7 +360,7 @@ describe('TransformersJsManager.vue', () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
       vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(false);
 
-      const wrapper = mount(TransformersJsManager);
+      const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
       await flushPromises();
 
       expect(wrapper.text()).toContain('the browser does not support or allow access to Origin Private File System (OPFS)');
@@ -374,7 +374,7 @@ describe('TransformersJsManager.vue', () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
       vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(true);
 
-      const wrapper = mount(TransformersJsManager);
+      const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
       await flushPromises();
 
       expect(wrapper.text()).not.toContain('the browser does not support or allow access to Origin Private File System (OPFS)');
@@ -393,7 +393,7 @@ describe('TransformersJsManager.vue', () => {
         error: errorMessage,
       });
 
-      const wrapper = mount(TransformersJsManager);
+      const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
       await flushPromises();
 
       // The component shows "Error" and the error message when status is 'error'

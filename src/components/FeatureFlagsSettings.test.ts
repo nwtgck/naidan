@@ -203,20 +203,22 @@ describe('FeatureFlagsSettings.vue', () => {
   });
 
   it('describes persistence across Global, Chat Group, and Chat layers', () => {
+    mockSettings.value.experimental = { toolConfigPersistence: 'disabled' };
     const wrapper = mount(FeatureFlagsSettings);
 
     expect(wrapper.text()).toContain('Saves Global, Chat Group, and Chat tool settings.');
     expect(wrapper.text()).toContain('Saved settings remain active.');
   });
 
-  it('auto-saves the tool config persistence setting when toggled', async () => {
+  it('enables tool persistence by default and saves an explicit opt-out', async () => {
     const wrapper = mount(FeatureFlagsSettings);
+    expect(wrapper.get('[data-testid="feature-tool-config-persistence-toggle"]').attributes('aria-checked')).toBe('true');
     await wrapper.find('[data-testid="feature-tool-config-persistence-toggle"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
       patch: {
         experimental: {
-          toolConfigPersistence: 'enabled',
+          toolConfigPersistence: 'disabled',
         },
       },
       modelRefresh: 'await',

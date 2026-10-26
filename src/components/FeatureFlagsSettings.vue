@@ -23,7 +23,7 @@ const { status: generationSpeedStatus, inlineStats: generationSpeedInlineStats, 
 const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 
 const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
-const toolConfigPersistence = computed(() => settings.value.experimental?.toolConfigPersistence ?? 'disabled');
+const toolConfigPersistence = computed(() => settings.value.experimental?.toolConfigPersistence ?? 'enabled');
 const fakeLmDebugModeStatus = computed<FakeLmDebugModeStatus>(() => settings.value.experimental?.fakeLm ?? 'disabled');
 const fakeLmToggleAvailability = computed(() => {
   switch (fakeLmDebugModeAvailability.value) {

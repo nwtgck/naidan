@@ -16,6 +16,8 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 
+const props = defineProps<{ presentation: 'settings' | 'embedded' }>();
+const isSettingsPresentation = computed(() => props.presentation === 'settings');
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
 
@@ -445,10 +447,10 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="p-0 space-y-8">
+  <div :tw-class="['p-0', isSettingsPresentation ? 'space-y-6' : 'space-y-8']">
     <!-- Standalone Mode Header Warning -->
-    <div v-if="isUnavailableInBuild" class="animate-in fade-in slide-in-from-top-2" tw-class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl space-y-4 duration-400">
-      <div tw-class="flex items-start gap-3 text-amber-700 dark:text-amber-400 leading-relaxed italic text-sm">
+    <div v-if="isUnavailableInBuild" class="animate-in fade-in slide-in-from-top-2" :tw-class="['bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 space-y-4 duration-400', isSettingsPresentation ? 'p-4 rounded-xl' : 'p-6 rounded-3xl']">
+      <div :tw-class="['flex items-start gap-3 text-amber-700 dark:text-amber-400 leading-relaxed text-sm', isSettingsPresentation ? '' : 'italic']">
         <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
         <p>
           {{ lazyStrings.TransformersJsManager__in_browser_ai_transformers_js_is_not_available_in_the_standalone_build_due_to_browser_restrictions_on_web_workers_and_webassembly_when_running_from_a_local_file() }}
@@ -459,7 +461,7 @@ defineExpose({
           href="https://github.com/nwtgck/naidan/releases"
           target="_blank"
           rel="noopener noreferrer"
-          tw-class="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95"
+          :tw-class="['flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl', isSettingsPresentation ? 'text-xs font-normal transition-colors' : 'text-[11px] font-bold shadow-lg shadow-amber-500/20 transition-all active:scale-95']"
         >
           <ExternalLinkIcon tw-class="w-3.5 h-3.5" />
           {{ lazyStrings.TransformersJsManager__get_hosted_version_github() }}
@@ -468,8 +470,8 @@ defineExpose({
     </div>
 
     <!-- OPFS Support Warning -->
-    <div v-else-if="!isOpfsSupported" class="animate-in fade-in slide-in-from-top-2" tw-class="p-6 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-3xl space-y-4 duration-400">
-      <div tw-class="flex items-start gap-3 text-red-700 dark:text-red-400 leading-relaxed italic text-sm">
+    <div v-else-if="!isOpfsSupported" class="animate-in fade-in slide-in-from-top-2" :tw-class="['bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 space-y-4 duration-400', isSettingsPresentation ? 'p-4 rounded-xl' : 'p-6 rounded-3xl']">
+      <div :tw-class="['flex items-start gap-3 text-red-700 dark:text-red-400 leading-relaxed text-sm', isSettingsPresentation ? '' : 'italic']">
         <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
         <p>
           {{ lazyStrings.TransformersJsManager__in_browser_ai_transformers_js_is_not_available_because_the_browser_does_not_support_or_allow_access_to() }} <strong>{{ lazyStrings.TransformersJsManager__origin_private_file_system_opfs() }}</strong>{{ lazyStrings.TransformersJsManager__which_is_required_for_storing_model_files_this_often_happens_in_private_browsing_modes_or_insecure_contexts() }}
@@ -481,20 +483,20 @@ defineExpose({
       data-testid="transformers-js-actions"
       :disabled="isUnavailableInBuild || !isOpfsSupported"
       class="animate-in fade-in slide-in-from-bottom-2"
-      :tw-class="['space-y-10 duration-400 min-w-0', { 'opacity-40 pointer-events-none grayscale select-none': isUnavailableInBuild || !isOpfsSupported }]"
+      :tw-class="[['duration-400 min-w-0', isSettingsPresentation ? 'space-y-6' : 'space-y-10'], { 'opacity-40 pointer-events-none grayscale select-none': isUnavailableInBuild || !isOpfsSupported }]"
     >
       <!-- Section 1: Model Downloader & Importer -->
-      <section tw-class="space-y-6">
-        <div tw-class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+      <section :tw-class="[isSettingsPresentation ? 'space-y-4' : 'space-y-6']">
+        <div :tw-class="['flex items-center justify-between border-b dark:border-gray-800', isSettingsPresentation ? 'flex-wrap gap-3 border-gray-200/70 pb-2.5' : 'pb-3 border-gray-100']">
           <div tw-class="flex items-center gap-2">
             <HardDriveDownloadIcon tw-class="w-5 h-5 text-purple-500" />
-            <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.TransformersJsManager__add_new_models() }}</h2>
+            <h2 :tw-class="['text-gray-800 tracking-tight', isSettingsPresentation ? 'text-base font-semibold dark:text-gray-300' : 'text-lg font-bold dark:text-white']">{{ lazyStrings.TransformersJsManager__add_new_models() }}</h2>
           </div>
           <a
             href="https://huggingface.co/onnx-community/models"
             target="_blank"
             rel="noopener noreferrer"
-            tw-class="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
+            :tw-class="['flex items-center gap-1 text-purple-600 hover:text-purple-700 transition-colors', isSettingsPresentation ? 'text-xs font-normal dark:text-purple-400 dark:hover:text-purple-300' : 'text-[10px] font-bold uppercase tracking-wider']"
           >
             {{ lazyStrings.TransformersJsManager__find_more_models() }}
             <ExternalLinkIcon tw-class="w-3 h-3" />
@@ -503,7 +505,7 @@ defineExpose({
 
         <template v-if="!isUnavailableInBuild">
           <!-- file:// Warning -->
-          <div v-if="isFileUrl" tw-class="flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/50 rounded-3xl text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+          <div v-if="isFileUrl" :tw-class="['flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/50 text-xs text-amber-700 dark:text-amber-400 leading-relaxed', isSettingsPresentation ? 'rounded-xl' : 'rounded-3xl']">
             <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
             <p>
               <strong>{{ lazyStrings.TransformersJsManager__note() }}</strong> {{ lazyStrings.TransformersJsManager__browsers_often_disable_the() }} <strong>{{ lazyStrings.TransformersJsManager__cache_api() }}</strong> {{ lazyStrings.TransformersJsManager__for_local_file_urls_to_avoid_downloading_models_on_every_reload_use_a_local_web_server_or_the_hosted_version() }}
@@ -512,7 +514,7 @@ defineExpose({
 
           <div tw-class="space-y-4">
             <div tw-class="flex items-center justify-between ml-1">
-              <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.TransformersJsManager__download_from_hugging_face() }}</label>
+              <label :tw-class="['block', isSettingsPresentation ? 'text-sm font-medium text-gray-700 dark:text-gray-300' : 'text-xs font-bold text-gray-400 uppercase tracking-widest']">{{ lazyStrings.TransformersJsManager__download_from_hugging_face() }}</label>
             </div>
             <div tw-class="flex flex-col sm:flex-row gap-3">
               <div tw-class="relative flex-1 flex gap-2" ref="containerRef">
@@ -521,7 +523,7 @@ defineExpose({
                     v-model="searchQuery"
                     type="text"
                     :placeholder="lazyStrings.TransformersJsManager__enter_hugging_face_model_id_e_g_onnx_community_phi_4()"
-                    tw-class="w-full pl-4 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-purple-500/10 outline-none text-gray-900 dark:text-gray-100 transition-all disabled:opacity-60"
+                    :tw-class="['w-full pl-4 pr-10 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-sm focus:ring-4 focus:ring-purple-500/10 outline-none text-gray-900 disabled:opacity-60', isSettingsPresentation ? 'py-2.5 rounded-xl font-medium dark:text-gray-300 transition-colors' : 'py-3.5 rounded-2xl font-bold dark:text-gray-100 transition-all']"
                     @focus="isDropdownOpen = true"
                     @keydown.enter="downloadModel"
                   />
@@ -534,13 +536,13 @@ defineExpose({
                   </button>
 
                   <!-- Dropdown Menu -->
-                  <div v-if="isDropdownOpen" class="animate-in fade-in slide-in-from-top-2" tw-class="absolute z-50 top-full mt-3 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl overflow-hidden duration-200">
+                  <div v-if="isDropdownOpen" class="animate-in fade-in slide-in-from-top-2" :tw-class="['absolute z-50 top-full mt-3 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden duration-200', isSettingsPresentation ? 'rounded-xl shadow-xl' : 'rounded-3xl shadow-2xl']">
                     <div class="custom-scrollbar" tw-class="max-h-[320px] overflow-y-auto p-2 overscroll-contain">
                       <!-- Use Custom ID Option -->
                       <div v-if="filteredPresets.showCustom">
                         <button
                           @click="selectModelId({ id: searchQuery })"
-                          tw-class="w-full text-left px-4 py-3 rounded-2xl text-xs font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center gap-2 border border-dashed border-purple-200 dark:border-purple-800/50 mb-2"
+                          :tw-class="['w-full text-left px-4 py-3 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center gap-2 border border-dashed border-purple-200 dark:border-purple-800/50 mb-2', isSettingsPresentation ? 'rounded-xl text-sm font-medium' : 'rounded-2xl text-xs font-bold']"
                         >
                           <PlusIcon tw-class="w-4 h-4" />
                           {{ lazyStrings.TransformersJsManager__use_custom_id({ modelId: searchQuery }) }}
@@ -549,12 +551,12 @@ defineExpose({
 
                       <!-- Recommended Section -->
                       <div v-if="filteredPresets.recommended.length > 0">
-                        <div tw-class="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.TransformersJsManager__preset_model_paths() }}</div>
+                        <div :tw-class="['px-4 py-2', isSettingsPresentation ? 'text-xs font-normal text-gray-500 dark:text-gray-400' : 'text-[10px] font-bold text-gray-400 uppercase tracking-widest']">{{ lazyStrings.TransformersJsManager__preset_model_paths() }}</div>
                         <button
                           v-for="m in filteredPresets.recommended"
                           :key="m"
                           @click="selectModelId({ id: m })"
-                          :tw-class="['w-full text-left px-4 py-3 rounded-2xl text-xs font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors', { 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold': searchQuery === m }]"
+                          :tw-class="[['w-full text-left px-4 py-3 font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors', isSettingsPresentation ? 'rounded-xl text-sm' : 'rounded-2xl text-xs'], { 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold': searchQuery === m }]"
                         >
                           {{ m }}
                         </button>
@@ -566,17 +568,17 @@ defineExpose({
               <button
                 @click="downloadModel"
                 :disabled="status === 'loading' || !searchQuery.trim()"
-                tw-class="flex items-center justify-center gap-2 px-8 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 shrink-0"
+                :tw-class="['items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0', isSettingsPresentation ? 'inline-flex min-h-10 rounded-lg border border-gray-200/80 bg-white/70 px-4 py-2.5 font-medium text-gray-700 transition-colors hover:border-purple-200/80 hover:bg-purple-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35 dark:border-gray-700/70 dark:bg-gray-800/50 dark:text-gray-300 dark:hover:border-purple-500/30 dark:hover:bg-purple-500/10' : 'flex px-8 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold hover:opacity-90 transition-all shadow-sm active:scale-95']"
               >
-                <DownloadIcon v-if="status !== 'loading'" tw-class="w-4 h-4" />
+                <DownloadIcon v-if="status !== 'loading'" :tw-class="['w-4 h-4', isSettingsPresentation ? 'text-purple-500 dark:text-purple-400' : '']" />
                 <Loader2Icon v-else tw-class="w-4 h-4 animate-spin" />
                 {{ lazyStrings.TransformersJsManager__download_model() }}
               </button>
             </div>
 
             <!-- Contextual Progress for Download -->
-            <div v-if="downloadProgress !== undefined && !isDownloadFailureDismissed" data-testid="download-progress" tw-class="space-y-3 rounded-2xl border border-purple-100 dark:border-purple-900/40 p-4">
-              <div data-testid="download-progress-heading" tw-class="flex items-center justify-between gap-3 text-sm font-bold text-purple-700 dark:text-purple-300">
+            <div v-if="downloadProgress !== undefined && !isDownloadFailureDismissed" data-testid="download-progress" :tw-class="['space-y-3 border border-purple-100 dark:border-purple-900/40 p-4', isSettingsPresentation ? 'rounded-xl' : 'rounded-2xl']">
+              <div data-testid="download-progress-heading" :tw-class="['flex items-center justify-between gap-3 text-sm text-purple-700 dark:text-purple-300', isSettingsPresentation ? 'font-normal' : 'font-bold']">
                 <span data-testid="download-phase">{{ downloadPhaseLabel }}</span>
                 <div tw-class="flex items-center gap-3">
                   <span tw-class="tabular-nums">
@@ -602,7 +604,7 @@ defineExpose({
                 {{ lazyStrings.TransformersJsManager__received_and_reused_bytes({ received: formatSize({ bytes: downloadProgress.receivedBytes }), reused: formatSize({ bytes: downloadProgress.cachedBytes }) }) }}
               </p>
               <p v-if="downloadProgress.totalFileCount > 0" data-testid="download-file-summary" tw-class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{{ lazyStrings.TransformersJsManager__files_complete({ completed: downloadProgress.completedFileCount, total: downloadProgress.totalFileCount }) }}</p>
-              <button v-if="downloadProgress.files.length > 0" @click="isDetailsExpanded = !isDetailsExpanded" :aria-expanded="isDetailsExpanded" tw-class="flex items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400">
+              <button v-if="downloadProgress.files.length > 0" @click="isDetailsExpanded = !isDetailsExpanded" :aria-expanded="isDetailsExpanded" :tw-class="['flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400', isSettingsPresentation ? 'font-normal' : 'font-bold']">
                 <ChevronDownIcon :tw-class="['w-3 h-3 transition-transform', { '-rotate-90': !isDetailsExpanded }]" />
                 {{ lazyStrings.TransformersJsManager__asset_details() }}
               </button>
@@ -625,12 +627,12 @@ defineExpose({
             </div>
             <div v-else-if="(status === 'loading' && !isLoadingFromCache) || lastDownloadError" class="animate-in fade-in slide-in-from-top-2" tw-class="duration-300">
               <template v-if="lastDownloadError">
-                <div tw-class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-2xl">
+                <div :tw-class="['p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30', isSettingsPresentation ? 'rounded-xl' : 'rounded-2xl']">
                   <div tw-class="flex items-start gap-3">
                     <AlertCircleIcon tw-class="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                     <div tw-class="flex-1 min-w-0">
-                      <p tw-class="text-xs font-bold text-red-800 dark:text-red-300 mb-1">{{ lazyStrings.TransformersJsManager__download_failed() }}</p>
-                      <p tw-class="text-[11px] text-red-600/80 dark:text-red-400/80 leading-relaxed">{{ lastDownloadError }}</p>
+                      <p :tw-class="['text-xs text-red-800 dark:text-red-300 mb-1', isSettingsPresentation ? 'font-normal' : 'font-bold']">{{ lazyStrings.TransformersJsManager__download_failed() }}</p>
+                      <p :tw-class="['text-red-600/80 dark:text-red-400/80 leading-relaxed', isSettingsPresentation ? 'text-xs' : 'text-[11px]']">{{ lastDownloadError }}</p>
                     </div>
                     <button @click="lastDownloadError = null" tw-class="text-red-400 hover:text-red-600 transition-colors">
                       <XIcon tw-class="w-4 h-4" />
@@ -640,13 +642,13 @@ defineExpose({
               </template>
               <template v-else>
                 <div tw-class="flex items-center justify-between mb-2 px-1">
-                  <span tw-class="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
+                  <span :tw-class="['text-purple-600 dark:text-purple-400 flex items-center gap-2', isSettingsPresentation ? 'text-xs font-normal' : 'text-[10px] font-bold uppercase tracking-widest']">
                     <Loader2Icon tw-class="w-3 h-3 animate-spin" />
                     {{ lazyStrings.TransformersJsManager__overall_progress() }}
                   </span>
                   <div tw-class="flex flex-col items-end">
-                    <span tw-class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
-                    <span v-if="totalLoadedAmount > 0" tw-class="text-[8px] text-gray-400 font-bold uppercase tabular-nums">
+                    <span :tw-class="['text-xs text-gray-700 dark:text-gray-300', isSettingsPresentation ? 'font-normal' : 'font-bold']">{{ progress }}%</span>
+                    <span v-if="totalLoadedAmount > 0" :tw-class="['tabular-nums', isSettingsPresentation ? 'text-xs text-gray-500 font-normal dark:text-gray-400' : 'text-[8px] text-gray-400 font-bold uppercase']">
                       {{ formatSize({ bytes: totalLoadedAmount }) }} / {{ formatSize({ bytes: totalSizeAmount }) }}
                     </span>
                   </div>
@@ -659,19 +661,19 @@ defineExpose({
                 <div v-if="progressItems.size > 0" class="animate-in fade-in" tw-class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3 duration-500">
                   <button
                     @click="isDetailsExpanded = !isDetailsExpanded"
-                    tw-class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors uppercase tracking-widest mb-3"
+                    :tw-class="['flex items-center gap-1.5 hover:text-gray-600 dark:hover:text-gray-300 transition-colors mb-3', isSettingsPresentation ? 'text-xs font-normal text-gray-500 dark:text-gray-400' : 'text-[9px] font-bold text-gray-400 uppercase tracking-widest']"
                   >
                     <ChevronDownIcon :tw-class="['w-2.5 h-2.5 transition-transform', { '-rotate-90': !isDetailsExpanded }]" />
                     {{ lazyStrings.TransformersJsManager__asset_details() }}
                   </button>
 
-                  <div v-if="isDetailsExpanded" tw-class="space-y-3 ml-1 border-l-2 border-gray-50 dark:border-gray-800/50 pl-3">
+                  <div v-if="isDetailsExpanded" :tw-class="['space-y-3', isSettingsPresentation ? 'rounded-lg bg-gray-50/60 p-3 dark:bg-gray-800/20' : 'ml-1 border-l-2 border-gray-50 dark:border-gray-800/50 pl-3']">
                     <template v-for="[fileName, info] in progressItemEntries" :key="fileName">
                       <div v-if="info.progress !== undefined && info.progress < 100" tw-class="space-y-1.5">
-                        <div tw-class="flex justify-between text-[8px] font-medium tracking-tight">
+                        <div :tw-class="['flex justify-between font-medium tracking-tight', isSettingsPresentation ? 'text-xs' : 'text-[8px]']">
                           <div tw-class="flex flex-col min-w-0">
-                            <span tw-class="text-gray-500 truncate" :title="String(fileName)">{{ fileName }}</span>
-                            <span v-if="info.loaded !== undefined" tw-class="text-[7px] text-gray-400 font-bold uppercase tabular-nums">
+                            <span :tw-class="['text-gray-500 truncate', isSettingsPresentation ? 'dark:text-gray-400' : '']" :title="String(fileName)">{{ fileName }}</span>
+                            <span v-if="info.loaded !== undefined" :tw-class="['tabular-nums', isSettingsPresentation ? 'text-xs text-gray-500 font-normal dark:text-gray-400' : 'text-[7px] text-gray-400 font-bold uppercase']">
                               {{ formatSize({ bytes: info.loaded }) }} / {{ info.total ? formatSize({ bytes: info.total }) : '??' }}
                             </span>
                           </div>
@@ -688,21 +690,21 @@ defineExpose({
                   </div>
                 </div>
 
-                <p tw-class="text-[10px] text-gray-400 mt-2 ml-1 italic">{{ lazyStrings.TransformersJsManager__models_are_cached_locally_in_the_browser_opfs_for_offline_use() }}</p>
+                <p :tw-class="['mt-2 ml-1', isSettingsPresentation ? 'text-xs text-gray-500 dark:text-gray-400' : 'text-[10px] text-gray-400 italic']">{{ lazyStrings.TransformersJsManager__models_are_cached_locally_in_the_browser_opfs_for_offline_use() }}</p>
               </template>
             </div>
           </div>
         </template>
 
         <!-- Local Import -->
-        <div tw-class="bg-gray-50/30 dark:bg-gray-800/20 p-8 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700 space-y-6">
+        <div :tw-class="['bg-gray-50/30 dark:bg-gray-800/20 border border-dashed border-gray-200 dark:border-gray-700', isSettingsPresentation ? 'p-4 rounded-xl space-y-4' : 'p-8 rounded-3xl space-y-6']">
           <div tw-class="text-center">
-            <h3 tw-class="text-sm font-bold text-gray-700 dark:text-gray-300">{{ lazyStrings.TransformersJsManager__import_from_local_files() }}</h3>
+            <h3 :tw-class="['text-sm text-gray-700 dark:text-gray-300', isSettingsPresentation ? 'font-semibold' : 'font-bold']">{{ lazyStrings.TransformersJsManager__import_from_local_files() }}</h3>
             <p tw-class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{{ lazyStrings.TransformersJsManager__select_a_folder_containing_onnx_model_files_to_import_it_into_the_browsers_storage() }}</p>
           </div>
 
           <div tw-class="flex justify-center">
-            <label tw-class="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 font-bold text-sm rounded-xl cursor-pointer transition-all border border-gray-200 dark:border-gray-700 shadow-sm active:scale-95">
+            <label :tw-class="['flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 text-sm rounded-xl cursor-pointer border border-gray-200 dark:border-gray-700', isSettingsPresentation ? 'font-medium transition-colors' : 'font-bold transition-all shadow-sm active:scale-95']">
               <FolderOpenIcon tw-class="w-5 h-5" />
               <span>{{ lazyStrings.TransformersJsManager__select_model_folder() }}</span>
               <input
@@ -718,15 +720,15 @@ defineExpose({
       </section>
 
       <!-- Section 2: Engine Status & Control -->
-      <section tw-class="space-y-6">
-        <div tw-class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+      <section :tw-class="[isSettingsPresentation ? 'space-y-4' : 'space-y-6']">
+        <div :tw-class="['flex items-center justify-between border-b dark:border-gray-800', isSettingsPresentation ? 'flex-wrap gap-3 border-gray-200/70 pb-2.5' : 'pb-3 border-gray-100']">
           <div tw-class="flex items-center gap-2">
             <BrainCircuitIcon tw-class="w-5 h-5 text-purple-500" />
-            <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.TransformersJsManager__engine_control() }}</h2>
+            <h2 :tw-class="['text-gray-800 tracking-tight', isSettingsPresentation ? 'text-base font-semibold dark:text-gray-300' : 'text-lg font-bold dark:text-white']">{{ lazyStrings.TransformersJsManager__engine_control() }}</h2>
           </div>
           <button
             @click="refreshLocalModels"
-            tw-class="flex items-center gap-1.5 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
+            :tw-class="['flex items-center gap-1.5 text-purple-600 hover:text-purple-700 transition-colors', isSettingsPresentation ? 'text-xs font-normal rounded-md px-1.5 py-1 dark:text-purple-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35' : 'text-[10px] font-bold uppercase tracking-wider']"
           >
             <RefreshCcwIcon :tw-class="['w-3 h-3', { 'animate-spin': isImporting }]" />
             {{ lazyStrings.TransformersJsManager__refresh() }}
@@ -735,7 +737,7 @@ defineExpose({
 
         <!-- Status Card -->
         <div
-          :tw-class="['rounded-3xl border border-gray-200 dark:border-gray-700 p-6', {
+          :tw-class="[['border border-gray-200 dark:border-gray-700', isSettingsPresentation ? 'rounded-xl p-4' : 'rounded-3xl p-6'], {
             'bg-gray-50/50 dark:bg-gray-800/30': status === 'idle',
             'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200/50 dark:border-blue-800/50': status === 'loading',
             'bg-green-50/50 dark:bg-green-900/10 border-green-200/50 dark:border-green-800/50': status === 'ready',
@@ -749,8 +751,8 @@ defineExpose({
               <div v-else tw-class="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600"></div>
             </div>
             <div tw-class="flex-1 min-w-0">
-              <div tw-class="flex items-center justify-between mb-2">
-                <h4 tw-class="font-bold text-base text-gray-900 dark:text-gray-100">
+              <div :tw-class="['flex items-center justify-between mb-2', isSettingsPresentation ? 'flex-wrap gap-x-3 gap-y-2' : '']">
+                <h4 :tw-class="['text-gray-900', isSettingsPresentation ? 'font-semibold text-sm dark:text-gray-300' : 'font-bold text-base dark:text-gray-100']">
                   <template v-if="isImporting">{{ lazyStrings.TransformersJsManager__importing_local_model({ progress: importProgress }) }}</template>
                   <template v-else>
                     {{ status === 'idle' ? lazyStrings.TransformersJsManager__engine_idle() :
@@ -758,31 +760,31 @@ defineExpose({
                       status === 'ready' ? lazyStrings.TransformersJsManager__engine_ready() : lazyStrings.TransformersJsManager__error() }}
                   </template>
                 </h4>
-                <div tw-class="flex items-center gap-2 shrink-0">
-                  <span v-if="(status === 'loading' || status === 'ready') && (isLoadingFromCache || activeModelId?.startsWith('user/'))" tw-class="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                <div :tw-class="['flex items-center gap-2', isSettingsPresentation ? 'min-w-0 max-w-full flex-wrap' : 'shrink-0']">
+                  <span v-if="(status === 'loading' || status === 'ready') && (isLoadingFromCache || activeModelId?.startsWith('user/'))" :tw-class="['px-2 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800', isSettingsPresentation ? 'text-xs font-normal' : 'text-[10px] font-bold uppercase']">
                     {{ lazyStrings.TransformersJsManager__local_cache() }}
                   </span>
-                  <span v-if="status === 'ready'" tw-class="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                  <span v-if="status === 'ready'" :tw-class="['px-2 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-800', isSettingsPresentation ? 'text-xs font-normal' : 'text-[10px] font-bold uppercase']">
                     {{ device }}
                   </span>
                   <button
                     v-if="status === 'ready'"
                     @click="unloadModel"
-                    tw-class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                    :tw-class="['p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg', isSettingsPresentation ? 'transition-colors inline-flex min-h-8 min-w-8 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35' : 'transition-all']"
                     :title="lazyStrings.TransformersJsManager__unload_model_and_release_resources()"
                   >
                     <PowerOffIcon tw-class="w-4 h-4" />
                   </button>
                   <button
                     @click="handleRestart"
-                    tw-class="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
+                    :tw-class="['p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg', isSettingsPresentation ? 'transition-colors inline-flex min-h-8 min-w-8 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35' : 'transition-all']"
                     :title="lazyStrings.TransformersJsManager__hard_restart_ai_worker_engine()"
                   >
                     <RotateCcwIcon tw-class="w-4 h-4" />
                   </button>
                 </div>
               </div>
-              <p tw-class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+              <p :tw-class="['text-gray-500 dark:text-gray-400 leading-relaxed', isSettingsPresentation ? 'text-xs' : 'text-sm']">
                 <template v-if="isImporting">{{ lazyStrings.TransformersJsManager__writing_model_files_to_browser_local_storage_opfs() }}</template>
                 <template v-else>
                   {{ status === 'idle' ? lazyStrings.TransformersJsManager__load_a_model_from_the_list_below_to_start_in_browser_inference() :
@@ -803,14 +805,14 @@ defineExpose({
         <!-- Cached Models List -->
         <div tw-class="space-y-4">
           <div tw-class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 ml-1">
-            <h3 tw-class="text-xs font-bold text-gray-400 uppercase tracking-widest shrink-0">{{ lazyStrings.TransformersJsManager__downloaded_models() }}</h3>
+            <h3 :tw-class="['shrink-0', isSettingsPresentation ? 'text-sm font-semibold text-gray-700 dark:text-gray-300' : 'text-xs font-bold text-gray-400 uppercase tracking-widest']">{{ lazyStrings.TransformersJsManager__downloaded_models() }}</h3>
             <div tw-class="relative flex-1 max-w-sm">
               <SearchIcon tw-class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
               <input
                 v-model="listSearchQuery"
                 type="text"
                 :placeholder="lazyStrings.TransformersJsManager__filter_downloaded_models()"
-                tw-class="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-xs font-bold focus:ring-4 focus:ring-purple-500/10 outline-none text-gray-900 dark:text-gray-100 transition-all"
+                :tw-class="['w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-purple-500/10 outline-none text-gray-900', isSettingsPresentation ? 'text-sm font-medium dark:text-gray-300 transition-colors' : 'text-xs font-bold dark:text-gray-100 transition-all']"
               />
             </div>
           </div>
@@ -820,19 +822,19 @@ defineExpose({
               <div
                 v-for="model in filteredCachedModels"
                 :key="model.id"
-                tw-class="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm hover:border-purple-200 dark:hover:border-purple-900/50 transition-all group relative"
+                :tw-class="['flex justify-between p-3 border rounded-xl group relative', isSettingsPresentation ? 'flex-wrap items-start gap-x-3 gap-y-2 border-gray-200/70 bg-white/60 transition-colors hover:border-purple-200/80 hover:bg-gray-50/80 dark:border-gray-800/80 dark:bg-gray-900/20 dark:hover:border-purple-500/30 dark:hover:bg-gray-800/30' : 'items-center bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 shadow-sm hover:border-purple-200 dark:hover:border-purple-900/50 transition-all']"
               >
-                <div tw-class="flex-1 min-w-0 mr-4">
+                <div :tw-class="['min-w-0', isSettingsPresentation ? 'flex-[1_1_16rem]' : 'flex-1 mr-4']">
                   <div tw-class="flex items-center gap-2 mb-0.5">
-                    <span tw-class="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{{ model.id }}</span>
+                    <span :tw-class="['text-gray-800', isSettingsPresentation ? 'text-sm font-medium dark:text-gray-300 break-all' : 'text-xs font-bold dark:text-gray-200 truncate']">{{ model.id }}</span>
                   </div>
-                  <div tw-class="flex items-center gap-3 text-[9px] text-gray-400 font-bold uppercase tracking-tight">
+                  <div :tw-class="['flex items-center', isSettingsPresentation ? 'flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400' : 'gap-3 text-[9px] text-gray-400 font-bold uppercase tracking-tight']">
                     <span tw-class="flex items-center gap-1">
-                      <HardDriveDownloadIcon tw-class="w-2.5 h-2.5" />
+                      <HardDriveDownloadIcon :tw-class="[isSettingsPresentation ? 'w-3 h-3' : 'w-2.5 h-2.5']" />
                       {{ formatSize({ bytes: model.size }) }}
                     </span>
                     <span tw-class="flex items-center gap-1">
-                      <FileCodeIcon tw-class="w-2.5 h-2.5" />
+                      <FileCodeIcon :tw-class="[isSettingsPresentation ? 'w-3 h-3' : 'w-2.5 h-2.5']" />
                       {{ model.fileCount }}
                     </span>
                     <span v-if="model.lastModified">
@@ -840,14 +842,14 @@ defineExpose({
                     </span>
                   </div>
                 </div>
-                <div tw-class="flex items-center gap-1 shrink-0">
-                  <span v-if="!model.isComplete" tw-class="px-2 py-0.5 rounded-lg text-[8px] font-bold uppercase bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-800 mr-1">
+                <div :tw-class="['flex items-center gap-1', isSettingsPresentation ? 'ml-auto max-w-full flex-wrap justify-end' : 'shrink-0']">
+                  <span v-if="!model.isComplete" :tw-class="['px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-800 mr-1', isSettingsPresentation ? 'text-xs font-normal' : 'text-[8px] font-bold uppercase']">
                     {{ lazyStrings.TransformersJsManager__incomplete() }}
                   </span>
                   <button
                     v-if="isModelSupportInvestigationAvailable && !model.isLocal"
                     type="button"
-                    tw-class="px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 rounded-lg text-[10px] font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+                    :tw-class="['px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700', isSettingsPresentation ? 'text-sm font-medium transition-colors min-h-8 border border-gray-200/80 dark:border-gray-700/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35' : 'text-[10px] font-bold transition-all']"
                     :data-testid="`model-support-investigate-${model.id}`"
                     @click="openModelSupportInvestigation({ modelId: model.id })"
                   >
@@ -856,13 +858,13 @@ defineExpose({
                   <button
                     @click="loadOrResumeModel({ modelId: model.id, isComplete: model.isComplete })"
                     :disabled="status === 'loading' || activeModelId === model.id"
-                    tw-class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
+                    :tw-class="['px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 disabled:opacity-50', isSettingsPresentation ? 'text-sm font-medium transition-colors min-h-8 border border-purple-200/70 dark:border-purple-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35' : 'text-[10px] font-bold transition-all']"
                   >
                     {{ activeModelId === model.id ? lazyStrings.TransformersJsManager__active() : (model.isComplete ? lazyStrings.TransformersJsManager__load() : lazyStrings.TransformersJsManager__resume()) }}
                   </button>
                   <button
                     @click="deleteModel({ modelId: model.id })"
-                    tw-class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                    :tw-class="['p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20', isSettingsPresentation ? 'inline-flex min-h-8 min-w-8 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/35' : '']"
                     :title="lazyStrings.TransformersJsManager__delete_model()"
                   >
                     <Trash2Icon tw-class="w-3.5 h-3.5" />
@@ -871,8 +873,8 @@ defineExpose({
               </div>
             </div>
           </div>
-          <div v-else tw-class="p-12 text-center bg-gray-50/50 dark:bg-gray-800/20 border border-dashed border-gray-200 dark:border-gray-700 rounded-3xl">
-            <p tw-class="text-sm text-gray-400 italic">
+          <div v-else :tw-class="['text-center bg-gray-50/50 border', isSettingsPresentation ? 'rounded-xl border-gray-200/70 p-6 dark:border-gray-800 dark:bg-gray-900/20' : 'p-12 dark:bg-gray-800/20 border-dashed border-gray-200 dark:border-gray-700 rounded-3xl']">
+            <p :tw-class="[isSettingsPresentation ? 'text-xs text-gray-500 dark:text-gray-400' : 'text-sm text-gray-400 italic']">
               {{ listSearchQuery ? lazyStrings.TransformersJsManager__no_models_match_your_filter() : lazyStrings.TransformersJsManager__no_models_downloaded_yet() }}
             </p>
           </div>

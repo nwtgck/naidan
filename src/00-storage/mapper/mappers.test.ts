@@ -449,7 +449,7 @@ describe('Sidebar assembly', () => {
 });
 
 describe('Settings Mapping', () => {
-  it('defaults experimental setting modes to disabled when experimental settings are missing', () => {
+  it('defaults tool persistence to enabled while keeping other experimental modes disabled', () => {
     const dto: SettingsDto = {
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       defaultModelId: 'gpt-4',
@@ -465,7 +465,7 @@ describe('Settings Mapping', () => {
 
     const domain = settingsToDomain({ dto });
 
-    expect(domain.experimental?.toolConfigPersistence).toBe('disabled');
+    expect(domain.experimental?.toolConfigPersistence).toBe('enabled');
     expect(domain.experimental?.fakeLm).toBe('disabled');
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
     expect(domain.experimental?.locale).toBeUndefined();

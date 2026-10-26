@@ -31,7 +31,7 @@ const mockSettings = ref({
   storageType: 'opfs' as const,
   mounts: [],
   experimental: {
-    toolConfigPersistence: 'disabled' as 'disabled' | 'enabled',
+    toolConfigPersistence: 'disabled' as 'disabled' | 'enabled' | undefined,
   },
 });
 
@@ -131,6 +131,12 @@ describe('LmToolsSettings.vue', () => {
 
   it('hides the runtime-only note while persistence is enabled', () => {
     mockSettings.value.experimental.toolConfigPersistence = 'enabled';
+    const wrapper = mountSettings();
+    expect(wrapper.find('[data-testid="chat-tool-runtime-note"]').exists()).toBe(false);
+  });
+
+  it('hides the runtime-only note when persistence uses its enabled default', () => {
+    mockSettings.value.experimental.toolConfigPersistence = undefined;
     const wrapper = mountSettings();
     expect(wrapper.find('[data-testid="chat-tool-runtime-note"]').exists()).toBe(false);
   });

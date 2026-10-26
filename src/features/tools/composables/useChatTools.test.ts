@@ -42,9 +42,10 @@ describe('useChatTools', () => {
       await updater({ current: liveChatRegistry.get(id) ?? null });
     });
     useSettings().TEST_ONLY.__testOnlyReset();
+    setToolConfigPersistence({ persistence: 'disabled' });
   });
 
-  function setToolConfigPersistence({ persistence }: { persistence: 'disabled' | 'enabled' }) {
+  function setToolConfigPersistence({ persistence }: { persistence: 'disabled' | 'enabled' | undefined }) {
     useSettings().TEST_ONLY.__testOnlySetSettings({
       newSettings: {
         titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -151,7 +152,7 @@ describe('useChatTools', () => {
       expect(storageService.updateChatMeta).not.toHaveBeenCalled();
     });
 
-    it('discards runtime overlays when persistence is enabled and does not restore them after disabling it again', () => {
+    it.each(['enabled', undefined] as const)('discards runtime overlays when persistence becomes %s and keeps them cleared after disabling', persistence => {
       const { setCurrentChatId, setToolEnabled, isToolEnabled, TEST_ONLY } = useChatTools();
       const chatId = toChatId({ raw: 'chat-1' });
       const chat = createTestChat({
@@ -165,7 +166,7 @@ describe('useChatTools', () => {
       expect(isToolEnabled({ name: 'calculator' })).toBe(false);
       expect(TEST_ONLY._runtimeToolConfigChangesByChat.value.size).toBe(1);
 
-      setToolConfigPersistence({ persistence: 'enabled' });
+      setToolConfigPersistence({ persistence });
       expect(TEST_ONLY._runtimeToolConfigChangesByChat.value.size).toBe(0);
       expect(isToolEnabled({ name: 'calculator' })).toBe(true);
 
@@ -187,6 +188,18 @@ describe('useChatTools', () => {
         id: toChatId({ raw: 'chat-1' }),
         updater: expect.any(Function),
       });
+    });
+
+    it.each([undefined, {}])('persists chat changes when persistence is unset: %j', async experimental => {
+      const settings = useSettings();
+      settings.TEST_ONLY.__testOnlySetSettings({ newSettings: { ...settings.settings.value, experimental } });
+      const { setCurrentChatId, setToolEnabled } = useChatTools();
+      const chat = createTestChat({ id: toChatId({ raw: 'chat-1' }), toolConfigs: undefined });
+      liveChatRegistry.set(chat.id, chat);
+      setCurrentChatId({ chatId: chat.id });
+      await setToolEnabled({ name: 'calculator', enabled: true });
+      expect(storageService.updateChatMeta).toHaveBeenCalled();
+      expect(chat.toolConfigs).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
     });
   });
 
