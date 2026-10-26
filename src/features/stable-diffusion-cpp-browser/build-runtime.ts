@@ -4,7 +4,7 @@ import { READ_ENV_NAIDAN_STABLE_DIFFUSION_CORE_DIR } from '../../../build/node-e
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { createGzipAsset } from '../../../build/gzip-asset';
 import { z } from 'zod';
 import type { Plugin } from 'vite';
 import { profileSchema, configurationSchema, type Configuration, type Artifact } from './types';
@@ -28,8 +28,8 @@ const imageManifestSchema = z.object({
 /** Optional, build-time-only integration. No compiler, model download, or install hook. */
 export function readImageArtifacts({ rootDir, mode, artifactDir }: {
   rootDir: string, mode: 'hosted' | 'standalone', artifactDir: string | undefined,
-}): { configuration: Configuration, files: Map<string, Uint8Array>, nativeLicenseSource: NativeLicenseSource | undefined } {
-  const files = new Map<string, Uint8Array>();
+}): { configuration: Configuration, files: Map<string, () => Promise<Uint8Array>>, nativeLicenseSource: NativeLicenseSource | undefined } {
+  const files = new Map<string, () => Promise<Uint8Array>>();
   switch (mode) {
   case 'standalone': return { configuration: { kind: 'unavailable', reason: 'standalone' }, files, nativeLicenseSource: undefined };
   case 'hosted': break;
@@ -118,7 +118,8 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     if (!entries.has(name)) {
       throw new Error('Missing image host helper');
     }
-    files.set(prefix + name, checked({ relative: 'stable-diffusion-cpp-browser-core/' + name }));
+    const bytes = checked({ relative: 'stable-diffusion-cpp-browser-core/' + name });
+    files.set(prefix + name, async () => bytes);
   }
   const helpersPath = prefix + 'examples/runtime/index.mjs';
 
@@ -140,15 +141,22 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     if (!wasmEntry) {
       throw new Error('Missing image Wasm');
     }
-    const wasm = checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.wasm' });
-    if (!wasm.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))) {
-      throw new Error('Image binary is not WebAssembly');
-    }
     const modulePath = prefix + profile + '/core.mjs';
     const wasmPath = prefix + profile + '/core.wasm.gz';
-    files.set(modulePath, checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.mjs' }));
-    files.set(wasmPath, gzipSync(wasm, { level: 9 }));
-    artifacts.push({ profile, modulePath, wasmPath, helpersPath, schemaSha256: image.schemaSha256, wasmBytes: wasm.length, wasmSha256: wasmEntry.sha256 });
+    const moduleBytes = checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.mjs' });
+    files.set(modulePath, async () => moduleBytes);
+    // Configuration and license reads need metadata, not every Wasm payload.
+    // Both the dev endpoint and hosted emission use this verified lazy loader.
+    files.set(wasmPath, createGzipAsset({
+      read() {
+        const wasm = checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.wasm' });
+        if (!wasm.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))) {
+          throw new Error('Image binary is not WebAssembly');
+        }
+        return wasm;
+      },
+    }));
+    artifacts.push({ profile, modulePath, wasmPath, helpersPath, schemaSha256: image.schemaSha256, wasmBytes: wasmEntry.bytes, wasmSha256: wasmEntry.sha256 });
   }
   if (!entries.has('LICENSE') || ![...entries.keys()].some(name => name.startsWith('licenses/'))) {
     throw new Error('Missing runtime notices');
@@ -233,7 +241,6 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
       return id === '\0' + virtualId ? `export default ${JSON.stringify(load().configuration)};` : undefined;
     },
     configureServer(server) {
-      const { files } = load();
       server.middlewares.use((req, res, next) => {
         const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
         const base = new URL(server.config.base, 'http://localhost/').pathname;
@@ -242,17 +249,21 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
           return;
         }
         const relative = pathname.slice(base.length);
-        const bytes = files.get(relative);
-        if (!bytes) {
+        // Resolve the current build generation rather than retaining the Map
+        // that existed before Vite's first buildStart or a later rebuild.
+        const readAsset = load().files.get(relative);
+        if (readAsset === undefined) {
           res.statusCode = 404;
           res.end();
           return;
         }
-        res.setHeader('Content-Type', relative.endsWith('.mjs') ? 'text/javascript' : relative.endsWith('.gz') ? 'application/gzip' : 'text/plain');
-        res.end(bytes);
+        void readAsset().then(bytes => {
+          res.setHeader('Content-Type', relative.endsWith('.mjs') ? 'text/javascript' : relative.endsWith('.gz') ? 'application/gzip' : 'text/plain');
+          res.end(bytes);
+        }, next);
       });
     },
-    generateBundle(_options, bundle) {
+    async generateBundle(_options, bundle) {
       if (isStandalone) {
         for (const file of Object.values(bundle)) {
           if (file.fileName.startsWith('stable-diffusion-cpp-runtime/')) {
@@ -272,8 +283,8 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
           }
         }
       }
-      for (const [fileName, bytes] of load().files) {
-        this.emitFile({ type: 'asset', fileName, source: bytes });
+      for (const [fileName, readAsset] of load().files) {
+        this.emitFile({ type: 'asset', fileName, source: await readAsset() });
       }
     },
   };

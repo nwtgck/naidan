@@ -5,6 +5,7 @@ import type { NativeLicenseSource } from '../../01-models/native-license-build-s
 import { normalizePath, type Plugin } from 'vite';
 import { gpuProfilingProfile, profileSchema, type LlamaCppProfile } from './types';
 import { hostedArtifactProfiles, readLlamaArtifactPackage } from './build-artifact-package';
+import { createLlamaCppRuntimeAssetsPlugin } from './build-runtime-assets';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
@@ -18,10 +19,12 @@ const standaloneBinaryIds = {
 
 export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string, mode: 'hosted' | 'standalone' }): {
   corePlugin: Plugin;
+  runtimeAssetsPlugin: Plugin;
   embeddedBinaries: readonly StandaloneEmbeddedBinary[];
   nativeLicenseSource: NativeLicenseSource;
 } {
-  const { packageRoot, profileRoot: artifactProfiles, manifestPaths, files, readArtifact } = readLlamaArtifactPackage({ rootDir });
+  const artifact = readLlamaArtifactPackage({ rootDir });
+  const { packageRoot, profileRoot: artifactProfiles, manifestPaths, files, readArtifact } = artifact;
   const isStandalone = (() => {
     switch (mode) {
     case 'standalone': return true;
@@ -55,6 +58,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
 
   return {
     embeddedBinaries,
+    runtimeAssetsPlugin: createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }),
     nativeLicenseSource: { runtime: 'llama-cpp', kind: 'installed', rootDir, manifestPaths, files: new Set(files.keys()), readArtifact },
     corePlugin: {
       name: `naidan-llama-cpp-browser-core-${identity}`,

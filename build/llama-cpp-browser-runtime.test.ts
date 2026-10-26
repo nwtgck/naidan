@@ -5,7 +5,6 @@ import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { build, type Plugin, type Rollup } from 'vite';
 import { describe, expect, it } from 'vitest';
-import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-browser/build-runtime-assets';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
 import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin';
 import { createFileProtocolStandaloneWorkerDefinitions } from './file-protocol-standalone/worker-definitions';
@@ -56,7 +55,7 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
       systemRuntimePath: createRequire(import.meta.url).resolve('systemjs/dist/system.min.js'),
       sourceAudit: { mode: 'inline' },
       embeddedBinaries: adapter.embeddedBinaries,
-    })] : [createLlamaCppRuntimeAssetsPlugin({ rootDir: process.cwd() })])],
+    })] : [adapter.runtimeAssetsPlugin])],
     define: { __BUILD_MODE_IS_TEST__: 'false', __BUILD_MODE_IS_STANDALONE__: JSON.stringify(standalone), __BUILD_MODE_IS_HOSTED__: JSON.stringify(!standalone) },
     resolve: { alias: [...(standalone ? createStandaloneFacadeAliases({ resolvePath: (relative: string) => path.resolve(relative) }) : []), { find: '@', replacement: path.resolve('src') }] },
     worker: {

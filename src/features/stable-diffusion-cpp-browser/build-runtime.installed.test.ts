@@ -9,7 +9,7 @@ import { readImageArtifacts } from './build-runtime';
 
 // Check the actual separately installed dependency. This is package integration,
 // not trained-model/GPU inference; fixtures remain in build-runtime.test.ts.
-it('connects the installed bicore image dependency without replacing the llama dependency', () => {
+it('connects the installed bicore image dependency without replacing the llama dependency', async () => {
   const rootDir = process.cwd();
   const pkg = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(rootDir, 'package.json'), 'utf8')));
   const lock = z.object({
@@ -42,11 +42,11 @@ it('connects the installed bicore image dependency without replacing the llama d
   expect(result.configuration.artifacts.map(artifact => artifact.profile)).toEqual(['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']);
   const prefix = 'stable-diffusion-cpp-runtime/' + result.configuration.sourceCommit + '/';
   for (const artifact of result.configuration.artifacts) {
-    const bytes = result.files.get(artifact.wasmPath);
-    if (!bytes) {
+    const readWasm = result.files.get(artifact.wasmPath);
+    if (readWasm === undefined) {
       throw new Error('Missing emitted image Wasm');
     }
-    const decoded = gunzipSync(bytes);
+    const decoded = gunzipSync(await readWasm());
     expect(decoded.length).toBe(artifact.wasmBytes);
     expect(createHash('sha256').update(decoded).digest('hex')).toBe(artifact.wasmSha256);
     expect(result.files.has(artifact.modulePath)).toBe(true);

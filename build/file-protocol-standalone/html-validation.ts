@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { JSDOM } from 'jsdom';
+import type { JSDOM } from 'jsdom';
+import { createBuildDom } from '../jsdom';
 
 import {
   FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS,
@@ -265,7 +266,7 @@ export function assertFileProtocolStandaloneHtmlBeforeRewrite({
   stylesheetReferences: readonly FileProtocolStandaloneHtmlStylesheetReference[];
   applicationEntry: FileProtocolStandaloneHtmlApplicationEntry;
 }> {
-  const dom = new JSDOM(html, { includeNodeLocations: true });
+  const dom = createBuildDom({ html, options: { includeNodeLocations: true } });
   const document = dom.window.document;
   try {
     for (const id of FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS) {
@@ -323,7 +324,7 @@ export function assertFileProtocolStandaloneHtmlAfterRewrite({
   html,
   htmlFileName,
 }: Readonly<{html: string; htmlFileName: string}>): readonly string[] {
-  const dom = new JSDOM(html);
+  const dom = createBuildDom({ html, options: undefined });
   const document = dom.window.document;
   try {
     const stylesheetLinks = assertLinkContracts({

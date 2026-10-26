@@ -11,6 +11,7 @@ import {
 import {
   analyzeSourceModules,
   createSourceModuleAnalysisCache,
+  isBoundaryStringPayloadPath,
   isStaticTailwindSourceFile,
   isStaticTailwindSourcePath,
   serializeSourceAnalysis,
@@ -487,6 +488,7 @@ export function createTwClassVitePlugin({
   let hasAppliedPlan = false;
   let hasFailedRefresh = false;
   let planningInputs: InputSnapshot | undefined;
+  let initialPlanning: Promise<void> | undefined;
   let forceQueuedRefresh = false;
   const queuedInputFiles = new Set<string>();
   let pendingHotUpdate: RefreshResult | undefined;
@@ -630,15 +632,7 @@ export function createTwClassVitePlugin({
   }
 
   async function refreshPlan(): Promise<RefreshResult> {
-    const nextAnalysis = analyzeSourceModules({
-      projectRoot: absoluteProjectRoot,
-      sourceRoot: absoluteSourceRoot,
-      ownershipMode: splitCss ? 'source-module' : 'single-css',
-      cache: sourceAnalysisCache,
-    });
-    const nextInputSourceByFile = new Map<string, string | undefined>(
-      [...sourceAnalysisCache].map(([filename, { source }]) => [filename, source]),
-    );
+    const nextInputSourceByFile = new Map<string, string | undefined>();
     const captureInput = ({ filename }: { filename: string }): void => {
       if (!isLocalStylesheetPath({ filename }) || nextInputSourceByFile.has(filename)) {
         return;
@@ -648,8 +642,18 @@ export function createTwClassVitePlugin({
     // Capture inputs before reading or asynchronous compilation, so a delayed
     // save notification cannot mistake new bytes for the plan already applied.
     planningInputs = { sources: nextInputSourceByFile };
+    let nextAnalysis: SourceModuleAnalysis;
     let nextPlan: CssOwnershipPlan;
     try {
+      nextAnalysis = await analyzeSourceModules({
+        projectRoot: absoluteProjectRoot,
+        sourceRoot: absoluteSourceRoot,
+        ownershipMode: splitCss ? 'source-module' : 'single-css',
+        cache: sourceAnalysisCache,
+      });
+      for (const [filename, { source }] of sourceAnalysisCache) {
+        nextInputSourceByFile.set(filename, source);
+      }
       nextPlan = await createCssOwnershipPlan({
         projectRoot: absoluteProjectRoot,
         cssEntryPath: absoluteTailwindCssPath,
@@ -819,8 +823,21 @@ export function createTwClassVitePlugin({
         throw new Error(`Unhandled Vite command: ${_ex}`);
       }
       }
-      await refreshPlan();
-      markCurrentPlanApplied();
+      const pending = refreshPlan().then(() => {
+        markCurrentPlanApplied();
+        hasFailedRefresh = false;
+      }).catch((error: unknown) => {
+        hasFailedRefresh = true;
+        throw error;
+      });
+      initialPlanning = pending;
+      try {
+        await pending;
+      } finally {
+        if (initialPlanning === pending) {
+          initialPlanning = undefined;
+        }
+      }
       const activePlan = plan;
       if (activePlan === undefined) {
         throw new Error('[tw-class] CSS plan was not initialized.');
@@ -913,8 +930,13 @@ if (import.meta.hot) {
     },
     transform(source, id) {
       const cleanId = id.split('?', 1)[0];
-      if (cleanId.includes('/node_modules/')) {
+      const isPayloadSource = cssPlanning === 'enabled'
+        && isBoundaryStringPayloadPath({ filename: cleanId, sourceRoot: absoluteSourceRoot });
+      if (cleanId.includes('/node_modules/') && !isPayloadSource) {
         return null;
+      }
+      if (isPayloadSource && cleanId.endsWith('.vue')) {
+        throw new Error('[tw-class] Vue files are not supported in Boundary Strings message and catalog payloads: ' + cleanId);
       }
       const imports = importsByModule.get(path.resolve(cleanId)) ?? [];
       const referencesMacroModule = source.includes(virtualMacroModuleId);
@@ -991,7 +1013,8 @@ if (import.meta.hot) {
         });
         const isActiveStylesheetDependency = absoluteFile === absoluteTailwindCssPath
           || plan?.stylesheetDependencies.includes(absoluteFile) === true
-          || appliedStylesheetDependencies.has(absoluteFile);
+          || appliedStylesheetDependencies.has(absoluteFile)
+          || planningInputs?.sources.has(absoluteFile) === true;
         // A failed plan may have discovered a stylesheet that could not yet be
         // loaded. Allow the next local CSS event to retry even though that path
         // was never committed as an active dependency. Successful refreshes
@@ -1005,6 +1028,7 @@ if (import.meta.hot) {
         // trailing generation even when the file has reverted to committed content.
         if (
           !hasFailedRefresh
+          && initialPlanning === undefined
           && !refreshCoordinator.hasPendingRefresh()
           && !hasInputChangedSinceLastAppliedPlan({ filename: absoluteFile })
         ) {
@@ -1018,6 +1042,15 @@ if (import.meta.hot) {
           forceQueuedRefresh = true;
         }
         queuedInputFiles.add(absoluteFile);
+        if (initialPlanning !== undefined) {
+          try {
+            // Initial planning shares the same mutable state as later refreshes.
+            // Keep queued edits until it settles, including an edit repairing it.
+            await initialPlanning;
+          } catch {
+            // The queued update can retry a failed initial plan with new inputs.
+          }
+        }
         await refreshCoordinator.request({ context: this.environment });
         return options.modules;
       },

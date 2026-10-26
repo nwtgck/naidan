@@ -16,6 +16,7 @@ import {
 } from './tw-class-core';
 
 const moduleExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
+const sourceReadBatchSize = 32;
 
 export type SourceCandidateGroupBase = {
   id: string;
@@ -70,10 +71,11 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
-function walkFiles({ directory }: {
+function walkFiles({ directory, sourceRoot }: {
   directory: string;
+  sourceRoot: string;
 }): string[] {
-  if (!fs.existsSync(directory)) {
+  if (isBoundaryStringPayloadPath({ filename: directory, sourceRoot })) {
     return [];
   }
   let entries: fs.Dirent[];
@@ -88,8 +90,19 @@ function walkFiles({ directory }: {
   }
   return entries.flatMap((entry) => {
     const absolutePath = path.join(directory, entry.name);
-    return entry.isDirectory() ? walkFiles({ directory: absolutePath }) : [absolutePath];
+    return entry.isDirectory() ? walkFiles({ directory: absolutePath, sourceRoot }) : [absolutePath];
   });
+}
+
+export function isBoundaryStringPayloadPath({ filename, sourceRoot }: {
+  filename: string;
+  sourceRoot: string;
+}): boolean {
+  const relativePath = path.relative(path.resolve(sourceRoot), path.resolve(filename)).replaceAll(path.sep, '/');
+  return relativePath === 'strings/messages'
+    || relativePath.startsWith('strings/messages/')
+    || relativePath === 'strings/catalogs'
+    || relativePath.startsWith('strings/catalogs/');
 }
 
 export function isStaticTailwindSourcePath({ filename, sourceRoot }: {
@@ -112,6 +125,7 @@ export function isStaticTailwindSourceFile({ filename, sourceRoot }: {
   sourceRoot: string;
 }): boolean {
   return isStaticTailwindSourcePath({ filename, sourceRoot })
+    && !isBoundaryStringPayloadPath({ filename, sourceRoot })
     && moduleExtensions.includes(path.extname(path.resolve(filename)));
 }
 
@@ -119,7 +133,7 @@ function parseVueDescriptor({ source, filename }: {
   source: string;
   filename: string;
 }): SFCDescriptor {
-  const { descriptor, errors } = parseSfc(source, { filename });
+  const { descriptor, errors } = parseSfc(source, { filename, sourceMap: false });
   if (errors.length > 0) {
     throw new Error(`${filename}: ${errors.map(String).join('; ')}`);
   }
@@ -323,15 +337,15 @@ function sourceModuleOwnerName({ projectRoot, moduleId }: {
   return `module:${path.relative(projectRoot, moduleId).replaceAll(path.sep, '/')}`;
 }
 
-export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, cache }: {
+export async function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, cache }: {
   projectRoot: string;
   sourceRoot: string;
   ownershipMode: 'single-css' | 'source-module';
   cache: SourceModuleAnalysisCache;
-}): SourceModuleAnalysis {
+}): Promise<SourceModuleAnalysis> {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const absoluteSourceRoot = path.resolve(sourceRoot);
-  const files = walkFiles({ directory: absoluteSourceRoot })
+  const files = walkFiles({ directory: absoluteSourceRoot, sourceRoot: absoluteSourceRoot })
     .filter((file) => isStaticTailwindSourceFile({ filename: file, sourceRoot: absoluteSourceRoot }));
   const baseCandidateGroups: SourceCandidateGroupBase[] = [];
   const presentFiles = new Set(files);
@@ -340,25 +354,40 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
       cache.delete(cachedFile);
     }
   }
-  for (const file of files) {
-    let source: string;
-    try {
-      source = fs.readFileSync(file, 'utf8');
-    } catch (error) {
-      if (isErrnoException(error) && error.code === 'ENOENT') {
-        cache.delete(file);
+  for (let start = 0; start < files.length; start += sourceReadBatchSize) {
+    const batch = files.slice(start, start + sourceReadBatchSize);
+    // Read concurrently, but consume both sources and errors in file order.
+    // Settling the whole bounded batch also leaves no outstanding reads on error.
+    const sources = await Promise.allSettled(batch.map(file => fs.promises.readFile(file, 'utf8')));
+    for (const [index, result] of sources.entries()) {
+      const file = batch[index];
+      let source: string;
+      switch (result.status) {
+      case 'fulfilled':
+        source = result.value;
+        break;
+      case 'rejected': {
+        const error: unknown = result.reason;
+        if (isErrnoException(error) && error.code === 'ENOENT') {
+          cache.delete(file);
+          continue;
+        }
+        throw error;
+      }
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled source read result: ${String(_ex)}`);
+      }
+      }
+      const cached = cache.get(file);
+      if (cached?.source === source) {
+        baseCandidateGroups.push(...cloneCandidateGroups({ groups: cached.groups }));
         continue;
       }
-      throw error;
+      const groups = collectCandidateGroups({ source, filename: file });
+      cache.set(file, { source, groups: cloneCandidateGroups({ groups }) });
+      baseCandidateGroups.push(...groups);
     }
-    const cached = cache.get(file);
-    if (cached?.source === source) {
-      baseCandidateGroups.push(...cloneCandidateGroups({ groups: cached.groups }));
-      continue;
-    }
-    const groups = collectCandidateGroups({ source, filename: file });
-    cache.set(file, { source, groups: cloneCandidateGroups({ groups }) });
-    baseCandidateGroups.push(...groups);
   }
 
   const candidateOwners = new Map<string, Set<string>>();
