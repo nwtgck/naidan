@@ -1935,6 +1935,147 @@ describe('native inference across batching and cache lifecycle transitions', () 
     });
   }
 
+  it.each(['attention', 'hybrid'] as const)('generates at the canonical context limit and recovers after an oversized prompt: %s', async kind => {
+    const boundaryTemplate = '{% for message in messages %}{{ message.content }}{% endfor %}{% if add_generation_prompt %}{{ "\\n" }}{% endif %}';
+    host.bytes = Uint8Array.from(kind === 'attention'
+      ? createInputSensitiveByteBpeGguf({ chatTemplate: boundaryTemplate, preTokenizer: 'qwen35' })
+      : createTinyByteBpeLfm2Gguf({ chatTemplate: boundaryTemplate, preTokenizer: 'qwen35' }));
+    const key = kind === 'attention' ? 'llama.context_length' : 'lfm2.context_length';
+    const offset = Buffer.from(host.bytes).indexOf(key) + key.length;
+    expect(offset).toBeGreaterThan(key.length);
+    new DataView(host.bytes.buffer, host.bytes.byteOffset, host.bytes.byteLength).setUint32(offset + 4, 512, true);
+    const input: WorkerGenerateInput = {
+      ...request({ messages: [{ role: 'user', content: 'a'.repeat(510) + ' ' }] }),
+      options: { profile: integrationProfile, contextTokens: 512 },
+      maxTokens: 1,
+      measurement: { sequence: 'continue' },
+    };
+    const first = await run({ input });
+    expect(first.metrics.contextTokens).toBe(512);
+    expect(first.metrics.promptTokens).toBe(511);
+    expect(first.tokens).toEqual([...Array<number>(510).fill(100), 259]);
+    const repeated = await run({ input });
+    expectEquivalent({ actual: repeated, expected: first });
+    expect(repeated.metrics.reusedTokens).toBe(511);
+    expect(repeated.metrics.prefillDecodeCalls).toBe(0);
+    const oversized = { ...input, messages: [{ role: 'user' as const, content: 'a'.repeat(511) + ' ' }] };
+    await expect(generate({ request: oversized, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('context-full');
+    const retry = await run({ input });
+    expectEquivalent({ actual: retry, expected: first });
+    expect(retry.metrics.reusedTokens).toBe(0);
+    expect(retry.metrics.prefillDecodedTokens).toBe(511);
+  }, 30000);
+
+  it.each(['presence', 'frequency'] as const)('applies prompt history penalties with fresh sampler state on every warm request: %s', async penalty => {
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: template }));
+    const input: WorkerGenerateInput = {
+      ...request({ messages: [{ role: 'user', content: 'A'.repeat(16) + 'b'.repeat(24) }] }),
+      maxTokens: 1,
+      measurement: { sequence: 'continue' },
+    };
+    const penalized = {
+      ...input,
+      presencePenalty: penalty === 'presence' ? 1 : 0,
+      frequencyPenalty: penalty === 'frequency' ? 0.1 : 0,
+    };
+    const requests = [input, penalized, penalized, input];
+    const warmRuns: Awaited<ReturnType<typeof run>>[] = [];
+    for (const [index, current] of requests.entries()) {
+      const warm = await run({ input: current });
+      warmRuns.push(warm);
+      // Prove that prompt acceptance changes actual native greedy selection.
+      // The next request must not inherit accepted samples or penalty settings.
+      expect(warm.result.content).toBe(index === 1 || index === 2 ? 'B' : 'A');
+      if (index === 0) {
+        const margin = warm.logits[68]! - warm.logits[69]!;
+        // Frequency 0.1 needs repeated prompt tokens to beat this margin;
+        // treating it as presence 0.1 cannot produce the expected B sample.
+        expect(margin).toBeGreaterThan(0.1);
+        expect(margin).toBeLessThan(1);
+      }
+      if (index > 0) {
+        expect(warm.metrics.reusedTokens).toBe(warmRuns[0]!.tokens.length);
+        expect(warm.metrics.prefillDecodeCalls).toBe(0);
+        expect(warm.logits).toEqual(warmRuns[0]!.logits);
+      }
+    }
+    for (const [index, current] of requests.entries()) {
+      await releaseSession({ releaseRuntime: false });
+      const cold = await run({ input: current });
+      expect(cold.metrics.reusedTokens).toBe(0);
+      expectEquivalent({ actual: warmRuns[index]!, expected: cold });
+    }
+  }, 30000);
+
+  it.each(['attention', 'hybrid'] as const)('rebuilds native contexts without reloading weights or restoring stale state, then reuses new appends: %s', async kind => {
+    host.bytes = Uint8Array.from(kind === 'attention'
+      ? createPositionSensitiveGguf({ chatTemplate: template })
+      : createTinyLfm2Gguf({ chatTemplate: template }));
+    const key = kind === 'attention' ? 'llama.context_length' : 'lfm2.context_length';
+    const offset = Buffer.from(host.bytes).indexOf(key) + key.length;
+    expect(offset).toBeGreaterThan(key.length);
+    new DataView(host.bytes.buffer, host.bytes.byteOffset, host.bytes.byteLength).setUint32(offset + 4, 2048, true);
+    let input: WorkerGenerateInput = {
+      ...request({ messages: [{ role: 'user', content: 'abc' }] }),
+      options: { profile: integrationProfile, contextTokens: 512 },
+      maxTokens: 1,
+      measurement: { sequence: 'continue' },
+    };
+    const first = await run({ input });
+    expect(first.metrics.contextTokens).toBe(512);
+    const initial = await prepareSession({ request: input, signal: undefined, onProgress: () => {} });
+    const { core, model } = initial;
+    using loadModel = vi.spyOn(core.api, 'llama_model_load_from_file');
+    using freeModel = vi.spyOn(core.api, 'llama_model_free');
+    using freeContext = vi.spyOn(core.api, 'llama_free');
+    using initContext = vi.spyOn(core.api, 'llama_init_from_model');
+    using restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext');
+    const requests = [input];
+    const warmRuns = [first];
+    for (const target of [1024, 512]) {
+      const previous = await prepareSession({ request: input, signal: undefined, onProgress: () => {} });
+      const oldCheckpoint = previous.cache.checkpoint;
+      freeContext.mockClear();
+      initContext.mockClear();
+      input = { ...input, options: { ...input.options, contextTokens: target } };
+      const resized = await run({ input });
+      const session = await prepareSession({ request: input, signal: undefined, onProgress: () => {} });
+      expect(freeContext).toHaveBeenCalledExactlyOnceWith(previous.context);
+      expect(initContext).toHaveBeenCalledOnce();
+      expect(session.model).toBe(model);
+      expect(session.core).toBe(core);
+      expect(session.contextTokens).toBe(target);
+      expect(await core.api.llama_n_ctx(session.context)).toBe(target);
+      expect(resized.metrics.contextTokens).toBe(target);
+      expect(resized.cached).toEqual([]);
+      expect(resized.metrics.reusedTokens).toBe(0);
+      expect(resized.metrics.prefillDecodedTokens).toBe(resized.metrics.promptTokens);
+      if (kind === 'hybrid') {
+        expect(oldCheckpoint).toBeDefined();
+        expect(session.cache.checkpoint).toBeDefined();
+        expect(session.cache.checkpoint).not.toBe(oldCheckpoint);
+      }
+      requests.push(input);
+      warmRuns.push(resized);
+      input = nextRequest({ previous: input, output: resized.result, text: 'next' });
+      const appended = await run({ input });
+      expect(appended.metrics.reusedTokens).toBe(resized.tokens.length);
+      requests.push(input);
+      warmRuns.push(appended);
+    }
+    expect(loadModel).not.toHaveBeenCalled();
+    expect(freeModel).not.toHaveBeenCalled();
+    expect(restore).not.toHaveBeenCalled();
+    // Native allocators may recycle a freed context's numeric handle. Observe
+    // destruction and capacity instead of asserting pointer inequality.
+    for (const [index, current] of requests.entries()) {
+      await releaseSession({ releaseRuntime: false });
+      const cold = await run({ input: current });
+      expect(cold.metrics.reusedTokens).toBe(0);
+      expectEquivalent({ actual: warmRuns[index]!, expected: cold });
+    }
+  }, 30000);
+
   it.each(['attention', 'hybrid'] as const)('matches serial cold inference across batch partitions, failed warm decoding and subsequent appends: %s', async kind => {
     host.bytes = Uint8Array.from(kind === 'attention'
       ? createPositionSensitiveGguf({ chatTemplate: template })
