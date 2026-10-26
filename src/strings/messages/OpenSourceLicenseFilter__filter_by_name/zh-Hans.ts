@@ -1,0 +1,1 @@
+export const OpenSourceLicenseFilter__filter_by_name = (): string => '按名称筛选…';

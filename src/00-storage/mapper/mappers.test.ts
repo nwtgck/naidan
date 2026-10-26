@@ -449,7 +449,7 @@ describe('Sidebar assembly', () => {
 });
 
 describe('Settings Mapping', () => {
-  it('defaults experimental setting modes to disabled when experimental settings are missing', () => {
+  it('defaults tool persistence to enabled while keeping other experimental modes disabled', () => {
     const dto: SettingsDto = {
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       defaultModelId: 'gpt-4',
@@ -465,7 +465,7 @@ describe('Settings Mapping', () => {
 
     const domain = settingsToDomain({ dto });
 
-    expect(domain.experimental?.toolConfigPersistence).toBe('disabled');
+    expect(domain.experimental?.toolConfigPersistence).toBe('enabled');
     expect(domain.experimental?.fakeLm).toBe('disabled');
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
     expect(domain.experimental?.locale).toBeUndefined();
@@ -792,7 +792,7 @@ describe('Settings Mapping', () => {
         chatBrowserModelPickerTab: undefined,
         modelDiscoveryTab: undefined,
         markdownRendering: 'monolithic_html',
-        toolConfigPersistence: 'enabled',
+        toolConfigPersistence: undefined,
         toolConfigs,
         fakeLm: 'enabled',
         sidebarSendMessageReorder: 'move_sent_chat',
@@ -814,6 +814,7 @@ describe('Settings Mapping', () => {
     expect(dto).toMatchObject(expectedDto);
     expect(dto).not.toHaveProperty('autoTitleEnabled');
     expect(dto).not.toHaveProperty('titleModelId');
+    expect(settingsToDomain({ dto }).experimental?.toolConfigPersistence).toBe('enabled');
     expect(settingsToDto({ domain: settingsToDomain({ dto }) })).toEqual(dto);
   });
 });

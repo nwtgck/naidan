@@ -84,6 +84,8 @@ describe('AboutTab licenses', () => {
     expect(licenseList.text()).not.toContain('vnull');
     expect(wrapper.text()).not.toContain('THIRD_PARTY_LICENSES.txt');
     expect(wrapper.text()).not.toContain('Offline License Information');
+    expect(wrapper.find('[data-testid="portable-html-download"]').exists()).toBe(!isStandalone);
+    expect(wrapper.find('[data-testid="portable-html-help-button"]').exists()).toBe(!isStandalone);
   });
 
   it('keeps license data behind a dynamic generated license import', () => {
@@ -99,6 +101,29 @@ describe('AboutTab licenses', () => {
     expect(scriptSetup).not.toMatch(/^import(?! type).*virtual:naidan-licenses/m);
   });
 
+  it.each([
+    { origin: 'https://naidan.pages.dev', external: false },
+    { origin: 'http://naidan.pages.dev', external: true },
+    { origin: 'https://naidan-local-only.pages.dev', external: true },
+    { origin: 'https://naidan-curated.pages.dev', external: true },
+    { origin: 'https://develop.naidan.pages.dev', external: true },
+    { origin: 'http://localhost:5173', external: true },
+    { origin: 'null', external: true },
+  ])('keeps the documentation URL fixed and sets its icon for $origin', async ({ origin, external }) => {
+    vi.stubGlobal('location', { origin });
+    const wrapper = await mountAboutTab({ isStandalone: origin === 'null' });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const link = wrapper.get('[data-testid="documentation-link"]');
+    expect(link.attributes('href')).toBe('https://naidan.pages.dev/docs');
+    expect(link.attributes('target')).toBe('_blank');
+    expect(link.attributes('rel')).toBe('noopener noreferrer');
+    expect(link.find('[data-testid="documentation-external-icon"]').exists()).toBe(external);
+  });
+
   it('destroys only the license section while About is hidden and recreates it collapsed on return', async () => {
     const wrapper = await mountAboutTab({ isStandalone: false });
     using _cleanup = {
@@ -110,7 +135,13 @@ describe('AboutTab licenses', () => {
     details.element.open = true;
     await details.trigger('toggle');
     expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(true);
+    const helpButton = wrapper.get('[data-testid="portable-html-help-button"]');
+    expect(wrapper.get('[data-testid="portable-html-download"]').element.contains(helpButton.element)).toBe(false);
+    await helpButton.trigger('click');
+    expect(document.querySelector('[data-testid="portable-html-help"]')).toBeTruthy();
     await wrapper.setProps({ visibility: 'hidden' });
+    expect(wrapper.find('[data-testid="portable-html-help-button"]').exists()).toBe(false);
+    expect(document.querySelector('[data-testid="portable-html-help"]')).toBeFalsy();
     expect(wrapper.find('[data-testid="about-section"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="oss-license-list"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(false);

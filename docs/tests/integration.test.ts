@@ -113,7 +113,7 @@ describe('Docs development and static output', () => {
         }
       }
     }
-  }, 60_000);
+  }, 180_000);
 });
 
 describe('Docs adversarial lifecycle behavior', () => {

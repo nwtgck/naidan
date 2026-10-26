@@ -70,7 +70,7 @@ const storedReceipt: ModelImportReceipt = { storage: 'opfs', models: [storedMode
 const wrappers: VueWrapper[] = [];
 
 function render(): VueWrapper {
-  const wrapper = mount(LlamaCppBrowserManager);
+  const wrapper = mount(LlamaCppBrowserManager, { props: { presentation: 'settings' } });
   wrappers.push(wrapper);
   return wrapper;
 }
@@ -190,7 +190,7 @@ describe('local GGUF manager', () => {
 
   it('skips refresh triggers while suspended and reads the latest models when resumed', async () => {
     vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([storedModel]);
-    const wrapper = mount(LlamaCppBrowserManager, { props: { suspended: true } });
+    const wrapper = mount(LlamaCppBrowserManager, { props: { presentation: 'settings', suspended: true } });
     wrappers.push(wrapper);
     await flushPromises();
     for (const listener of notifications.models) {
@@ -375,7 +375,7 @@ describe('local GGUF manager', () => {
     const second = { ...storedModel, modelId: 'user/Qwen-Q8_0-GGUF' };
     vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([storedModel, second]);
     const applyDefaultModel = vi.fn(async () => 'applied' as const);
-    const wrapper = mount(LlamaCppBrowserManager, { props: { defaultModel: { endpoint: { type: 'ollama', url: 'http://localhost:11434' }, modelId: 'old' }, applyDefaultModel }, global: { stubs: { Teleport: true } } });
+    const wrapper = mount(LlamaCppBrowserManager, { props: { presentation: 'settings', defaultModel: { endpoint: { type: 'ollama', url: 'http://localhost:11434' }, modelId: 'old' }, applyDefaultModel }, global: { stubs: { Teleport: true } } });
     wrappers.push(wrapper);
     await flushPromises();
     await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('QWEN');
@@ -397,7 +397,7 @@ describe('local GGUF manager', () => {
     const available = { ...selected, modelId: 'host/MyModels1/owner/repo:Q4' };
     vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([selected]);
     const applyDefaultModel = vi.fn(async () => 'applied' as const);
-    const wrapper = mount(LlamaCppBrowserManager, { props: { defaultModel: { endpoint: { type: 'ollama', url: 'http://localhost:11434' }, modelId: 'old' }, applyDefaultModel }, global: { stubs: { Teleport: true } } });
+    const wrapper = mount(LlamaCppBrowserManager, { props: { presentation: 'settings', defaultModel: { endpoint: { type: 'ollama', url: 'http://localhost:11434' }, modelId: 'old' }, applyDefaultModel }, global: { stubs: { Teleport: true } } });
     wrappers.push(wrapper);
     await flushPromises();
     await wrapper.get('[data-testid="llama-cpp-browser-model-list"] [data-testid="llama-default-model-action"]').trigger('click');
@@ -1026,7 +1026,7 @@ describe('cancelled dropped-file retry', () => {
 });
 
 it('lets the independent audio workspace suppress chat suggestions without changing the default elsewhere', async () => {
-  const audio = mount(LlamaCppBrowserManager, { props: { suggestions: 'none' } });
+  const audio = mount(LlamaCppBrowserManager, { props: { presentation: 'embedded', suggestions: 'none' } });
   wrappers.push(audio);
   const chat = render();
   await flushPromises();
@@ -1046,6 +1046,7 @@ describe('local-model chat group action', () => {
   function renderWithAction({ createChatGroup }: { createChatGroup: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }): VueWrapper {
     const wrapper = mount(LlamaCppBrowserManager, {
       props: {
+        presentation: 'settings',
         createChatGroup,
         defaultModel: { endpoint: { type: 'openai', url: 'http://localhost:1234/v1' }, modelId: 'global-model' },
         applyDefaultModel: vi.fn().mockResolvedValue('applied'),

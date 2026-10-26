@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
 import { getHostModelInventoryIssues, type HostModelInventoryIssue } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import LlamaCppBrowserDefaultModelDialog from './LlamaCppBrowserDefaultModelDialog.vue';
 import type { ApplyDefaultModel, DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
@@ -200,6 +201,8 @@ onUnmounted(() => {
   refreshController?.abort();
   unsubscribeModels?.();
 });
+const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
+
 defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
@@ -218,7 +221,7 @@ defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD
     <slot name="suggestions" :models="models" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
     <section v-if="recentModels.length" data-testid="llama-recent-imports" tw-class="space-y-2 rounded-2xl border border-blue-100 bg-blue-50/30 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
       <div tw-class="flex items-center justify-between gap-3">
-        <h3 tw-class="inline-flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100"><CheckIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserModelLibrary__just_added_models() }}<span tw-class="text-xs font-normal tabular-nums text-gray-400">{{ recentModels.length }}</span></h3>
+        <h3 :tw-class="['inline-flex items-center gap-2 text-sm font-semibold text-gray-800', isSettingsTypography ? 'dark:text-gray-300' : 'dark:text-gray-100']"><CheckIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserModelLibrary__just_added_models() }}<span tw-class="text-xs font-normal tabular-nums text-gray-400">{{ recentModels.length }}</span></h3>
         <button type="button" :aria-label="lazyStrings.LlamaCppBrowserModelLibrary__dismiss_just_added_models()" :title="lazyStrings.LlamaCppBrowserModelLibrary__dismiss_just_added_models()" data-testid="llama-dismiss-recent-imports" tw-class="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-gray-400 transition-colors hover:bg-blue-100/50 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-blue-500/10 dark:hover:text-gray-200" @click="dismissRecentModels"><XIcon aria-hidden="true" tw-class="h-3.5 w-3.5" /></button>
       </div>
       <ul tw-class="space-y-2">
@@ -227,12 +230,12 @@ defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD
     </section>
     <section tw-class="space-y-4">
       <div tw-class="flex items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><HardDriveIcon tw-class="w-4 h-4 text-blue-500" />{{ lazyStrings.llamaCppBrowser__imported_models() }}<span tw-class="text-xs text-gray-400 tabular-nums">{{ modelFilter.trim() ? `${filteredModels.length} / ${models.length}` : models.length }}</span></h3>
+        <h3 :tw-class="['flex items-center gap-2 text-sm text-gray-800', isSettingsTypography ? 'font-semibold dark:text-gray-300' : 'font-bold dark:text-white']"><HardDriveIcon tw-class="w-4 h-4 text-blue-500" />{{ lazyStrings.llamaCppBrowser__imported_models() }}<span tw-class="text-xs text-gray-400 tabular-nums">{{ modelFilter.trim() ? `${filteredModels.length} / ${models.length}` : models.length }}</span></h3>
         <button type="button" data-testid="llama-cpp-browser-refresh" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :aria-label="lazyStrings.llamaCppBrowser__refresh_models()" :title="lazyStrings.llamaCppBrowser__refresh_models()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="refresh"><RefreshCcwIcon :tw-class="['w-4 h-4', { 'animate-spin': refreshing }]" /></button>
       </div>
       <div tw-class="relative">
         <SearchIcon tw-class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        <input v-model="modelFilter" type="search" data-testid="llama-imported-model-search" :aria-label="lazyStrings.LlamaCppBrowserModelLibrary__search_models()" :placeholder="lazyStrings.LlamaCppBrowserModelLibrary__search_models()" tw-class="w-full pl-9 pr-10 py-2.5 text-xs rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-colors" />
+        <input v-model="modelFilter" type="search" data-testid="llama-imported-model-search" :aria-label="lazyStrings.LlamaCppBrowserModelLibrary__search_models()" :placeholder="lazyStrings.LlamaCppBrowserModelLibrary__search_models()" :tw-class="['w-full pl-9 pr-10 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400 transition-colors', isSettingsTypography ? 'text-sm dark:text-gray-300' : 'text-xs dark:text-gray-100']" />
         <button v-if="modelFilter" type="button" data-testid="llama-imported-model-clear-search" :aria-label="lazyStrings.llamaCppBrowserDownloads__clear_search()" tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" @click="modelFilter = ''"><XIcon tw-class="w-4 h-4" /></button>
       </div>
       <ul v-if="hostIssues.length" data-testid="llama-host-model-inventory-issues" tw-class="space-y-1 text-xs text-amber-700 dark:text-amber-400">

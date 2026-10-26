@@ -35,6 +35,12 @@ defineExpose({
       @set-status="globalTools.setToolStatus($event)"
       @set-wesh-access-scope="globalTools.setWeshAccessScope($event)"
       @reset-all="globalTools.resetAllTools()"
-    />
+    >
+      <template #persistence-note>
+        <p tw-class="text-xs leading-relaxed" data-testid="tool-config-experimental-note">
+          {{ lazyStrings.GlobalToolsSettings__tool_settings_may_reset_after_updates() }}
+        </p>
+      </template>
+    </ToolConfigHierarchySettings>
   </section>
 </template>

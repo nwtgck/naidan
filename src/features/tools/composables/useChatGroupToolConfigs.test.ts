@@ -74,6 +74,15 @@ describe('useChatGroupToolConfigs', () => {
     });
   });
 
+  it.each([undefined, {}])('persists group edits with an unset persistence setting: %j', async experimental => {
+    settings.value.experimental = experimental;
+    const tools = useChatGroupToolConfigs();
+    expect(tools.isEditable.value).toBe(true);
+    await tools.setToolStatus({ key: 'builtin.calculator', status: 'enabled' });
+    expect(mocks.updateToolConfigs).toHaveBeenCalled();
+    expect(applyLatestToolConfigUpdater({ toolConfigs: undefined })).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
+  });
+
   it('writes only the explicit group override', async () => {
     const tools = useChatGroupToolConfigs();
     await tools.setToolStatus({ key: 'builtin.calculator', status: 'disabled' });

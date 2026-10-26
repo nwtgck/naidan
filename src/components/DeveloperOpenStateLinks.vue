@@ -5,7 +5,7 @@ import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
 import { useExportExclusions } from '@/features/import-export/composables/useExportExclusions';
 import { lazyStrings, ensureStrings } from '@/strings';
-import { twClasses, twClassString, type TailwindClass } from 'virtual:naidan-tailwind';
+import SettingsChoiceControl from './SettingsChoiceControl.vue';
 
 type DeploymentTarget = {
   readonly kind: 'Standard' | 'Local only' | 'Curated',
@@ -16,7 +16,6 @@ type DeploymentTarget = {
 type DeploymentGroup = {
   readonly id: 'production' | 'develop',
   readonly label: 'Production' | 'develop branch',
-  readonly dotClass: TailwindClass,
   readonly targets: readonly DeploymentTarget[],
 };
 
@@ -24,7 +23,6 @@ const DEPLOYMENT_GROUPS = [
   {
     id: 'production',
     label: 'Production',
-    dotClass: twClassString('bg-emerald-600/60', 'dark:bg-emerald-400/60'),
     targets: [
       { kind: 'Standard', host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
       { kind: 'Local only', host: 'naidan-local-only.pages.dev', baseUrl: 'https://naidan-local-only.pages.dev' },
@@ -34,7 +32,6 @@ const DEPLOYMENT_GROUPS = [
   {
     id: 'develop',
     label: 'develop branch',
-    dotClass: twClassString('bg-violet-500/50', 'dark:bg-violet-300/60'),
     targets: [
       { kind: 'Standard', host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
       { kind: 'Local only', host: 'develop.naidan-local-only.pages.dev', baseUrl: 'https://develop.naidan-local-only.pages.dev' },
@@ -147,114 +144,107 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="space-y-4" data-testid="developer-open-state-links">
+  <section tw-class="space-y-4 border-t border-gray-200/70 pt-5 dark:border-gray-800" data-testid="developer-open-state-links">
     <div>
-      <h3 tw-class="ml-1 text-sm font-bold uppercase tracking-widest text-gray-500">{{ lazyStrings.DeveloperOpenStateLinks__open_current_state() }}</h3>
-      <p tw-class="ml-1 mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
+      <h3 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.DeveloperOpenStateLinks__open_current_state() }}</h3>
+      <p tw-class="mt-1.5 max-w-2xl text-xs leading-relaxed text-gray-600 dark:text-gray-300">
         {{ lazyStrings.DeveloperOpenStateLinks__open_state_description() }}
       </p>
     </div>
 
-    <div tw-class="overflow-hidden rounded-2xl border border-gray-200/80 bg-white/60 shadow-sm dark:border-gray-800 dark:bg-gray-900/30">
-      <div tw-class="flex flex-col gap-3 border-b border-gray-200/80 bg-gray-50/70 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/30 sm:flex-row sm:items-center sm:justify-between">
-        <div tw-class="min-w-0">
-          <h4 tw-class="text-xs font-bold text-gray-800 dark:text-gray-200">{{ lazyStrings.DeveloperOpenStateLinks__state_contents() }}</h4>
-          <p tw-class="mt-0.5 text-[10px] font-medium leading-relaxed text-gray-500 dark:text-gray-400">
-            {{ lazyStrings.DeveloperOpenStateLinks__choose_data_to_omit() }}
-          </p>
-        </div>
-
-        <fieldset tw-class="flex shrink-0 flex-wrap gap-1.5">
-          <legend tw-class="sr-only">{{ lazyStrings.DeveloperOpenStateLinks__excluded_data() }}</legend>
-          <label tw-class="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200">
+    <div tw-class="space-y-3 rounded-xl border border-gray-200/80 bg-gray-50/60 p-3 dark:border-gray-800 dark:bg-gray-900/30">
+      <div>
+        <h4 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.DeveloperOpenStateLinks__state_contents() }}</h4>
+        <p tw-class="mt-1 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+          {{ lazyStrings.DeveloperOpenStateLinks__choose_data_to_omit() }}
+        </p>
+      </div>
+      <fieldset tw-class="flex min-w-0 flex-wrap gap-x-5 gap-y-3">
+        <legend tw-class="sr-only">{{ lazyStrings.DeveloperOpenStateLinks__excluded_data() }}</legend>
+        <label tw-class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+          <SettingsChoiceControl presentation="checkbox">
             <input
               v-model="excludeChats"
               type="checkbox"
-              tw-class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
               data-testid="open-current-state-exclude-chats"
             />
-            {{ lazyStrings.DeveloperOpenStateLinks__exclude_chats() }}
-          </label>
-          <label
-            :tw-class="['flex h-7 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400', excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-gray-300 hover:text-gray-800 dark:hover:border-gray-600 dark:hover:text-gray-200']"
-          >
+          </SettingsChoiceControl>
+          {{ lazyStrings.DeveloperOpenStateLinks__exclude_chats() }}
+        </label>
+        <label :tw-class="['inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300', excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer']">
+          <SettingsChoiceControl presentation="checkbox">
             <input
               v-model="excludeChatHistory"
               :disabled="excludeChatHistoryDisabled"
               type="checkbox"
-              tw-class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-700"
               data-testid="open-current-state-exclude-chat-history"
             />
-            {{ lazyStrings.DeveloperOpenStateLinks__exclude_chat_history() }}
-          </label>
-          <label tw-class="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200">
+          </SettingsChoiceControl>
+          {{ lazyStrings.DeveloperOpenStateLinks__exclude_chat_history() }}
+        </label>
+        <label tw-class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+          <SettingsChoiceControl presentation="checkbox">
             <input
               v-model="excludeAttachments"
               type="checkbox"
-              tw-class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
               data-testid="open-current-state-exclude-attachments"
             />
-            {{ lazyStrings.DeveloperOpenStateLinks__exclude_attachments() }}
-          </label>
-        </fieldset>
-      </div>
+          </SettingsChoiceControl>
+          {{ lazyStrings.DeveloperOpenStateLinks__exclude_attachments() }}
+        </label>
+      </fieldset>
+    </div>
 
-      <div tw-class="grid grid-cols-1 divide-y divide-gray-200/80 dark:divide-gray-800 sm:grid-cols-2 sm:divide-x sm:divide-y-0" data-testid="open-current-state-groups">
-        <section
-          v-for="group in DEPLOYMENT_GROUPS"
-          :key="group.id"
-          tw-class="min-w-0 p-3.5"
-          :data-testid="`open-current-state-group-${group.id}`"
-        >
-          <h4 tw-class="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-800 dark:text-gray-200">
-            <span :tw-class="['h-1.5 w-1.5 shrink-0 rounded-full', twClasses(group.dotClass)]" aria-hidden="true"></span>
-            {{ deploymentGroupLabel({ label: group.label }) }}
-          </h4>
-
-          <div tw-class="space-y-1.5">
-            <div
-              v-for="target in group.targets"
-              :key="target.host"
-              tw-class="flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-xl border border-gray-200/80 bg-gray-50/70 py-1.5 pl-2.5 pr-1.5 transition-colors hover:border-gray-300 hover:bg-gray-100/70 dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-gray-700 dark:hover:bg-gray-800/70"
-              :data-testid="`open-current-state-row-${target.host}`"
-            >
-              <div tw-class="min-w-0">
-                <span tw-class="block text-[8px] font-extrabold uppercase leading-tight tracking-wider text-gray-400 dark:text-gray-500">
-                  {{ deploymentTargetKindLabel({ kind: target.kind }) }}
-                </span>
-                <span tw-class="mt-0.5 block truncate font-mono text-[10px] font-semibold leading-snug text-gray-700 dark:text-gray-300">
-                  {{ target.host }}
-                </span>
-              </div>
-
-              <div tw-class="flex shrink-0 items-center gap-0.5">
-                <button
-                  type="button"
-                  :disabled="activeAction !== null"
-                  tw-class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                  :title="lazyStrings.DeveloperOpenStateLinks__copy_url_for_host({ host: target.host })"
-                  :data-testid="`copy-current-state-${target.host}`"
-                  @click="copyCurrentStateURL({ target })"
-                >
-                  <Loader2Icon v-if="activeAction?.type === 'copy' && activeAction.host === target.host" tw-class="h-3.5 w-3.5 animate-spin" />
-                  <CopyIcon v-else tw-class="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  :disabled="activeAction !== null"
-                  tw-class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                  :title="lazyStrings.DeveloperOpenStateLinks__open_host({ host: target.host })"
-                  :data-testid="`open-current-state-${target.host}`"
-                  @click="openCurrentState({ target })"
-                >
-                  <Loader2Icon v-if="activeAction?.type === 'open' && activeAction.host === target.host" tw-class="h-3.5 w-3.5 animate-spin" />
-                  <ExternalLinkIcon v-else tw-class="h-3.5 w-3.5" />
-                </button>
-              </div>
+    <div tw-class="grid grid-cols-1 gap-5 @3xl:grid-cols-2 @3xl:gap-6" data-testid="open-current-state-groups">
+      <section
+        v-for="group in DEPLOYMENT_GROUPS"
+        :key="group.id"
+        tw-class="min-w-0"
+        :data-testid="`open-current-state-group-${group.id}`"
+      >
+        <h4 tw-class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+          {{ deploymentGroupLabel({ label: group.label }) }}
+        </h4>
+        <div tw-class="divide-y divide-gray-200/70 border-y border-gray-200/70 dark:divide-gray-800 dark:border-gray-800">
+          <div
+            v-for="target in group.targets"
+            :key="target.host"
+            tw-class="flex min-h-14 min-w-0 items-center justify-between gap-2 py-2"
+            :data-testid="`open-current-state-row-${target.host}`"
+          >
+            <div tw-class="min-w-0 space-y-0.5">
+              <span tw-class="block text-sm text-gray-600 dark:text-gray-300">{{ deploymentTargetKindLabel({ kind: target.kind }) }}</span>
+              <span tw-class="block break-all font-mono text-sm leading-relaxed text-gray-700 dark:text-gray-200">{{ target.host }}</span>
+            </div>
+            <div tw-class="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                :disabled="activeAction !== null"
+                tw-class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors enabled:hover:bg-gray-100 enabled:hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:enabled:hover:bg-gray-800 dark:enabled:hover:text-gray-200 motion-reduce:transition-none"
+                :title="lazyStrings.DeveloperOpenStateLinks__copy_url_for_host({ host: target.host })"
+                :aria-label="lazyStrings.DeveloperOpenStateLinks__copy_url_for_host({ host: target.host })"
+                :data-testid="`copy-current-state-${target.host}`"
+                @click="copyCurrentStateURL({ target })"
+              >
+                <Loader2Icon v-if="activeAction?.type === 'copy' && activeAction.host === target.host" aria-hidden="true" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                <CopyIcon v-else aria-hidden="true" tw-class="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                :disabled="activeAction !== null"
+                tw-class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-blue-500 transition-colors enabled:hover:bg-blue-50 enabled:hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:enabled:hover:bg-blue-500/10 dark:enabled:hover:text-blue-300 motion-reduce:transition-none"
+                :title="lazyStrings.DeveloperOpenStateLinks__open_host({ host: target.host })"
+                :aria-label="lazyStrings.DeveloperOpenStateLinks__open_host({ host: target.host })"
+                :data-testid="`open-current-state-${target.host}`"
+                @click="openCurrentState({ target })"
+              >
+                <Loader2Icon v-if="activeAction?.type === 'open' && activeAction.host === target.host" aria-hidden="true" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                <ExternalLinkIcon v-else aria-hidden="true" tw-class="h-4 w-4" />
+              </button>
             </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
-  </div>
+  </section>
 </template>

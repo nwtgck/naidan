@@ -210,7 +210,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
         </div>
         <div tw-class="space-y-3 border-t border-gray-100 px-4 py-3 dark:border-gray-700">
-          <GenerationSpeedServerSettings />
+          <GenerationSpeedServerSettings presentation="popover" />
           <label tw-class="flex cursor-pointer items-center justify-between gap-4 text-[11px] font-medium">
             <span>{{ lazyStrings.GenerationSpeed__always_show_token_count_and_interval() }}</span>
             <SettingsChoiceControl presentation="switch"><input type="checkbox" :checked="inlineStats === 'always'" :disabled="saving" data-testid="generation-speed-always-show-toggle" @change="updateGenerationSpeedSettings({ patch: { inlineStats: ($event.target as HTMLInputElement).checked ? 'always' : 'on_demand' } })" /></SettingsChoiceControl>

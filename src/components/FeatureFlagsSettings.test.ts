@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
+import RadioButton from './RadioButton.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Settings } from '@/01-models/types';
@@ -202,20 +203,22 @@ describe('FeatureFlagsSettings.vue', () => {
   });
 
   it('describes persistence across Global, Chat Group, and Chat layers', () => {
+    mockSettings.value.experimental = { toolConfigPersistence: 'disabled' };
     const wrapper = mount(FeatureFlagsSettings);
 
     expect(wrapper.text()).toContain('Saves Global, Chat Group, and Chat tool settings.');
     expect(wrapper.text()).toContain('Saved settings remain active.');
   });
 
-  it('auto-saves the tool config persistence setting when toggled', async () => {
+  it('enables tool persistence by default and saves an explicit opt-out', async () => {
     const wrapper = mount(FeatureFlagsSettings);
+    expect(wrapper.get('[data-testid="feature-tool-config-persistence-toggle"]').attributes('aria-checked')).toBe('true');
     await wrapper.find('[data-testid="feature-tool-config-persistence-toggle"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
       patch: {
         experimental: {
-          toolConfigPersistence: 'enabled',
+          toolConfigPersistence: 'disabled',
         },
       },
       modelRefresh: 'await',
@@ -267,6 +270,11 @@ describe('FeatureFlagsSettings.vue', () => {
       },
     };
     const fieldset = wrapper.get('[data-testid="generation-speed-server-settings"]');
+    const radios = fieldset.findAll<HTMLInputElement>('input[type="radio"]');
+    expect(radios.map(radio => radio.element.value)).toEqual(['auto', 'enabled', 'disabled']);
+    expect(new Set(radios.map(radio => radio.element.name)).size).toBe(1);
+    expect(radios[0]?.element.name).toBeTruthy();
+    expect(wrapper.findAllComponents(RadioButton).map(radio => radio.props('tone'))).toEqual(['amber', 'amber', 'amber']);
     expect(fieldset.get<HTMLInputElement>('input[value="auto"]').element.checked).toBe(true);
     await fieldset.get<HTMLInputElement>('input[value="enabled"]').setValue();
     await flushPromises();

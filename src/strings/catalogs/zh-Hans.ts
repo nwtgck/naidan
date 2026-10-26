@@ -44,16 +44,20 @@ import { SHARED__use_model_in_this_chat } from '@/strings/messages/SHARED__use_m
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/zh-Hans';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/zh-Hans';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/zh-Hans';
+import { AboutPortableEditionHelp__how_to_use_the_portable_html_edition } from '@/strings/messages/AboutPortableEditionHelp__how_to_use_the_portable_html_edition/zh-Hans';
 import { AboutTab__about_naidan } from '@/strings/messages/AboutTab__about_naidan/zh-Hans';
 import { AboutTab__built_with_open_source_software } from '@/strings/messages/AboutTab__built_with_open_source_software/zh-Hans';
+import { AboutTab__documentation } from '@/strings/messages/AboutTab__documentation/zh-Hans';
+import { AboutTab__download_zip } from '@/strings/messages/AboutTab__download_zip/zh-Hans';
 import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github_repository/zh-Hans';
+import { AboutTab__learn_how_to_use_naidan } from '@/strings/messages/AboutTab__learn_how_to_use_naidan/zh-Hans';
 import { AboutTab__loading_licenses } from '@/strings/messages/AboutTab__loading_licenses/zh-Hans';
 import { AboutTab__open_source_licenses } from '@/strings/messages/AboutTab__open_source_licenses/zh-Hans';
 import { AboutTab__privacy_focused_local_lm_interface } from '@/strings/messages/AboutTab__privacy_focused_local_lm_interface/zh-Hans';
 import { AboutTab__unknown_package } from '@/strings/messages/AboutTab__unknown_package/zh-Hans';
 import { AboutTab__version } from '@/strings/messages/AboutTab__version/zh-Hans';
 import { AboutTab__view_license_text } from '@/strings/messages/AboutTab__view_license_text/zh-Hans';
-import { AboutTab__view_source_code_and_contribute } from '@/strings/messages/AboutTab__view_source_code_and_contribute/zh-Hans';
+import { AboutTab__view_source_code } from '@/strings/messages/AboutTab__view_source_code/zh-Hans';
 import { AppCommandRuntime__could_not_create_chat } from '@/strings/messages/AppCommandRuntime__could_not_create_chat/zh-Hans';
 import { AppCommandRuntime__retry } from '@/strings/messages/AppCommandRuntime__retry/zh-Hans';
 import { AppEntrySurface__could_not_open_local_model } from '@/strings/messages/AppEntrySurface__could_not_open_local_model/zh-Hans';
@@ -857,6 +861,7 @@ import { GlobalSearchModal__type_to_search } from '@/strings/messages/GlobalSear
 import { GlobalSearchModal__user } from '@/strings/messages/GlobalSearchModal__user/zh-Hans';
 import { GlobalToolsSettings__global_settings } from '@/strings/messages/GlobalToolsSettings__global_settings/zh-Hans';
 import { GlobalToolsSettings__tool_defaults_can_be_overridden } from '@/strings/messages/GlobalToolsSettings__tool_defaults_can_be_overridden/zh-Hans';
+import { GlobalToolsSettings__tool_settings_may_reset_after_updates } from '@/strings/messages/GlobalToolsSettings__tool_settings_may_reset_after_updates/zh-Hans';
 import { GlobalToolsSettings__tools } from '@/strings/messages/GlobalToolsSettings__tools/zh-Hans';
 import { HistoryManipulationModal__add_first_message } from '@/strings/messages/HistoryManipulationModal__add_first_message/zh-Hans';
 import { HistoryManipulationModal__add_message_after } from '@/strings/messages/HistoryManipulationModal__add_message_after/zh-Hans';
@@ -1813,6 +1818,11 @@ import { OnboardingModal__setup_endpoint_description } from '@/strings/messages/
 import { OnboardingModal__successfully_connected } from '@/strings/messages/OnboardingModal__successfully_connected/zh-Hans';
 import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingModal__transformers_js/zh-Hans';
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/zh-Hans';
+import { OpenSourceLicenseFilter__clear_search } from '@/strings/messages/OpenSourceLicenseFilter__clear_search/zh-Hans';
+import { OpenSourceLicenseFilter__filter_by_name } from '@/strings/messages/OpenSourceLicenseFilter__filter_by_name/zh-Hans';
+import { OpenSourceLicenseFilter__filter_licenses } from '@/strings/messages/OpenSourceLicenseFilter__filter_licenses/zh-Hans';
+import { OpenSourceLicenses__matching_packages } from '@/strings/messages/OpenSourceLicenses__matching_packages/zh-Hans';
+import { OpenSourceLicenses__no_matching_packages } from '@/strings/messages/OpenSourceLicenses__no_matching_packages/zh-Hans';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/zh-Hans';
 import { PWAUpdateNotification__applying_update } from '@/strings/messages/PWAUpdateNotification__applying_update/zh-Hans';
 import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/zh-Hans';
@@ -1941,7 +1951,10 @@ import { ScopedMountSettings__inherited_folders } from '@/strings/messages/Scope
 import { ScopedMountSettings__overridden_here } from '@/strings/messages/ScopedMountSettings__overridden_here/zh-Hans';
 import { ScopedMountSettings__read_and_write } from '@/strings/messages/ScopedMountSettings__read_and_write/zh-Hans';
 import { ScopedMountSettings__read_only } from '@/strings/messages/ScopedMountSettings__read_only/zh-Hans';
+import { ScopedMountSettings__remove } from '@/strings/messages/ScopedMountSettings__remove/zh-Hans';
 import { ScopedMountSettings__remove_folder } from '@/strings/messages/ScopedMountSettings__remove_folder/zh-Hans';
+import { ScopedMountSettings__remove_from_this_chat } from '@/strings/messages/ScopedMountSettings__remove_from_this_chat/zh-Hans';
+import { ScopedMountSettings__remove_from_this_chat_group } from '@/strings/messages/ScopedMountSettings__remove_from_this_chat_group/zh-Hans';
 import { ScopedMountSettings__removing_a_folder_does_not_delete_files } from '@/strings/messages/ScopedMountSettings__removing_a_folder_does_not_delete_files/zh-Hans';
 import { SearchPreview__alt_branch } from '@/strings/messages/SearchPreview__alt_branch/zh-Hans';
 import { SearchPreview__conversation_match } from '@/strings/messages/SearchPreview__conversation_match/zh-Hans';
@@ -2474,6 +2487,7 @@ import { contextCompact__to_keep } from '@/strings/messages/contextCompact__to_k
 import { contextCompact__waiting_for_the_model } from '@/strings/messages/contextCompact__waiting_for_the_model/zh-Hans';
 import { dataDeletion__advanced_mode } from '@/strings/messages/dataDeletion__advanced_mode/zh-Hans';
 import { dataDeletion__checked_selectors_matching_entries } from '@/strings/messages/dataDeletion__checked_selectors_matching_entries/zh-Hans';
+import { dataDeletion__choose_a_preset_or_select_items_individually } from '@/strings/messages/dataDeletion__choose_a_preset_or_select_items_individually/zh-Hans';
 import { dataDeletion__clear_all_selections } from '@/strings/messages/dataDeletion__clear_all_selections/zh-Hans';
 import { dataDeletion__delete_application_data } from '@/strings/messages/dataDeletion__delete_application_data/zh-Hans';
 import { dataDeletion__delete_data_matched_by_selected_selectors } from '@/strings/messages/dataDeletion__delete_data_matched_by_selected_selectors/zh-Hans';
@@ -2487,7 +2501,10 @@ import { dataDeletion__no_matching_entries } from '@/strings/messages/dataDeleti
 import { dataDeletion__not_available_in_this_runtime } from '@/strings/messages/dataDeletion__not_available_in_this_runtime/zh-Hans';
 import { dataDeletion__preview_entries } from '@/strings/messages/dataDeletion__preview_entries/zh-Hans';
 import { dataDeletion__scanning_storage } from '@/strings/messages/dataDeletion__scanning_storage/zh-Hans';
+import { dataDeletion__select_all } from '@/strings/messages/dataDeletion__select_all/zh-Hans';
 import { dataDeletion__select_at_least_one_deletion_selector } from '@/strings/messages/dataDeletion__select_at_least_one_deletion_selector/zh-Hans';
+import { dataDeletion__select_factory_reset_items } from '@/strings/messages/dataDeletion__select_factory_reset_items/zh-Hans';
+import { dataDeletion__selection_presets } from '@/strings/messages/dataDeletion__selection_presets/zh-Hans';
 import { documentTitle__run_ai_on_your_device_directly_in_your_browser } from '@/strings/messages/documentTitle__run_ai_on_your_device_directly_in_your_browser/zh-Hans';
 import { endpointTypeDescription__connect_to_an_ollama_server } from '@/strings/messages/endpointTypeDescription__connect_to_an_ollama_server/zh-Hans';
 import { endpointTypeDescription__connect_to_an_openai_compatible_api } from '@/strings/messages/endpointTypeDescription__connect_to_an_openai_compatible_api/zh-Hans';
@@ -3348,16 +3365,20 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  AboutPortableEditionHelp__how_to_use_the_portable_html_edition,
   AboutTab__about_naidan,
   AboutTab__built_with_open_source_software,
+  AboutTab__documentation,
+  AboutTab__download_zip,
   AboutTab__github_repository,
+  AboutTab__learn_how_to_use_naidan,
   AboutTab__loading_licenses,
   AboutTab__open_source_licenses,
   AboutTab__privacy_focused_local_lm_interface,
   AboutTab__unknown_package,
   AboutTab__version,
   AboutTab__view_license_text,
-  AboutTab__view_source_code_and_contribute,
+  AboutTab__view_source_code,
   AppCommandRuntime__could_not_create_chat,
   AppCommandRuntime__retry,
   AppEntrySurface__could_not_open_local_model,
@@ -4161,6 +4182,7 @@ export const catalog = {
   GlobalSearchModal__user,
   GlobalToolsSettings__global_settings,
   GlobalToolsSettings__tool_defaults_can_be_overridden,
+  GlobalToolsSettings__tool_settings_may_reset_after_updates,
   GlobalToolsSettings__tools,
   HistoryManipulationModal__add_first_message,
   HistoryManipulationModal__add_message_after,
@@ -5117,6 +5139,11 @@ export const catalog = {
   OnboardingModal__successfully_connected,
   OnboardingModal__transformers_js,
   OnboardingModal__value,
+  OpenSourceLicenseFilter__clear_search,
+  OpenSourceLicenseFilter__filter_by_name,
+  OpenSourceLicenseFilter__filter_licenses,
+  OpenSourceLicenses__matching_packages,
+  OpenSourceLicenses__no_matching_packages,
   PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__applying_update,
   PWAUpdateNotification__preparing_update,
@@ -5245,7 +5272,10 @@ export const catalog = {
   ScopedMountSettings__overridden_here,
   ScopedMountSettings__read_and_write,
   ScopedMountSettings__read_only,
+  ScopedMountSettings__remove,
   ScopedMountSettings__remove_folder,
+  ScopedMountSettings__remove_from_this_chat,
+  ScopedMountSettings__remove_from_this_chat_group,
   ScopedMountSettings__removing_a_folder_does_not_delete_files,
   SearchPreview__alt_branch,
   SearchPreview__conversation_match,
@@ -5778,6 +5808,7 @@ export const catalog = {
   contextCompact__waiting_for_the_model,
   dataDeletion__advanced_mode,
   dataDeletion__checked_selectors_matching_entries,
+  dataDeletion__choose_a_preset_or_select_items_individually,
   dataDeletion__clear_all_selections,
   dataDeletion__delete_application_data,
   dataDeletion__delete_data_matched_by_selected_selectors,
@@ -5791,7 +5822,10 @@ export const catalog = {
   dataDeletion__not_available_in_this_runtime,
   dataDeletion__preview_entries,
   dataDeletion__scanning_storage,
+  dataDeletion__select_all,
   dataDeletion__select_at_least_one_deletion_selector,
+  dataDeletion__select_factory_reset_items,
+  dataDeletion__selection_presets,
   documentTitle__run_ai_on_your_device_directly_in_your_browser,
   endpointTypeDescription__connect_to_an_ollama_server,
   endpointTypeDescription__connect_to_an_openai_compatible_api,

@@ -61,7 +61,7 @@ function ensureToolConfigPersistenceWatcher(): void {
 
   const { settings } = useSettings();
   watch(
-    () => settings.value.experimental?.toolConfigPersistence ?? 'disabled',
+    () => settings.value.experimental?.toolConfigPersistence ?? 'enabled',
     (persistence) => {
       switch (persistence) {
       case 'disabled':
@@ -360,7 +360,7 @@ function triggerCurrentChatIfNeeded({ chatId }: { chatId: ChatId }): void {
 
 function isToolConfigPersistenceEnabled(): boolean {
   const { settings } = useSettings();
-  return settings.value.experimental?.toolConfigPersistence === 'enabled';
+  return settings.value.experimental?.toolConfigPersistence !== 'disabled';
 }
 
 async function persistToolConfigUpdate({

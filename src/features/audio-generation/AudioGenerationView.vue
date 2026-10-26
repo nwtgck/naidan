@@ -316,7 +316,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="max-h-[65dvh] min-h-0 space-y-4 overflow-y-auto overscroll-y-contain border-t border-gray-100 p-4 dark:border-gray-800" data-testid="audio-model-manager-scroll">
           <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_setup_help() }}</p>
           <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_support_help() }}</p>
-          <LlamaCppBrowserManager ref="manager" suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ modelId: $event })" @runtime-ready="runtimeReady = $event" />
+          <LlamaCppBrowserManager ref="manager" presentation="embedded" suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ modelId: $event })" @runtime-ready="runtimeReady = $event" />
         </div>
       </details>
       <form ref="form" novalidate @submit.prevent="generate" tw-class="space-y-5">

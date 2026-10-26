@@ -510,6 +510,7 @@ export interface Settings {
     markdownRendering?: 'block_markdown' | 'monolithic_html',
     /**
      * Controls whether tool configuration changes are persisted.
+     * Missing means enabled; an explicit disabled value opts out.
      *
      * This does not enable or disable any tool by itself. When disabled, tool
      * config changes can still affect the current runtime session, but they are

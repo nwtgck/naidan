@@ -3,7 +3,7 @@ import { CheckIcon, MinusIcon } from 'lucide-vue-next';
 
 // Keep the native input at the call site: checked values, change events,
 // fieldset disabling, labels and form semantics remain owned by the form.
-defineProps<{ presentation: 'checkbox' | 'switch', tone?: 'blue' | 'amber' }>();
+defineProps<{ presentation: 'checkbox' | 'switch', tone?: 'blue' | 'amber' | 'red' }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
@@ -58,6 +58,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --choice-selected-border: #fbbf24;
   --choice-selected-track: #fbbf24;
   --choice-selected-thumb: #fff;
+}
+
+.settings-choice-control[data-tone='red'] {
+  --choice-selected-border: #ef4444;
+  --choice-selected-track: #ef4444;
+  --choice-selected-thumb: #fff;
+  --choice-checked: #ef4444;
+  --choice-hover: #f87171;
+  --choice-focus: #ef444466;
+}
+
+:global(.dark .settings-choice-control[data-tone='red']) {
+  --choice-selected-border: #f87171;
+  --choice-selected-track: #f87171;
+  --choice-selected-thumb: #fff;
+  --choice-checked: #f87171;
 }
 
 .settings-choice-control :deep(input[type='checkbox']) {

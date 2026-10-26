@@ -90,8 +90,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p v-else data-testid="linked-host-folders-description" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.SHARED__model_folders_use_models_directly_from_your_device() }}</p>
     <LlamaCppBrowserModelActionButton :disabled="disabled || reconnectDisabled || busy || dropping || !supported" size="regular" @click="view.add()" data-testid="linked-add-model-directory"><FolderPlusIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.SHARED__model_import_link_folder() }}</LlamaCppBrowserModelActionButton>
     <div data-testid="linked-host-folder-layout" tw-class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] items-start gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
-      <p tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.SHARED__model_folders_choose_folder_above_owner() }}</p>
-      <ol tw-class="min-w-0 rounded-lg bg-gray-50 px-3 py-2.5 text-[11px] dark:bg-gray-800/50">
+      <p class="linked-model-directory-caption" tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.SHARED__model_folders_choose_folder_above_owner() }}</p>
+      <ol class="linked-model-directory-caption" tw-class="min-w-0 rounded-lg bg-gray-50 px-3 py-2.5 text-[11px] dark:bg-gray-800/50">
         <li v-for="(item, index) in layout" :key="index" class="folder-layout-item" :style="{ '--folder-depth': index }" tw-class="relative flex h-5 min-w-0 items-center gap-1.5">
           <span v-if="index > 0" aria-hidden="true" class="folder-layout-branch" tw-class="pointer-events-none absolute -top-1 h-3.5 w-1.5 rounded-es-sm border-s border-b border-gray-200 dark:border-gray-700" />
           <FolderIcon v-if="item.kind === 'folder'" aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0', index === 0 ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500']" />
@@ -103,11 +103,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <template v-if="entries.length">
       <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.SHARED__model_folders_unlink_keeps_files() }}</p>
       <ul tw-class="divide-y divide-gray-100 text-left dark:divide-gray-800">
-        <li v-for="entry in entries" :key="entry.id" :data-testid="'linked-model-directory-' + entry.id" tw-class="flex flex-wrap items-center gap-2 py-2 text-xs text-gray-600 dark:text-gray-300">
+        <li v-for="entry in entries" class="linked-model-directory-entry" :key="entry.id" :data-testid="'linked-model-directory-' + entry.id" tw-class="flex flex-wrap items-center gap-2 py-2 text-xs text-gray-600 dark:text-gray-300">
           <div tw-class="min-w-0 flex-1">
             <span tw-class="block break-all font-medium">{{ hostModelDirectoryLabel({ id: entry.id, name: entry.name, entries }) }}</span>
-            <span :data-testid="'linked-host-folder-permission-' + entry.id" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.SHARED__model_folders_folder_access({ access: entry.access }) }}</span>
-            <p v-if="entry.error" tw-class="break-words text-[11px] text-red-600 dark:text-red-400">{{ entry.error }}</p>
+            <span :data-testid="'linked-host-folder-permission-' + entry.id" class="linked-model-directory-caption" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.SHARED__model_folders_folder_access({ access: entry.access }) }}</span>
+            <p v-if="entry.error" class="linked-model-directory-caption" tw-class="break-words text-[11px] text-red-600 dark:text-red-400">{{ entry.error }}</p>
           </div>
           <button type="button" :disabled="disabled || reconnectDisabled || busy || dropping || !supported" @click="view.reconnect({ id: entry.id })" :data-testid="'linked-reconnect-model-directory-' + entry.id" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1.5 font-medium text-blue-600 dark:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.SHARED__model_folders_reconnect() }}</button>
           <button type="button" :disabled="disabled || busy || dropping || !supported" @click="view.remove({ id: entry.id })" :data-testid="'linked-unregister-model-directory-' + entry.id" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1.5 font-medium disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.SHARED__model_folders_unlink() }}</button>

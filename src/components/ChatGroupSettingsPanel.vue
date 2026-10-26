@@ -1759,7 +1759,7 @@ const parentSystemPromptText = computed(() => settings.value.systemPrompt ?? '')
 async function restoreDefaults(): Promise<void> {
   localSettings.value = emptyDraft();
   const toolConfigUpdate: SaveToolConfigUpdate = (() => {
-    const persistence = settings.value.experimental?.toolConfigPersistence ?? 'disabled';
+    const persistence = settings.value.experimental?.toolConfigPersistence ?? 'enabled';
     switch (persistence) {
     case 'enabled':
       return { behavior: 'update', updater: () => undefined };

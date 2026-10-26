@@ -12,7 +12,7 @@ import {
   settingsToDomain,
   settingsToDto,
 } from './mappers';
-import type { Hierarchy } from '@/01-models/types';
+import { DEFAULT_SETTINGS, type Hierarchy } from '@/01-models/types';
 
 const toolConfigs = [
   { key: 'builtin.calculator', status: 'enabled' },
@@ -28,6 +28,48 @@ const toolConfigs = [
 ] as const;
 
 describe('experimental tool config DTO', () => {
+  it.each([undefined, {}])('enables persistence when the saved setting is absent: %j', experimental => {
+    const dto = SettingsSchemaDto.parse({
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      storageType: 'local',
+      experimental,
+    });
+    expect(settingsToDomain({ dto }).experimental?.toolConfigPersistence).toBe('enabled');
+  });
+
+  it.each(['enabled', 'disabled'] as const)('preserves explicit %s persistence and tool values through reloads', persistence => {
+    const dto = SettingsSchemaDto.parse({
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      storageType: 'local',
+      experimental: { toolConfigPersistence: persistence, toolConfigs },
+    });
+    const domain = settingsToDomain({ dto });
+    const saved = settingsToDto({ domain });
+    const reloaded = settingsToDomain({ dto: SettingsSchemaDto.parse(saved) });
+    expect(saved.experimental?.toolConfigPersistence).toBe(persistence === 'disabled' ? 'disabled' : undefined);
+    expect(reloaded.experimental?.toolConfigPersistence).toBe(persistence);
+    expect(reloaded.experimental?.toolConfigs).toEqual(toolConfigs);
+    expect(settingsToDto({ domain: reloaded })).toStrictEqual(saved);
+  });
+
+  it.each([undefined, 'enabled'] as const)('omits the default persistence setting %s across repeated saves', persistence => {
+    const saved = settingsToDto({
+      domain: {
+        ...DEFAULT_SETTINGS,
+        endpoint: { type: 'openai', url: 'http://localhost' },
+        storageType: 'local',
+        experimental: { toolConfigPersistence: persistence },
+      },
+    });
+    expect(saved.experimental?.toolConfigPersistence).toBeUndefined();
+    expect(saved.experimental).toBeUndefined();
+    const restored = settingsToDomain({ dto: saved });
+    expect(restored.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(settingsToDto({ domain: restored })).toStrictEqual(saved);
+  });
+
   it('persists required status values under chat meta experimental storage', () => {
     const dto = ChatMetaSchemaDto.parse({
       id: 'chat-1',

@@ -28,6 +28,7 @@ describe('useChatWeshPreferences', () => {
       await updater({ current: liveChatRegistry.get(id) ?? null });
     });
     useSettings().TEST_ONLY.__testOnlyReset();
+    setToolConfigPersistence({ persistence: 'disabled' });
   });
 
   function setToolConfigPersistence({ persistence }: { persistence: 'disabled' | 'enabled' }) {

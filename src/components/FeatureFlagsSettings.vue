@@ -23,7 +23,7 @@ const { status: generationSpeedStatus, inlineStats: generationSpeedInlineStats, 
 const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 
 const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
-const toolConfigPersistence = computed(() => settings.value.experimental?.toolConfigPersistence ?? 'disabled');
+const toolConfigPersistence = computed(() => settings.value.experimental?.toolConfigPersistence ?? 'enabled');
 const fakeLmDebugModeStatus = computed<FakeLmDebugModeStatus>(() => settings.value.experimental?.fakeLm ?? 'disabled');
 const fakeLmToggleAvailability = computed(() => {
   switch (fakeLmDebugModeAvailability.value) {
@@ -419,12 +419,12 @@ defineExpose({
         >
           <template #icon><GaugeIcon tw-class="h-4 w-4" /></template>
         </ExperimentalFeatureRow>
-        <label tw-class="flex cursor-pointer items-center justify-between gap-4 border-t border-gray-100 px-4 py-3 text-[11px] font-medium text-gray-500 dark:border-gray-800 dark:text-gray-400 sm:px-5">
+        <label tw-class="flex cursor-pointer items-center justify-between gap-4 border-t border-gray-100 px-4 py-3 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-400 sm:px-5">
           <span tw-class="ml-12">{{ lazyStrings.GenerationSpeed__always_show_token_count_and_interval() }}</span>
           <SettingsChoiceControl presentation="switch" tone="amber"><input type="checkbox" :checked="generationSpeedInlineStats === 'always'" :disabled="generationSpeedSaving" data-testid="feature-generation-speed-always-show-toggle" @change="updateGenerationSpeedSettings({ patch: { inlineStats: ($event.target as HTMLInputElement).checked ? 'always' : 'on_demand' } })" /></SettingsChoiceControl>
         </label>
         <div tw-class="border-t border-gray-100 px-4 py-3 dark:border-gray-800 sm:px-5">
-          <GenerationSpeedServerSettings tw-class="sm:ml-12" />
+          <GenerationSpeedServerSettings presentation="settings" tw-class="sm:ml-12" />
         </div>
       </div>
       <NaidanRpcFeatureRow />
@@ -436,7 +436,7 @@ defineExpose({
     >
       <div tw-class="flex items-start gap-2.5">
         <AlertTriangleIcon tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-        <p tw-class="text-[11px] font-medium leading-relaxed text-gray-600 dark:text-gray-300">
+        <p tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-400">
           {{ lazyStrings.FeatureFlagsSettings__features_may_change() }}
         </p>
       </div>

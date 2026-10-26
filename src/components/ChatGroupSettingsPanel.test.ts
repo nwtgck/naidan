@@ -15,6 +15,7 @@ import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
+import { useConfirm } from '@/composables/useConfirm';
 import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-models/ids';
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -1453,7 +1454,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
       expect(wrapper.find('[data-testid="chat-group-mounts"]').text()).toContain('/home/user/my-project');
     });
 
-    it('calls removeMountFromChatGroup when remove button is clicked', async () => {
+    it('calls removeMountFromChatGroup after confirming removal', async () => {
+      using fixture = {
+        confirmation: useConfirm(),
+        [Symbol.dispose]() {
+          this.confirmation.handleCancel();
+        },
+      };
       mockGroup.mounts = [
         { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
       ];
@@ -1461,6 +1468,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await nextTick();
 
       await wrapper.find('[data-testid="mount-remove"]').trigger('click');
+      await flushPromises();
+
+      expect(fixture.confirmation.isConfirmOpen.value).toBe(true);
+      expect(mocks.removeMountFromChatGroup).not.toHaveBeenCalled();
+      fixture.confirmation.handleConfirm();
       await flushPromises();
 
       expect(mocks.removeMountFromChatGroup).toHaveBeenCalledWith({ groupId: 'g1', volumeId: 'vol-1' });

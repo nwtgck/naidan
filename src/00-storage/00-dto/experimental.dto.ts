@@ -262,7 +262,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
     dtozod.literal('block_markdown'),
     dtozod.literal('monolithic_html'),
   ])),
-  toolConfigPersistence: missingAsUndefined(dtozod.literal('enabled')),
+  toolConfigPersistence: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
   toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
   fakeLm: missingAsUndefined(dtozod.literal('enabled')),
   naidanRpc: missingAsUndefined(dtozod.literal('enabled')),

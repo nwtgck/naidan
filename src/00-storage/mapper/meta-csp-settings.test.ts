@@ -88,7 +88,7 @@ describe('development-only CSP settings mapping', () => {
       sidebarSendMessageReorder: 'disabled',
       fakeLm: 'disabled',
       naidanRpc: 'disabled',
-      toolConfigPersistence: 'disabled',
+      toolConfigPersistence: 'enabled',
     });
     expect(restored.endpoint).toEqual(initial.endpoint);
   });
@@ -97,7 +97,7 @@ describe('development-only CSP settings mapping', () => {
     { locale: 'ja' },
     { naidanRpc: 'enabled' },
     { fakeLm: 'enabled' },
-    { toolConfigPersistence: 'enabled' },
+    { toolConfigPersistence: 'disabled' },
     { sidebarSendMessageReorder: 'move_sent_chat' },
     { toolConfigs: [] },
     { generationSpeed: {} },

@@ -54,7 +54,7 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
     chatGroupToolConfigs: toolConfigs.value,
     chatToolConfigs: undefined,
   }));
-  const isEditable = computed(() => settings.value.experimental?.toolConfigPersistence === 'enabled');
+  const isEditable = computed(() => settings.value.experimental?.toolConfigPersistence !== 'disabled');
 
   async function updateToolConfigs({
     updater,

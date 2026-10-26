@@ -65,6 +65,86 @@ function getBodyText({ body }: { body: Pick<VueWrapper<InstanceType<typeof OpenS
 }
 
 describe('OpenSourceLicenses', () => {
+  it.each([
+    { query: '  SHARED-NAME  ', count: 2 },
+    { query: 'mit', count: 1 },
+    { query: 'native SHARED', count: 1 },
+    { query: '1', count: 3 },
+  ])('filters metadata for "$query" without reading license bodies', async ({ query, count }) => {
+    using view = createView();
+    await view.ready();
+    expect(view.wrapper.find('[data-testid="oss-license-match-count"]').exists()).toBe(false);
+    await view.wrapper.get('[data-testid="oss-license-filter"] input').setValue(query);
+    expect(view.wrapper.findAll('[data-testid="oss-license-item"]')).toHaveLength(count);
+    expect(view.wrapper.get('[data-testid="oss-license-match-count"]').text()).toBe(`${count} of 4 packages`);
+    expect(readLicenseText).not.toHaveBeenCalled();
+  });
+
+  it('uses the original catalog index to read a filtered package body', async () => {
+    using view = createView();
+    await view.ready();
+    await view.wrapper.get('[data-testid="oss-license-filter"] input').setValue('native');
+    await view.toggle({ index: 0, open: true });
+    expect(readLicenseText).toHaveBeenCalledExactlyOnceWith({ index: 1 });
+    expect(view.wrapper.get('[data-testid="oss-license-text"]').text()).toBe('Second complete license');
+  });
+
+  it('shows no matches without searching bodies and restores the list after clearing the filter', async () => {
+    using view = createView();
+    await view.ready();
+    await view.wrapper.get('[data-testid="oss-license-filter"] input').setValue('First complete license');
+    expect(view.wrapper.findAll('[data-testid="oss-license-item"]')).toHaveLength(0);
+    expect(view.wrapper.get('[data-testid="oss-license-no-matches"]').text()).toBe('No matching packages.');
+    expect(readLicenseText).not.toHaveBeenCalled();
+
+    await view.wrapper.get('[data-testid="oss-license-filter-clear"]').trigger('click');
+    expect(view.wrapper.findAll('[data-testid="oss-license-item"]')).toHaveLength(4);
+    expect(view.wrapper.find('[data-testid="oss-license-no-matches"]').exists()).toBe(false);
+    expect(view.wrapper.find('[data-testid="oss-license-match-count"]').exists()).toBe(false);
+    expect(readLicenseText).not.toHaveBeenCalled();
+  });
+
+  it('releases filtered-out bodies while retaining visible open rows and restores removed rows collapsed', async () => {
+    using view = createView();
+    await view.ready();
+    await view.toggle({ index: 0, open: true });
+    await view.toggle({ index: 1, open: true });
+    const bodies = view.wrapper.findAllComponents(OpenSourceLicenseText).map(body => getBodyText({ body }));
+
+    await view.wrapper.get('[data-testid="oss-license-filter"] input').setValue('native');
+    expect(bodies[0]?.value).toBeUndefined();
+    expect(bodies[1]?.value).toBe('Second complete license');
+    expect(view.wrapper.vm.TEST_ONLY.openIndexes.value).toEqual(new Set([1]));
+    expect(view.wrapper.get('[data-testid="oss-license-text"]').text()).toBe('Second complete license');
+
+    await view.wrapper.get('[data-testid="oss-license-filter-clear"]').trigger('click');
+    const details = view.wrapper.findAll<HTMLDetailsElement>('[data-testid="oss-license-details"]');
+    expect(details[0]?.element.open).toBe(false);
+    expect(details[1]?.element.open).toBe(true);
+    expect(view.wrapper.findAllComponents(OpenSourceLicenseText)).toHaveLength(1);
+    expect(readLicenseText).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([true, false])('ignores a stale details toggle with open=%s after a filtered row is recreated', async staleOpen => {
+    using view = createView();
+    await view.ready();
+    const oldDetails = view.wrapper.get<HTMLDetailsElement>('[data-testid="oss-license-details"]');
+    await view.wrapper.get('[data-testid="oss-license-filter"] input').setValue('native');
+    await view.wrapper.get('[data-testid="oss-license-filter-clear"]').trigger('click');
+    const currentDetails = view.wrapper.get<HTMLDetailsElement>('[data-testid="oss-license-details"]');
+    expect(currentDetails.element).not.toBe(oldDetails.element);
+    if (!staleOpen) {
+      await view.toggle({ index: 0, open: true });
+    }
+
+    oldDetails.element.open = staleOpen;
+    await oldDetails.trigger('toggle');
+
+    expect(currentDetails.element.open).toBe(!staleOpen);
+    expect(view.wrapper.vm.TEST_ONLY.openIndexes.value.has(0)).toBe(!staleOpen);
+    expect(readLicenseText).toHaveBeenCalledTimes(staleOpen ? 0 : 1);
+  });
+
   it('loads only metadata and creates no body components while every details element is closed', async () => {
     using view = createView();
     expect(view.wrapper.find('[data-testid="oss-license-loading"]').exists()).toBe(true);
