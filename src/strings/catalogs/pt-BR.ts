@@ -44,9 +44,11 @@ import { SHARED__use_model_in_this_chat } from '@/strings/messages/SHARED__use_m
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/pt-BR';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/pt-BR';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/pt-BR';
+import { AboutPortableEditionHelp__how_to_use_the_portable_html_edition } from '@/strings/messages/AboutPortableEditionHelp__how_to_use_the_portable_html_edition/pt-BR';
 import { AboutTab__about_naidan } from '@/strings/messages/AboutTab__about_naidan/pt-BR';
 import { AboutTab__built_with_open_source_software } from '@/strings/messages/AboutTab__built_with_open_source_software/pt-BR';
 import { AboutTab__documentation } from '@/strings/messages/AboutTab__documentation/pt-BR';
+import { AboutTab__download_zip } from '@/strings/messages/AboutTab__download_zip/pt-BR';
 import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github_repository/pt-BR';
 import { AboutTab__learn_how_to_use_naidan } from '@/strings/messages/AboutTab__learn_how_to_use_naidan/pt-BR';
 import { AboutTab__loading_licenses } from '@/strings/messages/AboutTab__loading_licenses/pt-BR';
@@ -3359,9 +3361,11 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  AboutPortableEditionHelp__how_to_use_the_portable_html_edition,
   AboutTab__about_naidan,
   AboutTab__built_with_open_source_software,
   AboutTab__documentation,
+  AboutTab__download_zip,
   AboutTab__github_repository,
   AboutTab__learn_how_to_use_naidan,
   AboutTab__loading_licenses,

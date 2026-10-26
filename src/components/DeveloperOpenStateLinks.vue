@@ -147,21 +147,21 @@ defineExpose({
   <section tw-class="space-y-4 border-t border-gray-200/70 pt-5 dark:border-gray-800" data-testid="developer-open-state-links">
     <div>
       <h3 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.DeveloperOpenStateLinks__open_current_state() }}</h3>
-      <p tw-class="mt-1.5 max-w-2xl text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+      <p tw-class="mt-1.5 max-w-2xl text-xs leading-relaxed text-gray-600 dark:text-gray-300">
         {{ lazyStrings.DeveloperOpenStateLinks__open_state_description() }}
       </p>
     </div>
 
     <div tw-class="space-y-3 rounded-xl border border-gray-200/80 bg-gray-50/60 p-3 dark:border-gray-800 dark:bg-gray-900/30">
       <div>
-        <h4 tw-class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.DeveloperOpenStateLinks__state_contents() }}</h4>
-        <p tw-class="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+        <h4 tw-class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ lazyStrings.DeveloperOpenStateLinks__state_contents() }}</h4>
+        <p tw-class="mt-1 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
           {{ lazyStrings.DeveloperOpenStateLinks__choose_data_to_omit() }}
         </p>
       </div>
       <fieldset tw-class="flex min-w-0 flex-wrap gap-x-5 gap-y-3">
         <legend tw-class="sr-only">{{ lazyStrings.DeveloperOpenStateLinks__excluded_data() }}</legend>
-        <label tw-class="inline-flex cursor-pointer items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <label tw-class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
           <SettingsChoiceControl presentation="checkbox">
             <input
               v-model="excludeChats"
@@ -171,7 +171,7 @@ defineExpose({
           </SettingsChoiceControl>
           {{ lazyStrings.DeveloperOpenStateLinks__exclude_chats() }}
         </label>
-        <label :tw-class="['inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300', excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer']">
+        <label :tw-class="['inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300', excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer']">
           <SettingsChoiceControl presentation="checkbox">
             <input
               v-model="excludeChatHistory"
@@ -182,7 +182,7 @@ defineExpose({
           </SettingsChoiceControl>
           {{ lazyStrings.DeveloperOpenStateLinks__exclude_chat_history() }}
         </label>
-        <label tw-class="inline-flex cursor-pointer items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+        <label tw-class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
           <SettingsChoiceControl presentation="checkbox">
             <input
               v-model="excludeAttachments"
@@ -202,7 +202,7 @@ defineExpose({
         tw-class="min-w-0"
         :data-testid="`open-current-state-group-${group.id}`"
       >
-        <h4 tw-class="mb-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+        <h4 tw-class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">
           {{ deploymentGroupLabel({ label: group.label }) }}
         </h4>
         <div tw-class="divide-y divide-gray-200/70 border-y border-gray-200/70 dark:divide-gray-800 dark:border-gray-800">
@@ -213,8 +213,8 @@ defineExpose({
             :data-testid="`open-current-state-row-${target.host}`"
           >
             <div tw-class="min-w-0 space-y-0.5">
-              <span tw-class="block text-[11px] text-gray-500 dark:text-gray-400">{{ deploymentTargetKindLabel({ kind: target.kind }) }}</span>
-              <span tw-class="block break-all font-mono text-[11px] leading-relaxed text-gray-700 dark:text-gray-200">{{ target.host }}</span>
+              <span tw-class="block text-sm text-gray-600 dark:text-gray-300">{{ deploymentTargetKindLabel({ kind: target.kind }) }}</span>
+              <span tw-class="block break-all font-mono text-sm leading-relaxed text-gray-700 dark:text-gray-200">{{ target.host }}</span>
             </div>
             <div tw-class="flex shrink-0 items-center gap-1">
               <button

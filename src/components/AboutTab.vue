@@ -3,6 +3,7 @@ import { usePortableAppDownload } from '@/features/file-protocol-standalone/comp
 import { BookOpenIcon, InfoIcon, GithubIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
 import Logo from './Logo.vue';
 import OpenSourceLicenses from './OpenSourceLicenses.vue';
+import AboutPortableEditionHelp from './AboutPortableEditionHelp.vue';
 import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
@@ -49,17 +50,17 @@ defineExpose({
           target="_blank"
           rel="noopener noreferrer"
           data-testid="documentation-link"
-          tw-class="flex min-w-0 items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 no-underline transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-slate-700/70 dark:bg-slate-800/45 dark:hover:border-slate-600 dark:hover:bg-slate-800 motion-reduce:transition-none @2xl:gap-2 @2xl:p-3"
+          tw-class="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 no-underline transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-slate-700/70 dark:bg-slate-800/70 dark:hover:border-slate-600 dark:hover:bg-slate-800 motion-reduce:transition-none @2xl:gap-2 @2xl:p-3"
         >
-          <span tw-class="flex h-10 w-10 shrink-0 @2xl:h-8 @2xl:w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400">
-            <BookOpenIcon aria-hidden="true" tw-class="h-5 w-5" />
+          <span tw-class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400 @2xl:h-10 @2xl:w-10">
+            <BookOpenIcon aria-hidden="true" tw-class="h-6 w-6" />
           </span>
           <div tw-class="min-w-0 flex-1">
-            <div tw-class="flex items-center justify-between gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <div tw-class="flex items-center justify-between gap-2 text-sm font-semibold leading-snug text-gray-800 dark:text-gray-100">
               <span>{{ lazyStrings.AboutTab__documentation() }}</span>
               <ExternalLinkIcon v-if="isDocumentationExternal" data-testid="documentation-external-icon" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
             </div>
-            <p tw-class="mt-1 text-sm leading-relaxed @2xl:text-xs text-gray-600 dark:text-gray-300">{{ lazyStrings.AboutTab__learn_how_to_use_naidan() }}</p>
+            <p tw-class="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.AboutTab__learn_how_to_use_naidan() }}</p>
           </div>
         </a>
 
@@ -67,39 +68,40 @@ defineExpose({
           href="https://github.com/nwtgck/naidan"
           target="_blank"
           rel="noopener noreferrer"
-          tw-class="flex min-w-0 items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 no-underline transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-slate-700/70 dark:bg-slate-800/45 dark:hover:border-slate-600 dark:hover:bg-slate-800 motion-reduce:transition-none @2xl:gap-2 @2xl:p-3"
+          tw-class="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 no-underline transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:border-slate-700/70 dark:bg-slate-800/70 dark:hover:border-slate-600 dark:hover:bg-slate-800 motion-reduce:transition-none @2xl:gap-2 @2xl:p-3"
         >
-          <span tw-class="flex h-10 w-10 shrink-0 @2xl:h-8 @2xl:w-8 items-center justify-center rounded-lg bg-gray-50 text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
-            <GithubIcon aria-hidden="true" tw-class="h-5 w-5" />
+          <span tw-class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gray-50 text-gray-500 dark:bg-gray-900/70 dark:text-gray-400 @2xl:h-10 @2xl:w-10">
+            <GithubIcon aria-hidden="true" tw-class="h-6 w-6" />
           </span>
           <div tw-class="min-w-0 flex-1">
-            <div tw-class="flex items-center justify-between gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+            <div tw-class="flex items-center justify-between gap-2 text-sm font-semibold leading-snug text-gray-800 dark:text-gray-100">
               <span>{{ lazyStrings.AboutTab__github_repository() }}</span>
               <ExternalLinkIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
             </div>
-            <p tw-class="mt-1 text-sm leading-relaxed @2xl:text-xs text-gray-600 dark:text-gray-300">{{ lazyStrings.AboutTab__view_source_code() }}</p>
+            <p tw-class="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.AboutTab__view_source_code() }}</p>
           </div>
         </a>
 
-        <a
-          v-if="!isStandalone"
-          :href="portableAppDownload.href"
-          :download="portableAppDownload.fileName"
-          :aria-label="lazyStrings.SHARED__download_portable_html_edition()"
-          data-testid="portable-html-download"
-          tw-class="flex min-w-0 items-start gap-3 rounded-xl border border-green-200 bg-green-50/70 p-4 no-underline transition-colors hover:border-green-300 hover:bg-green-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/40 dark:border-green-900/40 dark:bg-green-900/10 dark:hover:border-green-800 dark:hover:bg-green-900/20 motion-reduce:transition-none @2xl:gap-2 @2xl:p-3"
-        >
-          <span tw-class="flex h-10 w-10 shrink-0 @2xl:h-8 @2xl:w-8 items-center justify-center rounded-lg bg-green-100/80 text-green-600 dark:bg-green-500/15 dark:text-green-400">
-            <DownloadIcon aria-hidden="true" tw-class="h-5 w-5" />
-          </span>
-          <div tw-class="min-w-0 flex-1">
-            <div tw-class="flex flex-wrap items-center gap-2 text-sm font-medium text-green-800 dark:text-green-300">
-              <span>{{ lazyStrings.SHARED__portable_html_edition() }}</span>
-              <span tw-class="rounded border border-green-300/60 px-1.5 py-0.5 text-xs leading-none text-green-700 dark:border-green-700/60 dark:text-green-400">ZIP</span>
+        <div v-if="!isStandalone" tw-class="relative min-w-0">
+          <a
+            :href="portableAppDownload.href"
+            :download="portableAppDownload.fileName"
+            :aria-label="lazyStrings.SHARED__download_portable_html_edition()"
+            data-testid="portable-html-download"
+            tw-class="flex h-full min-w-0 items-start gap-3 rounded-2xl border border-green-200 bg-green-50/70 p-4 no-underline transition-colors hover:border-green-300 hover:bg-green-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/40 dark:border-green-900/50 dark:bg-green-900/15 dark:hover:border-green-800 dark:hover:bg-green-900/20 motion-reduce:transition-none @2xl:gap-2 @2xl:p-3"
+          >
+            <span tw-class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-green-100/80 text-green-600 dark:bg-green-500/15 dark:text-green-400 @2xl:h-10 @2xl:w-10">
+              <DownloadIcon aria-hidden="true" tw-class="h-6 w-6" />
+            </span>
+            <div tw-class="min-w-0 flex-1">
+              <p tw-class="pr-7 text-sm font-semibold leading-snug text-green-800 dark:text-green-300">{{ lazyStrings.SHARED__portable_html_edition() }}</p>
+              <p tw-class="mt-1 text-sm leading-relaxed text-green-700 dark:text-green-300">{{ lazyStrings.AboutTab__download_zip() }}</p>
             </div>
-            <p tw-class="mt-1 text-sm leading-relaxed @2xl:text-xs text-green-700 dark:text-green-300">{{ lazyStrings.SHARED__extract_the_zip_and_open_index_html_no_http_server_required() }}</p>
+          </a>
+          <div v-if="props.visibility === 'visible'" tw-class="absolute right-2 top-3 @2xl:top-2">
+            <AboutPortableEditionHelp />
           </div>
-        </a>
+        </div>
       </div>
     </section>
 

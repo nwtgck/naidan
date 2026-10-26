@@ -84,6 +84,8 @@ describe('AboutTab licenses', () => {
     expect(licenseList.text()).not.toContain('vnull');
     expect(wrapper.text()).not.toContain('THIRD_PARTY_LICENSES.txt');
     expect(wrapper.text()).not.toContain('Offline License Information');
+    expect(wrapper.find('[data-testid="portable-html-download"]').exists()).toBe(!isStandalone);
+    expect(wrapper.find('[data-testid="portable-html-help-button"]').exists()).toBe(!isStandalone);
   });
 
   it('keeps license data behind a dynamic generated license import', () => {
@@ -133,7 +135,13 @@ describe('AboutTab licenses', () => {
     details.element.open = true;
     await details.trigger('toggle');
     expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(true);
+    const helpButton = wrapper.get('[data-testid="portable-html-help-button"]');
+    expect(wrapper.get('[data-testid="portable-html-download"]').element.contains(helpButton.element)).toBe(false);
+    await helpButton.trigger('click');
+    expect(document.querySelector('[data-testid="portable-html-help"]')).toBeTruthy();
     await wrapper.setProps({ visibility: 'hidden' });
+    expect(wrapper.find('[data-testid="portable-html-help-button"]').exists()).toBe(false);
+    expect(document.querySelector('[data-testid="portable-html-help"]')).toBeFalsy();
     expect(wrapper.find('[data-testid="about-section"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="oss-license-list"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(false);
