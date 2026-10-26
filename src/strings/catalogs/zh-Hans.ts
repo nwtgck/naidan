@@ -118,7 +118,6 @@ import { BrowserModelPreparation__loading_model_settings } from '@/strings/messa
 import { BrowserModelPreparation__main_model } from '@/strings/messages/BrowserModelPreparation__main_model/zh-Hans';
 import { BrowserModelPreparation__no_companion_file } from '@/strings/messages/BrowserModelPreparation__no_companion_file/zh-Hans';
 import { BrowserModelPreparation__specify_a_quantization } from '@/strings/messages/BrowserModelPreparation__specify_a_quantization/zh-Hans';
-import { BrowserModelWelcomeDialog__could_not_open_connection_settings } from '@/strings/messages/BrowserModelWelcomeDialog__could_not_open_connection_settings/zh-Hans';
 import { BrowserModelWelcome__browse_models } from '@/strings/messages/BrowserModelWelcome__browse_models/zh-Hans';
 import { BrowserModelWelcome__browser_provided_model } from '@/strings/messages/BrowserModelWelcome__browser_provided_model/zh-Hans';
 import { BrowserModelWelcome__choose_a_model } from '@/strings/messages/BrowserModelWelcome__choose_a_model/zh-Hans';
@@ -1757,6 +1756,7 @@ import { OllamaPsView__unload_requested } from '@/strings/messages/OllamaPsView_
 import { OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again } from '@/strings/messages/OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again/zh-Hans';
 import { OllamaPsView__unloading } from '@/strings/messages/OllamaPsView__unloading/zh-Hans';
 import { OllamaPsView__vram_size } from '@/strings/messages/OllamaPsView__vram_size/zh-Hans';
+import { OnBoardingModalV2__could_not_open_connection_settings } from '@/strings/messages/OnBoardingModalV2__could_not_open_connection_settings/zh-Hans';
 import { OnboardingModal__add_header } from '@/strings/messages/OnboardingModal__add_header/zh-Hans';
 import { OnboardingModal__back } from '@/strings/messages/OnboardingModal__back/zh-Hans';
 import { OnboardingModal__cancel } from '@/strings/messages/OnboardingModal__cancel/zh-Hans';
@@ -3398,7 +3398,6 @@ export const catalog = {
   BrowserModelPreparation__main_model,
   BrowserModelPreparation__no_companion_file,
   BrowserModelPreparation__specify_a_quantization,
-  BrowserModelWelcomeDialog__could_not_open_connection_settings,
   BrowserModelWelcome__browse_models,
   BrowserModelWelcome__browser_provided_model,
   BrowserModelWelcome__choose_a_model,
@@ -5037,6 +5036,7 @@ export const catalog = {
   OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again,
   OllamaPsView__unloading,
   OllamaPsView__vram_size,
+  OnBoardingModalV2__could_not_open_connection_settings,
   OnboardingModal__add_header,
   OnboardingModal__back,
   OnboardingModal__cancel,

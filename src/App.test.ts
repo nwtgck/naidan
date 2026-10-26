@@ -20,7 +20,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
 const modelSelection = ref<unknown>();
 vi.mock('@/composables/useAppEntry', () => ({ provideAppEntry: () => ({ modelSelection, notFoundRecovery: ref(undefined) }) }));
 const dialogMounted = vi.fn();
-vi.mock('@/components/BrowserModelWelcomeDialog.vue', () => ({
+vi.mock('@/components/OnBoardingModalV2.vue', () => ({
   default: {
     setup() {
       onMounted(dialogMounted);
@@ -162,7 +162,7 @@ describe('App', () => {
     expect(mounted).toHaveBeenCalledOnce();
   });
 
-  it('paints one synchronous dialog before MainApp and retains it across its mounting', async () => {
+  it('paints one synchronous OnBoardingModalV2 before MainApp and retains it across its mounting', async () => {
     modelSelection.value = { phase: 'open' };
     const MainApp = defineComponent({ template: '<div data-testid="main-app" />' });
     const { wrapper, startupState } = mountApp({ state: { kind: 'starting-main' } });

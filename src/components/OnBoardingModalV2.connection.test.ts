@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
 import BrowserConnectionSelection from './BrowserConnectionSelection.vue';
-import BrowserModelWelcomeDialog from './BrowserModelWelcomeDialog.vue';
+import OnBoardingModalV2 from './OnBoardingModalV2.vue';
 
 enableAutoUnmount(afterEach);
 const applySelection = vi.hoisted(() => vi.fn());
@@ -52,7 +52,7 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderDialog() {
-  return mount(BrowserModelWelcomeDialog, { global: { stubs: { teleport: true } } });
+  return mount(OnBoardingModalV2, { global: { stubs: { teleport: true } } });
 }
 
 async function openConnectionForm({ wrapper }: { wrapper: ReturnType<typeof renderDialog> }) {

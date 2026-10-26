@@ -3,7 +3,7 @@ import { computed, defineComponent, h, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App.vue';
-import BrowserModelWelcomeDialog from './BrowserModelWelcomeDialog.vue';
+import OnBoardingModalV2 from './OnBoardingModalV2.vue';
 import { DEFAULT_SETTINGS, type Chat, type Settings, type SidebarItem } from '@/01-models/types';
 import { idToRaw, toChatId } from '@/01-models/ids';
 import type { useSettings } from '@/composables/useSettings';
@@ -114,7 +114,7 @@ describe('unattended app startup metadata', () => {
     using _startupCleanup = { [Symbol.dispose]: dispose };
     await flushPromises();
     expect(startupState.value.kind).toBe('ready');
-    expect(wrapper.findComponent(BrowserModelWelcomeDialog).exists()).toBe(path === '/' && !existing);
+    expect(wrapper.findComponent(OnBoardingModalV2).exists()).toBe(path === '/' && !existing);
     expect(router.currentRoute.value.path).toBe(path);
     expect(createNewChat).not.toHaveBeenCalled();
     // All startup work and automatic navigation has settled without input or clicks.

@@ -190,18 +190,18 @@ describe('production entry module boundaries', () => {
     expect(preservedOnboardingReferences({ graph })).toEqual([]);
   }, 30000);
 
-  it('synchronously owns the model dialog, its shell and its model cards before MainApp is imported', () => {
+  it('synchronously owns OnBoardingModalV2, its shell and its model cards before MainApp is imported', () => {
     for (const [from, target] of [
-      ['src/App.vue', 'src/components/BrowserModelWelcomeDialog.vue'],
-      ['src/components/BrowserModelWelcomeDialog.vue', 'src/components/BrowserModelDialog.vue'],
-      ['src/components/BrowserModelWelcomeDialog.vue', 'src/components/BrowserModelWelcome.vue'],
+      ['src/App.vue', 'src/components/OnBoardingModalV2.vue'],
+      ['src/components/OnBoardingModalV2.vue', 'src/components/BrowserModelDialog.vue'],
+      ['src/components/OnBoardingModalV2.vue', 'src/components/BrowserModelWelcome.vue'],
       ['src/components/BrowserModelWelcome.vue', 'src/components/BrowserModelShowcaseCard.vue'],
     ]) {
       expect(graph.referencesFrom({ from: from! })).toContainEqual({ from, target, kind: 'static' });
     }
-    expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserModelFileSelection.vue', kind: 'dynamic' });
-    expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'dynamic' });
-    expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).not.toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'static' });
+    expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/BrowserModelFileSelection.vue', kind: 'dynamic' });
+    expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'dynamic' });
+    expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).not.toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'static' });
   });
 
   it('keeps the root home behind MainApp and loads its creation action only on demand', () => {

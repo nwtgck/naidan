@@ -5,7 +5,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { modelLaunchCommand, setModelLaunchEntryState, TEST_ONLY as launchTest } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
 import LlamaCppBrowserModelConfiguration from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelConfiguration.vue';
-import BrowserModelWelcomeDialog from './BrowserModelWelcomeDialog.vue';
+import OnBoardingModalV2 from './OnBoardingModalV2.vue';
 
 enableAutoUnmount(afterEach);
 const localInput = vi.hoisted(() => vi.fn());
@@ -44,11 +44,11 @@ beforeEach(async () => {
 });
 
 function mountEntry() {
-  return mount(BrowserModelWelcomeDialog, { global: { stubs: { teleport: true, BrowserModelWelcome: { template: '<div data-testid="welcome-model-surface" />' } } } });
+  return mount(OnBoardingModalV2, { global: { stubs: { teleport: true, BrowserModelWelcome: { template: '<div data-testid="welcome-model-surface" />' } } } });
 }
 
 function mountWelcomeEntry({ cspHint }: { cspHint: 'visible' | 'absent' }) {
-  return mount(BrowserModelWelcomeDialog, {
+  return mount(OnBoardingModalV2, {
     global: {
       stubs: {
         teleport: true,

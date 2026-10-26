@@ -17,7 +17,7 @@ import { scheduleIdleTask, type ScheduledIdleTask } from '@/utils/idle-task';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { BrowserProvidedLmEndpoint, HttpEndpoint } from '@/01-models/types';
 
-// The initial dialog and its cards are synchronous. Only action-owned views
+// OnBoardingModalV2 and its cards are synchronous. Only action-owned views
 // are deferred, with optional UI prefetch after the initial paint opportunity.
 const fileSelectionLoader = createModuleLoader({ importModule: () => import('./BrowserModelFileSelection.vue'), onPrefetchError: () => {} });
 const FileSelection = shallowRef<Component>();
@@ -46,7 +46,7 @@ const browserProvidedModel = computed(() => {
   }
   }
 });
-// This dialog imports the local-input workflow, so load it only on a file action.
+// LocalModelSelectionDialog imports the local-input workflow, so load it only on a file action.
 const localSelectionLoader = createModuleLoader({ importModule: () => import('./LocalModelSelectionDialog.vue'), onPrefetchError: () => {} });
 const LocalModelSelectionDialog = shallowRef<Component>();
 const entry = useAppEntry();
@@ -67,7 +67,7 @@ const state = computed(() => {
   return current.status !== 'idle' && current.operation === operation.value ? current : undefined;
 });
 const busy = computed(() => openingConnection.value !== undefined || state.value?.status === 'checking' || (operation.value !== undefined && loadingFiles.value === operation.value));
-const error = computed(() => connectionLoadFailed.value ? lazyStrings.BrowserModelWelcomeDialog__could_not_open_connection_settings() : state.value?.status === 'failed' || loadError.value ? lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() : undefined);
+const error = computed(() => connectionLoadFailed.value ? lazyStrings.OnBoardingModalV2__could_not_open_connection_settings() : state.value?.status === 'failed' || loadError.value ? lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() : undefined);
 const fileModel = computed(() => browserModelRepositoryPresentation({ repository: files.value?.input ?? '', bytes: undefined }));
 const open = computed(() => entry.modelSelection.value?.phase === 'open');
 const dismissible = computed(() => savingConnection.value === undefined && !(state.value?.status === 'checking' && state.value.phase === 'opening-chat'));
@@ -326,7 +326,7 @@ async function localInput({ directories, controller }: { directories: BrowserMod
     await module.startLocalModelInput({ directories, controller, context });
   } catch (error) {
     if (!controller.signal.aborted && context.isCurrent()) {
-      console.error('[BrowserModelWelcomeDialog] Could not open local model:', error);
+      console.error('[OnBoardingModalV2] Could not open local model:', error);
       const message = await ensureStrings.AppEntrySurface__could_not_open_local_model();
       if (!controller.signal.aborted && context.isCurrent()) {
         addToast({ message });
@@ -393,7 +393,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <ConnectionSelection v-else-if="connection && ConnectionSelection" key="connections" :initial-endpoint="connection.initialEndpoint" :active="connectionActive" :apply-selection="connection.applySelection" @back="backFromConnections" />
       <BrowserModelWelcome v-else key="models" :selection="selection" :browser-provided-model="browserProvidedModel" :interaction="entry.interaction.value" :start-status="busy ? 'starting' : 'idle'" :start-error="error" @select="entry.selectModel({ selection: $event })" @select-browser-model="browserSelection = $event" @open-connections="openConnections({ endpoint: $event })" @start="start" @open-discovery="entry.openDiscovery" @local-input="localInput" @dragover="dragOver({ event: $event })" @dragleave="dragLeave({ event: $event })" @drop="drop({ event: $event })" @dragend="dragVisibility = 'hidden'">
         <template #start-error-hint>
-          <!-- Only this dialog's failed model attempt gets recovery guidance, not local or connection UI failures. -->
+          <!-- Only a failed model attempt owned by OnBoardingModalV2 gets recovery guidance, not local or connection UI failures. -->
           <HuggingFaceDownloadFailureHint v-if="state?.status === 'failed' && state.problem === 'failed' && !connectionLoadFailed && !loadError"><LlamaCppBrowserLocalFileRecovery :disabled="entry.interaction.value !== 'ready' || busy" :accept-local-input="localInput" /></HuggingFaceDownloadFailureHint>
         </template>
       </BrowserModelWelcome>

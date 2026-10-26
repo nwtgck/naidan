@@ -17,7 +17,7 @@ import ChatGroupPage from '@/pages/chat-group/[id].vue';
 import UnknownPage from '@/pages/[...path].vue';
 import AppCommandRuntime from './AppCommandRuntime.vue';
 import MainAppSurface from './MainAppSurface.vue';
-import BrowserModelWelcomeDialog from './BrowserModelWelcomeDialog.vue';
+import OnBoardingModalV2 from './OnBoardingModalV2.vue';
 import BrowserModelDialog from './BrowserModelDialog.vue';
 
 enableAutoUnmount(afterEach);
@@ -78,7 +78,7 @@ async function open({ path }: { path: string }) {
       return () => h('div', [
         h(MainAppSurface, { postStartupFeatures: 'active' }),
         h(AppCommandRuntime),
-        current.modelSelection.value === undefined ? undefined : h(BrowserModelWelcomeDialog),
+        current.modelSelection.value === undefined ? undefined : h(OnBoardingModalV2),
       ]);
     },
   });

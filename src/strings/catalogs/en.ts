@@ -118,7 +118,6 @@ import { BrowserModelPreparation__loading_model_settings } from '@/strings/messa
 import { BrowserModelPreparation__main_model } from '@/strings/messages/BrowserModelPreparation__main_model/en';
 import { BrowserModelPreparation__no_companion_file } from '@/strings/messages/BrowserModelPreparation__no_companion_file/en';
 import { BrowserModelPreparation__specify_a_quantization } from '@/strings/messages/BrowserModelPreparation__specify_a_quantization/en';
-import { BrowserModelWelcomeDialog__could_not_open_connection_settings } from '@/strings/messages/BrowserModelWelcomeDialog__could_not_open_connection_settings/en';
 import { BrowserModelWelcome__browse_models } from '@/strings/messages/BrowserModelWelcome__browse_models/en';
 import { BrowserModelWelcome__browser_provided_model } from '@/strings/messages/BrowserModelWelcome__browser_provided_model/en';
 import { BrowserModelWelcome__choose_a_model } from '@/strings/messages/BrowserModelWelcome__choose_a_model/en';
@@ -1757,6 +1756,7 @@ import { OllamaPsView__unload_requested } from '@/strings/messages/OllamaPsView_
 import { OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again } from '@/strings/messages/OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again/en';
 import { OllamaPsView__unloading } from '@/strings/messages/OllamaPsView__unloading/en';
 import { OllamaPsView__vram_size } from '@/strings/messages/OllamaPsView__vram_size/en';
+import { OnBoardingModalV2__could_not_open_connection_settings } from '@/strings/messages/OnBoardingModalV2__could_not_open_connection_settings/en';
 import { OnboardingModal__add_header } from '@/strings/messages/OnboardingModal__add_header/en';
 import { OnboardingModal__back } from '@/strings/messages/OnboardingModal__back/en';
 import { OnboardingModal__cancel } from '@/strings/messages/OnboardingModal__cancel/en';
@@ -3401,7 +3401,6 @@ export const catalog = {
   BrowserModelPreparation__main_model,
   BrowserModelPreparation__no_companion_file,
   BrowserModelPreparation__specify_a_quantization,
-  BrowserModelWelcomeDialog__could_not_open_connection_settings,
   BrowserModelWelcome__browse_models,
   BrowserModelWelcome__browser_provided_model,
   BrowserModelWelcome__choose_a_model,
@@ -5040,6 +5039,7 @@ export const catalog = {
   OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again,
   OllamaPsView__unloading,
   OllamaPsView__vram_size,
+  OnBoardingModalV2__could_not_open_connection_settings,
   OnboardingModal__add_header,
   OnboardingModal__back,
   OnboardingModal__cancel,
