@@ -222,8 +222,8 @@ describe('ChatPane Peek Mode Specifications', () => {
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
     expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('submerged');
 
-    // Find the input container (the one with the border and rounded-2xl)
-    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    // Above-input notices share layout classes; hover the interactive card.
+    const inputContainer = wrapper.get('[data-testid="chat-input-card"]');
     await inputContainer.trigger('mouseenter');
 
     // Should become peeking
@@ -301,7 +301,7 @@ describe('ChatPane Peek Mode Specifications', () => {
     });
     await nextTick();
 
-    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    const inputContainer = wrapper.get('[data-testid="chat-input-card"]');
     const textarea = wrapper.find('textarea');
 
     // Submerge first
@@ -328,7 +328,7 @@ describe('ChatPane Peek Mode Specifications', () => {
     await nextTick();
 
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    const card = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    const card = wrapper.get('[data-testid="chat-input-card"]');
     await card.trigger('mouseenter');
     expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('peeking');
     await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);

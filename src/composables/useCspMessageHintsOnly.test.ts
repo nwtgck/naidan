@@ -21,7 +21,7 @@ describe('optional CSP presentation composable', () => {
     const { useCspMessageHintsOnly } = await import('./useCspMessageHintsOnly');
     const target = shallowRef<CspHintTarget>();
     const scope = effectScope();
-    using cleanup = {
+    using _cleanup = {
       [Symbol.dispose]() {
         scope.stop();
       },
@@ -46,7 +46,7 @@ describe('optional CSP presentation composable', () => {
     });
     const { useCspMessageHintsOnly, useCachedCspParseResultForDeveloperDisplayOnly } = await import('./useCspMessageHintsOnly');
     const scope = effectScope();
-    using cleanup = {
+    using _cleanup = {
       [Symbol.dispose]() {
         scope.stop();
       },
@@ -70,7 +70,7 @@ describe('optional CSP presentation composable', () => {
     const target: CspHintTarget = { kind: 'connection', endpoint: 'https://api.example', apiPath: '/models' };
     expect(core.describeCspForUiMessagesOnly({ target })).toMatchObject({ tone: 'caution' });
     const scope = effectScope();
-    using cleanup = {
+    using _cleanup = {
       [Symbol.dispose]() {
         scope.stop();
       },

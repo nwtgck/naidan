@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import NaidanRpcTab from './NaidanRpcTab.vue';
 import type { RpcRegistrationView, NaidanPeerManager } from '@/features/naidan-rpc-integration/runtime/manager';
@@ -29,7 +30,6 @@ const fixture = vi.hoisted(() => ({
   forget: vi.fn(),
   listeners: new Set<() => void>(),
 }));
-vi.mock('@/strings', () => ({ lazyStrings: new Proxy({}, { get: (_, name) => () => String(name) }), ensureStrings: new Proxy({}, { get: (_, name) => async () => String(name) }) }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: fixture.confirm }) }));
 vi.mock('../runtime/feature', () => ({
   getRpcManager: async () => ({ ...fixture, list: () => fixture.rows }),
@@ -72,7 +72,7 @@ function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcRe
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   fixture.rows = [];
   vi.clearAllMocks();
   fixture.reload.mockResolvedValue(undefined);
@@ -80,6 +80,7 @@ beforeEach(() => {
   fixture.confirm.mockResolvedValue(true);
   fixture.getPeerProvidedMethods.mockResolvedValue({ status: 'ready', methods: [] });
   fixture.prepareDisconnect.mockImplementation(({ id }: { id: Parameters<NaidanPeerManager['disconnect']>[0]['id'] }) => () => fixture.disconnect({ id }));
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 afterEach(() => {
@@ -119,7 +120,7 @@ it('does not treat a failed registry load as an empty registry', async () => {
   fixture.reload.mockRejectedValueOnce(new Error('Storage unavailable'));
   const wrapper = panel();
   await flushPromises();
-  expect(wrapper.get('[role="alert"]').text()).toBe('naidanRpc__failed');
+  expect(wrapper.get('[role="alert"]').text()).toBe('The operation failed. Check the current connection and saved state before retrying.');
   expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(false);
   expect(fixture.pair).not.toHaveBeenCalled();
   expect(fixture.connect).not.toHaveBeenCalled();
@@ -482,7 +483,7 @@ it('shows only committed automatic intent when saving it fails', async () => {
   await flushPromises();
   expect(fixture.setConnectOnStartup).toHaveBeenCalledWith({ id, connectOnStartup: 'enabled' });
   expect(wrapper.get('[data-testid="rpc-connect-on-startup"]').element).toHaveProperty('checked', false);
-  expect(wrapper.get('[role="alert"]').text()).toBe('naidanRpc__failed');
+  expect(wrapper.get('[role="alert"]').text()).toBe('The operation failed. Check the current connection and saved state before retrying.');
 });
 
 it('keeps explicit Connect promotion and Disconnect available for queued runtime desire', async () => {
@@ -516,19 +517,19 @@ it('shows the owner-provided response warning and recovers without a UI timer or
   fixture.rows = [{ ...row({ phase: 'connected', persistence: 'saved' }), health: { state: 'healthy' } }];
   const wrapper = panel();
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__connected');
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('Connected');
   fixture.rows = [{ ...fixture.rows[0]!, health: { state: 'checking' } }];
   for (const listener of fixture.listeners) {
     listener();
   }
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__checking_response');
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('Checking response');
   fixture.rows = [{ ...fixture.rows[0]!, health: { state: 'healthy' } }];
   for (const listener of fixture.listeners) {
     listener();
   }
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__connected');
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('Connected');
   expect(fixture.connect).not.toHaveBeenCalled();
   expect(fixture.disconnect).not.toHaveBeenCalled();
 });
@@ -547,7 +548,7 @@ it('shows connection-capacity waiting and still allows an explicit Disconnect', 
   fixture.rows = [{ ...row({ phase: 'disconnected', persistence: 'saved' }), desiredConnection: 'connected', recoveryStatus: 'waiting-capacity' }];
   const wrapper = panel();
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-capacity-wait"]').text()).toBe('naidanRpc__waiting_for_capacity');
+  expect(wrapper.get('[data-testid="rpc-capacity-wait"]').text()).toBe('Waiting for an available connection to this server');
   expect(wrapper.find('[data-testid="rpc-maintaining"]').exists()).toBe(false);
   await wrapper.get('[data-testid="rpc-disconnect"]').trigger('click');
   await flushPromises();

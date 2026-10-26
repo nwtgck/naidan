@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { StorageService } from './index';
 import { LocalStorageProvider } from './local-storage';
 import type { ChatContent, ChatMeta } from '@/01-models/types';
@@ -6,8 +8,6 @@ import { toChatId, toMessageId } from '@/01-models/ids';
 import { STORAGE_KEY_PREFIX, LOCK_CHAT_CONTENT_PREFIX, LOCK_METADATA } from '@/constants';
 
 const { notify, report, locks } = vi.hoisted(() => ({ notify: vi.fn(), report: vi.fn(), locks: vi.fn() }));
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only boundary string stub; localization is not under test.
-vi.mock('@/strings', () => ({ ensureStrings: { StorageService__an_error_occurred_during_a_storage_operation: async () => 'Storage error' } }));
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only event sink observes the existing storage notification boundary.
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: report, addInfoEvent: vi.fn() }) }));
 vi.mock('@/utils/opfs-detection', () => ({ checkOPFSSupport: async () => false }));
@@ -32,6 +32,7 @@ let service: StorageService;
 const locksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
 
 beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   localStorage.clear();
   Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: vi.fn() } });
   vi.clearAllMocks();

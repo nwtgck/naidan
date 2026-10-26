@@ -212,7 +212,7 @@ describe('persisted development meta and resident recovery adapter', () => {
     const stop = watch(() => test.settings.value.experimental?.metaCspForDevelopmentNotForSecurity, () => {
       resident = true;
     }, { flush: 'post' });
-    using cleanup = {
+    using _cleanup = {
       [Symbol.dispose]() {
         stop();
       },

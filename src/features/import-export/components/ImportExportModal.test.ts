@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
   analyze: vi.fn(),
   verify: vi.fn(),
   executeImport: vi.fn(),
-  compressingData: vi.fn(async () => 'Compressing data...'),
-  exportSuccessful: vi.fn(async () => 'Export successful'),
+  compressingData: vi.fn<() => Promise<string>>(),
+  exportSuccessful: vi.fn<() => Promise<string>>(),
 }));
 
 vi.mock('@/strings', async importOriginal => {
@@ -135,11 +135,12 @@ describe('ImportExportModal.vue', () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('@/strings')>('@/strings');
     vi.clearAllMocks();
     vi.stubGlobal('isSecureContext', false);
-    mocks.compressingData.mockReset().mockResolvedValue('Compressing data...');
-    mocks.exportSuccessful.mockReset().mockResolvedValue('Export successful');
+    mocks.compressingData.mockReset().mockImplementation(actual.ensureStrings.ImportExportModal__compressing_data);
+    mocks.exportSuccessful.mockReset().mockImplementation(actual.ensureStrings.ImportExportModal__export_successful);
     mocks.analyze.mockReset().mockResolvedValue(emptyPreview());
     mocks.verify.mockReset().mockResolvedValue(undefined);
     mocks.executeImport.mockReset().mockResolvedValue(undefined);
@@ -173,7 +174,7 @@ describe('ImportExportModal.vue', () => {
     const wrapper = mountModal({ initialMode: 'export' });
     await nextTick();
     expect(wrapper.find('[data-testid="import-export-export-card"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="import-export-export-now-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="import-export-export-now-button"]').exists()).toBe(true);
     expect(mocks.exportData).not.toHaveBeenCalled();
     const back = wrapper.findAll('button').find(button => button.text().includes('Back to Menu'));
     expect(back).toBeDefined();
@@ -182,7 +183,7 @@ describe('ImportExportModal.vue', () => {
     await wrapper.setProps({ isOpen: false });
     await wrapper.setProps({ isOpen: true });
     expect(wrapper.find('[data-testid="import-export-export-card"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="import-export-export-now-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="import-export-export-now-button"]').exists()).toBe(true);
     expect(mocks.exportData).not.toHaveBeenCalled();
     wrapper.unmount();
   });
@@ -423,12 +424,12 @@ describe('ImportExportModal.vue', () => {
     using view = mountModalResource({ initialMode: 'menu' });
     const { wrapper } = view;
     await pasteAndRead({ wrapper, serialized: '+/8=' });
-    expect(wrapper.get('[data-testid="import-export-preview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="import-export-preview"]').exists()).toBe(true);
     expect(order).toEqual(['analyze']);
     const file: File = mocks.analyze.mock.calls[0]?.[0].zipFile;
     expect(await readBlobBytes({ blob: file })).toEqual(Uint8Array.of(0xfb, 0xff));
     await wrapper.get('[data-testid="import-export-preview-next"]').trigger('click');
-    expect(wrapper.get('[data-testid="import-export-config"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="import-export-config"]').exists()).toBe(true);
     expect(mocks.verify).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="import-export-import-now"]').trigger('click');
     await vi.waitFor(() => expect(mocks.executeImport).toHaveBeenCalledOnce());
@@ -465,7 +466,7 @@ describe('ImportExportModal.vue', () => {
     await flushPromises();
     expect(mocks.verify).toHaveBeenCalledOnce();
     expect(mocks.executeImport).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="import-export-config"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="import-export-config"]').exists()).toBe(true);
     expect(mocks.addToast).not.toHaveBeenCalled();
   });
 
@@ -504,7 +505,7 @@ describe('ImportExportModal.vue', () => {
     pending.resolve();
     await flushPromises();
     expect(mocks.executeImport).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="import-export-paste-base64"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="import-export-paste-base64"]').exists()).toBe(true);
     expect(mocks.addToast).not.toHaveBeenCalled();
   });
 });

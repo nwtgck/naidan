@@ -67,7 +67,7 @@ describe('MessageItem Rendering', () => {
 
   it('keeps speed before the complete action group when extensions are expanded', async () => {
     const presentation: GenerationMetricsPresentation = { runId: 1, live: false, scope: 'last', updatedAt: 0, calls: [], metrics: { speed: { unit: 'tokens', measurement: 'llama_cpp_predicted', perSecond: 42.6 } } };
-    const wrapper = baseMount(MessageItem, { props: { chatId: toChatId({ raw: 'chat-1' }), message: createMessage('completed'), generationMetrics: presentation } });
+    const wrapper = baseMount(MessageItem, { props: { chatId: toChatId({ raw: 'chat-1' }), endpoint: undefined, message: createMessage('completed'), generationMetrics: presentation } });
     using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
     const speed = wrapper.get('[data-testid="generation-speed"]').element;
     const actions = wrapper.getComponent(MessageActions);

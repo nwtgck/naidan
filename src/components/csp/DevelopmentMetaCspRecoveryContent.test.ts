@@ -3,30 +3,36 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, shallowRef, type ShallowRef } from 'vue';
 import type { DevelopmentMetaCspSnapshotNotForSecurity } from '@/logic/development-meta-csp/types';
 import DevelopmentMetaCspRecoveryContent from './DevelopmentMetaCspRecoveryContent.vue';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const useDevelopment = vi.hoisted(() => vi.fn());
-const strings = vi.hoisted(() => ({ pending: Promise.resolve(), failed: false, title: 'Development CSP', loads: 0 }));
+const strings = vi.hoisted(() => {
+  const state: { pending: Promise<void>, failed: boolean, title: string | undefined, loads: number } = { pending: Promise.resolve(), failed: false, title: undefined, loads: 0 };
+  return state;
+});
 vi.mock('@/composables/useDevelopmentMetaCspNotForSecurity', () => ({ useDevelopmentMetaCspNotForSecurity: useDevelopment }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ initialized }) }));
-vi.mock('@/strings', () => ({
-  ensureStrings: {
-    DevelopmentMetaCspRecovery__development_meta_csp: async () => {
-      strings.loads++;
-      await strings.pending;
-      if (strings.failed) {
-        throw new Error('Optional recovery strings failed');
-      }
-      return strings.title;
-    },
-    DevelopmentMetaCspRecovery__development_only_never_for_security: async () => 'Not for security use',
-    DevelopmentMetaCspRecovery__close_notice: async () => 'Close notice',
-    DevelopmentMetaCspRecovery__clear_saved_meta_csp_setting: async () => 'Clear saved setting',
-    DevelopmentMetaCspRecovery__clearing_saved_meta_csp: async () => 'Clearing saved meta CSP…',
-    DevelopmentMetaCspRecovery__could_not_clear_saved_setting: async () => 'Could not clear the saved setting. Try again.',
-    DevelopmentMetaCspRecovery__storage_changed_try_again: async () => 'The storage changed. Try again.',
-    DevelopmentMetaCspRecovery__setting_cleared_current_meta_remains: async () => 'Setting cleared; current meta remains active.',
-  },
-}));
+vi.mock('@/strings', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/strings')>();
+  return {
+    ...actual,
+    ensureStrings: new Proxy(actual.ensureStrings, {
+      get(target, property, receiver) {
+        if (property === 'DevelopmentMetaCspRecovery__development_meta_csp') {
+          return async () => {
+            strings.loads++;
+            await strings.pending;
+            if (strings.failed) {
+              throw new Error('Optional recovery strings failed');
+            }
+            return strings.title ?? await actual.ensureStrings.DevelopmentMetaCspRecovery__development_meta_csp();
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+  };
+});
 
 let initialized: ShallowRef<boolean>;
 let snapshot: ShallowRef<DevelopmentMetaCspSnapshotNotForSecurity>;
@@ -35,10 +41,11 @@ let operation: ShallowRef<'idle' | 'saving' | 'failed' | 'changed' | 'saved'>;
 let prepare: ReturnType<typeof vi.fn<({ isRecoveryResident }: { isRecoveryResident(): boolean }) => Promise<void>>>;
 let clear: ReturnType<typeof vi.fn<() => Promise<'saved' | 'changed' | 'failed' | 'busy'>>>;
 
-beforeEach(() => {
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   strings.pending = Promise.resolve();
   strings.failed = false;
-  strings.title = 'Development CSP';
+  strings.title = undefined;
   strings.loads = 0;
   initialized = shallowRef(true);
   snapshot = shallowRef<DevelopmentMetaCspSnapshotNotForSecurity>({ preparation: 'idle', reason: undefined, installation: { kind: 'not-added' }, additions: [], diagnostics: 'complete', privacyBroker: { kind: 'not-created', sessionId: undefined, syncId: undefined, requestedPolicyCount: 0, confirmedPolicyCount: 0, reason: undefined } });
@@ -212,7 +219,7 @@ describe('resident development meta CSP recovery', () => {
     expect(mounted.wrapper.get('[data-testid="development-meta-csp-clear"]').element).toBe(original);
     expect(guard?.()).toBe(true);
     expect(snapshot.value.additions).toHaveLength(1);
-    expect(mounted.wrapper.get('[data-testid="development-meta-csp-setting-cleared"]').text()).toContain('current meta remains active');
+    expect(mounted.wrapper.get('[data-testid="development-meta-csp-setting-cleared"]').text()).toContain('meta on this page remains active');
     expect(mounted.wrapper.text()).toContain('Development CSP');
     expect(mounted.wrapper.text()).not.toContain('blocked pack');
     expect(strings.loads).toBe(1);

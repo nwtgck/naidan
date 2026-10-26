@@ -12,70 +12,44 @@ vi.mock('@/composables/useCspMessageHintsOnly', () => ({ useCspMessageHintsOnly:
 vi.mock('./CspDeploymentGuidance.vue', () => ({
   default: { props: ['deployments'], template: '<div data-testid="deployment-guidance-probe"><a href="https://naidan.pages.dev" data-testid="deployment-link">Public version</a><details><summary data-testid="migration-summary">Transfer data</summary><button type="button" data-testid="hidden-migration-action">Create URL</button></details></div>' },
 }));
-vi.mock('@/strings', () => ({
-  lazyStrings: {
-    CspMessageHint__this_connection_may_be_restricted: () => 'This connection may be restricted',
-    CspMessageHint__this_url_may_be_unreachable: () => 'This URL may be unreachable',
-    CspMessageHint__the_model_list_may_not_load: () => 'The model list may not load',
-    CspMessageHint__a_response_may_not_be_generated: () => 'A response may not be generated',
-    CspMessageHint__an_image_may_not_be_generated: () => 'An image may not be generated',
-    CspMessageHint__a_title_may_not_be_generated: () => 'A title may not be generated',
-    CspMessageHint__the_conversation_may_not_be_summarized: () => 'The conversation may not be summarized',
-    CspMessageHint__the_prompt_may_not_be_translated: () => 'The prompt may not be translated',
-    CspMessageHint__model_search_may_fail: () => 'Model search may fail',
-    CspMessageHint__model_information_may_not_load: () => 'Model information may not load',
-    CspMessageHint__quantization_options_may_not_load: () => 'Quantization options may not load',
-    CspMessageHint__downloads_may_fail: () => {
-      stringsState.activityRequests++;
-      switch (stringsState.activityFailure) {
-      case 'ready': return 'Downloads may fail';
-      case 'missing': return undefined;
-      case 'throw': throw new Error('Broken optional activity copy');
-      default: {
-        const exhaustive: never = stringsState.activityFailure;
-        return exhaustive;
-      }
-      }
-    },
-    CspMessageHint__running_models_may_not_be_checked: () => 'Running models may not be checked',
-    CspMessageHint__the_model_may_not_be_unloaded_from_memory: () => 'The model may not be unloaded from memory',
-    CspMessageHint__wikipedia_may_not_be_available: () => 'Wikipedia may not be available',
-    CspMessageHint__the_relay_server_may_be_unreachable: () => 'The relay server may be unreachable',
-    CspMessageHint__this_image_may_not_be_displayed: () => 'This image may not be displayed',
-    CspMessageHint__this_media_may_not_play: () => 'This media may not play',
-    CspMessageHint__this_form_may_not_be_submitted: () => 'This form may not be submitted',
-    CspMessageHint__this_resource_may_not_load: () => 'This resource may not load',
-    CspMessageHint__some_content_or_actions_may_be_restricted: () => 'Some content or actions may be restricted',
-    CspMessageHint__the_following_destinations_are_allowed: () => 'The following destinations are allowed',
-    CspMessageHint__this_destination_is_outside_the_allowed_range: ({ url }: { url: string | undefined }) => `This destination${url === undefined ? '' : ` (${url})`} is outside the allowed range.`,
-    CspMessageHint__some_required_connections_or_loads_are_outside_the_allowed_range: () => 'Some required connections or loads are outside the allowed range.',
-    CspMessageHint__this_resource_source_is_outside_the_allowed_range: ({ url }: { url: string | undefined }) => `This resource source${url === undefined ? '' : ` (${url})`} is outside the allowed range.`,
-    CspMessageHint__this_submission_destination_is_outside_the_allowed_range: ({ url }: { url: string | undefined }) => `This submission destination${url === undefined ? '' : ` (${url})`} is outside the allowed range.`,
-    CspMessageHint__technical_details: () => {
-      switch (stringsState.failure) {
-      case 'ready': return 'Technical information';
-      case 'missing': return undefined;
-      case 'throw': throw new Error('Broken optional translation');
-      default: {
-        const exhaustive: never = stringsState.failure;
-        return exhaustive;
-      }
-      }
-    },
-    CspMessageHint__current_content_security_policy: () => 'Current Content Security Policy',
-    CspMessageHint__hints_for_resolving_this_error: () => 'Hints for resolving this error',
-    CspMessageHint__current_policy_does_not_identify_the_error_cause: () => 'This describes the current policy, not the cause of this error.',
-    CspMessageHint__settings_and_actions_remain_unchanged: () => 'You can keep these settings and try the action.',
-    CspMessageHint__this_site: () => 'This site',
-    CspMessageHint__local_servers_on_this_pc: () => 'Local servers running on this PC',
-    CspMessageHint__no_destinations_are_allowed: () => 'No destinations are allowed',
-    CspMessageHint__no_destinations_are_listed: () => 'No destinations are listed',
-    CspMessageHint__this_page: () => 'This page',
-    CspMessageHint__communication_page: () => 'Communication page',
-    CspMessageHint__worker: () => 'Worker',
-    CspMessageHint__each_policy_applies_separately: () => 'Each policy applies its own restrictions.',
-  },
-}));
+vi.mock('@/strings', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/strings')>();
+  return {
+    ...actual,
+    lazyStrings: new Proxy(actual.lazyStrings, {
+      get(target, property, receiver) {
+        if (property === 'CspMessageHint__technical_details') {
+          return () => {
+            switch (stringsState.failure) {
+            case 'ready': return actual.lazyStrings.CspMessageHint__technical_details();
+            case 'missing': return undefined;
+            case 'throw': throw new Error('Broken optional translation');
+            default: {
+              const exhaustive: never = stringsState.failure;
+              return exhaustive;
+            }
+            }
+          };
+        }
+        if (property === 'CspMessageHint__downloads_may_fail') {
+          return () => {
+            stringsState.activityRequests++;
+            switch (stringsState.activityFailure) {
+            case 'ready': return actual.lazyStrings.CspMessageHint__downloads_may_fail();
+            case 'missing': return undefined;
+            case 'throw': throw new Error('Broken optional activity copy');
+            default: {
+              const exhaustive: never = stringsState.activityFailure;
+              return exhaustive;
+            }
+            }
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+  };
+});
 
 const caution: CspHintMessage = {
   tone: 'caution',
@@ -93,6 +67,7 @@ let message: ShallowRef<CspHintMessage | undefined>;
 
 async function settleDiagnostics(): Promise<void> {
   await vi.dynamicImportSettled();
+  await ensureAllStringsForTest({ locale: 'en' });
   await flushPromises();
   await nextTick();
 }

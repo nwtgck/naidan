@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { StorageService, ChatContentBindingChangedError } from './index';
 import { LocalStorageProvider } from './local-storage';
 import { DEFAULT_SETTINGS, type ChatMeta, type ChatGroup, type ChatContent, type MessageNode } from '@/01-models/types';
@@ -6,8 +8,6 @@ import { toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
 import { ChatContentSchemaDto, ChatMetaSchemaDto } from '@/00-storage/00-dto/dto';
 import { chatContentToDomain, chatContentToDto } from '@/00-storage/mapper/mappers';
 import { chatModelBindingAssistantFingerprint } from '@/01-models/chat-message';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- This persistence suite does not exercise strings.
-vi.mock('@/strings', () => ({ ensureStrings: new Proxy({}, { get: () => async () => 'storage error' }) }));
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Observe real persistence without application notifications.
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
 
@@ -57,7 +57,8 @@ async function contentWrite({ service, content }: { service: StorageService, con
   return service.createChatContentWrite({ id: chatId, content: content ?? (await service.loadChatContent({ id: chatId })) ?? undefined, binding: undefined });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   localStorage.clear();
   Object.defineProperty(navigator, 'locks', { configurable: true, value: simulatedWebLocks() });
 });

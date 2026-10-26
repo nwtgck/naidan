@@ -5,8 +5,8 @@ import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { DEFAULT_SETTINGS, type ChatMeta, type ChatGroup } from '@/01-models/types';
 import { idToRaw, toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
 import { LOCK_METADATA, STORAGE_KEY_PREFIX } from '@/constants';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createChatDataStore } from './chat-data-store';
-vi.mock('@/strings', () => ({ ensureStrings: new Proxy({}, { get: () => async () => 'storage error' }) }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
 const chatId = toChatId({ raw: 'existing-local-chat' });
 const chatGroupId = toChatGroupId({ raw: 'existing-local-chat-group' });
@@ -63,7 +63,8 @@ function apply({ store, isCurrent }: { store: ReturnType<typeof createStore>, is
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   localStorage.clear();
   Object.defineProperty(navigator, 'locks', { configurable: true, value: simulatedWebLocks() });
 });

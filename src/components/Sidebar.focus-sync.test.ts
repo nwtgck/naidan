@@ -15,6 +15,19 @@ beforeEach(async () => {
 
 const mockEffectiveRoute = ref<RouteLocationResolved>();
 
+// Focus synchronization needs the real pane click handler, not background
+// initialization of dialogs, inspectors, or editor modules unrelated to it.
+vi.mock('../utils/vue', async () => {
+  const { defineComponent } = await import('vue');
+  return {
+    defineAsyncComponentAndLoadOnMounted: () => defineComponent({
+      name: 'AsyncPanelOutsideFocusContract',
+      inheritAttrs: false,
+      render: () => undefined,
+    }),
+  };
+});
+
 vi.mock('../composables/useAppEntry', async importOriginal => {
   const actual = await importOriginal<typeof import('@/composables/useAppEntry')>();
   return { ...actual, useAppEntry: () => ({ ...actual.useAppEntry(), effectiveRoute: mockEffectiveRoute }) };
@@ -225,6 +238,7 @@ describe('Sidebar Focus Sync', () => {
   afterEach(() => {
     wrapper?.unmount();
     wrapper = null;
+    vi.clearAllTimers();
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
@@ -238,23 +252,21 @@ describe('Sidebar Focus Sync', () => {
           MessageItem: true,
           WelcomeScreen: true,
           ChatSettingsPanel: true,
+          ChatInput: true,
+          CspLmEndpointHint: true,
           Logo: true,
           ModelSelector: true,
         },
       },
     });
     await nextTick();
-
-    await vi.runAllTimersAsync();
-    // Include lazy modal initialization before checking the click's focus update.
-    await vi.dynamicImportSettled();
-    await vi.runAllTimersAsync();
+    await nextTick();
     vi.mocked(HTMLElement.prototype.scrollTo)?.mockClear();
 
     wrapper.get<HTMLElement>('[data-testid=sidebar-nav]').element.scrollTop = 0;
     await wrapper.getComponent(CurrentChatPane).trigger('click');
     await nextTick();
-    await vi.runAllTimersAsync();
+    await nextTick();
 
     expect(layout.activeFocusArea.value).toBe('chat');
     expect(layout.activeFocusAreaVersion.value).toBe(1);
