@@ -48,22 +48,26 @@ describe('experimental tool config DTO', () => {
     const domain = settingsToDomain({ dto });
     const saved = settingsToDto({ domain });
     const reloaded = settingsToDomain({ dto: SettingsSchemaDto.parse(saved) });
-    expect(saved.experimental?.toolConfigPersistence).toBe(persistence);
+    expect(saved.experimental?.toolConfigPersistence).toBe(persistence === 'disabled' ? 'disabled' : undefined);
     expect(reloaded.experimental?.toolConfigPersistence).toBe(persistence);
     expect(reloaded.experimental?.toolConfigs).toEqual(toolConfigs);
+    expect(settingsToDto({ domain: reloaded })).toStrictEqual(saved);
   });
 
-  it('keeps an unset domain setting optional when saving', () => {
+  it.each([undefined, 'enabled'] as const)('omits the default persistence setting %s across repeated saves', persistence => {
     const saved = settingsToDto({
       domain: {
         ...DEFAULT_SETTINGS,
         endpoint: { type: 'openai', url: 'http://localhost' },
         storageType: 'local',
-        experimental: undefined,
+        experimental: { toolConfigPersistence: persistence },
       },
     });
     expect(saved.experimental?.toolConfigPersistence).toBeUndefined();
-    expect(settingsToDomain({ dto: saved }).experimental?.toolConfigPersistence).toBe('enabled');
+    expect(saved.experimental).toBeUndefined();
+    const restored = settingsToDomain({ dto: saved });
+    expect(restored.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(settingsToDto({ domain: restored })).toStrictEqual(saved);
   });
 
   it('persists required status values under chat meta experimental storage', () => {

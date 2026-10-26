@@ -68,7 +68,7 @@ it('renders initial zero before revision resolution and every planned row before
     entered.resolve(onDownloadProgress);
     return finish.promise;
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   await flushPromises();
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
   await using _cleanupResource = {
@@ -114,7 +114,7 @@ it('keeps actual file percentages separate from overall work and retains saving 
     entered.resolve(onDownloadProgress);
     return finish.promise;
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   await flushPromises();
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
   await using _cleanupResource = {
@@ -167,7 +167,7 @@ it('retains a failed file with a nonpositive unknown length and does not turn fa
     entered.resolve(onDownloadProgress);
     return finish.promise;
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   await flushPromises();
   const failure = new Error('Synthetic storage failure');
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
@@ -203,7 +203,7 @@ it.each(['accepted', 'failed'] as const)('retains batched size correction contex
     entered.resolve(onDownloadProgress);
     return finish.promise;
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   await flushPromises();
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
   const result = running.catch(error => error);
@@ -271,7 +271,7 @@ it('does not describe known sizes as unknown when a failed file stops the overal
     entered.resolve(onDownloadProgress);
     return finish.promise;
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   await flushPromises();
   const failure = new Error('Synthetic file failure');
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
@@ -322,7 +322,7 @@ it.each<{
     status: 'loading',
     downloadProgress: snapshot,
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   await flushPromises();
   if (expected === undefined) {
     expect(wrapper.find('[data-testid="download-eta"]').exists()).toBe(false);
@@ -345,7 +345,7 @@ it.each(['resolving-revision', 'checking-cache', 'preparing-metadata', 'observin
     status: 'loading',
     downloadProgress: snapshot,
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   await flushPromises();
   expect(wrapper.get('[data-testid="download-phase"]').text()).toBe('Downloading');
   const text = wrapper.get('[data-testid="download-progress"]').text();
@@ -367,7 +367,7 @@ it('preserves the existing Load view when Download progress is absent', async ()
     error: undefined,
     isLoadingFromCache: true,
   });
-  wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+  wrapper = mount(TransformersJsManager);
   expect(wrapper.find('[data-testid="download-progress"]').exists()).toBe(false);
   expect(wrapper.text()).toContain('Initializing Engine...');
   expect(wrapper.text()).toContain('45%');

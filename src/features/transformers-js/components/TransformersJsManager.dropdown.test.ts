@@ -40,7 +40,7 @@ describe('TransformersJsManager Dropdown', () => {
   });
 
   it('should open the dropdown downwards with correct classes', async () => {
-    const wrapper = mount(TransformersJsManager, { props: { presentation: 'settings' } });
+    const wrapper = mount(TransformersJsManager);
 
     // Find the input to trigger dropdown focus or button to toggle
     const input = wrapper.find('input[placeholder*="Hugging Face model ID"]');

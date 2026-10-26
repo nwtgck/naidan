@@ -792,7 +792,7 @@ describe('Settings Mapping', () => {
         chatBrowserModelPickerTab: undefined,
         modelDiscoveryTab: undefined,
         markdownRendering: 'monolithic_html',
-        toolConfigPersistence: 'enabled',
+        toolConfigPersistence: undefined,
         toolConfigs,
         fakeLm: 'enabled',
         sidebarSendMessageReorder: 'move_sent_chat',
@@ -814,6 +814,7 @@ describe('Settings Mapping', () => {
     expect(dto).toMatchObject(expectedDto);
     expect(dto).not.toHaveProperty('autoTitleEnabled');
     expect(dto).not.toHaveProperty('titleModelId');
+    expect(settingsToDomain({ dto }).experimental?.toolConfigPersistence).toBe('enabled');
     expect(settingsToDto({ domain: settingsToDomain({ dto }) })).toEqual(dto);
   });
 });

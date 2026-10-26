@@ -381,7 +381,7 @@ defineExpose({
 
               <!-- Transformers.js Tab -->
               <div v-if="activeTab === 'transformers_js'" tw-class="max-w-4xl mx-auto">
-                <TransformersJsManager presentation="settings" @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
+                <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
                 <LlamaCppBrowserManager presentation="settings" :suspended="props.suspended" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />

@@ -13,7 +13,8 @@ export default defineConfig({
     environment: 'node',
     include: ['docs/**/*.test.ts'],
     maxWorkers: 1,
-    testTimeout: 30000,
-    hookTimeout: 30000,
+    // Docs build fixtures need headroom while CI jobs share CPU resources.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
   },
 });

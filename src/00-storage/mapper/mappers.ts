@@ -2480,7 +2480,16 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
-      toolConfigPersistence,
+      toolConfigPersistence: (() => {
+        switch (toolConfigPersistence) {
+        case 'disabled': return 'disabled';
+        case 'enabled': case undefined: return undefined;
+        default: {
+          const exhaustive: never = toolConfigPersistence;
+          return exhaustive;
+        }
+        }
+      })(),
       toolConfigs: toolConfigs?.map(domain => toolConfigToDto({ domain })),
       naidanRpc: (() => {
         switch (naidanRpc) {
