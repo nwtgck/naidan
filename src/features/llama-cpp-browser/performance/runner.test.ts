@@ -6,6 +6,7 @@ import { performanceEnvironment, performancePlan, performanceReport } from '@/fe
 import { createPerformanceRunner } from './runner';
 import { planSchema, snapshotSchema, type MeasurementMode } from './types';
 import { summarizePerformance, performanceFindings } from './summary';
+import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 
 function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode } = {}) {
   const plan = performancePlan({ models, diagnostics, mode, repeats });
@@ -39,6 +40,7 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeat
   const publish = vi.fn<Parameters<typeof createPerformanceRunner>[0]['publish']>();
   const runner = createPerformanceRunner({
     service,
+    runKernelDiagnostic: undefined,
     now: () => clock,
     date: () => plan.createdAt,
     hidden: () => hidden,
@@ -66,6 +68,97 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeat
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+function setupKernelDiagnostic({ mode, run }: { mode: MeasurementMode, run: Q8DiagnosticClient['run'] }) {
+  const test = setup({ mode, models: 2 });
+  const runner = createPerformanceRunner({
+    service: test.service,
+    runKernelDiagnostic: run,
+    now: () => 0,
+    date: () => test.plan.createdAt,
+    hidden: () => false,
+    waitUntilVisible: test.waitUntilVisible,
+    publish: test.publish,
+  });
+  return { ...test, runner, start: () => runner.start({ plan: test.plan, environment: performanceEnvironment() }) };
+}
+
+describe('additional GPU kernel diagnostics', () => {
+  it('does not call the diagnostic path for ordinary measurements', async () => {
+    const run = vi.fn<Q8DiagnosticClient['run']>();
+    const test = setupKernelDiagnostic({ mode: 'standard', run });
+    await test.start();
+    expect(run).not.toHaveBeenCalled();
+    expect(test.runner.snapshot()?.q8KernelDiagnostic).toBeUndefined();
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['gpu-profile', 'both'] as const)('runs once after every model scope has released, in its own exclusive scope: %s', async mode => {
+    const run = vi.fn<Q8DiagnosticClient['run']>(async ({ onProgress }) => {
+      test.order.push('kernel');
+      onProgress({ progress: { shapeIndex: 0, shapeCount: 8, phase: 'preparing', completedSamples: 0, totalSamples: 192 } });
+      return { status: 'unavailable', reason: 'artifact' };
+    });
+    const test = setupKernelDiagnostic({ mode, run });
+    await test.start();
+    expect(run).toHaveBeenCalledOnce();
+    expect(test.order.slice(-4)).toEqual(['release', 'acquire', 'kernel', 'release']);
+    expect(test.generate).toHaveBeenCalledTimes(mode === 'both' ? 20 : 10);
+    expect(test.runner.snapshot()?.q8KernelDiagnostic).toMatchObject({ status: 'unavailable', result: { status: 'unavailable', reason: 'artifact' }, progress: { shapeIndex: 0 } });
+    expect(run.mock.calls[0]![0].timeoutMs).toBeLessThanOrEqual(120000);
+    expect(snapshotSchema.safeParse(test.runner.snapshot()).success).toBe(true);
+  });
+
+  it('keeps completed model evidence when an additional diagnostic fails', async () => {
+    const test = setupKernelDiagnostic({
+      mode: 'gpu-profile',
+      run: vi.fn(async () => {
+        throw new Error('diagnostic native failure');
+      }),
+    });
+    await test.start();
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.status).toBe('completed');
+    expect(snapshot.trials.every(trial => trial.status === 'succeeded')).toBe(true);
+    expect(snapshot.q8KernelDiagnostic).toMatchObject({ status: 'failed', error: 'diagnostic native failure' });
+    expect(snapshot.modelErrors).toEqual([]);
+  });
+
+  it('marks cancellation during the service capability probe before the diagnostic callback starts', async () => {
+    const run = vi.fn<Q8DiagnosticClient['run']>();
+    const test = setupKernelDiagnostic({ mode: 'gpu-profile', run });
+    const original = test.service.runPerformanceOperation.getMockImplementation()!;
+    test.service.runPerformanceOperation.mockImplementation(async ({ options, signal, operation }) => {
+      if (test.service.runPerformanceOperation.mock.calls.length === 3) {
+        throw new LlamaCppBrowserError({ code: 'aborted' });
+      }
+      await original({ options, signal, operation });
+    });
+    await test.start();
+    expect(run).not.toHaveBeenCalled();
+    expect(test.runner.snapshot()).toMatchObject({ status: 'cancelled', q8KernelDiagnostic: { status: 'cancelled' } });
+    expect(test.runner.snapshot()?.trials.every(trial => trial.status === 'succeeded')).toBe(true);
+  });
+
+  it('retains the diagnostic cause when the service translates the public error', async () => {
+    const test = setupKernelDiagnostic({
+      mode: 'gpu-profile',
+      run: vi.fn(async () => {
+        throw new Error('specific diagnostic failure');
+      }),
+    });
+    const original = test.service.runPerformanceOperation.getMockImplementation()!;
+    test.service.runPerformanceOperation.mockImplementation(async ({ options, signal, operation }) => {
+      try {
+        await original({ options, signal, operation });
+      } catch {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
+    });
+    await test.start();
+    expect(test.runner.snapshot()?.q8KernelDiagnostic).toMatchObject({ status: 'failed', error: 'specific diagnostic failure' });
+  });
 });
 
 describe('in-memory sequential performance measurement', () => {

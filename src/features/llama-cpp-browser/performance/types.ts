@@ -1,4 +1,5 @@
 import { memoryDiagnosticsSchema } from './memory-schema';
+import { q8DiagnosticObservationSchema } from './q8-diagnostic-observation';
 import { z } from 'zod';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
 import { generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
@@ -152,6 +153,7 @@ const intervalSchema = z.object({
   outcome: z.enum(['completed', 'failed', 'cancelled', 'interrupted']),
 }).strict();
 export const snapshotSchema = z.object({
+  q8KernelDiagnostic: q8DiagnosticObservationSchema.optional(),
   execution: z.object({
     startedAt: z.string(),
     finishedAt: z.string().optional(),

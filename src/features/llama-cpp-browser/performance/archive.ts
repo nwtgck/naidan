@@ -22,6 +22,8 @@ const readme = `# Naidan llama.cpp browser performance / ${performanceProtocol}
   partial results; the canonical shader/phase/grid timestamp observations.
 - gpu-profile-summary.json: per-request/per-phase shader rankings, not a model
   speed benchmark or a cross-request average.
+- q8-kernel-diagnostic.json, when present: a separate, bounded synthetic kernel
+  comparison after the model trials. Never include it in model throughput.
 - outputs/: actual input, output, and reasoning for each attempt.
 - summary.csv: one row per attempt, including failures and exclusions; unlike
   summary.json, this is not an aggregate or a list of only valid speed samples.
@@ -76,9 +78,31 @@ request wall time: do not subtract them to derive CPU time or utilization.
 The upstream GGML_WEBGPU_GPU_PROFILE build changes pass boundaries and reads
 queries back. Naidan observes those existing public timestampWrites, pipeline
 labels, resolveQuerySet, copyBufferToBuffer and getMappedRange calls. It does not
-add GPU queries, dispatches, copies, maps or waits. No upstream private layouts or
-new upstream patches are used. This observer is loaded only for the diagnostic
+add GPU queries, dispatches, copies, maps or waits. This timestamp observer uses
+public WebGPU calls and does not patch upstream code. It is loaded only for the diagnostic
 runtime and only isolated measurement requests can activate it.
+
+The optional Q8 diagnostic runs once after all model scopes have released, in a
+dedicated Worker under the same exclusive measurement lane. It uses small,
+self-authored Q8 weights and F32 inputs; it does not load another model or capture
+chat activations. A missing extension produces unavailable, never a substitute
+kernel result. Failed/cancelled attempts retain their last progress and cause;
+they do not certify that every sample finished. Aborting terminates the Worker,
+not individual pointers of a suspended native call. This does not assert instant
+GPU-process completion or physical memory reclamation.
+
+The comparison prepares every variant, warms each one, then alternates forward
+and reverse order across four rounds. Each sample sums the existing timestamps
+of 32 individual native dispatches. Setup, preparation, warmup, native-call wall
+time, verification readback and GPU pass time are separate; do not subtract them
+to infer CPU time. timingStatus=quantized means zero-duration passes were seen,
+not an infinitely fast kernel. Partial/unavailable timings are not qualified GPU
+samples. Record the actual launch decision, processed shader SHA and extension
+schema identity. Requested variants may be unsupported. Exact checks here use a
+bounded dyadic fixture and do not prove equivalence on every real activation.
+Repeated small weights can remain warm in cache. These results are neither
+ordinary chat tok/s nor a native-versus-browser full-model speed comparison.
+hiddenObserved excludes an otherwise useful sample set from reliable timing.
 
 Each sample is owned by the request and phase active when its pass was encoded,
 not the phase active when readback completes. phases are prefill, decode,
@@ -448,6 +472,9 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
       await add({ name: 'execution.json', text: json({ value: snapshot.execution ?? null }) });
       await add({ name: 'plan.json', text: json({ value: snapshot.plan }) });
       await add({ name: 'environment.json', text: json({ value: snapshot.environment }) });
+      if (snapshot.q8KernelDiagnostic !== undefined) {
+        await add({ name: 'q8-kernel-diagnostic.json', text: json({ value: snapshot.q8KernelDiagnostic }) });
+      }
       await add({ name: 'summary.json', text: json({ value: summarizePerformance({ snapshot }) }) });
       await add({ name: 'findings.json', text: json({ value: performanceFindings({ snapshot }) }) });
       await add({ name: 'gpu-profile-summary.json', text: json({ value: summarizeGpuProfiles({ snapshot }) }) });

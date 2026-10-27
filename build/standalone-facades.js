@@ -9,6 +9,7 @@ export const STANDALONE_FACADES = [
   { facadePath: '@/features/llama-cpp-browser/runtime/artifacts', standalonePath: 'src/features/llama-cpp-browser/runtime/artifacts-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/profile-policy', standalonePath: 'src/features/llama-cpp-browser/runtime/profile-policy-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/detect-profile', standalonePath: 'src/features/llama-cpp-browser/runtime/detect-profile-standalone.ts' },
+  { facadePath: '@/features/llama-cpp-browser/performance/q8-diagnostic-client', standalonePath: 'src/features/llama-cpp-browser/performance/q8-diagnostic-client-standalone.ts' },
   { facadePath: '@/logic/hugging-face-download/worker/factory', standalonePath: 'src/logic/hugging-face-download/worker/factory-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/hugging-face/writer-client', standalonePath: 'src/features/llama-cpp-browser/hugging-face/writer-client-standalone.ts' },
 

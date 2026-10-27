@@ -218,6 +218,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
             <span v-else-if="interruptionPending" data-testid="llama-performance-interrupting">{{ lazyStrings.llamaCppPerformance__interrupting_and_preparing_next() }}</span>
             <span v-else-if="running && pageHidden">{{ lazyStrings.llamaCppPerformance__waiting_for_visible_page() }}</span>
           </div>
+          <p v-if="snapshot.q8KernelDiagnostic?.status === 'running'" role="status" data-testid="llama-performance-kernel-progress" tw-class="text-sm text-gray-600 dark:text-gray-400">
+            {{ lazyStrings.llamaCppPerformance__gpu_profiling() }}
+            <template v-if="snapshot.q8KernelDiagnostic.progress"> · {{ snapshot.q8KernelDiagnostic.progress.completedSamples }} / {{ snapshot.q8KernelDiagnostic.progress.totalSamples }}</template>
+          </p>
           <template v-if="current && currentStep">
             <p tw-class="break-words font-medium">{{ snapshot.plan.models[current.modelIndex]?.modelId }}</p>
             <p tw-class="text-sm">{{ lazyStrings.llamaCppPerformance__initial_short_long_or_continuation({ value: currentStep.scenario }) }} · {{ lazyStrings.llamaCppPerformance__preparation_or_measurement({ value: currentStep.role }) }} {{ currentStep.repetition }} · {{ current.lane === 'gpu-profile' ? lazyStrings.llamaCppPerformance__gpu_profiling() : lazyStrings.llamaCppPerformance__standard_measurement() }}</p>
