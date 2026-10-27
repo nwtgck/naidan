@@ -12,6 +12,8 @@ import { createRequire } from 'node:module';
 import { createStandaloneFacadeAliases } from './standalone-facades.js';
 
 const hostedProfiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
+const q8SchemaPath = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
+const q8SchemaAssetName = 'llama-cpp-browser-runtime/profiles/webgpu-wasm64-jspi-gpu-profile/q8-diagnostic-v1.schema.json';
 
 async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{ output: Rollup.OutputBundle, workerCores: string[] }> {
   const workerCores = new Set<string>();
@@ -113,8 +115,8 @@ describe('llama.cpp runtime distribution boundary', () => {
   it('bundles only available non-retired Hosted cores with lossless compressed Wasm assets', async () => {
     const { output, workerCores } = await bundleFeature({ standalone: false });
     expect(Object.keys(output).filter(name => name.startsWith('llama-cpp-browser-runtime/')).sort()).toEqual(
-      hostedProfiles
-        .map(profile => `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`).sort(),
+      [...hostedProfiles.map(profile => `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`),
+        ...(existsSync(q8SchemaPath) ? [q8SchemaAssetName] : [])].sort(),
     );
     for (const profile of hostedProfiles) {
       const prefix = `llama-cpp-browser-runtime/profiles/${profile}/`;
@@ -127,6 +129,14 @@ describe('llama.cpp runtime distribution boundary', () => {
       expect(gunzipSync(wasm.source).equals(readFileSync(`node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`))).toBe(true);
       expect(output[prefix + 'core.wasm']).toBeUndefined();
       expect(output[prefix + 'core.wasm.br']).toBeUndefined();
+    }
+    if (existsSync(q8SchemaPath)) {
+      const schema = output[q8SchemaAssetName];
+      expect(schema?.type).toBe('asset');
+      if (!schema || schema.type !== 'asset') {
+        throw new Error('Missing built Q8 diagnostic schema');
+      }
+      expect(Buffer.from(schema.source)).toEqual(readFileSync(q8SchemaPath));
     }
     expect(Object.keys(output).some(name => name.includes('entry-') && name.endsWith('.js'))).toBe(true);
     const javascript = Object.values(output).filter(file => file.fileName.endsWith('.js')).map(file => file.type === 'chunk' ? file.code : Buffer.from(file.source).toString('utf8'));

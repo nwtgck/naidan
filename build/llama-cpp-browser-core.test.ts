@@ -12,6 +12,8 @@ import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/bu
 
 const repo = process.cwd();
 const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
+const q8SchemaPath = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
+const q8SchemaAssetName = 'llama-cpp-browser-runtime/profiles/webgpu-wasm64-jspi-gpu-profile/q8-diagnostic-v1.schema.json';
 
 const callbackGetters = [
   'ggml_op_desc', 'ggml_backend_buffer_name', 'ggml_backend_buffer_is_host',
@@ -65,7 +67,10 @@ describe('shared browser core package integration', () => {
         return file.fileName;
       },
     } as never, {} as never, {} as never, false);
-    expect(files.size).toBe(profiles.length);
+    expect([...files.keys()].sort()).toEqual([
+      ...profiles.map(profile => `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`),
+      ...(existsSync(q8SchemaPath) ? [q8SchemaAssetName] : []),
+    ].sort());
     for (const profile of profiles) {
       const name = `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`;
       const bytes = files.get(name);
@@ -73,6 +78,13 @@ describe('shared browser core package integration', () => {
         throw new Error(`Missing hosted runtime asset: ${profile}`);
       }
       expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
+    }
+    if (existsSync(q8SchemaPath)) {
+      const schema = files.get(q8SchemaAssetName);
+      if (!schema) {
+        throw new Error('Missing emitted Q8 diagnostic schema');
+      }
+      expect(Buffer.from(schema)).toEqual(readFileSync(q8SchemaPath));
     }
   });
 
