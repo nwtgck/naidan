@@ -317,6 +317,13 @@ time. captureAttempts/restoreAttempts count attempts, not successful copies;
 retainedRestoredCaptures counts identical restored snapshots not copied again.
 Checkpoint elapsed time can include device-to-host transfer and synchronization;
 it must not be labelled CPU arithmetic time.
+cacheReuse records the cache decision before prefill and any new checkpoint
+capture: decoded cache length, common prefix, actual reused prefix, planned
+evaluation count, native removal capability, decision reason and the checkpoint
+still available after restoration/discard decisions. Native positions describe
+the state before those decisions. Compare evaluatedTokens with prefillDecodedTokens
+to distinguish planned work from completed work on interrupted/failed attempts.
+Older summaries can omit cacheReuse; absence does not establish a cache hit or miss.
 
 ## Interrupt the current trial and continue
 The user can interrupt only the active attempt, without stopping the whole run.

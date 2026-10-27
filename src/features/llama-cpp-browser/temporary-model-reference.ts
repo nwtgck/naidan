@@ -1,4 +1,5 @@
 import { isModelSourceSegment, modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
+import { temporaryModelRootPath, parseTemporaryModelRootPath } from '@/01-models/temporary-model-files';
 
 /** A temporary ID names the current entry, not a permanent file identity.
  * Persisted DTO/RPC references intentionally survive reloads unchanged: they may
@@ -8,9 +9,7 @@ import { isModelSourceSegment, modelSourceRepositorySchema } from '@/01-models/l
 export function temporaryModelReference({ rootName, repository, selector }: {
   rootName: string, repository: string | undefined, selector: string | undefined,
 }): string {
-  if (!isModelSourceSegment({ name: rootName }) || rootName.startsWith('.') || rootName.includes(':')) {
-    throw new Error('Invalid temporary model directory');
-  }
+  const rootPath = temporaryModelRootPath({ rootName });
   if (repository !== undefined) {
     modelSourceRepositorySchema.parse(repository);
     if (selector === undefined) {
@@ -20,7 +19,7 @@ export function temporaryModelReference({ rootName, repository, selector }: {
   if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) {
     throw new Error('Invalid temporary model selector');
   }
-  const modelId = `temp/${rootName}${repository === undefined ? '' : `/${repository}`}${selector === undefined ? '' : `:${selector}`}`;
+  const modelId = `${rootPath}${repository === undefined ? '' : `/${repository}`}${selector === undefined ? '' : `:${selector}`}`;
   if (modelId.length > 1024 || modelId.includes('\x7f')) {
     throw new Error('Invalid temporary model reference');
   }
@@ -30,13 +29,12 @@ export function temporaryModelReference({ rootName, repository, selector }: {
 export function parseTemporaryModelReference({ modelId }: { modelId: string }): {
   rootName: string, repository: string | undefined, selector: string | undefined,
 } {
-  const match = /^temp\/([^/:]+)(?:\/([^/:]+\/[^/:]+))?(?::(.+))?$/.exec(modelId);
-  if (!match) {
-    throw new Error('Invalid temporary model reference');
-  }
-  const rootName = match[1]!;
-  const repository = match[2];
-  const selector = match[3];
+  const selectorStart = modelId.indexOf(':');
+  const path = selectorStart < 0 ? modelId : modelId.slice(0, selectorStart);
+  const parts = path.split('/');
+  const { rootName } = parseTemporaryModelRootPath({ rootPath: parts.slice(0, 2).join('/') });
+  const repository = parts.length > 2 ? parts.slice(2).join('/') : undefined;
+  const selector = selectorStart < 0 ? undefined : modelId.slice(selectorStart + 1);
   if (temporaryModelReference({ rootName, repository, selector }) !== modelId) {
     throw new Error('Non-canonical temporary model reference');
   }

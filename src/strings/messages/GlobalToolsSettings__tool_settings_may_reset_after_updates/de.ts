@@ -1,0 +1,1 @@
+export const GlobalToolsSettings__tool_settings_may_reset_after_updates = (): string => 'Tooleinstellungen sind experimentell und können nach einem Naidan-Update auf die Standardwerte zurückgesetzt werden.';

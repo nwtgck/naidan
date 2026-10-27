@@ -1,3 +1,4 @@
+import type { GenerationMetrics, GenerationMetricsObserver } from './generation-metrics';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import type { BinaryObjectId } from '@/01-models/ids';
 
@@ -37,6 +38,8 @@ export interface LmProvider {
       binaryObjectId: BinaryObjectId,
       signal: AbortSignal | undefined,
     }) => Promise<Blob>) | undefined,
+    /** Optional display-only telemetry; implementations may ignore it. */
+    onGenerationMetrics?: GenerationMetricsObserver,
     /** Per-request diagnostics preference; providers may ignore it. */
     debug: 'off' | 'on' | undefined,
     signal: AbortSignal | undefined,
@@ -96,10 +99,11 @@ export type ToolCallDraft = {
 
 /** Runtime control information; do not persist an Error or copy it into text. */
 export type ChatGenerationResult =
-  | { type: 'finished', next: 'user' | 'tool_results' }
+  | { type: 'finished', next: 'user' | 'tool_results', generationMetrics?: GenerationMetrics }
   | {
       type: 'interrupted',
       reason: 'aborted' | 'limit' | 'stop_sequence' | 'unknown',
+      generationMetrics?: GenerationMetrics,
     }
   | { type: 'error', error: Error };
 

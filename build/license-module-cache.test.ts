@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { build, type Plugin } from 'vite';
 import type { OutputChunk, RolldownOutput } from 'rolldown';
+import { restoreLicenseCatalog } from './test-support/license-catalog.test-support';
 import { createLicenseModulePlugins, NAIDAN_LICENSE_MODULE_ID } from './license-module';
 import type { BuildLicenseDependency } from './license-dependencies';
 import { createLicenseCacheFixture, licenseCacheEntrySource } from './test-support/license-cache-fixture.test-support';
@@ -37,7 +38,7 @@ async function readLicensePayload({ code }: { code: string }): Promise<unknown> 
   // The lazy payload is self-contained. Execute the emitted module, rather
   // than relying on a minifier's quote style or a text match alone.
   const loaded = await import(/* @vite-ignore */ `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`) as { default: unknown };
-  return loaded.default;
+  return restoreLicenseCatalog({ factory: loaded.default });
 }
 
 describe('license cache identity', () => {

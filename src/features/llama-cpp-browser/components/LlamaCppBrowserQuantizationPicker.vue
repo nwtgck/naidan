@@ -3,6 +3,7 @@ import { computed, nextTick, onScopeDispose, ref, shallowRef, useId, watch } fro
 import { onClickOutside } from '@vueuse/core';
 import { CheckIcon, ChevronDownIcon, Loader2Icon, RefreshCcwIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
@@ -132,15 +133,15 @@ function handleKeydown({ event }: { event: KeyboardEvent }): void {
     close({ focus: 'restore' });
     return;
   }
-  if (event.key === 'Tab') {
-    close({ focus: 'restore' });
-    return;
-  }
+  // Native Tab reaches the guidance actions; focusin closes after leaving the popup.
   const options = Array.from(panel.value?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
   if (!options.length) {
     return;
   }
-  const index = options.indexOf(document.activeElement as HTMLElement);
+  const index = options.findIndex(option => option === document.activeElement);
+  if (index < 0) {
+    return;
+  }
   const next = event.key === 'ArrowDown' ? (index + 1) % options.length : event.key === 'ArrowUp' ? (index - 1 + options.length) % options.length
     : event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : undefined;
   if (next !== undefined) {
@@ -198,15 +199,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <h3 tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserModelLaunch__quantization() }}</h3>
           <button v-if="status === 'ready'" type="button" :disabled="disabled" :aria-label="lazyStrings.LlamaCppBrowserQuantizationPicker__fetch_options()" data-testid="quantization-check-again" tw-class="-mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200" @click="inspect({ freshness: 'refresh' })"><RefreshCcwIcon aria-hidden="true" tw-class="h-3 w-3" /></button>
         </header>
-        <div v-if="status === 'loading'" role="status" tw-class="flex items-center gap-2 p-4 text-xs text-gray-500 dark:text-gray-400"><Loader2Icon aria-hidden="true" tw-class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />{{ lazyStrings.LlamaCppBrowserQuantizationPicker__fetching_options() }}</div>
-        <div v-else-if="status === 'idle' || status === 'failed'" tw-class="space-y-3 p-3">
-          <p v-if="status === 'failed'" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserQuantizationPicker__could_not_fetch_options() }}</p>
-          <button type="button" :disabled="disabled" data-testid="quantization-fetch-options" tw-class="min-h-9 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-blue-600 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:border-gray-700 dark:text-blue-400 dark:hover:bg-gray-800" @click="inspect({ freshness: 'refresh' })">{{ lazyStrings.LlamaCppBrowserQuantizationPicker__fetch_options() }}</button>
+        <div data-testid="quantization-picker-content" tw-class="min-h-0 overflow-y-auto overscroll-contain">
+          <CspMessageHint v-if="status !== 'failed'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="quantization-options" presentation="compact" />
+          <div v-if="status === 'loading'" role="status" tw-class="flex items-center gap-2 p-4 text-xs text-gray-500 dark:text-gray-400"><Loader2Icon aria-hidden="true" tw-class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />{{ lazyStrings.LlamaCppBrowserQuantizationPicker__fetching_options() }}</div>
+          <div v-else-if="status === 'idle' || status === 'failed'" tw-class="space-y-3 p-3">
+            <p v-if="status === 'failed'" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserQuantizationPicker__could_not_fetch_options() }}</p>
+            <CspMessageHint v-if="status === 'failed'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="quantization-options" presentation="error" />
+            <button type="button" :disabled="disabled" data-testid="quantization-fetch-options" tw-class="min-h-9 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-blue-600 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:border-gray-700 dark:text-blue-400 dark:hover:bg-gray-800" @click="inspect({ freshness: 'refresh' })">{{ lazyStrings.LlamaCppBrowserQuantizationPicker__fetch_options() }}</button>
+          </div>
+          <div v-else-if="choices.length" role="listbox" :aria-label="lazyStrings.LlamaCppBrowserModelLaunch__quantization()" tw-class="p-1.5">
+            <button v-for="choice in choices" :key="choice.primaryRelativePath" type="button" role="option" :aria-selected="selectedPath === choice.primaryRelativePath" :data-testid="'quantization-option-' + choice.primaryRelativePath" :tw-class="['flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', selectedPath === choice.primaryRelativePath ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']" @click="select({ path: choice.primaryRelativePath })"><span tw-class="min-w-0 flex-1 break-words font-medium">{{ choice.label }}</span><span tw-class="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-gray-400">{{ formatDownloadBytes({ bytes: choice.models.reduce((total, model) => total + model.size, 0) }) }}</span><CheckIcon v-if="selectedPath === choice.primaryRelativePath" aria-hidden="true" tw-class="h-3 w-3 shrink-0" /></button>
+          </div>
+          <p v-else tw-class="p-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found() }}</p>
         </div>
-        <div v-else-if="choices.length" role="listbox" :aria-label="lazyStrings.LlamaCppBrowserModelLaunch__quantization()" tw-class="min-h-0 overflow-y-auto overscroll-contain p-1.5">
-          <button v-for="choice in choices" :key="choice.primaryRelativePath" type="button" role="option" :aria-selected="selectedPath === choice.primaryRelativePath" :data-testid="'quantization-option-' + choice.primaryRelativePath" :tw-class="['flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', selectedPath === choice.primaryRelativePath ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']" @click="select({ path: choice.primaryRelativePath })"><span tw-class="min-w-0 flex-1 break-words font-medium">{{ choice.label }}</span><span tw-class="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-gray-400">{{ formatDownloadBytes({ bytes: choice.models.reduce((total, model) => total + model.size, 0) }) }}</span><CheckIcon v-if="selectedPath === choice.primaryRelativePath" aria-hidden="true" tw-class="h-3 w-3 shrink-0" /></button>
-        </div>
-        <p v-else tw-class="p-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found() }}</p>
       </section>
     </Transition>
   </Teleport>

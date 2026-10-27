@@ -1,6 +1,7 @@
 import { parse } from '@vue/compiler-sfc';
-import { NodeTypes, parse as parseTemplate } from '@vue/compiler-dom';
+import { NodeTypes, parse as parseTemplate, parserOptions } from '@vue/compiler-dom';
 import type { TemplateChildNode } from '@vue/compiler-dom';
+import ts from 'typescript';
 
 const nativeAnchorComponents = new Set([
   'components/DocsLink.vue',
@@ -13,6 +14,30 @@ const reservedIslandAttributes = new Set(['data-docs-island', 'data-docs-props',
 const supportedStaticDirectives = new Set([
   'bind', 'cloak', 'else', 'else-if', 'for', 'if', 'memo', 'once', 'pre', 'show', 'slot', 'text',
 ]);
+const activeElements = new Set(['script', 'iframe', 'object', 'embed', 'base']);
+
+function dynamicNativeTags({ expression }: { expression: string }): string[] | undefined {
+  const ast = ts.createSourceFile('docs-dynamic-tag.ts', `(${expression})`, ts.ScriptTarget.Latest, true);
+  const statement = ast.statements.length === 1 ? ast.statements[0] : undefined;
+  if (!statement || !ts.isExpressionStatement(statement)) {
+    return undefined;
+  }
+  const tags = ({ node }: { node: ts.Expression }): string[] | undefined => {
+    if (ts.isParenthesizedExpression(node)) {
+      return tags({ node: node.expression });
+    }
+    if (ts.isStringLiteralLike(node)) {
+      return [node.text];
+    }
+    if (ts.isConditionalExpression(node)) {
+      const whenTrue = tags({ node: node.whenTrue });
+      const whenFalse = tags({ node: node.whenFalse });
+      return whenTrue && whenFalse ? [...whenTrue, ...whenFalse] : undefined;
+    }
+    return undefined;
+  };
+  return tags({ node: statement.expression });
+}
 
 function staticTemplateError({ source, filename, offset, reason, remedy }: {
   source: string;
@@ -83,7 +108,7 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
     if (node.tag.toLowerCase() === 'a' && !nativeAnchorComponents.has(filename)) {
       throw new Error(`Use a typed Docs link component instead of <a> in ${filename}`);
     }
-    if (['script', 'iframe', 'object', 'embed', 'base'].includes(node.tag.toLowerCase())) {
+    if (activeElements.has(node.tag.toLowerCase())) {
       throw new Error(`Unsupported active element <${node.tag}> in ${filename}`);
     }
     for (const prop of node.props) {
@@ -95,6 +120,30 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
       if (filename !== 'components/DocsIsland.vue'
         && name !== undefined && reservedIslandAttributes.has(name)) {
         throw new Error(`Reserved Docs island attribute ${name} in ${filename}`);
+      }
+      if (name === 'is') {
+        const expression = prop.type === NodeTypes.DIRECTIVE && prop.exp?.type === NodeTypes.SIMPLE_EXPRESSION
+          ? prop.exp.content.trim() : undefined;
+        const hostComponent = filename === 'components/DocsIsland.vue' && node.tag === 'component'
+          && expression === 'preparedComponent()';
+        if (!hostComponent && (node.tag.toLowerCase() === 'component'
+          || prop.type === NodeTypes.ATTRIBUTE && prop.value?.content.startsWith('vue:'))) {
+          const tags = prop.type === NodeTypes.ATTRIBUTE
+            ? [prop.value?.content.replace(/^vue:/u, '') ?? '']
+            : expression === undefined ? undefined : dynamicNativeTags({ expression });
+          if (tags?.includes('a') && !nativeAnchorComponents.has(filename)) {
+            throw new Error(`Use a typed Docs link component instead of a dynamic <a> in ${filename}`);
+          }
+          if (!tags?.length || tags.some(tag => !parserOptions.isNativeTag?.(tag) || activeElements.has(tag))) {
+            staticTemplateError({
+              source,
+              filename,
+              offset: templateStart + prop.loc.start.offset,
+              reason: 'Docs dynamic components require explicit native tag literals or conditional branches.',
+              remedy: 'Write components by name, use typed links for anchors, and keep interaction in a registered island.',
+            });
+          }
+        }
       }
       if (mode === 'static' && name === 'ref') {
         staticTemplateError({

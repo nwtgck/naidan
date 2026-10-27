@@ -18,10 +18,10 @@ describe('Naidan RPC guide', () => {
     const article = page.document.querySelector('[data-testid="docs-models-naidan-rpc"]');
     expect(article?.querySelector('h1')?.textContent).toBe(copy.title);
     const launch = article?.querySelector<HTMLAnchorElement>('.app-entry-intro a[data-docs-app-entry-path]');
-    expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
-    expect(launch?.textContent).toBe('Naidan');
+    expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/settings/connection');
+    expect(launch?.textContent).toBe('/#/settings/connection');
     expect(launch?.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
-    expect(article?.querySelector('.app-entry-intro')?.textContent).toContain('Naidan');
+    expect(article?.querySelector('.app-entry-intro')?.textContent).toContain('/#/settings/connection');
     const hostedExample = article?.querySelector('.hosted-example');
     expect(hostedExample?.textContent).toContain(locale === 'en' ? 'The device providing a model' : 'モデルを提供する端末');
     expect(hostedExample?.querySelector('[data-docs-external]')?.getAttribute('href')).toBe('https://naidan.pages.dev/');
@@ -35,6 +35,7 @@ describe('Naidan RPC guide', () => {
     ]);
     expect(article?.querySelector('[data-testid="rpc-step-pair"]')?.textContent).toContain(copy.sample_meeting_code);
     expect(article?.querySelector('[data-testid="rpc-step-pair"]')?.textContent).toContain(copy.sample_relay_origin);
+    expect(article?.querySelector('#rpc-pair')?.parentElement?.textContent).toContain(copy.use_the_current_version_on_both_devices);
     const relay = article?.querySelector('.relay-origin');
     expect(relay?.querySelector('code')?.textContent).toBe(copy.sample_relay_origin);
     expect(relay?.querySelector('[data-docs-external]')?.getAttribute('href')).toBe('https://github.com/nwtgck/piping-server#public-servers');

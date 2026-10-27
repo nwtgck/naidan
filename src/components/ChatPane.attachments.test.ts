@@ -292,6 +292,7 @@ vi.mock('../00-storage/service', () => ({
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => { }),
+    subscribeLocalModelPromotions: vi.fn<StorageService['subscribeLocalModelPromotions']>().mockReturnValue(() => {}),
     canPersistBinary: true,
     saveFile: vi.fn().mockResolvedValue(undefined),
     notify: vi.fn(),

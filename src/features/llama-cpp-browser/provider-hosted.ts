@@ -14,8 +14,8 @@ class HostedLlamaCppBrowserProvider implements LmProvider {
     return (await this.service.listModelEntries({ signal })).map(model => model.modelId);
   }
 
-  chat({ messages, model, parameters, tools, readBinaryObject, debug, signal }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], debug: Parameters<LmProvider['chat']>[0]['debug'], signal: Parameters<LmProvider['chat']>[0]['signal'] }): AsyncIterable<ChatGenerationItem> {
-    return createLlamaCppGeneration({ request: { messages, model, parameters, tools, readBinaryObject, debug, signal }, generate: this.service.generate.bind(this.service) });
+  chat({ messages, model, parameters, tools, readBinaryObject, debug, signal, onGenerationMetrics }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], debug: Parameters<LmProvider['chat']>[0]['debug'], signal: Parameters<LmProvider['chat']>[0]['signal'], onGenerationMetrics?: Parameters<LmProvider['chat']>[0]['onGenerationMetrics'] }): AsyncIterable<ChatGenerationItem> {
+    return createLlamaCppGeneration({ request: { messages, model, parameters, tools, readBinaryObject, debug, signal, onGenerationMetrics }, generate: this.service.generate.bind(this.service) });
   }
 
   async runChatOperation({ signal, operation, onProgress }: { signal: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['signal'], operation: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['operation'], onProgress?: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['onProgress'] }): Promise<void> {

@@ -12,16 +12,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <aside class="sidebar"><strong>{{ messages.naidan }}</strong><div class="sidebar-spacer" /><div class="sidebar-actions"><SettingsIcon :size="17" /><span class="more"><MoreVerticalIcon :size="18" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="20" /></span></div><div v-if="stage === 'open'" class="menu"><small>{{ messages.more_actions }}</small><div><AudioLinesIcon :size="16" />{{ messages.audio_generation }}</div></div></aside>
       <main class="audio-app" data-testid="audio-workspace-canvas">
         <header class="page-head"><h3><AudioLinesIcon :size="24" />{{ messages.audio_generation }}</h3><p>{{ messages.independent_speech_workspace }}</p></header>
-        <div class="catalog"><div class="catalog-head"><LibraryBigIcon :size="16" /><strong>{{ messages.model_catalog }}</strong><ChevronDownIcon :size="15" /></div><div class="suggestion"><div class="suggestion-details"><strong>{{ messages.qwen3_tts_base }}</strong><small>{{ messages.required_audio_companion_included }}</small></div><span class="suggestion-action"><span class="suggestion-download"><DownloadIcon :size="14" />{{ messages.download }}</span><span class="suggestion-use">{{ messages.use_this_model }}</span></span></div></div>
+        <div class="catalog"><div class="catalog-head"><LibraryBigIcon :size="16" /><strong>{{ messages.model_catalog }}</strong><ChevronDownIcon :size="15" /></div><div class="download-destination"><span>{{ messages.download_to }}</span><strong>{{ messages.browser_storage }}<ChevronDownIcon :size="14" /></strong></div><div class="suggestion"><div class="suggestion-details"><strong>{{ messages.qwen3_tts_base }}</strong><small>{{ messages.required_audio_companion_included }}</small></div><span class="suggestion-action"><span class="suggestion-download"><DownloadIcon :size="14" />{{ messages.download }}</span><span class="suggestion-use">{{ messages.use_this_model }}</span></span></div></div>
         <div class="manager"><FolderOpenIcon :size="16" /><strong>{{ messages.models_and_runtime }}</strong><ChevronDownIcon :size="16" /></div>
-        <div class="form-field model-field"><div class="label">{{ messages.audio_model }}</div><div class="select-field"><span class="model-choice"><span class="model-before">{{ messages.choose_an_imported_model }}</span><span class="model-after">{{ messages.qwen3_tts_base }}</span></span><ChevronDownIcon :size="16" /></div><div v-if="stage === 'text'" class="model-popup" data-testid="audio-model-options"><div class="popup-search"><SearchIcon :size="14" /><span>{{ messages.filter_models }}</span><RefreshCwIcon :size="14" /></div><div class="popup-model"><span>{{ messages.qwen3_tts_base }}</span><CheckIcon :size="15" /></div></div></div>
+        <div class="form-field model-field"><div class="label">{{ messages.audio_model }}</div><div class="select-field"><span class="model-choice"><span class="model-before">{{ messages.choose_an_imported_model }}</span><span class="model-after model-id">{{ messages.qwen3_tts_model_id }}</span></span><ChevronDownIcon :size="16" /></div><div v-if="stage === 'text'" class="model-popup" data-testid="audio-model-options"><div class="popup-search"><SearchIcon :size="14" /><span>{{ messages.filter_models }}</span><RefreshCwIcon :size="14" /></div><div class="popup-model"><span class="model-id">{{ messages.qwen3_tts_model_id }}</span><CheckIcon :size="15" /></div></div></div>
         <div class="form-field"><div class="label">{{ messages.text_to_speak }}</div><div class="textarea"><span class="text-before">{{ messages.enter_text_to_speak }}</span><span class="text-after">{{ messages.morning_light_sample }}</span></div></div>
         <div class="form-field language-field"><div class="label">{{ messages.language }}</div><div class="select-field"><span>{{ messages.language_option }}</span><ChevronDownIcon :size="16" /></div><div v-if="stage === 'text'" class="language-popup" data-testid="audio-language-options"><span>{{ messages.model_default }}</span><strong>{{ messages.language_option }}<CheckIcon :size="14" /></strong><span>{{ messages.other_language_option }}</span></div></div>
         <div class="reference"><div><MicIcon :size="16" /><strong>{{ messages.reference_voice }}</strong></div><span>{{ messages.add_audio_files }}</span></div>
         <div class="manager settings"><strong>{{ messages.generation_settings }}</strong><ChevronDownIcon :size="16" /></div>
         <div class="generation-controls"><span class="primary generate"><AudioLinesIcon :size="17" />{{ messages.generate_audio }}</span><div class="busy-actions"><span>{{ messages.get_audio_so_far }}</span><span>{{ messages.finish_generation_and_keep_audio }}</span><span>{{ messages.cancel_and_discard }}</span></div></div>
         <div class="progress"><Loader2Icon :size="16" /><strong>{{ messages.generating_audio }}</strong><div class="progress-track"><span /></div></div>
-        <section class="history" data-testid="audio-result-card"><div class="history-head"><h4>{{ messages.generated_audio }}</h4><span>{{ messages.delete_all_audio }}</span></div><div class="result-card"><div class="result-heading"><div><strong>{{ messages.qwen3_tts_base }}</strong><small>WAV · 24,000 Hz</small></div><span><Trash2Icon :size="14" />{{ messages.delete_audio }}</span></div><p>{{ messages.morning_light_sample }}</p><div class="player"><span class="play"><PlayIcon :size="16" fill="currentColor" /></span><div class="track"><span /></div><small>0:00 / 0:04</small><span class="download"><DownloadIcon :size="16" />{{ messages.save_wav }}</span></div><div class="settings-summary">{{ messages.settings_used_for_generation }}<ChevronDownIcon :size="14" /></div></div></section>
+        <section class="history" data-testid="audio-result-card"><div class="history-head"><h4>{{ messages.generated_audio }}</h4><span>{{ messages.delete_all_audio }}</span></div><div class="result-card"><div class="result-heading"><div><strong class="model-id" data-testid="audio-result-model">{{ messages.qwen3_tts_model_id }}</strong><small>WAV · 24,000 Hz</small></div><span><Trash2Icon :size="14" />{{ messages.delete_audio }}</span></div><p>{{ messages.morning_light_sample }}</p><div class="player"><span class="play"><PlayIcon :size="16" fill="currentColor" /></span><div class="track"><span /></div><small>0:00 / 0:04</small><span class="download"><DownloadIcon :size="16" />{{ messages.save_wav }}</span></div><div class="settings-summary">{{ messages.settings_used_for_generation }}<ChevronDownIcon :size="14" /></div></div></section>
       </main>
     </div>
   </div>
@@ -173,6 +173,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .catalog-head svg:last-child {
   margin-left: auto;
 }
+.download-destination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 0;
+  color: var(--m);
+  font-size: 10px;
+}
+.download-destination strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--l);
+  border-radius: 7px;
+  color: var(--t);
+  font-weight: 550;
+}
 .suggestion {
   display: flex;
   align-items: center;
@@ -242,6 +260,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .model-choice {
   display: grid;
+  min-width: 0;
+}
+.model-id {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .model-choice span {
   grid-area: 1/1;
@@ -310,9 +335,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 8px;
   padding: 10px 17px;
   border-radius: 10px;
-  background: var(--a);
-  color: var(--bg);
-  font-weight: 800;
+  border: 1px solid color-mix(in srgb,var(--a) 35%,var(--l));
+  background: color-mix(in srgb,var(--a) 6%,var(--p));
+  color: var(--t);
+  font-weight: 650;
+}
+.primary svg {
+  color: var(--a);
 }
 .generate {
   animation: generate-tap 10s linear infinite;
@@ -393,6 +422,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 10px;
 }
 .result-heading > div {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;

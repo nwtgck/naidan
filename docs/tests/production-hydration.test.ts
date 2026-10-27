@@ -2,11 +2,12 @@ import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'vite';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
 import { parseBranchingPayload } from '../islands/branching/contracts';
 import { prepareBranchingMessages, readBranchingMessages } from '../islands/branching/messages';
 import { createSiteFixture, parsePage } from './site.test-support';
+import { copyProductionOutput } from './production-output.test-support';
 
 // JSDOM does not fetch stylesheets. The Node-imported bundle gives Vite's CSS
 // preload a file:///docs/assets URL instead of the browser's /docs/assets URL.
@@ -42,10 +43,27 @@ function serveEmittedStylesheetEvents({ document, dist }: { document: Document; 
 // Import the emitted browser bundle into an actual DOM. Vue captures document
 // when its runtime module loads, so globals must exist before that import.
 describe('emitted production island', () => {
+  let built: Awaited<ReturnType<typeof createSiteFixture>> | undefined;
+
+  beforeAll(async () => {
+    built = await createSiteFixture();
+    await build({ ...docsBuildConfig({ root: built.docs }), configFile: false, logLevel: 'silent' });
+  });
+
+  afterAll(async () => {
+    await built?.[Symbol.asyncDispose]();
+  });
+
+  const builtOutput = (): string => {
+    if (!built) {
+      throw new Error('Production island build has not completed');
+    }
+    return path.join(built.docs, 'dist');
+  };
+
   it('keeps disabled static HTML when the locale payload is malformed', async () => {
-    await using fixture = await createSiteFixture();
-    await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
-    const dist = path.join(fixture.docs, 'dist');
+    await using output = await copyProductionOutput({ dist: builtOutput() });
+    const { dist } = output;
     using page = parsePage({ html: await readFile(path.join(dist, 'en/chat-branching/index.html'), 'utf8') });
     const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-branching"]')?.getAttribute('src');
     const root = page.document.querySelector<HTMLElement>('[data-docs-island="branching"]');
@@ -79,9 +97,8 @@ describe('emitted production island', () => {
   });
 
   it.each(['en', 'ja'] as const)('hydrates %s HTML with the actual generated JavaScript', async locale => {
-    await using fixture = await createSiteFixture();
-    await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
-    const dist = path.join(fixture.docs, 'dist');
+    await using output = await copyProductionOutput({ dist: builtOutput() });
+    const { dist } = output;
     using page = parsePage({ html: await readFile(path.join(dist, locale, 'chat-branching/index.html'), 'utf8') });
     const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-branching"]')?.getAttribute('src');
     const staticRoot = page.document.querySelector<HTMLElement>('[data-docs-island="branching"]');
@@ -129,7 +146,7 @@ describe('emitted production island', () => {
     expect(reply()?.textContent).toBe(messages.replies[1]);
     expect(section({ id: 'fork' }).querySelector('[data-testid="branch-reply"]')).toBeNull();
     const pathname = new URL(source, 'https://naidan.invalid').pathname;
-    // Each fixture has a unique path, so its emitted entry and chunks are fresh.
+    // Each output copy has a unique path, so its entry and every chunk are fresh.
     await import(pathToFileURL(path.join(dist, pathname.slice('/docs/'.length))).href);
     page.document.dispatchEvent(new dom.Event('DOMContentLoaded'));
     await vi.waitFor(() => {

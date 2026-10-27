@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
 import { LOCK_METADATA, SYNC_LOCK_KEY } from '@/constants';
@@ -6,8 +8,6 @@ import { promiseAllKeyed } from '@/utils/promise';
 import { StorageService } from './index';
 import { LocalStorageProvider } from './local-storage';
 
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- Storage tests do not exercise application string loading.
-vi.mock('@/strings', () => ({ ensureStrings: new Proxy({}, { get: () => async () => 'test storage error' }) }));
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Replace application notifications without replacing storage or locking.
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
 
@@ -55,7 +55,8 @@ async function saveEmptyChatGroup({ service }: { service: StorageService }): Pro
   await service.updateHierarchy({ updater: ({ current }) => ({ ...current, items: [...current.items, { type: 'chat_group', id: chatGroup.id, chat_ids: [] }] }) });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   localStorage.clear();
   lockCalls.length = 0;
   Object.defineProperty(navigator, 'locks', { configurable: true, value: serializedLocks() });

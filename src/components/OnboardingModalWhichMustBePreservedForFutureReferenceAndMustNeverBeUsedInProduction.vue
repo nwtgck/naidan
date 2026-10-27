@@ -765,7 +765,7 @@ defineExpose({
                 </div>
 
                 <TransformersJsManager v-if="isTransformersJs" @model-loaded="modelId => handleModelLoaded({ modelId })" />
-                <LlamaCppBrowserManager v-else :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ modelId: $event })" />
+                <LlamaCppBrowserManager v-else presentation="embedded" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ modelId: $event })" />
                 <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
                   <ModelSelector v-model="selectedModel" :models="sortedModels" :loading="false" @refresh="refreshLocalModels({ signal: undefined })" :placeholder="lazyStrings.OnboardingModal__select_a_model()" />

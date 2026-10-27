@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { idToRaw } from '@/01-models/ids';
 import type { LmOperationProgress } from '@/01-models/lm';
+import type { Endpoint } from '@/01-models/types';
+import { areEndpointsEqual } from '@/01-models/endpoint';
 import { computed, nextTick, onScopeDispose, ref, useId, watch } from 'vue';
 import { LanguagesIcon, XIcon, ChevronDownIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
@@ -15,10 +17,12 @@ import { imagePromptTranslationEndpointLabel, imagePromptTranslationLanguages, r
 import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 import ImageGenerationTranslationSettings from './ImageGenerationTranslationSettings.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 const props = defineProps<{ workspace: ImageGenerationWorkspaceView, text: string, field: 'prompt' | 'negativePrompt', active: boolean }>();
 const { settings } = useSettings();
 const { activeFocusArea, activeFocusAreaVersion, setActiveFocusArea } = useLayout();
 const open = ref(false), language = ref(currentLocale.value), translating = ref(false), result = ref(''), failure = ref('');
+const requestFailureEndpoint = ref<Endpoint>();
 const dialog = ref<HTMLElement>(), id = useId();
 const progress = ref<LmOperationProgress>();
 const resultComplete = ref(false);
@@ -53,6 +57,8 @@ const target = computed(() => resolveImagePromptTranslation({
   global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId, lmParameters: settings.value.lmParameters },
 }));
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: target.value.endpoint }));
+const currentTargetFailed = computed(() => failure.value !== '' && requestFailureEndpoint.value !== undefined
+  && areEndpointsEqual({ left: target.value.endpoint, right: requestFailureEndpoint.value }));
 const fieldLabel = computed(() => {
   switch (props.field) {
   case 'prompt': return lazyStrings.stableDiffusionCppBrowser__prompt();
@@ -70,6 +76,7 @@ function retire(): void {
   controller = undefined;
   translating.value = false;
   progress.value = undefined;
+  requestFailureEndpoint.value = undefined;
 }
 
 function restoreFocus(): void {
@@ -157,6 +164,7 @@ async function translate(): Promise<void> {
   result.value = '';
   resultComplete.value = false;
   failure.value = '';
+  let awaitingTranslation = true;
   try {
     const translated = await translateImagePrompt({
       prompt: sourceText,
@@ -177,6 +185,7 @@ async function translate(): Promise<void> {
       },
       fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
     });
+    awaitingTranslation = false;
     if (!disposed && open.value && token === epoch) {
       const retained = props.workspace.translationMemory.save({ key, entry: { sourceText, text: translated, createdAt: Date.now() } });
       // A cache admission limit must not discard the successful response. Keep
@@ -187,6 +196,7 @@ async function translate(): Promise<void> {
   } catch (error) {
     if (!disposed && open.value && token === epoch && !abort.signal.aborted) {
       failure.value = error instanceof Error ? error.message : String(error);
+      requestFailureEndpoint.value = awaitingTranslation ? destination.endpoint : undefined;
     }
   } finally {
     if (!disposed && token === epoch) {
@@ -229,6 +239,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <button v-else type="button" @click="cancel" data-testid="translation-cancel" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">{{ lazyStrings.SHARED__cancel() }}</button>
           </div>
           <p tw-class="text-xs break-words text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__translation_effective() }}: {{ endpointLabel }} · {{ target.modelId || '—' }}</p>
+          <CspLmEndpointHint activity-for-display-only="prompt-translation" v-if="!currentTargetFailed" :fake-lm-debug-mode-status="undefined" :endpoint="target.endpoint" operation="chat" presentation="compact" />
           <p v-if="!target.modelId?.trim()" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.imageGeneration__translation_choose_model() }}</p>
           <div v-if="result" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2" :data-testid="resultComplete ? 'translation-completed-uncached' : 'translation-partial'">
             <div tw-class="flex items-center justify-between gap-2"><h3 tw-class="text-xs font-semibold">{{ resultComplete ? lazyStrings.imageGeneration__translation_result() : lazyStrings.imageGeneration__translation_partial() }}</h3><ImageGenerationCopyButton :text="result" :label="lazyStrings.imageGeneration__translation_copy()" /></div>
@@ -241,6 +252,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <p v-if="translating" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ progressLabel }}<span v-if="progressFraction !== undefined"> · {{ progressFraction }}%</span></p>
           <p v-if="failure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ failure }}</p>
+          <CspLmEndpointHint activity-for-display-only="prompt-translation" :fake-lm-debug-mode-status="undefined" v-if="failure" :endpoint="requestFailureEndpoint" operation="chat" presentation="error" />
           <ImageSettingsSection compact :title="lazyStrings.imageGeneration__translation_session_settings()" :summary="undefined"><ImageGenerationTranslationSettings :workspace="workspace" scope="session" /></ImageSettingsSection>
         </div>
       </section>

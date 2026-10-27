@@ -6,34 +6,60 @@ import { startHomeBrandMotion } from '../client/home-brand-motion';
 import { docsHref } from '../navigation/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
-const guidePages = [
+const featurePages = [
   'endpoint-type-llama-cpp-browser',
   'image-generation',
   'audio-generation',
   'chat-branching',
   'tool-browser-shell',
+  'standalone',
+] as const;
+
+const guidePages = [
   'chat-groups',
   'tool-wikipedia',
   'pwa',
 ] as const;
 
+const featureTitles = {
+  en: [
+    'Chat with a local LLM',
+    'Create images locally',
+    'Create speech locally',
+    'Branch and edit conversations',
+    'A safe shell environment in your browser',
+    'Just open an HTML file',
+  ],
+  ja: [
+    'ローカルLLMとチャット',
+    'ローカルで画像を作る',
+    'ローカルで音声を作る',
+    '会話を自由に分岐・編集',
+    'ブラウザ内の安全なシェル環境',
+    'HTMLファイルを開くだけ',
+  ],
+} as const;
+
+const generationDescriptions = {
+  en: [
+    'Run a GGUF model in your browser. Chat without sending questions to an inference server, even offline after setup.',
+    'Run an image model in your browser. Create images without sending prompts to an inference server, even offline after setup.',
+    'Run a speech model in your browser. Create speech without sending text to an inference server, even offline after setup, and save it as a WAV.',
+  ],
+  ja: [
+    'GGUFモデルをブラウザ内で実行。質問を推論サーバーに送らず、準備後はオフラインでも会話できます。',
+    '画像モデルをブラウザ内で実行。プロンプトを推論サーバーに送らず、準備後はオフラインでも画像を作れます。',
+    '音声モデルをブラウザ内で実行。文章を推論サーバーに送らず、準備後はオフラインでも音声を作り、WAVで保存できます。',
+  ],
+} as const;
+
 const guideTitles = {
   en: [
-    'Chat with a GGUF model in your browser',
-    'Create images on your device',
-    'Make speech from text on your device',
-    'Branch and edit a conversation',
-    'Let AI work with selected files',
     'Keep chats organized by purpose',
     'Use Wikipedia to inform local AI answers',
     'Use Naidan offline as a PWA',
   ],
   ja: [
-    'GGUFモデルでチャットする',
-    '端末内で画像を作る',
-    '端末内で音声を作る',
-    '会話を分岐・編集する',
-    'AIにファイル操作を任せる',
     '用途別にチャットをまとめる',
     'Wikipediaの情報でローカルAIの回答を補う',
     'NaidanをPWAとしてオフラインで使う',
@@ -91,6 +117,16 @@ describe('Docs home brand', () => {
     const homeMenu = home.document.querySelector('[data-testid="docs-header"] [data-testid="docs-guide-menu"]');
     expect(homeMenu?.querySelector('summary')?.textContent?.trim()).toBeTruthy();
     expect(homeMenu?.nextElementSibling?.querySelector('[data-testid="docs-search-trigger"]')).not.toBeNull();
+    const features = home.document.querySelector('[data-testid="docs-hero"] [data-testid="docs-home-features"]');
+    expect(features).not.toBeNull();
+    expect(features?.closest('[aria-hidden="true"], [hidden], [data-docs-island]')).toBeNull();
+    expect(features?.getAttribute('aria-label')).toBeTruthy();
+    expect(features?.querySelector('h2')).toBeNull();
+    const featureLinks = Array.from(features?.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-home-feature-link"]') ?? []);
+    expect(featureLinks.map(link => link.getAttribute('href'))).toEqual(featurePages.map(page => docsHref({ locale, page })));
+    expect(featureLinks.map(link => link.querySelector('h3')?.textContent)).toEqual(featureTitles[locale]);
+    expect(featureLinks.slice(0, 3).map(link => link.querySelector('p')?.textContent)).toEqual(generationDescriptions[locale]);
+    expect(featureLinks.every(link => Boolean(link.querySelector('p')?.textContent?.trim()))).toBe(true);
     const guideCards = Array.from(home.document.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-home-guide-card"]'));
     expect(guideCards.map(card => card.getAttribute('href'))).toEqual(guidePages.map(page => docsHref({ locale, page })));
     expect(guideCards.map(card => card.querySelector('h3')?.textContent)).toEqual(guideTitles[locale]);

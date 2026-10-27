@@ -84,7 +84,7 @@ describe('Docs scoped motion CSS', () => {
 
   it.each([
     { file: 'components/HomeChatResponseDemo.vue', selector: `html:has(#docs-pause-motion:checked) .demo-send-stop[${scopeId}]`, property: 'visibility', value: 'hidden' },
-    { file: 'components/demos/SettingsCameraFrame.vue', selector: `html:has(#docs-pause-motion:checked) .focus-open .camera-canvas[${scopeId}]`, property: 'transform', value: undefined },
+    { file: 'components/demos/SettingsCameraFrame.vue', selector: `html:has(#docs-pause-motion:checked) .camera-canvas[${scopeId}]`, property: 'transform', value: 'translate(var(--rest-x),var(--rest-y)) scale(var(--rest-scale))' },
     { file: 'components/demos/NaidanRpcStep.vue', selector: `html:has(#docs-pause-motion:checked) .camera .canvas[${scopeId}]`, property: 'transform', value: undefined },
     { file: 'components/demos/BackupSettingsStep.vue', selector: `html:has(#docs-pause-motion:checked) .pointer[${scopeId}]`, property: 'display', value: 'none' },
     { file: 'components/demos/BackupSettingsStep.vue', selector: `html:has(#docs-light-theme:checked) .backup-viewport[${scopeId}]`, property: '--demo-warning', value: undefined },
@@ -95,8 +95,34 @@ describe('Docs scoped motion CSS', () => {
         rules.push(rule);
       });
     }
-    const target = rules.find(rule => postcss.list.comma(rule.selector).includes(selector));
-    expect(target, file).toBeDefined();
-    expect(target?.nodes.some(node => node.type === 'decl' && node.prop === property && (value === undefined || node.value === value))).toBe(true);
+    const targets = rules.filter(rule => postcss.list.comma(rule.selector).includes(selector));
+    expect(targets.length, file).toBeGreaterThan(0);
+    expect(targets.some(rule => rule.nodes.some(node => node.type === 'decl' && node.prop === property && (value === undefined || node.value === value)))).toBe(true);
+  });
+
+  it('uses complete focus poses when pausing or reducing camera motion', () => {
+    const rules: Rule[] = [];
+    for (const { compiled } of scopedStyles({ file: 'components/demos/SettingsCameraFrame.vue' })) {
+      compiled.walkRules(rule => {
+        rules.push(rule);
+      });
+    }
+    const cameraSelector = `.camera-canvas[${scopeId}]`;
+    const finalTransform = 'translate(var(--rest-x),var(--rest-y)) scale(var(--rest-scale))';
+    const pauseRules = rules.filter(rule => postcss.list.comma(rule.selector).includes(`html:has(#docs-pause-motion:checked) ${cameraSelector}`));
+    const reducedRules = rules.filter(rule => postcss.list.comma(rule.selector).includes(cameraSelector)
+      && rule.parent?.type === 'atrule' && rule.parent.name === 'media' && rule.parent.params.includes('prefers-reduced-motion'));
+    for (const cameraRules of [pauseRules, reducedRules]) {
+      expect(cameraRules.some(rule => rule.nodes.some(node => node.type === 'decl' && node.prop === 'animation' && node.value === 'none' && node.important))).toBe(true);
+      expect(cameraRules.some(rule => rule.nodes.some(node => node.type === 'decl' && node.prop === 'transform' && node.value === finalTransform))).toBe(true);
+    }
+    const defaults = rules.filter(rule => postcss.list.comma(rule.selector).includes(`.settings-camera[${scopeId}]`));
+    const openPoses = rules.filter(rule => postcss.list.comma(rule.selector).includes(`.focus-open[${scopeId}]`));
+    expect(openPoses.some(rule => rule.parent?.type === 'root')).toBe(true);
+    expect(openPoses.some(rule => rule.parent?.type === 'atrule' && rule.parent.name === 'media' && rule.parent.params.includes('max-width'))).toBe(true);
+    for (const poseRules of [defaults, ...openPoses.map(rule => [rule])]) {
+      const variables = poseRules.flatMap(rule => rule.nodes.flatMap(node => node.type === 'decl' && node.value.trim() !== '' ? [node.prop] : []));
+      expect(variables).toEqual(expect.arrayContaining(['--rest-x', '--rest-y', '--rest-scale']));
+    }
   });
 });

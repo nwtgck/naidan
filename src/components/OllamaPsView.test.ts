@@ -10,6 +10,13 @@ vi.mock('@/composables/useToast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({
+  default: {
+    props: ['target', 'presentation', 'activityForDisplayOnly'],
+    template: '<div v-if="target" data-testid="csp-hint" :data-presentation="presentation" :data-activity="activityForDisplayOnly" :data-endpoint="target.endpoint" :data-api-path="target.apiPath" />',
+  },
+}));
+
 const runningModel: OllamaRunningModel = {
   name: 'qwen3:8b',
   model: 'qwen3:8b',
@@ -62,6 +69,7 @@ describe('OllamaPsView', () => {
     });
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider,
         endpointUrl: 'http://localhost:11434',
       },
@@ -89,7 +97,7 @@ describe('OllamaPsView', () => {
 
   it('keeps the settings presentation to one disclosure with the same lazy requests and refresh', async () => {
     const listRunningModels = vi.fn().mockResolvedValue([runningModel]);
-    const wrapper = mount(OllamaPsView, { props: { provider: createProvider({ listRunningModels, unloadModel: vi.fn() }), endpointUrl: 'http://localhost:11434', presentation: 'settings' } });
+    const wrapper = mount(OllamaPsView, { props: { fakeLmDebugModeStatus: undefined, provider: createProvider({ listRunningModels, unloadModel: vi.fn() }), endpointUrl: 'http://localhost:11434', presentation: 'settings' } });
     using _cleanupResource = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -114,6 +122,7 @@ describe('OllamaPsView', () => {
     const listRunningModels = vi.fn();
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider: createProvider({ listRunningModels, unloadModel: vi.fn() }),
         endpointUrl: undefined,
       },
@@ -125,9 +134,120 @@ describe('OllamaPsView', () => {
     expect(listRunningModels).not.toHaveBeenCalled();
   });
 
+  it('keeps a failed list request tied to its original endpoint while preserving retry', async () => {
+    const pending = Promise.withResolvers<readonly OllamaRunningModel[]>();
+    const listRunningModels = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue([]);
+    const wrapper = mount(OllamaPsView, { props: { fakeLmDebugModeStatus: undefined, provider: createProvider({ listRunningModels, unloadModel: vi.fn() }), endpointUrl: 'https://old.example' } });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="ollama-ps-toggle"]').trigger('click');
+    await wrapper.setProps({ endpointUrl: 'https://edited.example' });
+    pending.reject(new TypeError('Network request failed'));
+    await flushPromises();
+    const hint = wrapper.get('[data-testid="csp-hint"][data-presentation="error"]');
+    expect(hint.attributes('data-endpoint')).toBe('https://old.example');
+    expect(hint.attributes('data-api-path')).toBe('/api/ps');
+    expect(hint.attributes('data-activity')).toBe('running-models');
+    expect(wrapper.get('[data-testid="ollama-ps-retry"]').element).toHaveProperty('disabled', false);
+    await wrapper.get('[data-testid="ollama-ps-retry"]').trigger('click');
+    await flushPromises();
+    expect(listRunningModels).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="ollama-ps-empty"]').exists()).toBe(true);
+  });
+
+  it('does not describe fake LM responses as external requests', async () => {
+    const listRunningModels = vi.fn().mockResolvedValue([runningModel]);
+    const wrapper = mount(OllamaPsView, { props: { provider: createProvider({ listRunningModels, unloadModel: vi.fn() }), endpointUrl: 'https://fake-lm.invalid', fakeLmDebugModeStatus: 'enabled' } });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="ollama-ps-toggle"]').trigger('click');
+    await flushPromises();
+    expect(listRunningModels).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-testid="csp-hint"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="ollama-model-0-unload"]').element).toHaveProperty('disabled', false);
+  });
+
+  it('shares one unload hint before any unload and removes it when no model can be unloaded', async () => {
+    const secondModel = { ...runningModel, name: 'second:latest', model: 'second:latest', digest: 'second-model' };
+    const listRunningModels = vi.fn().mockResolvedValue([runningModel, secondModel]);
+    const unloadModel = vi.fn().mockRejectedValue(new TypeError('Unload request failed'));
+    const wrapper = mount(OllamaPsView, { props: { fakeLmDebugModeStatus: undefined, provider: createProvider({ listRunningModels, unloadModel }), endpointUrl: 'https://ollama.example' } });
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const compactSelector = '[data-testid="csp-hint"][data-presentation="compact"][data-api-path="/api/generate"]';
+    expect(wrapper.find(compactSelector).exists()).toBe(false);
+    expect(listRunningModels).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="ollama-ps-toggle"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll(compactSelector)).toHaveLength(1);
+    expect(wrapper.get(compactSelector).attributes('data-endpoint')).toBe('https://ollama.example');
+    expect(wrapper.get(compactSelector).attributes('data-activity')).toBe('unload-model');
+    expect(wrapper.get('[data-testid="ollama-model-list"]').element.contains(wrapper.get(compactSelector).element)).toBe(false);
+    expect(wrapper.get('[data-testid="ollama-model-0-unload"]').element).toHaveProperty('disabled', false);
+    expect(wrapper.get('[data-testid="ollama-model-1-unload"]').element).toHaveProperty('disabled', false);
+    expect(unloadModel).not.toHaveBeenCalled();
+    expect(listRunningModels).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="ollama-model-0-unload"]').trigger('click');
+    await flushPromises();
+    expect(unloadModel).toHaveBeenCalledExactlyOnceWith({ model: runningModel.model, signal: expect.any(AbortSignal) });
+    expect(wrapper.find('[data-testid="csp-hint"][data-presentation="error"][data-api-path="/api/generate"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="ollama-model-0-unload"]').element).toHaveProperty('disabled', false);
+    listRunningModels.mockResolvedValueOnce([]);
+    await wrapper.get('[data-testid="ollama-ps-refresh"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find(compactSelector).exists()).toBe(false);
+    expect(wrapper.find('[data-testid="ollama-ps-empty"]').exists()).toBe(true);
+    expect(listRunningModels).toHaveBeenCalledTimes(2);
+    void cleanup;
+  });
+
+  it.each(['/api/generate', '/api/ps'] as const)('describes the actual failed unload stage at %s without preventing retry', async apiPath => {
+    vi.useFakeTimers();
+    const listRunningModels = vi.fn().mockResolvedValue([runningModel]);
+    const unloadModel = vi.fn().mockResolvedValue(undefined);
+    switch (apiPath) {
+    case '/api/generate': unloadModel.mockRejectedValueOnce(new TypeError('Request failed'));
+      break;
+    case '/api/ps': listRunningModels.mockResolvedValueOnce([runningModel]).mockRejectedValueOnce(new TypeError('Confirmation failed'));
+      break;
+    default: {
+      const exhaustive: never = apiPath;
+      throw new Error(exhaustive);
+    }
+    }
+    const wrapper = mount(OllamaPsView, { props: { fakeLmDebugModeStatus: undefined, provider: createProvider({ listRunningModels, unloadModel }), endpointUrl: 'https://ollama.example' } });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="ollama-ps-toggle"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="ollama-model-0-unload"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(100);
+    await flushPromises();
+    const hint = wrapper.get('[data-testid="csp-hint"][data-presentation="error"]');
+    expect(hint.attributes('data-endpoint')).toBe('https://ollama.example');
+    expect(hint.attributes('data-api-path')).toBe(apiPath);
+    expect(hint.attributes('data-activity')).toBe('unload-model');
+    expect(unloadModel).toHaveBeenCalledExactlyOnceWith({ model: runningModel.model, signal: expect.any(AbortSignal) });
+    expect(listRunningModels).toHaveBeenCalledTimes(apiPath === '/api/ps' ? 2 : 1);
+    expect(wrapper.get('[data-testid="ollama-model-0-unload"]').element).toHaveProperty('disabled', false);
+  });
+
   it('animates model details and exposes accessible expanded state', async () => {
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider: createProvider({
           listRunningModels: vi.fn().mockResolvedValue([runningModel]),
           unloadModel: vi.fn(),
@@ -160,6 +280,7 @@ describe('OllamaPsView', () => {
     const unloadModel = vi.fn().mockResolvedValue(undefined);
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider: createProvider({ listRunningModels, unloadModel }),
         endpointUrl: 'http://localhost:11434',
       },
@@ -189,6 +310,7 @@ describe('OllamaPsView', () => {
     const listRunningModels = vi.fn().mockResolvedValue([runningModel]);
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider: createProvider({
           listRunningModels,
           unloadModel: vi.fn().mockResolvedValue(undefined),
@@ -224,6 +346,7 @@ describe('OllamaPsView', () => {
       }));
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider: createProvider({
           listRunningModels,
           unloadModel: vi.fn().mockResolvedValue(undefined),
@@ -267,6 +390,7 @@ describe('OllamaPsView', () => {
     };
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider: createProvider({
           listRunningModels: vi.fn().mockResolvedValue([emptyDetailsModel]),
           unloadModel: vi.fn(),
@@ -288,6 +412,7 @@ describe('OllamaPsView', () => {
     });
     const wrapper = mount(OllamaPsView, {
       props: {
+        fakeLmDebugModeStatus: undefined,
         provider: firstProvider,
         endpointUrl: 'http://localhost:11434',
       },

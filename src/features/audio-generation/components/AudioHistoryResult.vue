@@ -4,6 +4,7 @@ import { DownloadIcon, ChevronDownIcon, Trash2Icon, CopyIcon, CheckIcon } from '
 import { currentLocale, lazyStrings } from '@/strings';
 import { audioLanguageOptions } from '@/features/audio-generation/languages';
 import type { AudioHistoryEntry } from '@/features/audio-generation/composables/useAudioHistory';
+import ResourceLoadCspHint from '@/components/ResourceLoadCspHint.vue';
 
 const props = defineProps<{ entry: AudioHistoryEntry }>();
 const emit = defineEmits<{ remove: [id: number] }>();
@@ -88,6 +89,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <audio ref="player" :src="entry.url" controls preload="metadata" :aria-label="lazyStrings.audioGeneration__generated_audio()" data-testid="audio-player" tw-class="min-w-0 w-0 flex-1" />
       <a :href="entry.url" :download="`naidan-audio-${entry.id}.wav`" :aria-label="lazyStrings.audioGeneration__save_wav()" :title="lazyStrings.audioGeneration__save_wav()" data-testid="audio-download" tw-class="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:border-gray-700/70 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/50 dark:hover:bg-blue-500/10"><DownloadIcon tw-class="h-4 w-4" /><span tw-class="sr-only sm:not-sr-only">{{ lazyStrings.audioGeneration__save_wav() }}</span></a>
     </div>
+    <ResourceLoadCspHint :resources="[{ element: player, url: entry.url, destination: 'media' }]" />
     <p v-if="entry.result.finishReason === 'preview'" role="status" data-testid="audio-preview-result" tw-class="text-sm text-blue-600 dark:text-blue-400">{{ lazyStrings.audioGeneration__preview_result() }}</p>
     <p v-else-if="entry.result.finishReason === 'user-stop'" role="status" data-testid="audio-finished-early" tw-class="text-sm text-gray-600 dark:text-gray-400">{{ lazyStrings.audioGeneration__finished_early() }}</p>
     <p v-else-if="entry.result.finishReason !== 'stop'" role="status" data-testid="audio-truncated" tw-class="text-sm text-amber-700 dark:text-amber-400">{{ lazyStrings.audioGeneration__limit_reached() }}</p>

@@ -1,0 +1,1 @@
+export const OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites = (): string => "Auf den folgenden Naidan-Websites lassen sich Modelle direkt in der App herunterladen und ausführen.";

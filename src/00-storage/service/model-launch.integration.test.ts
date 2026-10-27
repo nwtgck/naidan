@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { StorageService } from './index';
 import { LocalStorageProvider } from './local-storage';
 import type { ModelLaunchChatRequest } from './model-launch';
@@ -6,8 +8,6 @@ import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { LOCK_METADATA, SYNC_LOCK_KEY, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- Storage tests do not exercise application string loading.
-vi.mock('@/strings', () => ({ ensureStrings: new Proxy({}, { get: () => async () => 'test storage error' }) }));
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Replace application notifications only; storage and lock implementations are real.
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
 
@@ -55,7 +55,8 @@ function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   localStorage.clear();
   lockCalls.length = 0;
   Object.defineProperty(navigator, 'locks', { configurable: true, value: simulatedWebLocks() });

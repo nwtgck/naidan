@@ -8,6 +8,8 @@ import {
 import { idToRaw, toPrivacyFetchRequestId } from '@/01-models/ids';
 import type { PrivacyFetchRequestId } from '@/01-models/ids';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
+import { developmentMetaCspSyncMessageSchema } from './development-meta-csp-protocol';
+import { createBrokerDevelopmentMetaCspNotForSecurity } from './broker-development-meta-csp';
 import { validatePrivacyFetchUrl } from './validate-url';
 import type {
   PrivacyFetchCancelMessage,
@@ -17,6 +19,7 @@ import type {
 } from './types';
 
 const activeRequests = new Map<PrivacyFetchRequestId, AbortController>();
+const developmentMetaCsp = createBrokerDevelopmentMetaCspNotForSecurity({ documentObject: document });
 
 function postMessageToParent({
   message,
@@ -169,8 +172,21 @@ async function handleRequestMessage({
   }
 }
 
-window.addEventListener('message', (event) => {
+const handleMessage: NonNullable<Window['onmessage']> = (event) => {
   if (event.source !== window.parent) {
+    return;
+  }
+
+  const parsedDevelopmentMetaCsp = developmentMetaCspSyncMessageSchema.safeParse(event.data);
+  if (parsedDevelopmentMetaCsp.success) {
+    // Deliberately synchronous: the next Window message may start a buffered
+    // or streaming fetch. Its existing lifecycle never waits for our ACK.
+    const message = developmentMetaCsp.applySnapshot({ message: parsedDevelopmentMetaCsp.data });
+    try {
+      postMessageToParent({ message, transfer: [] });
+    } catch {
+      // Development confirmation failure must not disturb normal requests.
+    }
     return;
   }
 
@@ -195,11 +211,14 @@ window.addEventListener('message', (event) => {
       message: parsedCancel.data,
     });
   }
-});
+};
+
+window.addEventListener('message', handleMessage);
 
 sendReadyMessage();
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  handleMessage,
 };

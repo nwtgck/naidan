@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DeveloperTab from './DeveloperTab.vue';
+import ActionButton from './ActionButton.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSampleChat } from '@/composables/useSampleChat';
@@ -87,16 +88,18 @@ describe('DeveloperTab', () => {
     expect(createLongSampleChat).toHaveBeenCalled();
   });
 
-  it('uses compact spacing for developer action buttons', () => {
+  it('uses shared native buttons for developer actions and reserves danger for deletion', () => {
     const wrapper = mountDeveloperTab();
-    const sampleButton = wrapper.find('[data-testid="setting-create-sample-button"]');
-    const pwaButton = wrapper.find('[data-testid="toggle-pwa-update-button"]');
-    const resetButton = wrapper.find('[data-testid="setting-reset-data-button"]');
+    const buttons = wrapper.findAllComponents(ActionButton);
+    const sampleButton = buttons.find(button => button.attributes('data-testid') === 'setting-create-sample-button');
+    const pwaButton = buttons.find(button => button.attributes('data-testid') === 'toggle-pwa-update-button');
+    const resetButton = buttons.find(button => button.attributes('data-testid') === 'setting-reset-data-button');
 
-    expect(sampleButton.classes()).toEqual(expect.arrayContaining(['gap-2', 'px-4', 'py-3', 'rounded-xl']));
-    expect(pwaButton.classes()).toEqual(expect.arrayContaining(['px-4', 'py-3', 'rounded-xl']));
-    expect(pwaButton.find('[class~="p-1.5"]').exists()).toBe(true);
-    expect(resetButton.classes()).toEqual(expect.arrayContaining(['px-4', 'py-3', 'rounded-xl']));
+    expect(sampleButton?.props('appearance')).toBe('primary');
+    expect(pwaButton?.props('appearance')).toBe('primary');
+    expect(resetButton?.props('appearance')).toBe('danger-filled');
+    expect(sampleButton?.attributes('type')).toBe('button');
+    expect(resetButton?.attributes('disabled')).toBeDefined();
   });
 
   it('toggles PWA update simulation when the button is clicked', async () => {
@@ -106,16 +109,18 @@ describe('DeveloperTab', () => {
     await button.trigger('click');
 
     expect(status.value).toBe('ready');
+    expect(button.attributes('aria-pressed')).toBe('true');
     await button.trigger('click');
     expect(status.value).toBe('idle');
+    expect(button.attributes('aria-pressed')).toBe('false');
   });
 
-  it('applies active styles when an update is ready', () => {
+  it('exposes the pressed state when an update is ready', () => {
     setUpdateState({ next: { kind: 'ready', handler: async () => {} } });
     const wrapper = mountDeveloperTab();
 
     const button = wrapper.find('[data-testid="toggle-pwa-update-button"]');
-    expect(button.classes()).toContain('bg-emerald-50/30');
+    expect(button.attributes('aria-pressed')).toBe('true');
     expect(wrapper.find('.animate-spin-slow').exists()).toBe(true);
   });
 

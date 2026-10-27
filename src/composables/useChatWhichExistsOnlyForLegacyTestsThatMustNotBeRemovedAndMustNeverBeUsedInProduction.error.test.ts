@@ -11,6 +11,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 // Mock dependencies
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

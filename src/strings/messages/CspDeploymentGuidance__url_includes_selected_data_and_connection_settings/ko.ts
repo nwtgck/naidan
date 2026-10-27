@@ -1,0 +1,1 @@
+export const CspDeploymentGuidance__url_includes_selected_data_and_connection_settings = (): string => "The created URL includes the selected data and connection settings, which may include API keys. Choose what to exclude before creating it.";

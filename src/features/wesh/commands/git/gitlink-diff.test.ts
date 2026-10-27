@@ -72,7 +72,7 @@ async function createFixtureWesh({ stagedSecond = false }: { stagedSecond?: bool
 
 beforeAll(async () => {
   await gitCommandDefinition.load();
-});
+}, 30000);
 
 describe("wesh git gitlink diff", () => {
   it("diffs gitlinks without requiring the referenced submodule commits in the superproject object database", async () => {

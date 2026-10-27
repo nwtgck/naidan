@@ -10,7 +10,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import type { Chat } from '@/01-models/types';
 
-vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn().mockResolvedValue(null), getBinaryObject: vi.fn().mockResolvedValue(null), subscribeToChanges: vi.fn().mockReturnValue(() => {}) } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { subscribeLocalModelPromotions: vi.fn(() => () => {}), getFile: vi.fn().mockResolvedValue(null), getBinaryObject: vi.fn().mockResolvedValue(null), subscribeToChanges: vi.fn().mockReturnValue(() => {}) } }));
 
 function assistant({ parts, interruption }: { parts: AssistantMessageNode['parts'], interruption: AssistantMessageNode['interruption'] }): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts, interruption, createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
@@ -25,6 +25,7 @@ describe('message parts UI boundaries', () => {
     const message = assistant({ parts: [], interruption: undefined });
     const wrapper = mount(MessageItem, {
       props: {
+        endpoint: undefined,
         chatId: toChatId({ raw: 'c' }),
         message,
         mode: 'tool_calls',
@@ -44,7 +45,7 @@ describe('message parts UI boundaries', () => {
 
   it('renders a recorded Japanese error unchanged under an English UI', () => {
     const message = assistant({ parts: [], interruption: { type: 'error', message: '通信に失敗しました。' } });
-    const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, chatId: toChatId({ raw: 'c' }), message } });
     expect(wrapper.find('[data-testid="error-message"]').text()).toContain('通信に失敗しました。');
     expect(message.parts).toEqual([]);
     wrapper.unmount();
@@ -52,7 +53,7 @@ describe('message parts UI boundaries', () => {
 
   it('a cancelled native partial is displayed without a running border or a fabricated tag', () => {
     const message = assistant({ parts: [{ type: 'reasoning', text: '  途中の理由', completeness: 'partial' }], interruption: { type: 'cancelled' } });
-    const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message, mode: 'thinking' } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, chatId: toChatId({ raw: 'c' }), message, mode: 'thinking' } });
     expect(wrapper.findComponent(MessageThinking).exists()).toBe(true);
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(false);
     expect(message.parts[0]).toEqual({ type: 'reasoning', text: '  途中の理由', completeness: 'partial' });
@@ -95,7 +96,7 @@ wrapper.unmount();
   it('edit emits the complete raw body with whitespace instead of its rendered projection', async () => {
     const raw = '<think>Reason</think> Body \n';
     const message = assistant({ parts: [{ type: 'text', text: raw, completeness: 'complete' }], interruption: undefined });
-    const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, chatId: toChatId({ raw: 'c' }), message } });
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="edit-textarea"]');
     expect(textarea.element.value).toBe(raw);

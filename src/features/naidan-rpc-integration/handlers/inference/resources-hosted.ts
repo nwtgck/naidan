@@ -160,10 +160,14 @@ export function createReadOnlyResources({ directories }: { directories(): readon
       }
       }
       const result: PeerImageCatalogItem[] = [];
-      for (const candidate of (await inventory({ signal })).candidates) {
-        if (candidate.issue || candidate.files.length === 0) {
-          continue;
-        }
+      const candidates = (await inventory({ signal })).candidates.filter(candidate => !candidate.issue && candidate.files.length
+        && (candidate.roles.length || candidate.classes.includes('lora')));
+      if (candidates.length > 256) {
+        throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
+      }
+      const ranks = new Map([...candidates].sort((a, b) => a.candidateKey.localeCompare(b.candidateKey)).map((candidate, rank) => [candidate.candidateKey, rank]));
+      const groups = new Map([...new Set(candidates.map(candidate => candidate.repositoryKey))].map((key, group) => [key, group]));
+      for (const candidate of candidates) {
         const roles = candidate.classes.includes('lora') ? ['lora' as const] : candidate.roles;
         if (!roles.length) {
           continue;
@@ -172,10 +176,14 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         // A split diffusion file is not a ready-to-generate model bundle. Do
         // not infer missing encoders/VAE or use the owner's saved editor preset.
         const selection = candidate.roles.includes('model') && !candidate.classes.includes('lora') ? { primary: { slot: 'model' as const, file }, components: [], loras: [] } : undefined;
-        result.push(imageCatalogItemSchema.parse({ label: candidate.primaryRelativePath, file, roles, selection, facts: { family: candidate.family, classes: candidate.classes } }));
-        if (result.length > 256) {
-          throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
-        }
+        result.push(imageCatalogItemSchema.parse({
+          label: candidate.primaryRelativePath,
+          file,
+          roles,
+          selection,
+          facts: { family: candidate.family, classes: candidate.classes, variant: candidate.variant, evidence: candidate.evidence.slice(0, 8).map(value => value.slice(0, 256)) },
+          selectionHints: { version: 1, repositoryGroup: groups.get(candidate.repositoryKey)!, totalBytes: candidate.size, tieBreakRank: ranks.get(candidate.candidateKey)! },
+        }));
       }
       signal.throwIfAborted();
       return result;

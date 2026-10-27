@@ -336,13 +336,15 @@ export function createBoundaryStringsPlugin(): Plugin[] {
     addWatchFile: (filePath: string) => void;
     boundary: BoundaryStringBoundaryDefinition;
   }): void {
-    addWatchFile(boundary.moduleId);
     const mode = requirePluginMode();
     switch (mode) {
     case 'serve':
+      // The owner already imports its versioned registration. Watching it from
+      // the virtual module adds a reverse graph edge and a false HMR cycle.
       addWatchFile(requireServeCoordinator().revisionFilePath);
       break;
     case 'build':
+      addWatchFile(boundary.moduleId);
       break;
     default: {
       const _exhaustive: never = mode;

@@ -7,6 +7,13 @@ import { describePeerMethods } from '@/features/naidan-rpc-integration/contract'
 import type { PeerProvidedMethods } from '@/features/naidan-rpc-integration/contract';
 import RpcPeerProvision from './RpcPeerProvision.vue';
 
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({
+  default: {
+    props: ['target', 'presentation'],
+    template: '<div v-if="target" data-testid="csp-hint" :data-presentation="presentation" :data-relay="target.url" />',
+  },
+}));
+
 const wrappers: ReturnType<typeof mount>[] = [];
 
 beforeEach(async () => {
@@ -86,9 +93,12 @@ it('keeps checking and failed queries distinct from no provision and allows retr
   expect(wrapper.find('[data-testid="rpc-peer-chat"]').exists()).toBe(false);
   expect(wrapper.text()).not.toContain('Sensitive native failure');
   expect(wrapper.get('[data-testid="rpc-peer-provision-status"]').text()).toContain('Could not');
+  expect(wrapper.get('[data-testid="csp-hint"]').attributes('data-relay')).toBe('https://piping.example');
+  expect(wrapper.get('[data-testid="rpc-peer-provision-refresh"]').element).toHaveProperty('disabled', false);
   await wrapper.get('[data-testid="rpc-peer-provision-refresh"]').trigger('click');
   await flushPromises();
   expect(wrapper.get('[data-testid="rpc-peer-images"]').text()).toBe('Not provided');
+  expect(wrapper.find('[data-testid="csp-hint"]').exists()).toBe(false);
 });
 
 it('aborts a superseded query and ignores a late response for a different peer', async () => {

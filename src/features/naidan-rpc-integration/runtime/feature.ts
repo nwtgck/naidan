@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import { createRpcStopControl } from './stop-control';
 import type { RpcStopStatus } from './stop-control';
 import type { Settings } from '@/01-models/types';
+import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 import type { NaidanPeerManager } from './manager';
 import { scheduleIdleTask } from '@/utils/idle-task';
 import type { ScheduledIdleTask } from '@/utils/idle-task';
@@ -168,6 +169,15 @@ export function requestRpcStop(): void {
 export function subscribeRpcState({ listener }: { listener(): void }): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** Passive display lookup only: never create, enable or query a peer manager. */
+export function readLoadedRpcRelayForDisplayOnly({ registrationId }: { registrationId: NaidanRpcRegistrationId | undefined }): Promise<string | undefined> | undefined {
+  const existing = loaded;
+  if (registrationId === undefined || existing === undefined) {
+    return undefined;
+  }
+  return existing.then(manager => manager.list().find(view => view.registration.id === registrationId)?.registration.transport.serverUrl).catch(() => undefined);
 }
 
 export function notifyRpcState(): void {

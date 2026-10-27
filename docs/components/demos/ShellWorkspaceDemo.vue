@@ -185,11 +185,11 @@ defineExpose({
 .shell-user p,.shell-response p {
   margin: 9px 0 0;
   font: inherit;
-  color: #e5e7eb;
+  color: var(--text);
 }
 .shell-assistant {
-  border-top: 1px solid #1f293780;
-  background: #1f293733;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb,var(--surface-2) 35%,var(--bg));
   padding-bottom: 16px;
 }
 .message-heading {
@@ -201,12 +201,12 @@ defineExpose({
 .message-heading b {
   min-width: 0;
   font-size: 10px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 .shell-user .message-heading b {
   text-transform: uppercase;
   letter-spacing: .1em;
-  color: #e5e7eb;
+  color: var(--text);
 }
 .message-avatar {
   display: flex;
@@ -216,12 +216,12 @@ defineExpose({
   width: 26px;
   height: 26px;
   border-radius: 9px;
-  border: 1px solid #374151;
-  background: #1f2937;
-  color: #6b7280;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--subtle);
 }
 .assistant-avatar {
-  color: #60a5fa;
+  color: var(--blue);
 }
 .shell-stage-grid,.stage-layer {
   display: grid;
@@ -285,16 +285,16 @@ defineExpose({
   margin-bottom: 10px;
 }
 .tool-draft {
-  border: 1px solid #1e40af4d;
+  border: 1px solid color-mix(in srgb,var(--blue) 30%,var(--line));
   border-radius: 12px;
-  background: #1f29374d;
+  background: color-mix(in srgb,var(--surface-2) 70%,var(--bg));
 }
 .draft-heading {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 .draft-heading div {
   flex: 1;
@@ -305,14 +305,14 @@ defineExpose({
   font-size: 10px;
 }
 .draft-heading strong {
-  color: #e5e7eb;
+  color: var(--text);
   font-weight: 600;
 }
 .draft-heading span {
   font-size: 9px;
 }
 .draft-spinner {
-  color: #60a5fa;
+  color: var(--blue);
   animation: shell-spin 1.5s linear infinite;
 }
 .draft-details {
@@ -331,10 +331,10 @@ defineExpose({
   gap: 8px;
   max-width: 100%;
   padding: 4px 9px;
-  border: 1px solid #1e40af99;
+  border: 1px solid color-mix(in srgb,var(--blue) 50%,var(--line));
   border-radius: 8px;
-  background: #1e3a8a4d;
-  color: #93c5fd;
+  background: color-mix(in srgb,var(--blue) 12%,var(--surface));
+  color: var(--blue);
   font-size: 10px;
   font-weight: 700;
 }
@@ -346,13 +346,13 @@ defineExpose({
   flex-shrink: 0;
 }
 .initial-summary .process-toggle {
-  border-color: #374151;
-  background: #1f2937;
-  color: #6b7280;
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  color: var(--subtle);
 }
 .sequence-action {
   flex-shrink: 0;
-  border-left: 1px solid #93c5fd26;
+  border-left: 1px solid color-mix(in srgb,var(--blue) 15%,transparent);
   padding-left: 7px;
   text-transform: uppercase;
   font-size: 8px;
@@ -364,16 +364,16 @@ defineExpose({
 .tool-group {
   margin-top: 9px;
   padding: 10px;
-  border: 1px solid #1e40af4d;
+  border: 1px solid color-mix(in srgb,var(--blue) 30%,var(--line));
   border-radius: 16px;
-  background: linear-gradient(135deg,#17255433,#082f4933);
+  background: linear-gradient(135deg,color-mix(in srgb,var(--blue) 5%,var(--surface)),color-mix(in srgb,var(--blue) 8%,var(--surface)));
 }
 .tool-group-heading {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  color: #60a5fa;
+  color: var(--blue);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .025em;
@@ -390,9 +390,9 @@ defineExpose({
   gap: 9px;
   padding: 6px 10px;
   margin-bottom: 6px;
-  border: 1px solid #3741514d;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  color: #9ca3af;
+  color: var(--muted);
   font-size: 10px;
 }
 .history-call strong {
@@ -407,16 +407,16 @@ defineExpose({
 }
 .tool-call {
   min-width: 0;
-  border: 1px solid #3741514d;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #1f29374d;
+  background: color-mix(in srgb,var(--surface-2) 70%,var(--bg));
 }
 .tool-heading {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 .tool-heading > svg {
   margin-left: auto;
@@ -427,7 +427,7 @@ defineExpose({
   flex-shrink: 0;
   border-radius: 7px;
   padding: 4px;
-  background: #37415180;
+  background: var(--surface-3);
 }
 .tool-status-icon svg {
   grid-area: 1/1;
@@ -443,7 +443,7 @@ defineExpose({
 }
 .tool-name span {
   font-size: 9px;
-  color: #60a5fab3;
+  color: var(--blue);
 }
 .tool-executing {
   opacity: 0;
@@ -454,14 +454,14 @@ defineExpose({
   animation: shell-result var(--shell-cycle) linear var(--step-delay) infinite both;
 }
 .tool-status-icon .tool-executing {
-  color: #60a5fa;
+  color: var(--blue);
 }
 .tool-details {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border-top: 1px solid #3741514d;
+  border-top: 1px solid var(--line);
 }
 .command-block {
   position: relative;
@@ -480,10 +480,10 @@ defineExpose({
   overflow-wrap: anywhere;
   overflow-x: auto;
   text-align: left;
-  color: #d1d5db;
+  color: var(--text);
 }
 .shell-command {
-  background: #0003;
+  background: color-mix(in srgb,var(--text) 5%,var(--bg));
 }
 .shell-command code {
   font: inherit;
@@ -491,13 +491,13 @@ defineExpose({
   overflow-wrap: inherit;
 }
 .command-prompt {
-  color: #60a5fa80;
+  color: color-mix(in srgb,var(--blue) 70%,transparent);
 }
 .wrap-icon {
   position: absolute;
   top: 5px;
   right: 5px;
-  color: #60a5fab3;
+  color: var(--blue);
   opacity: 0;
 }
 .output-stack {
@@ -529,7 +529,7 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #9ca3af;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
@@ -541,8 +541,8 @@ defineExpose({
   position: absolute;
   top: 16px;
   left: clamp(80px,40%,190px);
-  color: #e5e7eb;
-  fill: #111827;
+  color: var(--text);
+  fill: var(--bg);
   pointer-events: none;
   animation: shell-pointer var(--shell-cycle) ease-in-out infinite both;
 }
@@ -553,7 +553,7 @@ defineExpose({
   margin: 8px 0 0;
   padding-left: 21px;
   font: inherit;
-  color: #e5e7eb;
+  color: var(--text);
 }
 .shell-response li {
   color: inherit;

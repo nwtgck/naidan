@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
+import { developmentMetaCspResultMessageSchema, developmentMetaCspSyncMessageSchema } from './development-meta-csp-protocol';
 
 const privacyFetchHeaderEntrySchema = z.tuple([z.string(), z.string()]);
 
@@ -100,11 +101,13 @@ export const privacyFetchErrorMessageSchema = z.object({
 }).strict();
 
 const privacyFetchParentToBrokerMessageSchema = z.union([
+  developmentMetaCspSyncMessageSchema,
   privacyFetchRequestMessageSchema,
   privacyFetchCancelMessageSchema,
 ]);
 
 export const privacyFetchBrokerToParentMessageSchema = z.union([
+  developmentMetaCspResultMessageSchema,
   privacyFetchReadyMessageSchema,
   privacyFetchResponseMessageSchema,
   privacyFetchRejectedMessageSchema,

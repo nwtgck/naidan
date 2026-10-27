@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { loadModelDiscoveryPanel, useAppEntry } from '@/composables/useAppEntry';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
+import ImportExportModalHost from '@/features/import-export/components/ImportExportModalHost.vue';
+import DevelopmentMetaCspRecovery from '@/components/csp/DevelopmentMetaCspRecovery.vue';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useLayout } from '@/composables/useLayout';
 import { useSettings } from '@/composables/useSettings';
@@ -195,7 +197,7 @@ defineExpose({
       :is-open="true"
       :navigation="appEntry.settingsOverlay.value === undefined ? 'route' : 'local'"
       :requested-tab="appEntry.settingsOverlay.value?.tab"
-      :suspended="llamaPerformanceVisible"
+      :suspended="llamaPerformanceVisible || modelSupportInvestigationModelId !== undefined"
       :performance-loading="llamaPerformanceLoading"
       :performance-error="llamaPerformanceLoadError"
       @open-llama-cpp-performance="openLlamaCppPerformance({ defaultModel: $event })"
@@ -238,6 +240,8 @@ defineExpose({
   <RecentChatsModal v-if="isRecentOpen" />
   <PWAManager v-if="PWAManager && pwaActivation === 'active'" />
   <FileExplorerModal v-if="isFileExplorerOpen" />
+  <ImportExportModalHost />
+  <DevelopmentMetaCspRecovery />
 
   <PrintView v-if="activePrintMode !== undefined">
     <ChatPrintContent v-if="activePrintMode === 'chat'" />

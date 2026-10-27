@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readAppSource } from './app-source';
+import { createAppSourceGitEnvironment } from './app-source-environment';
+import { READ_ENV_GIT_INDEX_FILE } from './node-env';
 import { runCommandSync } from './command';
 
 const roots: string[] = [];
@@ -30,7 +32,7 @@ function fixtureGitOptions({ rootDir, indexFile }: { rootDir: string, indexFile:
     mkdirSync(path.join(gitSettings, 'template'));
     mkdirSync(path.join(gitSettings, 'hooks'));
   }
-  const env: NodeJS.ProcessEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/iu.test(key)));
+  const env: NodeJS.ProcessEnv = createAppSourceGitEnvironment();
   env.GIT_CONFIG_NOSYSTEM = '1';
   env.GIT_CONFIG_SYSTEM = path.join(gitSettings, 'config');
   env.GIT_CONFIG_GLOBAL = path.join(gitSettings, 'config');
@@ -58,7 +60,7 @@ function checkedGit({ result }: { result: SpawnSyncReturns<string> }): string {
 }
 
 function readSource({ rootDir }: { rootDir: string }) {
-  const options = fixtureGitOptions({ rootDir, indexFile: process.env.GIT_INDEX_FILE });
+  const options = fixtureGitOptions({ rootDir, indexFile: READ_ENV_GIT_INDEX_FILE() });
   return readAppSource({ rootDir, environment: options.env ?? {} });
 }
 
@@ -110,7 +112,7 @@ describe('Naidan app source identity', () => {
     vi.stubEnv('GIT_INDEX_FILE', alternateIndex);
     expect(checkedGit({ result: runCommandSync({ argv: ['git', 'status', '--porcelain=v1'], options: fixtureGitOptions({ rootDir, indexFile: alternateIndex }) }) })).toBe('');
     expect(readSource({ rootDir })).toEqual({ sourceCommit, workingTree: 'dirty' });
-    expect(process.env.GIT_INDEX_FILE).toBe(alternateIndex);
+    expect(READ_ENV_GIT_INDEX_FILE()).toBe(alternateIndex);
   });
 
   it('does not borrow a parent repository identity for a source ZIP', () => {
@@ -134,5 +136,31 @@ describe('Naidan app source identity', () => {
     const { rootDir, sourceCommit } = checkout();
     writeFileSync(path.join(rootDir, '.git', 'index'), 'invalid index');
     expect(readSource({ rootDir })).toEqual({ sourceCommit, workingTree: 'unknown' });
+  });
+
+  it('ignores ambient Git object-store overrides in the audited fixture environment', () => {
+    const { rootDir, sourceCommit } = checkout();
+    vi.stubEnv('GIT_OBJECT_DIRECTORY', path.join(fixture(), 'missing-objects'));
+    vi.stubEnv('GIT_COMMON_DIR', path.join(fixture(), 'missing-common'));
+    expect(readSource({ rootDir })).toEqual({ sourceCommit, workingTree: 'clean' });
+  });
+
+  it('preserves normal home-based Git configuration without inheriting dynamic GIT_CONFIG pairs', () => {
+    const { rootDir, sourceCommit } = checkout();
+    const home = fixture();
+    const excludes = path.join(home, 'ignore');
+    writeFileSync(excludes, 'ignored.private\n');
+    writeFileSync(path.join(rootDir, 'ignored.private'), 'not source');
+    const config = path.join(home, '.gitconfig');
+    writeFileSync(config, `[core]\nexcludesFile = ${JSON.stringify(excludes.replaceAll('\\', '/'))}\n`);
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('XDG_CONFIG_HOME', home);
+    vi.stubEnv('GIT_CONFIG_COUNT', '1');
+    vi.stubEnv('GIT_CONFIG_KEY_0', 'core.excludesFile');
+    vi.stubEnv('GIT_CONFIG_VALUE_0', path.join(home, 'nonexistent-ignore'));
+    const observe = () => readAppSource({ rootDir, environment: { ...createAppSourceGitEnvironment(), GIT_CONFIG_NOSYSTEM: '1' } });
+    expect(observe()).toEqual({ sourceCommit, workingTree: 'clean' });
+    writeFileSync(config, '');
+    expect(observe()).toEqual({ sourceCommit, workingTree: 'dirty' });
   });
 });

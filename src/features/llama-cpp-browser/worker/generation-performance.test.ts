@@ -103,6 +103,42 @@ describe('bounded generation performance summaries', () => {
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sampling: { ...sampling, seed: -1 } } }).success).toBe(false);
   });
 
+  it('snapshots the cache decision independently of later requests and rejects private or invalid cache metadata', () => {
+    const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
+    const cacheReuse = {
+      tokens: 80,
+      cachedTokens: 60,
+      commonPrefixTokens: 24,
+      reusedTokens: 20,
+      evaluatedTokens: 60,
+      cacheComparison: 'token-mismatch' as const,
+      reason: 'checkpoint-match' as const,
+      nativeMemoryKind: 'hybrid' as const,
+      nativePositionMin: 0,
+      nativePositionMax: 59,
+      nativeRollbackTokens: 0,
+      cacheRemoval: 'full-only' as const,
+      checkpointTokens: 20,
+      checkpointBytes: 4096,
+    };
+    metrics.counters.cacheReuse = cacheReuse;
+    const report = metrics.finish({ outcome: 'completed', profile })!;
+    expect(diagnosticSchema.parse(report).performance!.cacheReuse).toEqual(cacheReuse);
+    cacheReuse.cachedTokens = 999;
+    expect(report.performance!.cacheReuse!.cachedTokens).toBe(60);
+    for (const extra of [
+      { tokenIds: [1, 2] }, { prompt: 'private text' }, { checkpointBytes: -1 },
+      { commonPrefixTokens: -1 }, { nativePositionMin: -2 }, { reason: 'private reason' }, { cacheRemoval: 'private state' },
+    ]) {
+      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, cacheReuse: { ...report.performance!.cacheReuse!, ...extra } } }).success).toBe(false);
+    }
+    // Older v1 summaries remain accepted without the additive cache field.
+    const { cacheReuse: _cacheReuse, ...older } = report.performance!;
+    expect(diagnosticSchema.safeParse({ ...report, performance: older }).success).toBe(true);
+    const withoutMemory = { ...report.performance!.cacheReuse!, nativeMemoryKind: 'none', nativePositionMin: undefined, nativePositionMax: undefined };
+    expect(diagnosticSchema.safeParse({ ...report, performance: { ...older, cacheReuse: withoutMemory } }).success).toBe(true);
+  });
+
   it('validates and publishes the summary without accepting nested content', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const report = metrics.finish({ outcome: 'completed', profile })!;

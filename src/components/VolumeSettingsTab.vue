@@ -13,6 +13,7 @@ import { lazyStrings, ensureStrings } from '@/strings';
 const volumes = ref<Volume[]>([]);
 const mounts = ref<Mount[]>([]);
 const isLoading = ref(false);
+const volumeDeletionPending = ref(false);
 
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
@@ -134,6 +135,18 @@ async function handleVolumeRename({ volumeId, name }: { volumeId: VolumeId, name
 }
 
 async function handleVolumeDelete({ volumeId }: { volumeId: VolumeId }) {
+  if (volumeDeletionPending.value) {
+    return;
+  }
+  volumeDeletionPending.value = true;
+  try {
+    await confirmAndDeleteVolume({ volumeId });
+  } finally {
+    volumeDeletionPending.value = false;
+  }
+}
+
+async function confirmAndDeleteVolume({ volumeId }: { volumeId: VolumeId }) {
   const volume = volumes.value.find(v => v.id === volumeId);
   if (!volume) {
     return;
@@ -206,8 +219,8 @@ defineExpose({
       <div tw-class="flex items-center gap-2">
         <FolderIcon tw-class="w-5 h-5 text-blue-500" />
         <div>
-          <h2 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.volumes__folders() }}</h2>
-          <p tw-class="text-[10px] text-gray-400 dark:text-gray-500 font-medium leading-tight">{{ lazyStrings.volumes__give_ai_access_to_files_in_your_folders() }}</p>
+          <h2 tw-class="text-lg font-semibold tracking-tight text-gray-800 dark:text-gray-300">{{ lazyStrings.volumes__folders() }}</h2>
+          <p tw-class="mt-1 text-xs leading-relaxed text-gray-600 dark:text-gray-400">{{ lazyStrings.volumes__give_ai_access_to_files_in_your_folders() }}</p>
         </div>
       </div>
       <!-- Add Folder / Copy Folder buttons + progress bar + drag-drop -->
@@ -223,10 +236,10 @@ defineExpose({
       <Loader2Icon tw-class="w-6 h-6 animate-spin text-gray-400" />
     </div>
 
-    <div v-else-if="volumes.length === 0" tw-class="text-center p-16 bg-gray-50/50 dark:bg-gray-800/30 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
-      <FolderInputIcon tw-class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-      <p tw-class="text-sm font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.volumes__no_folders_configured() }}</p>
-      <p tw-class="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-[240px] mx-auto">
+    <div v-else-if="volumes.length === 0" tw-class="rounded-xl border border-gray-200/70 bg-gray-50/50 p-6 text-center dark:border-gray-800 dark:bg-gray-900/25 sm:py-8">
+      <FolderInputIcon aria-hidden="true" tw-class="mx-auto mb-3 h-8 w-8 text-gray-400 dark:text-gray-500" />
+      <p tw-class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ lazyStrings.volumes__no_folders_configured() }}</p>
+      <p tw-class="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-gray-600 dark:text-gray-400">
         {{ lazyStrings.volumes__add_or_copy_folder_into_browser_storage() }}
       </p>
     </div>
@@ -239,6 +252,7 @@ defineExpose({
       :not-in-use-section-label="lazyStrings.volumes__not_in_use_globally()"
       mount-path-prefix="/"
       :show-volume-management="true"
+      :deletion-pending="volumeDeletionPending"
       @add="handleMountAdd"
       @remove="handleMountRemove"
       @update-mount="handleMountUpdate"

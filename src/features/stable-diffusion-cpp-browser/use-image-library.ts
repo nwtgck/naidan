@@ -1,5 +1,6 @@
 import { validateLinkedModelRoot } from '@/logic/model-directory-input';
 import { temporaryModelFiles } from '@/logic/temporary-model-files';
+import { hasTemporaryModelPathPrefix } from '@/01-models/temporary-model-files';
 import { temporaryImageRepositories, restoreTemporaryImageFiles } from './logic/temporary-repositories';
 import { imageModelLocation, sameImageModelLocation } from './logic/model-location';
 import { createDownloadManager, getDownloadManager, type DownloadExecution, type DownloadManager } from '@/logic/download-manager';
@@ -15,7 +16,7 @@ import { imageCatalogLoras } from './lora-catalog';
 import type { ImageDownloadSource } from './logic/catalog-source';
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { type listImageRepositories, importImageRepository } from './logic/repository-store';
-import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
+import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, imageSelectionCandidates, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
 import { imageDirectoryFromFiles, imageDirectoriesFromDrop, imageDirectoryForFile } from './logic/repository-input';
 import type { ModelSlot, Request } from './types';
 import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability, SavedImageLoraChoice } from './library-view';
@@ -26,22 +27,11 @@ import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
 import type { BrowserImageModelLocation, BrowserImageModelSelection } from '@/01-models/types';
 import type { ImageLoraSelection } from './lora-form';
+import { imagePrimarySlot as primarySlot, chooseInitialImagePrimary, reconcileImageComponents, type ImageComponentSlot, type ImageSlotIntent } from '@/features/image-generation/model-selection';
 
 type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader, manager?: DownloadManager };
 type InventoryRefreshResult = 'scanned' | 'blocked' | 'failed';
 const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import: importImageRepository, download: downloadImageRecipeInWorker };
-
-function primarySlot({ family }: { family: ModelCandidate['family'] }): ModelSlot | undefined {
-  switch (family) {
-  case 'sd-checkpoint': return 'model';
-  case 'z-image': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': return 'diffusion';
-  case 'unknown': return undefined;
-  default: {
-    const exhaustive: never = family;
-    throw new Error(String(exhaustive));
-  }
-  }
-}
 
 function automaticOrigin({ origin }: { origin: 'automatic' | 'manual' | 'files' }): boolean {
   switch (origin) {
@@ -282,28 +272,31 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       componentCandidateKeys.value = {};
       return;
     }
-    const next = { ...componentCandidateKeys.value };
+    const choices: Partial<Record<ImageComponentSlot, ImageSlotIntent>> = {};
+    const recipe: Partial<Record<ImageComponentSlot, string>> | undefined = recipeIntent ? {} : undefined;
     for (const requirement of requirements.value) {
-      const previous = inventory.value.candidates.find(item => item.candidateKey === next[requirement.slot]);
       if (overrides.has(requirement.slot)) {
-        // Losing an explicit optional override must not silently select the
-        // checkpoint's built-in component. Retain the unavailable selection.
-        if (!previous && requirement.required) {
-          next[requirement.slot] = '';
-        }
-        continue;
-      }
-      if (!recipeIntent && previous && componentMatch({ candidate: previous, requirement }) === 'matching') {
-        continue;
+        const id = componentCandidateKeys.value[requirement.slot];
+        const exists = inventory.value.candidates.some(candidate => candidate.candidateKey === id);
+        // Preserve the existing local behavior for unavailable required files;
+        // optional overrides retain their key rather than using an embedded VAE.
+        choices[requirement.slot] = id && (!requirement.required || exists) ? { kind: 'file', key: id } : { kind: 'none' };
       }
       const requested = recipeIntent?.files.find(file => file.role === requirement.slot);
-      // A complete checkpoint already contains its VAE. Use an external one only
-      // when the user selects it or explicitly chooses a recipe that names it.
-      next[requirement.slot] = requested ? findRecipeFile({ file: requested, destinationId: recipeIntent!.destinationId, match: ({ candidate }) => componentMatch({ candidate, requirement }) === 'matching' })?.candidateKey ?? ''
-        : requirement.required ? defaultCompanion({ main: selected.value, candidates: inventory.value.candidates, requirement }) ?? '' : '';
+      if (recipe && requested) {
+        recipe[requirement.slot] = findRecipeFile({ file: requested, destinationId: recipeIntent!.destinationId, match: ({ candidate }) => componentMatch({ candidate, requirement }) === 'matching' })?.candidateKey ?? '';
+      }
     }
-    componentCandidateKeys.value = next;
+    const resolved = reconcileImageComponents({
+      primaryKey: selected.value.candidateKey,
+      candidates: imageSelectionCandidates({ candidates: inventory.value.candidates }),
+      choices,
+      previous: componentCandidateKeys.value,
+      recipe,
+    });
+    componentCandidateKeys.value = { ...componentCandidateKeys.value, ...Object.fromEntries(resolved.components.map(component => [component.slot, component.key ?? ''])) };
   }
+
   function chooseMain({ candidateKey }: { candidateKey: string }): void {
     if (blocked() || importing.value || scanState.value === 'scanning' || disposed) {
       return;
@@ -1016,7 +1009,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         const inspected = await awaitInspection({
           signal: scan.signal,
           task: dependencies ? (async () => {
-            const storedIds = repositoryKeys?.filter(id => !id.startsWith('temp/'));
+            const storedIds = repositoryKeys?.filter(id => !hasTemporaryModelPathPrefix({ path: id }));
             const stored = storedIds?.length === 0 ? []
               : await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryKeys: storedIds }), signal: scan.signal });
             const repositories = [...stored, ...temporaryImageRepositories({ roots: temporaryRoots })];
@@ -1063,9 +1056,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           componentCandidateKeys.value = {};
           overrides.clear();
           if (automaticOrigin({ origin })) {
-            const candidates = published.candidates.filter(candidate => candidate.family !== 'unknown' && !candidate.issue);
-            candidates.sort((a, b) => a.size - b.size || a.candidateKey.localeCompare(b.candidateKey));
-            const first = candidates[0];
+            const key = chooseInitialImagePrimary({ candidates: imageSelectionCandidates({ candidates: published.candidates }) });
+            const first = published.candidates.find(candidate => candidate.candidateKey === key);
             if (first) {
               selectedCandidateKey.value = first.candidateKey;
               onSelection({ family: first.family, turbo: first.turboHint });
@@ -1347,9 +1339,6 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         return undefined;
       }
       const slot = requirement.slot;
-      if (slot === 'model' || slot === 'diffusion') {
-        continue;
-      }
       savedComponents.push({ slot, choice: candidate ? { kind: 'file', location: modelLocation({ candidate }) } : { kind: 'none' } });
     }
     const savedLoras: BrowserImageModelSelection['loras'] = [];
@@ -1393,7 +1382,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       }
       const useSelection = candidate.candidateKey === selectedCandidateKey.value && origin !== 'files';
       const missing: ModelSlot[] = [];
-      const members = [{ slot, candidate }];
+      const members: { slot: ModelSlot, candidate: ModelCandidate }[] = [{ slot, candidate }];
       const components: ImageComponentChoice[] = [];
       const benchmarkOverrides = benchmarkSelections[candidate.candidateKey];
       for (const requirement of componentRequirements({ family: candidate.family })) {

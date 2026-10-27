@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
 import { computed, ref, useId } from 'vue';
 import { ChevronDownIcon, LibraryBigIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
@@ -35,6 +36,8 @@ function visible({ suggestion }: { suggestion: ModelSuggestion }): boolean {
   return props.memoryFilter === 'hide' || matchesMemoryHint({ quantization: preferredQuantizationHint({ suggestion }), memory: memory.value, multimodal: 'off' }) || queue.jobs.value.some(job => job.key.startsWith(`suggestion:${suggestion.id}:`) && (jobIsBusy({ job }) || job.status === 'paused'));
 }
 
+const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
@@ -42,9 +45,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
        never fetch external data. Only explicit preview/download/link actions do. -->
   <section tw-class="overflow-hidden rounded-xl border border-gray-200/70 bg-gray-50/40 dark:border-gray-800/80 dark:bg-gray-900/20" data-testid="llama-model-suggestions">
     <h3>
-      <button type="button" :aria-expanded="open" :aria-controls="`${id}-content`" data-testid="llama-suggestions-toggle" tw-class="group flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-gray-700 transition-colors duration-200 hover:bg-gray-100/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200 dark:hover:bg-gray-800/40 motion-reduce:transition-none" @click="toggle">
+      <button type="button" :aria-expanded="open" :aria-controls="`${id}-content`" data-testid="llama-suggestions-toggle" :tw-class="['group flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-gray-700 transition-colors duration-200 hover:bg-gray-100/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:hover:bg-gray-800/40 motion-reduce:transition-none', isSettingsTypography ? 'dark:text-gray-300' : 'dark:text-gray-200']" @click="toggle">
         <span tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50/80 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><LibraryBigIcon aria-hidden="true" tw-class="h-4 w-4" /></span>{{ lazyStrings.llamaCppBrowserDownloads__model_catalog() }}
-        <span v-if="activeCount" tw-class="ml-auto text-[10px] font-medium text-blue-600 dark:text-blue-400">{{ lazyStrings.llamaCppBrowserDownloads__active_downloads({ count: activeCount }) }}</span>
+        <span v-if="activeCount" :tw-class="['ml-auto font-medium text-blue-600 dark:text-blue-400', isSettingsTypography ? 'text-xs' : 'text-[10px]']">{{ lazyStrings.llamaCppBrowserDownloads__active_downloads({ count: activeCount }) }}</span>
         <ChevronDownIcon :tw-class="['w-4 h-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none', { 'rotate-180': open, 'ml-auto': !activeCount }]" />
       </button>
     </h3>
@@ -56,7 +59,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div tw-class="grid grid-cols-1 items-center gap-x-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div v-if="memoryFilter !== 'hide'" role="group" :aria-label="lazyStrings.llamaCppBrowserDownloads__memory()" tw-class="flex items-center flex-wrap gap-1.5" data-testid="llama-suggestions-memory">
               <span tw-class="mr-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__memory() }}</span>
-              <button v-for="choice in suggestedMemoryFilters" :key="choice" type="button" :data-testid="`llama-suggestions-memory-${choice}`" :aria-pressed="memory === choice" :tw-class="['rounded-md border px-2 py-1 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 motion-reduce:transition-none', memory === choice ? 'border-blue-200/80 bg-blue-50/70 text-blue-600 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400' : 'border-gray-200/80 bg-white/70 text-gray-500 hover:bg-gray-100 dark:border-gray-700/70 dark:bg-gray-800/50 dark:text-gray-400 dark:hover:bg-gray-800']" @click="memory = choice">{{ choice === 'all' ? lazyStrings.llamaCppBrowserDownloads__all() : `${choice} GiB` }}</button>
+              <button v-for="choice in suggestedMemoryFilters" :key="choice" type="button" :data-testid="`llama-suggestions-memory-${choice}`" :aria-pressed="memory === choice" :tw-class="[['rounded-md border px-2 py-1 font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 motion-reduce:transition-none', isSettingsTypography ? 'text-xs' : 'text-[11px]'], memory === choice ? 'border-blue-200/80 bg-blue-50/70 text-blue-600 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400' : 'border-gray-200/80 bg-white/70 text-gray-500 hover:bg-gray-100 dark:border-gray-700/70 dark:bg-gray-800/50 dark:text-gray-400 dark:hover:bg-gray-800']" @click="memory = choice">{{ choice === 'all' ? lazyStrings.llamaCppBrowserDownloads__all() : `${choice} GiB` }}</button>
             </div>
             <LlamaCppBrowserDownloadDestination :view="downloadDestination.view" :disabled="disabled" />
           </div>

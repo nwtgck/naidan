@@ -30,6 +30,9 @@ describe('Wikipedia chat guide', () => {
       'wikipedia-chat-search',
       'wikipedia-chat-page',
     ]);
+    const tools = steps[0]?.querySelector('[data-testid="docs-chat-input-tools"]');
+    expect(tools?.querySelector('[data-testid="docs-wikipedia-open-pointer"]')).not.toBeNull();
+    expect(steps[0]?.textContent).toContain(s.tool_session_notice);
     expect(steps[1]?.textContent).toContain('/sys/fs/naidan');
     expect(steps[1]?.textContent).toContain(s.current_chat_scope);
     expect(steps[1]?.textContent).toContain(s.shell_tool);
@@ -44,6 +47,8 @@ describe('Wikipedia chat guide', () => {
     expect(steps[2]?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/csp-editions/`);
     expect(steps[3]?.querySelector('.approval-panel')?.textContent).toContain(s.allow_once);
     expect(article?.querySelector('[data-testid="wikipedia-chat-result"] .assistant-message')?.textContent).toBe(s.aurora_answer);
+    expect(steps[2]?.querySelector('[data-testid="docs-chat-input"]')?.getAttribute('data-status')).toBe('generating');
+    expect(article?.querySelector('[data-testid="wikipedia-chat-result"] [data-testid="docs-chat-input"]')?.getAttribute('data-status')).toBe('idle');
 
     const privacy = article?.querySelector('.privacy-section');
     expect(privacy?.textContent).toContain('Origin');

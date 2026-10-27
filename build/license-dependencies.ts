@@ -5,7 +5,9 @@ import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-licens
 
 import type { NaidanLicense } from '../src/01-models/naidan-license';
 
-export type BuildLicenseDependency = NaidanLicense;
+// Package audits continue to require a package version; native notices are
+// combined only after this scanner/merge/audit path.
+export type BuildLicenseDependency = Omit<NaidanLicense, 'version' | 'id' | 'origin'> & Readonly<{ version: string }>;
 
 const dependencyMapSchema = z.record(z.string(), z.string());
 const legacyLicenseSchema = z.union([

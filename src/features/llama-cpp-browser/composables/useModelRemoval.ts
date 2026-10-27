@@ -2,6 +2,7 @@ import { onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
 import { errorCode, type ErrorCode } from '@/features/llama-cpp-browser/types';
 import { useModelDeletionConfirm } from '@/features/llama-cpp-browser/components/useModelDeletionConfirm';
+import { isPendingLocalModelReference } from '@/features/llama-cpp-browser/local-repository-reference';
 
 /** The same deletion plan and confirmation apply wherever a model is listed. */
 export function useModelRemoval({ suspended, disabled, refresh }: { suspended: Readonly<Ref<boolean>>, disabled: Readonly<Ref<boolean>>, refresh(): Promise<void> }) {
@@ -29,7 +30,7 @@ export function useModelRemoval({ suspended, disabled, refresh }: { suspended: R
     error.value = undefined;
     changed.value = false;
     try {
-      if (modelId.startsWith('temp/')) {
+      if (isPendingLocalModelReference({ modelId })) {
         await llamaCppBrowserModelFiles.removeTemporaryModel({ modelId, signal: controller.signal });
       } else {
         const plan = await confirmRemoval({ target: { kind: 'model', modelId }, signal: controller.signal });

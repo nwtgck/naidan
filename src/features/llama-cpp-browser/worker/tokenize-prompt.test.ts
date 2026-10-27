@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { tokenizePrompt } from './tokenize-prompt';
+import { tokenizePrompt, tryTokenizePrompt } from './tokenize-prompt';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 
 function fixture() {
@@ -37,8 +37,76 @@ function fixture() {
   };
   const onTokenize = vi.fn();
   const run = ({ contextTokens }: { contextTokens: number }) => tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 8, contextTokens, addSpecial: true, parseSpecial: true, onTokenize });
-  return { core, allocations, onTokenize, run };
+  const tryRun = ({ contextTokens }: { contextTokens: number }) => tryTokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 8, contextTokens, addSpecial: true, parseSpecial: true, onTokenize });
+  return { core, allocations, onTokenize, run, tryRun };
 }
+
+describe('optional prompt tokenization allocation', () => {
+  it('declines the optional pass without a native probe when the first allocation fails', async () => {
+    const { core, allocations, onTokenize, tryRun } = fixture();
+    core.tryAlloc.mockReturnValueOnce(undefined);
+    await expect(tryRun({ contextTokens: 32 })).resolves.toBeUndefined();
+    expect(core.tryAlloc).toHaveBeenCalledExactlyOnceWith({ bytes: 64 });
+    expect(core.api.llama_tokenize).not.toHaveBeenCalled();
+    expect(onTokenize).not.toHaveBeenCalled();
+    expect(core.free).not.toHaveBeenCalled();
+    expect(allocations.size).toBe(0);
+  });
+
+  it('frees the first buffer and declines when the exact-size retry allocation fails', async () => {
+    const { core, allocations, onTokenize, tryRun } = fixture();
+    const allocate = core.tryAlloc.getMockImplementation()!;
+    core.tryAlloc.mockImplementationOnce(allocate).mockReturnValueOnce(undefined);
+    core.api.llama_tokenize.mockResolvedValueOnce(-17);
+    await expect(tryRun({ contextTokens: 32 })).resolves.toBeUndefined();
+    expect(core.tryAlloc.mock.calls).toEqual([[{ bytes: 64 }], [{ bytes: 68 }]]);
+    expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
+    expect(core.free.mock.invocationCallOrder[0]).toBeLessThan(core.tryAlloc.mock.invocationCallOrder[1]!);
+    expect(core.api.llama_tokenize).toHaveBeenCalledOnce();
+    expect(onTokenize).toHaveBeenCalledOnce();
+    expect(allocations.size).toBe(0);
+  });
+
+  it('transfers a successful optional buffer to the caller', async () => {
+    const { core, allocations, onTokenize, tryRun } = fixture();
+    const result = await tryRun({ contextTokens: 32 });
+    expect(result).toEqual({ pointer: 100n, tokens: [1, 200, 999] });
+    expect(core.api.llama_tokenize).toHaveBeenCalledExactlyOnceWith(1n, 2n, 8, 100n, 16, 1, 1);
+    expect(onTokenize).toHaveBeenCalledOnce();
+    expect(core.free).not.toHaveBeenCalled();
+    expect(allocations.size).toBe(1);
+    if (!result) {
+      throw new Error('Expected an owned optional token buffer');
+    }
+    core.free({ pointer: result.pointer });
+    expect(allocations.size).toBe(0);
+  });
+
+  it('waits for native rejection and propagates it while releasing the optional buffer', async () => {
+    const { core, allocations, tryRun } = fixture();
+    const native = Promise.withResolvers<number>();
+    core.api.llama_tokenize.mockReturnValueOnce(native.promise);
+    const pending = tryRun({ contextTokens: 32 });
+    const failure = new WebAssembly.RuntimeError('optional native tokenizer trap');
+    const rejected = expect(pending).rejects.toBe(failure);
+    expect(allocations.size).toBe(1);
+    expect(core.free).not.toHaveBeenCalled();
+    native.reject(failure);
+    await rejected;
+    expect(core.api.llama_tokenize).toHaveBeenCalledOnce();
+    expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
+    expect(allocations.size).toBe(0);
+  });
+
+  it('keeps invalid native results fatal rather than treating them as optional allocation failure', async () => {
+    const { core, allocations, tryRun } = fixture();
+    core.api.llama_tokenize.mockResolvedValueOnce(-2147483648);
+    await expect(tryRun({ contextTokens: 32 })).rejects.toThrow('context-full');
+    expect(core.api.llama_tokenize).toHaveBeenCalledOnce();
+    expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
+    expect(allocations.size).toBe(0);
+  });
+});
 
 describe('bounded single-pass prompt tokenization', () => {
   it('tokenizes once without a length probe and transfers an owned buffer', async () => {

@@ -16,6 +16,7 @@ import { TEST_ONLY } from '@/utils/stream-download';
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
     deleteBinaryObject: vi.fn(),
@@ -64,7 +65,7 @@ function mountOwner({ messages, showMessage }: { messages: UserMessageNode[]; sh
       preview = useImagePreview({ scoped: true });
       const { downloadBinaryObject } = useBinaryActions();
       return () => h('div', [
-        showMessage && nodes.value[0] ? h(MessageItem, { chatId, message: nodes.value[0] }) : h(ChatMediaShelf, { chatId, messages: nodes.value }),
+        showMessage && nodes.value[0] ? h(MessageItem, { endpoint: undefined, chatId, message: nodes.value[0] }) : h(ChatMediaShelf, { chatId, messages: nodes.value }),
         preview.state.value ? h(BinaryObjectPreviewModal, {
           objects: preview.state.value.objects,
           initialId: preview.state.value.initialId,

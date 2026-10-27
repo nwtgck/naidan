@@ -3,6 +3,7 @@ import { computed, defineComponent, h, KeepAlive, nextTick, ref, shallowRef, typ
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { APPLICATION_METADATA, AUDIO_METADATA, HOME_METADATA, IMAGE_METADATA, type PageMetadata } from '@/logic/document-metadata';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { TEST_ONLY as presentationTestOnly } from './useAppPresentation';
 import { provideDocumentMetadata, useDocumentMetadata, useDocumentTitleOverride, usePageDocumentMetadata } from './useDocumentMetadata';
 
@@ -48,7 +49,8 @@ function expectHead({ page, documentTitle }: { page: PageMetadata, documentTitle
   }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
   document.head.innerHTML = '';
 });
 

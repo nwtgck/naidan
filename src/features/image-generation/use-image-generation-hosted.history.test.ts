@@ -10,6 +10,8 @@ import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/t
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from './history/snapshot';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { imageCatalogFixture } from './model-selection.test-support';
+import { remoteImageFileKey } from './remote-image-model-editor';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
 import ImageGenerationResults from './components/ImageGenerationResults.vue';
 import ImageGenerationProgress from './components/ImageGenerationProgress.vue';
@@ -1573,7 +1575,7 @@ function rpcBinding() {
 async function remoteView() {
   const { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } = await import('@/01-models/ids');
   const binding = rpcBinding();
-  const registration = { id: toNaidanRpcRegistrationId({ raw: 'registration-example' }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) }), label: 'Peer example' };
+  const registration = { id: toNaidanRpcRegistrationId({ raw: 'registration-example' }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) }), label: 'Peer example', transport: { type: 'naidan_piping_duplex', serverUrl: 'https://image-relay.example', headers: [] } };
   rpcMocks.manager.mockResolvedValue({ reload: async () => {}, list: () => [{ registration, phase: 'connected' }], bindClient: () => ({ ...binding, registration, signal: binding.stop.signal }) });
   const view = open();
   view.seedMode.value = 'fixed';
@@ -1836,4 +1838,44 @@ it('does not apply the next run retention policy to a previous resident when acc
   expect(mocks.generate).toHaveBeenCalledOnce();
   expect(mocks.release).not.toHaveBeenCalled();
   expect(view.modelResident.value).toBe(true);
+});
+
+it('keeps local selection events out of remote sampling settings and reference images', async () => {
+  const { view } = await remoteView();
+  view.parameters.value.steps = 37;
+  view.parameters.value.guidance = 7;
+  const image = new File(['reference'], 'reference.png');
+  view.imageInputs.value.referenceImages = [image];
+  const before = { ...view.parameters.value };
+  mocks.select({ family: 'z-image', turbo: true });
+  view.library.selectedCandidateKey.value = 'another-local-model';
+  expect(view.parameters.value).toEqual(before);
+  expect(view.imageInputs.value.referenceImages).toEqual([image]);
+});
+
+it('applies the selected remote preset without changing local-only settings or composition dimensions', async () => {
+  const { view } = await remoteView(), catalog = imageCatalogFixture({ family: 'z-image', variant: 'turbo' });
+  const location = view.inferenceLocation!;
+  location.catalog.value = catalog;
+  location.catalogFresh.value = true;
+  location.choosePrimary({ id: remoteImageFileKey({ file: catalog[0]!.file }) });
+  view.parameters.value = { ...view.parameters.value, steps: 37, guidance: 7, width: 768, height: 1024, modelArguments: 'keep=true', conditioningCacheSize: 3, vaeTiling: false };
+  expect(view.recommendation.value?.id).toBe('z-image-turbo');
+  view.applyRecommendedSettings();
+  expect(view.parameters.value).toMatchObject({ steps: 8, guidance: 1, width: 768, height: 1024, modelArguments: 'keep=true', conditioningCacheSize: 3, vaeTiling: false });
+});
+
+it('reports remote catalog activity even with model configuration collapsed and stops it on unmount', async () => {
+  const { view } = await remoteView();
+  preferenceSettings.value.experimental = { ...preferenceSettings.value.experimental, naidanRpc: 'enabled' };
+  const activity = vi.spyOn(view.inferenceLocation!, 'setCatalogActivity');
+  editor = mount(ImageGenerationEditor, { props: { view, active: true } });
+  expect(activity).toHaveBeenLastCalledWith({ active: true, enabled: true });
+  expect(editor.get('[data-testid="image-component-settings"]').element).toHaveProperty('open', false);
+  await editor.setProps({ active: false });
+  expect(activity).toHaveBeenLastCalledWith({ active: false, enabled: true });
+  await editor.setProps({ active: true });
+  editor.unmount();
+  editor = undefined;
+  expect(activity).toHaveBeenLastCalledWith({ active: false, enabled: true });
 });

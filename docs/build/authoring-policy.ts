@@ -10,11 +10,12 @@ type ScriptSource = { content: string; startLine: number; startColumn: number };
 
 const reservedIslandAttributes = new Set(['data-docs-island', 'data-docs-props', 'data-docs-hydrated']);
 const disallowedContextApis = new Set(['useId', 'provide', 'inject']);
+const staticRenderApis = new Set(['h', 'createVNode', 'createElementVNode', 'createBlock', 'createElementBlock', 'cloneVNode', 'createStaticVNode', 'defineComponent']);
 const unsupportedStaticVueApis = new Set([
   'onBeforeMount', 'onMounted', 'onBeforeUpdate', 'onUpdated', 'onBeforeUnmount', 'onUnmounted',
   'onActivated', 'onDeactivated', 'onRenderTracked', 'onRenderTriggered',
   'watch', 'watchEffect', 'watchPostEffect', 'watchSyncEffect',
-  'h', 'createVNode', 'defineComponent', 'Teleport', 'useTemplateRef',
+  ...staticRenderApis, 'Teleport', 'useTemplateRef',
 ]);
 const richTsxComponents = new Set([
   'components/DocsLink.vue', 'components/AppEntryLink.vue', 'components/ExternalLink.vue', 'components/UiLabel.vue',
@@ -104,7 +105,7 @@ function rejectUnsupportedStaticVueApi({ name, filename, script, ast, node }: {
       ? 'Vue useTemplateRef has no DOM to reference in static Docs pages.'
       : name.startsWith('watch')
         ? `Vue ${name} is outside the supported static Docs script subset; its server execution does not provide browser reactivity.`
-        : ['h', 'createVNode', 'defineComponent'].includes(name)
+        : staticRenderApis.has(name)
           ? `Vue ${name} is outside the supported static Docs script subset; render functions can hide inactive events.`
           : `Vue ${name} is not called when a static Docs page is rendered.`;
   const remedy = name === 'Teleport'
@@ -113,7 +114,7 @@ function rejectUnsupportedStaticVueApi({ name, filename, script, ast, node }: {
       ? 'Use server-rendered data, or put DOM access in a registered island.'
       : name.startsWith('watch')
         ? 'Use computed for derived output, onServerPrefetch for async server data, or a registered island for browser updates.'
-        : ['h', 'createVNode', 'defineComponent'].includes(name)
+        : staticRenderApis.has(name)
           ? 'Write static UI in an SFC template, and put interaction in a registered island.'
           : 'Use computed or onServerPrefetch for server output, or move browser behavior into a registered island.';
   staticScriptError({ filename, script, ast, node, reason, remedy });
@@ -145,6 +146,17 @@ function propertyName({ name }: { name: ts.PropertyName }): string | undefined {
     return name.text;
   }
   return undefined;
+}
+
+function objectPropertyName({ name }: { name: ts.PropertyName }): string | undefined {
+  if (!ts.isComputedPropertyName(name)) {
+    return propertyName({ name });
+  }
+  let expression = name.expression;
+  while (ts.isParenthesizedExpression(expression)) {
+    expression = expression.expression;
+  }
+  return ts.isStringLiteralLike(expression) ? expression.text : undefined;
 }
 
 function importedSource({ statement }: { statement: ts.ImportDeclaration | ts.ExportDeclaration }): string | undefined {
@@ -206,6 +218,10 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
   const edges: ImportEdge[] = [];
   const vueNamespaces = new Set<string>();
   const staticAuthoring = isStaticAuthoringFile({ filename });
+  // Catalogs and island boundaries carry data. Static SFCs and helpers must put
+  // component markup in checked SFC templates instead of inline options objects.
+  const checkInlineTemplates = staticAuthoring && !filename.startsWith('islands/')
+    && !isArticleMessageTsx({ filename }) && !isPlainLocaleMessageTs({ filename });
 
   for (const statement of ast.statements) {
     if (ts.isImportDeclaration(statement)) {
@@ -369,9 +385,24 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
       && vueNamespaces.has(node.expression.text) && disallowedContextApis.has(node.name.text)) {
       throw new Error(`Vue context API ${node.name.text} is unsupported in Docs islands: ${filename}`);
     }
-    if (ts.isObjectLiteralExpression(node) && filename !== 'components/DocsIsland.vue') {
+    if (ts.isObjectLiteralExpression(node)) {
       for (const property of node.properties) {
-        if ((ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) && reservedIslandAttributes.has(propertyName({ name: property.name }) ?? '')) {
+        if (ts.isSpreadAssignment(property)) {
+          continue;
+        }
+        const name = objectPropertyName({ name: property.name });
+        if (checkInlineTemplates && name === 'template') {
+          staticScriptError({
+            filename,
+            script,
+            ast,
+            node: property,
+            reason: 'Static Docs scripts do not support object template properties; inline Vue component templates bypass template checks.',
+            remedy: 'Write component markup in an SFC template, or put browser behavior in a registered island.',
+          });
+        }
+        if (filename !== 'components/DocsIsland.vue' && (ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property))
+          && reservedIslandAttributes.has(name ?? '')) {
           throw new Error(`Reserved Docs island attribute in script ${filename}`);
         }
       }

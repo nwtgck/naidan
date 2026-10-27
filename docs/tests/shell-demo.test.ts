@@ -41,7 +41,12 @@ describe('shell guide tool-call demonstration', () => {
     expect(open?.getAttribute('data-docs-animation')).toBe('shell-enable-open');
     expect(enable?.getAttribute('data-docs-animation')).toBe('shell-enable-enable');
     expect(open?.textContent).toContain(strings.options_tools_sheet);
-    expect(open?.querySelector('[data-testid="docs-shell-tools-trigger"]')).not.toBeNull();
+    const tools = open?.querySelector('[data-testid="docs-chat-input-tools"]');
+    expect(tools?.querySelector('[data-testid="docs-shell-open-pointer"]')).not.toBeNull();
+    const sheet = open?.querySelector('[data-testid="docs-shell-tools-sheet"]');
+    expect(sheet?.textContent).toContain(strings.shell_tool_label);
+    expect(sheet?.textContent).toContain(strings.tool_session_notice);
+    expect(sheet?.textContent).not.toContain(common.chrome_reasoning);
     expect(enable?.querySelector('[data-testid="docs-shell-switch"]')?.textContent).toContain(strings.on_status);
     expect(enable?.querySelector('[data-testid="docs-shell-settings-result"]')?.textContent).toContain(strings.shell_settings_label);
     expect(enable?.textContent).toContain('/sys/fs/naidan');

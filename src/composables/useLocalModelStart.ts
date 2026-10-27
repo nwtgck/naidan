@@ -14,9 +14,12 @@ import { registerChatModelBindingOrigin } from '@/composables/chat/chat-scoped/c
 import { localModelChatGroupName } from '@/features/llama-cpp-browser/chat-group-name';
 import { captureTemporaryModelSource, llamaCppBrowserModelFiles, type TemporaryModelSource } from '@/features/llama-cpp-browser/model-files';
 import { offerTemporaryModelSave } from '@/features/llama-cpp-browser/composables/useTemporaryModelSave';
+import { retainLocalRepositorySource } from '@/features/llama-cpp-browser/local-repository-lifetime';
+import { isPendingLocalModelReference } from '@/features/llama-cpp-browser/local-repository-reference';
 import { registerLocalModelLaunchSession } from '@/features/llama-cpp-browser/composables/local-model-launch-session';
 import type { ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
-import type { LocalModel, ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import { LlamaCppBrowserError, type LocalModel, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import type { LocalRepositoryLayoutChoice } from '@/features/llama-cpp-browser/runtime/local-repository-layout';
 
 type LocalLaunchAttempt = {
   chatId: ChatId,
@@ -39,6 +42,12 @@ type LocalInputSelection = {
   operation: LocalInputOperation,
   status: 'choosing' | 'starting',
   error: 'start-failed' | undefined,
+} | {
+  operation: LocalInputOperation,
+  status: 'layout',
+  rootName: string,
+  choices: LocalRepositoryLayoutChoice[],
+  chooseLayout({ layout }: { layout: LocalRepositoryLayoutChoice['layout'] }): void,
 };
 type LocalModelValidation = {
   isCurrent(): boolean,
@@ -206,65 +215,115 @@ async function prepareLocalChat({ model, source, attempt, signal, isCurrent, def
 }
 
 async function startInputCandidate({ operation, candidate }: { operation: LocalInputOperation, candidate: LocalInputCandidate }): Promise<void> {
-  const current = () => currentInput({ operation });
-  if (!current()) {
-    return;
-  }
-  const validation: LocalModelValidation = {
-    isCurrent: candidate.isCurrent,
-    check: async () => {
-      if (!candidate.isCurrent()) {
-        throw new Error('Local model files changed');
-      }
-    },
-  };
-  await validation.check({ refresh: 'if-needed' });
-  if (!current()) {
-    return;
-  }
-  let attempt = operation.attempts.get(candidate.model.modelId);
-  if (attempt === undefined || !attempt.isStorageCurrent()) {
-    attempt = createAttempt();
-    operation.attempts.set(candidate.model.modelId, attempt);
-  }
-  if (attempt.promise !== undefined) {
-    return attempt.promise;
-  }
-  const selectedAttempt = attempt;
-  const promise = (async () => {
-    if (selectedAttempt.source !== undefined && !selectedAttempt.source.isCurrent()) {
-      throw new Error('Local model files changed');
-    }
-    const source = selectedAttempt.source ?? await captureTemporaryModelSource({ modelId: candidate.model.modelId, signal: operation.controller.signal });
-    selectedAttempt.source = source;
+  const sourcePin = retainLocalRepositorySource({ modelId: candidate.model.modelId });
+  try {
+    const current = () => currentInput({ operation });
     if (!current()) {
       return;
     }
-    await prepareLocalChat({
-      model: source.model,
-      source,
-      attempt: selectedAttempt,
-      signal: operation.controller.signal,
-      isCurrent: current,
-      defaults: operation.defaults,
-      navigate: ({ chatPath }) => handoffAppEntryToChat({ context: operation.context, chatPath }),
-      homeOriginId: operation.context.homeOriginId,
-      validation,
-    });
-  })();
-  selectedAttempt.promise = promise;
-  try {
-    await promise;
+    const validation: LocalModelValidation = {
+      isCurrent: candidate.isCurrent,
+      check: async () => {
+        if (!candidate.isCurrent()) {
+          throw new Error('Local model files changed');
+        }
+      },
+    };
+    await validation.check({ refresh: 'if-needed' });
+    if (!current()) {
+      return;
+    }
+    let attempt = operation.attempts.get(candidate.model.modelId);
+    if (attempt === undefined || !attempt.isStorageCurrent()) {
+      attempt = createAttempt();
+      operation.attempts.set(candidate.model.modelId, attempt);
+    }
+    if (attempt.promise !== undefined) {
+      return attempt.promise;
+    }
+    const selectedAttempt = attempt;
+    const promise = (async () => {
+      if (selectedAttempt.source !== undefined && !selectedAttempt.source.isCurrent()) {
+        throw new Error('Local model files changed');
+      }
+      const source = selectedAttempt.source ?? await captureTemporaryModelSource({ modelId: candidate.model.modelId, signal: operation.controller.signal });
+      selectedAttempt.source = source;
+      if (!current()) {
+        return;
+      }
+      await prepareLocalChat({
+        model: source.model,
+        source,
+        attempt: selectedAttempt,
+        signal: operation.controller.signal,
+        isCurrent: current,
+        defaults: operation.defaults,
+        navigate: ({ chatPath }) => handoffAppEntryToChat({ context: operation.context, chatPath }),
+        homeOriginId: operation.context.homeOriginId,
+        validation,
+      });
+    })();
+    selectedAttempt.promise = promise;
+    try {
+      await promise;
+    } finally {
+      selectedAttempt.promise = undefined;
+    }
   } finally {
-    selectedAttempt.promise = undefined;
+    sourcePin?.release();
   }
 }
 
 /** File/drop capture belongs to the synchronous caller, before this lazy module loads. */
-export function startLocalModelInput({ directories, controller, context }: {
+async function confirmLocalInputLayout({ directory, operation }: {
+  directory: ModelDirectoryInput, operation: LocalInputOperation,
+}): Promise<ModelDirectoryInput[]> {
+  if (!directory.files.some(file => /\.gguf$/i.test(file.relativePath) && file.relativePath.includes('/'))) {
+    return [directory];
+  }
+  const { localRepositoryLayoutChoices } = await import('@/features/llama-cpp-browser/runtime/local-repository-layout');
+  operation.controller.signal.throwIfAborted();
+  const choices = localRepositoryLayoutChoices({ directory });
+  if (!choices.length) {
+    throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+  }
+  if (choices.length === 1 && choices[0]) {
+    return choices[0].directories;
+  }
+  return new Promise<ModelDirectoryInput[]>((resolve, reject) => {
+    const signal = operation.controller.signal;
+    const cancel = () => {
+      if (localInputSelection.value?.operation === operation) {
+        localInputSelection.value = undefined;
+      }
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', cancel, { once: true });
+    localInputSelection.value = {
+      operation,
+      status: 'layout',
+      rootName: directory.rootName,
+      choices,
+      chooseLayout: ({ layout }) => {
+        const choice = choices.find(choice => choice.layout === layout);
+        if (!choice || !currentInput({ operation })) {
+          return;
+        }
+        signal.removeEventListener('abort', cancel);
+        localInputSelection.value = undefined;
+        resolve(choice.directories);
+      },
+    };
+  });
+}
+
+export function startLocalModelInput({ directories, controller, context, save, repositoryLayout, acceptFiles }: {
   directories: Promise<ModelDirectoryInput[]>,
   controller: AbortController,
   context: ModelLaunchStartContext,
+  save?: 'browser' | 'later',
+  repositoryLayout?: 'confirmed',
+  acceptFiles?: ({ directories, controller, save }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save: 'browser' | 'later' }) => void,
 }): Promise<void> {
   const pending = inputPromises.get(controller);
   if (pending !== undefined) {
@@ -285,12 +344,37 @@ export function startLocalModelInput({ directories, controller, context }: {
   // enumeration is pending, but retain it for the actual launch to report.
   void operation.defaults.catch(() => {});
   const promise = (async () => {
-    const inputs = await directories;
+    const captured = await directories;
+    const inputs: ModelDirectoryInput[] = [];
+    for (const directory of captured) {
+      if (!currentInput({ operation })) {
+        return;
+      }
+      // The shared file input resolves only after confirming repository boundaries.
+      // Direct welcome drops still need the owner's existing layout dialog.
+      switch (repositoryLayout) {
+      case 'confirmed': inputs.push(directory);
+        break;
+      case undefined: inputs.push(...await confirmLocalInputLayout({ directory, operation }));
+        break;
+      default: {
+        const exhaustive: never = repositoryLayout;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
     if (!currentInput({ operation })) {
       return;
     }
+    if (acceptFiles !== undefined) {
+      // The existing chat takes ownership only after the same repository
+      // confirmation as a new chat. Retiring the chooser must not cancel it.
+      activeInput = undefined;
+      acceptFiles({ directories: Promise.resolve(inputs), controller, save: save ?? 'later' });
+      return;
+    }
     for (const directory of inputs) {
-      const receipt = await llamaCppBrowserModelFiles.importDirectory({ directory, storage: 'temp', signal: controller.signal });
+      const receipt = await llamaCppBrowserModelFiles.importLocalDirectory({ directory, save: save ?? 'later', signal: controller.signal });
       if (!currentInput({ operation })) {
         return;
       }
@@ -322,16 +406,35 @@ export function startLocalModelInput({ directories, controller, context }: {
 export function useBrowserModelLocalInputSelection() {
   const selection = computed(() => {
     const current = localInputSelection.value;
-    return current !== undefined && currentInput({ operation: current.operation }) ? {
+    if (current === undefined || !currentInput({ operation: current.operation })) {
+      return undefined;
+    }
+    switch (current.status) {
+    case 'layout': return {
+      kind: 'layout' as const,
+      rootName: current.rootName,
+      choices: current.choices,
+      chooseLayout: current.chooseLayout,
+      models: [],
+      status: 'choosing' as const,
+      error: undefined,
+    };
+    case 'choosing': case 'starting': return {
+      kind: 'models' as const,
       models: current.operation.candidates.filter(candidate => candidate.isCurrent()).map(candidate => candidate.model),
       status: current.status,
       error: current.error,
-    } : undefined;
+    };
+    default: {
+      const exhaustive: never = current;
+      throw new Error(String(exhaustive));
+    }
+    }
   });
 
   async function choose({ modelId }: { modelId: string }): Promise<void> {
     const current = localInputSelection.value;
-    if (current === undefined || current.status === 'starting' || !currentInput({ operation: current.operation })) {
+    if (current === undefined || current.status === 'starting' || current.status === 'layout' || !currentInput({ operation: current.operation })) {
       return;
     }
     const candidate = current.operation.candidates.find(candidate => candidate.model.modelId === modelId && candidate.isCurrent());
@@ -482,11 +585,12 @@ export function useLocalModelStart() {
         void check({ refresh: 'if-needed' }).catch(() => {});
       },
     });
+    const sourcePin = retainLocalRepositorySource({ modelId: model.modelId });
     const promise = (async () => {
       if (selectedAttempt.source !== undefined && !selectedAttempt.source.isCurrent()) {
         throw new Error('Local model files changed');
       }
-      const source = selectedAttempt.source ?? (model.modelId.startsWith('temp/') ? await captureTemporaryModelSource({ modelId: model.modelId, signal }) : undefined);
+      const source = selectedAttempt.source ?? (isPendingLocalModelReference({ modelId: model.modelId }) ? await captureTemporaryModelSource({ modelId: model.modelId, signal }) : undefined);
       selectedAttempt.source = source;
       await check({ refresh: 'if-needed' });
       if (!current()) {
@@ -528,6 +632,7 @@ export function useLocalModelStart() {
     selectedAttempt.promise = promise;
     void promise.finally(() => {
       unsubscribe();
+      sourcePin?.release();
       selectedAttempt.promise = undefined;
     }).catch(() => {});
     return promise;

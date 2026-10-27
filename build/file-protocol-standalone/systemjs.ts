@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { JSDOM } from 'jsdom';
+import { createBuildDom } from '../jsdom';
 
 import type { BuildLicenseDependency } from '../license-dependencies';
 const pluginName = 'file-protocol-standalone';
@@ -32,9 +32,12 @@ export function readSystemJsLicenseDependency({ packageJsonPath }: {
 
 /** @internal Exported for focused plugin tests. */
 export function assertSupportedSystemJsRuntime({ source }: { source: string }): void {
-  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-    url: 'file:///file-protocol-standalone/runtime-validation.html',
-    runScripts: 'outside-only',
+  const dom = createBuildDom({
+    html: '<!doctype html><html><head></head><body></body></html>',
+    options: {
+      url: 'file:///file-protocol-standalone/runtime-validation.html',
+      runScripts: 'outside-only',
+    },
   });
 
   try {

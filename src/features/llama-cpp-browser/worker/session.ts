@@ -27,7 +27,7 @@ export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', che
 };
 
 type ResidentChatMetadata = { requestedContextTokens: number, vocab: bigint, contextTokens: number, memory: bigint, nativeRollbackTokens: number, prefillBatchTokens: number };
-type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, modelId: string, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
+type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, modelId: string, sourceId: string | undefined, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
 
@@ -272,7 +272,23 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   if (purpose.kind === 'audio' && !directory.projectorFile) {
     throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
   }
-  let unchanged = resident?.modelId === request.modelId && resident.files.length === directory.files.length;
+  const sourceId = (() => {
+    const location = request.resolvedModel.location;
+    switch (location.kind) {
+    case 'local-files': return location.sourceId;
+    case 'opfs-user': case 'hugging-face': case 'host': case 'temp': return undefined;
+    default: {
+      const exhaustive: never = location;
+      throw new Error(String(exhaustive));
+    }
+    }
+  })();
+  // A confirmed save changes the public name, while the captured File source
+  // and its provenance stay unchanged. Names alone never establish equivalence.
+  const sameIdentity = resident !== undefined && (sourceId !== undefined || resident.sourceId !== undefined
+    ? sourceId !== undefined && resident.sourceId === sourceId
+    : resident.modelId === request.modelId);
+  let unchanged = sameIdentity && resident !== undefined && resident.files.length === directory.files.length;
   if (unchanged && resident) {
     for (let index = 0; index < directory.files.length; index++) {
       const next = directory.files[index]!;
@@ -285,6 +301,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   }
   if (resident && !unchanged) {
     await releaseSession({ releaseRuntime: false });
+  }
+  if (resident && unchanged) {
+    resident.modelId = request.modelId;
   }
   checkCancelled();
   if (!resident) {
@@ -412,7 +431,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           }
         };
       }
-      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, modelId: request.modelId, files: directory.files, chatMetadata: undefined, contextProjector: undefined };
+      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, modelId: request.modelId, sourceId, files: directory.files, chatMetadata: undefined, contextProjector: undefined };
       model = 0n;
       sampleMemoryDiagnostics({ core, checkpoint: 'model-loaded' });
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });

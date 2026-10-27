@@ -65,18 +65,18 @@ defineExpose({
 
       <div tw-class="min-w-[10rem] flex-1">
         <div tw-class="flex min-w-0 items-center gap-2">
-          <h4 tw-class="text-sm font-bold leading-tight text-gray-900 dark:text-gray-100">
+          <h4 tw-class="text-sm font-semibold leading-tight text-gray-900 dark:text-gray-300">
             {{ props.title }}
           </h4>
         </div>
-        <p tw-class="mt-0.5 text-[11px] font-medium leading-4 text-gray-500 dark:text-gray-400">
+        <p tw-class="mt-0.5 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
           {{ props.summary }}
         </p>
       </div>
 
       <div tw-class="ml-auto flex shrink-0 items-center gap-3">
         <div
-          :tw-class="['inline-flex shrink-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider', props.status === 'enabled' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-gray-400']"
+          :tw-class="['inline-flex shrink-0 items-center gap-1.5 text-xs font-medium', props.status === 'enabled' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-gray-400']"
         >
           <AlertTriangleIcon v-if="props.status === 'enabled'" tw-class="h-3.5 w-3.5" />
           {{ props.status === 'enabled' ? lazyStrings.ExperimentalFeatureRow__enabled() : lazyStrings.ExperimentalFeatureRow__disabled() }}
@@ -85,7 +85,7 @@ defineExpose({
         <div tw-class="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            tw-class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+            tw-class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             :aria-expanded="isDetailsExpanded"
             :aria-controls="`${props.id}-details`"
             :data-testid="`${props.id}-details-toggle`"
@@ -127,7 +127,7 @@ defineExpose({
         <div
           :tw-class="['px-4 pb-4 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none sm:px-5', isDetailsExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0']"
         >
-          <p tw-class="ml-12 rounded-lg border border-gray-200/80 bg-gray-50/80 px-3 py-2 text-[11px] font-medium leading-relaxed text-gray-600 dark:border-gray-800 dark:bg-gray-950/35 dark:text-gray-300">
+          <p tw-class="ml-12 rounded-lg border border-gray-200/80 bg-gray-50/80 px-3 py-2 text-xs leading-relaxed text-gray-600 dark:border-gray-800 dark:bg-gray-950/35 dark:text-gray-400">
             {{ props.details }}
           </p>
         </div>

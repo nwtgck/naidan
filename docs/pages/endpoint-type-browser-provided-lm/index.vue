@@ -32,7 +32,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </details>
 
     <p class="app-entry-intro"><RenderText :node="s.open_connection_settings({ locale, destination: { kind: 'screen', screen: 'connection' } })" /></p>
-    <p class="app-entry-onboarding"><RenderText :node="s.connection_first_run_note()" /></p>
 
     <section class="walkthrough-step" aria-labelledby="browser-open">
       <h2 id="browser-open">{{ s.open_connection_settings_heading }}</h2>
@@ -62,6 +61,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <h2>{{ s.chrome_model_unavailable_heading }}</h2>
     <p>{{ s.chrome_model_unavailable_help }}</p>
+    <h2>{{ s.alternate_entry_heading }}</h2>
+    <p><RenderText :node="s.alternate_entry_instructions()" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
   </article>
 </template>

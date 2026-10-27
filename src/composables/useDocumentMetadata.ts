@@ -2,6 +2,8 @@ import { computed, hasInjectionContext, inject, onActivated, onDeactivated, onSc
 import { START_LOCATION, type Router } from 'vue-router';
 import { HOME_METADATA, applyDocumentMetadata, isHomeIntroductionActive, routeDocumentMetadata, type HomeIntroduction, type PageMetadata } from '@/logic/document-metadata';
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
+import { lazyStrings } from '@/strings';
+import { exactObject } from '@/utils/exact-object';
 
 type ScopedPageMetadata = Readonly<{ routePath: string, metadata: PageMetadata }>;
 type ScopedTitle = Readonly<{ routePath: string, title: string }>;
@@ -27,7 +29,12 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
   const introduction = computed(() => isHomeIntroductionActive({ introduction: homeIntroduction.value, route: route.value }));
   const page = computed(() => {
     if (introduction.value) {
-      return HOME_METADATA;
+      const title = lazyStrings.documentTitle__run_ai_on_your_device_directly_in_your_browser();
+      // Keep the initial HTML's English metadata until this boundary is ready.
+      if (title === undefined) {
+        return HOME_METADATA;
+      }
+      return exactObject<PageMetadata>()({ title, description: HOME_METADATA.description });
     }
     for (const source of [...pages.values()].reverse()) {
       const value = source.value;

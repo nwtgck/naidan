@@ -175,7 +175,7 @@ describe("local GGUF model store", () => {
     expect(model.importedAt).toBe(123);
     const folder = await modelFolder({ name: file.name });
     expect([...folder.children.keys()]).toEqual(["local.gguf"]);
-    expect(await listStoredModels()).toEqual([model]);
+    expect(await listStoredModels()).toEqual([{ ...model, modelId: `${model.modelId}/local` }]);
     expect((await (await selectedFile({ modelId: model.modelId })).getFile()).size).toBe(256);
     expect((await (await selectedFile({ modelId: model.modelId })).getFile()).name).toBe(file.name);
     expect(progress).toHaveBeenLastCalledWith({ progress: { phase: "importing", completed: 256, total: 256 } });
@@ -231,7 +231,7 @@ describe("local GGUF model store", () => {
     await expect(importStoredModel({ signal: undefined, file: fixture({ name: "retry.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
     await removeStoredModel({ plan: await removalPlan({ modelId: "user/retry-GGUF" }) });
     const model = await importStoredModel({ signal: undefined, file: fixture({ name: "retry.gguf" }), onProgress: () => {} });
-    expect(await listStoredModels()).toEqual([model]);
+    expect(await listStoredModels()).toEqual([{ ...model, modelId: `${model.modelId}/retry` }]);
     expect((await (await modelFolder({ name: "retry.gguf" })).getFileHandle("retry.gguf")).content.length).toBe(256);
   });
 
@@ -243,7 +243,7 @@ describe("local GGUF model store", () => {
     for (const id of ["../other-feature", "other/local-GGUF/local.gguf", "user/../local.gguf", model.modelId + "/extra"]) {
       await expect(prepareModelRemoval({ modelId: id, signal: undefined })).rejects.toThrow();
     }
-    expect(await listStoredModels()).toEqual([model]);
+    expect(await listStoredModels()).toEqual([{ ...model, modelId: `${model.modelId}/local` }]);
     await removeStoredModel({ plan: await removalPlan({ modelId: model.modelId }) });
     expect(await listStoredModels()).toEqual([]);
     await expect(selectedFile({ modelId: model.modelId })).rejects.toThrow("missing-model");
@@ -265,7 +265,7 @@ describe("local GGUF model store", () => {
     const model = await importStoredModel({ signal: undefined, file: fixture({ name: "persistent.gguf" }), onProgress: () => {} });
     vi.resetModules();
     const reloaded = await import("./model-store");
-    expect(await reloaded.listStoredModels()).toEqual([model]);
+    expect(await reloaded.listStoredModels()).toEqual([{ ...model, modelId: `${model.modelId}/persistent` }]);
     expect((await (await selectedFile({ modelId: model.modelId })).getFile()).size).toBe(256);
     expect(root.children.has("llama-cpp-browser-models-v1")).toBe(false);
     expect(other.content).toEqual(new Uint8Array([1, 2, 3]));
@@ -274,7 +274,7 @@ describe("local GGUF model store", () => {
   it("discovers externally added files without permanent markers or a registry", async () => {
     expect(await listStoredModels()).toEqual([]);
     const folder = await putModelFile({ name: "external.gguf" });
-    expect(await listStoredModels()).toEqual([{ modelId: "user/external-GGUF", size: 256, importedAt: 123 }]);
+    expect(await listStoredModels()).toEqual([{ modelId: "user/external-GGUF/external", size: 256, importedAt: 123 }]);
     await folder.getFileHandle(".llama-cpp-import-pending", { create: true });
     expect(await listStoredModels()).toEqual([]);
     expect(folder.children.has("external.gguf")).toBe(true);
@@ -301,7 +301,7 @@ describe("local GGUF model store", () => {
     sharedFile.content = new Uint8Array([11, 22, 33]);
     expect(await listStoredModels()).toEqual([]);
     await importStoredModel({ signal: undefined, file: fixture({ name: "new.gguf" }), onProgress: () => {} });
-    expect((await listStoredModels()).map(model => model.modelId)).toEqual(["user/new-GGUF"]);
+    expect((await listStoredModels()).map(model => model.modelId)).toEqual(["user/new-GGUF/new"]);
     expect(move).not.toHaveBeenCalled();
     expect(root.children.get("llama-cpp-browser-models-v1")).toBe(legacy);
     expect(oldFile.content).toEqual(bytesBefore);
@@ -347,7 +347,7 @@ describe("local GGUF model store", () => {
     const model = await importStoredModel({ signal: undefined, file: fixture({ name }), onProgress: () => {} });
     expect(model.modelId).toBe(`user/${name.slice(0, -5)}-GGUF`);
     expect((await (await selectedFile({ modelId: model.modelId })).getFile()).name).toBe(name);
-    expect(await listStoredModels()).toEqual([model]);
+    expect(await listStoredModels()).toEqual([{ ...model, modelId: `${model.modelId}/モデル.Q4` }]);
   });
 
   it('accepts a 255-byte filename without reserving space for a permanent marker', async () => {
@@ -410,7 +410,7 @@ describe('directory model imports', () => {
     expect(model.modelId).toBe('user/LiquidAI_LFM2.5-VL_GGUF');
     expect(root.children.has('LiquidAI:LFM2.5-VL:GGUF')).toBe(false);
     expect((await resolvedDirectory({ modelId: model.modelId })).primaryFile.relativePath).toBe('weights:original/model.gguf');
-    expect((await listStoredModels()).map(entry => entry.modelId)).toEqual([model.modelId]);
+    expect((await listStoredModels()).map(entry => entry.modelId)).toEqual(['user/LiquidAI_LFM2.5-VL_GGUF/weights:original/model']);
   });
 
   it('rejects normalized root collisions without replacing existing data', async () => {
@@ -439,7 +439,7 @@ describe('directory model imports', () => {
     await expect(removalPlan({ modelId: 'Same' })).rejects.toThrow('missing-model');
     const model = await importModelDirectory({ signal: undefined, directory: { rootName: 'Same', files: [{ relativePath: 'new.gguf', file: fixture({ name: 'new.gguf' }) }] }, onProgress: () => {} });
     expect((await resolvedDirectory({ modelId: 'user/Same' })).primaryFile.relativePath).toBe('new.gguf');
-    expect(await listStoredModels()).toEqual([model]);
+    expect(await listStoredModels()).toEqual([{ ...model, modelId: `${model.modelId}/new` }]);
     await removeStoredModel({ plan: await removalPlan({ modelId: model.modelId }) });
     expect(root.children.get('Same')).toBe(folder);
     expect(folder.children.get('old.gguf')).toBe(oldFile);
@@ -468,7 +468,7 @@ describe('directory model imports', () => {
     const directory = await resolvedDirectory({ modelId: model.modelId });
     expect(directory.primaryFile.relativePath).toBe('weights/Qwen.gguf');
     expect(directory.projectorFile?.relativePath).toBe('vision/mmproj-BF16.gguf');
-    expect(await listStoredModels()).toContainEqual(model);
+    expect(await listStoredModels()).toContainEqual({ ...model, modelId: `${model.modelId}/weights/Qwen` });
     const plan = await removalPlan({ modelId: model.modelId });
     await removeStoredModel({ plan });
     expect([...folder.children.keys()]).toEqual(['README.md']);
@@ -493,7 +493,7 @@ describe('directory model imports', () => {
     expect(model.size).toBe(512);
     expect((await resolvedDirectory({ modelId: `user/${name}` })).primaryFile.relativePath).toBe(modelPath);
     expect((await resolvedDirectory({ modelId: `user/${name}` })).projectorFile?.relativePath).toBe(projectorPath);
-    expect(await listStoredModels()).toEqual([model]);
+    expect(await listStoredModels()).toEqual([{ ...model, modelId: `${model.modelId}/gemma-4-26B_q4_0-it` }]);
   });
 
   it.each(['mmproj-BF16.gguf', 'model-mmproj.gguf', 'model.mmproj.F16.gguf', 'model_MMPROJ_F16.GGUF', 'modelmmprojF16.gguf'])('recognizes a projector regardless of marker placement: %s', projectorPath => {
@@ -519,7 +519,7 @@ describe('directory model imports', () => {
     expect((await resolvedDirectory({ modelId: 'user/External' })).projectorFile?.relativePath).toBeUndefined();
     (await folder.getFileHandle('mmproj.gguf', { create: true })).content = new Uint8Array(await fixture({ name: 'mmproj.gguf' }).arrayBuffer());
     expect((await resolvedDirectory({ modelId: 'user/External' })).projectorFile?.relativePath).toBe('mmproj.gguf');
-    expect((await listStoredModels()).map(model => model.modelId)).toEqual(['user/External']);
+    expect((await listStoredModels()).map(model => model.modelId)).toEqual(['user/External/model']);
   });
 
   it('requires complete split sets and rejects ambiguous weights', () => {
@@ -584,7 +584,7 @@ describe('directory model imports', () => {
     const pending = await user.getDirectoryHandle('Pending', { create: true });
     (await pending.getFileHandle('model.gguf', { create: true })).content = new Uint8Array(await fixture({ name: 'model.gguf' }).arrayBuffer());
     await pending.getFileHandle('.llama-cpp-import-pending', { create: true });
-    expect((await listStoredModels()).map(model => model.modelId)).toEqual(['user/Imported']);
+    expect((await listStoredModels()).map(model => model.modelId)).toEqual(['user/Imported/model']);
   });
 
   it('rejects path traversal, duplicates and file/directory collisions before creating a model directory', async () => {
@@ -618,7 +618,7 @@ describe('cancelled local imports and explicit retries', () => {
     expect(committed).toEqual([]);
     const model = await importStoredModel({ file, signal: undefined, onProgress: () => {} });
     expect(model.modelId).toBe('user/cancel-and-retry-GGUF');
-    expect((await listStoredModels()).map(entry => entry.modelId)).toEqual([model.modelId]);
+    expect((await listStoredModels()).map(entry => entry.modelId)).toEqual(['user/cancel-and-retry-GGUF/cancel-and-retry']);
   });
 
   it('wakes a pending source read on cancel and releases the reader before retry', async () => {
@@ -695,11 +695,11 @@ describe('cancelled local imports and explicit retries', () => {
     const before = [...folder.children.keys()];
     expect(await listStoredModels()).toEqual([]);
     expect([...folder.children.keys()]).toEqual(before);
-    const model = await importStoredModel({ file, signal: undefined, onProgress: () => {} });
+    await importStoredModel({ file, signal: undefined, onProgress: () => {} });
     const current = await modelFolder({ name: file.name });
     expect([...current.children.keys()]).toEqual([file.name]);
     expect((await current.getFileHandle(file.name)).content).toEqual(new Uint8Array(await file.arrayBuffer()));
-    expect((await listStoredModels()).map(entry => entry.modelId)).toEqual([model.modelId]);
+    expect((await listStoredModels()).map(entry => entry.modelId)).toEqual(['user/old-cancel-GGUF/old-cancel']);
   });
 
   it('reclaims empty interrupted nested destinations belonging to the explicit folder input', async () => {

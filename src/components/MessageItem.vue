@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch, onUnmounted, provide } from 'vue';
+import { computed, ref, shallowRef, onMounted, nextTick, watch, onUnmounted, provide, type VNodeRef } from 'vue';
 import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
 import GeneratingIndicator from './GeneratingIndicator.vue';
 import { markRaw } from 'vue';
 import 'katex/dist/katex.min.css';
-import type { MessageNode, Attachment, EndpointType, LmParameters, Reasoning } from '@/01-models/types';
+import type { MessageNode, Attachment, Endpoint, EndpointType, LmParameters, Reasoning } from '@/01-models/types';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
+import ResourceLoadCspHint from './ResourceLoadCspHint.vue';
 import type { ToolCallDraft } from '@/01-models/lm';
 import ToolCallDraftItem from '@/features/tools/components/ToolCallDraftItem.vue';
 import type { FlowMetadata, MessageMode } from '@/composables/useChatDisplayFlow';
@@ -22,6 +24,8 @@ import { getAssistantDisplayParts, getDisplayedMessageText } from '@/logic/messa
 import { useChatMessageError } from '@/composables/chat/useChatMessageError';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
+import GenerationSpeed from './GenerationSpeed.vue';
+import type { GenerationMetricsPresentation } from '@/01-models/generation-metrics';
 import SpeechLanguageSelector from '@/features/speech/components/SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/features/transformers-js';
 import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/components/LlamaCppBrowserLoadingIndicator.vue';
@@ -58,6 +62,7 @@ const props = withDefaults(defineProps<{
   isThinkingActive?: boolean,
   availableImageModels?: string[],
   endpointType?: EndpointType,
+  endpoint: Endpoint | undefined,
   flow?: FlowMetadata,
   mode?: MessageMode,
   partContent?: string,
@@ -66,6 +71,7 @@ const props = withDefaults(defineProps<{
   isLastInNode?: boolean,
   isFirstInTurn?: boolean,
   showGeneratingIndicator?: boolean,
+  generationMetrics?: GenerationMetricsPresentation,
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
   isGenerating: false,
@@ -127,6 +133,38 @@ const editImageParams = ref({
 });
 
 const attachmentUrls = ref(new Map<AttachmentId, string>());
+const attachmentImageElements = shallowRef<ReadonlyMap<AttachmentId, HTMLImageElement>>(new Map());
+const attachmentImageRefs = new Map<AttachmentId, VNodeRef>();
+
+function attachmentImageRef({ id }: { id: AttachmentId }): VNodeRef | undefined {
+  const existing = attachmentImageRefs.get(id);
+  if (existing !== undefined) {
+    return existing;
+  }
+  if (attachmentImageRefs.size >= 16) {
+    return undefined;
+  }
+  const callback: VNodeRef = value => {
+    try {
+      const element = value instanceof HTMLImageElement ? value : undefined;
+      if (attachmentImageElements.value.get(id) === element) {
+        return;
+      }
+      const updated = new Map(attachmentImageElements.value);
+      if (element === undefined) {
+        updated.delete(id);
+        attachmentImageRefs.delete(id);
+      } else {
+        updated.set(id, element);
+      }
+      attachmentImageElements.value = updated;
+    } catch { /* Optional image refs cannot interrupt message rendering. */ }
+  };
+  attachmentImageRefs.set(id, callback);
+  return callback;
+}
+
+const attachmentLoadSources = computed(() => attachments.value.length > 16 ? [] : attachments.value.map(attachment => ({ element: attachmentImageElements.value.get(attachment.id), url: attachmentUrls.value.get(attachment.id), destination: 'image' as const })));
 const messageChatId = computed(() => props.chatId);
 
 const { openPreview } = useImagePreview();
@@ -630,6 +668,7 @@ defineExpose({
         <div v-for="(att, idx) in attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls.get(att.id)">
             <img
+              :ref="attachmentImageRef({ id: att.id })"
               :src="attachmentUrls.get(att.id)"
               data-testid="message-attachment-image"
               @click="handlePreviewImage({ id: att.binaryObjectId })"
@@ -656,6 +695,8 @@ defineExpose({
           </template>
         </div>
       </div>
+
+      <ResourceLoadCspHint :resources="attachmentLoadSources" tw-class="mb-3" />
 
       <MessageThinking
         v-if="mode === 'thinking'"
@@ -795,6 +836,7 @@ defineExpose({
             <span>{{ lazyStrings.MessageItem__generation_failed() }}</span>
           </div>
           <div tw-class="opacity-90">{{ messageError }}</div>
+          <CspLmEndpointHint :activity-for-display-only="undefined" :fake-lm-debug-mode-status="undefined" :endpoint="endpoint" :operation="isImageRequestMsg ? 'image' : 'chat'" presentation="error" />
           <button
             @click="emit('regenerate', message.id)"
             tw-class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"
@@ -826,23 +868,26 @@ defineExpose({
           </div>
           <div v-else></div>
 
-          <!-- Message Actions -->
-          <MessageActions
-            v-if="speechText !== undefined"
-            :chat-id="chatId"
-            :message="message"
-            :is-image-response="isImageResponse"
-            :is-user="isUser"
-            :is-generating="isGenerating"
-            v-model:show-extensions="showExtensions"
-            :speech-text="speechText"
-            :display-content="displayContent"
-            @regenerate="id => emit('regenerate', id)"
-            @edit="(id, content, params) => emit('edit', id, content, params)"
-            @fork="id => emit('fork', id)"
-            @enter-edit-mode="isEditing = true"
-            @show-diff="showDiffModal = true"
-          />
+          <!-- Metrics stay before the entire actions/extension group. -->
+          <div tw-class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+            <GenerationSpeed v-if="generationMetrics !== undefined" :presentation="generationMetrics" />
+            <MessageActions
+              v-if="speechText !== undefined"
+              :chat-id="chatId"
+              :message="message"
+              :is-image-response="isImageResponse"
+              :is-user="isUser"
+              :is-generating="isGenerating"
+              v-model:show-extensions="showExtensions"
+              :speech-text="speechText"
+              :display-content="displayContent"
+              @regenerate="id => emit('regenerate', id)"
+              @edit="(id, content, params) => emit('edit', id, content, params)"
+              @fork="id => emit('fork', id)"
+              @enter-edit-mode="isEditing = true"
+              @show-diff="showDiffModal = true"
+            />
+          </div>
 
         </div>
       </div>

@@ -1,0 +1,1 @@
+export const GenerationSpeed__llama_cpp_server_timings_help = (): string => "Globale Einstellung ab der nächsten Antwort, wenn die Geschwindigkeitsanzeige aktiviert ist. Die automatische Erkennung prüft /props; andernfalls wird die bisherige Messung verwendet.";

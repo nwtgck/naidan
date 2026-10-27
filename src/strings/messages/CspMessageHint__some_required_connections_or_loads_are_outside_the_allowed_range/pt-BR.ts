@@ -1,0 +1,1 @@
+export const CspMessageHint__some_required_connections_or_loads_are_outside_the_allowed_range = (): string => 'Some connections or resource loads required by this feature are outside the allowed range.';

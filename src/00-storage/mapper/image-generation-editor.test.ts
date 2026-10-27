@@ -4,6 +4,7 @@ import { ExperimentalRemoteImageModelEditorSchemaDto } from '@/00-storage/00-dto
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import { settingsToDomain, settingsToDto } from './mappers';
+import { remoteImageModelEditorToDomain, remoteImageModelEditorToDto } from './image-generation-editor';
 
 it('round trips a remote editor separately from the local selection without rewriting remote paths', () => {
   const registrationId = toNaidanRpcRegistrationId({ raw: 'registration-one' }), peerPublicKey = toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) });
@@ -15,7 +16,7 @@ it('round trips a remote editor separately from the local selection without rewr
       browserImageGeneration: {
         modelSelection: { primary: { slot: 'model', location: { kind: 'opfs', path: 'models/local.gguf' } }, components: [], loras: [] },
         inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId, peerPublicKey } },
-        remoteModelEditors: [{ registrationId, peerPublicKey, editor: { primary: undefined, components: [], loras: [{ file: { location: { kind: 'host', directoryId: 'remote-directory', path: 'models/ off.gguf' }, expected: { size: 16, lastModified: 123 } }, strength: 0.7, enabled: 'disabled' }] } }],
+        remoteModelEditors: [{ registrationId, peerPublicKey, editor: { automaticSlots: [], primary: undefined, components: [], loras: [{ file: { location: { kind: 'host', directoryId: 'remote-directory', path: 'models/ off.gguf' }, expected: { size: 16, lastModified: 123 } }, strength: 0.7, enabled: 'disabled' }] } }],
       },
     },
   };
@@ -46,10 +47,18 @@ it('keeps remote temporary locators and their metadata in the persisted editor w
     endpoint: { type: 'openai', url: '' },
     experimental: {
       browserImageGeneration: {
-        remoteModelEditors: [{ registrationId, peerPublicKey, editor: { primary: { slot: 'diffusion', file, family: undefined }, components: [{ slot: 'vae', file }], loras: [{ file, strength: 0.7, enabled: 'enabled' }] } }],
+        remoteModelEditors: [{ registrationId, peerPublicKey, editor: { automaticSlots: [], primary: { slot: 'diffusion', file, family: undefined }, components: [{ slot: 'vae', file }], loras: [{ file, strength: 0.7, enabled: 'enabled' }] } }],
       },
     },
   };
   const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: settings })))) });
   expect(restored.experimental?.browserImageGeneration?.remoteModelEditors).toEqual(settings.experimental!.browserImageGeneration!.remoteModelEditors);
+});
+
+it('migrates absent automatic intent as manual and round trips explicit automatic slots', () => {
+  const legacy = ExperimentalRemoteImageModelEditorSchemaDto.parse({ primary: undefined, components: [], loras: [] });
+  const manual = remoteImageModelEditorToDomain({ dto: legacy });
+  expect(manual.automaticSlots).toEqual([]);
+  const automatic = { ...manual, automaticSlots: ['vae' as const, 'lm' as const] };
+  expect(remoteImageModelEditorToDomain({ dto: remoteImageModelEditorToDto({ editor: automatic }) })).toEqual(automatic);
 });

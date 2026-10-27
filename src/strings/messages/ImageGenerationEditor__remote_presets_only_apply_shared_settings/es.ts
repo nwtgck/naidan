@@ -1,0 +1,1 @@
+export const ImageGenerationEditor__remote_presets_only_apply_shared_settings = (): string => "Los ajustes remotos solo se aplican a las opciones compatibles con el método RPC de imágenes. El proveedor controla los ajustes específicos del dispositivo.";

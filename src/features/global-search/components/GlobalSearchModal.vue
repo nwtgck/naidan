@@ -524,6 +524,7 @@ async function selectItem({ index }: { index: number }) {
   case 'chat_group': {
     const groupItem = target.item;
     openChatGroup({ groupId: toChatGroupId({ raw: groupItem.groupId }) });
+    router.push(`/chat-group/${groupItem.groupId}`);
     closeSearch();
     break;
   }

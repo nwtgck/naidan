@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   openFileExplorer: vi.fn(),
   createVolume: vi.fn(),
   addToast: vi.fn(),
+  showConfirm: vi.fn(),
 }));
 vi.mock('@/00-storage/service', () => ({ storageService: { listVolumes: mocks.listVolumes, getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle, createVolume: mocks.createVolume } }));
 vi.mock('@/composables/chat/useChatMounts', () => ({ useChatMounts: () => ({ addMount: mocks.chatAdd, removeMount: mocks.chatRemove, updateMount: mocks.chatUpdate }) }));
@@ -26,6 +27,7 @@ vi.mock('@/composables/chat/useChatGroupMounts', () => ({ useChatGroupMounts: ()
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({ useFileExplorerModal: () => ({ openFileExplorer: mocks.openFileExplorer }) }));
 vi.mock('@/utils/opfs-detection', () => ({ checkOPFSSupport: async () => true, checkFileSystemAccessSupport: () => true }));
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ addToast: mocks.addToast }) }));
+vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.showConfirm }) }));
 
 function mountSettings({ owner, mounts, inheritedMounts }: {
   owner: MountSettingsOwner,
@@ -64,6 +66,7 @@ const chatGroupOwner = { type: 'chat_group', id: toChatGroupId({ raw: 'chat-grou
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  mocks.showConfirm.mockResolvedValue(true);
   mocks.listVolumes.mockImplementation(async function* () {});
   await ensureAllStringsForTest({ locale: 'en' });
 });
@@ -73,6 +76,90 @@ afterEach(() => {
 });
 
 describe('ScopedMountSettings', () => {
+  it.each([chatOwner, chatGroupOwner])('waits for confirmation and keeps the mount when cancelled for $type', async owner => {
+    const approval = deferred<boolean>();
+    mocks.showConfirm.mockReturnValue(approval.promise);
+    const entry = folder({ name: 'docs', readOnly: true });
+    using view = mountSettings({ owner, mounts: [entry], inheritedMounts: [] });
+    await view.wrapper.get('[data-testid="mount-remove"]').trigger('click');
+    await flushPromises();
+    expect(mocks.showConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: expect.stringContaining(entry.mountPath), confirmButtonVariant: 'default' }));
+    expect(mocks.chatRemove).not.toHaveBeenCalled();
+    expect(mocks.chatGroupRemove).not.toHaveBeenCalled();
+    expect(view.wrapper.get('[data-testid="mount-remove"]').attributes('disabled')).toBeDefined();
+    approval.resolve(false);
+    await flushPromises();
+    expect(mocks.chatRemove).not.toHaveBeenCalled();
+    expect(mocks.chatGroupRemove).not.toHaveBeenCalled();
+    expect(view.wrapper.get('[data-testid="mount-remove"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it.each([chatOwner, chatGroupOwner])('confirms removal only from the requested $type scope', async owner => {
+    const entry = folder({ name: 'docs', readOnly: true });
+    using view = mountSettings({ owner, mounts: [entry], inheritedMounts: [] });
+    await view.wrapper.get('[data-testid="mount-remove"]').trigger('click');
+    await flushPromises();
+    switch (owner.type) {
+    case 'chat':
+      expect(mocks.chatRemove).toHaveBeenCalledWith({ chatId: owner.id, volumeId: entry.volumeId });
+      expect(mocks.chatGroupRemove).not.toHaveBeenCalled();
+      expect(mocks.showConfirm.mock.calls[0]?.[0].message).toContain("this chat's own settings");
+      break;
+    case 'chat_group':
+      expect(mocks.chatGroupRemove).toHaveBeenCalledWith({ chatGroupId: owner.id, volumeId: entry.volumeId });
+      expect(mocks.chatRemove).not.toHaveBeenCalled();
+      expect(mocks.showConfirm.mock.calls[0]?.[0].message).toContain("this chat group's own settings");
+      break;
+    default: {
+      const _ex: never = owner;
+      throw new Error(`Unhandled test owner: ${_ex}`);
+    }
+    }
+    expect(mocks.getVolumeDirectoryHandle).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a pending confirmation by starting removal from another row', async () => {
+    const approval = deferred<boolean>();
+    mocks.showConfirm.mockReturnValue(approval.promise);
+    using view = mountSettings({ owner: chatOwner, mounts: [folder({ name: 'first', readOnly: true }), folder({ name: 'second', readOnly: true })], inheritedMounts: [] });
+    const buttons = view.wrapper.findAll('[data-testid="mount-remove"]');
+    await buttons[0]?.trigger('click');
+    await flushPromises();
+    expect(buttons[1]?.attributes('disabled')).toBeDefined();
+    await buttons[1]?.trigger('click');
+    expect(mocks.showConfirm).toHaveBeenCalledTimes(1);
+    approval.resolve(false);
+    await flushPromises();
+    expect(buttons.every(button => button.attributes('disabled') === undefined)).toBe(true);
+    expect(mocks.chatRemove).not.toHaveBeenCalled();
+  });
+
+  it('does not approve a stale removal after the owner changes', async () => {
+    const approval = deferred<boolean>();
+    mocks.showConfirm.mockReturnValue(approval.promise);
+    using view = mountSettings({ owner: chatOwner, mounts: [folder({ name: 'docs', readOnly: true })], inheritedMounts: [] });
+    await view.wrapper.get('[data-testid="mount-remove"]').trigger('click');
+    await flushPromises();
+    await view.wrapper.setProps({ owner: chatGroupOwner, mounts: [] });
+    approval.resolve(true);
+    await flushPromises();
+    expect(mocks.chatRemove).not.toHaveBeenCalled();
+    expect(mocks.chatGroupRemove).not.toHaveBeenCalled();
+  });
+
+  it('does not remove a mount after its confirmation owner unmounts', async () => {
+    const approval = deferred<boolean>();
+    mocks.showConfirm.mockReturnValue(approval.promise);
+    {
+      using view = mountSettings({ owner: chatOwner, mounts: [folder({ name: 'docs', readOnly: true })], inheritedMounts: [] });
+      await view.wrapper.get('[data-testid="mount-remove"]').trigger('click');
+      await flushPromises();
+    }
+    approval.resolve(true);
+    await flushPromises();
+    expect(mocks.chatRemove).not.toHaveBeenCalled();
+  });
+
   it.each([chatOwner, chatGroupOwner])('denies read/write when metadata remains unknown for $type', async owner => {
     using view = mountSettings({ owner, mounts: [folder({ name: 'missing', readOnly: true })], inheritedMounts: [] });
     await flushPromises();
@@ -149,6 +236,8 @@ describe('ScopedMountSettings', () => {
     mocks.chatRemove.mockReturnValue(removal.promise);
     using view = mountSettings({ owner: chatOwner, mounts: [folder({ name: 'docs', readOnly: true })], inheritedMounts: [] });
     await view.wrapper.get('[data-testid="mount-remove"]').trigger('click');
+    await flushPromises();
+    expect(mocks.chatRemove).toHaveBeenCalledTimes(1);
     await view.wrapper.setProps({ owner: chatGroupOwner, mounts: [] });
     removal.reject(new Error('Old owner failed'));
     await flushPromises();

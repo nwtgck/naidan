@@ -2,12 +2,13 @@ import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/repository-input';
 import { quantizationName } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { parseTemporaryModelReference } from '@/features/llama-cpp-browser/temporary-model-reference';
+import { hasLocalRepositoryReferencePrefix, parseLocalRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
 import { modelSuggestions, preferredQuantizationHint, type ModelSuggestion, type SuggestedQuantization } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
-import type { TemporaryModelDirectoryInput } from '@/01-models/temporary-model-files';
+import { hasTemporaryModelPathPrefix, type TemporaryModelDirectoryInput } from '@/01-models/temporary-model-files';
 
 export type BrowserModelSelection = { suggestionId: string, quantizationId: string | undefined };
 export type BrowserModelPresentation = { name: string, developer: string, repository: string, bytes: number | undefined };
-export type BrowserModelLocalInput = { directories: Promise<TemporaryModelDirectoryInput[]>, controller: AbortController };
+export type BrowserModelLocalInput = { directories: Promise<TemporaryModelDirectoryInput[]>, controller: AbortController, save?: 'browser' | 'later', repositoryLayout?: 'confirmed' };
 export type ModelDiscoveryTab = 'candidates' | 'hugging-face' | 'local-files';
 export type BrowserModelShowcasePosition = 'selected' | 'previous' | 'next' | 'hidden';
 export type BrowserModelShowcaseItem = ({
@@ -39,7 +40,13 @@ export function browserModelRepositoryPresentation({ repository, bytes }: { repo
 
 export function localModelDisplayName({ model }: { model: Pick<LocalModel, 'modelId' | 'source'> }): string {
   let path = model.source?.primaryRelativePath;
-  if (path === undefined && model.modelId.startsWith('temp/')) {
+  if (path === undefined && hasLocalRepositoryReferencePrefix({ modelId: model.modelId, storage: undefined })) {
+    try {
+      const reference = parseLocalRepositoryReference({ modelId: model.modelId });
+      path = reference.selector ?? reference.rootName;
+    } catch { /* Missing references still need a display fallback. */ }
+  }
+  if (path === undefined && hasTemporaryModelPathPrefix({ path: model.modelId })) {
     try {
       const reference = parseTemporaryModelReference({ modelId: model.modelId });
       const name = reference.repository ?? reference.rootName;
@@ -58,7 +65,7 @@ export function matchesSuggestedBrowserModel({ model, hint }: { model: Pick<Loca
   try {
     const source = model.source;
     const reference = source !== undefined ? { repository: source.repository, requestedVariant: source.primaryRelativePath }
-      : model.modelId.startsWith('temp/') ? (() => {
+      : hasTemporaryModelPathPrefix({ path: model.modelId }) ? (() => {
         const temporary = parseTemporaryModelReference({ modelId: model.modelId });
         return { repository: temporary.repository, requestedVariant: temporary.selector };
       })() : parseRepository({ input: model.modelId });

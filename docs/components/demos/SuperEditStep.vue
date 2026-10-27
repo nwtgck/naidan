@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BotIcon, CopyIcon, GripVerticalIcon, HammerIcon, HistoryIcon, MoreVerticalIcon, MousePointer2Icon, PaperclipIcon, PlusIcon, PrinterIcon, SaveIcon, SearchIcon, Trash2Icon, UserIcon, XIcon } from 'lucide-vue-next';
+import { BotIcon, CopyIcon, GripVerticalIcon, HammerIcon, HistoryIcon, ImageIcon, MoreVerticalIcon, MousePointer2Icon, PaperclipIcon, PlusIcon, PrinterIcon, SaveIcon, SearchIcon, Settings2Icon, Trash2Icon, UserIcon, XIcon } from 'lucide-vue-next';
 
 defineProps<{ stage: 'open' | 'edit' | 'prompt' | 'apply'; messages: typeof import('../../pages/chat-super-edit/messages/en').messages }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -10,7 +10,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div class="chat-scene">
       <div class="chat-header"><strong>{{ messages.research_notes }}</strong><span class="more-trigger" :title="messages.more_actions"><MoreVerticalIcon :size="17" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="18" /></span></div>
       <div class="chat-messages"><p class="chat-user">{{ messages.summarize_the_research_question }}</p><p class="chat-assistant">{{ messages.first_identify_the_key_sources }}</p></div>
-      <div class="more-menu"><span><PrinterIcon :size="14" />{{ messages.print }}</span><span><SearchIcon :size="14" />{{ messages.search_in_chat }}</span><strong class="super-choice"><HammerIcon :size="14" />{{ messages.super_edit }}<MousePointer2Icon v-if="stage === 'open'" class="pointer choice-pointer" :size="18" /></strong><span>{{ messages.compact_context }}</span></div>
+      <div class="more-menu"><span><Settings2Icon :size="14" />{{ messages.chat_settings }}</span><i class="menu-separator" /><span><SearchIcon :size="14" />{{ messages.search_in_chat }}</span><span><ImageIcon :size="14" />{{ messages.media_gallery }}</span><i class="menu-separator" /><strong class="super-choice"><HammerIcon :size="14" />{{ messages.super_edit }}<MousePointer2Icon v-if="stage === 'open'" class="pointer choice-pointer" :size="18" /></strong><span>{{ messages.compact_context }}</span><i class="menu-separator" /><span><PrinterIcon :size="14" />{{ messages.print }}</span></div>
     </div>
     <div class="modal-shade" />
     <div class="editor-dialog">
@@ -119,10 +119,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   gap: 10px;
   padding: 8px 9px;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 500;
   color: var(--muted);
-  text-transform: uppercase;
   overflow-wrap: anywhere;
+}
+.more-menu .menu-separator {
+  display: block;
+  height: 1px;
+  margin: 4px 8px;
+  padding: 0;
+  background: var(--line);
 }
 .more-menu .super-choice {
   position: relative;

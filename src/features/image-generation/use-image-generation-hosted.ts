@@ -1,4 +1,6 @@
 import { copyRemoteImageModelEditor } from './remote-image-model-editor';
+import { imageSelectionParameters } from './selection-parameters';
+import { remoteImageRecommendation } from './recommended-fields';
 import { useImageInferencePreferences } from './composables/use-image-inference-preferences';
 import { pendingImageHistory } from './history/pending-saves';
 import { isRemoteImageRuntime } from '@/01-models/image-generation-remote';
@@ -198,32 +200,16 @@ export function useImageGeneration(): ImageGenerationView {
     blocked: () => formDisabled.value,
     dependencies: undefined,
     onSelection({ family, turbo }) {
-      // Preserve established selection-time helpers for recognized models. The
-      // Turbo bit now requires header metadata or reviewed receipt evidence.
-      // The explicit preset action remains the only full-parameter reset.
-      switch (family) {
-      case 'z-image':
-        if (turbo) {
-          parameters.value.guidance = 1;
-          parameters.value.steps = 8;
-        }
-        break;
-      case 'qwen-image-2.1':
-        parameters.value.guidance = turbo ? 1 : 6;
-        if (!parameters.value.modelArguments) {
-          parameters.value.modelArguments = 'qwen_image_2_1_prefix_cache=false';
-        }
-        break;
-      case 'sd-checkpoint': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'unknown': break;
-      default: {
-        const exhaustive: never = family;
-        throw new Error(String(exhaustive));
-      }
+      // Background local inspection must not change a remote draft.
+      if (!remote.value) {
+        parameters.value = imageSelectionParameters({ parameters: parameters.value, family, turbo, location: 'local' });
       }
     },
   });
   // A retained local model is not evidence about the model on a remote peer.
-  const recommendation = computed(() => remote.value ? undefined : recommendationForSelection({ model: library.selectedCandidateKey.value ? library.selectedFacts.value : manualFacts.value }));
+  const recommendation = computed(() => remote.value
+    ? remoteImageRecommendation({ recommendation: recommendationForSelection({ model: inferenceLocation.selectedFacts.value }) })
+    : recommendationForSelection({ model: library.selectedCandidateKey.value ? library.selectedFacts.value : manualFacts.value }));
   // Adapters and input images belong to the selected base model; do not carry
   // them silently to another model with a different conditioning contract.
   watch([library.selectedCandidateKey, layout, () => files.value.model, () => files.value.diffusion], () => {
@@ -232,7 +218,9 @@ export function useImageGeneration(): ImageGenerationView {
       clearHistoryMissingFiles();
     }
     form.loras.value = [];
-    form.imageInputs.value = emptyImageInputs();
+    if (!remote.value) {
+      form.imageInputs.value = emptyImageInputs();
+    }
   }, { flush: 'sync' });
   async function inspectManualFiles(): Promise<void> {
     if (formDisabled.value || disposed) {
@@ -281,12 +269,16 @@ export function useImageGeneration(): ImageGenerationView {
   }
   function applyRecommendedSettings(): void {
     const preset = recommendation.value;
-    if (!preset || draftDisabled.value || library.importing.value || disposed) {
+    if (!preset || draftDisabled.value || !remote.value && library.importing.value || disposed) {
       return;
     }
     // Resolution belongs to the composition the user chose. Applying a model
     // preset changes sampling settings without resizing that composition.
-    if (preset.recommendedFieldsOnly) {
+    if (preset.applicableFields) {
+      const fields = preset.applicableFields.filter(field => field !== 'width' && field !== 'height'
+        && (!preset.recommendedFieldsOnly || preset.recommendedFields?.includes(field)));
+      parameters.value = { ...parameters.value, ...Object.fromEntries(fields.map(field => [field, preset.parameters[field]])) };
+    } else if (preset.recommendedFieldsOnly) {
       // A partially supported model must not overwrite steps/scheduler with
       // ordinary browser defaults that are not valid Turbo recommendations.
       const fields = preset.recommendedFields ?? [];

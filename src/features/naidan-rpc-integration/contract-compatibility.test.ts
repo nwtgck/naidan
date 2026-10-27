@@ -8,6 +8,7 @@ import { promiseAllKeyed } from '@/utils/promise';
 import {
   chatModelIdSchema,
   imageFileSchema,
+  imageCatalogItemSchema,
   imageModelSelectionSchema,
   naidanPeerContract,
   peerImageEventSchema,
@@ -351,4 +352,49 @@ it.each([
     await input.cancel();
   }
   expect(transport.stats().active).toBe(0);
+});
+
+it.each([false, true])('keeps image catalogs usable when the provider is legacy: %s', async legacyProvider => {
+  const current = contract({ name: naidanPeerContract.name, methods: { listImageModels: naidanPeerContract.methods.listImageModels } });
+  const legacyItem = imageCatalogItemSchema.omit({ selectionHints: true }).extend({
+    facts: imageCatalogItemSchema.shape.facts.unwrap().omit({ variant: true, evidence: true }).optional(),
+  });
+  const legacy = contract({
+    name: naidanPeerContract.name,
+    methods: {
+      listImageModels: procedure({ input: current.methods.listImageModels.input, result: rpc.stream({ item: legacyItem }), notifications: {} }),
+    },
+  });
+  const item = imageCatalogItemSchema.parse({
+    label: 'primary',
+    file: { location: { kind: 'opfs', path: 'models/main.gguf' }, expected: { size: 100, lastModified: 42 } },
+    roles: ['diffusion'],
+    facts: { family: 'z-image', classes: [], variant: 'turbo', evidence: ['header'] },
+    selectionHints: { version: 1, repositoryGroup: 0, totalBytes: 100, tieBreakRank: 0 },
+  });
+  const { caller } = peers({
+    exposure: expose({ contract: legacyProvider ? legacy : current, allowedMethods: ['listImageModels'], implementation: { listImageModels: () => source({ items: [item] }) } }),
+  });
+  const call = caller.client({ contract: legacyProvider ? current : legacy }).listImageModels({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
+  const items = await collect({ stream: await call.result });
+  await call.closed;
+  expect(items).toEqual([legacyItem.parse(item)]);
+  expect(items[0]!.file).toEqual(item.file);
+});
+
+it('transfers an unknown image hint version without rejecting the manual catalog', async () => {
+  const item = imageCatalogItemSchema.parse({
+    label: 'primary',
+    file: { location: { kind: 'opfs', path: 'models/main.gguf' } },
+    roles: ['model'],
+    facts: { family: 'sd-checkpoint', classes: [] },
+    selectionHints: { version: 2, future: 'new shape' },
+  });
+  const current = contract({ name: naidanPeerContract.name, methods: { listImageModels: naidanPeerContract.methods.listImageModels } });
+  const { caller } = peers({ exposure: expose({ contract: current, allowedMethods: ['listImageModels'], implementation: { listImageModels: () => source({ items: [item] }) } }) });
+  const call = caller.client({ contract: current }).listImageModels({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
+  const items = await collect({ stream: await call.result });
+  await call.closed;
+  expect(items[0]).toEqual(item);
+  expect(items[0]!.selectionHints).toEqual({ version: 2 });
 });

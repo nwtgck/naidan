@@ -126,7 +126,7 @@ defineExpose({
     </div>
 
     <!-- Compact Show/Less Toggle -->
-    <div ref="toggleRef" :tw-class="['px-5 py-1', isExpanded ? 'sticky top-0 z-10 bg-gray-50/80 dark:bg-gray-800/80 backdrop-blur-sm' : '']">
+    <div ref="toggleRef" :tw-class="['px-5 py-1 flex flex-wrap items-center gap-2', isExpanded ? 'sticky top-0 z-10 bg-gray-50/80 dark:bg-gray-800/80 backdrop-blur-sm' : '']">
       <button
         type="button"
         :aria-expanded="isExpanded"
@@ -155,6 +155,7 @@ defineExpose({
           {{ isExpanded ? lazyStrings.AssistantProcessSequence__less() : lazyStrings.AssistantProcessSequence__show() }}
         </span>
       </button>
+      <span tw-class="ml-auto"><slot name="generation-metrics" /></span>
       <slot v-if="!isExpanded && isProcessing && !stats.isCurrentlyThinking && !stats.isWaiting" name="cursor" />
     </div>
 

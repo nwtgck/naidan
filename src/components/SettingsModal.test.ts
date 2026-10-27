@@ -1,7 +1,7 @@
 import { SettingsSelectStub } from './settings-select.test-support';
 import { toProviderProfileId } from '@/01-models/ids';
 // Mock the dynamic import for licenses
-vi.mock('virtual:naidan-licenses', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
+vi.mock('virtual:naidan-licenses', () => ({ default: () => ({ entries: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT' }], readLicenseText: () => 'MIT Content' }) }));
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -130,6 +130,7 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     clearAll: vi.fn(),
@@ -611,6 +612,52 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(text).toContain('test-pkg');
     expect(text).toContain('1.0.0');
     expect(text).toContain('MIT');
+  });
+
+  it('releases license bodies on suspension, tab switches and close, reopening with a collapsed list', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    await wrapper.findAll('nav button').find(button => button.text().includes('About'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    const details = wrapper.get<HTMLDetailsElement>('[data-testid="oss-license-details"]');
+    details.element.open = true;
+    await details.trigger('toggle');
+    expect(wrapper.get('[data-testid="oss-license-text"]').text()).toBe('MIT Content');
+    await wrapper.setProps({ suspended: true });
+    expect(wrapper.find('[data-testid="about-section"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="oss-license-list"]').exists()).toBe(false);
+    await wrapper.setProps({ suspended: false });
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="oss-license-list"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(false);
+    const restoredDetails = wrapper.get<HTMLDetailsElement>('[data-testid="oss-license-details"]');
+    restoredDetails.element.open = true;
+    await restoredDetails.trigger('toggle');
+    expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(true);
+    await wrapper.findAll('nav button').find(button => button.text().includes('Connection'))?.trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="oss-license-list"]').exists()).toBe(false);
+    await wrapper.findAll('nav button').find(button => button.text().includes('About'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(false);
+    const reopenedDetails = wrapper.get<HTMLDetailsElement>('[data-testid="oss-license-details"]');
+    reopenedDetails.element.open = true;
+    await reopenedDetails.trigger('toggle');
+    expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(true);
+    await wrapper.setProps({ isOpen: false });
+    expect(wrapper.find('[data-testid="oss-license-list"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="oss-license-text"]').exists()).toBe(false);
   });
 
   it('persists unsaved changes when switching tabs', async () => {

@@ -290,6 +290,32 @@ it.each(['flash-attention', 'bf16-conversion'] as const)('reuses one Worker and 
   expect(mocks.terminate).toHaveBeenCalledTimes(2);
 });
 
+it('retains the same Worker across companion reorderings but replaces changed companion identities', async () => {
+  mocks.generate.mockResolvedValue({ png: new Blob(['fixture'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked result' });
+  const client = createImageClient();
+  using _cleanup = {
+    [Symbol.dispose]() {
+      client.dispose();
+    },
+  };
+  const input = request();
+  const first = { relativePath: 'a.safetensors', file: new File([new Uint8Array(8)], 'same.safetensors', { lastModified: 1 }) };
+  const second = { relativePath: 'b.safetensors', file: new File([new Uint8Array(8)], 'same.safetensors', { lastModified: 1 }) };
+  input.models[0]!.companions = [first, second];
+  const generate = () => client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn() });
+  await generate();
+  input.models[0]!.companions = [second, first];
+  await generate();
+  expect(mocks.constructed).toHaveBeenCalledOnce();
+  expect(mocks.terminate).not.toHaveBeenCalled();
+  expect(mocks.generate.mock.calls[1]![0].sessionId).toBe(mocks.generate.mock.calls[0]![0].sessionId);
+  input.models[0]!.companions = [second, { ...first, file: new File([first.file], first.file.name, { lastModified: first.file.lastModified }) }];
+  await generate();
+  expect(mocks.constructed).toHaveBeenCalledTimes(2);
+  expect(mocks.terminate).toHaveBeenCalledOnce();
+  expect(mocks.generate.mock.calls[2]![0].sessionId).not.toBe(mocks.generate.mock.calls[0]![0].sessionId);
+});
+
 it('invalidates identical-looking manual files and recovers from cancellation in a fresh physical Worker', async () => {
   const client = createImageClient(), input = request(), cancelled = new AbortController();
   mocks.generate.mockReturnValueOnce(new Promise(() => undefined));

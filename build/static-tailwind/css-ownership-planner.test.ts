@@ -35,6 +35,7 @@ async function plan({ analysis, outputMode, maxSplitCssGroups }: {
     projectRoot: path.resolve(import.meta.dirname, '../..'),
     cssEntryPath: path.resolve(import.meta.dirname, '../../src/style.css'),
     expectedTailwindVersion: '4.3.2',
+    onDependency: undefined,
     analysis,
     outputMode,
     maxSplitCssGroups,

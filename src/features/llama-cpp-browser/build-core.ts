@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build entry is also checked without the app alias.
+import type { NativeLicenseSource } from '../../01-models/native-license-build-source';
 import { normalizePath, type Plugin } from 'vite';
 import { gpuProfilingProfile, profileSchema, type LlamaCppProfile } from './types';
 import { hostedArtifactProfiles, readLlamaArtifactPackage } from './build-artifact-package';
+import { createLlamaCppRuntimeAssetsPlugin } from './build-runtime-assets';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
@@ -14,22 +17,14 @@ const standaloneBinaryIds = {
   'webgpu-wasm32-jspi': 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi',
 } as const;
 
-/** Preserve complete legal comment blocks instead of redistributing megabytes of
- * unrelated C/C++ header implementation just to include their embedded notices. */
-function embeddedNotices({ source }: { source: string }): string {
-  const comments = source.match(/\/\*[\s\S]*?\*\/|(?:^[ \t]*\/\/[^\n]*(?:\n|$))+/gm) ?? [];
-  const notices = comments.filter(comment => /copyright|licen[cs]e|public domain|permission is hereby|redistribution/i.test(comment));
-  if (notices.length === 0) {
-    throw new Error('Missing embedded native license notices');
-  }
-  return notices.join('\n\n');
-}
-
 export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string, mode: 'hosted' | 'standalone' }): {
   corePlugin: Plugin;
+  runtimeAssetsPlugin: Plugin;
   embeddedBinaries: readonly StandaloneEmbeddedBinary[];
+  nativeLicenseSource: NativeLicenseSource;
 } {
-  const { packageRoot, profileRoot: artifactProfiles, manifestPaths, files, readArtifact } = readLlamaArtifactPackage({ rootDir });
+  const artifact = readLlamaArtifactPackage({ rootDir });
+  const { packageRoot, profileRoot: artifactProfiles, manifestPaths, files, readArtifact } = artifact;
   const isStandalone = (() => {
     switch (mode) {
     case 'standalone': return true;
@@ -59,19 +54,12 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   const identity = createHash('sha256').update(cores.map(entry => entry.core.sha256).join('\0')).digest('hex');
 
   const licenseFiles = [...files.keys()].filter(relative => relative === 'LICENSE' || relative.startsWith('licenses/'));
-  const licenseText = [
-    'llama.cpp browser native notices',
-    ...cores.map(entry => `Runtime profile: ${entry.profile}\ncore.mjs SHA-256: ${entry.core.sha256}`),
-    ...embeddedBinaries.map(wasm => `${wasm.virtualId} core.wasm SHA-256: ${wasm.sha256}`),
-    ...licenseFiles.map(relative => {
-      const source = readArtifact({ relative }).data.toString('utf8');
-      const text = relative.startsWith('licenses/embedded/') ? embeddedNotices({ source }) : source;
-      return `===== ${relative} =====\n${text}`;
-    }),
-  ].join('\n\n');
+
 
   return {
     embeddedBinaries,
+    runtimeAssetsPlugin: createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }),
+    nativeLicenseSource: { runtime: 'llama-cpp', kind: 'installed', rootDir, manifestPaths, files: new Set(files.keys()), readArtifact },
     corePlugin: {
       name: `naidan-llama-cpp-browser-core-${identity}`,
       enforce: 'pre',
@@ -96,9 +84,6 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         // The real package path keeps license collection and module provenance intact.
         return resolved;
       },
-      generateBundle() {
-        this.emitFile({ type: 'asset', fileName: 'llama-cpp-browser-native-licenses.txt', source: licenseText });
-      },
       load(id) {
         if (id === availabilityId) {
           return `export const gpuProfilingAvailable = ${gpuProfilingAvailable};`;
@@ -119,6 +104,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
           this.addWatchFile(manifestPath);
         }
         this.addWatchFile(entry.core.filePath);
+        this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core/native-license-index.json'));
         for (const relative of licenseFiles) {
           this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core', relative));
         }
@@ -129,5 +115,4 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
 }
 
 export const TEST_ONLY = {
-  embeddedNotices,
 };

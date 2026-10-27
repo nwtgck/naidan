@@ -8,7 +8,7 @@ import StartupErrorView from '@/components/startup/StartupErrorView.vue';
 import { provideAppPresentation } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
 import { provideAppEntry } from '@/composables/useAppEntry';
-import BrowserModelWelcomeDialog from '@/components/BrowserModelWelcomeDialog.vue';
+import OnBoardingModalV2 from '@/components/OnBoardingModalV2.vue';
 
 const props = defineProps<{
   startupState: ShallowRef<StartupState>,
@@ -95,8 +95,8 @@ defineExpose({
     />
   </div>
 
-  <!-- Keep one synchronous dialog outside MainApp across the startup handoff. -->
-  <BrowserModelWelcomeDialog v-if="entry.modelSelection.value !== undefined" />
+  <!-- Keep one synchronous OnBoardingModalV2 outside MainApp across the startup handoff. -->
+  <OnBoardingModalV2 v-if="entry.modelSelection.value !== undefined" />
   <GlobalDialogHost />
   <ToastContainer />
 </template>

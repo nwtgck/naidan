@@ -8,7 +8,7 @@ function file({ path }: { path: string }) {
 }
 
 function editor(): RemoteImageModelEditor {
-  return { primary: { slot: 'diffusion', file: file({ path: 'models/z-image.gguf' }), family: 'z-image' }, components: [], loras: [] };
+  return { primary: { slot: 'diffusion', file: file({ path: 'models/z-image.gguf' }), family: 'z-image' }, components: [], loras: [], automaticSlots: [] };
 }
 
 it('requires the family-specific components without inserting another model', () => {

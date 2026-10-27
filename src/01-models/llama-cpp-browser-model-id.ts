@@ -5,6 +5,72 @@ export function isModelSourceSegment({ name }: { name: string }): boolean {
     && new TextEncoder().encode(name).length <= 255;
 }
 
+const localRepositoryPrefixes = { pending: '~user', saved: 'user' } as const;
+
+/** Classify llama.cpp public references; other endpoints own their ID formats. */
+export function localRepositoryReferenceStorage({ modelId }: { modelId: string }): 'pending' | 'saved' | undefined {
+  const separator = modelId.indexOf('/');
+  if (separator < 0) {
+    return undefined;
+  }
+  const prefix = modelId.slice(0, separator);
+  switch (prefix) {
+  case localRepositoryPrefixes.pending: return 'pending';
+  case localRepositoryPrefixes.saved: return 'saved';
+  default: return undefined;
+  }
+}
+
+/** Routing check only; parse the complete reference before resolving files. */
+export function hasLocalRepositoryReferencePrefix({ modelId, storage }: { modelId: string, storage: 'pending' | 'saved' | undefined }): boolean {
+  switch (storage) {
+  case 'pending': return modelId.startsWith(`${localRepositoryPrefixes.pending}/`);
+  case 'saved': return modelId.startsWith(`${localRepositoryPrefixes.saved}/`);
+  case undefined: return localRepositoryReferenceStorage({ modelId }) !== undefined;
+  default: {
+    const exhaustive: never = storage;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+/** File identity stays in its captured source, never in the public reference. */
+export function localRepositoryReference({ storage, rootName, selector }: {
+  storage: 'pending' | 'saved', rootName: string, selector: string | undefined,
+}): string {
+  if (!isModelSourceSegment({ name: rootName }) || rootName.startsWith('.')
+    || (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name })))) {
+    throw new Error('Invalid local repository reference');
+  }
+  let prefix: string;
+  switch (storage) {
+  case 'pending': prefix = localRepositoryPrefixes.pending;
+    break;
+  case 'saved': prefix = localRepositoryPrefixes.saved;
+    break;
+  default: {
+    const exhaustive: never = storage;
+    throw new Error(String(exhaustive));
+  }
+  }
+  return `${prefix}/${rootName}${selector === undefined ? '' : `/${selector}`}`;
+}
+
+export function parseLocalRepositoryReference({ modelId }: { modelId: string }): {
+  storage: 'pending' | 'saved', rootName: string, selector: string | undefined,
+} {
+  const storage = localRepositoryReferenceStorage({ modelId });
+  const [, rootName, ...parts] = modelId.split('/');
+  if (storage === undefined || !rootName) {
+    throw new Error('Invalid local repository reference');
+  }
+  const selector = parts.length ? parts.join('/') : undefined;
+  if (localRepositoryReference({ storage, rootName, selector }) !== modelId) {
+    throw new Error('Non-canonical local repository reference');
+  }
+  return { storage, rootName, selector };
+}
+
 export function withoutRepositoryPrefix({ repository, stem }: { repository: string, stem: string }): string {
   let prefix = repository.split('/').at(-1)!.replace(/[-_.]gguf$/i, '');
   // Repository names can have extra model descriptors. Match whole hyphen-delimited

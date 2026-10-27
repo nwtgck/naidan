@@ -1,3 +1,5 @@
+import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
+import { generationMetricsState } from '@/composables/chat/global/generation-metrics-state';
 import type { ChatContentWrite } from '@/00-storage/service';
 import { getImageGenerationToolsForChat } from '@/features/image-generation/session/assistant-registry';
 import { assertModelLaunchReady } from '@/features/llama-cpp-browser/model-launch/readiness';
@@ -242,7 +244,7 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
 
   const normalizedAttachments = attachments ?? [];
   const mutableChat = getLiveChat({ chat: targetChat });
-  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model', bindingOperation });
   chatRuntimeStore.startTask({ key: { kind: 'process', chatId: mutableChat.id } });
   registerLiveInstance({ chat: mutableChat });
 
@@ -357,7 +359,7 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
     switch (endpoint.type) {
     case 'llama_cpp_browser': {
       const current = resolveGenerationSettings({ chat: mutableChat });
-      if (current.endpoint.type !== 'llama_cpp_browser' || current.modelId !== resolved.modelId
+      if (current.endpoint.type !== 'llama_cpp_browser' || !sameLocalModelBinding({ left: current, right: { endpoint, modelId: resolved.modelId } })
         || (pinnedTarget !== undefined && storageService.getModelLaunch({ chatId: mutableChat.id })?.effectiveModelId !== pinnedTarget.effectiveModelId)) {
         throw new Error(await ensureStrings.LlamaCppBrowserModelLaunch__chat_settings_changed());
       }
@@ -447,6 +449,7 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
     });
     const generationOperation = bindingOperation.retain();
     generateResponseWithContentWrite({
+      bindingOperation: generationOperation,
       chat: mutableChat,
       assistantId: assistantMessage.id,
       lmParameters: effectiveLmParameters,
@@ -499,13 +502,14 @@ export async function generateResponseForAssistant({
     }
     const mutableChat = getLiveChat({ chat });
     preparationAdmission.assertCurrent();
-    await generateResponseWithContentWrite({ chat: mutableChat, assistantId, lmParameters, onReady, target: undefined, write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }) });
+    await generateResponseWithContentWrite({ bindingOperation, chat: mutableChat, assistantId, lmParameters, onReady, target: undefined, write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }) });
   } finally {
     bindingOperation.release();
   }
 }
 
-async function generateResponseWithContentWrite({ chat, assistantId, lmParameters, onReady, write, target }: {
+async function generateResponseWithContentWrite({ bindingOperation, chat, assistantId, lmParameters, onReady, write, target }: {
+  bindingOperation: ChatModelBindingOperation,
   chat: Chat | Readonly<Chat>, assistantId: MessageId, lmParameters: LmParameters | undefined,
   onReady: (() => void) | undefined, write: ChatContentWrite,
   target: ReturnType<typeof resolveGenerationSettings> | undefined,
@@ -541,6 +545,7 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
   notifyChatChanged({ chatId: mutableChat.id });
 
   const controller = new AbortController();
+  let metricsCompleted = false;
   chatRuntimeStore.setActiveGeneration({
     chatId: mutableChat.id,
     generation: { controller, chat: mutableChat },
@@ -614,6 +619,7 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
       resolvedModelId: resolved.modelId,
       availableModels: availableGenerationModels,
     });
+    bindingOperation.captureModelSource({ endpoint: resolved.endpoint, modelId: resolvedModel });
     bindingGeneration = beginChatModelBindingGeneration({ chatId: mutableChat.id, endpoint: resolved.endpoint, modelId: resolvedModel });
     bindingGeneration.recordAssistant({ messageId: assistantId });
     const finalLmParameters = usesBrowserProvidedLm
@@ -691,6 +697,7 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
       controller.signal.throwIfAborted();
       signalReady();
       const { ensureApproval } = useApproval();
+      generationMetricsState.start({ chatId: mutableChat.id, owner: controller.signal });
       const result = await generateChatTurn({
         provider,
         debug,
@@ -774,6 +781,12 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
           systemPromptMessages: resolved.systemPromptMessages,
         }),
         onChange: reflectChanges,
+        onGenerationTelemetry: ({ event }) => {
+          if (chatRuntimeStore.getActiveGeneration({ chatId: mutableChat.id })?.controller !== controller) {
+            return;
+          }
+          generationMetricsState.observe({ chatId: mutableChat.id, owner: controller.signal, node: activeAssistant, event });
+        },
         onToolCallDraftsChange: ({ messageId, drafts }) => {
           // Only the live operation may publish or clear its transient previews.
           // No history notification or persistence is triggered by draft updates.
@@ -800,6 +813,8 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
         persistToolContent,
         describeError: ({ error }) => error.message,
       });
+      metricsCompleted = result.type === 'finished' || (result.type === 'interrupted' && (result.reason === 'limit' || result.reason === 'stop_sequence'));
+      generationMetricsState.finish({ chatId: mutableChat.id, owner: controller.signal, completed: metricsCompleted });
       await saveContent();
       mutableChat.updatedAt = Date.now();
       switch (result.type) {
@@ -850,6 +865,7 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
     }
   } finally {
     signalReady();
+    generationMetricsState.finish({ chatId: mutableChat.id, owner: controller.signal, completed: metricsCompleted });
     for (const messageId of draftMessages) {
       // A replacement operation may already own this message's previews.
       chatVolatileState.setToolCallDrafts({ chatId: mutableChat.id, messageId, owner: controller.signal, drafts: [] });
@@ -966,7 +982,7 @@ async function regenerateMessageWithBindingOperation({ targetChat, failedMessage
 }): Promise<void> {
 
   const mutableChat = getLiveChat({ chat: targetChat });
-  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model', bindingOperation });
   chatRuntimeStore.startTask({ key: { kind: 'process', chatId: mutableChat.id } });
   registerLiveInstance({ chat: mutableChat });
 
@@ -1046,6 +1062,7 @@ async function regenerateMessageWithBindingOperation({ targetChat, failedMessage
     });
     const generationOperation = bindingOperation.retain();
     generateResponseWithContentWrite({
+      bindingOperation: generationOperation,
       chat: mutableChat,
       assistantId: newAssistantMessage.id,
       lmParameters: failedNode.lmParameters,
@@ -1162,6 +1179,18 @@ async function loadGenerationProvider({
   return await loadLmProvider({
     endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
+    llamaCppServerTimings: (() => {
+      const preferences = settings.value.experimental?.generationSpeed;
+      const status = preferences?.status;
+      switch (status) {
+      case 'disabled': return 'disabled';
+      case 'enabled': case undefined: return preferences?.llamaCppServerTimings ?? 'auto';
+      default: {
+        const exhaustive: never = status;
+        throw new Error(`Unhandled generation speed visibility: ${exhaustive}`);
+      }
+      }
+    })(),
   });
 }
 

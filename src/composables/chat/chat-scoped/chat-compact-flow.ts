@@ -35,7 +35,7 @@ import {
   updateChatContent,
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
-import { captureChatContentWrite, beginChatModelBindingGeneration, getKnownChatModelBindingMessages, synchronizeChatModelBindingAdmission, withChatModelBindingOperation } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
+import { captureChatContentWrite, beginChatModelBindingGeneration, getKnownChatModelBindingMessages, synchronizeChatModelBindingAdmission, withChatModelBindingOperation, type ChatModelBindingOperation } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
 
 export type CompactCurrentBranchResult =
   | {
@@ -101,11 +101,11 @@ export async function runCompactCurrentBranchForChat({
   keepRecentMessages: number,
   instructionOverride: string | undefined,
 }): Promise<CompactCurrentBranchResult> {
-  return await withChatModelBindingOperation({ chatId, operation: () => runCompactBranchWithBinding({ chatId, keepRecentMessages, instructionOverride }) });
+  return await withChatModelBindingOperation({ chatId, operation: ({ bindingOperation }) => runCompactBranchWithBinding({ chatId, keepRecentMessages, instructionOverride, bindingOperation }) });
 }
 
-async function runCompactBranchWithBinding({ chatId, keepRecentMessages, instructionOverride }: {
-  chatId: ChatId, keepRecentMessages: number, instructionOverride: string | undefined,
+async function runCompactBranchWithBinding({ chatId, keepRecentMessages, instructionOverride, bindingOperation }: {
+  chatId: ChatId, keepRecentMessages: number, instructionOverride: string | undefined, bindingOperation: ChatModelBindingOperation,
 }): Promise<CompactCurrentBranchResult> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -126,7 +126,7 @@ async function runCompactBranchWithBinding({ chatId, keepRecentMessages, instruc
   }
   }
   const mutableChat = getLiveChat({ chat: targetChat });
-  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model', bindingOperation });
   if (isProcessing({ chatId: mutableChat.id })) {
     return { status: 'skipped', reason: 'already_processing' };
   }
@@ -197,6 +197,7 @@ async function runCompactBranchWithBinding({ chatId, keepRecentMessages, instruc
       });
       return { status: 'skipped', reason: 'missing_model_or_endpoint' };
     }
+    bindingOperation.captureModelSource({ endpoint: resolved.endpoint, modelId: resolvedModel });
     const bindingGeneration = beginChatModelBindingGeneration({ chatId, endpoint: resolved.endpoint, modelId: resolvedModel });
     const knownMessages = new Set(getKnownChatModelBindingMessages({ chatId, modelId: resolvedModel }));
 

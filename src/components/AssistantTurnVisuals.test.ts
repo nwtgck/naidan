@@ -89,6 +89,7 @@ describe('Assistant Turn Visual Logic', () => {
 
       const wrapper = mount(MessageItem, {
         props: {
+          endpoint: undefined,
           message: node,
           mode: 'content',
           isFirstInTurn: true,
@@ -106,6 +107,7 @@ describe('Assistant Turn Visual Logic', () => {
 
       const wrapper = mount(MessageItem, {
         props: {
+          endpoint: undefined,
           message: node,
           mode: 'thinking',
           isFirstInTurn: true,
@@ -122,6 +124,7 @@ describe('Assistant Turn Visual Logic', () => {
 
       const wrapper = mount(MessageItem, {
         props: {
+          endpoint: undefined,
           message: node,
           mode: 'content',
           isFirstInTurn: false, // Turn already started with a sequence
@@ -138,6 +141,7 @@ describe('Assistant Turn Visual Logic', () => {
 
       const wrapper = mount(MessageItem, {
         props: {
+          endpoint: undefined,
           message: node,
           mode: 'content',
           isFirstInTurn: true,
@@ -228,6 +232,7 @@ describe('Assistant Turn Visual Logic', () => {
       const node = createBaseNode({ role: 'assistant', modelId: undefined });
       const wrapper = mount(MessageItem, {
         props: {
+          endpoint: undefined,
           message: node,
           isNested: true,
           flow: { position: 'middle', nesting: 'inside-group' },

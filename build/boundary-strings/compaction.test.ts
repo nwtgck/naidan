@@ -3,6 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import ts from 'typescript';
+
+import { UI_LOCALES } from '../../src/01-models/ui-locale';
 
 import {
   compactBoundaryStringsModule,
@@ -120,6 +123,22 @@ const ChatInput__type_a_message = (): string => 'Type a message';
     });
   });
 
+  it('rejects a foreign message re-export during locale implementation compaction', () => {
+    const key = 'ChatPaneHeader__model_and_chat_settings';
+    const state: BoundaryStringsCompactionState = {
+      compactionByMessageKey: new Map([[key, { messageId: 'a', parameterIdsByName: new Map() }]]),
+      messageKeyByCompactedId: new Map([['a', key]]),
+    };
+    expect(() => compactBoundaryStringsModule({
+      allowedBindingNames: [],
+      code: `\
+export { ${key} } from './en';
+`,
+      moduleId: `/src/strings/messages/${key}/zh-Hans.ts`,
+      state,
+    })).toThrow(new Error(`[naidan-boundary-strings] Message module must export exactly one function named "${key}".`));
+  });
+
   it('compacts zero-argument and named-argument calls', () => {
     const result = compactBoundaryStringsModule({
       allowedBindingNames: ['lazyStrings', 'ensureStrings'],
@@ -195,7 +214,7 @@ unrelated.ChatInput__type_a_message();
     expect(result).toBeUndefined();
   });
 
-  it('compacts locale implementation destructuring while preserving local bindings', () => {
+  it.each(UI_LOCALES)('compacts %s implementation arguments while preserving local bindings', (locale) => {
     const result = compactBoundaryStringsModule({
       allowedBindingNames: [],
       code: `\
@@ -203,10 +222,19 @@ export const ChatInput__failed_to_copy = ({ name, errorMessage }: { name: string
   \`Failed to copy "\${name}": \${errorMessage}\`
 );
 `,
-      moduleId: '/src/strings/messages/ChatInput__failed_to_copy/en.ts',
+      moduleId: `/src/strings/messages/ChatInput__failed_to_copy/${locale}.ts`,
       state: createState(),
     });
     expect(result?.code).toContain('({ a: name, b: errorMessage }: { a: string; b: string })');
+    if (result === undefined) {
+      throw new Error('Expected the locale implementation to be compacted.');
+    }
+    const compiled = ts.transpileModule(result.code, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    });
+    const exports = {} as { ChatInput__failed_to_copy: (args: { a: string; b: string }) => string };
+    new Function('exports', compiled.outputText)(exports);
+    expect(exports.ChatInput__failed_to_copy({ a: 'Naidan', b: 'disk full' })).toBe('Failed to copy "Naidan": disk full');
   });
 
   it('rejects indirect, missing, and unknown arguments', () => {

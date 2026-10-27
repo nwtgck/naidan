@@ -14,6 +14,7 @@ import { assertStaticTailwindCssHasNoRelativeUrls } from './css-postprocessor';
 import {
   compileTailwindCss,
   createTailwindCandidateValidator,
+  type TailwindDependencyObserver,
 } from './tailwind-candidate-validator';
 
 export type CandidateGroup = {
@@ -530,6 +531,7 @@ export async function createCssOwnershipPlan({
   analysis,
   outputMode,
   maxSplitCssGroups,
+  onDependency,
 }: {
   projectRoot: string;
   cssEntryPath: string;
@@ -537,6 +539,7 @@ export async function createCssOwnershipPlan({
   analysis: CssOwnershipAnalysis;
   outputMode: 'single' | 'split';
   maxSplitCssGroups: number | undefined;
+  onDependency: TailwindDependencyObserver;
 }): Promise<CssOwnershipPlan> {
   if (outputMode !== 'single' && outputMode !== 'split') {
     throw new Error(`[tw-class] Unknown CSS output mode: ${String(outputMode)}`);
@@ -546,7 +549,7 @@ export async function createCssOwnershipPlan({
   }
   assertAnalysisIntegrity({ analysis });
   const candidates = [...analysis.candidateOwners.keys()].sort();
-  const validator = await createTailwindCandidateValidator({ projectRoot, cssEntryPath, expectedTailwindVersion });
+  const validator = await createTailwindCandidateValidator({ projectRoot, cssEntryPath, expectedTailwindVersion, onDependency });
   const classification = validator.classify({ candidates });
   if (classification.invalidCandidates.length > 0) {
     const invalid = new Set(classification.invalidCandidates);
@@ -574,9 +577,9 @@ export async function createCssOwnershipPlan({
     const ownerCandidateGroups = candidates.length === 0
       ? new Map()
       : new Map([['initial', candidates]]);
-    const baseline = await compileTailwindCss({ cssEntryPath, candidates: [], expectedTailwindVersion });
+    const baseline = await compileTailwindCss({ cssEntryPath, candidates: [], expectedTailwindVersion, onDependency });
     const baselineCss = baseline.css;
-    const globalCompilation = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion });
+    const globalCompilation = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion, onDependency });
     const globalCss = globalCompilation.css;
     const globalDelta = subtractCss({ css: globalCss, baselineCss });
     const cssGroups = globalDelta.trim() === ''
@@ -663,9 +666,9 @@ export async function createCssOwnershipPlan({
     promotedCandidateCount: 0,
     retainedOwnerKeys: candidateOwnerKeysBeforeCompression,
   };
-  const baseline = await compileTailwindCss({ cssEntryPath, candidates: [], expectedTailwindVersion });
+  const baseline = await compileTailwindCss({ cssEntryPath, candidates: [], expectedTailwindVersion, onDependency });
   const ownerCandidateGroups = groupCandidatesByOwner({ candidateOwners });
-  const globalCompilation = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion });
+  const globalCompilation = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion, onDependency });
   const globalCss = globalCompilation.css;
   assertStaticTailwindCssHasNoRelativeUrls({ css: globalCss });
   const globalDelta = subtractCss({ css: globalCss, baselineCss: baseline.css });

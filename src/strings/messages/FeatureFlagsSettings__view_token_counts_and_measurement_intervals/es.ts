@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__view_token_counts_and_measurement_intervals = (): string => "También permite consultar los tokens de salida y los intervalos medidos. Las mediciones se conservan hasta que recargues.";

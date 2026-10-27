@@ -1,1 +1,1 @@
-export const TemporaryModelFolders__title = (): string => "Temporäre Modellordner";
+export const TemporaryModelFolders__title = (): string => "Auf dieser Seite geöffnete Modellordner";

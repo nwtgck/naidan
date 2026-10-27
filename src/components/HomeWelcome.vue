@@ -14,6 +14,7 @@ import { usePortableAppDownload } from '@/features/file-protocol-standalone/comp
 import { homeDateCategory, nextHomeDateChange, selectHomeRecentItems } from '@/logic/home-welcome';
 import { currentLocale, lazyStrings } from '@/strings';
 import LanguageSelector from './LanguageSelector.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import SettingsCollapse from './SettingsCollapse.vue';
 
 const entry = useAppEntry();
@@ -169,7 +170,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div data-testid="home-welcome" :inert="!interactionReady || undefined" :aria-busy="creation === 'creating'" tw-class="@container relative h-full min-h-0 overflow-y-auto bg-[#fcfcfd] text-gray-800 dark:bg-gray-900 dark:text-gray-100">
-    <div tw-class="absolute right-4 top-4 z-10 sm:right-7 sm:top-6"><LanguageSelector /></div>
+    <div data-testid="home-display-controls" tw-class="absolute right-4 top-4 z-10 flex items-center gap-2 sm:right-7 sm:top-6">
+      <div tw-class="w-24 shrink-0 sm:w-28"><ThemeToggle /></div>
+      <LanguageSelector />
+    </div>
 
     <main class="home-content" tw-class="mx-auto w-full max-w-[44rem] px-5 sm:px-9">
       <header tw-class="text-center">

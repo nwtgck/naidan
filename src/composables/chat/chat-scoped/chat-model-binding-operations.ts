@@ -1,3 +1,4 @@
+import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
 import { watch } from 'vue';
 import { chatLocalModelInputs } from './chat-local-model-input';
 import { idToRaw, type ChatId, type MessageId } from '@/01-models/ids';
@@ -5,6 +6,7 @@ import type { AssistantMessageNode, Chat, Endpoint } from '@/01-models/types';
 import { chatModelBindingAssistantFingerprint } from '@/01-models/chat-message';
 import { areEndpointsEqual, cloneEndpoint } from '@/01-models/endpoint';
 import { storageService, ChatContentBindingChangedError, type ChatContentWrite, type ChatContentModelBinding } from '@/00-storage/service';
+import { retainLocalRepositorySource } from '@/features/llama-cpp-browser/local-repository-lifetime';
 import { chatContentFingerprint, readChatContentWrite } from '@/00-storage/service/chat-content-binding';
 import { useSettings } from '@/composables/useSettings';
 import { getLiveChatById, isProcessing, loadData, rootItems, synchronizeModelBindingContent } from '@/composables/chat/global/chat-core-singletons';
@@ -20,6 +22,7 @@ type BindingLane = {
 };
 
 export type ChatModelBindingOperation = {
+  captureModelSource({ endpoint, modelId }: { endpoint: Endpoint, modelId: string }): void,
   retain(): ChatModelBindingOperation,
   release(): void,
 };
@@ -58,29 +61,65 @@ function releaseLane({ chatId, lane }: { chatId: ChatId, lane: BindingLane }): v
 }
 
 function retainOperation({ chatId, lane }: { chatId: ChatId, lane: BindingLane }): ChatModelBindingOperation {
-  lane.active++;
-  let released = false;
-  return {
-    retain() {
-      if (released) {
-        throw new Error('The chat model binding operation has finished');
+  let sourcePin: { modelId: string, release(): void } | undefined;
+  function captureModelSource({ endpoint, modelId }: { endpoint: Endpoint, modelId: string }): void {
+    if (sourcePin && sameLocalModelBinding({ left: { endpoint: { type: 'llama_cpp_browser' }, modelId: sourcePin.modelId }, right: { endpoint, modelId } })) {
+      return;
+    }
+    const next = (() => {
+      switch (endpoint.type) {
+      case 'llama_cpp_browser': return retainLocalRepositorySource({ modelId });
+      case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case 'naidan_rpc': case 'unsupported_experimental_endpoint': return undefined;
+      default: {
+        const exhaustive: never = endpoint;
+        throw new Error(String(exhaustive));
       }
-      return retainOperation({ chatId, lane });
-    },
-    release() {
-      if (released) {
-        return;
       }
-      released = true;
-      lane.active--;
-      if (lane.active === 0) {
-        for (const resolve of lane.drained.splice(0)) {
-          resolve();
+    })();
+    const previous = sourcePin;
+    sourcePin = next === undefined ? undefined : { modelId, release: () => next.release() };
+    previous?.release();
+  }
+  let retained = 0;
+  // Retaining an admitted operation transfers the same captured source to its
+  // background work. Only an independent admission resolves the current model.
+  function retain(): ChatModelBindingOperation {
+    retained++;
+    lane.active++;
+    let released = false;
+    return {
+      captureModelSource({ endpoint, modelId }) {
+        if (released) {
+          throw new Error('The chat model binding operation has finished');
         }
-      }
-      releaseLane({ chatId, lane });
-    },
-  };
+        captureModelSource({ endpoint, modelId });
+      },
+      retain() {
+        if (released) {
+          throw new Error('The chat model binding operation has finished');
+        }
+        return retain();
+      },
+      release() {
+        if (released) {
+          return;
+        }
+        released = true;
+        retained--;
+        if (retained === 0) {
+          sourcePin?.release();
+        }
+        lane.active--;
+        if (lane.active === 0) {
+          for (const resolve of lane.drained.splice(0)) {
+            resolve();
+          }
+        }
+        releaseLane({ chatId, lane });
+      },
+    };
+  }
+  return retain();
 }
 
 /** Page-local admission only. Copying model files never acquires this fence. */
@@ -92,15 +131,15 @@ export function acquireChatModelBindingOperation({ chatId }: { chatId: ChatId })
   return lane.finalizationTail.then(() => acquireChatModelBindingOperation({ chatId }));
 }
 
-async function runBindingOperation<T>({ bindingOperation, operation }: { bindingOperation: ChatModelBindingOperation, operation: () => Promise<T> }): Promise<T> {
+async function runBindingOperation<T>({ bindingOperation, operation }: { bindingOperation: ChatModelBindingOperation, operation: ({ bindingOperation }: { bindingOperation: ChatModelBindingOperation }) => Promise<T> }): Promise<T> {
   try {
-    return await operation();
+    return await operation({ bindingOperation });
   } finally {
     bindingOperation.release();
   }
 }
 
-export function withChatModelBindingOperation<T>({ chatId, operation }: { chatId: ChatId, operation: () => Promise<T> }): Promise<T> {
+export function withChatModelBindingOperation<T>({ chatId, operation }: { chatId: ChatId, operation: ({ bindingOperation }: { bindingOperation: ChatModelBindingOperation }) => Promise<T> }): Promise<T> {
   const admission = acquireChatModelBindingOperation({ chatId });
   return 'then' in admission
     ? admission.then(bindingOperation => runBindingOperation({ bindingOperation, operation }))
@@ -126,15 +165,16 @@ function readContentModelBinding({ chat }: { chat: Chat | Readonly<Chat> }): Cha
 }
 
 /** Capture the pre-mutation tree and the model an operation actually depends on. */
-export function captureChatContentWrite({ chat, dependency }: { chat: Chat | Readonly<Chat>, dependency: 'model' | 'content' }): ChatContentWrite {
+export function captureChatContentWrite({ chat, ...input }: { chat: Chat | Readonly<Chat> } & ({ dependency: 'model', bindingOperation: ChatModelBindingOperation | undefined } | { dependency: 'content' })): ChatContentWrite {
   let binding;
-  switch (dependency) {
+  switch (input.dependency) {
   case 'content': binding = undefined;
     break;
   case 'model': binding = readContentModelBinding({ chat });
+    input.bindingOperation?.captureModelSource({ endpoint: binding.endpoint, modelId: binding.modelId });
     break;
   default: {
-    const exhaustive: never = dependency;
+    const exhaustive: never = input;
     throw new Error(String(exhaustive));
   }
   }
@@ -143,18 +183,19 @@ export function captureChatContentWrite({ chat, dependency }: { chat: Chat | Rea
 
 /** Reject already-known stale editor proposals before attachment side effects.
  * Persistence still rechecks the latest stored content and binding at commit. */
-export function assertChatContentWriteCurrent({ chat, write }: { chat: Chat | Readonly<Chat>, write: ChatContentWrite }): void {
+export function assertChatContentWriteCurrent({ chat, write, bindingOperation }: { chat: Chat | Readonly<Chat>, write: ChatContentWrite, bindingOperation: ChatModelBindingOperation }): void {
   const expected = readChatContentWrite({ write, id: chat.id });
   if (expected.baseline !== chatContentFingerprint({ content: chat })) {
     throw new ChatContentBindingChangedError();
   }
   if (expected.binding !== undefined) {
     const actual = readContentModelBinding({ chat });
-    if (actual.groupId !== expected.binding.groupId || actual.modelId !== expected.binding.modelId
+    if (actual.groupId !== expected.binding.groupId || !sameLocalModelBinding({ left: actual, right: expected.binding })
       || actual.endpointSource !== expected.binding.endpointSource || actual.modelSource !== expected.binding.modelSource
-      || !areEndpointsEqual({ left: actual.endpoint, right: expected.binding.endpoint })) {
+    ) {
       throw new ChatContentBindingChangedError();
     }
+    bindingOperation.captureModelSource({ endpoint: actual.endpoint, modelId: actual.modelId });
   }
 }
 
@@ -287,15 +328,15 @@ export function registerChatModelBindingOrigin({ chatId, modelId, isCurrent }: {
   };
   const initial = readBinding();
   origin.readBinding = readBinding;
-  if (initial.endpoint.type !== 'llama_cpp_browser' || initial.modelId !== modelId) {
+  if (!sameLocalModelBinding({ left: initial, right: { endpoint: { type: 'llama_cpp_browser' }, modelId } })) {
     invalidateOrigin({ origin });
     return false;
   }
   const stopWatch = watch(readBinding, next => {
     // The lightweight binding remains observable while its live view is absent.
-    if (next.chatGroupId !== initial.chatGroupId || next.modelId !== initial.modelId
+    if (next.chatGroupId !== initial.chatGroupId || !sameLocalModelBinding({ left: next, right: initial })
       || next.endpointSource !== initial.endpointSource || next.modelSource !== initial.modelSource
-      || !areEndpointsEqual({ left: next.endpoint, right: initial.endpoint })) {
+    ) {
       invalidateOrigin({ origin });
     }
   }, { flush: 'sync' });
@@ -338,7 +379,7 @@ export function registerChatModelBindingOrigin({ chatId, modelId, isCurrent }: {
 
 export function getKnownChatModelBindingMessages({ chatId, modelId }: { chatId: ChatId, modelId: string }): readonly MessageId[] {
   const origin = origins.get(chatId);
-  if (!origin || !origin.valid || origin.modelId !== modelId) {
+  if (!origin || !origin.valid || !sameLocalModelBinding({ left: { endpoint: { type: 'llama_cpp_browser' }, modelId: origin.modelId }, right: { endpoint: { type: 'llama_cpp_browser' }, modelId } })) {
     return [];
   }
   if (!origin.isCurrent()) {
@@ -393,7 +434,7 @@ export function captureChatModelBindingHistoryProof({ chatId, modelId }: { chatI
         promoted = true;
         return;
       }
-      if (promoted || next.modelId !== initial.modelId || next.endpointSource !== initial.endpointSource
+      if (promoted || !sameLocalModelBinding({ left: next, right: initial }) || next.endpointSource !== initial.endpointSource
         || next.modelSource !== initial.modelSource || !areEndpointsEqual({ left: next.endpoint, right: initial.endpoint })) {
         proof.invalidate();
       }
@@ -452,7 +493,7 @@ export function beginChatModelBindingGeneration({ chatId, endpoint, modelId }: {
 } {
   const origin = origins.get(chatId);
   const messages = new Map<MessageId, AssistantMessageNode>();
-  if (origin && (endpoint.type !== 'llama_cpp_browser' || modelId !== origin.modelId || !origin.isCurrent())) {
+  if (origin && (endpoint.type !== 'llama_cpp_browser' || !sameLocalModelBinding({ left: { endpoint, modelId }, right: { endpoint, modelId: origin.modelId } }) || !origin.isCurrent())) {
     if (!origin.isCurrent()) {
       invalidateHistoryProofs({ chatId });
     }

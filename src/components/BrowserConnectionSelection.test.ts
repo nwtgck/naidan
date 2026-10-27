@@ -1,8 +1,10 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { computed, type Ref } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { BrowserProvidedLmEndpoint, HttpEndpoint } from '@/01-models/types';
 import type { PromptApiRuntimeState } from '@/features/prompt-api/runtime';
+import type { CspHintMessage, CspHintTarget } from '@/logic/csp-message-hints/types';
 import BrowserConnectionSelection from './BrowserConnectionSelection.vue';
 import ModelSelector from './ModelSelector.vue';
 import HttpHeadersEditor from './HttpHeadersEditor.vue';
@@ -24,6 +26,14 @@ vi.mock('@/features/prompt-api/runtime', async () => {
 });
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({ settings: { value: { experimental: { fakeLm: 'disabled' } } }, availableModels: { value: ['global-only'] }, isFetchingModels: { value: false }, fetchModels: mocks.globalFetch }),
+}));
+vi.mock('@/composables/useCspMessageHintsOnly', () => ({
+  useCspMessageHintsOnly: ({ target }: { target: Readonly<Ref<CspHintTarget | undefined>> }) => {
+    // Deny every ready destination so these tests exercise draft readiness,
+    // independently of a deployment's actual connection policy.
+    const message: CspHintMessage = { tone: 'caution', subject: 'connection', suggestedDeployments: [], details: [{ directive: 'connect-src', context: 'document', sources: ["'none'"], sourceDescriptions: [{ kind: 'none' }] }] };
+    return computed(() => target.value === undefined ? undefined : message);
+  },
 }));
 
 enableAutoUnmount(afterEach);
@@ -50,6 +60,42 @@ function renderConnection({ initialEndpoint, applySelection }: {
 }
 
 describe('browser model connection selection', () => {
+  it.each(['http', 'https'])('waits for a recognizable %s host without changing the connection workflow', async scheme => {
+    vi.useFakeTimers();
+    const apply = vi.fn().mockResolvedValue(undefined);
+    const wrapper = renderConnection({ initialEndpoint: 'openai', applySelection: apply });
+    const input = wrapper.get('#model-connection-url');
+    // Start with a visible warning so the partial-input checks also prove that
+    // an existing warning disappears, after the optional boundary has loaded.
+    await input.setValue('https://ready.example/v1');
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="csp-hint-trigger"]').exists()).toBe(true);
+    const hint = wrapper.getComponent({ name: 'CspLmEndpointHint' });
+    const prefix = `${scheme}://`;
+    for (let length = 1; length <= prefix.length; length++) {
+      await input.setValue(prefix.slice(0, length));
+      expect(wrapper.find('[data-testid="csp-hint-trigger"]').exists()).toBe(false);
+    }
+    for (const host of ['l', 'myhost']) {
+      await input.setValue(`${scheme}://${host}`);
+      expect(wrapper.find('[data-testid="csp-hint-trigger"]').exists()).toBe(false);
+      expect(hint.props('endpoint')).toEqual({ type: 'openai', url: `${scheme}://${host}`, httpHeaders: undefined });
+    }
+    await input.setValue(`${scheme}://myhost.`);
+    expect(wrapper.find('[data-testid="csp-hint-trigger"]').exists()).toBe(true);
+    await input.setValue(`${scheme}://localhost:11434`);
+    expect(wrapper.find('[data-testid="csp-hint-trigger"]').exists()).toBe(true);
+    expect(hint.props('endpoint')).toEqual({ type: 'openai', url: `${scheme}://localhost:11434`, httpHeaders: undefined });
+    await input.setValue('localhost:11434');
+    expect(hint.props('endpoint')).toEqual({ type: 'openai', url: 'http://localhost:11434', httpHeaders: undefined });
+    await input.setValue('https://remote.example/v1');
+    expect(hint.props('endpoint')).toEqual({ type: 'openai', url: 'https://remote.example/v1', httpHeaders: undefined });
+    expect(wrapper.get('#model-connection-url').element).toBe(input.element);
+    expect(mocks.loadLmProvider).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
   it('keeps an empty remote connection uncommitted and scrolls only the form region', async () => {
     const apply = vi.fn().mockResolvedValue(undefined);
     const wrapper = renderConnection({ initialEndpoint: 'openai', applySelection: apply });
@@ -90,6 +136,56 @@ describe('browser model connection selection', () => {
     await wrapper.get('[data-testid="connection-submit"]').trigger('click');
     expect(apply).toHaveBeenCalledExactlyOnceWith({ endpoint: { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: undefined }, modelId: 'model-b' });
     expect(mocks.globalFetch).not.toHaveBeenCalled();
+  });
+
+  it('shows only the error supplement after a request failure and restores the URL-adjacent hint for other states', async () => {
+    const listModels = vi.fn().mockRejectedValue(new Error('provider failed'));
+    mocks.loadLmProvider.mockResolvedValue({ listModels });
+    const apply = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mount(BrowserConnectionSelection, {
+      attachTo: document.body,
+      props: { initialEndpoint: 'openai', active: true, applySelection: apply },
+      global: {
+        stubs: {
+          LanguageSelector: true,
+          CspLmEndpointHint: {
+            props: ['endpoint', 'operation', 'presentation', 'activityForDisplayOnly'],
+            template: '<span data-testid="connection-csp-probe" :data-presentation="presentation" :data-activity="activityForDisplayOnly" />',
+          },
+        },
+      },
+    });
+    await wrapper.get('#model-connection-url').setValue('https://example.invalid/v1');
+    expect(wrapper.findAll('[data-testid="connection-csp-probe"]').map(hint => hint.attributes('data-presentation'))).toEqual(['compact']);
+    expect(wrapper.get('[data-testid="connection-csp-probe"]').attributes('data-activity')).toBe('connection');
+    const labelRow = wrapper.get('label[for="model-connection-url"]').element.parentElement;
+    expect(labelRow?.contains(wrapper.get('[data-testid="connection-csp-probe"]').element)).toBe(true);
+    expect(wrapper.get('[data-testid="connection-csp-probe"]').element.closest('label')).toBeNull();
+    const urlInput = wrapper.get('#model-connection-url').element;
+    expect(urlInput.parentElement?.nextElementSibling).toBe(wrapper.get('[data-testid="connection-csp-probe"]').element);
+
+    await wrapper.get('[data-testid="connection-fetch-models"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="connection-model-list-error"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="connection-csp-probe"]').map(hint => hint.attributes('data-presentation'))).toEqual(['error']);
+    expect(wrapper.get('[data-testid="connection-csp-probe"]').attributes('data-activity')).toBe('model-list');
+    expect(wrapper.get('[data-testid="connection-model-list-error"]').element.nextElementSibling).toBe(wrapper.get('[data-testid="connection-csp-probe"]').element);
+    expect(listModels).toHaveBeenCalledTimes(1);
+
+    listModels.mockResolvedValue([]);
+    await wrapper.get('[data-testid="connection-fetch-models"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="connection-model-list-error"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="connection-csp-probe"]').map(hint => hint.attributes('data-presentation'))).toEqual(['compact']);
+    expect(wrapper.get('#model-connection-url').element).toBe(urlInput);
+
+    await wrapper.get('#model-connection-url').setValue('not a valid URL');
+    await wrapper.get('[data-testid="connection-fetch-models"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="connection-csp-probe"]').map(hint => hint.attributes('data-presentation'))).toEqual(['compact']);
+    expect(listModels).toHaveBeenCalledTimes(2);
+    expect(mocks.globalFetch).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
   });
 
   it('keeps API form controls mounted while presets change type and URL', async () => {

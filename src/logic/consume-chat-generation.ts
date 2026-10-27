@@ -1,3 +1,4 @@
+import { parseGenerationMetrics } from '@/01-models/generation-metrics';
 import type { AssistantMessageNode } from '@/01-models/types';
 import type { ChatGenerationItem, ChatGenerationResult, ToolCallDraft } from '@/01-models/lm';
 import { createAssistantGeneration } from '@/01-models/assistant-generation';
@@ -277,9 +278,9 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
         const { type: _type, result: value, ...unhandled } = item;
         unhandled satisfies Record<PropertyKey, never>;
         switch (value.type) {
-        case 'finished': result = { type: value.type, next: value.next };
+        case 'finished': result = { type: value.type, next: value.next, ...(value.generationMetrics === undefined ? {} : { generationMetrics: parseGenerationMetrics({ value: value.generationMetrics }) }) };
           break;
-        case 'interrupted': result = { type: value.type, reason: value.reason };
+        case 'interrupted': result = { type: value.type, reason: value.reason, ...(value.generationMetrics === undefined ? {} : { generationMetrics: parseGenerationMetrics({ value: value.generationMetrics }) }) };
           break;
         case 'error': result = { type: value.type, error: value.error };
           break;

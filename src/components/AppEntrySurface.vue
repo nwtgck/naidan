@@ -19,7 +19,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div data-testid="app-entry-surface" :inert="entry.interaction.value === 'blocked' || undefined" :aria-busy="entry.interaction.value === 'blocked'" tw-class="relative h-full min-h-0 overflow-auto bg-[#fcfcfd] dark:bg-gray-900">
+  <div data-testid="app-entry-surface" :inert="entry.interaction.value === 'blocked' || undefined" :aria-busy="entry.interaction.value === 'blocked'" tw-class="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#fcfcfd] dark:bg-gray-900">
     <LlamaCppBrowserModelLaunchEntry v-if="entry.intent.value.kind === 'model-preview'" :input="modelInput" :interaction="entry.interaction.value" />
   </div>
 </template>

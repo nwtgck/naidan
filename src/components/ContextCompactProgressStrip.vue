@@ -4,10 +4,42 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-vue-next';
 import type { ContextCompactProgress } from '@/logic/context-compact';
 import { toContextCompactDisplayProgress } from '@/logic/context-compact';
+import type { Endpoint } from '@/01-models/types';
+import { cloneEndpoint } from '@/01-models/endpoint';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 
 const props = defineProps<{
   progress: ContextCompactProgress,
+  endpoint: Endpoint | undefined,
 }>();
+
+const failedDuringModelRequest = ref(false);
+const requestedEndpoint = ref<Endpoint>();
+watch(() => props.progress.phase, (phase, previousPhase) => {
+  switch (phase) {
+  case 'requesting_model':
+    try {
+      requestedEndpoint.value = props.endpoint === undefined ? undefined : cloneEndpoint({ endpoint: props.endpoint });
+    } catch {
+      requestedEndpoint.value = undefined;
+    }
+    break;
+  case 'idle':
+  case 'preparing':
+  case 'building_request':
+  case 'receiving_compact':
+  case 'applying_branch':
+  case 'complete':
+  case 'failed':
+  case 'aborted': break;
+  default: {
+    const exhaustive: never = phase;
+    void exhaustive;
+    requestedEndpoint.value = undefined;
+  }
+  }
+  failedDuringModelRequest.value = phase === 'failed' && (previousPhase === 'requesting_model' || previousPhase === 'receiving_compact');
+}, { flush: 'sync', immediate: true });
 
 defineEmits<{
   (e: 'abort'): void,
@@ -370,6 +402,7 @@ defineExpose({
           >
             {{ visibleDisplay.detail }}
           </p>
+          <CspLmEndpointHint activity-for-display-only="context-summary" :fake-lm-debug-mode-status="undefined" v-if="failedDuringModelRequest" :endpoint="requestedEndpoint" operation="chat" presentation="error" />
 
           <!-- Previews Area -->
           <div v-if="requestPreview || outputPreview" tw-class="pt-1 space-y-2">

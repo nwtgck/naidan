@@ -37,6 +37,7 @@ import docsNoBrowserPersistence from './eslint-local-rules/docs-no-browser-persi
 import cssLayout from './eslint-local-rules/css-layout.js';
 import statementLayout from './eslint-local-rules/statement-layout.js';
 import externalCommandPolicy from './eslint-local-rules/external-command-policy.js';
+import nodeEnvPolicy from './eslint-local-rules/node-env-policy.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -279,6 +280,13 @@ export default [
   testResourceManagement,
   noTestSupportImports,
   externalCommandPolicy,
+  nodeEnvPolicy,
+  {
+    name: 'naidan/node-env-registry-layout',
+    files: ['build/node-env.ts'],
+    // This declarative registry is deliberately one lazy reader per line.
+    rules: { 'local-rules-function-spacing/function-spacing': 'off' },
+  },
   statementLayout,
   ...cssLayout,
 ];

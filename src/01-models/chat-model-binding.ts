@@ -4,14 +4,18 @@ import type { Endpoint } from './types';
 export function resolveChatModelBinding({ chat, chatGroup, settings }: {
   chat: { endpoint?: Endpoint, modelId?: string },
   chatGroup: { endpoint?: Endpoint, modelId?: string } | null | undefined,
-  settings: { endpoint: Endpoint, defaultModelId?: string },
+  settings: { endpoint: Endpoint, defaultModelId?: string } | null,
 }): {
   global: { endpoint: Endpoint, modelId: string },
   chatGroup: { endpoint: Endpoint, modelId: string },
   chat: { endpoint: Endpoint, modelId: string },
   sources: { endpoint: 'chat' | 'chat_group' | 'global', modelId: 'chat' | 'chat_group' | 'global' },
 } {
-  const global = { endpoint: settings.endpoint, modelId: settings.defaultModelId || '' };
+  // A first chat can own a binding before global settings have ever been saved.
+  // Resolve only its initial binding; do not create a persisted Settings record.
+  const global: { endpoint: Endpoint, modelId: string } = settings === null
+    ? { endpoint: { type: 'openai', url: '' }, modelId: '' }
+    : { endpoint: settings.endpoint, modelId: settings.defaultModelId || '' };
   const groupPair = { endpoint: chatGroup?.endpoint ?? global.endpoint, modelId: chatGroup?.modelId || global.modelId };
   return {
     global,

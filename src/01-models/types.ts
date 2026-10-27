@@ -483,6 +483,8 @@ export const DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS = {
   bf16WeightType: 'f32',
 } satisfies BrowserImageGenerationSettings;
 
+export type LlamaCppServerTimingsMode = 'auto' | 'enabled' | 'disabled';
+
 export interface Settings {
   endpoint: Endpoint,
   /** Default model selection, with the same contract as Chat.modelId. */
@@ -496,11 +498,19 @@ export interface Settings {
   lmParameters?: LmParameters,
   experimental?: {
     locale?: UiLocale,
+    /**
+     * Only makes development behavior checks easier; it does not improve
+     * security and MUST NOT be used for security. A late-applied CSP meta cannot
+     * prevent loads that already occurred. NEVER use this value for feature
+     * permissions or ON/OFF decisions. Undefined clears the saved setting.
+     */
+    metaCspForDevelopmentNotForSecurity?: string,
     chatBrowserModelPickerTab?: 'files' | 'linked-folders' | 'hugging-face' | 'saved',
     modelDiscoveryTab?: 'candidates' | 'hugging_face' | 'local_files',
     markdownRendering?: 'block_markdown' | 'monolithic_html',
     /**
      * Controls whether tool configuration changes are persisted.
+     * Missing means enabled; an explicit disabled value opts out.
      *
      * This does not enable or disable any tool by itself. When disabled, tool
      * config changes can still affect the current runtime session, but they are
@@ -511,6 +521,12 @@ export interface Settings {
     toolConfigs?: ToolConfig[],
     fakeLm?: 'disabled' | 'enabled',
     naidanRpc?: 'disabled' | 'enabled',
+    /** Display and collection preferences only; generation measurements remain in memory. */
+    generationSpeed?: {
+      status?: 'enabled' | 'disabled',
+      inlineStats?: 'on_demand' | 'always',
+      llamaCppServerTimings?: LlamaCppServerTimingsMode,
+    },
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
     globalSearch?: {
       scope?: 'all' | 'current_thread' | 'title_only',

@@ -44,16 +44,20 @@ import { SHARED__use_model_in_this_chat } from '@/strings/messages/SHARED__use_m
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/en';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/en';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/en';
+import { AboutPortableEditionHelp__how_to_use_the_portable_html_edition } from '@/strings/messages/AboutPortableEditionHelp__how_to_use_the_portable_html_edition/en';
 import { AboutTab__about_naidan } from '@/strings/messages/AboutTab__about_naidan/en';
 import { AboutTab__built_with_open_source_software } from '@/strings/messages/AboutTab__built_with_open_source_software/en';
+import { AboutTab__documentation } from '@/strings/messages/AboutTab__documentation/en';
+import { AboutTab__download_zip } from '@/strings/messages/AboutTab__download_zip/en';
 import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github_repository/en';
+import { AboutTab__learn_how_to_use_naidan } from '@/strings/messages/AboutTab__learn_how_to_use_naidan/en';
 import { AboutTab__loading_licenses } from '@/strings/messages/AboutTab__loading_licenses/en';
 import { AboutTab__open_source_licenses } from '@/strings/messages/AboutTab__open_source_licenses/en';
 import { AboutTab__privacy_focused_local_lm_interface } from '@/strings/messages/AboutTab__privacy_focused_local_lm_interface/en';
 import { AboutTab__unknown_package } from '@/strings/messages/AboutTab__unknown_package/en';
 import { AboutTab__version } from '@/strings/messages/AboutTab__version/en';
 import { AboutTab__view_license_text } from '@/strings/messages/AboutTab__view_license_text/en';
-import { AboutTab__view_source_code_and_contribute } from '@/strings/messages/AboutTab__view_source_code_and_contribute/en';
+import { AboutTab__view_source_code } from '@/strings/messages/AboutTab__view_source_code/en';
 import { AppCommandRuntime__could_not_create_chat } from '@/strings/messages/AppCommandRuntime__could_not_create_chat/en';
 import { AppCommandRuntime__retry } from '@/strings/messages/AppCommandRuntime__retry/en';
 import { AppEntrySurface__could_not_open_local_model } from '@/strings/messages/AppEntrySurface__could_not_open_local_model/en';
@@ -118,7 +122,6 @@ import { BrowserModelPreparation__loading_model_settings } from '@/strings/messa
 import { BrowserModelPreparation__main_model } from '@/strings/messages/BrowserModelPreparation__main_model/en';
 import { BrowserModelPreparation__no_companion_file } from '@/strings/messages/BrowserModelPreparation__no_companion_file/en';
 import { BrowserModelPreparation__specify_a_quantization } from '@/strings/messages/BrowserModelPreparation__specify_a_quantization/en';
-import { BrowserModelWelcomeDialog__could_not_open_connection_settings } from '@/strings/messages/BrowserModelWelcomeDialog__could_not_open_connection_settings/en';
 import { BrowserModelWelcome__browse_models } from '@/strings/messages/BrowserModelWelcome__browse_models/en';
 import { BrowserModelWelcome__browser_provided_model } from '@/strings/messages/BrowserModelWelcome__browser_provided_model/en';
 import { BrowserModelWelcome__choose_a_model } from '@/strings/messages/BrowserModelWelcome__choose_a_model/en';
@@ -319,7 +322,6 @@ import { ChatLocalModelInput__load_model } from '@/strings/messages/ChatLocalMod
 import { ChatLocalModelInput__model_source } from '@/strings/messages/ChatLocalModelInput__model_source/en';
 import { ChatLocalModelInput__pause_download } from '@/strings/messages/ChatLocalModelInput__pause_download/en';
 import { ChatLocalModelInput__saved_models } from '@/strings/messages/ChatLocalModelInput__saved_models/en';
-import { ChatLocalModelInput__start_without_copying_and_save_later } from '@/strings/messages/ChatLocalModelInput__start_without_copying_and_save_later/en';
 import { ChatLocalModelInput__this_chat_already_has_messages } from '@/strings/messages/ChatLocalModelInput__this_chat_already_has_messages/en';
 import { ChatLocalModelInput__use_a_saved_model } from '@/strings/messages/ChatLocalModelInput__use_a_saved_model/en';
 import { ChatLocalModelInput__use_local_model_files } from '@/strings/messages/ChatLocalModelInput__use_local_model_files/en';
@@ -576,6 +578,71 @@ import { ConversationOutlineOverlay__peek } from '@/strings/messages/Conversatio
 import { ConversationOutlineOverlay__system } from '@/strings/messages/ConversationOutlineOverlay__system/en';
 import { ConversationOutlineOverlay__tool } from '@/strings/messages/ConversationOutlineOverlay__tool/en';
 import { ConversationOutlineOverlay__you } from '@/strings/messages/ConversationOutlineOverlay__you/en';
+import { CspDeploymentGuidance__based_on_the_public_editions_connection_policies } from '@/strings/messages/CspDeploymentGuidance__based_on_the_public_editions_connection_policies/en';
+import { CspDeploymentGuidance__choose_import_and_select_your_exported_file } from '@/strings/messages/CspDeploymentGuidance__choose_import_and_select_your_exported_file/en';
+import { CspDeploymentGuidance__copied } from '@/strings/messages/CspDeploymentGuidance__copied/en';
+import { CspDeploymentGuidance__copy_url } from '@/strings/messages/CspDeploymentGuidance__copy_url/en';
+import { CspDeploymentGuidance__could_not_copy_url } from '@/strings/messages/CspDeploymentGuidance__could_not_copy_url/en';
+import { CspDeploymentGuidance__could_not_create_url_use_storage_settings } from '@/strings/messages/CspDeploymentGuidance__could_not_create_url_use_storage_settings/en';
+import { CspDeploymentGuidance__could_not_open_export_use_storage_settings } from '@/strings/messages/CspDeploymentGuidance__could_not_open_export_use_storage_settings/en';
+import { CspDeploymentGuidance__create_transfer_url } from '@/strings/messages/CspDeploymentGuidance__create_transfer_url/en';
+import { CspDeploymentGuidance__creating_transfer_url } from '@/strings/messages/CspDeploymentGuidance__creating_transfer_url/en';
+import { CspDeploymentGuidance__data_to_exclude } from '@/strings/messages/CspDeploymentGuidance__data_to_exclude/en';
+import { CspDeploymentGuidance__each_site_keeps_its_own_data } from '@/strings/messages/CspDeploymentGuidance__each_site_keeps_its_own_data/en';
+import { CspDeploymentGuidance__exclude_attachments } from '@/strings/messages/CspDeploymentGuidance__exclude_attachments/en';
+import { CspDeploymentGuidance__exclude_chat_history } from '@/strings/messages/CspDeploymentGuidance__exclude_chat_history/en';
+import { CspDeploymentGuidance__exclude_chats } from '@/strings/messages/CspDeploymentGuidance__exclude_chats/en';
+import { CspDeploymentGuidance__export_data } from '@/strings/messages/CspDeploymentGuidance__export_data/en';
+import { CspDeploymentGuidance__how_to_ease_connection_restrictions } from '@/strings/messages/CspDeploymentGuidance__how_to_ease_connection_restrictions/en';
+import { CspDeploymentGuidance__import_your_exported_file_on_the_other_site } from '@/strings/messages/CspDeploymentGuidance__import_your_exported_file_on_the_other_site/en';
+import { CspDeploymentGuidance__open_settings_storage_import_export } from '@/strings/messages/CspDeploymentGuidance__open_settings_storage_import_export/en';
+import { CspDeploymentGuidance__open_with_selected_data } from '@/strings/messages/CspDeploymentGuidance__open_with_selected_data/en';
+import { CspDeploymentGuidance__opening_export } from '@/strings/messages/CspDeploymentGuidance__opening_export/en';
+import { CspDeploymentGuidance__saved_development_csp_may_be_reapplied_after_restoring_settings } from '@/strings/messages/CspDeploymentGuidance__saved_development_csp_may_be_reapplied_after_restoring_settings/en';
+import { CspDeploymentGuidance__share_small_states_with_a_url } from '@/strings/messages/CspDeploymentGuidance__share_small_states_with_a_url/en';
+import { CspDeploymentGuidance__take_your_data_with_you } from '@/strings/messages/CspDeploymentGuidance__take_your_data_with_you/en';
+import { CspDeploymentGuidance__try_other_public_editions } from '@/strings/messages/CspDeploymentGuidance__try_other_public_editions/en';
+import { CspDeploymentGuidance__url_includes_selected_data_and_connection_settings } from '@/strings/messages/CspDeploymentGuidance__url_includes_selected_data_and_connection_settings/en';
+import { CspDeploymentGuidance__use_a_transfer_url_for_small_data } from '@/strings/messages/CspDeploymentGuidance__use_a_transfer_url_for_small_data/en';
+import { CspMessageHint__a_response_may_not_be_generated } from '@/strings/messages/CspMessageHint__a_response_may_not_be_generated/en';
+import { CspMessageHint__a_title_may_not_be_generated } from '@/strings/messages/CspMessageHint__a_title_may_not_be_generated/en';
+import { CspMessageHint__an_image_may_not_be_generated } from '@/strings/messages/CspMessageHint__an_image_may_not_be_generated/en';
+import { CspMessageHint__communication_page } from '@/strings/messages/CspMessageHint__communication_page/en';
+import { CspMessageHint__current_content_security_policy } from '@/strings/messages/CspMessageHint__current_content_security_policy/en';
+import { CspMessageHint__current_policy_does_not_identify_the_error_cause } from '@/strings/messages/CspMessageHint__current_policy_does_not_identify_the_error_cause/en';
+import { CspMessageHint__downloads_may_fail } from '@/strings/messages/CspMessageHint__downloads_may_fail/en';
+import { CspMessageHint__each_policy_applies_separately } from '@/strings/messages/CspMessageHint__each_policy_applies_separately/en';
+import { CspMessageHint__hints_for_resolving_this_error } from '@/strings/messages/CspMessageHint__hints_for_resolving_this_error/en';
+import { CspMessageHint__local_servers_on_this_pc } from '@/strings/messages/CspMessageHint__local_servers_on_this_pc/en';
+import { CspMessageHint__model_information_may_not_load } from '@/strings/messages/CspMessageHint__model_information_may_not_load/en';
+import { CspMessageHint__model_search_may_fail } from '@/strings/messages/CspMessageHint__model_search_may_fail/en';
+import { CspMessageHint__no_destinations_are_allowed } from '@/strings/messages/CspMessageHint__no_destinations_are_allowed/en';
+import { CspMessageHint__no_destinations_are_listed } from '@/strings/messages/CspMessageHint__no_destinations_are_listed/en';
+import { CspMessageHint__quantization_options_may_not_load } from '@/strings/messages/CspMessageHint__quantization_options_may_not_load/en';
+import { CspMessageHint__running_models_may_not_be_checked } from '@/strings/messages/CspMessageHint__running_models_may_not_be_checked/en';
+import { CspMessageHint__settings_and_actions_remain_unchanged } from '@/strings/messages/CspMessageHint__settings_and_actions_remain_unchanged/en';
+import { CspMessageHint__some_content_or_actions_may_be_restricted } from '@/strings/messages/CspMessageHint__some_content_or_actions_may_be_restricted/en';
+import { CspMessageHint__some_required_connections_or_loads_are_outside_the_allowed_range } from '@/strings/messages/CspMessageHint__some_required_connections_or_loads_are_outside_the_allowed_range/en';
+import { CspMessageHint__technical_details } from '@/strings/messages/CspMessageHint__technical_details/en';
+import { CspMessageHint__the_conversation_may_not_be_summarized } from '@/strings/messages/CspMessageHint__the_conversation_may_not_be_summarized/en';
+import { CspMessageHint__the_following_destinations_are_allowed } from '@/strings/messages/CspMessageHint__the_following_destinations_are_allowed/en';
+import { CspMessageHint__the_model_list_may_not_load } from '@/strings/messages/CspMessageHint__the_model_list_may_not_load/en';
+import { CspMessageHint__the_model_may_not_be_unloaded_from_memory } from '@/strings/messages/CspMessageHint__the_model_may_not_be_unloaded_from_memory/en';
+import { CspMessageHint__the_prompt_may_not_be_translated } from '@/strings/messages/CspMessageHint__the_prompt_may_not_be_translated/en';
+import { CspMessageHint__the_relay_server_may_be_unreachable } from '@/strings/messages/CspMessageHint__the_relay_server_may_be_unreachable/en';
+import { CspMessageHint__this_connection_may_be_restricted } from '@/strings/messages/CspMessageHint__this_connection_may_be_restricted/en';
+import { CspMessageHint__this_destination_is_outside_the_allowed_range } from '@/strings/messages/CspMessageHint__this_destination_is_outside_the_allowed_range/en';
+import { CspMessageHint__this_form_may_not_be_submitted } from '@/strings/messages/CspMessageHint__this_form_may_not_be_submitted/en';
+import { CspMessageHint__this_image_may_not_be_displayed } from '@/strings/messages/CspMessageHint__this_image_may_not_be_displayed/en';
+import { CspMessageHint__this_media_may_not_play } from '@/strings/messages/CspMessageHint__this_media_may_not_play/en';
+import { CspMessageHint__this_page } from '@/strings/messages/CspMessageHint__this_page/en';
+import { CspMessageHint__this_resource_may_not_load } from '@/strings/messages/CspMessageHint__this_resource_may_not_load/en';
+import { CspMessageHint__this_resource_source_is_outside_the_allowed_range } from '@/strings/messages/CspMessageHint__this_resource_source_is_outside_the_allowed_range/en';
+import { CspMessageHint__this_site } from '@/strings/messages/CspMessageHint__this_site/en';
+import { CspMessageHint__this_submission_destination_is_outside_the_allowed_range } from '@/strings/messages/CspMessageHint__this_submission_destination_is_outside_the_allowed_range/en';
+import { CspMessageHint__this_url_may_be_unreachable } from '@/strings/messages/CspMessageHint__this_url_may_be_unreachable/en';
+import { CspMessageHint__wikipedia_may_not_be_available } from '@/strings/messages/CspMessageHint__wikipedia_may_not_be_available/en';
+import { CspMessageHint__worker } from '@/strings/messages/CspMessageHint__worker/en';
 import { CustomDialog__dialog } from '@/strings/messages/CustomDialog__dialog/en';
 import { DebugIndexPage__debug } from '@/strings/messages/DebugIndexPage__debug/en';
 import { DebugIndexPage__debug_tools } from '@/strings/messages/DebugIndexPage__debug_tools/en';
@@ -595,6 +662,60 @@ import { DebugPanel__this_is_used_to_verify_the_error_event_system_ui } from '@/
 import { DebugPanel__total_count } from '@/strings/messages/DebugPanel__total_count/en';
 import { DebugPanel__trigger_test_error } from '@/strings/messages/DebugPanel__trigger_test_error/en';
 import { DebugPanel__trigger_test_info } from '@/strings/messages/DebugPanel__trigger_test_info/en';
+import { DeveloperCspDiagnostics__allowed_connections } from '@/strings/messages/DeveloperCspDiagnostics__allowed_connections/en';
+import { DeveloperCspDiagnostics__clear_saved_meta_csp_setting } from '@/strings/messages/DeveloperCspDiagnostics__clear_saved_meta_csp_setting/en';
+import { DeveloperCspDiagnostics__clearing_the_setting_keeps_current_meta } from '@/strings/messages/DeveloperCspDiagnostics__clearing_the_setting_keeps_current_meta/en';
+import { DeveloperCspDiagnostics__connection_summary_is_unavailable } from '@/strings/messages/DeveloperCspDiagnostics__connection_summary_is_unavailable/en';
+import { DeveloperCspDiagnostics__content_security_policy } from '@/strings/messages/DeveloperCspDiagnostics__content_security_policy/en';
+import { DeveloperCspDiagnostics__copied } from '@/strings/messages/DeveloperCspDiagnostics__copied/en';
+import { DeveloperCspDiagnostics__copy } from '@/strings/messages/DeveloperCspDiagnostics__copy/en';
+import { DeveloperCspDiagnostics__copy_failed_select_the_text } from '@/strings/messages/DeveloperCspDiagnostics__copy_failed_select_the_text/en';
+import { DeveloperCspDiagnostics__copy_json } from '@/strings/messages/DeveloperCspDiagnostics__copy_json/en';
+import { DeveloperCspDiagnostics__could_not_save_the_setting } from '@/strings/messages/DeveloperCspDiagnostics__could_not_save_the_setting/en';
+import { DeveloperCspDiagnostics__curated } from '@/strings/messages/DeveloperCspDiagnostics__curated/en';
+import { DeveloperCspDiagnostics__custom } from '@/strings/messages/DeveloperCspDiagnostics__custom/en';
+import { DeveloperCspDiagnostics__development_meta_application_status } from '@/strings/messages/DeveloperCspDiagnostics__development_meta_application_status/en';
+import { DeveloperCspDiagnostics__development_meta_csp } from '@/strings/messages/DeveloperCspDiagnostics__development_meta_csp/en';
+import { DeveloperCspDiagnostics__fetching_policy } from '@/strings/messages/DeveloperCspDiagnostics__fetching_policy/en';
+import { DeveloperCspDiagnostics__header_missing } from '@/strings/messages/DeveloperCspDiagnostics__header_missing/en';
+import { DeveloperCspDiagnostics__header_was_truncated } from '@/strings/messages/DeveloperCspDiagnostics__header_was_truncated/en';
+import { DeveloperCspDiagnostics__http_header_restrictions_cannot_be_relaxed } from '@/strings/messages/DeveloperCspDiagnostics__http_header_restrictions_cannot_be_relaxed/en';
+import { DeveloperCspDiagnostics__input_or_storage_changed } from '@/strings/messages/DeveloperCspDiagnostics__input_or_storage_changed/en';
+import { DeveloperCspDiagnostics__inspect_http_and_managed_meta } from '@/strings/messages/DeveloperCspDiagnostics__inspect_http_and_managed_meta/en';
+import { DeveloperCspDiagnostics__local_only } from '@/strings/messages/DeveloperCspDiagnostics__local_only/en';
+import { DeveloperCspDiagnostics__managed_meta_added_to_this_page } from '@/strings/messages/DeveloperCspDiagnostics__managed_meta_added_to_this_page/en';
+import { DeveloperCspDiagnostics__managed_meta_diagnostics_are_unavailable } from '@/strings/messages/DeveloperCspDiagnostics__managed_meta_diagnostics_are_unavailable/en';
+import { DeveloperCspDiagnostics__managed_meta_display_is_limited } from '@/strings/messages/DeveloperCspDiagnostics__managed_meta_display_is_limited/en';
+import { DeveloperCspDiagnostics__meta_could_not_be_added } from '@/strings/messages/DeveloperCspDiagnostics__meta_could_not_be_added/en';
+import { DeveloperCspDiagnostics__meta_csp_setting_value } from '@/strings/messages/DeveloperCspDiagnostics__meta_csp_setting_value/en';
+import { DeveloperCspDiagnostics__no_managed_meta_has_been_added } from '@/strings/messages/DeveloperCspDiagnostics__no_managed_meta_has_been_added/en';
+import { DeveloperCspDiagnostics__no_saved_meta_csp_setting } from '@/strings/messages/DeveloperCspDiagnostics__no_saved_meta_csp_setting/en';
+import { DeveloperCspDiagnostics__none } from '@/strings/messages/DeveloperCspDiagnostics__none/en';
+import { DeveloperCspDiagnostics__observed_headers } from '@/strings/messages/DeveloperCspDiagnostics__observed_headers/en';
+import { DeveloperCspDiagnostics__only_for_development_never_for_security } from '@/strings/messages/DeveloperCspDiagnostics__only_for_development_never_for_security/en';
+import { DeveloperCspDiagnostics__only_meta_added_through_naidan_is_listed } from '@/strings/messages/DeveloperCspDiagnostics__only_meta_added_through_naidan_is_listed/en';
+import { DeveloperCspDiagnostics__only_part_of_the_policy_was_added } from '@/strings/messages/DeveloperCspDiagnostics__only_part_of_the_policy_was_added/en';
+import { DeveloperCspDiagnostics__original_value_length } from '@/strings/messages/DeveloperCspDiagnostics__original_value_length/en';
+import { DeveloperCspDiagnostics__parse_result } from '@/strings/messages/DeveloperCspDiagnostics__parse_result/en';
+import { DeveloperCspDiagnostics__policy_could_not_be_observed } from '@/strings/messages/DeveloperCspDiagnostics__policy_could_not_be_observed/en';
+import { DeveloperCspDiagnostics__policy_has_not_been_fetched } from '@/strings/messages/DeveloperCspDiagnostics__policy_has_not_been_fetched/en';
+import { DeveloperCspDiagnostics__privacy_fetch_additions_confirmed } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_additions_confirmed/en';
+import { DeveloperCspDiagnostics__privacy_fetch_confirmation_pending } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_confirmation_pending/en';
+import { DeveloperCspDiagnostics__privacy_fetch_confirmation_pending_description } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_confirmation_pending_description/en';
+import { DeveloperCspDiagnostics__privacy_fetch_confirmation_unavailable } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_confirmation_unavailable/en';
+import { DeveloperCspDiagnostics__privacy_fetch_confirmation_unavailable_description } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_confirmation_unavailable_description/en';
+import { DeveloperCspDiagnostics__privacy_fetch_confirmed_meta_prefix } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_confirmed_meta_prefix/en';
+import { DeveloperCspDiagnostics__privacy_fetch_meta_application } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_meta_application/en';
+import { DeveloperCspDiagnostics__privacy_fetch_meta_confirmation_limits } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_meta_confirmation_limits/en';
+import { DeveloperCspDiagnostics__privacy_fetch_not_ready } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_not_ready/en';
+import { DeveloperCspDiagnostics__privacy_fetch_not_ready_description } from '@/strings/messages/DeveloperCspDiagnostics__privacy_fetch_not_ready_description/en';
+import { DeveloperCspDiagnostics__report_only_does_not_block } from '@/strings/messages/DeveloperCspDiagnostics__report_only_does_not_block/en';
+import { DeveloperCspDiagnostics__save_and_add_meta_csp } from '@/strings/messages/DeveloperCspDiagnostics__save_and_add_meta_csp/en';
+import { DeveloperCspDiagnostics__saved_development_meta_csp_value } from '@/strings/messages/DeveloperCspDiagnostics__saved_development_meta_csp_value/en';
+import { DeveloperCspDiagnostics__saved_meta_csp_display_is_truncated } from '@/strings/messages/DeveloperCspDiagnostics__saved_meta_csp_display_is_truncated/en';
+import { DeveloperCspDiagnostics__saved_meta_is_added_now_and_on_future_loads } from '@/strings/messages/DeveloperCspDiagnostics__saved_meta_is_added_now_and_on_future_loads/en';
+import { DeveloperCspDiagnostics__saving_meta_csp } from '@/strings/messages/DeveloperCspDiagnostics__saving_meta_csp/en';
+import { DeveloperCspDiagnostics__setting_saved } from '@/strings/messages/DeveloperCspDiagnostics__setting_saved/en';
 import { DeveloperOpenStateLinks__choose_data_to_omit } from '@/strings/messages/DeveloperOpenStateLinks__choose_data_to_omit/en';
 import { DeveloperOpenStateLinks__copied_url_for_host } from '@/strings/messages/DeveloperOpenStateLinks__copied_url_for_host/en';
 import { DeveloperOpenStateLinks__copy_url_for_host } from '@/strings/messages/DeveloperOpenStateLinks__copy_url_for_host/en';
@@ -634,6 +755,14 @@ import { DeveloperTab__reset_data_provider_warning } from '@/strings/messages/De
 import { DeveloperTab__sample_conversations_description } from '@/strings/messages/DeveloperTab__sample_conversations_description/en';
 import { DeveloperTab__simulate_pwa_update } from '@/strings/messages/DeveloperTab__simulate_pwa_update/en';
 import { DeveloperTab__toggle_update_notification } from '@/strings/messages/DeveloperTab__toggle_update_notification/en';
+import { DevelopmentMetaCspRecovery__clear_saved_meta_csp_setting } from '@/strings/messages/DevelopmentMetaCspRecovery__clear_saved_meta_csp_setting/en';
+import { DevelopmentMetaCspRecovery__clearing_saved_meta_csp } from '@/strings/messages/DevelopmentMetaCspRecovery__clearing_saved_meta_csp/en';
+import { DevelopmentMetaCspRecovery__close_notice } from '@/strings/messages/DevelopmentMetaCspRecovery__close_notice/en';
+import { DevelopmentMetaCspRecovery__could_not_clear_saved_setting } from '@/strings/messages/DevelopmentMetaCspRecovery__could_not_clear_saved_setting/en';
+import { DevelopmentMetaCspRecovery__development_meta_csp } from '@/strings/messages/DevelopmentMetaCspRecovery__development_meta_csp/en';
+import { DevelopmentMetaCspRecovery__development_only_never_for_security } from '@/strings/messages/DevelopmentMetaCspRecovery__development_only_never_for_security/en';
+import { DevelopmentMetaCspRecovery__setting_cleared_current_meta_remains } from '@/strings/messages/DevelopmentMetaCspRecovery__setting_cleared_current_meta_remains/en';
+import { DevelopmentMetaCspRecovery__storage_changed_try_again } from '@/strings/messages/DevelopmentMetaCspRecovery__storage_changed_try_again/en';
 import { EndpointPresetButtons__connection_presets } from '@/strings/messages/EndpointPresetButtons__connection_presets/en';
 import { ExperimentalFeatureRow__details } from '@/strings/messages/ExperimentalFeatureRow__details/en';
 import { ExperimentalFeatureRow__details_for } from '@/strings/messages/ExperimentalFeatureRow__details_for/en';
@@ -658,6 +787,7 @@ import { FeatureFlagsSettings__features_may_change } from '@/strings/messages/Fe
 import { FeatureFlagsSettings__folders } from '@/strings/messages/FeatureFlagsSettings__folders/en';
 import { FeatureFlagsSettings__folders_disabled_details } from '@/strings/messages/FeatureFlagsSettings__folders_disabled_details/en';
 import { FeatureFlagsSettings__folders_enabled_details } from '@/strings/messages/FeatureFlagsSettings__folders_enabled_details/en';
+import { FeatureFlagsSettings__generation_speed } from '@/strings/messages/FeatureFlagsSettings__generation_speed/en';
 import { FeatureFlagsSettings__hosted_build_only } from '@/strings/messages/FeatureFlagsSettings__hosted_build_only/en';
 import { FeatureFlagsSettings__move_chat_disabled_details } from '@/strings/messages/FeatureFlagsSettings__move_chat_disabled_details/en';
 import { FeatureFlagsSettings__move_chat_enabled_details } from '@/strings/messages/FeatureFlagsSettings__move_chat_enabled_details/en';
@@ -668,12 +798,37 @@ import { FeatureFlagsSettings__shell_disabled_details } from '@/strings/messages
 import { FeatureFlagsSettings__shell_enabled_details } from '@/strings/messages/FeatureFlagsSettings__shell_enabled_details/en';
 import { FeatureFlagsSettings__shell_in_browser } from '@/strings/messages/FeatureFlagsSettings__shell_in_browser/en';
 import { FeatureFlagsSettings__shows_folders_tab } from '@/strings/messages/FeatureFlagsSettings__shows_folders_tab/en';
+import { FeatureFlagsSettings__shows_generation_speed_in_chat } from '@/strings/messages/FeatureFlagsSettings__shows_generation_speed_in_chat/en';
 import { FeatureFlagsSettings__shows_shell_in_chat_tools } from '@/strings/messages/FeatureFlagsSettings__shows_shell_in_chat_tools/en';
 import { FeatureFlagsSettings__tool_config_persistence } from '@/strings/messages/FeatureFlagsSettings__tool_config_persistence/en';
 import { FeatureFlagsSettings__tool_persistence_disabled_details } from '@/strings/messages/FeatureFlagsSettings__tool_persistence_disabled_details/en';
 import { FeatureFlagsSettings__tool_persistence_enabled_details } from '@/strings/messages/FeatureFlagsSettings__tool_persistence_enabled_details/en';
 import { FeatureFlagsSettings__use_fake_lm_endpoint } from '@/strings/messages/FeatureFlagsSettings__use_fake_lm_endpoint/en';
 import { FeatureFlagsSettings__uses_bundled_fake_lm } from '@/strings/messages/FeatureFlagsSettings__uses_bundled_fake_lm/en';
+import { FeatureFlagsSettings__view_token_counts_and_measurement_intervals } from '@/strings/messages/FeatureFlagsSettings__view_token_counts_and_measurement_intervals/en';
+import { GenerationSpeed__always_show_token_count_and_interval } from '@/strings/messages/GenerationSpeed__always_show_token_count_and_interval/en';
+import { GenerationSpeed__could_not_save_display_settings } from '@/strings/messages/GenerationSpeed__could_not_save_display_settings/en';
+import { GenerationSpeed__enable_again_in_developer_settings } from '@/strings/messages/GenerationSpeed__enable_again_in_developer_settings/en';
+import { GenerationSpeed__generation_details } from '@/strings/messages/GenerationSpeed__generation_details/en';
+import { GenerationSpeed__generation_number } from '@/strings/messages/GenerationSpeed__generation_number/en';
+import { GenerationSpeed__input_tokens } from '@/strings/messages/GenerationSpeed__input_tokens/en';
+import { GenerationSpeed__llama_cpp_server_timings } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings/en';
+import { GenerationSpeed__llama_cpp_server_timings_help } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_help/en';
+import { GenerationSpeed__llama_cpp_server_timings_mode } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_mode/en';
+import { GenerationSpeed__llama_cpp_server_timings_warning } from '@/strings/messages/GenerationSpeed__llama_cpp_server_timings_warning/en';
+import { GenerationSpeed__measured_interval } from '@/strings/messages/GenerationSpeed__measured_interval/en';
+import { GenerationSpeed__measured_units } from '@/strings/messages/GenerationSpeed__measured_units/en';
+import { GenerationSpeed__measurement_description } from '@/strings/messages/GenerationSpeed__measurement_description/en';
+import { GenerationSpeed__measurement_interval } from '@/strings/messages/GenerationSpeed__measurement_interval/en';
+import { GenerationSpeed__not_measured } from '@/strings/messages/GenerationSpeed__not_measured/en';
+import { GenerationSpeed__output_token_count } from '@/strings/messages/GenerationSpeed__output_token_count/en';
+import { GenerationSpeed__output_tokens } from '@/strings/messages/GenerationSpeed__output_tokens/en';
+import { GenerationSpeed__rate } from '@/strings/messages/GenerationSpeed__rate/en';
+import { GenerationSpeed__scope } from '@/strings/messages/GenerationSpeed__scope/en';
+import { GenerationSpeed__seconds } from '@/strings/messages/GenerationSpeed__seconds/en';
+import { GenerationSpeed__show_generation_speed } from '@/strings/messages/GenerationSpeed__show_generation_speed/en';
+import { GenerationSpeed__speed } from '@/strings/messages/GenerationSpeed__speed/en';
+import { GenerationSpeed__token_count_and_measurement_interval } from '@/strings/messages/GenerationSpeed__token_count_and_measurement_interval/en';
 import { GlobalSearchModal__all } from '@/strings/messages/GlobalSearchModal__all/en';
 import { GlobalSearchModal__alt_branch } from '@/strings/messages/GlobalSearchModal__alt_branch/en';
 import { GlobalSearchModal__assistant } from '@/strings/messages/GlobalSearchModal__assistant/en';
@@ -705,6 +860,7 @@ import { GlobalSearchModal__type_to_search } from '@/strings/messages/GlobalSear
 import { GlobalSearchModal__user } from '@/strings/messages/GlobalSearchModal__user/en';
 import { GlobalToolsSettings__global_settings } from '@/strings/messages/GlobalToolsSettings__global_settings/en';
 import { GlobalToolsSettings__tool_defaults_can_be_overridden } from '@/strings/messages/GlobalToolsSettings__tool_defaults_can_be_overridden/en';
+import { GlobalToolsSettings__tool_settings_may_reset_after_updates } from '@/strings/messages/GlobalToolsSettings__tool_settings_may_reset_after_updates/en';
 import { GlobalToolsSettings__tools } from '@/strings/messages/GlobalToolsSettings__tools/en';
 import { HistoryManipulationModal__add_first_message } from '@/strings/messages/HistoryManipulationModal__add_first_message/en';
 import { HistoryManipulationModal__add_message_after } from '@/strings/messages/HistoryManipulationModal__add_message_after/en';
@@ -748,6 +904,7 @@ import { HttpHeadersEditor__http_headers } from '@/strings/messages/HttpHeadersE
 import { HttpHeadersEditor__name } from '@/strings/messages/HttpHeadersEditor__name/en';
 import { HttpHeadersEditor__remove_header } from '@/strings/messages/HttpHeadersEditor__remove_header/en';
 import { HttpHeadersEditor__value } from '@/strings/messages/HttpHeadersEditor__value/en';
+import { HuggingFaceDownloadFailureHint__hints_for_resolving_this_error } from '@/strings/messages/HuggingFaceDownloadFailureHint__hints_for_resolving_this_error/en';
 import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageBenchmarkResult__generated_image/en';
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/en';
 import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/en';
@@ -836,8 +993,12 @@ import { ImageGenerationEditor__model_configuration } from '@/strings/messages/I
 import { ImageGenerationEditor__new_seed_each_time } from '@/strings/messages/ImageGenerationEditor__new_seed_each_time/en';
 import { ImageGenerationEditor__pick_new_seed } from '@/strings/messages/ImageGenerationEditor__pick_new_seed/en';
 import { ImageGenerationEditor__prepare_model } from '@/strings/messages/ImageGenerationEditor__prepare_model/en';
+import { ImageGenerationEditor__remote_catalog_is_out_of_date } from '@/strings/messages/ImageGenerationEditor__remote_catalog_is_out_of_date/en';
+import { ImageGenerationEditor__remote_catalog_requires_manual_selection } from '@/strings/messages/ImageGenerationEditor__remote_catalog_requires_manual_selection/en';
+import { ImageGenerationEditor__remote_presets_only_apply_shared_settings } from '@/strings/messages/ImageGenerationEditor__remote_presets_only_apply_shared_settings/en';
 import { ImageGenerationEditor__resolution_must_use_supported_dimensions } from '@/strings/messages/ImageGenerationEditor__resolution_must_use_supported_dimensions/en';
 import { ImageGenerationEditor__sampling_settings } from '@/strings/messages/ImageGenerationEditor__sampling_settings/en';
+import { ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed } from '@/strings/messages/ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed/en';
 import { ImageGenerationEditor__swap_width_and_height } from '@/strings/messages/ImageGenerationEditor__swap_width_and_height/en';
 import { ImageGenerationEditor__view_result } from '@/strings/messages/ImageGenerationEditor__view_result/en';
 import { ImageGenerationHistory__backup_does_not_include_history } from '@/strings/messages/ImageGenerationHistory__backup_does_not_include_history/en';
@@ -1006,6 +1167,8 @@ import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog_
 import { ImageModelCatalog__recommended } from '@/strings/messages/ImageModelCatalog__recommended/en';
 import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/en';
 import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/en';
+import { ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model } from '@/strings/messages/ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model/en';
+import { ImageModelLocalFileRecovery__could_not_open_local_image_model_files } from '@/strings/messages/ImageModelLocalFileRecovery__could_not_open_local_image_model_files/en';
 import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/en';
 import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/en';
 import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/en';
@@ -1028,6 +1191,7 @@ import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/message
 import { ImageRecoveredOutputs__recovery_explanation } from '@/strings/messages/ImageRecoveredOutputs__recovery_explanation/en';
 import { ImageRecoveredOutputs__unconfirmed } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed/en';
 import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed_images/en';
+import { ImageRemoteModelConfiguration__select_automatically } from '@/strings/messages/ImageRemoteModelConfiguration__select_automatically/en';
 import { ImageRepositoryImport__choose_files } from '@/strings/messages/ImageRepositoryImport__choose_files/en';
 import { ImageRepositoryImport__drop_help } from '@/strings/messages/ImageRepositoryImport__drop_help/en';
 import { ImportExportModal__add_new } from '@/strings/messages/ImportExportModal__add_new/en';
@@ -1037,12 +1201,20 @@ import { ImportExportModal__append_merge } from '@/strings/messages/ImportExport
 import { ImportExportModal__append_preset } from '@/strings/messages/ImportExportModal__append_preset/en';
 import { ImportExportModal__back } from '@/strings/messages/ImportExportModal__back/en';
 import { ImportExportModal__back_to_menu } from '@/strings/messages/ImportExportModal__back_to_menu/en';
+import { ImportExportModal__base64_contains_the_same_zip_data_without_a_url } from '@/strings/messages/ImportExportModal__base64_contains_the_same_zip_data_without_a_url/en';
+import { ImportExportModal__base64_copied } from '@/strings/messages/ImportExportModal__base64_copied/en';
+import { ImportExportModal__base64_string } from '@/strings/messages/ImportExportModal__base64_string/en';
 import { ImportExportModal__cancel } from '@/strings/messages/ImportExportModal__cancel/en';
 import { ImportExportModal__chat_count } from '@/strings/messages/ImportExportModal__chat_count/en';
 import { ImportExportModal__chat_title_prefix } from '@/strings/messages/ImportExportModal__chat_title_prefix/en';
 import { ImportExportModal__chats } from '@/strings/messages/ImportExportModal__chats/en';
 import { ImportExportModal__compressing_data } from '@/strings/messages/ImportExportModal__compressing_data/en';
 import { ImportExportModal__content_preview } from '@/strings/messages/ImportExportModal__content_preview/en';
+import { ImportExportModal__copy_base64 } from '@/strings/messages/ImportExportModal__copy_base64/en';
+import { ImportExportModal__copy_zip_as_base64 } from '@/strings/messages/ImportExportModal__copy_zip_as_base64/en';
+import { ImportExportModal__could_not_copy_base64 } from '@/strings/messages/ImportExportModal__could_not_copy_base64/en';
+import { ImportExportModal__could_not_prepare_base64 } from '@/strings/messages/ImportExportModal__could_not_prepare_base64/en';
+import { ImportExportModal__could_not_read_base64_zip } from '@/strings/messages/ImportExportModal__could_not_read_base64_zip/en';
 import { ImportExportModal__custom_click_to_reset } from '@/strings/messages/ImportExportModal__custom_click_to_reset/en';
 import { ImportExportModal__default_marker } from '@/strings/messages/ImportExportModal__default_marker/en';
 import { ImportExportModal__default_model } from '@/strings/messages/ImportExportModal__default_model/en';
@@ -1076,9 +1248,14 @@ import { ImportExportModal__next } from '@/strings/messages/ImportExportModal__n
 import { ImportExportModal__no_settings_or_profiles } from '@/strings/messages/ImportExportModal__no_settings_or_profiles/en';
 import { ImportExportModal__output_filename } from '@/strings/messages/ImportExportModal__output_filename/en';
 import { ImportExportModal__overwrite } from '@/strings/messages/ImportExportModal__overwrite/en';
+import { ImportExportModal__paste_base64_to_import } from '@/strings/messages/ImportExportModal__paste_base64_to_import/en';
+import { ImportExportModal__paste_the_base64_zip_to_review_before_importing } from '@/strings/messages/ImportExportModal__paste_the_base64_zip_to_review_before_importing/en';
 import { ImportExportModal__portable_data } from '@/strings/messages/ImportExportModal__portable_data/en';
+import { ImportExportModal__prepare_base64 } from '@/strings/messages/ImportExportModal__prepare_base64/en';
+import { ImportExportModal__preparing_base64 } from '@/strings/messages/ImportExportModal__preparing_base64/en';
 import { ImportExportModal__profiles } from '@/strings/messages/ImportExportModal__profiles/en';
 import { ImportExportModal__provider_profiles } from '@/strings/messages/ImportExportModal__provider_profiles/en';
+import { ImportExportModal__read_base64 } from '@/strings/messages/ImportExportModal__read_base64/en';
 import { ImportExportModal__ready_to_export } from '@/strings/messages/ImportExportModal__ready_to_export/en';
 import { ImportExportModal__replace_clears_current_data } from '@/strings/messages/ImportExportModal__replace_clears_current_data/en';
 import { ImportExportModal__replace_restore } from '@/strings/messages/ImportExportModal__replace_restore/en';
@@ -1156,9 +1333,6 @@ import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/string
 import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/en';
 import { LlamaCppBrowserHuggingFaceManager__url_copied } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__url_copied/en';
 import { LlamaCppBrowserHuggingFaceSearch__architecture } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__architecture/en';
-import { LlamaCppBrowserHuggingFaceSearch__at_least } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_least/en';
-import { LlamaCppBrowserHuggingFaceSearch__at_least_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_least_parameters/en';
-import { LlamaCppBrowserHuggingFaceSearch__at_most } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_most/en';
 import { LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again/en';
 import { LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again/en';
 import { LlamaCppBrowserHuggingFaceSearch__downloads } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__downloads/en';
@@ -1167,17 +1341,10 @@ import { LlamaCppBrowserHuggingFaceSearch__filters } from '@/strings/messages/Ll
 import { LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face/en';
 import { LlamaCppBrowserHuggingFaceSearch__likes } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__likes/en';
 import { LlamaCppBrowserHuggingFaceSearch__loading_more_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__loading_more_models/en';
-import { LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions/en';
-import { LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions/en';
 import { LlamaCppBrowserHuggingFaceSearch__new_results_start_here } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__new_results_start_here/en';
-import { LlamaCppBrowserHuggingFaceSearch__no_maximum } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_maximum/en';
-import { LlamaCppBrowserHuggingFaceSearch__no_minimum } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_minimum/en';
 import { LlamaCppBrowserHuggingFaceSearch__no_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_models_found/en';
-import { LlamaCppBrowserHuggingFaceSearch__no_parameter_limit } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_parameter_limit/en';
 import { LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face/en';
-import { LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions/en';
 import { LlamaCppBrowserHuggingFaceSearch__parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameters/en';
-import { LlamaCppBrowserHuggingFaceSearch__parameters_between } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameters_between/en';
 import { LlamaCppBrowserHuggingFaceSearch__results_for } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__results_for/en';
 import { LlamaCppBrowserHuggingFaceSearch__search } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search/en';
 import { LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends/en';
@@ -1186,7 +1353,6 @@ import { LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_fi
 import { LlamaCppBrowserHuggingFaceSearch__show_more } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__show_more/en';
 import { LlamaCppBrowserHuggingFaceSearch__show_trending_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__show_trending_models/en';
 import { LlamaCppBrowserHuggingFaceSearch__task } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__task/en';
-import { LlamaCppBrowserHuggingFaceSearch__up_to_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__up_to_parameters/en';
 import { LlamaCppBrowserHuggingFaceSearch__updated } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__updated/en';
 import { LlamaCppBrowserImportedModelRow__details } from '@/strings/messages/LlamaCppBrowserImportedModelRow__details/en';
 import { LlamaCppBrowserImportedModelRow__file } from '@/strings/messages/LlamaCppBrowserImportedModelRow__file/en';
@@ -1195,6 +1361,13 @@ import { LlamaCppBrowserImportedModelRow__model_id } from '@/strings/messages/Ll
 import { LlamaCppBrowserImportedModelRow__remove_temporary_model } from '@/strings/messages/LlamaCppBrowserImportedModelRow__remove_temporary_model/en';
 import { LlamaCppBrowserImportedModelRow__repository } from '@/strings/messages/LlamaCppBrowserImportedModelRow__repository/en';
 import { LlamaCppBrowserImportedModelRow__temporary } from '@/strings/messages/LlamaCppBrowserImportedModelRow__temporary/en';
+import { LlamaCppBrowserLocalFileRecovery__choose_the_added_model_from_the_model_list } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__choose_the_added_model_from_the_model_list/en';
+import { LlamaCppBrowserLocalFileRecovery__could_not_open_local_model_files } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__could_not_open_local_model_files/en';
+import { LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder/en';
+import { LlamaCppBrowserLocalFileRecovery__use_local_model_files } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__use_local_model_files/en';
+import { LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser } from '@/strings/messages/LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser/en';
+import { LlamaCppBrowserLocalFiles__start_now_and_save_in_background } from '@/strings/messages/LlamaCppBrowserLocalFiles__start_now_and_save_in_background/en';
+import { LlamaCppBrowserLocalFiles__start_without_copying_and_save_later } from '@/strings/messages/LlamaCppBrowserLocalFiles__start_without_copying_and_save_later/en';
 import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } from '@/strings/messages/LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it/en';
 import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/en';
 import { LlamaCppBrowserModelAction__model_actions } from '@/strings/messages/LlamaCppBrowserModelAction__model_actions/en';
@@ -1231,9 +1404,25 @@ import { LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group } from
 import { LlamaCppBrowserModelLibrary__dismiss_just_added_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__dismiss_just_added_models/en';
 import { LlamaCppBrowserModelLibrary__just_added_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__just_added_models/en';
 import { LlamaCppBrowserModelLibrary__search_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__search_models/en';
+import { LlamaCppBrowserModelParameterFilter__at_least } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__at_least/en';
+import { LlamaCppBrowserModelParameterFilter__at_least_parameters } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__at_least_parameters/en';
+import { LlamaCppBrowserModelParameterFilter__at_most } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__at_most/en';
+import { LlamaCppBrowserModelParameterFilter__maximum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__maximum_parameters_in_billions/en';
+import { LlamaCppBrowserModelParameterFilter__minimum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__minimum_parameters_in_billions/en';
+import { LlamaCppBrowserModelParameterFilter__no_maximum } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__no_maximum/en';
+import { LlamaCppBrowserModelParameterFilter__no_minimum } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__no_minimum/en';
+import { LlamaCppBrowserModelParameterFilter__no_parameter_limit } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__no_parameter_limit/en';
+import { LlamaCppBrowserModelParameterFilter__parameter_count_in_billions } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__parameter_count_in_billions/en';
+import { LlamaCppBrowserModelParameterFilter__parameters_between } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__parameters_between/en';
+import { LlamaCppBrowserModelParameterFilter__up_to_parameters } from '@/strings/messages/LlamaCppBrowserModelParameterFilter__up_to_parameters/en';
 import { LlamaCppBrowserQuantizationPicker__could_not_fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__could_not_fetch_options/en';
 import { LlamaCppBrowserQuantizationPicker__fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetch_options/en';
 import { LlamaCppBrowserQuantizationPicker__fetching_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetching_options/en';
+import { LlamaCppBrowserRepositoryLayout__confirm_folder_layout } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__confirm_folder_layout/en';
+import { LlamaCppBrowserRepositoryLayout__keep_models_and_companion_files_in_the_same_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__keep_models_and_companion_files_in_the_same_repository/en';
+import { LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository/en';
+import { LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders/en';
+import { LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository/en';
 import { LlamaCppBrowserRepositoryPicker__back_to_search } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__back_to_search/en';
 import { LlamaCppBrowserRepositoryPicker__check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__check_repository/en';
 import { LlamaCppBrowserRepositoryPicker__could_not_check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__could_not_check_repository/en';
@@ -1584,6 +1773,25 @@ import { OllamaPsView__unload_requested } from '@/strings/messages/OllamaPsView_
 import { OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again } from '@/strings/messages/OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again/en';
 import { OllamaPsView__unloading } from '@/strings/messages/OllamaPsView__unloading/en';
 import { OllamaPsView__vram_size } from '@/strings/messages/OllamaPsView__vram_size/en';
+import { OnBoardingModalV2LocalModelInput__could_not_open_local_model_files } from '@/strings/messages/OnBoardingModalV2LocalModelInput__could_not_open_local_model_files/en';
+import { OnBoardingModalV2LocalModelInput__load_model } from '@/strings/messages/OnBoardingModalV2LocalModelInput__load_model/en';
+import { OnBoardingModalV2ModelSources__download_a_model } from '@/strings/messages/OnBoardingModalV2ModelSources__download_a_model/en';
+import { OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites } from '@/strings/messages/OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites/en';
+import { OnBoardingModalV2ModelSources__download_and_use_in_naidan } from '@/strings/messages/OnBoardingModalV2ModelSources__download_and_use_in_naidan/en';
+import { OnBoardingModalV2ModelSources__download_from_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__download_from_hugging_face/en';
+import { OnBoardingModalV2ModelSources__enter_a_valid_parameter_range } from '@/strings/messages/OnBoardingModalV2ModelSources__enter_a_valid_parameter_range/en';
+import { OnBoardingModalV2ModelSources__find_models_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_on_hugging_face/en';
+import { OnBoardingModalV2ModelSources__find_models_with_a_parameter_range_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_with_a_parameter_range_on_hugging_face/en';
+import { OnBoardingModalV2ModelSources__find_models_with_at_least_billion_parameters_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_with_at_least_billion_parameters_on_hugging_face/en';
+import { OnBoardingModalV2ModelSources__find_models_with_up_to_billion_parameters_on_hugging_face } from '@/strings/messages/OnBoardingModalV2ModelSources__find_models_with_up_to_billion_parameters_on_hugging_face/en';
+import { OnBoardingModalV2ModelSources__load_the_downloaded_gguf_files_here } from '@/strings/messages/OnBoardingModalV2ModelSources__load_the_downloaded_gguf_files_here/en';
+import { OnBoardingModalV2__could_not_open_connection_settings } from '@/strings/messages/OnBoardingModalV2__could_not_open_connection_settings/en';
+import { OnBoardingModalV2__could_not_open_model_files_view } from '@/strings/messages/OnBoardingModalV2__could_not_open_model_files_view/en';
+import { OnBoardingModalV2__download_and_run_in_naidan } from '@/strings/messages/OnBoardingModalV2__download_and_run_in_naidan/en';
+import { OnBoardingModalV2__model_files } from '@/strings/messages/OnBoardingModalV2__model_files/en';
+import { OnBoardingModalV2__model_source } from '@/strings/messages/OnBoardingModalV2__model_source/en';
+import { OnBoardingModalV2__try_a_model } from '@/strings/messages/OnBoardingModalV2__try_a_model/en';
+import { OnBoardingModalV2__use_downloaded_model_files } from '@/strings/messages/OnBoardingModalV2__use_downloaded_model_files/en';
 import { OnboardingModal__add_header } from '@/strings/messages/OnboardingModal__add_header/en';
 import { OnboardingModal__back } from '@/strings/messages/OnboardingModal__back/en';
 import { OnboardingModal__cancel } from '@/strings/messages/OnboardingModal__cancel/en';
@@ -1616,6 +1824,11 @@ import { OnboardingModal__setup_endpoint_description } from '@/strings/messages/
 import { OnboardingModal__successfully_connected } from '@/strings/messages/OnboardingModal__successfully_connected/en';
 import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingModal__transformers_js/en';
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/en';
+import { OpenSourceLicenseFilter__clear_search } from '@/strings/messages/OpenSourceLicenseFilter__clear_search/en';
+import { OpenSourceLicenseFilter__filter_by_name } from '@/strings/messages/OpenSourceLicenseFilter__filter_by_name/en';
+import { OpenSourceLicenseFilter__filter_licenses } from '@/strings/messages/OpenSourceLicenseFilter__filter_licenses/en';
+import { OpenSourceLicenses__matching_packages } from '@/strings/messages/OpenSourceLicenses__matching_packages/en';
+import { OpenSourceLicenses__no_matching_packages } from '@/strings/messages/OpenSourceLicenses__no_matching_packages/en';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/en';
 import { PWAUpdateNotification__applying_update } from '@/strings/messages/PWAUpdateNotification__applying_update/en';
 import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/en';
@@ -1744,7 +1957,10 @@ import { ScopedMountSettings__inherited_folders } from '@/strings/messages/Scope
 import { ScopedMountSettings__overridden_here } from '@/strings/messages/ScopedMountSettings__overridden_here/en';
 import { ScopedMountSettings__read_and_write } from '@/strings/messages/ScopedMountSettings__read_and_write/en';
 import { ScopedMountSettings__read_only } from '@/strings/messages/ScopedMountSettings__read_only/en';
+import { ScopedMountSettings__remove } from '@/strings/messages/ScopedMountSettings__remove/en';
 import { ScopedMountSettings__remove_folder } from '@/strings/messages/ScopedMountSettings__remove_folder/en';
+import { ScopedMountSettings__remove_from_this_chat } from '@/strings/messages/ScopedMountSettings__remove_from_this_chat/en';
+import { ScopedMountSettings__remove_from_this_chat_group } from '@/strings/messages/ScopedMountSettings__remove_from_this_chat_group/en';
 import { ScopedMountSettings__removing_a_folder_does_not_delete_files } from '@/strings/messages/ScopedMountSettings__removing_a_folder_does_not_delete_files/en';
 import { SearchPreview__alt_branch } from '@/strings/messages/SearchPreview__alt_branch/en';
 import { SearchPreview__conversation_match } from '@/strings/messages/SearchPreview__conversation_match/en';
@@ -2277,6 +2493,7 @@ import { contextCompact__to_keep } from '@/strings/messages/contextCompact__to_k
 import { contextCompact__waiting_for_the_model } from '@/strings/messages/contextCompact__waiting_for_the_model/en';
 import { dataDeletion__advanced_mode } from '@/strings/messages/dataDeletion__advanced_mode/en';
 import { dataDeletion__checked_selectors_matching_entries } from '@/strings/messages/dataDeletion__checked_selectors_matching_entries/en';
+import { dataDeletion__choose_a_preset_or_select_items_individually } from '@/strings/messages/dataDeletion__choose_a_preset_or_select_items_individually/en';
 import { dataDeletion__clear_all_selections } from '@/strings/messages/dataDeletion__clear_all_selections/en';
 import { dataDeletion__delete_application_data } from '@/strings/messages/dataDeletion__delete_application_data/en';
 import { dataDeletion__delete_data_matched_by_selected_selectors } from '@/strings/messages/dataDeletion__delete_data_matched_by_selected_selectors/en';
@@ -2290,7 +2507,11 @@ import { dataDeletion__no_matching_entries } from '@/strings/messages/dataDeleti
 import { dataDeletion__not_available_in_this_runtime } from '@/strings/messages/dataDeletion__not_available_in_this_runtime/en';
 import { dataDeletion__preview_entries } from '@/strings/messages/dataDeletion__preview_entries/en';
 import { dataDeletion__scanning_storage } from '@/strings/messages/dataDeletion__scanning_storage/en';
+import { dataDeletion__select_all } from '@/strings/messages/dataDeletion__select_all/en';
 import { dataDeletion__select_at_least_one_deletion_selector } from '@/strings/messages/dataDeletion__select_at_least_one_deletion_selector/en';
+import { dataDeletion__select_factory_reset_items } from '@/strings/messages/dataDeletion__select_factory_reset_items/en';
+import { dataDeletion__selection_presets } from '@/strings/messages/dataDeletion__selection_presets/en';
+import { documentTitle__run_ai_on_your_device_directly_in_your_browser } from '@/strings/messages/documentTitle__run_ai_on_your_device_directly_in_your_browser/en';
 import { endpointTypeDescription__connect_to_an_ollama_server } from '@/strings/messages/endpointTypeDescription__connect_to_an_ollama_server/en';
 import { endpointTypeDescription__connect_to_an_openai_compatible_api } from '@/strings/messages/endpointTypeDescription__connect_to_an_openai_compatible_api/en';
 import { endpointTypeDescription__run_gguf_models_in_this_browser } from '@/strings/messages/endpointTypeDescription__run_gguf_models_in_this_browser/en';
@@ -2669,6 +2890,7 @@ import { llamaCppBrowser__automatic_profile_description } from '@/strings/messag
 import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/en';
 import { llamaCppBrowser__check_browser_support } from '@/strings/messages/llamaCppBrowser__check_browser_support/en';
 import { llamaCppBrowser__checking_browser_support } from '@/strings/messages/llamaCppBrowser__checking_browser_support/en';
+import { llamaCppBrowser__checking_model_files } from '@/strings/messages/llamaCppBrowser__checking_model_files/en';
 import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/en';
 import { llamaCppBrowser__choose_model_folder } from '@/strings/messages/llamaCppBrowser__choose_model_folder/en';
 import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/en';
@@ -3153,16 +3375,20 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
+  AboutPortableEditionHelp__how_to_use_the_portable_html_edition,
   AboutTab__about_naidan,
   AboutTab__built_with_open_source_software,
+  AboutTab__documentation,
+  AboutTab__download_zip,
   AboutTab__github_repository,
+  AboutTab__learn_how_to_use_naidan,
   AboutTab__loading_licenses,
   AboutTab__open_source_licenses,
   AboutTab__privacy_focused_local_lm_interface,
   AboutTab__unknown_package,
   AboutTab__version,
   AboutTab__view_license_text,
-  AboutTab__view_source_code_and_contribute,
+  AboutTab__view_source_code,
   AppCommandRuntime__could_not_create_chat,
   AppCommandRuntime__retry,
   AppEntrySurface__could_not_open_local_model,
@@ -3227,7 +3453,6 @@ export const catalog = {
   BrowserModelPreparation__main_model,
   BrowserModelPreparation__no_companion_file,
   BrowserModelPreparation__specify_a_quantization,
-  BrowserModelWelcomeDialog__could_not_open_connection_settings,
   BrowserModelWelcome__browse_models,
   BrowserModelWelcome__browser_provided_model,
   BrowserModelWelcome__choose_a_model,
@@ -3428,7 +3653,6 @@ export const catalog = {
   ChatLocalModelInput__model_source,
   ChatLocalModelInput__pause_download,
   ChatLocalModelInput__saved_models,
-  ChatLocalModelInput__start_without_copying_and_save_later,
   ChatLocalModelInput__this_chat_already_has_messages,
   ChatLocalModelInput__use_a_saved_model,
   ChatLocalModelInput__use_local_model_files,
@@ -3685,6 +3909,71 @@ export const catalog = {
   ConversationOutlineOverlay__system,
   ConversationOutlineOverlay__tool,
   ConversationOutlineOverlay__you,
+  CspDeploymentGuidance__based_on_the_public_editions_connection_policies,
+  CspDeploymentGuidance__choose_import_and_select_your_exported_file,
+  CspDeploymentGuidance__copied,
+  CspDeploymentGuidance__copy_url,
+  CspDeploymentGuidance__could_not_copy_url,
+  CspDeploymentGuidance__could_not_create_url_use_storage_settings,
+  CspDeploymentGuidance__could_not_open_export_use_storage_settings,
+  CspDeploymentGuidance__create_transfer_url,
+  CspDeploymentGuidance__creating_transfer_url,
+  CspDeploymentGuidance__data_to_exclude,
+  CspDeploymentGuidance__each_site_keeps_its_own_data,
+  CspDeploymentGuidance__exclude_attachments,
+  CspDeploymentGuidance__exclude_chat_history,
+  CspDeploymentGuidance__exclude_chats,
+  CspDeploymentGuidance__export_data,
+  CspDeploymentGuidance__how_to_ease_connection_restrictions,
+  CspDeploymentGuidance__import_your_exported_file_on_the_other_site,
+  CspDeploymentGuidance__open_settings_storage_import_export,
+  CspDeploymentGuidance__open_with_selected_data,
+  CspDeploymentGuidance__opening_export,
+  CspDeploymentGuidance__saved_development_csp_may_be_reapplied_after_restoring_settings,
+  CspDeploymentGuidance__share_small_states_with_a_url,
+  CspDeploymentGuidance__take_your_data_with_you,
+  CspDeploymentGuidance__try_other_public_editions,
+  CspDeploymentGuidance__url_includes_selected_data_and_connection_settings,
+  CspDeploymentGuidance__use_a_transfer_url_for_small_data,
+  CspMessageHint__a_response_may_not_be_generated,
+  CspMessageHint__a_title_may_not_be_generated,
+  CspMessageHint__an_image_may_not_be_generated,
+  CspMessageHint__communication_page,
+  CspMessageHint__current_content_security_policy,
+  CspMessageHint__current_policy_does_not_identify_the_error_cause,
+  CspMessageHint__downloads_may_fail,
+  CspMessageHint__each_policy_applies_separately,
+  CspMessageHint__hints_for_resolving_this_error,
+  CspMessageHint__local_servers_on_this_pc,
+  CspMessageHint__model_information_may_not_load,
+  CspMessageHint__model_search_may_fail,
+  CspMessageHint__no_destinations_are_allowed,
+  CspMessageHint__no_destinations_are_listed,
+  CspMessageHint__quantization_options_may_not_load,
+  CspMessageHint__running_models_may_not_be_checked,
+  CspMessageHint__settings_and_actions_remain_unchanged,
+  CspMessageHint__some_content_or_actions_may_be_restricted,
+  CspMessageHint__some_required_connections_or_loads_are_outside_the_allowed_range,
+  CspMessageHint__technical_details,
+  CspMessageHint__the_conversation_may_not_be_summarized,
+  CspMessageHint__the_following_destinations_are_allowed,
+  CspMessageHint__the_model_list_may_not_load,
+  CspMessageHint__the_model_may_not_be_unloaded_from_memory,
+  CspMessageHint__the_prompt_may_not_be_translated,
+  CspMessageHint__the_relay_server_may_be_unreachable,
+  CspMessageHint__this_connection_may_be_restricted,
+  CspMessageHint__this_destination_is_outside_the_allowed_range,
+  CspMessageHint__this_form_may_not_be_submitted,
+  CspMessageHint__this_image_may_not_be_displayed,
+  CspMessageHint__this_media_may_not_play,
+  CspMessageHint__this_page,
+  CspMessageHint__this_resource_may_not_load,
+  CspMessageHint__this_resource_source_is_outside_the_allowed_range,
+  CspMessageHint__this_site,
+  CspMessageHint__this_submission_destination_is_outside_the_allowed_range,
+  CspMessageHint__this_url_may_be_unreachable,
+  CspMessageHint__wikipedia_may_not_be_available,
+  CspMessageHint__worker,
   CustomDialog__dialog,
   DebugIndexPage__debug,
   DebugIndexPage__debug_tools,
@@ -3704,6 +3993,60 @@ export const catalog = {
   DebugPanel__total_count,
   DebugPanel__trigger_test_error,
   DebugPanel__trigger_test_info,
+  DeveloperCspDiagnostics__allowed_connections,
+  DeveloperCspDiagnostics__clear_saved_meta_csp_setting,
+  DeveloperCspDiagnostics__clearing_the_setting_keeps_current_meta,
+  DeveloperCspDiagnostics__connection_summary_is_unavailable,
+  DeveloperCspDiagnostics__content_security_policy,
+  DeveloperCspDiagnostics__copied,
+  DeveloperCspDiagnostics__copy,
+  DeveloperCspDiagnostics__copy_failed_select_the_text,
+  DeveloperCspDiagnostics__copy_json,
+  DeveloperCspDiagnostics__could_not_save_the_setting,
+  DeveloperCspDiagnostics__curated,
+  DeveloperCspDiagnostics__custom,
+  DeveloperCspDiagnostics__development_meta_application_status,
+  DeveloperCspDiagnostics__development_meta_csp,
+  DeveloperCspDiagnostics__fetching_policy,
+  DeveloperCspDiagnostics__header_missing,
+  DeveloperCspDiagnostics__header_was_truncated,
+  DeveloperCspDiagnostics__http_header_restrictions_cannot_be_relaxed,
+  DeveloperCspDiagnostics__input_or_storage_changed,
+  DeveloperCspDiagnostics__inspect_http_and_managed_meta,
+  DeveloperCspDiagnostics__local_only,
+  DeveloperCspDiagnostics__managed_meta_added_to_this_page,
+  DeveloperCspDiagnostics__managed_meta_diagnostics_are_unavailable,
+  DeveloperCspDiagnostics__managed_meta_display_is_limited,
+  DeveloperCspDiagnostics__meta_could_not_be_added,
+  DeveloperCspDiagnostics__meta_csp_setting_value,
+  DeveloperCspDiagnostics__no_managed_meta_has_been_added,
+  DeveloperCspDiagnostics__no_saved_meta_csp_setting,
+  DeveloperCspDiagnostics__none,
+  DeveloperCspDiagnostics__observed_headers,
+  DeveloperCspDiagnostics__only_for_development_never_for_security,
+  DeveloperCspDiagnostics__only_meta_added_through_naidan_is_listed,
+  DeveloperCspDiagnostics__only_part_of_the_policy_was_added,
+  DeveloperCspDiagnostics__original_value_length,
+  DeveloperCspDiagnostics__parse_result,
+  DeveloperCspDiagnostics__policy_could_not_be_observed,
+  DeveloperCspDiagnostics__policy_has_not_been_fetched,
+  DeveloperCspDiagnostics__privacy_fetch_additions_confirmed,
+  DeveloperCspDiagnostics__privacy_fetch_confirmation_pending,
+  DeveloperCspDiagnostics__privacy_fetch_confirmation_pending_description,
+  DeveloperCspDiagnostics__privacy_fetch_confirmation_unavailable,
+  DeveloperCspDiagnostics__privacy_fetch_confirmation_unavailable_description,
+  DeveloperCspDiagnostics__privacy_fetch_confirmed_meta_prefix,
+  DeveloperCspDiagnostics__privacy_fetch_meta_application,
+  DeveloperCspDiagnostics__privacy_fetch_meta_confirmation_limits,
+  DeveloperCspDiagnostics__privacy_fetch_not_ready,
+  DeveloperCspDiagnostics__privacy_fetch_not_ready_description,
+  DeveloperCspDiagnostics__report_only_does_not_block,
+  DeveloperCspDiagnostics__save_and_add_meta_csp,
+  DeveloperCspDiagnostics__saved_development_meta_csp_value,
+  DeveloperCspDiagnostics__saved_meta_csp_display_is_truncated,
+  DeveloperCspDiagnostics__saved_meta_is_added_now_and_on_future_loads,
+  DeveloperCspDiagnostics__saving_meta_csp,
+  DeveloperCspDiagnostics__setting_saved,
   DeveloperOpenStateLinks__choose_data_to_omit,
   DeveloperOpenStateLinks__copied_url_for_host,
   DeveloperOpenStateLinks__copy_url_for_host,
@@ -3743,6 +4086,14 @@ export const catalog = {
   DeveloperTab__sample_conversations_description,
   DeveloperTab__simulate_pwa_update,
   DeveloperTab__toggle_update_notification,
+  DevelopmentMetaCspRecovery__clear_saved_meta_csp_setting,
+  DevelopmentMetaCspRecovery__clearing_saved_meta_csp,
+  DevelopmentMetaCspRecovery__close_notice,
+  DevelopmentMetaCspRecovery__could_not_clear_saved_setting,
+  DevelopmentMetaCspRecovery__development_meta_csp,
+  DevelopmentMetaCspRecovery__development_only_never_for_security,
+  DevelopmentMetaCspRecovery__setting_cleared_current_meta_remains,
+  DevelopmentMetaCspRecovery__storage_changed_try_again,
   EndpointPresetButtons__connection_presets,
   ExperimentalFeatureRow__details,
   ExperimentalFeatureRow__details_for,
@@ -3767,6 +4118,7 @@ export const catalog = {
   FeatureFlagsSettings__folders,
   FeatureFlagsSettings__folders_disabled_details,
   FeatureFlagsSettings__folders_enabled_details,
+  FeatureFlagsSettings__generation_speed,
   FeatureFlagsSettings__hosted_build_only,
   FeatureFlagsSettings__move_chat_disabled_details,
   FeatureFlagsSettings__move_chat_enabled_details,
@@ -3777,12 +4129,37 @@ export const catalog = {
   FeatureFlagsSettings__shell_enabled_details,
   FeatureFlagsSettings__shell_in_browser,
   FeatureFlagsSettings__shows_folders_tab,
+  FeatureFlagsSettings__shows_generation_speed_in_chat,
   FeatureFlagsSettings__shows_shell_in_chat_tools,
   FeatureFlagsSettings__tool_config_persistence,
   FeatureFlagsSettings__tool_persistence_disabled_details,
   FeatureFlagsSettings__tool_persistence_enabled_details,
   FeatureFlagsSettings__use_fake_lm_endpoint,
   FeatureFlagsSettings__uses_bundled_fake_lm,
+  FeatureFlagsSettings__view_token_counts_and_measurement_intervals,
+  GenerationSpeed__always_show_token_count_and_interval,
+  GenerationSpeed__could_not_save_display_settings,
+  GenerationSpeed__enable_again_in_developer_settings,
+  GenerationSpeed__generation_details,
+  GenerationSpeed__generation_number,
+  GenerationSpeed__input_tokens,
+  GenerationSpeed__llama_cpp_server_timings,
+  GenerationSpeed__llama_cpp_server_timings_help,
+  GenerationSpeed__llama_cpp_server_timings_mode,
+  GenerationSpeed__llama_cpp_server_timings_warning,
+  GenerationSpeed__measured_interval,
+  GenerationSpeed__measured_units,
+  GenerationSpeed__measurement_description,
+  GenerationSpeed__measurement_interval,
+  GenerationSpeed__not_measured,
+  GenerationSpeed__output_token_count,
+  GenerationSpeed__output_tokens,
+  GenerationSpeed__rate,
+  GenerationSpeed__scope,
+  GenerationSpeed__seconds,
+  GenerationSpeed__show_generation_speed,
+  GenerationSpeed__speed,
+  GenerationSpeed__token_count_and_measurement_interval,
   GlobalSearchModal__all,
   GlobalSearchModal__alt_branch,
   GlobalSearchModal__assistant,
@@ -3814,6 +4191,7 @@ export const catalog = {
   GlobalSearchModal__user,
   GlobalToolsSettings__global_settings,
   GlobalToolsSettings__tool_defaults_can_be_overridden,
+  GlobalToolsSettings__tool_settings_may_reset_after_updates,
   GlobalToolsSettings__tools,
   HistoryManipulationModal__add_first_message,
   HistoryManipulationModal__add_message_after,
@@ -3857,6 +4235,7 @@ export const catalog = {
   HttpHeadersEditor__name,
   HttpHeadersEditor__remove_header,
   HttpHeadersEditor__value,
+  HuggingFaceDownloadFailureHint__hints_for_resolving_this_error,
   ImageBenchmarkResult__generated_image,
   ImageBenchmarkResult__image_memory_limit_reached,
   ImageBenchmarkResult__image_not_retained,
@@ -3945,8 +4324,12 @@ export const catalog = {
   ImageGenerationEditor__new_seed_each_time,
   ImageGenerationEditor__pick_new_seed,
   ImageGenerationEditor__prepare_model,
+  ImageGenerationEditor__remote_catalog_is_out_of_date,
+  ImageGenerationEditor__remote_catalog_requires_manual_selection,
+  ImageGenerationEditor__remote_presets_only_apply_shared_settings,
   ImageGenerationEditor__resolution_must_use_supported_dimensions,
   ImageGenerationEditor__sampling_settings,
+  ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed,
   ImageGenerationEditor__swap_width_and_height,
   ImageGenerationEditor__view_result,
   ImageGenerationHistory__backup_does_not_include_history,
@@ -4115,6 +4498,8 @@ export const catalog = {
   ImageModelCatalog__recommended,
   ImageModelCatalog__reference_style_lora_help,
   ImageModelCatalog__saved_choose_in_lora_controls,
+  ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model,
+  ImageModelLocalFileRecovery__could_not_open_local_image_model_files,
   ImageModelPicker__choose_a_model,
   ImageModelPicker__search_choices,
   ImageModelPicker__use_built_in_component,
@@ -4137,6 +4522,7 @@ export const catalog = {
   ImageRecoveredOutputs__recovery_explanation,
   ImageRecoveredOutputs__unconfirmed,
   ImageRecoveredOutputs__unconfirmed_images,
+  ImageRemoteModelConfiguration__select_automatically,
   ImageRepositoryImport__choose_files,
   ImageRepositoryImport__drop_help,
   ImportExportModal__add_new,
@@ -4146,12 +4532,20 @@ export const catalog = {
   ImportExportModal__append_preset,
   ImportExportModal__back,
   ImportExportModal__back_to_menu,
+  ImportExportModal__base64_contains_the_same_zip_data_without_a_url,
+  ImportExportModal__base64_copied,
+  ImportExportModal__base64_string,
   ImportExportModal__cancel,
   ImportExportModal__chat_count,
   ImportExportModal__chat_title_prefix,
   ImportExportModal__chats,
   ImportExportModal__compressing_data,
   ImportExportModal__content_preview,
+  ImportExportModal__copy_base64,
+  ImportExportModal__copy_zip_as_base64,
+  ImportExportModal__could_not_copy_base64,
+  ImportExportModal__could_not_prepare_base64,
+  ImportExportModal__could_not_read_base64_zip,
   ImportExportModal__custom_click_to_reset,
   ImportExportModal__default_marker,
   ImportExportModal__default_model,
@@ -4185,9 +4579,14 @@ export const catalog = {
   ImportExportModal__no_settings_or_profiles,
   ImportExportModal__output_filename,
   ImportExportModal__overwrite,
+  ImportExportModal__paste_base64_to_import,
+  ImportExportModal__paste_the_base64_zip_to_review_before_importing,
   ImportExportModal__portable_data,
+  ImportExportModal__prepare_base64,
+  ImportExportModal__preparing_base64,
   ImportExportModal__profiles,
   ImportExportModal__provider_profiles,
+  ImportExportModal__read_base64,
   ImportExportModal__ready_to_export,
   ImportExportModal__replace_clears_current_data,
   ImportExportModal__replace_restore,
@@ -4265,9 +4664,6 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
   LlamaCppBrowserHuggingFaceManager__url_copied,
   LlamaCppBrowserHuggingFaceSearch__architecture,
-  LlamaCppBrowserHuggingFaceSearch__at_least,
-  LlamaCppBrowserHuggingFaceSearch__at_least_parameters,
-  LlamaCppBrowserHuggingFaceSearch__at_most,
   LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again,
   LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again,
   LlamaCppBrowserHuggingFaceSearch__downloads,
@@ -4276,17 +4672,10 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face,
   LlamaCppBrowserHuggingFaceSearch__likes,
   LlamaCppBrowserHuggingFaceSearch__loading_more_models,
-  LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions,
-  LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions,
   LlamaCppBrowserHuggingFaceSearch__new_results_start_here,
-  LlamaCppBrowserHuggingFaceSearch__no_maximum,
-  LlamaCppBrowserHuggingFaceSearch__no_minimum,
   LlamaCppBrowserHuggingFaceSearch__no_models_found,
-  LlamaCppBrowserHuggingFaceSearch__no_parameter_limit,
   LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face,
-  LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions,
   LlamaCppBrowserHuggingFaceSearch__parameters,
-  LlamaCppBrowserHuggingFaceSearch__parameters_between,
   LlamaCppBrowserHuggingFaceSearch__results_for,
   LlamaCppBrowserHuggingFaceSearch__search,
   LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends,
@@ -4295,7 +4684,6 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceSearch__show_more,
   LlamaCppBrowserHuggingFaceSearch__show_trending_models,
   LlamaCppBrowserHuggingFaceSearch__task,
-  LlamaCppBrowserHuggingFaceSearch__up_to_parameters,
   LlamaCppBrowserHuggingFaceSearch__updated,
   LlamaCppBrowserImportedModelRow__details,
   LlamaCppBrowserImportedModelRow__file,
@@ -4304,6 +4692,13 @@ export const catalog = {
   LlamaCppBrowserImportedModelRow__remove_temporary_model,
   LlamaCppBrowserImportedModelRow__repository,
   LlamaCppBrowserImportedModelRow__temporary,
+  LlamaCppBrowserLocalFileRecovery__choose_the_added_model_from_the_model_list,
+  LlamaCppBrowserLocalFileRecovery__could_not_open_local_model_files,
+  LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder,
+  LlamaCppBrowserLocalFileRecovery__use_local_model_files,
+  LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser,
+  LlamaCppBrowserLocalFiles__start_now_and_save_in_background,
+  LlamaCppBrowserLocalFiles__start_without_copying_and_save_later,
   LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it,
   LlamaCppBrowserModelAction__create_chat_group,
   LlamaCppBrowserModelAction__model_actions,
@@ -4340,9 +4735,25 @@ export const catalog = {
   LlamaCppBrowserModelLibrary__dismiss_just_added_models,
   LlamaCppBrowserModelLibrary__just_added_models,
   LlamaCppBrowserModelLibrary__search_models,
+  LlamaCppBrowserModelParameterFilter__at_least,
+  LlamaCppBrowserModelParameterFilter__at_least_parameters,
+  LlamaCppBrowserModelParameterFilter__at_most,
+  LlamaCppBrowserModelParameterFilter__maximum_parameters_in_billions,
+  LlamaCppBrowserModelParameterFilter__minimum_parameters_in_billions,
+  LlamaCppBrowserModelParameterFilter__no_maximum,
+  LlamaCppBrowserModelParameterFilter__no_minimum,
+  LlamaCppBrowserModelParameterFilter__no_parameter_limit,
+  LlamaCppBrowserModelParameterFilter__parameter_count_in_billions,
+  LlamaCppBrowserModelParameterFilter__parameters_between,
+  LlamaCppBrowserModelParameterFilter__up_to_parameters,
   LlamaCppBrowserQuantizationPicker__could_not_fetch_options,
   LlamaCppBrowserQuantizationPicker__fetch_options,
   LlamaCppBrowserQuantizationPicker__fetching_options,
+  LlamaCppBrowserRepositoryLayout__confirm_folder_layout,
+  LlamaCppBrowserRepositoryLayout__keep_models_and_companion_files_in_the_same_repository,
+  LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository,
+  LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders,
+  LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository,
   LlamaCppBrowserRepositoryPicker__back_to_search,
   LlamaCppBrowserRepositoryPicker__check_repository,
   LlamaCppBrowserRepositoryPicker__could_not_check_repository,
@@ -4693,6 +5104,25 @@ export const catalog = {
   OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again,
   OllamaPsView__unloading,
   OllamaPsView__vram_size,
+  OnBoardingModalV2LocalModelInput__could_not_open_local_model_files,
+  OnBoardingModalV2LocalModelInput__load_model,
+  OnBoardingModalV2ModelSources__download_a_model,
+  OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites,
+  OnBoardingModalV2ModelSources__download_and_use_in_naidan,
+  OnBoardingModalV2ModelSources__download_from_hugging_face,
+  OnBoardingModalV2ModelSources__enter_a_valid_parameter_range,
+  OnBoardingModalV2ModelSources__find_models_on_hugging_face,
+  OnBoardingModalV2ModelSources__find_models_with_a_parameter_range_on_hugging_face,
+  OnBoardingModalV2ModelSources__find_models_with_at_least_billion_parameters_on_hugging_face,
+  OnBoardingModalV2ModelSources__find_models_with_up_to_billion_parameters_on_hugging_face,
+  OnBoardingModalV2ModelSources__load_the_downloaded_gguf_files_here,
+  OnBoardingModalV2__could_not_open_connection_settings,
+  OnBoardingModalV2__could_not_open_model_files_view,
+  OnBoardingModalV2__download_and_run_in_naidan,
+  OnBoardingModalV2__model_files,
+  OnBoardingModalV2__model_source,
+  OnBoardingModalV2__try_a_model,
+  OnBoardingModalV2__use_downloaded_model_files,
   OnboardingModal__add_header,
   OnboardingModal__back,
   OnboardingModal__cancel,
@@ -4725,6 +5155,11 @@ export const catalog = {
   OnboardingModal__successfully_connected,
   OnboardingModal__transformers_js,
   OnboardingModal__value,
+  OpenSourceLicenseFilter__clear_search,
+  OpenSourceLicenseFilter__filter_by_name,
+  OpenSourceLicenseFilter__filter_licenses,
+  OpenSourceLicenses__matching_packages,
+  OpenSourceLicenses__no_matching_packages,
   PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__applying_update,
   PWAUpdateNotification__preparing_update,
@@ -4853,7 +5288,10 @@ export const catalog = {
   ScopedMountSettings__overridden_here,
   ScopedMountSettings__read_and_write,
   ScopedMountSettings__read_only,
+  ScopedMountSettings__remove,
   ScopedMountSettings__remove_folder,
+  ScopedMountSettings__remove_from_this_chat,
+  ScopedMountSettings__remove_from_this_chat_group,
   ScopedMountSettings__removing_a_folder_does_not_delete_files,
   SearchPreview__alt_branch,
   SearchPreview__conversation_match,
@@ -5386,6 +5824,7 @@ export const catalog = {
   contextCompact__waiting_for_the_model,
   dataDeletion__advanced_mode,
   dataDeletion__checked_selectors_matching_entries,
+  dataDeletion__choose_a_preset_or_select_items_individually,
   dataDeletion__clear_all_selections,
   dataDeletion__delete_application_data,
   dataDeletion__delete_data_matched_by_selected_selectors,
@@ -5399,7 +5838,11 @@ export const catalog = {
   dataDeletion__not_available_in_this_runtime,
   dataDeletion__preview_entries,
   dataDeletion__scanning_storage,
+  dataDeletion__select_all,
   dataDeletion__select_at_least_one_deletion_selector,
+  dataDeletion__select_factory_reset_items,
+  dataDeletion__selection_presets,
+  documentTitle__run_ai_on_your_device_directly_in_your_browser,
   endpointTypeDescription__connect_to_an_ollama_server,
   endpointTypeDescription__connect_to_an_openai_compatible_api,
   endpointTypeDescription__run_gguf_models_in_this_browser,
@@ -5778,6 +6221,7 @@ export const catalog = {
   llamaCppBrowser__automatic_recommended,
   llamaCppBrowser__check_browser_support,
   llamaCppBrowser__checking_browser_support,
+  llamaCppBrowser__checking_model_files,
   llamaCppBrowser__choose_gguf_files,
   llamaCppBrowser__choose_model_folder,
   llamaCppBrowser__context_size,

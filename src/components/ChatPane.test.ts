@@ -11,6 +11,7 @@ import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
+import { useImageGeneration } from '@/composables/useImageGeneration';
 import { setupScrollToMock } from '@/utils/utils.test-support';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { WeshMount } from '@/features/wesh/types';
@@ -469,6 +470,12 @@ function mountChatPane({
   });
 }
 
+const paneCspHintStub = {
+  props: ['target', 'presentation', 'activityForDisplayOnly'],
+  data: () => ({ expanded: false }),
+  template: '<aside v-if="target" data-testid="pane-csp-hint" :data-endpoint="target.endpoint" :data-api-path="target.apiPath" :data-presentation="presentation"><button data-testid="pane-csp-trigger" :aria-expanded="expanded" @click="expanded = !expanded">Connection notice</button><div v-if="expanded" data-testid="pane-csp-details">Embedded connection details</div></aside>',
+};
+
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
     chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
@@ -857,6 +864,7 @@ vi.mock('../00-storage/service', () => ({
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     subscribeToChanges: vi.fn(),
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
   },
 }));
 
@@ -1103,6 +1111,172 @@ Question`,
 
     expect(wrapper.find('[data-testid="context-compact-progress-strip"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="context-compact-progress-overlay"]').classes()).toContain('absolute');
+  });
+
+  it('keeps one pre-send notice directly above the input card for empty and history chats', async () => {
+    const chat = mockCurrentChat.value;
+    if (chat === null) {
+      throw new Error('Expected the current chat fixture');
+    }
+    chat.root = { items: [] };
+    chat.currentLeafId = undefined;
+    chat.modelId = 'browser-provided-language-model';
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'openai', url: 'https://configured.example/v1' }, modelId: 'browser-provided-language-model' };
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: { CspMessageHint: paneCspHintStub } } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const inputElement = input.element;
+    const textarea = input.get('[data-testid="chat-input"]').element;
+    const selector = input.getComponent(ModelSelector).element;
+    const card = input.get('[data-testid="chat-input-card"]');
+    const aboveInput = input.get('[data-testid="chat-input-above-slot"]');
+    const availableSpace = input.props('availableSpace');
+    const hint = aboveInput.get('[data-chat-csp-notice]');
+    expect(wrapper.findAll('[data-chat-csp-notice]')).toHaveLength(1);
+    expect(hint.attributes('data-endpoint')).toBe('https://configured.example/v1');
+    expect(hint.attributes('data-api-path')).toBe('/chat/completions');
+    expect(hint.attributes('data-presentation')).toBe('compact');
+    expect(aboveInput.element.nextElementSibling).toBe(card.element);
+    expect(card.element.contains(hint.element)).toBe(false);
+    expect(wrapper.get('[data-testid="scroll-container"]').find('[data-chat-csp-notice]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="chat-empty-viewport"]').find('[data-chat-csp-notice]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="context-compact-progress-overlay"]').find('[data-chat-csp-notice]').exists()).toBe(false);
+    expect(input.props('aboveInputVisibility')).toBe('visible');
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    await hint.get('[data-testid="pane-csp-trigger"]').trigger('click');
+    expect(aboveInput.element.contains(hint.get('[data-testid="pane-csp-details"]').element)).toBe(true);
+    expect(input.get('[data-testid="chat-input"]').element).toBe(textarea);
+    expect(input.getComponent(ModelSelector).element).toBe(selector);
+    expect(input.props('availableSpace')).toEqual(availableSpace);
+    const firstHistoryMessage = createTextNode({ id: toMessageId({ raw: 'pane-csp-history' }), role: 'user', text: 'Existing message', createdAt: 1 });
+    chat.root = { items: [firstHistoryMessage] };
+    chat.currentLeafId = firstHistoryMessage.id;
+    mockActiveMessages.value = [firstHistoryMessage];
+    await flushPromises();
+    expect(wrapper.findAll('[data-chat-csp-notice]')).toHaveLength(1);
+    expect(aboveInput.get('[data-chat-csp-notice]').element).toBe(hint.element);
+    expect(aboveInput.element.nextElementSibling).toBe(card.element);
+    expect(wrapper.get('[data-testid="scroll-container"]').find('[data-chat-csp-notice]').exists()).toBe(false);
+    expect(wrapper.getComponent(ChatInput).element).toBe(inputElement);
+    expect(input.get('[data-testid="chat-input"]').element).toBe(textarea);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(['browser_provided_lm', 'llama_cpp_browser', 'transformers_js'] as const)('leaves the above-input wrapper empty for the %s endpoint', async type => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type } };
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: { CspMessageHint: paneCspHintStub } } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const aboveInput = input.get('[data-testid="chat-input-above-slot"]');
+    expect(input.props('aboveInputVisibility')).toBe('visible');
+    expect(wrapper.find('[data-chat-csp-notice]').exists()).toBe(false);
+    expect(aboveInput.element.matches(':not(:has(> *))'), JSON.stringify({ html: aboveInput.element.innerHTML, nodes: Array.from(aboveInput.element.childNodes, node => ({ type: node.nodeType, text: node.textContent })) })).toBe(true);
+    expect(aboveInput.element.textContent).toBe('');
+    expect(aboveInput.element.childElementCount).toBe(0);
+    expect(input.get('[data-testid="chat-input-card"]').find('[data-chat-csp-notice]').exists()).toBe(false);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('leaves no reserved slot content when optional hint rendering is unavailable', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: { CspMessageHint: { props: ['target', 'presentation', 'activityForDisplayOnly'], template: '<template v-if="false" />' } } } });
+    await flushPromises();
+    const aboveInput = wrapper.getComponent(ChatInput).get('[data-testid="chat-input-above-slot"]');
+    expect(aboveInput.element.matches(':not(:has(> *))'), JSON.stringify({ html: aboveInput.element.innerHTML, nodes: Array.from(aboveInput.element.childNodes, node => ({ type: node.nodeType, text: node.textContent })) })).toBe(true);
+    expect(aboveInput.element.textContent).toBe('');
+    expect(aboveInput.element.childElementCount).toBe(0);
+    expect(wrapper.find('[data-chat-csp-notice]').exists()).toBe(false);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps an existing approval ahead of the connection notice and preserves controls after the decision', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: { CspMessageHint: paneCspHintStub } } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const textarea = input.get('[data-testid="chat-input"]').element;
+    using request = {
+      controller: new AbortController(),
+      [Symbol.dispose]() {
+        this.controller.abort();
+      },
+    };
+    const chat = mockCurrentChat.value;
+    if (chat === null) {
+      throw new Error('Expected the current chat fixture');
+    }
+    const completion = useApproval().ensureApproval({ chatId: chat.id, action: APPROVAL_ACTIONS.toolWikipediaSearch, preview: undefined, signal: request.controller.signal });
+    void completion.catch(() => {});
+    await flushPromises();
+    const aboveInput = input.get('[data-testid="chat-input-above-slot"]');
+    const approval = aboveInput.get('[data-testid="chat-approval-panel"]');
+    const hint = aboveInput.get('[data-chat-csp-notice]');
+    expect(aboveInput.element.matches(':not(:has(> *))')).toBe(false);
+    expect(approval.element.compareDocumentPosition(hint.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    wrapper.getComponent({ name: 'ChatApprovalPanel' }).vm.$emit('decide', 'deny');
+    await completion;
+    await flushPromises();
+    expect(aboveInput.find('[data-testid="chat-approval-panel"]').exists()).toBe(false);
+    expect(aboveInput.findAll('[data-chat-csp-notice]')).toHaveLength(1);
+    expect(input.get('[data-testid="chat-input"]').element).toBe(textarea);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('hides the connection notice with a hidden composer without remounting its controls', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: { CspMessageHint: paneCspHintStub } } });
+    await flushPromises();
+    const inputElement = wrapper.getComponent(ChatInput).element;
+    const textarea = wrapper.get('[data-testid="chat-input"]').element;
+    expect(wrapper.find('[data-chat-csp-notice]').exists()).toBe(true);
+    launchComposerOverride.value = 'hidden';
+    await nextTick();
+    expect(wrapper.find('[data-chat-csp-notice]').exists()).toBe(false);
+    launchComposerOverride.value = 'visible';
+    await nextTick();
+    expect(wrapper.findAll('[data-chat-csp-notice]')).toHaveLength(1);
+    expect(wrapper.getComponent(ChatInput).element).toBe(inputElement);
+    expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('uses the existing image-mode state and above-input scroll cap without another layout mechanism', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'ollama', url: 'http://localhost:11434' } };
+    const imageGeneration = useImageGeneration();
+    const chat = mockCurrentChat.value;
+    if (chat === null) {
+      throw new Error('Expected the current chat fixture');
+    }
+    const chatId = chat.id;
+    const previousMode = imageGeneration.isImageMode({ chatId });
+    using modeCleanup = {
+      [Symbol.dispose]() {
+        if (imageGeneration.isImageMode({ chatId }) !== previousMode) {
+          imageGeneration.toggleImageMode({ chatId });
+        }
+      },
+    };
+    if (previousMode) {
+      imageGeneration.toggleImageMode({ chatId });
+    }
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: { CspMessageHint: paneCspHintStub } } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const textarea = input.get('[data-testid="chat-input"]').element;
+    expect(wrapper.get('[data-chat-csp-notice]').attributes('data-api-path')).toBe('/api/chat');
+    imageGeneration.toggleImageMode({ chatId });
+    await nextTick();
+    expect(wrapper.get('[data-chat-csp-notice]').attributes('data-api-path')).toBe('/api/generate');
+    using viewportRect = vi.spyOn(wrapper.get('[data-testid="scroll-container"]').element, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 600));
+    using composerRect = vi.spyOn(input.element, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 450, 800, 150));
+    input.vm.$emit('layout-change');
+    await nextTick();
+    const aboveInput = input.get<HTMLElement>('[data-testid="chat-input-above-slot"]');
+    expect(aboveInput.element.style.maxHeight).toBe('300px');
+    expect(aboveInput.classes()).toContain('overflow-y-auto');
+    await aboveInput.get('[data-testid="pane-csp-trigger"]').trigger('click');
+    expect(input.get('[data-testid="chat-input"]').element).toBe(textarea);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    void modeCleanup;
+    void viewportRect;
+    void composerRect;
   });
 
   it('shows the neural sync effect only after a successful compact action', async () => {
@@ -5015,7 +5189,10 @@ describe('ordinary Chat missing browser model notice', () => {
     recoveryAvailability.value = 'available';
     await flushPromises();
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="chat-input-above-slot"]').exists()).toBe(false);
+    const aboveInput = wrapper.get('[data-testid="chat-input-above-slot"]');
+    expect(aboveInput.element.matches(':not(:has(> *))'), JSON.stringify({ html: aboveInput.element.innerHTML, nodes: Array.from(aboveInput.element.childNodes, node => ({ type: node.nodeType, text: node.textContent })) })).toBe(true);
+    expect(aboveInput.element.childElementCount).toBe(0);
+    expect(aboveInput.element.textContent).toBe('');
     expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
     expect(wrapper.get('textarea').element).toBe(textarea.element);
     expect(textarea.element.value).toBe('Keep this branch draft');

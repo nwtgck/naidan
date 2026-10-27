@@ -10,6 +10,7 @@ import { modelLaunchCommand, modelLaunchEntryState, setModelLaunchEntryState, TE
 import { modelLaunchPresentation } from '@/features/llama-cpp-browser/model-launch/presentation';
 import WelcomeScreenFrame from '@/components/layout/WelcomeScreenFrame.vue';
 import LlamaCppBrowserModelLaunchEntry from './LlamaCppBrowserModelLaunchEntry.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' }, defaultModelId: undefined });
 const inspect = vi.hoisted(() => vi.fn());
 vi.mock('@/features/llama-cpp-browser/hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect }) }));
@@ -24,6 +25,12 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 vi.mock('@/features/file-protocol-standalone/composables/usePortableAppDownload', () => ({ usePortableAppDownload: () => ({}) }));
+vi.mock('./LlamaCppBrowserLocalFileRecovery.vue', () => ({
+  default: { name: 'LlamaCppBrowserLocalFileRecovery', props: ['disabled', 'acceptLocalInput'], template: '<section data-testid="model-entry-local-recovery" />' },
+}));
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({
+  default: { props: ['target', 'presentation', 'activityForDisplayOnly'], template: '<template v-if="false" />' },
+}));
 
 beforeEach(async () => {
   TEST_ONLY.reset();
@@ -160,6 +167,11 @@ describe('immediate model link presentation', () => {
     await flushPromises();
     expect(wrapper.get('h2').text()).toBe('Model');
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-entry-local-recovery"]').exists()).toBe(false);
+    await wrapper.getComponent(HuggingFaceDownloadFailureHint).get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+    expect(wrapper.find('[data-testid="model-entry-local-recovery"]').exists()).toBe(true);
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('acceptLocalInput')).toBeUndefined();
+    expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('disabled')).toBe(false);
     await wrapper.get('[data-testid="start-preview-model"]').trigger('click');
     expect(modelLaunchCommand.value).toEqual({ kind: 'retry', operation });
   });

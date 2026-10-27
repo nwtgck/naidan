@@ -93,6 +93,28 @@ describe('explicit Hugging Face model search', () => {
     expect(view.wrapper.get('[data-testid="llama-hf-search-controls"]').classes()).not.toContain('sticky');
   });
 
+  it('keeps expandable guidance outside the sticky controls without replacing the search input', async () => {
+    const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, {
+      props: { disabled: false, repositoryInput: '', scrollOwner: 'parent' },
+      global: { stubs: { CspMessageHint: { template: '<details data-testid="search-guidance"><summary>Connection guidance</summary><button>Export data</button></details>' } } },
+    });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const query = wrapper.get('[data-testid="llama-hf-search-query"]');
+    await query.setValue('qwen');
+    const guidance = wrapper.get('[data-testid="search-guidance"]');
+    expect(guidance.element.closest('[data-testid="llama-hf-search-controls"]')).toBeNull();
+    expect(guidance.element.parentElement).toBe(wrapper.element);
+    guidance.element.setAttribute('open', '');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-search-query"]').element).toBe(query.element);
+    expect((query.element as HTMLInputElement).value).toBe('qwen');
+    expect(searchModels).not.toHaveBeenCalled();
+  });
+
   it('searches with Enter and ignores composition confirmation', async () => {
     using view = render();
     const query = view.wrapper.get('[data-testid="llama-hf-search-query"]');

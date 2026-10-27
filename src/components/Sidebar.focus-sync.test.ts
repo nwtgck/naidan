@@ -15,6 +15,19 @@ beforeEach(async () => {
 
 const mockEffectiveRoute = ref<RouteLocationResolved>();
 
+// Focus synchronization needs the real pane click handler, not background
+// initialization of dialogs, inspectors, or editor modules unrelated to it.
+vi.mock('../utils/vue', async () => {
+  const { defineComponent } = await import('vue');
+  return {
+    defineAsyncComponentAndLoadOnMounted: () => defineComponent({
+      name: 'AsyncPanelOutsideFocusContract',
+      inheritAttrs: false,
+      render: () => undefined,
+    }),
+  };
+});
+
 vi.mock('../composables/useAppEntry', async importOriginal => {
   const actual = await importOriginal<typeof import('@/composables/useAppEntry')>();
   return { ...actual, useAppEntry: () => ({ ...actual.useAppEntry(), effectiveRoute: mockEffectiveRoute }) };
@@ -225,6 +238,7 @@ describe('Sidebar Focus Sync', () => {
   afterEach(() => {
     wrapper?.unmount();
     wrapper = null;
+    vi.clearAllTimers();
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
@@ -238,23 +252,21 @@ describe('Sidebar Focus Sync', () => {
           MessageItem: true,
           WelcomeScreen: true,
           ChatSettingsPanel: true,
+          ChatInput: true,
+          CspLmEndpointHint: true,
           Logo: true,
           ModelSelector: true,
         },
       },
     });
     await nextTick();
-
-    await vi.runAllTimersAsync();
-    // Include lazy modal initialization before checking the click's focus update.
-    await vi.dynamicImportSettled();
-    await vi.runAllTimersAsync();
+    await nextTick();
     vi.mocked(HTMLElement.prototype.scrollTo)?.mockClear();
 
     wrapper.get<HTMLElement>('[data-testid=sidebar-nav]').element.scrollTop = 0;
     await wrapper.getComponent(CurrentChatPane).trigger('click');
     await nextTick();
-    await vi.runAllTimersAsync();
+    await nextTick();
 
     expect(layout.activeFocusArea.value).toBe('chat');
     expect(layout.activeFocusAreaVersion.value).toBe(1);
@@ -311,6 +323,25 @@ describe('Sidebar Focus Sync', () => {
     await nextTick();
     await nextTick();
     expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: top - (100 - 40) / 3, behavior: 'auto' });
+  });
+
+  it.each(['/chat/chat-1', '/chat-group/g1'])('reveals the new URL %s during search before the selected body is loaded', async path => {
+    mockCurrentChat.value = null;
+    mockCurrentChatGroup.value = null;
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Chat group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockEffectiveRoute.value = router.resolve('/');
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    await nextTick();
+    await nextTick();
+    expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
+
+    layout.setActiveFocusArea({ area: 'search' });
+    mockEffectiveRoute.value = router.resolve(path);
+    await nextTick();
+    await nextTick();
+
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 132.5, behavior: 'smooth' });
+    expect(layout.activeFocusArea.value).toBe('search');
   });
 
   it('ignores stale selected state after leaving a chat route', async () => {

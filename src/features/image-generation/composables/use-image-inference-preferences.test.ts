@@ -26,6 +26,7 @@ function preference({ name }: { name: 'one' | 'two' }): RemoteImageModelEditorPr
     registrationId: toNaidanRpcRegistrationId({ raw: `connection-${name}` }),
     peerPublicKey: toNaidanRpcPeerPublicKey({ raw: (name === 'one' ? 'B' : 'C').repeat(43) }),
     editor: {
+      automaticSlots: [],
       primary: { slot: 'model', file: { location: { kind: 'host', directoryId: 'remote-root', path: 'models/main.gguf' } }, family: 'sd-checkpoint' },
       components: [],
       loras: [{ file: { location: { kind: 'opfs', path: 'models/off.gguf' } }, strength: 0.7, enabled: 'disabled' }],

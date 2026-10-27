@@ -79,9 +79,12 @@ describe('shared OPFS model storage', () => {
     expect((await service.service.listCachedModels()).every(model => model.isComplete)).toBe(true);
     expect((await service.service.listCachedModels()).every(model => model.size === 4 && model.fileCount === 2)).toBe(true);
     const llamaModels = await listStoredModels();
-    expect(llamaModels.map(model => model.modelId)).toEqual(['hf.co/org/gguf:model-Q4_K_M', 'hf.co/org/mixed:model-Q4_K_M', 'user/gguf', 'user/mixed']);
+    expect(llamaModels.map(model => model.modelId)).toEqual(['hf.co/org/gguf:model-Q4_K_M', 'hf.co/org/mixed:model-Q4_K_M', 'user/gguf/model-Q4_K_M', 'user/mixed/model-Q4_K_M']);
     for (const model of llamaModels) {
       expect((await resolveModel({ modelId: model.modelId, signal: undefined })).directory.files.every(entry => entry.relativePath.endsWith('.gguf'))).toBe(true);
+    }
+    for (const modelId of ['user/gguf', 'user/mixed']) {
+      expect((await resolveModel({ modelId, signal: undefined })).directory.primaryFile.relativePath).toBe('model-Q4_K_M.gguf');
     }
   });
 

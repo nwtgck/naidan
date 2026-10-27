@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__privacy_fetch_confirmation_pending_description = (): string => 'The addition result is not yet confirmed. Sending the policies alone does not confirm their addition.';

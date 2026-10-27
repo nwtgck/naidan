@@ -68,7 +68,6 @@ import type {
   LmParameters,
   Mount,
   Volume,
-  ToolConfigPersistence,
   SettingsTitleGeneration,
   ScopedTitleGeneration,
 } from '@/01-models/types';
@@ -346,24 +345,6 @@ const scopedTitleGenerationToDto = ({
 };
 
 
-const toolConfigPersistenceToExperimentalDto = ({
-  persistence,
-}: {
-  persistence: ToolConfigPersistence | undefined,
-}): 'enabled' | undefined => {
-  const normalized = persistence ?? 'disabled';
-  switch (normalized) {
-  case 'disabled':
-    return undefined;
-  case 'enabled':
-    return 'enabled';
-  default: {
-    const _exhaustive: never = normalized;
-    throw new Error(`Unhandled tool config persistence setting: ${String(_exhaustive)}`);
-  }
-  }
-};
-
 const fakeLmToExperimentalDto = ({
   status,
 }: {
@@ -619,6 +600,12 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
  * Converts a Chat Group DTO into a Domain ChatGroup.
  * Resolves nested items using the hierarchy and provided chat metadata.
  */
+/** Configuration reads do not hydrate every chat summary in the hierarchy. */
+export function chatGroupConfigurationToDomain({ dto }: { dto: ChatGroupDto }): Omit<ChatGroup, 'items'> {
+  const { items: _items, ...configuration } = chatGroupToDomain({ dto, hierarchy: { items: [] }, chatMetas: [] });
+  return configuration;
+}
+
 export const chatGroupToDomain = (
   { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] },
 ): ChatGroup => {
@@ -2313,6 +2300,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   const experimentalDomain = (() => {
     const {
       locale,
+      metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
@@ -2320,6 +2308,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigs,
       fakeLm,
       naidanRpc,
+      generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
       llamaCppBrowser,
@@ -2356,13 +2345,19 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
 
     return exactObject<NonNullable<Settings['experimental']>>()({
       locale,
+      metaCspForDevelopmentNotForSecurity: metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
-      toolConfigPersistence: toolConfigPersistence ?? 'disabled',
+      toolConfigPersistence: toolConfigPersistence ?? 'enabled',
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
       fakeLm: fakeLm ?? 'disabled',
       naidanRpc: naidanRpc ?? 'disabled',
+      generationSpeed: generationSpeed === undefined ? undefined : (() => {
+        const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
+        unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['generationSpeed']>>()({ status, inlineStats, llamaCppServerTimings });
+      })(),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
       llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
@@ -2442,6 +2437,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
   const experimentalDto = (() => {
     const {
       locale,
+      metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
@@ -2449,6 +2445,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       toolConfigs,
       fakeLm,
       naidanRpc,
+      generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
       llamaCppBrowser,
@@ -2483,14 +2480,22 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       });
     })();
 
-    return exactObject<NonNullable<SettingsDto['experimental']>>()({
+    const value = exactObject<NonNullable<SettingsDto['experimental']>>()({
       locale,
+      metaCsp: metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
       markdownRendering,
-      toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
-        persistence: toolConfigPersistence,
-      }),
+      toolConfigPersistence: (() => {
+        switch (toolConfigPersistence) {
+        case 'disabled': return 'disabled';
+        case 'enabled': case undefined: return undefined;
+        default: {
+          const exhaustive: never = toolConfigPersistence;
+          return exhaustive;
+        }
+        }
+      })(),
       toolConfigs: toolConfigs?.map(domain => toolConfigToDto({ domain })),
       naidanRpc: (() => {
         switch (naidanRpc) {
@@ -2505,7 +2510,21 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       fakeLm: fakeLmToExperimentalDto({
         status: fakeLm,
       }),
-      sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
+      generationSpeed: generationSpeed === undefined ? undefined : (() => {
+        const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
+        unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['generationSpeed']>>()({ status, inlineStats, llamaCppServerTimings });
+      })(),
+      sidebarSendMessageReorder: (() => {
+        switch (sidebarSendMessageReorder) {
+        case 'move_sent_chat': return 'move_sent_chat';
+        case 'disabled': case undefined: return undefined;
+        default: {
+          const exhaustive: never = sidebarSendMessageReorder;
+          return exhaustive;
+        }
+        }
+      })(),
       globalSearch: globalSearchDto,
       llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
@@ -2518,6 +2537,10 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         });
       }),
     });
+
+    // Omit default-only experimental settings after the last saved value is
+    // cleared. Explicit arrays and nested preference objects remain intact.
+    return Object.values(value).every(field => field === undefined) ? undefined : value;
   })();
 
   const profileDtos = (providerProfiles ?? []).map(profile => {

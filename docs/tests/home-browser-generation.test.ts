@@ -18,7 +18,7 @@ const scenes = [
 ] as const;
 
 describe('home browser generation examples', () => {
-  it.each([{ locale: 'en', messages: en }, { locale: 'ja', messages: ja }] as const)('shows three complete %s browser-side flows before the model choices', async ({ locale, messages }) => {
+  it.each([{ locale: 'en', messages: en }, { locale: 'ja', messages: ja }] as const)('shows three complete $locale browser-side flows before the model choices', async ({ locale, messages }) => {
     await using fixture = await createSiteFixture();
     await using dev = await startSiteDev({ root: fixture.root });
     using home = parsePage({ html: await (await dev.request({ url: docsHref({ locale, page: 'index' }) })).text() });
@@ -136,7 +136,9 @@ describe('home browser generation examples', () => {
     expect(remoteBrowser?.querySelector('.remote-travel')).toBeNull();
     expect(imageExample?.querySelectorAll('.outside-route span')).toHaveLength(2);
     const speechExample = examples[2];
-    expect(speechExample?.querySelector('[data-testid="docs-local-speech-input"]')?.textContent).toContain(messages.qwen3_tts_1_7b_base);
+    expect(speechExample?.querySelector('[data-testid="docs-local-speech-input"] .select-field')?.textContent).toBe(messages.qwen3_tts_model_id);
+    expect(speechExample?.querySelector('[data-testid="docs-local-speech-wav"] .result-meta strong')?.textContent).toBe(messages.qwen3_tts_model_id);
+    expect(speechExample?.querySelector('[data-testid="docs-local-speech-model"] .engine-core strong')?.textContent).toBe(messages.qwen3_tts_1_7b_base);
     expect(speechExample?.querySelector('[data-testid="docs-local-speech-input"]')?.textContent).toContain(messages.audio_language_choice);
     expect(speechExample?.querySelector('[data-testid="docs-local-speech-wav"]')?.textContent).toContain(messages.save_wav);
     expect(speechExample?.querySelector('[data-testid="docs-remote-speech-wav"]')?.textContent).toContain(messages.save_wav);

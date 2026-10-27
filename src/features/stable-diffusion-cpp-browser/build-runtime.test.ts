@@ -1,17 +1,91 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { gunzipSync } from 'node:zlib';
-import { assertStandaloneImageModule, readImageArtifacts } from './build-runtime';
+import type { PluginContext } from 'rolldown';
+import { runtimeAssetMiddleware } from '../../../build/runtime-asset-middleware.test-support';
+import { assertStandaloneImageModule, createStableDiffusionCppBrowserBuild, readImageArtifacts } from './build-runtime';
 const directories: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe('lazy image runtime assets', () => {
+  it('registers middleware without opening the configured artifact directory', async () => {
+    vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', '/missing-image-runtime-for-lazy-test');
+    const { plugin } = createStableDiffusionCppBrowserBuild({ rootDir: '/missing', mode: 'hosted' });
+    const middleware = await runtimeAssetMiddleware({ plugin, base: '/app/' });
+    expect((await middleware.request({ url: '/app/src/main.ts' })).bytes).toBeUndefined();
+  });
+
+  it('prepares only the requested Wasm and retries a corrected payload without changing the catalog', async () => {
+    const { directory, sourceCommit } = fixture();
+    const filename = path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.wasm');
+    const original = readFileSync(filename);
+    writeFileSync(filename, Buffer.alloc(original.length));
+    vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', directory);
+    const build = createStableDiffusionCppBrowserBuild({ rootDir: directory, mode: 'hosted' });
+    const middleware = await runtimeAssetMiddleware({ plugin: build.plugin, base: '/app/' });
+    const load = build.plugin.load;
+    if (typeof load !== 'function') {
+      throw new Error('Expected the configuration loader.');
+    }
+    expect(await load.call({} as never, '\0virtual:stable-diffusion-cpp-browser/config')).toContain(sourceCommit);
+    expect(build.getNativeLicenseSource()).toBeDefined();
+    const prefix = `/app/stable-diffusion-cpp-runtime/${sourceCommit}/`;
+    const valid = await middleware.request({ url: prefix + 'webgpu-wasm32-asyncify/core.wasm.gz' });
+    expect(valid.status).toBe(200);
+    expect(valid.headers.get('Content-Type')).toBe('application/gzip');
+    expect(valid.headers.has('Content-Encoding')).toBe(false);
+    expect(valid.bytes && gunzipSync(valid.bytes)).toEqual(original);
+    const request = { url: prefix + 'webgpu-wasm32-jspi/core.wasm.gz' };
+    await expect(middleware.request(request)).rejects.toThrow('integrity mismatch');
+    writeFileSync(filename, original);
+    const corrected = await middleware.request(request);
+    expect(corrected.bytes && gunzipSync(corrected.bytes)).toEqual(original);
+  });
+
+  it('uses the current build generation for HTTP delivery and emits the same verified bytes', async () => {
+    const first = fixture();
+    const second = fixture();
+    const nextCommit = 'b'.repeat(40);
+    changeImageManifest({ directory: second.directory, change: json => json.replaceAll(second.sourceCommit, nextCommit) });
+    const nextRootPath = path.join(second.directory, 'manifest.json');
+    const nextRoot = JSON.parse(readFileSync(nextRootPath, 'utf8'));
+    nextRoot.sourceCommit = nextCommit;
+    writeFileSync(nextRootPath, JSON.stringify(nextRoot));
+    vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', first.directory);
+    const { plugin, getNativeLicenseSource } = createStableDiffusionCppBrowserBuild({ rootDir: first.directory, mode: 'hosted' });
+    const middleware = await runtimeAssetMiddleware({ plugin, base: '/app/' });
+    const firstSource = getNativeLicenseSource();
+    expect((await middleware.request({ url: `/app/stable-diffusion-cpp-runtime/${first.sourceCommit}/webgpu-wasm32-jspi/core.wasm.gz` })).status).toBe(200);
+    vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', second.directory);
+    if (typeof plugin.buildStart !== 'function' || typeof plugin.generateBundle !== 'function') {
+      throw new Error('Expected lifecycle hooks.');
+    }
+    await plugin.buildStart.call({} as never, {} as never);
+    expect(getNativeLicenseSource()?.manifestPaths).not.toEqual(firstSource?.manifestPaths);
+    const fileName = `stable-diffusion-cpp-runtime/${nextCommit}/webgpu-wasm32-jspi/core.wasm.gz`;
+    const response = await middleware.request({ url: '/app/' + fileName });
+    const emitted = new Map<string, Uint8Array>();
+    const emitFile: PluginContext['emitFile'] = file => {
+      if (file.type !== 'asset' || file.fileName === undefined || file.source === undefined) {
+        throw new Error('Expected a runtime asset.');
+      }
+      emitted.set(file.fileName, typeof file.source === 'string' ? Buffer.from(file.source) : file.source);
+      return file.fileName;
+    };
+    await plugin.generateBundle.call({ emitFile } as never, {} as never, {} as never, false);
+    expect(response.bytes).toBe(emitted.get(fileName));
+    expect((await middleware.request({ url: '/app/stable-diffusion-cpp-runtime/missing/core.wasm.gz' })).status).toBe(404);
+  });
 });
 
 function fixture({ omitFunction }: { omitFunction?: string } = {}) {
@@ -68,13 +142,14 @@ describe('optional image build integration', () => {
     expect(() => readImageArtifacts({ rootDir: '/missing', mode: 'hosted', artifactDir: '/invalid-image-artifacts' })).toThrow('does not exist');
   });
 
-  it('validates source-bound artifacts and emits gzip plus all notices', () => {
+  it('validates source-bound artifacts and keeps notices separate from emitted runtime assets', async () => {
     const { directory, sourceCommit } = fixture();
     const { configuration, files } = readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory });
     expect(configuration.kind).toBe('available');
-    expect(files.size).toBe(12);
-    const wasm = files.get(`stable-diffusion-cpp-runtime/${sourceCommit}/webgpu-wasm32-asyncify/core.wasm.gz`);
-    expect(wasm && gunzipSync(wasm)).toEqual(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
+    expect(files.size).toBe(10);
+    expect([...files.keys()].some(file => file.includes('/licenses/') || file.endsWith('/LICENSE'))).toBe(false);
+    const readWasm = files.get(`stable-diffusion-cpp-runtime/${sourceCommit}/webgpu-wasm32-asyncify/core.wasm.gz`);
+    expect(readWasm && gunzipSync(await readWasm())).toEqual(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
     expect([...files.keys()].some(file => file.endsWith('.wasm'))).toBe(false);
   });
 
@@ -139,11 +214,16 @@ it('detects same-size module corruption with its digest', () => {
   expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('integrity mismatch');
 });
 
-it('rejects an oversized payload before loading that payload into memory', () => {
-  const { directory } = fixture();
+it('rejects an oversized requested payload before loading that payload into memory', async () => {
+  const { directory, sourceCommit } = fixture();
   const file = path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.wasm');
   writeFileSync(file, new Uint8Array(8192));
-  expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('size mismatch');
+  const result = readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory });
+  const readWasm = result.files.get(`stable-diffusion-cpp-runtime/${sourceCommit}/webgpu-wasm32-jspi/core.wasm.gz`);
+  if (readWasm === undefined) {
+    throw new Error('Expected the requested Wasm loader.');
+  }
+  await expect(readWasm()).rejects.toThrow('size mismatch');
 });
 
 it('rejects image artifacts without the preview setter before accepting the runtime', () => {

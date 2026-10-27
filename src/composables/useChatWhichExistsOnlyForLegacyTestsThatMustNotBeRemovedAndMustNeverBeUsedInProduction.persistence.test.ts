@@ -37,6 +37,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     vi.doMock('../00-storage/service', () => ({
       storageService: {
+        subscribeLocalModelPromotions: vi.fn(() => () => {}),
         getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
         getSidebarStructure: vi.fn().mockResolvedValue([]),
         saveChat: vi.fn().mockImplementation((chat) => {

@@ -12,6 +12,8 @@ import {
 import { useToast } from '@/composables/useToast';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { OllamaProvider, OllamaRunningModel } from '@/features/lm/ollama';
+import { isFakeLmEndpointUrl, type FakeLmDebugModeStatus } from '@/features/fake-lm';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 
 type PanelState = 'collapsed' | 'expanded';
 type DetailsState = 'collapsed' | 'expanded';
@@ -26,12 +28,13 @@ type PsRequestState =
   | { status: 'idle' }
   | { status: 'loading', previousModels: readonly OllamaRunningModel[] }
   | { status: 'ready', models: readonly OllamaRunningModel[] }
-  | { status: 'error', errorMessage: string, previousModels: readonly OllamaRunningModel[] };
+  | { status: 'error', errorMessage: string, previousModels: readonly OllamaRunningModel[], endpointUrl: string | undefined };
 
 const props = defineProps<{
   provider: OllamaProvider,
   endpointUrl: string | undefined,
   presentation?: 'default' | 'settings',
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus | undefined,
 }>();
 
 const { addToast } = useToast();
@@ -41,6 +44,7 @@ const detailsStates = reactive(new Map<string, DetailsState>());
 const modelActionStates = reactive(new Map<string, ModelActionState>());
 const modelActionErrors = reactive(new Map<string, string>());
 const modelActionNotices = reactive(new Map<string, string>());
+const modelActionHintRequests = reactive(new Map<string, { kind: 'connection', endpoint: string | undefined, apiPath: '/api/generate' | '/api/ps' }>());
 let listAbortController: AbortController | undefined;
 let unloadAbortController: AbortController | undefined;
 
@@ -49,6 +53,7 @@ const models = computed(() => getModelsFromRequestState({ state: requestState.va
 const isRefreshing = computed(() => requestState.value.status === 'loading');
 const isAnyModelUnloading = computed(() => Array.from(modelActionStates.values()).some((state) => state === 'unloading'));
 const hasEndpoint = computed(() => (props.endpointUrl?.trim().length ?? 0) > 0);
+const usesNetwork = computed(() => props.fakeLmDebugModeStatus !== 'enabled' || !isFakeLmEndpointUrl({ endpointUrl: props.endpointUrl }));
 const statusLabel = computed(() => {
   switch (requestState.value.status) {
   case 'idle':
@@ -116,6 +121,7 @@ async function loadRunningModels(): Promise<readonly OllamaRunningModel[] | unde
   const controller = new AbortController();
   listAbortController = controller;
   const previousModels = models.value;
+  const requestedEndpointUrl = props.endpointUrl;
   requestState.value = { status: 'loading', previousModels };
 
   try {
@@ -139,6 +145,7 @@ async function loadRunningModels(): Promise<readonly OllamaRunningModel[] | unde
       status: 'error',
       errorMessage: error instanceof Error ? error.message : String(error),
       previousModels,
+      endpointUrl: requestedEndpointUrl,
     };
     return undefined;
   } finally {
@@ -162,6 +169,7 @@ function removeStaleModelState({ nextModels }: {
       modelActionStates.delete(name);
       modelActionErrors.delete(name);
       modelActionNotices.delete(name);
+      modelActionHintRequests.delete(name);
     }
   }
 }
@@ -175,9 +183,12 @@ async function unloadModel({ model }: {
 
   const modelIdentifier = model.model ?? model.name;
   const provider = props.provider;
+  const requestedEndpointUrl = props.endpointUrl;
+  let requestPath: '/api/generate' | '/api/ps' | undefined = '/api/generate';
   modelActionStates.set(model.name, 'unloading');
   modelActionErrors.delete(model.name);
   modelActionNotices.delete(model.name);
+  modelActionHintRequests.delete(model.name);
   unloadAbortController?.abort();
   const controller = new AbortController();
   unloadAbortController = controller;
@@ -191,11 +202,13 @@ async function unloadModel({ model }: {
       return;
     }
 
+    requestPath = '/api/ps';
     const confirmation = await confirmModelUnload({
       provider,
       modelIdentifier,
       controller,
     });
+    requestPath = undefined;
     if (confirmation === undefined || unloadAbortController !== controller) {
       return;
     }
@@ -236,6 +249,9 @@ async function unloadModel({ model }: {
 
     modelActionStates.set(model.name, 'failed');
     modelActionErrors.set(model.name, error instanceof Error ? error.message : String(error));
+    if (requestPath !== undefined) {
+      modelActionHintRequests.set(model.name, { kind: 'connection', endpoint: requestedEndpointUrl, apiPath: requestPath });
+    }
   } finally {
     if (unloadAbortController === controller) {
       unloadAbortController = undefined;
@@ -462,6 +478,7 @@ function resetForProviderChange() {
   modelActionStates.clear();
   modelActionErrors.clear();
   modelActionNotices.clear();
+  modelActionHintRequests.clear();
 }
 
 watch(() => props.provider, () => {
@@ -520,6 +537,7 @@ defineExpose({
           :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none', isExpanded ? 'rotate-180' : '']"
         />
       </button>
+      <CspMessageHint activity-for-display-only="running-models" v-if="hasEndpoint && usesNetwork && requestState.status !== 'error'" :target="{ kind: 'connection', endpoint: endpointUrl, apiPath: '/api/ps' }" presentation="compact" />
     </div>
 
     <div
@@ -591,6 +609,7 @@ defineExpose({
                 <p tw-class="mt-1 break-words text-[10px] font-medium leading-relaxed text-red-500/80 dark:text-red-300/80">
                   {{ requestState.errorMessage }}
                 </p>
+                <CspMessageHint activity-for-display-only="running-models" v-if="usesNetwork" :target="{ kind: 'connection', endpoint: requestState.endpointUrl, apiPath: '/api/ps' }" presentation="error" />
               </div>
               <button
                 type="button"
@@ -622,6 +641,9 @@ defineExpose({
               <AlertCircleIcon tw-class="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {{ requestState.errorMessage }}
             </div>
+            <CspMessageHint activity-for-display-only="running-models" v-if="requestState.status === 'error' && usesNetwork" :target="{ kind: 'connection', endpoint: requestState.endpointUrl, apiPath: '/api/ps' }" presentation="error" />
+
+            <CspMessageHint activity-for-display-only="unload-model" v-if="hasEndpoint && usesNetwork && models.length > 0" :target="{ kind: 'connection', endpoint: endpointUrl, apiPath: '/api/generate' }" presentation="compact" tw-class="px-4 py-2.5 sm:px-5" />
 
             <TransitionGroup name="ollama-model-list" tag="ul" tw-class="relative divide-y divide-gray-100 dark:divide-gray-800" data-testid="ollama-model-list">
               <li
@@ -714,6 +736,7 @@ defineExpose({
                       <AlertCircleIcon tw-class="mt-0.5 h-3 w-3 shrink-0" />
                       {{ modelActionErrors.get(model.name) }}
                     </p>
+                    <CspMessageHint activity-for-display-only="unload-model" v-if="modelActionErrors.has(model.name) && usesNetwork" :target="modelActionHintRequests.get(model.name)" presentation="error" />
                   </div>
 
                   <button

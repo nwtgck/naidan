@@ -19,12 +19,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="media-step" aria-labelledby="audio-open">
       <h2 id="audio-open">{{ s.open_audio_generation_and_prepare_a_model }}</h2>
       <p><RenderText :node="s.find_and_prepare_an_audio_model()" /></p>
+      <p><RenderText :node="s.use_your_own_audio_model_files()" /></p>
       <figure class="guide-figure"><AudioCreationStep stage="open" :messages="s" /><figcaption class="caption">{{ s.download_and_select_an_audio_model }}</figcaption></figure>
     </section>
 
     <section class="media-step" aria-labelledby="audio-text">
       <h2 id="audio-text">{{ s.enter_text_and_choose_its_language }}</h2>
       <p><RenderText :node="s.set_the_speech_text_and_language()" /></p>
+      <p>{{ s.recognize_the_selected_audio_model }}</p>
       <figure class="guide-figure"><AudioCreationStep stage="text" :messages="s" /><figcaption class="caption">{{ s.choose_a_model_text_and_language }}</figcaption></figure>
     </section>
 

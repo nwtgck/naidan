@@ -15,6 +15,7 @@ import {
   chatToDomain,
   chatToDto,
   chatGroupToDomain,
+  chatGroupConfigurationToDomain,
   chatGroupToDto,
   settingsToDomain,
   settingsToDto,
@@ -242,6 +243,11 @@ export class LocalStorageProvider extends IStorageProvider {
     const dto = chatGroupToDto({ domain: chatGroup });
     const serialized = JSON.stringify(ChatGroupSchemaDto.parse(dto));
     localStorage.setItem(`${KEY_GROUP_PREFIX}${idToRaw({ id: chatGroup.id })}`, serialized);
+  }
+
+  async loadChatGroupConfiguration({ id }: { id: ChatGroupId }): Promise<Omit<ChatGroup, 'items'> | null> {
+    const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${idToRaw({ id })}`);
+    return raw === null ? null : chatGroupConfigurationToDomain({ dto: ChatGroupSchemaDto.parse(JSON.parse(raw)) });
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {

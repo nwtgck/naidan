@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
 import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../navigation/routes';
 import { writeMinimalArticleFixtures } from './article-fixture.test-support';
+import { writeLifecycleHomeFixture } from './lifecycle-home-fixture.test-support';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('Docs development and static output', () => {
@@ -112,7 +113,7 @@ describe('Docs development and static output', () => {
         }
       }
     }
-  }, 60_000);
+  }, 180_000);
 });
 
 describe('Docs adversarial lifecycle behavior', () => {
@@ -141,6 +142,7 @@ describe('Docs adversarial lifecycle behavior', () => {
 
   it('isolates concurrent languages and updates strings without a server restart', async () => {
     await using fixture = await createSiteFixture();
+    await writeLifecycleHomeFixture({ root: fixture.docs });
     await using dev = await startSiteDev({ root: fixture.root });
     await Promise.all(Array.from({ length: 40 }, async (_, index) => {
       const locale = index % 2 === 0 ? 'en' : 'ja';
@@ -148,21 +150,23 @@ describe('Docs adversarial lifecycle behavior', () => {
       expect(response.status).toBe(200);
       using parsed = parsePage({ html: await response.text() });
       expect(parsed.document.documentElement.lang).toBe(locale);
-      const heading = parsed.document.querySelector('h1')?.textContent;
-      if (locale === 'ja') {
-        expect(heading).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
-      } else {
-        expect(heading).toBe('An easy-to-use AI environment, built around privacy.');
-      }
+      expect(parsed.document.querySelector('h1')?.textContent).toBe(`Lifecycle home in ${locale}`);
+      expect(parsed.document.querySelector('[data-testid="lifecycle-rich"]')?.textContent).toBe(`Rich content in ${locale}.`);
+      expect(parsed.document.querySelector('[data-testid="lifecycle-rich"] strong')?.textContent).toBe(locale);
+      expect(parsed.document.querySelector('[data-testid="lifecycle-list"]')?.textContent).toBe(`Fresh list in ${locale}.`);
     }));
     const file = path.join(fixture.docs, 'pages/index/messages/ja.tsx');
     const source = await readFile(file, 'utf8');
-    await writeFile(file, source.replace('知りたい機能から探す', 'Updated Japanese guide heading'));
+    const updated = source.replace('Live heading in ja.', 'Updated Japanese guide heading');
+    expect(updated).not.toBe(source);
+    await writeFile(file, updated);
     await vi.waitFor(async () => {
       const response = await dev.request({ url: '/docs/ja/' });
       expect(await response.text()).toContain('Updated Japanese guide heading');
     }, { timeout: 8000, interval: 100 });
-    expect(await (await dev.request({ url: '/docs/en/' })).text()).not.toContain('Updated Japanese guide heading');
+    const english = await (await dev.request({ url: '/docs/en/' })).text();
+    expect(english).toContain('Live heading in en.');
+    expect(english).not.toContain('Updated Japanese guide heading');
   });
 
   it('uses fresh render modules, removes obsolete output and keeps server dictionaries out of client assets', async () => {

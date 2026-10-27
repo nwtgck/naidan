@@ -1,0 +1,1 @@
+export const OnBoardingModalV2ModelSources__find_models_with_up_to_billion_parameters_on_hugging_face = ({ count }: { count: string }): string => `Find models with up to ${count}B parameters on Hugging Face`;

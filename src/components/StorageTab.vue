@@ -425,6 +425,7 @@ defineExpose({
 
     <ImportExportModal
       :is-open="showImportExportModal"
+      initial-mode="menu"
       @close="showImportExportModal = false"
     />
   </div>

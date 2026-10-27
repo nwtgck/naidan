@@ -1,1 +1,1 @@
-export const ModelDiscoveryPanel__find_models = (): string => "モデルを探す";
+export const ModelDiscoveryPanel__find_models = (): string => "モデルを見つける";

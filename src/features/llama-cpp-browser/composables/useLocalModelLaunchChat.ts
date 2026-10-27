@@ -1,3 +1,4 @@
+import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
 import { computed, onScopeDispose, watch, type ComputedRef } from 'vue';
 import type { Chat, Endpoint } from '@/01-models/types';
 import { useAppEntry } from '@/composables/useAppEntry';
@@ -96,7 +97,7 @@ export function useLocalModelLaunchChat({ chat, resolved }: {
     const binding = resolved.value;
     return current !== null && selected !== undefined && selected.isCurrent()
       && current.groupId === selected.chatGroupId && binding?.endpoint.type === 'llama_cpp_browser'
-      && binding.modelId !== undefined && binding.modelId === selected.model.modelId;
+      && binding.modelId !== undefined && sameLocalModelBinding({ left: binding, right: { endpoint: { type: 'llama_cpp_browser' }, modelId: selected.model.modelId } });
   });
   let observedSession: LocalModelLaunchSession | undefined;
   let recheckPending = false;

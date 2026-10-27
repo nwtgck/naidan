@@ -1,3 +1,4 @@
+import { createGenerationSpeedTracker } from './generation-speed';
 import { gpuProfilingProfile } from '@/features/llama-cpp-browser/types';
 import type { GpuProfileMeasurement } from '@/features/llama-cpp-browser/runtime/gpu-profiler';
 import { createNativeGraphCounters } from './native-graph-counters';
@@ -71,8 +72,9 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
   let stage: DiagnosticStage = 'session';
   let session: Awaited<ReturnType<typeof prepareGenerationSession>> | undefined;
   let graphCounters: ReturnType<typeof createNativeGraphCounters> | undefined;
-  const measurements = createGenerationPerformance({ enabled: request.debug === 'on' || request.measurement !== undefined, now: () => performance.now() });
-  const checkpointObservation = request.measurement ? createCheckpointPerformance({ now: () => performance.now() }) : undefined;
+  const measurementsEnabled = request.debug === 'on' || request.measurement !== undefined;
+  const measurements = createGenerationPerformance({ enabled: measurementsEnabled, now: () => performance.now() });
+  const checkpointObservation = measurementsEnabled ? createCheckpointPerformance({ now: () => performance.now() }) : undefined;
   measurements.counters.runtimeAssetBaseURL = request.assetBaseURL;
   measurements.counters.sampling = {
     temperature: request.temperature,
@@ -458,6 +460,24 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       discardCheckpoint();
     }
     measurements.counters.reusedTokens = reusedTokens;
+    if (measurementsEnabled) {
+      measurements.counters.cacheReuse = {
+        reusedTokens,
+        evaluatedTokens: tokenCount - reusedTokens,
+        tokens: tokenCount,
+        cachedTokens,
+        commonPrefixTokens,
+        cacheComparison,
+        nativeMemoryKind,
+        nativePositionMin,
+        nativePositionMax,
+        nativeRollbackTokens,
+        reason,
+        cacheRemoval: sequenceRemoval,
+        checkpointTokens: cache.checkpoint?.tokens.length ?? 0,
+        checkpointBytes: cache.checkpoint?.bytes ?? 0,
+      };
+    }
     logDiagnostic({
       diagnostic: {
         event: 'cache-reuse',
@@ -814,10 +834,12 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       }
       checkCancelled();
     };
+    const speedTracker = createGenerationSpeedTracker({ onEvent });
     for (; generated < maximum; generated++) {
       checkCancelled();
       setStage({ value: 'native-sample' });
       const token = await chatSampler.sample({ context });
+      const sampledAt = performance.now();
       const throughput = measurements.sampled();
       if (throughput) {
         try {
@@ -831,6 +853,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
       checkCancelled();
       const { text: tokenText, endOfGeneration } = await renderer.render({ token, special: chatSampler.preservedTokens.has(token) });
       measurements.rendered({ endOfGeneration: Boolean(endOfGeneration) });
+      speedTracker.sample({ sampledAt, endOfGeneration: Boolean(endOfGeneration) });
       const rendered = stream.push({ text: tokenText });
       checkCancelled();
       output += rendered.text;
@@ -925,7 +948,8 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
     cache.validity = !multimodal && memory !== 0n ? 'valid' : 'invalid';
     outcome = 'completed';
-    return { ...parsed, finishReason };
+    const generationMetrics = speedTracker.finish();
+    return { ...parsed, finishReason, ...(generationMetrics === undefined ? {} : { generationMetrics }) };
   } catch (error) {
     sampleMemoryDiagnostics({ core, checkpoint: 'generation-interrupted' });
     outcome = failureOutcome({ error });

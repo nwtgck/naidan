@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
-import { RefreshCwIcon } from 'lucide-vue-next';
+import { ArrowDownLeftIcon, RefreshCwIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import type { NaidanPeerManager, RpcRegistrationView } from '@/features/naidan-rpc-integration/runtime/manager';
 import type { NaidanPeerControlledMethodName, PeerProvidedMethods } from '@/features/naidan-rpc-integration/contract';
 
@@ -86,17 +87,18 @@ function groupState({ names }: { names: readonly NaidanPeerControlledMethodName[
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <section tw-class="space-y-3 rounded-2xl border border-gray-200/80 bg-white/60 p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900/30" data-testid="rpc-peer-provision">
+  <section tw-class="min-w-0 space-y-3 border-t border-gray-200/70 pt-5 dark:border-gray-800" data-testid="rpc-peer-provision">
     <header tw-class="flex items-center justify-between gap-3">
-      <h3 tw-class="text-sm font-bold text-gray-800 dark:text-white">{{ lazyStrings.RpcPeerProvision__available_from_peer() }}</h3>
-      <button type="button" :disabled="!connected" @click="refresh" :aria-label="lazyStrings.naidanRpc__refresh()" :title="lazyStrings.naidanRpc__refresh()" tw-class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-800 dark:hover:text-blue-400" data-testid="rpc-peer-provision-refresh"><RefreshCwIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
+      <h3 tw-class="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-300"><ArrowDownLeftIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" /><span>{{ lazyStrings.RpcPeerProvision__available_from_peer() }}</span></h3>
+      <button type="button" :disabled="!connected" @click="refresh" :aria-label="lazyStrings.naidanRpc__refresh()" :title="lazyStrings.naidanRpc__refresh()" tw-class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-800 dark:hover:text-blue-400" data-testid="rpc-peer-provision-refresh"><RefreshCwIcon aria-hidden="true" tw-class="h-3.5 w-3.5" /></button>
     </header>
-    <p v-if="!connected" tw-class="text-xs text-gray-500 dark:text-gray-400" data-testid="rpc-peer-provision-status">{{ lazyStrings.RpcPeerProvision__connect_to_check() }}</p>
-    <p v-else-if="status === 'loading' || provided?.status === 'checking'" tw-class="text-xs text-gray-500 dark:text-gray-400" data-testid="rpc-peer-provision-status">{{ lazyStrings.RpcPeerProvision__checking_provided_functions() }}</p>
+    <p v-if="!connected" tw-class="text-xs text-gray-600 dark:text-gray-400" data-testid="rpc-peer-provision-status">{{ lazyStrings.RpcPeerProvision__connect_to_check() }}</p>
+    <p v-else-if="status === 'loading' || provided?.status === 'checking'" tw-class="text-xs text-gray-600 dark:text-gray-400" data-testid="rpc-peer-provision-status">{{ lazyStrings.RpcPeerProvision__checking_provided_functions() }}</p>
     <p v-else-if="status === 'failed'" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300" data-testid="rpc-peer-provision-status">{{ lazyStrings.RpcPeerProvision__could_not_check() }}</p>
-    <dl v-else-if="provided?.status === 'ready'" tw-class="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 bg-gray-50/50 text-xs dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-800/20">
-      <div tw-class="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"><dt tw-class="font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.RpcPeerProvision__chat_inference() }}</dt><dd tw-class="text-gray-500 dark:text-gray-400" data-testid="rpc-peer-chat">{{ groupState({ names: ['listChatModels', 'generateChat'] }) }}</dd></div>
-      <div tw-class="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"><dt tw-class="font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.RpcPeerProvision__image_generation() }}</dt><dd tw-class="text-gray-500 dark:text-gray-400" data-testid="rpc-peer-images">{{ groupState({ names: ['listImageModels', 'generateImage'] }) }}</dd></div>
+    <dl v-else-if="provided?.status === 'ready'" tw-class="divide-y divide-gray-200/60 overflow-hidden rounded-xl border border-gray-200/60 bg-gray-50/40 text-xs dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-800/20">
+      <div tw-class="flex flex-wrap items-center justify-between gap-2 px-3 py-3"><dt tw-class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ lazyStrings.RpcPeerProvision__chat_inference() }}</dt><dd tw-class="text-gray-600 dark:text-gray-400" data-testid="rpc-peer-chat">{{ groupState({ names: ['listChatModels', 'generateChat'] }) }}</dd></div>
+      <div tw-class="flex flex-wrap items-center justify-between gap-2 px-3 py-3"><dt tw-class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ lazyStrings.RpcPeerProvision__image_generation() }}</dt><dd tw-class="text-gray-600 dark:text-gray-400" data-testid="rpc-peer-images">{{ groupState({ names: ['listImageModels', 'generateImage'] }) }}</dd></div>
     </dl>
+    <CspMessageHint activity-for-display-only="relay" v-if="status === 'failed' && connected" :target="{ kind: 'relay', url: registration?.registration.transport.serverUrl }" presentation="error" />
   </section>
 </template>

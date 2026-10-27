@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import HomeChatResponseDemo from '../components/HomeChatResponseDemo.vue';
+import NaidanChatInput from '../components/demos/NaidanChatInput.vue';
 import { messages as homeEn } from '../pages/index/messages/en';
 import { messages as homeJa } from '../pages/index/messages/ja';
 import { messages as commonEn } from '../messages/common/en';
@@ -30,6 +31,27 @@ describe('homepage chat replica', () => {
     expect(scene?.textContent).toContain(home.type_a_message);
     expect(scene?.textContent).toContain('Gemma');
     expect(scene?.textContent).not.toContain('notes.txt');
+    const input = scene?.querySelector('[data-testid="docs-chat-input"]');
+    expect(input?.querySelectorAll('button, input, textarea, [tabindex]')).toHaveLength(0);
+    expect(Array.from(input?.querySelectorAll('[data-testid]') ?? [], element => element.getAttribute('data-testid')).filter(testId => ['docs-chat-input-attach', 'docs-chat-input-tools', 'docs-chat-input-editor', 'docs-chat-input-model', 'docs-chat-input-send'].includes(testId ?? ''))).toEqual(['docs-chat-input-attach', 'docs-chat-input-tools', 'docs-chat-input-editor', 'docs-chat-input-model', 'docs-chat-input-send']);
+    expect(input?.querySelector('[data-testid="docs-chat-input-source"]')).toBeNull();
+    expect(page.document.querySelector('.replica-model-source')).toBeNull();
+    expect(input?.querySelector('[data-testid="docs-chat-input-tools"]')?.getAttribute('title')).toBe(common.chrome_tools);
+    expect(input?.querySelector('.demo-send-ready svg')?.classList.contains('lucide-arrow-up')).toBe(true);
+    expect(input?.querySelector('.demo-send-stop svg')?.classList.contains('lucide-square')).toBe(true);
     expect(page.document.querySelector('script, [data-docs-island]')).toBeNull();
+  });
+
+  it.each([
+    { common: commonEn, effort: 'High' },
+    { common: commonJa, effort: '高' },
+  ])('keeps model inheritance and reasoning readable in the static generating view', async ({ common, effort }) => {
+    const html = await renderToString(createSSRApp({ render: () => h(NaidanChatInput, { messages: common, model: 'Qwen', source: common.chrome_inherit, reasoning: effort, status: 'generating' }) }));
+    using page = parsePage({ html });
+    expect(page.document.querySelector('[data-testid="docs-chat-input-source"]')?.textContent).toBe(common.chrome_inherit);
+    expect(page.document.querySelector('[data-testid="docs-chat-input-reasoning"]')?.textContent).toBe(effort);
+    expect(page.document.querySelector('[data-testid="docs-chat-input-reasoning"]')?.getAttribute('title')).toBe(common.chrome_reasoning);
+    expect(page.document.querySelector('[data-testid="docs-chat-input-send"]')?.getAttribute('title')).toBe(common.chrome_stop);
+    expect(page.document.querySelector('button, input, textarea, script')).toBeNull();
   });
 });

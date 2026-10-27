@@ -5,6 +5,7 @@ import { useElementBounding, useWindowSize, onClickOutside } from '@vueuse/core'
 const props = withDefaults(defineProps<{
   isOpen: boolean,
   triggerEl: HTMLElement | null,
+  additionalTriggerEls?: readonly HTMLElement[],
   width?: number,
 }>(), {
   width: 192, // Standard w-48 to ensure text like "Compare Versions" doesn't wrap
@@ -67,7 +68,7 @@ const floatingStyle = computed((): CSSProperties => {
 });
 
 onClickOutside(dropdownRef, (event) => {
-  if (props.triggerEl?.contains(event.target as Node)) {
+  if (props.triggerEl?.contains(event.target as Node) || props.additionalTriggerEls?.some(element => element.contains(event.target as Node))) {
     return;
   }
   emit('close');

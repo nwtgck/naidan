@@ -11,6 +11,7 @@ import { storageService } from '@/00-storage/service';
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     updateChatMeta: vi.fn().mockResolvedValue(undefined),
     updateSettings: vi.fn().mockResolvedValue(undefined),
@@ -28,6 +29,7 @@ describe('useChatWeshPreferences', () => {
       await updater({ current: liveChatRegistry.get(id) ?? null });
     });
     useSettings().TEST_ONLY.__testOnlyReset();
+    setToolConfigPersistence({ persistence: 'disabled' });
   });
 
   function setToolConfigPersistence({ persistence }: { persistence: 'disabled' | 'enabled' }) {

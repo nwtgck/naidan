@@ -13,7 +13,7 @@ export type AuthorizedModelDestination = { destination: ModelDestination, expect
 
 const registrationChangeEvent = 'naidan-host-model-directories-changed';
 
-// One accepted intent is shared by both LM download entry points. It overlays
+// One accepted intent is shared by the LM download entry points. It overlays
 // stored settings only until its guarded write completes, without changing jobs
 // that already captured a destination or the image-generation selector.
 type DestinationIntent = {
@@ -26,7 +26,7 @@ const destinationIntent = shallowRef<DestinationIntent>();
 let destinationRevision = 0;
 
 
-/** Both LM download entry points share one persisted choice; image generation remains independent. */
+/** LM download entry points share one persisted choice; image generation remains independent. */
 export function useModelDownloadDestination({ blocked, changed }: {
   blocked: () => boolean,
   changed: () => void,
@@ -238,10 +238,12 @@ export function useModelDownloadDestination({ blocked, changed }: {
     void refresh();
     changed();
   }
-  watch(() => host.registrations(), () => {
+  // Saving another setting (including the destination) may replace Settings.
+  // Only actual registration changes require rereading every saved handle.
+  watch(() => JSON.stringify(host.registrations()), () => {
     void refresh();
     changed();
-  }, { deep: true });
+  });
   onMounted(() => {
     window.addEventListener('focus', refreshOnFocus);
     window.addEventListener(registrationChangeEvent, registrationsChanged);
@@ -258,6 +260,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
     authorize,
     revision,
     failure,
+    persistence: computed(() => pending.value?.status ?? 'saved'),
     label,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };

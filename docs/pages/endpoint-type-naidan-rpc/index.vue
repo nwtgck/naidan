@@ -23,12 +23,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-models-naidan-rpc">
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
-    <p class="app-entry-intro"><RenderText :node="s.open_app_on_each_device({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_app_on_each_device({ locale, destination: { kind: 'screen', screen: 'connection' } })" /></p>
     <p class="hosted-example"><RenderText :node="s.hosted_edition_requirement({ locale, href: 'https://naidan.pages.dev/' })" /></p>
 
     <section v-for="(step, key) in steps" :key="key" class="rpc-step" :aria-labelledby="`rpc-${key}`" data-testid="rpc-guide-step">
       <h2 :id="`rpc-${key}`">{{ step.title }}</h2>
       <p><RenderText :node="step.body()" /></p>
+      <p v-if="key === 'pair'">{{ s.use_the_current_version_on_both_devices }}</p>
       <p v-if="key === 'pair'" class="relay-origin"><RenderText :node="s.piping_server_relay_example({ locale, href: 'https://github.com/nwtgck/piping-server#public-servers', serverSample: s.sample_relay_origin })" /></p>
       <figure class="guide-figure"><NaidanRpcStep :stage="key" :messages="s" /><figcaption class="caption"><RenderText :node="step.caption()" /></figcaption></figure>
     </section>

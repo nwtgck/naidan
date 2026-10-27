@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { BirdIcon, UserIcon, CopyIcon, PencilIcon, RefreshCwIcon, GitForkIcon, SendIcon, MoreVerticalIcon, MoreHorizontalIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, FileEditIcon, Settings2Icon, XCircleIcon, Volume2Icon, HistoryIcon, LinkIcon, PaperclipIcon, MessageSquareIcon } from 'lucide-vue-next';
+import { BirdIcon, UserIcon, CopyIcon, PencilIcon, RefreshCwIcon, GitForkIcon, SendIcon, MoreVerticalIcon, MoreHorizontalIcon, ChevronLeftIcon, ChevronRightIcon, FileEditIcon, Settings2Icon, XCircleIcon, Volume2Icon, HistoryIcon, LinkIcon, MessageSquareIcon } from 'lucide-vue-next';
 import NaidanAppFrame from '../../components/demos/NaidanAppFrame.vue';
+import NaidanChatInput from '../../components/demos/NaidanChatInput.vue';
 import RenderText from '../../components/RenderText';
 import type { BranchingMessages, BranchingChrome } from './messages';
 
@@ -272,7 +273,8 @@ defineExpose({
   <section class="branch-demo" :aria-label="`${copy.label}: ${copy.methods[method].title}`" :data-testid="`branch-method-${variant}`" data-docs-animation="branch-walkthrough" :data-playback="playback" :data-method="method" :data-stage="stage">
     <h3 class="method-title">{{ copy.methods[method].title }}</h3>
     <p class="method-description">{{ copy.methods[method].body }}</p>
-    <NaidanAppFrame :title="activeTitle" address="https://naidan.pages.dev/" :sidebar="sidebar" :messages="chrome">
+    <!-- Inheritance badges are intentionally omitted to focus on branching and version controls. -->
+    <NaidanAppFrame :title="activeTitle" address="https://naidan.pages.dev/" :sidebar="sidebar" :messages="chrome" model="Gemma">
       <template v-if="variant === 'fork'" #title>
         <span class="branch-title-stack"><span class="branch-title-reserve" aria-hidden="true">{{ copy.forkTitle }}</span><span>{{ activeTitle }}</span></span>
       </template>
@@ -382,10 +384,7 @@ defineExpose({
           </div>
         </div>
       </div>
-      <div class="sample-input" aria-hidden="true">
-        <div class="input-placeholder">{{ copy.ui.inputPlaceholder }}<span><ChevronDownIcon :size="14" /><FileEditIcon :size="14" /></span></div>
-        <div class="input-footer"><span class="model-select">Gemma<ChevronDownIcon :size="11" /></span><PaperclipIcon :size="15" :title="copy.ui.attach" /><Settings2Icon :size="15" :title="copy.ui.tools" /><span class="sample-send" :title="copy.ui.send"><kbd>Ctrl + Enter</kbd><SendIcon :size="14" /></span></div>
-      </div>
+      <NaidanChatInput class="sample-input" :messages="chrome" model="Gemma" :status="generating ? 'generating' : 'idle'">{{ copy.ui.inputPlaceholder }}</NaidanChatInput>
     </NaidanAppFrame>
     <div class="walkthrough-footer">
       <div class="stage-choices" role="group" :aria-label="copy.controls.steps"><button v-for="value in stages" :key="value" type="button" :disabled="availability === 'static'" :aria-current="stage === value ? 'step' : undefined" :data-testid="`branch-step-${value}`" @click="chooseStage({ value })"><span aria-hidden="true">{{ value + 1 }}</span><span class="sr-only">{{ value + 1 }}. <RenderText :node="copy.methods[method].stages[value]()" /></span></button></div>
@@ -445,7 +444,7 @@ defineExpose({
   gap: 6px;
   padding: 7px 6px;
   background: transparent;
-  color: #a4b2c7;
+  color: var(--muted);
   text-align: left;
   font-size: 10px;
 }
@@ -461,8 +460,8 @@ defineExpose({
 }
 
 .sample-chat.active {
-  background: #253858;
-  color: #93c5fd;
+  background: color-mix(in srgb,var(--blue) 14%,var(--surface));
+  color: var(--blue);
   border-radius: 7px;
 }
 
@@ -502,8 +501,8 @@ defineExpose({
 }
 
 .assistant-message {
-  border-block: 1px solid #1f293780;
-  background: #1f293733;
+  border-block: 1px solid var(--line);
+  background: color-mix(in srgb,var(--surface-2) 35%,var(--bg));
 }
 
 .message-heading {
@@ -511,12 +510,12 @@ defineExpose({
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-  color: #9ca3af;
+  color: var(--muted);
   font: 700 10px/1.4 ui-sans-serif,system-ui,sans-serif;
 }
 
 .user-message .message-heading {
-  color: #e5e7eb;
+  color: var(--text);
   text-transform: uppercase;
   letter-spacing: .1em;
 }
@@ -526,26 +525,26 @@ defineExpose({
   place-items: center;
   width: 32px;
   height: 32px;
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: #1f2937;
-  color: #6b7280;
+  background: var(--surface-2);
+  color: var(--subtle);
   flex-shrink: 0;
 }
 
 .assistant-avatar {
-  color: #60a5fa;
+  color: var(--blue);
 }
 
 .heading-tools {
   display: flex;
   gap: 10px;
-  color: #6b7280;
+  color: var(--subtle);
 }
 
 .branch-demo .message-text {
   margin: 0;
-  color: #e5e7eb;
+  color: var(--text);
   font-size: 13px;
   line-height: 1.85;
   overflow-wrap: anywhere;
@@ -580,24 +579,24 @@ defineExpose({
   border-radius: 7px;
   padding: 6px;
   background: transparent;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .message-tools button:hover {
-  background: #1f2937;
-  color: #60a5fa;
+  background: var(--surface-2);
+  color: var(--blue);
 }
 
 .decoration.blue-tool {
-  color: #60a5fa66;
+  color: color-mix(in srgb,var(--blue) 40%,transparent);
 }
 
 .version-paging {
-  border: 1px solid #374151;
+  border: 1px solid var(--line-strong);
   padding: 2px 5px;
-  background: #1f2937;
+  background: var(--surface-2);
   border-radius: 8px;
-  color: #9ca3af;
+  color: var(--muted);
   font: 700 10px/1.4 ui-sans-serif,system-ui,sans-serif;
   white-space: nowrap;
 }
@@ -608,7 +607,7 @@ defineExpose({
   padding: 4px;
   background: transparent;
   border: 0;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .version-paging button:disabled {
@@ -621,9 +620,9 @@ defineExpose({
 }
 
 .inline-editor {
-  border: 1px solid #4b5563;
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: #1f2937;
+  background: var(--surface-2);
 }
 
 .inline-editor textarea {
@@ -633,14 +632,14 @@ defineExpose({
   resize: vertical;
   border: 0;
   background: transparent;
-  color: #f3f4f6;
+  color: var(--text);
   padding: 16px;
   font: 13px/1.7 ui-sans-serif,system-ui,sans-serif;
 }
 
 .inline-editor:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px #3b82f633;
+  border-color: var(--blue-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb,var(--blue-strong) 20%,transparent);
 }
 
 .editor-footer {
@@ -655,7 +654,7 @@ defineExpose({
 .editor-tools {
   display: flex;
   gap: 16px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 
 .editor-buttons {
@@ -669,7 +668,7 @@ defineExpose({
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #9ca3af;
+  color: var(--muted);
   padding: 6px 8px;
   font: 700 10px/1.5 ui-sans-serif,system-ui,sans-serif;
 }
@@ -687,7 +686,7 @@ defineExpose({
   background: #2563eb;
   color: #fff;
   border-radius: 12px;
-  box-shadow: 0 6px 15px #3b82f633;
+  box-shadow: 0 6px 15px color-mix(in srgb,var(--blue-strong) 20%,transparent);
 }
 
 .editor-buttons kbd,.sample-send kbd {
@@ -714,8 +713,8 @@ defineExpose({
   width: max-content;
   max-width: min(260px,68vw);
   padding: 4px 0;
-  background: #1f2937f2;
-  border: 1px solid #374151;
+  background: color-mix(in srgb,var(--surface-2) 95%,transparent);
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
   box-shadow: 0 15px 25px #0006;
   z-index: 2;
@@ -730,7 +729,7 @@ defineExpose({
   padding: 6px 12px;
   font-size: 11px;
   line-height: 1.5;
-  color: #d1d5db;
+  color: var(--text);
   text-align: left;
 }
 
@@ -739,7 +738,7 @@ defineExpose({
 }
 
 .message-menu .fork-action {
-  color: #93c5fd;
+  color: var(--blue);
 }
 
 .waiting {
@@ -752,7 +751,7 @@ defineExpose({
 .waiting i {
   width: 5px;
   height: 5px;
-  background: #60a5fa;
+  background: var(--blue);
   border-radius: 50%;
   animation: docs-branch-wait 1.5s ease-in-out infinite;
 }
@@ -765,59 +764,7 @@ defineExpose({
 }
 
 .sample-input {
-  min-width: 0;
   margin: 8px 8px 8px;
-  border: 1px solid #374151;
-  border-radius: 16px;
-  background: #1f2937;
-  box-shadow: 0 8px 15px #0002;
-}
-
-.input-placeholder {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 42px;
-  padding: 10px 12px 5px;
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.input-placeholder > span {
-  display: grid;
-  gap: 8px;
-}
-
-.input-footer {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 9px 7px;
-  color: #9ca3af;
-}
-
-.model-select {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 68px;
-  border: 1px solid #374151;
-  border-radius: 7px;
-  padding: 6px;
-  font-size: 9px;
-}
-
-.sample-send {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  padding: 7px;
-  border-radius: 12px;
-  background: #2563eb;
-  color: #fff;
-  opacity: .5;
 }
 
 .walkthrough-footer {
@@ -902,9 +849,9 @@ defineExpose({
 }
 
 .spotlight {
-  color: #93c5fd !important;
-  background: #1e40af66 !important;
-  outline: 2px solid #60a5fa88;
+  color: var(--blue) !important;
+  background: color-mix(in srgb,var(--blue) 14%,var(--surface)) !important;
+  outline: 2px solid color-mix(in srgb,var(--blue) 55%,transparent);
   outline-offset: 1px;
 }
 
@@ -932,7 +879,7 @@ defineExpose({
 }
 
 .branch-demo button:focus-visible,.inline-editor textarea:focus-visible {
-  outline: 2px solid #60a5fa;
+  outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
 
@@ -947,10 +894,10 @@ defineExpose({
 
 @keyframes docs-branch-focus {
   0%,100% {
-    outline-color: #60a5fa66;
+    outline-color: color-mix(in srgb,var(--blue) 40%,transparent);
   }
   50% {
-    outline-color: #93c5fd;
+    outline-color: var(--blue);
   }
 }
 
@@ -986,18 +933,11 @@ defineExpose({
   .editor-tools {
     padding-bottom: 3px;
   }
-  .editor-buttons kbd,.sample-send kbd {
+  .editor-buttons kbd {
     display: none;
   }
   .sample-input {
     margin-inline: 8px;
-  }
-  .input-footer {
-    gap: 7px;
-  }
-  .model-select {
-    min-width: 0;
-    font-size: 8px;
   }
   .sample-chat {
     padding: 6px 3px;

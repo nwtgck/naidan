@@ -5,15 +5,16 @@ import { ExperimentalRemoteImageModelEditorSchemaDto } from '@/00-storage/00-dto
 import type { ExperimentalImageInferenceLocationPreferenceDto, ExperimentalRemoteImageModelEditorPreferenceDto, ExperimentalRemoteImageModelEditorDto } from '@/00-storage/00-dto/experimental.dto';
 
 export function remoteImageModelEditorToDto({ editor }: { editor: RemoteImageModelEditor }): ExperimentalRemoteImageModelEditorDto {
-  const { primary, components, loras, ...unhandled } = editor;
+  const { primary, components, loras, automaticSlots, ...unhandled } = editor;
   unhandled satisfies Record<PropertyKey, never>;
-  return ExperimentalRemoteImageModelEditorSchemaDto.parse(exactObject<ExperimentalRemoteImageModelEditorDto>()({ primary, components, loras }));
+  return ExperimentalRemoteImageModelEditorSchemaDto.parse(exactObject<ExperimentalRemoteImageModelEditorDto>()({ primary, components, loras, automaticSlots }));
 }
 
 export function remoteImageModelEditorToDomain({ dto }: { dto: ExperimentalRemoteImageModelEditorDto }): RemoteImageModelEditor {
-  const { primary, components, loras, ...unhandled } = dto;
+  const { primary, components, loras, automaticSlots, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
-  return exactObject<RemoteImageModelEditor>()(ExperimentalRemoteImageModelEditorSchemaDto.parse({ primary, components, loras }));
+  const parsed = ExperimentalRemoteImageModelEditorSchemaDto.parse({ primary, components, loras, automaticSlots });
+  return exactObject<RemoteImageModelEditor>()({ ...parsed, automaticSlots: parsed.automaticSlots ?? [] });
 }
 
 export function imageInferenceLocationToDto({ location }: { location: ImageInferenceLocationPreference }): ExperimentalImageInferenceLocationPreferenceDto {

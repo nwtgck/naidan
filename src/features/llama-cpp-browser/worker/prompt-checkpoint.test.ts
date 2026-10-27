@@ -13,7 +13,7 @@ function promptCheckpointBoundary({ core, vocab, prompt, promptPointer, generati
     generationPrompt,
     tokens,
     onTokenize,
-    parts: [{ byteOffset: 0, byteLength: new TextEncoder().encode(prompt).length, isInput: false, tokenOffset: 0, tokenCount: tokens.length, addSpecial: true }],
+    parts: [{ byteOffset: 0, byteLength: new TextEncoder().encode(prompt).length, parseSpecial: true, tokenOffset: 0, tokenCount: tokens.length, addSpecial: true }],
   });
 }
 
@@ -318,8 +318,8 @@ describe('checkpoint boundaries in segmented prompts', () => {
       tokens: [1, 90, 91, 92, 93, 94],
       onTokenize,
       parts: [
-        { byteOffset: 0, byteLength: 3, isInput: false, tokenOffset: 0, tokenCount: 1, addSpecial: false },
-        { byteOffset: 3, byteLength: 16, isInput: true, tokenOffset: 1, tokenCount: 5, addSpecial: false },
+        { byteOffset: 0, byteLength: 3, parseSpecial: true, tokenOffset: 0, tokenCount: 1, addSpecial: false },
+        { byteOffset: 3, byteLength: 16, parseSpecial: false, tokenOffset: 1, tokenCount: 5, addSpecial: false },
       ],
     });
     expect(boundary).toBe(3);
@@ -339,9 +339,9 @@ describe('checkpoint boundaries in segmented prompts', () => {
       tokens: [1, 90, 91, 92, 93],
       onTokenize: vi.fn(),
       parts: [
-        { byteOffset: 0, byteLength: 3, isInput: false, tokenOffset: 1, tokenCount: 1, addSpecial: false },
-        { byteOffset: 3, byteLength: 12, isInput: true, tokenOffset: 2, tokenCount: 2, addSpecial: false },
-        { byteOffset: 15, byteLength: 4, isInput: false, tokenOffset: 4, tokenCount: 1, addSpecial: false },
+        { byteOffset: 0, byteLength: 3, parseSpecial: true, tokenOffset: 1, tokenCount: 1, addSpecial: false },
+        { byteOffset: 3, byteLength: 12, parseSpecial: false, tokenOffset: 2, tokenCount: 2, addSpecial: false },
+        { byteOffset: 15, byteLength: 4, parseSpecial: true, tokenOffset: 4, tokenCount: 1, addSpecial: false },
       ],
     });
     expect(boundary).toBe(4);
@@ -360,8 +360,8 @@ describe('checkpoint boundaries in segmented prompts', () => {
       tokens: [1, 90, 91],
       onTokenize: vi.fn(),
       parts: [
-        { byteOffset: 0, byteLength: 4, isInput: true, tokenOffset: 1, tokenCount: 2, addSpecial: false },
-        { byteOffset: 4, byteLength: 1, isInput: false, tokenOffset: 3, tokenCount: 0, addSpecial: false },
+        { byteOffset: 0, byteLength: 4, parseSpecial: false, tokenOffset: 1, tokenCount: 2, addSpecial: false },
+        { byteOffset: 4, byteLength: 1, parseSpecial: true, tokenOffset: 3, tokenCount: 0, addSpecial: false },
       ],
     });
     expect(boundary).toBe(2);

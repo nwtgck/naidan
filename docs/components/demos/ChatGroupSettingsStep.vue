@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDownIcon, FolderIcon, MousePointer2Icon, Settings2Icon } from 'lucide-vue-next';
+import { BrainIcon, ChevronDownIcon, FolderIcon, MoreHorizontalIcon, MousePointer2Icon, PencilIcon, SearchIcon } from 'lucide-vue-next';
 
 defineProps<{ stage: 'model' | 'prompt'; messages: typeof import('../../pages/chat-groups/messages/en').messages }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -16,12 +16,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <main class="workspace">
         <div v-if="stage === 'model'" class="opening-chat"><strong>{{ messages.page_copy }}</strong><div class="chat-line" /><div class="chat-line short" /></div>
         <div class="settings-page">
-          <div class="page-header"><Settings2Icon :size="24" /><div><strong>{{ messages.translation_settings }}</strong><small>{{ messages.group_overrides }}</small></div></div>
+          <div class="page-header"><strong>{{ messages.translation }}</strong><PencilIcon :size="16" :title="messages.rename_group" /><SearchIcon :size="18" :title="messages.search_messages" /><MoreHorizontalIcon :size="20" :title="messages.group_actions" /></div>
           <div v-if="stage === 'model'" class="settings-card model-card">
-            <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="field-value inherited">{{ messages.global_ollama }}<ChevronDownIcon :size="17" /></div></div>
-            <div class="field"><span class="field-label">{{ messages.model_id_override }}</span><div class="field-value model-control"><span class="value-stack"><span class="initial-value">{{ messages.global_gemma3n_e2b }}</span><strong class="selected-value">{{ messages.qwen3_4b }}</strong></span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer model-pointer" :size="22" /></div>
+            <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="field-value inherited connection-summary"><span><strong>{{ messages.ollama }}</strong><span class="connection-metadata"><span class="source-badge">{{ messages.source_global }}</span><span class="endpoint-url">http://localhost:11434</span></span></span><ChevronDownIcon :size="17" /></div></div>
+            <div class="field"><span class="field-label">{{ messages.model_id_override }}</span><div class="field-value model-control"><span class="value-stack"><span class="initial-value">{{ messages.gemma3n_e2b }}<span class="source-badge">{{ messages.source_global }}</span></span><strong class="selected-value">{{ messages.qwen3_4b }}</strong></span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer model-pointer" :size="22" /></div>
               <div class="model-menu"><span>{{ messages.global_gemma3n_e2b }}</span><strong>{{ messages.qwen3_4b }}</strong></div>
             </div>
+            <div class="reasoning"><span><BrainIcon :size="13" />{{ messages.reasoning }}<span class="source-badge">{{ messages.source_global }}</span></span><div class="reasoning-options"><strong>{{ messages.reasoning_inherited }}</strong><span>{{ messages.reasoning_off }}</span><span>{{ messages.reasoning_low }}</span><span>{{ messages.reasoning_medium }}</span><span>{{ messages.reasoning_high }}</span></div></div>
           </div>
           <div v-else class="settings-card prompt-card">
             <div class="prompt-heading"><span class="field-label">{{ messages.group_system_prompt }}</span><div class="mode-control"><span class="mode-global">{{ messages.global }}</span><span>{{ messages.no_prompt }}</span><strong class="mode-replace">{{ messages.replace }}<MousePointer2Icon class="pointer prompt-pointer" :size="22" /></strong><span>{{ messages.append }}</span></div></div>
@@ -163,33 +164,90 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .page-header > svg {
   flex: none;
-  padding: 4px;
-  box-sizing: content-box;
-  border-radius: 9px;
-  background: color-mix(in srgb,var(--scene-blue) 11%,var(--scene-surface));
-  color: var(--scene-blue);
-}
-.page-header strong,.page-header small {
-  display: block;
-  overflow-wrap: anywhere;
+  color: var(--scene-muted);
 }
 .page-header strong {
-  font-size: 17px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
 }
-.page-header small {
-  color: var(--scene-blue);
+.source-badge {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 3px;
+  padding: 1px 5px;
+  border: 1px solid var(--scene-line);
+  border-radius: 4px;
+  background: var(--scene-soft);
+  color: var(--scene-muted);
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .06em;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.connection-summary strong {
+  color: var(--scene-text);
+  font-weight: 500;
+}
+.connection-metadata {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+.connection-metadata .source-badge {
+  margin-top: 0;
+}
+.endpoint-url {
+  font: 11px/1.4 ui-monospace,SFMono-Regular,monospace;
+  overflow-wrap: anywhere;
+}
+.reasoning {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+}
+.reasoning > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--scene-muted);
+  font-size: 11px;
+}
+.reasoning .source-badge {
+  margin: 0;
+}
+.reasoning-options {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--scene-line);
+  border-radius: 8px;
+  background: var(--scene-soft);
+}
+.reasoning-options > * {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 2px;
+  text-align: center;
+  color: var(--scene-muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.reasoning-options strong {
+  border-radius: 5px;
+  background: var(--scene-surface);
+  font-weight: 500;
 }
 .settings-card {
   width: min(450px,calc(100cqw - 34px));
   margin: 26px 0 0 24px;
   padding: 22px;
-  border: 1px solid var(--scene-line);
-  border-radius: 17px;
   background: var(--scene-surface);
-  box-shadow: var(--panel-shadow);
 }
 .field + .field {
   margin-top: 20px;
@@ -214,9 +272,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   padding: 9px 12px;
   border: 1px solid var(--scene-line);
   border-radius: 10px;
-  background: var(--scene-soft);
+  background: var(--scene-surface);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .field-value > svg {
@@ -227,7 +285,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .model-control {
   position: relative;
-  border-color: var(--scene-blue);
+  border-color: var(--scene-line);
 }
 .value-stack {
   display: grid;
@@ -478,24 +536,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     transform: translateX(var(--focus-x));
   }
 }
-html:has(#docs-pause-motion:checked) .group-settings-viewport * {
+:global(html:has(#docs-pause-motion:checked) .group-settings-viewport *) {
   animation: none!important;
 }
-html:has(#docs-pause-motion:checked) .stage-model .settings-page {
+:global(html:has(#docs-pause-motion:checked) .stage-model .settings-page) {
   opacity: 1;
 }
-html:has(#docs-pause-motion:checked) .stage-model .opening-chat,html:has(#docs-pause-motion:checked) .group-settings-viewport .pointer,html:has(#docs-pause-motion:checked) .stage-model .initial-value,html:has(#docs-pause-motion:checked) .stage-model .model-menu {
+:global(html:has(#docs-pause-motion:checked) .stage-model .opening-chat),:global(html:has(#docs-pause-motion:checked) .group-settings-viewport .pointer),:global(html:has(#docs-pause-motion:checked) .stage-model .initial-value),:global(html:has(#docs-pause-motion:checked) .stage-model .model-menu) {
   opacity: 0;
 }
-html:has(#docs-pause-motion:checked) .stage-model .selected-value,html:has(#docs-pause-motion:checked) .stage-prompt .prompt-text {
+:global(html:has(#docs-pause-motion:checked) .stage-model .selected-value),:global(html:has(#docs-pause-motion:checked) .stage-prompt .prompt-text) {
   opacity: 1;
 }
-html:has(#docs-pause-motion:checked) .stage-prompt .mode-global {
+:global(html:has(#docs-pause-motion:checked) .stage-prompt .mode-global) {
   background: transparent;
   color: var(--scene-muted);
   box-shadow: none;
 }
-html:has(#docs-pause-motion:checked) .stage-prompt .mode-replace {
+:global(html:has(#docs-pause-motion:checked) .stage-prompt .mode-replace) {
   background: var(--scene-surface);
   color: var(--scene-blue);
   box-shadow: 0 1px 3px #0002;
@@ -525,7 +583,7 @@ html:has(#docs-pause-motion:checked) .stage-prompt .mode-replace {
   }
 }
 @container (max-width:650px) {
-  html:has(#docs-pause-motion:checked) .stage-model .scene-canvas {
+  :global(html:has(#docs-pause-motion:checked) .stage-model .scene-canvas) {
     transform: translateX(var(--focus-x));
   }
   @media(prefers-reduced-motion:reduce) {

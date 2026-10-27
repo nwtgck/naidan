@@ -23,6 +23,7 @@ import {
 } from '@/features/tools/tool-config';
 import type { NaidanSysfsAccessScope } from '@/features/wesh/types';
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
+import CspToolCardFrame from '@/components/csp/CspToolCardFrame.vue';
 
 export type ToolConfigSettingsScope = 'global' | 'chat_group' | 'chat';
 export type ToolConfigInheritanceLabel = 'Use global' | 'Use group';
@@ -34,6 +35,7 @@ const props = defineProps<{
   inheritanceLabelByKey?: Readonly<Record<BuiltinToolKey, ToolConfigInheritanceLabel>>,
   isEditable: boolean,
 }>();
+defineSlots<{ 'persistence-note'?: () => unknown }>();
 
 const emit = defineEmits<{
   (event: 'set-status', payload: { key: BuiltinToolKey, status: ToolConfigStatus }): void,
@@ -255,28 +257,27 @@ defineExpose({
 <template>
   <div tw-class="space-y-4" data-testid="tool-config-hierarchy-settings">
     <div
-      v-if="!isEditable"
+      v-if="!isEditable || $slots['persistence-note']"
       tw-class="flex items-start gap-2.5 rounded-xl border border-amber-200/70 bg-amber-50/60 px-3 py-2.5 text-amber-900 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-200"
-      data-testid="tool-config-read-only-note"
+      :data-testid="!isEditable ? 'tool-config-read-only-note' : 'tool-config-persistence-note'"
     >
       <InfoIcon tw-class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <p tw-class="text-[10px] leading-relaxed">
-        {{ lazyStrings.ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here() }}
-      </p>
+      <div tw-class="space-y-1">
+        <slot name="persistence-note" />
+        <p v-if="!isEditable" tw-class="text-[10px] leading-relaxed">
+          {{ lazyStrings.ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here() }}
+        </p>
+      </div>
     </div>
 
     <div
       :tw-class="['grid grid-cols-1 gap-2', scope === 'global' ? 'sm:grid-cols-1' : 'sm:grid-cols-2']"
     >
-      <article
+      <CspToolCardFrame
         v-for="tool in visibleToolDefinitions"
         :key="tool.key"
-        :tw-class="['overflow-hidden rounded-xl border transition-all duration-300 active:scale-[0.995]',
-                    'h-[52px]',
-                    isEffectivelyEnabled({ key: tool.key })
-                      ? 'border-slate-300/80 bg-slate-50/70 shadow-sm dark:border-slate-600/60 dark:bg-slate-800/45'
-                      : 'border-gray-100 bg-white/70 hover:border-gray-200 dark:border-gray-700/60 dark:bg-gray-800/40 dark:hover:border-gray-700',
-        ]"
+        :tool-key="tool.key"
+        :enabled="isEffectivelyEnabled({ key: tool.key })"
         :data-testid="`tool-config-card-${tool.key}`"
       >
         <div
@@ -373,7 +374,7 @@ defineExpose({
             </button>
           </div>
         </div>
-      </article>
+      </CspToolCardFrame>
     </div>
 
     <Transition name="shell-settings">

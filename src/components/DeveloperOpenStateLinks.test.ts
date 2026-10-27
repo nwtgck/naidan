@@ -17,6 +17,8 @@ vi.mock('@/composables/useToast', () => ({
 }));
 
 vi.mock('lucide-vue-next', () => ({
+  CheckIcon: { template: '<span>Check</span>' },
+  MinusIcon: { template: '<span>Minus</span>' },
   CopyIcon: { template: '<span>Copy</span>' },
   ExternalLinkIcon: { template: '<span>ExternalLink</span>' },
   Loader2Icon: { template: '<span>Loader2</span>' },
@@ -60,16 +62,21 @@ describe('DeveloperOpenStateLinks', () => {
     expect(wrapper.text()).not.toContain('Development');
   });
 
-  it('uses a compact responsive layout with neutral action buttons', () => {
+  it('gives every deployment separate, labelled copy and open buttons', () => {
     const wrapper = mount(DeveloperOpenStateLinks);
-    const groups = wrapper.find('[data-testid="open-current-state-groups"]');
-    const row = wrapper.find('[data-testid="open-current-state-row-naidan.pages.dev"]');
-    const openButton = wrapper.find('[data-testid="open-current-state-naidan.pages.dev"]');
+    const rows = wrapper.findAll('[data-testid^="open-current-state-row-"]');
+    expect(rows).toHaveLength(6);
 
-    expect(groups.classes()).toEqual(expect.arrayContaining(['grid-cols-1', 'sm:grid-cols-2']));
-    expect(row.classes()).toEqual(expect.arrayContaining(['min-h-12', 'py-1.5', 'pl-2.5', 'pr-1.5']));
-    expect(openButton.classes()).toEqual(expect.arrayContaining(['h-7', 'w-7', 'rounded-lg']));
-    expect(openButton.classes().some(className => className.includes('blue'))).toBe(false);
+    for (const row of rows) {
+      const copyButton = row.get('[data-testid^="copy-current-state-"]');
+      const openButton = row.get('[data-testid^="open-current-state-"]');
+      expect(copyButton.attributes('type')).toBe('button');
+      expect(openButton.attributes('type')).toBe('button');
+      expect(copyButton.attributes('aria-label')).toBe(copyButton.attributes('title'));
+      expect(openButton.attributes('aria-label')).toBe(openButton.attributes('title'));
+      expect(copyButton.attributes('aria-label')).toContain('URL');
+      expect(openButton.attributes('aria-label')).toContain('Open');
+    }
   });
 
   it('opens the curated develop deployment with the current state URL', async () => {

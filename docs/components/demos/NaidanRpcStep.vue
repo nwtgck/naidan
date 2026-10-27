@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BotIcon, CheckIcon, ChevronDownIcon, CpuIcon, GlobeIcon, ImageIcon, MessageSquareIcon, NetworkIcon, PlusIcon, SaveIcon, SearchIcon, SettingsIcon, ShieldCheckIcon } from 'lucide-vue-next';
+import { CheckIcon, ChevronDownIcon, CpuIcon, GlobeIcon, ImageIcon, MessageSquareIcon, NetworkIcon, PlusIcon, SaveIcon, SearchIcon, SettingsIcon, ShieldCheckIcon } from 'lucide-vue-next';
 import type { messages as english } from '../../pages/endpoint-type-naidan-rpc/messages/en';
 
 defineProps<{ stage: 'enable' | 'pair' | 'verify' | 'provide' | 'use'; messages: typeof english }>();
@@ -43,8 +43,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
         <div v-else class="use-screen">
           <h2><GlobeIcon :size="19" />{{ messages.connection }}</h2>
-          <div class="ui-card endpoint"><h3><GlobeIcon :size="17" />{{ messages.api_provider }}</h3><div class="field provider-field"><span class="provider-before">Ollama</span><span class="provider-after">{{ messages.naidan_rpc }}</span><ChevronDownIcon :size="15" /><div class="provider-options"><span>Ollama</span><strong><CheckIcon :size="13" />{{ messages.naidan_rpc }}</strong></div></div><div class="connection-choice"><label>{{ messages.choose_saved_connection }}</label><div class="field"><span class="peer-before">{{ messages.choose_saved_connection }}</span><strong class="peer-after">{{ messages.sample_peer_name }}</strong><ChevronDownIcon :size="15" /><div class="peer-options"><span>{{ messages.choose_saved_connection }}</span><strong><CheckIcon :size="13" />{{ messages.sample_peer_name }}</strong></div></div></div></div>
-          <div class="ui-card model-choice"><h3><BotIcon :size="17" />{{ messages.default_model }}</h3><div class="field model-field"><span class="model-before">{{ messages.no_model }}</span><strong class="model-after">{{ messages.sample_peer_model }}</strong><ChevronDownIcon :size="15" /><div class="model-options"><div><SearchIcon :size="13" />{{ messages.filter_models }}</div><strong><CheckIcon :size="13" />{{ messages.sample_peer_model }}</strong></div></div><span class="primary save-action">{{ messages.save_changes }}</span></div>
+          <div class="connection-form">
+            <div class="endpoint"><h3>{{ messages.connection_type }}</h3><div class="field provider-field"><span class="provider-before">Ollama</span><span class="provider-after">{{ messages.naidan_rpc }}</span><ChevronDownIcon :size="15" /><div class="provider-options"><span>Ollama</span><strong><CheckIcon :size="13" />{{ messages.naidan_rpc }}</strong></div></div></div>
+            <div class="model-choice"><h3>{{ messages.default_model }}</h3><div class="field model-field"><span class="model-before">{{ messages.no_model }}</span><strong class="model-after">{{ messages.sample_peer_model }}</strong><ChevronDownIcon :size="15" /><div class="model-options"><div><SearchIcon :size="13" />{{ messages.filter_models }}</div><strong><CheckIcon :size="13" />{{ messages.sample_peer_model }}</strong></div></div></div>
+            <div class="connection-choice"><label>{{ messages.choose_saved_connection }}</label><div class="field"><span class="peer-before">{{ messages.choose_saved_connection }}</span><strong class="peer-after">{{ messages.sample_peer_name }}</strong><ChevronDownIcon :size="15" /><div class="peer-options"><span>{{ messages.choose_saved_connection }}</span><strong><CheckIcon :size="13" />{{ messages.sample_peer_name }}</strong></div></div></div>
+            <div class="connection-footer"><span class="primary save-action"><SaveIcon :size="14" />{{ messages.save_changes }}</span></div>
+          </div>
         </div>
       </main>
     </div>
@@ -413,14 +417,35 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   margin-top: 14px;
   animation: action-tap 10s linear infinite;
 }
-.endpoint,.model-choice {
-  padding: 15px;
+.connection-form {
+  width: 322px;
+  padding-top: 7px;
 }
 .endpoint h3,.model-choice h3 {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+  color: var(--m);
+  font-size: 11px;
+  font-weight: 550;
+}
+.connection-form .field {
+  min-height: 42px;
+  background: var(--p);
+  border-radius: 11px;
+  font-weight: 550;
+}
+.connection-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 13px;
+  border-top: 1px solid var(--l);
+}
+.connection-footer .save-action {
+  gap: 7px;
+  margin-top: 0;
 }
 .provider-field {
   z-index: 3;
@@ -493,9 +518,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .model-choice {
   position: relative;
   z-index: 1;
-  margin-top: 13px;
-  opacity: 0;
-  animation: model-enter 10s linear infinite;
+  margin-top: 18px;
 }
 .model-choice .field {
   font-size: 12px;
@@ -568,7 +591,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --ym:-20px;
   --zm:.96;
   --x1:var(--focus-x);
-  --y1:-137px;
+  --y1:-68px;
   --z1:.96;
 }
 .stage-use .canvas {
@@ -885,7 +908,7 @@ html:has(#docs-pause-motion:checked) .camera .verify-before,html:has(#docs-pause
     --ym:-18px;
     --zm:.85;
     --x1:var(--focus-x);
-    --y1:-126px;
+    --y1:-58px;
     --z1:.85;
   }
 }

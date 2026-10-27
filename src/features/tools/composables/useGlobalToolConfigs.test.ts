@@ -36,6 +36,14 @@ describe('useGlobalToolConfigs', () => {
     expect(tools.effectiveToolConfigs.value.every(config => config.status === 'disabled')).toBe(true);
   });
 
+  it.each([undefined, {}])('allows persistent edits with an unset persistence setting: %j', async experimental => {
+    settings.value.experimental = experimental;
+    const tools = useGlobalToolConfigs();
+    expect(tools.isEditable.value).toBe(true);
+    await tools.setToolStatus({ key: 'builtin.calculator', status: 'enabled' });
+    expect(settings.value.experimental?.toolConfigs).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
+  });
+
   it('persists an explicit Global status', async () => {
     const tools = useGlobalToolConfigs();
     await tools.setToolStatus({ key: 'builtin.calculator', status: 'enabled' });

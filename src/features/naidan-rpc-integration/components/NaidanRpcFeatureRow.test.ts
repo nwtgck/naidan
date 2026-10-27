@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, ref } from 'vue';
 import NaidanRpcFeatureRow from './NaidanRpcFeatureRow.vue';
@@ -6,7 +7,6 @@ import type { RpcStopStatus } from '@/features/naidan-rpc-integration/runtime/st
 
 const fixture = vi.hoisted(() => ({ status: 'idle' as RpcStopStatus, request: vi.fn(), listeners: new Set<() => void>(), update: vi.fn() }));
 const settings = ref({ experimental: { naidanRpc: 'enabled' as 'enabled' | 'disabled' } });
-vi.mock('@/strings', () => ({ lazyStrings: new Proxy({}, { get: (_, key) => () => String(key) }), ensureStrings: new Proxy({}, { get: (_, key) => async () => String(key) }) }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, updateExperimental: fixture.update }) }));
 vi.mock('../runtime/feature', () => ({
   requestRpcStop: fixture.request,
@@ -31,11 +31,12 @@ function updateStatus({ status }: { status: RpcStopStatus }) {
   }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   settings.value.experimental.naidanRpc = 'enabled';
   fixture.status = 'idle';
   fixture.update.mockResolvedValue(undefined);
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 afterEach(() => {
@@ -54,17 +55,17 @@ it('starts the explicit stop independently of a pending settings write', async (
   expect(fixture.update).toHaveBeenCalledOnce();
   updateStatus({ status: 'unconfirmed' });
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('stop_not_confirmed');
+  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toBe('Stopping could not be confirmed. Check the tab managing the connections.');
   gate.resolve();
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('stop_not_confirmed');
+  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toBe('Stopping could not be confirmed. Check the tab managing the connections.');
 });
 
 it('shows applied and retired as different statuses and offers a retry only when unconfirmed', async () => {
   const wrapper = panel();
   updateStatus({ status: 'applied' });
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('waiting_for_completion');
+  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toBe('New calls are blocked. Waiting for running work to finish.');
   expect(wrapper.find('[data-testid="rpc-retry-stop"]').exists()).toBe(false);
   updateStatus({ status: 'unconfirmed' });
   await flushPromises();
@@ -72,7 +73,7 @@ it('shows applied and retired as different statuses and offers a retry only when
   expect(fixture.request).toHaveBeenCalledOnce();
   updateStatus({ status: 'retired' });
   await flushPromises();
-  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toContain('rpc_connections_stopped');
+  expect(wrapper.get('[data-testid="rpc-stop-status"]').text()).toBe('RPC connections have stopped.');
 });
 
 it('does not send a stop while mounting, enabling, or closing the settings row', async () => {

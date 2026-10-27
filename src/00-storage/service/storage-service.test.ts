@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only preload keeps real strings available without changing storage runtime dependencies.
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { storageService } from './index';
 import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
 
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only generic mock keeps Boundary Strings loading out of storage service tests without adding a runtime dependency.
-vi.mock('@/strings', () => ({
-  ensureStrings: new Proxy({}, {
-    get: () => async () => 'test boundary string',
-  }),
-}));
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   mockLocalProvider: {
@@ -183,7 +182,7 @@ describe('StorageService Migration', () => {
 
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       source: 'StorageService:switchProvider',
-      message: 'test boundary string',
+      message: 'An error occurred during a storage operation.',
       details: error,
     }));
 

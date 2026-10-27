@@ -8,6 +8,7 @@ import type { ImageModelChoice } from '@/features/stable-diffusion-cpp-browser/l
 
 /** Runtime validation is independent of the loose persisted DTO. */
 export const remoteImageModelEditorSchema = z.strictObject({
+  automaticSlots: z.array(imageComponentSlotSchema).max(5).refine(slots => new Set(slots).size === slots.length).default([]),
   primary: z.strictObject({ slot: z.enum(['model', 'diffusion']), file: imageFileSchema, family: z.string().min(1).max(64).optional() }).optional(),
   components: z.array(z.strictObject({ slot: imageComponentSlotSchema, file: imageFileSchema })).max(5)
     .refine(items => new Set(items.map(item => item.slot)).size === items.length),
@@ -15,14 +16,14 @@ export const remoteImageModelEditorSchema = z.strictObject({
 });
 
 export function copyRemoteImageModelEditor({ editor }: { editor: RemoteImageModelEditor }): RemoteImageModelEditor {
-  const { primary, components, loras, ...unhandled } = editor;
+  const { primary, components, loras, automaticSlots, ...unhandled } = editor;
   unhandled satisfies Record<PropertyKey, never>;
-  const parsed = remoteImageModelEditorSchema.parse({ primary, components, loras });
-  return { primary: parsed.primary && { ...parsed.primary, family: parsed.primary.family }, components: parsed.components, loras: parsed.loras };
+  const parsed = remoteImageModelEditorSchema.parse({ primary, components, loras, automaticSlots });
+  return { primary: parsed.primary && { ...parsed.primary, family: parsed.primary.family }, components: parsed.components, loras: parsed.loras, automaticSlots: parsed.automaticSlots };
 }
 
 export function emptyRemoteImageModelEditor(): RemoteImageModelEditor {
-  return { primary: undefined, components: [], loras: [] };
+  return { primary: undefined, components: [], loras: [], automaticSlots: [] };
 }
 
 export function remoteImageFileKey({ file }: { file: RemoteImageModelFile }): string {
@@ -49,11 +50,11 @@ export function remoteImageFileKey({ file }: { file: RemoteImageModelFile }): st
 export function remoteImageEditorFromSelection({ selection, family }: { selection: PeerImageModelSelection, family: string | undefined }): RemoteImageModelEditor {
   const { primary, components, loras, ...unhandled } = imageModelSelectionSchema.parse(selection);
   unhandled satisfies Record<PropertyKey, never>;
-  return { primary: { ...primary, family }, components, loras: loras.map(item => ({ ...item, enabled: 'enabled' })) };
+  return { primary: { ...primary, family }, components, loras: loras.map(item => ({ ...item, enabled: 'enabled' })), automaticSlots: [] };
 }
 
 export function remoteImageSelectionFromEditor({ editor }: { editor: RemoteImageModelEditor }): PeerImageModelSelection | undefined {
-  const { primary, components, loras, ...unhandled } = editor;
+  const { primary, components, loras, automaticSlots: _automaticSlots, ...unhandled } = editor;
   unhandled satisfies Record<PropertyKey, never>;
   if (!primary) {
     return undefined;
@@ -128,7 +129,7 @@ export function remoteImageModelChoices({ catalog, slot, family }: {
       candidateKey: remoteImageFileKey({ file: item.file }),
       label: item.label,
       detail: item.file.location.path,
-      evidence: [],
+      evidence: item.facts?.evidence ?? [],
       status,
       issue: undefined,
     }];

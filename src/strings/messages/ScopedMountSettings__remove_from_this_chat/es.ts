@@ -1,0 +1,1 @@
+export const ScopedMountSettings__remove_from_this_chat = (): string => "Quita esta carpeta de la configuración propia de este chat. Se conservarán el registro de la carpeta y sus archivos. La configuración de carpetas heredada no cambiará.";

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, useId, watch } from 'vue';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from './LlamaCppBrowserLocalFileRecovery.vue';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { usePageDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
@@ -13,6 +16,7 @@ import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact
 import LlamaCppBrowserQuantizationPicker from './LlamaCppBrowserQuantizationPicker.vue';
 import WelcomeScreenFrame from '@/components/layout/WelcomeScreenFrame.vue';
 import LanguageSelector from '@/components/LanguageSelector.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { browserModelRepositoryPresentation } from '@/components/browser-model-presentation';
 import BrowserModelPreparation from '@/components/BrowserModelPreparation.vue';
 
@@ -248,7 +252,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div data-testid="model-launch-entry" tw-class="relative flex-1 min-h-0 overflow-y-auto overscroll-contain bg-[#fcfcfd] dark:bg-gray-900">
-    <div :inert="interaction !== 'ready' || undefined" data-testid="model-entry-language" tw-class="absolute right-4 top-4 z-20 pointer-events-auto sm:right-6 sm:top-6"><LanguageSelector /></div>
+    <div :inert="interaction !== 'ready' || undefined" data-testid="model-entry-language" tw-class="absolute right-4 top-4 z-20 flex items-center gap-2 pointer-events-auto sm:right-6 sm:top-6">
+      <div tw-class="w-24 shrink-0 sm:w-28"><ThemeToggle /></div>
+      <LanguageSelector />
+    </div>
     <WelcomeScreenFrame class="model-url-entry-welcome" placement="contained">
       <div tw-class="w-full max-w-lg space-y-5">
         <section v-if="originalPresentation === undefined" :inert="interaction === 'blocked' || undefined" data-testid="model-link-repair" tw-class="space-y-3 text-left pointer-events-auto">
@@ -259,6 +266,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </section>
         <BrowserModelPreparation v-if="presentation" :model="model" entry="model-url" :stage="stage" :interaction="interaction" :variant="displayedVariant" :quantization-options="[]" :start-status="state?.status === 'checking' ? 'starting' : 'idle'" :error="error" :selection-state="selectionState" @start="start" @select-quantization="selectVariant({ value: $event })" @confirm-selection="confirmModelLaunchSelection($event)">
           <template #quantization="{ disabled }"><LlamaCppBrowserQuantizationPicker :key="entryOwner" :repository="repository" :variant="displayedVariant" :disabled="disabled" :inspection="metadataInspection" @select="selectVariant({ value: $event })" @inspected="inspectedCatalog = $event" /></template>
+          <template #details>
+            <HuggingFaceDownloadFailureHint v-if="state?.status === 'failed' && state.problem === 'failed'" :key="state.operation"><LlamaCppBrowserLocalFileRecovery :disabled="interaction !== 'ready'" :accept-local-input="undefined" /></HuggingFaceDownloadFailureHint>
+            <CspMessageHint v-else :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
+          </template>
         </BrowserModelPreparation>
       </div>
     </WelcomeScreenFrame>

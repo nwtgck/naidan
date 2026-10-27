@@ -14,10 +14,12 @@ beforeEach(async () => {
 describe('AboutTab GitHub Link', () => {
   it('should contain GitHub link with correct structure', async () => {
     const wrapper = mount(AboutTab, {
+      props: { visibility: 'hidden' },
       global: {
         stubs: {
           'router-link': true,
           'Logo': true,
+          'OpenSourceLicenses': true,
           // Icons
           GithubIcon: true,
           ExternalLinkIcon: true,
@@ -29,13 +31,19 @@ describe('AboutTab GitHub Link', () => {
       },
     });
 
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+
     const githubLink = wrapper.find('a[href*="github.com/nwtgck/naidan"]');
     expect(githubLink.exists()).toBe(true);
 
     // Check translated copy after the lazy string boundary is registered.
     await vi.waitFor(() => {
       expect(githubLink.text()).toContain('GitHub Repository');
-      expect(githubLink.text()).toContain('View source code & contribute');
+      expect(githubLink.text()).toContain('View source code');
     });
   });
 });

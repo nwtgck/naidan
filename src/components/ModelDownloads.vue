@@ -8,6 +8,10 @@ import { downloadTotals, downloadByteLabel } from '@/logic/download-manager/prog
 import type { ManagedDownload, DownloadFile } from '@/01-models/download';
 import ModelDownloadFileDetails from './ModelDownloadFileDetails.vue';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue';
+import ImageModelLocalFileRecovery from '@/features/stable-diffusion-cpp-browser/components/ImageModelLocalFileRecovery.vue';
 
 const { jobs, manager } = useDownloads();
 const open = ref(false);
@@ -195,6 +199,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               </div>
               <div tw-class="ml-11 mt-2">
                 <p v-if="job.error" tw-class="mb-2 select-text break-words text-[10px] text-red-500">{{ job.error }}</p>
+                <HuggingFaceDownloadFailureHint v-if="job.status === 'failed' && job.key.startsWith('llama:')"><LlamaCppBrowserLocalFileRecovery :disabled="false" :accept-local-input="undefined" /></HuggingFaceDownloadFailureHint>
+                <HuggingFaceDownloadFailureHint v-else-if="job.status === 'failed' && job.key.startsWith('image:')"><ImageModelLocalFileRecovery :view="undefined" :disabled="false" /></HuggingFaceDownloadFailureHint>
+                <CspMessageHint v-else-if="job.status === 'paused' && (job.key.startsWith('llama:') || job.key.startsWith('image:'))" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
                 <div tw-class="flex items-center justify-between gap-2 text-[10px] leading-4">
                   <span :tw-class="['min-w-0 flex-1 truncate', job.status === 'downloading' ? 'text-blue-600 dark:text-blue-400' : job.status === 'failed' ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400']">{{ statusLabel({ job }) }}</span>
                   <button type="button" @click="toggleDetails({ id: job.id })" :data-download-detail="job.id" :aria-expanded="expandedIds.has(job.id)" :aria-controls="expandedIds.has(job.id) ? detailPanelId({ id: job.id }) : undefined" :aria-label="`${job.title} · ${lazyStrings.ModelDownloads__details()}`" tw-class="inline-flex shrink-0 items-center gap-1 rounded px-1 text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-500 dark:hover:text-gray-300">{{ lazyStrings.ModelDownloads__details() }}<ChevronDownIcon :tw-class="['h-3 w-3 transition-transform duration-200', expandedIds.has(job.id) ? 'rotate-180' : '']" /></button>

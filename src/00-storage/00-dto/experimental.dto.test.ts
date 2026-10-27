@@ -163,6 +163,32 @@ describe('optionalExperimentalFieldSchemaDto', () => {
   });
 });
 
+describe('experimental development CSP storage', () => {
+  it('materializes a missing metaCsp as undefined and omits it from JSON', () => {
+    const parsed = ExperimentalSettingsSchemaDto.parse({ locale: 'ja' });
+    expect(Object.hasOwn(parsed, 'metaCsp')).toBe(true);
+    expect(parsed.metaCsp).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(parsed))).toEqual({ locale: 'ja' });
+  });
+
+  it.each(['', ' ', "connect-src 'self'; x-future-rule v2", 'not CSP syntax'])('stores a string structurally without treating %j as a clear operation', metaCsp => {
+    const parsed = OptionalExperimentalSettingsSchemaDto.parse({ locale: 'ja', metaCsp });
+    expect(parsed?.metaCsp).toBe(metaCsp);
+    expect(JSON.parse(JSON.stringify(parsed))).toEqual({ locale: 'ja', metaCsp });
+    expect(parsed?.unreadable).toBeUndefined();
+  });
+
+  it.each([null, false, 42, [], {}])('isolates an unreadable metaCsp %j without losing unrelated fields', metaCsp => {
+    const parsed = OptionalExperimentalSettingsSchemaDto.parse({ locale: 'ja', metaCsp, naidanRpc: 'enabled' });
+    expect(parsed?.locale).toBe('ja');
+    expect(parsed?.naidanRpc).toBe('enabled');
+    expect(parsed?.metaCsp).toBeUndefined();
+    expect(parsed?.unreadable).toEqual({ metaCsp });
+    expect(Object.keys(parsed ?? {})).not.toContain('unreadable');
+    expect(JSON.parse(JSON.stringify(parsed))).toEqual({ locale: 'ja', naidanRpc: 'enabled' });
+  });
+});
+
 describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
   const schema = ExperimentalExperimentalTypeEndpointSchemaDto;
 

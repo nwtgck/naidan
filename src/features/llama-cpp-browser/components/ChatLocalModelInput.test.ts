@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { ChatLocalModelOperation, ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
 import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import type { DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import ChatLocalModelInput from './ChatLocalModelInput.vue';
+import LlamaCppBrowserLocalFileRecovery from './LlamaCppBrowserLocalFileRecovery.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
 import type { ChatBrowserModelPickerTab } from '@/features/llama-cpp-browser/composables/useChatBrowserModelPickerTab';
 const preference = vi.hoisted(() => ({ tab: 'files' as ChatBrowserModelPickerTab, save: vi.fn(async () => {}) }));
 const preparation = vi.hoisted(() => ({ tasks: [] as { task: () => Promise<void>, cancelled: boolean }[], mounts: { repository: 0, saved: 0 } }));
@@ -33,24 +36,33 @@ beforeEach(async () => {
 
 function inputState() {
   const operation = shallowRef<ChatLocalModelOperation>();
+  const downloadJob = shallowRef<DownloadJob>();
   const accept = vi.fn(async ({ directories }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }) => {
     await directories;
   });
   const state = {
     operation: computed(() => operation.value),
-    downloadJob: computed(() => undefined),
+    downloadJob: computed(() => downloadJob.value),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     maySend: computed(() => operation.value === undefined),
     accept,
+    acceptAfterFailedDownload: vi.fn(async () => {}),
     choose: vi.fn(async () => {}),
     retry: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     TEST_ONLY: {},
   } satisfies ChatLocalModelUi;
-  return { state, operation };
+  return { state, operation, downloadJob };
 }
+
+vi.mock('./LlamaCppBrowserLocalFileRecovery.vue', () => ({
+  default: { name: 'LlamaCppBrowserLocalFileRecovery', props: ['disabled', 'acceptLocalInput'], template: '<section data-testid="local-download-failure-recovery" />' },
+}));
+vi.mock('@/components/csp/CspMessageHint.vue', () => ({
+  default: { props: ['target', 'presentation', 'activityForDisplayOnly'], template: '<template v-if="false" />' },
+}));
 
 vi.mock('./LlamaCppBrowserRepositoryPicker.vue', () => ({
   __esModule: true,
@@ -85,6 +97,47 @@ vi.mock('./LlamaCppBrowserModelImportLinkedFolders.vue', () => ({
 }));
 
 describe('chat local file entry', () => {
+  it('offers local recovery for a failed download without nesting the picker and hands explicit files to the same owner', async () => {
+    const { state, operation, downloadJob } = inputState();
+    operation.value = { id: 8, phase: 'error', model: undefined, error: 'storage-error', downloadJobId: 12, candidates: [] };
+    const job: DownloadJob = { id: 12, key: 'model', repository: 'owner/model', source: 'repository', destination: { kind: 'opfs' }, status: 'failed', selection: undefined, error: 'selection-unavailable', progress: undefined };
+    downloadJob.value = job;
+    const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'open', availability: 'available' } });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    expect(wrapper.findAll('[data-testid="chat-local-model-input"]')).toHaveLength(1);
+    expect(wrapper.findComponent(LlamaCppBrowserLocalFileRecovery).exists()).toBe(false);
+    expect(state.acceptAfterFailedDownload).not.toHaveBeenCalled();
+    await wrapper.getComponent(HuggingFaceDownloadFailureHint).get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+    const recovery = wrapper.getComponent(LlamaCppBrowserLocalFileRecovery);
+    expect(recovery.props('disabled')).toBe(false);
+    expect(state.acceptAfterFailedDownload).not.toHaveBeenCalled();
+    expect(state.cancel).not.toHaveBeenCalled();
+    const acceptLocalInput = recovery.props('acceptLocalInput');
+    if (acceptLocalInput === undefined) {
+      throw new Error('Expected the current chat local-input owner');
+    }
+    const directories = Promise.resolve<ModelDirectoryInput[]>([]), controller = new AbortController();
+    await acceptLocalInput({ directories, controller, save: 'browser' });
+    expect(state.acceptAfterFailedDownload).toHaveBeenCalledExactlyOnceWith({ directories, controller, save: 'browser', operationId: 8 });
+    expect(state.accept).not.toHaveBeenCalled();
+    expect(state.cancel).not.toHaveBeenCalled();
+    await wrapper.setProps({ expansion: 'closed' });
+    expect(recovery.props('disabled')).toBe(true);
+    const hiddenController = new AbortController();
+    await acceptLocalInput({ directories, controller: hiddenController });
+    expect(hiddenController.signal.aborted).toBe(true);
+    expect(state.acceptAfterFailedDownload).toHaveBeenCalledOnce();
+    await wrapper.setProps({ expansion: 'open' });
+    downloadJob.value = { ...job, status: 'paused', error: undefined };
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findComponent(HuggingFaceDownloadFailureHint).exists()).toBe(false);
+    const pausedController = new AbortController();
+    await acceptLocalInput({ directories, controller: pausedController });
+    expect(pausedController.signal.aborted).toBe(true);
+    expect(state.acceptAfterFailedDownload).toHaveBeenCalledOnce();
+    void cleanup;
+  });
+
   it('offers explicit retry even when file checking failed before candidates were available', async () => {
     const { state, operation } = inputState();
     operation.value = { id: 1, phase: 'error', model: undefined, error: 'not-empty', downloadJobId: undefined, candidates: [] };
@@ -95,6 +148,7 @@ describe('chat local file entry', () => {
       },
     };
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    expect(wrapper.findComponent(HuggingFaceDownloadFailureHint).exists()).toBe(false);
     await wrapper.get('[data-testid="chat-local-model-retry"]').trigger('click');
     expect(state.retry).toHaveBeenCalledOnce();
     expect(state.accept).not.toHaveBeenCalled();

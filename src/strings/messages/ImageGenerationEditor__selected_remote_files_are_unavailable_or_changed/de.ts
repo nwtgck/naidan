@@ -1,0 +1,1 @@
+export const ImageGenerationEditor__selected_remote_files_are_unavailable_or_changed = (): string => "Einige ausgewählte entfernte Dateien fehlen, wurden geändert oder sind inkompatibel. Prüfe die Modellkonfiguration; festgelegte Dateien wurden nicht ersetzt.";

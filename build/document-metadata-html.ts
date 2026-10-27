@@ -1,11 +1,11 @@
-import { JSDOM } from 'jsdom';
+import { createBuildDom } from './jsdom';
 import type { Plugin } from 'vite';
 import { HOME_METADATA, SITE_METADATA, applyDocumentMetadata } from '../src/logic/document-metadata';
 
 const metadataMarker = '<!-- naidan-document-metadata -->';
 
 export function createDocumentMetadataHtml(): string {
-  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>');
+  const dom = createBuildDom({ html: '<!doctype html><html><head></head><body></body></html>', options: undefined });
   try {
     const document = dom.window.document;
     applyDocumentMetadata({ document, page: HOME_METADATA, documentTitle: HOME_METADATA.title });

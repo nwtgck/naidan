@@ -4,12 +4,11 @@ import { gunzipSync } from 'node:zlib';
 import { createServer } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
-import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-browser/build-runtime-assets';
 import { createProfilingArtifactFixture, diagnosticProfile, ordinaryProfiles } from './llama-gpu-profile.test-support';
 
 async function emitted({ root }: { root: string }) {
   const result = new Map<string, Uint8Array>();
-  const hook = createLlamaCppRuntimeAssetsPlugin({ rootDir: root }).generateBundle;
+  const hook = createLlamaCppBrowserBuild({ rootDir: root, mode: 'hosted' }).runtimeAssetsPlugin.generateBundle;
   if (typeof hook !== 'function') {
     throw new Error('Expected a generateBundle hook');
   }
@@ -80,8 +79,8 @@ describe('Hosted-only GPU profiling distribution', () => {
 
   it('uses the same lazy virtual import and explicit gzip endpoint in Vite development', async () => {
     using fixture = createProfilingArtifactFixture();
-    const { corePlugin } = createLlamaCppBrowserBuild({ rootDir: fixture.root, mode: 'hosted' });
-    const server = await createServer({ root: fixture.root, configFile: false, base: '/app/', logLevel: 'silent', plugins: [corePlugin, createLlamaCppRuntimeAssetsPlugin({ rootDir: fixture.root })], server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
+    const { corePlugin, runtimeAssetsPlugin } = createLlamaCppBrowserBuild({ rootDir: fixture.root, mode: 'hosted' });
+    const server = await createServer({ root: fixture.root, configFile: false, base: '/app/', logLevel: 'silent', plugins: [corePlugin, runtimeAssetsPlugin], server: { host: '127.0.0.1', port: 0, hmr: false, watch: null } });
     await using cleanup = {
       async [Symbol.asyncDispose]() {
         await server.close();

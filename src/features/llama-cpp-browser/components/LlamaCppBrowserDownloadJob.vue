@@ -2,11 +2,15 @@
 import { computed } from 'vue';
 import { AlertCircleIcon, Loader2Icon, PauseIcon, PlayIcon, XIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from './LlamaCppBrowserLocalFileRecovery.vue';
 import { getDownloadQueue, type DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserDownloadProgress from './LlamaCppBrowserDownloadProgress.vue';
 import LlamaCppBrowserDownloadSources from './LlamaCppBrowserDownloadSources.vue';
 import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
-const props = defineProps<{ job: DownloadJob, disabled: boolean, appearance: 'manager' | 'welcome', sourcesVisibility?: 'visible' | 'hidden', density?: 'regular' | 'compact' }>();
+const props = defineProps<{ job: DownloadJob, disabled: boolean, acceptLocalInput: (({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }) => void | Promise<void>) | undefined, appearance: 'manager' | 'welcome', sourcesVisibility?: 'visible' | 'hidden', density?: 'regular' | 'compact' }>();
 const emit = defineEmits<{ resume: [] }>();
 const queue = getDownloadQueue();
 const errorText = computed(() => {
@@ -34,6 +38,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <button v-else-if="job.status === 'paused' || job.status === 'failed'" type="button" :disabled="disabled" data-testid="llama-download-resume" tw-class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none disabled:opacity-50" @click="emit('resume')"><PlayIcon aria-hidden="true" tw-class="h-3 w-3" />{{ job.status === 'paused' ? lazyStrings.llamaCppBrowserDownloads__resume() : lazyStrings.llamaCppBrowserDownloads__retry() }}</button>
     </div>
     <p v-if="errorText" role="alert" tw-class="flex items-start gap-2 text-xs text-red-600 dark:text-red-400"><AlertCircleIcon aria-hidden="true" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0" />{{ errorText }}</p>
+    <HuggingFaceDownloadFailureHint v-if="job.status === 'failed'" :key="job.id"><LlamaCppBrowserLocalFileRecovery :disabled="disabled" :accept-local-input="acceptLocalInput" /></HuggingFaceDownloadFailureHint>
+    <CspMessageHint v-else-if="job.status === 'paused'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
     <LlamaCppBrowserDownloadProgress v-if="job.progress" :progress="job.progress" :appearance="density === 'compact' ? 'manager' : 'welcome'" :activity="job.status === 'downloading' ? 'active' : 'inactive'" />
     <LlamaCppBrowserDownloadSources v-if="sourcesVisibility !== 'hidden'" :job="job" />
   </div>
@@ -52,6 +58,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </template>
     <template v-else-if="job.status === 'paused' || job.status === 'failed'">
       <p v-if="errorText" role="alert" tw-class="flex items-start gap-2 text-xs text-red-600 dark:text-red-400"><AlertCircleIcon tw-class="w-3.5 h-3.5 shrink-0 mt-0.5" />{{ errorText }}</p>
+      <HuggingFaceDownloadFailureHint v-if="job.status === 'failed'" :key="job.id"><LlamaCppBrowserLocalFileRecovery :disabled="disabled" :accept-local-input="acceptLocalInput" /></HuggingFaceDownloadFailureHint>
+      <CspMessageHint v-else-if="job.status === 'paused'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
       <div :tw-class="['flex gap-3 text-xs text-gray-500 dark:text-gray-400', 'items-center justify-between']">
         <span v-if="job.status === 'paused'" role="status">{{ lazyStrings.llamaCppBrowserDownloads__paused() }}</span>
         <LlamaCppBrowserModelActionButton :disabled="disabled" data-testid="llama-download-resume" tw-class="ml-auto" @click="emit('resume')"><PlayIcon aria-hidden="true" tw-class="h-3 w-3" />{{ job.status === 'paused' ? lazyStrings.llamaCppBrowserDownloads__resume() : lazyStrings.llamaCppBrowserDownloads__retry() }}</LlamaCppBrowserModelActionButton>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BirdIcon, UserIcon, PaperclipIcon, SendIcon, SquareIcon, ChevronDownIcon, CopyIcon, PencilIcon, RefreshCwIcon, MoreHorizontalIcon, MoreVerticalIcon, Volume2Icon, Settings2Icon, FileEditIcon } from 'lucide-vue-next';
+import { ArrowUpIcon, BirdIcon, UserIcon, SendIcon, SquareIcon, CopyIcon, PencilIcon, RefreshCwIcon, MoreHorizontalIcon, MoreVerticalIcon, Volume2Icon } from 'lucide-vue-next';
 import NaidanAppFrame from './demos/NaidanAppFrame.vue';
+import NaidanChatInput from './demos/NaidanChatInput.vue';
 import type { CommonMessages } from '../messages/types';
 
 const props = defineProps<{ messages: typeof import('../pages/index/messages/en').messages; common: CommonMessages }>();
@@ -36,7 +37,8 @@ defineExpose({
 
 <template>
   <div class="home-demonstration" data-docs-animation="chat-response" aria-hidden="true">
-    <NaidanAppFrame :messages="common" :title="messages.project_summary" address="Naidan" sidebar="visible">
+    <!-- Inheritance badges are intentionally omitted to focus this scene on streamed answers. -->
+    <NaidanAppFrame :messages="common" :title="messages.project_summary" address="Naidan" sidebar="visible" model="Gemma">
       <div class="demo-scene" data-testid="docs-home-chat-scene">
         <div class="demo-thread">
           <div class="demo-message demo-user">
@@ -55,10 +57,12 @@ defineExpose({
             <div class="demo-message-actions"><MoreHorizontalIcon :size="12" /><Volume2Icon :size="12" /><RefreshCwIcon :size="12" /><CopyIcon :size="12" /><PencilIcon :size="12" /><MoreVerticalIcon :size="12" /></div>
           </div>
         </div>
-        <div class="demo-input"><div class="demo-placeholder">{{ messages.type_a_message }}</div><div class="demo-input-editor"><ChevronDownIcon :size="11" /><FileEditIcon :size="11" /></div><div class="demo-input-controls"><span class="demo-model">Gemma <ChevronDownIcon :size="10" /></span><PaperclipIcon :size="13" /><Settings2Icon :size="13" /><span class="demo-send"><span class="demo-send-ready"><SendIcon :size="13" /></span><span class="demo-send-stop"><span>Esc</span><SquareIcon :size="11" /></span></span></div></div>
+        <NaidanChatInput class="demo-input" :messages="common" model="Gemma" status="generating">
+          {{ messages.type_a_message }}
+          <template #send><span class="demo-send-ready" :title="common.chrome_send"><ArrowUpIcon :size="16" :stroke-width="2.5" /></span><span class="demo-send-stop" :title="common.chrome_stop"><SquareIcon :size="13" /></span></template>
+        </NaidanChatInput>
       </div>
     </NaidanAppFrame>
-    <div class="demo-capabilities"><span v-for="capability in messages.generation_capabilities()" :key="capability">{{ capability }}</span></div>
   </div>
 </template>
 
@@ -79,15 +83,15 @@ defineExpose({
   padding: 16px 19px 13px;
 }
 .demo-assistant {
-  background: #1f293733;
-  border-block: 1px solid #1f293780;
+  background: color-mix(in srgb, var(--surface-3) 25%, transparent);
+  border-block: 1px solid var(--line);
 }
 .demo-message-header {
   display: flex;
   align-items: center;
   gap: 9px;
   height: 25px;
-  color: #9ca3af;
+  color: var(--muted);
   font-size: 10px;
   font-weight: 700;
 }
@@ -96,7 +100,7 @@ defineExpose({
   font-weight: 700;
 }
 .demo-user-role {
-  color: #e5e7eb;
+  color: var(--text);
   text-transform: uppercase;
   letter-spacing: .1em;
 }
@@ -107,23 +111,23 @@ defineExpose({
   width: 25px;
   height: 25px;
   flex: none;
-  background: #1f2937;
-  border: 1px solid #374151;
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 .demo-avatar-assistant {
-  color: #60a5fa;
+  color: var(--blue);
 }
 .demo-header-tools {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 .demo-user p,.demo-answer p {
   margin: 5px 0 0;
-  color: #e5e7eb;
+  color: var(--text);
 }
 .demo-message-actions {
   display: flex;
@@ -131,13 +135,13 @@ defineExpose({
   justify-content: flex-end;
   gap: 11px;
   margin-top: 8px;
-  color: #9ca3af;
+  color: var(--muted);
 }
 .demo-message-actions svg:first-child {
-  color: #60a5fa66;
+  color: color-mix(in srgb, var(--blue) 40%, transparent);
 }
 .demo-answer {
-  color: #d1d5db;
+  color: var(--text);
   animation: docs-response-cycle 12s linear infinite both;
 }
 .demo-answer ul {
@@ -205,51 +209,11 @@ defineExpose({
   animation: docs-send-disabled 12s steps(1,end) infinite both;
 }
 .demo-input {
-  position: relative;
-  background: #1f2937;
-  border: 1px solid #374151;
-  border-radius: 12px;
   margin: 9px 12px 14px;
-  padding: 12px;
-  box-shadow: 0 6px 18px #0003;
 }
-.demo-placeholder {
-  color: #8492a6;
-  font: 10px/1.6 ui-sans-serif,system-ui,sans-serif;
-  padding-bottom: 14px;
-}
-.demo-input-editor {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  color: #9ca3af;
-}
-.demo-input-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #a3b2c9;
-}
-.demo-model {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 9px;
-  margin-right: auto;
-}
-.demo-send {
+.demo-input :deep([data-testid='docs-chat-input-send']) {
   display: grid;
-  align-items: center;
-  justify-items: center;
-  min-width: 39px;
-  min-height: 28px;
-  background: #2563eb;
-  color: white;
-  border-radius: 8px;
-  box-shadow: 0 3px 9px #2563eb4d;
+  animation: docs-send-surface 12s steps(1,end) infinite both;
 }
 .demo-send-ready,.demo-send-stop {
   grid-area: 1 / 1;
@@ -259,25 +223,11 @@ defineExpose({
   padding: 0 5px;
 }
 .demo-send-ready {
-  opacity: .5;
+  opacity: .7;
 }
 .demo-send-stop {
-  font-size: 8px;
+  fill: currentColor;
 }
-.demo-capabilities {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 14px;
-  font: 10px/1.4 ui-sans-serif,system-ui,sans-serif;
-  color: var(--muted);
-}
-.demo-capabilities span {
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  padding: 5px 8px;
-}
-
 /* The entire response fades together before replay. The chunks only appear;
    completed lines never disappear in reverse reading order. */
 @keyframes docs-response-cycle {
@@ -427,6 +377,16 @@ defineExpose({
     visibility: hidden;
   }
 }
+@keyframes docs-send-surface {
+  0%,7.9%,42%,100% {
+    background: var(--surface-2);
+    color: var(--subtle);
+  }
+  8%,41.9% {
+    background: #2563eb;
+    color: white;
+  }
+}
 
 html:has(#docs-pause-motion:checked) .demo-answer,
 html:has(#docs-pause-motion:checked) .demo-chunk,
@@ -438,6 +398,11 @@ html:has(#docs-pause-motion:checked) .demo-item {
 html:has(#docs-pause-motion:checked) .demo-send-ready {
   animation: none !important;
   visibility: visible !important;
+}
+html:has(#docs-pause-motion:checked) .demo-input :deep([data-testid='docs-chat-input-send']) {
+  animation: none !important;
+  background: var(--surface-2);
+  color: var(--subtle);
 }
 html:has(#docs-pause-motion:checked) .demo-generating-control,
 html:has(#docs-pause-motion:checked) .demo-send-stop {
@@ -453,6 +418,11 @@ html:has(#docs-pause-motion:checked) .demo-send-stop {
   .demo-send-ready {
     animation: none !important;
     visibility: visible !important;
+  }
+  .demo-input :deep([data-testid='docs-chat-input-send']) {
+    animation: none !important;
+    background: var(--surface-2);
+    color: var(--subtle);
   }
   .demo-generating-control,.demo-send-stop {
     animation: none !important;
@@ -470,7 +440,6 @@ html:has(#docs-pause-motion:checked) .demo-send-stop {
     gap: 8px;
   }
   .demo-input {
-    padding: 9px;
     margin: 6px 9px 12px;
   }
 }

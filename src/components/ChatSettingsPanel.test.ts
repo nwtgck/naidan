@@ -57,6 +57,47 @@ vi.mock('../composables/useLayout', () => ({
 }));
 
 describe('ChatSettingsPanel.vue', () => {
+  it('moves the warning between the collapsed endpoint summary and the URL without recreating the input', async () => {
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: { ...globalStubs, CspLmEndpointHint: { props: ['endpoint', 'operation', 'presentation', 'activityForDisplayOnly'], template: '<button type="button" data-testid="url-warning-probe" :data-presentation="presentation" :data-activity="activityForDisplayOnly">Connection warning</button>' } } },
+    });
+    await flushPromises();
+    const trigger = wrapper.get('[data-testid="chat-setting-connection-trigger"]');
+    const input = wrapper.get<HTMLInputElement>('[data-testid="chat-setting-url-input"]');
+    const original = input.element;
+    const disclosure = original.closest('.settings-collapse');
+    const fetchCount = mockFetchAvailableModels.mock.calls.length;
+    const mainWarnings = () => wrapper.findAll('[data-testid="url-warning-probe"]').filter(warning => trigger.element.parentElement?.contains(warning.element) || disclosure?.contains(warning.element));
+    expect(mainWarnings()).toHaveLength(1);
+    const summaryWarning = mainWarnings()[0]!;
+    expect(trigger.element.nextElementSibling).toBe(summaryWarning.element);
+    expect(summaryWarning.element.closest('[aria-hidden="true"]')).toBeNull();
+    expect(summaryWarning.attributes('data-presentation')).toBe('compact');
+    expect(summaryWarning.attributes('data-activity')).toBe('connection');
+    expect(original.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBeNull();
+    expect(disclosure?.getAttribute('aria-hidden')).toBe('true');
+    await trigger.trigger('click');
+    expect(disclosure?.getAttribute('aria-hidden')).toBe('false');
+    expect(mainWarnings()).toHaveLength(1);
+    const warning = mainWarnings()[0]!;
+    expect(trigger.element.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBeNull();
+    const label = wrapper.get(`label[for="${original.id}"]`);
+    expect(label.element.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBe(warning.element);
+    expect(warning.element.closest('label')).toBeNull();
+    expect(original.nextElementSibling).toBe(warning.element);
+    expect(warning.attributes('data-presentation')).toBe('compact');
+    expect(warning.attributes('data-activity')).toBe('connection');
+    expect(wrapper.get('[data-testid="chat-setting-url-input"]').element).toBe(original);
+    await trigger.trigger('click');
+    expect(disclosure?.getAttribute('aria-hidden')).toBe('true');
+    expect(mainWarnings()).toHaveLength(1);
+    expect(trigger.element.nextElementSibling).toBe(mainWarnings()[0]!.element);
+    expect(original.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBeNull();
+    expect(wrapper.get('[data-testid="chat-setting-url-input"]').element).toBe(original);
+    expect(mockFetchAvailableModels).toHaveBeenCalledTimes(fetchCount);
+  });
+
   it('hides disabled RPC choices while preserving existing chat and title references', async () => {
     mockCurrentChat.value.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     mockCurrentChat.value.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS } };

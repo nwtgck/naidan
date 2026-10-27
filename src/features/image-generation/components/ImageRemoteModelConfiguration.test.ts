@@ -6,6 +6,7 @@ import { toBinaryObjectId, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey }
 import { createImageForm } from '@/features/image-generation/form';
 import { useImageInferenceLocation } from '@/features/image-generation/composables/use-image-inference-location';
 import { remoteImageFileKey } from '@/features/image-generation/remote-image-model-editor';
+import { imageCatalogFixture } from '@/features/image-generation/model-selection.test-support';
 import ImageRemoteModelConfiguration from './ImageRemoteModelConfiguration.vue';
 import ImageModelPicker from '@/features/stable-diffusion-cpp-browser/components/ImageModelPicker.vue';
 
@@ -58,4 +59,23 @@ it('provides the same adapter enable, strength and remove operations for remote 
   expect(h.wrapper.get('[data-testid="image-lora-strength"]').element.matches(':disabled')).toBe(true);
   await h.wrapper.get('[data-testid="image-lora-remove"]').trigger('click');
   expect(h.inferenceLocation.editor.value.loras).toEqual([]);
+});
+
+it('makes automatic companions visible and lets a manual none return to automatic', async () => {
+  const h = harness(), catalog = imageCatalogFixture({});
+  h.inferenceLocation.catalog.value = catalog;
+  h.inferenceLocation.catalogFresh.value = true;
+  h.inferenceLocation.choosePrimary({ id: remoteImageFileKey({ file: catalog[0]!.file }) });
+  await flushPromises();
+  const automatic = h.wrapper.get('[data-testid="image-component-automatic-vae"]');
+  expect(automatic.element).toHaveProperty('checked', true);
+  await automatic.setValue(false);
+  expect(h.inferenceLocation.editor.value.components.some(item => item.slot === 'vae')).toBe(true);
+  h.wrapper.findAllComponents(ImageModelPicker).find(picker => picker.attributes('data-testid') === 'image-component-vae')!.vm.$emit('update:modelValue', '');
+  await flushPromises();
+  expect(h.inferenceLocation.ready.value).toBe(false);
+  await automatic.setValue(true);
+  expect(h.inferenceLocation.ready.value).toBe(true);
+  await h.wrapper.setProps({ disabled: true });
+  expect(automatic.element).toHaveProperty('disabled', true);
 });

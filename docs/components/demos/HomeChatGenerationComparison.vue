@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ArrowUpIcon, BirdIcon, BotIcon, CloudIcon, SendIcon, UserIcon } from 'lucide-vue-next';
+import { ArrowUpIcon, BirdIcon, BotIcon, CloudIcon, UserIcon } from 'lucide-vue-next';
 import naidanLogo from '../../assets/naidan.svg';
 import HomeBrowserFrame from './HomeBrowserFrame.vue';
 import HomeLocalGenerationBadge from './HomeLocalGenerationBadge.vue';
@@ -30,7 +30,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               </div>
               <div class="reply-turn"><div class="reply-bubble" data-testid="docs-local-chat-reply"><small><BirdIcon :size="15" aria-hidden="true" />Naidan</small><p class="answer-text" data-testid="docs-local-chat-answer"><span v-for="(glyph, index) in answerGlyphs" :key="index" class="answer-glyph" :style="{ '--glyph-offset': glyph.offset }">{{ glyph.character }}</span></p></div></div>
             </div>
-            <div class="chat-composer" aria-hidden="true"><span><HomeTypingText :text="messages.chat_question" /></span><span class="send-action"><SendIcon :size="16" /></span></div>
+            <div class="chat-composer" aria-hidden="true"><span><HomeTypingText :text="messages.chat_question" /></span><span class="send-action"><ArrowUpIcon :size="16" /></span></div>
             <div class="travel-layer local-travel" aria-hidden="true"><span class="moving-prompt">{{ messages.chat_question }}</span></div>
           </div>
         </HomeBrowserFrame>

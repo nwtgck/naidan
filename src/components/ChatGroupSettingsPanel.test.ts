@@ -15,6 +15,7 @@ import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
+import { useConfirm } from '@/composables/useConfirm';
 import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-models/ids';
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -174,6 +175,46 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
+  it('moves the warning between the collapsed endpoint summary and the URL without recreating the input', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, {
+      global: { stubs: { ...globalStubs, CspLmEndpointHint: { props: ['endpoint', 'operation', 'presentation', 'activityForDisplayOnly'], template: '<button type="button" data-testid="url-warning-probe" :data-presentation="presentation" :data-activity="activityForDisplayOnly">Connection warning</button>' } } },
+    });
+    await flushPromises();
+    const trigger = wrapper.get('[data-testid="group-setting-connection-trigger"]');
+    const input = wrapper.get<HTMLInputElement>('[data-testid="group-setting-url-input"]');
+    const original = input.element;
+    const disclosure = original.closest('.settings-collapse');
+    const fetchCount = mockFetchAvailableModels.mock.calls.length;
+    const mainWarnings = () => wrapper.findAll('[data-testid="url-warning-probe"]').filter(warning => trigger.element.parentElement?.contains(warning.element) || disclosure?.contains(warning.element));
+    expect(mainWarnings()).toHaveLength(1);
+    const summaryWarning = mainWarnings()[0]!;
+    expect(trigger.element.nextElementSibling).toBe(summaryWarning.element);
+    expect(summaryWarning.element.closest('[aria-hidden="true"]')).toBeNull();
+    expect(summaryWarning.attributes('data-presentation')).toBe('compact');
+    expect(summaryWarning.attributes('data-activity')).toBe('connection');
+    expect(original.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBeNull();
+    expect(disclosure?.getAttribute('aria-hidden')).toBe('true');
+    await trigger.trigger('click');
+    expect(disclosure?.getAttribute('aria-hidden')).toBe('false');
+    expect(mainWarnings()).toHaveLength(1);
+    const warning = mainWarnings()[0]!;
+    expect(trigger.element.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBeNull();
+    const label = wrapper.get(`label[for="${original.id}"]`);
+    expect(label.element.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBe(warning.element);
+    expect(warning.element.closest('label')).toBeNull();
+    expect(original.nextElementSibling).toBe(warning.element);
+    expect(warning.attributes('data-presentation')).toBe('compact');
+    expect(warning.attributes('data-activity')).toBe('connection');
+    expect(wrapper.get('[data-testid="group-setting-url-input"]').element).toBe(original);
+    await trigger.trigger('click');
+    expect(disclosure?.getAttribute('aria-hidden')).toBe('true');
+    expect(mainWarnings()).toHaveLength(1);
+    expect(trigger.element.nextElementSibling).toBe(mainWarnings()[0]!.element);
+    expect(original.parentElement?.querySelector('[data-testid="url-warning-probe"]')).toBeNull();
+    expect(wrapper.get('[data-testid="group-setting-url-input"]').element).toBe(original);
+    expect(mockFetchAvailableModels).toHaveBeenCalledTimes(fetchCount);
+  });
+
   it('hides disabled RPC choices while preserving existing chat and title references', async () => {
     mockGroup.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     mockGroup.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS } };
@@ -1413,7 +1454,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
       expect(wrapper.find('[data-testid="chat-group-mounts"]').text()).toContain('/home/user/my-project');
     });
 
-    it('calls removeMountFromChatGroup when remove button is clicked', async () => {
+    it('calls removeMountFromChatGroup after confirming removal', async () => {
+      using fixture = {
+        confirmation: useConfirm(),
+        [Symbol.dispose]() {
+          this.confirmation.handleCancel();
+        },
+      };
       mockGroup.mounts = [
         { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
       ];
@@ -1421,6 +1468,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await nextTick();
 
       await wrapper.find('[data-testid="mount-remove"]').trigger('click');
+      await flushPromises();
+
+      expect(fixture.confirmation.isConfirmOpen.value).toBe(true);
+      expect(mocks.removeMountFromChatGroup).not.toHaveBeenCalled();
+      fixture.confirmation.handleConfirm();
       await flushPromises();
 
       expect(mocks.removeMountFromChatGroup).toHaveBeenCalledWith({ groupId: 'g1', volumeId: 'vol-1' });

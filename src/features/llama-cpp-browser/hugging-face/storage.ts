@@ -164,7 +164,20 @@ function describeRepositoryModel({ directory, repository, destination, directori
   };
 }
 
-export async function installedSelection({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<LocalModel | undefined> {
+async function assertExpectedRoot({ destination, expectedRoot }: { destination: ModelDestination | undefined, expectedRoot: FileSystemDirectoryHandle | undefined }): Promise<void> {
+  if (expectedRoot === undefined || !isHostDestination(destination)) {
+    return;
+  }
+  const current = await hostModelRoot({ destination, mode: 'read' });
+  if (!await current.isSameEntry(expectedRoot)) {
+    throw new LlamaCppBrowserError({ code: 'storage-error' });
+  }
+}
+
+export async function installedSelection({ selection, destination, expectedRoot }: { selection: DownloadSelection, destination?: ModelDestination, expectedRoot?: FileSystemDirectoryHandle }): Promise<LocalModel | undefined> {
+  // A launch may have captured a physical folder before a permission prompt.
+  // An installed model must not bypass the queue's check by using a relinked ID.
+  await assertExpectedRoot({ destination, expectedRoot });
   let actual: ModelDirectory['files'];
   try {
     actual = await repositoryFiles({ repository: selection.repository, destination, signal: undefined });
@@ -210,7 +223,9 @@ export async function installedSelection({ selection, destination }: { selection
     }
     throw error;
   }
-  return describeRepositoryModel({ directory, repository: selection.repository, destination, directories: isHostDestination(destination) ? await storageService.loadHostModelDirectories() : [] });
+  const model = describeRepositoryModel({ directory, repository: selection.repository, destination, directories: isHostDestination(destination) ? await storageService.loadHostModelDirectories() : [] });
+  await assertExpectedRoot({ destination, expectedRoot });
+  return model;
 }
 
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {

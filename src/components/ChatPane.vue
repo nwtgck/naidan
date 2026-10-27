@@ -45,6 +45,8 @@ import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue
 import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
+import GenerationSpeed from './GenerationSpeed.vue';
+import { useGenerationMetrics } from '@/composables/useGenerationMetrics';
 import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
@@ -65,6 +67,7 @@ import type { ChatModelRecoveryNotice } from './ChatModelRecoverySummary.vue';
 import LlamaCppBrowserFirefoxWebGpuWarning from '@/features/llama-cpp-browser/components/LlamaCppBrowserFirefoxWebGpuWarning.vue';
 import { useFirefoxWebGpuWarning } from '@/features/llama-cpp-browser/composables/useFirefoxWebGpuWarning';
 import ChatInput from './ChatInput.vue';
+import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import ChatApprovalPanel from '@/features/tools/components/chat-approval/ChatApprovalPanel.vue';
 import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoicesPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
@@ -150,7 +153,7 @@ const chatGroups = useChatGroups();
 const chatTitle = useChatTitle();
 const chatMetadata = useChatMetadata();
 const chatLifecycle = useChatLifecycle();
-const { getSortedImageModels } = useImageGeneration();
+const { getSortedImageModels, isImageMode: isChatImageMode } = useImageGeneration();
 const props = defineProps<{
   chatId: ChatId,
   autoSendPrompt?: string,
@@ -300,6 +303,8 @@ const showChatInspector = ref(false);
 watch(() => props.chatId, () => {
   showChatInspector.value = false;
 });
+const { generationMetrics } = useGenerationMetrics({ chat, chatFlow });
+
 const chatIdentityKey = computed(() => {
   const chatId = props.chatId;
   const leafId = chat.value?.currentLeafId ?? 'no-leaf';
@@ -1171,11 +1176,11 @@ function requestModelSelection(): void {
     target: {
       kind: 'chat',
       chatId: props.chatId,
-      acceptFiles: ({ directories, controller }) => {
-        void chatModelSelection.accept({ directories, controller });
+      acceptFiles: ({ directories, controller, save }) => {
+        void chatModelSelection.accept({ directories, controller, save });
       },
       useRepositoryModel: ({ target }) => {
-        void chatModelSelection.useRepositoryModel({ target });
+        void chatModelSelection.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
       },
       useModel: ({ model }) => {
         void chatModelSelection.useModel({ model });
@@ -1905,6 +1910,7 @@ watch(
       :title="chat?.title ?? null"
       :available-models="titleDialogAvailableModels"
       :selected-title-model="activeTitleModelId"
+      :endpoint="activeTitleEndpoint"
       :title-model-source="activeTitleModelSource"
       :generated-titles="generatedTitleHistory"
       :generating-title="isGeneratingTitle"
@@ -1925,6 +1931,7 @@ watch(
     <!-- Context Compact Settings Dialog -->
     <ContextCompactSettingsDialog
       :is-open="showCompactSettings"
+      :endpoint="resolvedSettings?.endpoint"
       :total-messages="activeMessages.length"
       :initial-keep-count="6"
       :initial-instruction="initialContextCompactInstruction"
@@ -1946,12 +1953,13 @@ watch(
     <!-- Messages Layer -->
     <div tw-class="min-h-0 flex-1 relative overflow-hidden">
       <div
-        tw-class="absolute inset-x-0 top-0 z-40 pointer-events-none"
+        tw-class="absolute inset-x-0 top-0 z-40 flex max-h-full flex-col pointer-events-none"
         data-testid="context-compact-progress-overlay"
       >
-        <div tw-class="pointer-events-auto">
+        <div tw-class="min-h-0 overflow-y-auto overscroll-contain pointer-events-auto">
           <ContextCompactProgressStrip
             :progress="contextCompactProgress"
+            :endpoint="resolvedSettings?.endpoint"
             @abort="handleAbortContextCompact()"
           />
         </div>
@@ -2017,6 +2025,9 @@ watch(
                     </template>
                   </template>
                 </template>
+                <template #generation-metrics>
+                  <GenerationSpeed v-if="generationMetrics.get(flowItem.id) !== undefined" :presentation="generationMetrics.get(flowItem.id)!" />
+                </template>
                 <template #default="{ isExpanded }">
                   <template v-for="subItem in (flowItem.items as ChatFlowItem[])" :key="subItem.type === 'message' ? subItem.key : subItem.id">
                     <MessageItem
@@ -2031,6 +2042,7 @@ watch(
                       :is-thinking-active="isThinkingActive({ item: subItem })"
                       :available-image-models="availableImageModels"
                       :endpoint-type="resolvedEndpointType"
+                      :endpoint="resolvedSettings?.endpoint"
                       :flow="subItem.flow"
                       :mode="subItem.mode"
                       :part-content="subItem.partContent"
@@ -2067,6 +2079,7 @@ watch(
                 :is-thinking-active="isThinkingActive({ item: flowItem })"
                 :available-image-models="availableImageModels"
                 :endpoint-type="resolvedEndpointType"
+                :endpoint="resolvedSettings?.endpoint"
                 :flow="flowItem.flow"
                 :mode="flowItem.mode"
                 :part-content="flowItem.partContent"
@@ -2075,6 +2088,7 @@ watch(
                 :is-last-in-node="flowItem.isLastInNode"
                 :is-first-in-turn="flowItem.isFirstInTurn"
                 :show-generating-indicator="flowIdx === generatingIndicatorIndex"
+                :generation-metrics="generationMetrics.get(flowItem.key)"
                 @fork="messageId => handleFork({ messageId })"
                 @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                 @switch-version="messageId => handleSwitchVersion({ messageId })"
@@ -2167,6 +2181,7 @@ watch(
       :chat-id="chat.id"
       :chat="chat"
       :chat-group="chatGroup"
+      :endpoint="resolvedSettings?.endpoint"
       :resolved-lm-parameters="resolvedSettings?.lmParameters"
       :inherited-model-id="inheritedSettings?.modelId"
       :inherited-model-source="inheritedSettings?.sources.modelId"
@@ -2179,7 +2194,7 @@ watch(
       @layout-change="composerLayout.measure()"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
-      :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined || (!modelControlsOutsideComposer && (historyModelPreparationVisible || historyModelRecoveryVisible || isModelPreparing)) || chatLocalModel.operation.value !== undefined || temporaryModelSave.notice.value !== undefined ? 'visible' : 'hidden'"
+      :above-input-visibility="modelLaunch.composerVisibility.value === 'visible' || activeApprovalRequest !== undefined || activeChoiceRequest !== undefined || (!modelControlsOutsideComposer && (historyModelPreparationVisible || historyModelRecoveryVisible || isModelPreparing)) || chatLocalModel.operation.value !== undefined || temporaryModelSave.notice.value !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :is-submission-enabled="isChatSubmissionEnabled"
       :text-submission-action="chatTextSubmissionAction"
@@ -2212,6 +2227,7 @@ watch(
           <button v-else-if="!historyModelPreparationVisible && !historyModelRecoveryVisible && temporaryModelSave.hiddenNotice.value" type="button" data-testid="temporary-model-show-progress" tw-class="mb-2 rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="temporaryModelSave.show()">{{ lazyStrings.TemporaryModelSaveNotice__saving_in_your_browser() }}</button>
           <TemporaryModelSaveNotice v-else-if="!historyModelPreparationVisible && !historyModelRecoveryVisible && temporaryModelSave.notice.value !== undefined" :state="temporaryModelSave.notice.value" @save="temporaryModelSave.save()" @retry="temporaryModelSave.retry()" @dismiss="temporaryModelSave.dismiss()" @cancel="temporaryModelSave.cancel()" />
         </template>
+        <CspLmEndpointHint :activity-for-display-only="undefined" v-if="modelLaunch.composerVisibility.value === 'visible'" data-chat-csp-notice :fake-lm-debug-mode-status="undefined" :endpoint="resolvedSettings?.endpoint" :operation="isChatImageMode({ chatId: props.chatId }) ? 'image' : 'chat'" presentation="compact" tw-class="rounded-lg bg-white px-4 py-1 dark:bg-gray-900" />
       </template>
     </ChatInput>
 

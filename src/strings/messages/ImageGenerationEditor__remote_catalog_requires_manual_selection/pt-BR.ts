@@ -1,0 +1,1 @@
+export const ImageGenerationEditor__remote_catalog_requires_manual_selection = (): string => "Esta lista de modelos remotos não oferece seleção automática. Selecione o modelo e os componentes manualmente.";

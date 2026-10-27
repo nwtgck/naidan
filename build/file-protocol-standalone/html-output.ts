@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom';
+import { createBuildDom } from '../jsdom';
 
 function hasStartOffset(value: unknown): value is Readonly<{startOffset: number}> {
   return value !== null
@@ -20,7 +20,7 @@ export function insertFileProtocolStandaloneBootstrap({ html, bootstrap }: Reado
   html: string;
   bootstrap: string;
 }>): string {
-  const dom = new JSDOM(html, { includeNodeLocations: true });
+  const dom = createBuildDom({ html, options: { includeNodeLocations: true } });
   try {
     const head = dom.window.document.head;
     const location = dom.nodeLocation(head);

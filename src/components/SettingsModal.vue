@@ -384,7 +384,7 @@ defineExpose({
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
-                <LlamaCppBrowserManager :suspended="props.suspended" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
+                <LlamaCppBrowserManager presentation="settings" :suspended="props.suspended" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
                 <LlamaCppBrowserPerformanceEntry :loading="props.performanceLoading === true" :error="props.performanceError" tw-class="mt-5" @open="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)" />
               </div>
 
@@ -419,7 +419,7 @@ defineExpose({
               />
 
               <!-- About Tab -->
-              <AboutTab v-if="activeTab === 'about'" />
+              <AboutTab v-if="activeTab === 'about'" :visibility="props.suspended ? 'hidden' : 'visible'" />
             </div>
           </div>
         </main>

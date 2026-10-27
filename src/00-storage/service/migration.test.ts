@@ -142,7 +142,7 @@ const normalizedMockSettings: Settings = {
   experimental: {
     ...mockSettings.experimental,
     fakeLm: 'disabled',
-    toolConfigPersistence: 'disabled',
+    toolConfigPersistence: 'enabled',
     naidanRpc: 'disabled',
   },
 };

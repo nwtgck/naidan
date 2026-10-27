@@ -1,0 +1,7 @@
+# Review dependency and CI changes, including Dependabot pull requests.
+/package.json @nwtgck
+/package-lock.json @nwtgck
+/.github/workflows/ @nwtgck
+/.github/actions/ @nwtgck
+/.github/dependabot.yml @nwtgck
+/.github/CODEOWNERS @nwtgck

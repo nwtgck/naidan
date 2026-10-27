@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeLmFetch } from '@/features/fake-lm/api/fakeLmFetch';
 import { createLmFetch } from '@/features/lm/fetchFactory';
 import { createOllamaProvider } from '@/features/lm/ollamaProviderFactory';
+import { consumeProviderGenerationForTest } from './provider.test-support';
 
 const rpcManager = vi.hoisted(() => ({ get: vi.fn(), client: vi.fn() }));
 
@@ -158,5 +159,43 @@ describe('loadLmProvider for persisted experimental endpoints', () => {
     expect(rpcManager.get).not.toHaveBeenCalled();
     expect(rpcManager.client).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('generation timing configuration through the provider factory', () => {
+  it.each(['auto', 'enabled', 'disabled'] as const)('forwards %s without pulling global settings into the provider', async mode => {
+    using fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).endsWith('/props')) {
+        return Response.json({ default_generation_settings: { params: { timings_per_token: false } } });
+      }
+      return new Response('data: [DONE]\n\n');
+    });
+    const provider = await loadLmProvider({ endpoint: { type: 'openai', url: `https://factory.invalid/${mode}/v1` }, fakeLmDebugModeStatus: 'disabled', llamaCppServerTimings: mode });
+    const { result } = await consumeProviderGenerationForTest({
+      provider,
+      request: { debug: undefined, messages: [], model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined, onGenerationMetrics: vi.fn() },
+    });
+    expect(result.type).toBe('finished');
+    const postCalls = fetch.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(postCalls).toHaveLength(1);
+    const body: unknown = JSON.parse(String(postCalls[0]?.[1]?.body));
+    switch (mode) {
+    case 'auto':
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(body).toHaveProperty('timings_per_token', true);
+      break;
+    case 'enabled':
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(body).toHaveProperty('timings_per_token', true);
+      break;
+    case 'disabled':
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(body).not.toHaveProperty('timings_per_token');
+      break;
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(String(exhaustive));
+    }
+    }
   });
 });

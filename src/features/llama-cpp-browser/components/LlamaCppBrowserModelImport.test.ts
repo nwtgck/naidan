@@ -6,8 +6,10 @@ import LlamaCppBrowserModelImport from './LlamaCppBrowserModelImport.vue';
 import LinkedModelDirectories from '@/components/LinkedModelDirectories.vue';
 import type { HostModelDirectoriesView } from '@/composables/useHostModelDirectories';
 
+vi.mock('./LlamaCppBrowserLocalRepositorySaves.vue', () => ({ default: { template: '<div />' } }));
+
 const mocks = vi.hoisted(() => ({ supported: false, add: vi.fn(async () => {}), drop: vi.fn(async () => {}), importModel: vi.fn(async () => {}), importDirectory: vi.fn(async () => {}) }));
-vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { importModel: mocks.importModel, importDirectory: mocks.importDirectory } }));
+vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { importLocalDirectory: mocks.importModel, importDirectory: mocks.importDirectory } }));
 vi.mock('@/logic/host-model-directories', async importOriginal => ({ ...await importOriginal<typeof import('@/logic/host-model-directories')>(), missingHostModelDirectoryApis: () => mocks.supported ? [] : ['showDirectoryPicker'] }));
 vi.mock('@/features/llama-cpp-browser/composables/useModelDownloadDestination', () => ({
   useModelDownloadDestination: () => ({ view: view(), failure: ref(false) }),
@@ -60,9 +62,10 @@ describe('model import modes', () => {
     expect(folder.parentElement?.classList).toContain('flex-wrap');
   });
 
-  it('defaults to browser storage and keeps an unavailable link mode selectable and inspectable', async () => {
+  it('defaults to using original files and keeps an unavailable link mode selectable and inspectable', async () => {
     const wrapper = render();
-    const saved = wrapper.get('[data-testid="llama-import-mode-opfs"]');
+    const saved = wrapper.get('[data-testid="llama-import-mode-temp"]');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="local-model-save-in-browser"]').element.checked).toBe(false);
     const linked = wrapper.get('[data-testid="llama-import-mode-host"]');
     expect(saved.attributes('aria-pressed')).toBe('true');
     expect(linked.text()).toBe('Link folder');
@@ -82,7 +85,8 @@ describe('model import modes', () => {
     expect(wrapper.get('[data-testid="linked-host-folders-unavailable"]').text()).toBe('Linking folders on your device is not available in this environment.');
     await wrapper.get('[data-testid="llama-import-mode-temp"]').trigger('click');
     expect(wrapper.find('[data-testid="linked-host-folder-layout"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="llama-import-mode-description"]').text()).toContain('reloaded or closed');
+    await wrapper.get('[data-testid="local-model-save-in-browser"]').setValue(false);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').text()).toContain('save a copy in your browser later');
     expect(wrapper.find('[data-testid="llama-cpp-browser-file"]').exists()).toBe(true);
   });
 
@@ -106,20 +110,35 @@ describe('model import modes', () => {
     expect(mocks.importModel).not.toHaveBeenCalled();
   });
 
-  it('routes default imports through existing browser storage and temporary imports through the explicit storage choice', async () => {
+  it('uses the same File-first import with copying off or on and resets to off for a new settings view', async () => {
     const wrapper = render();
     const file = new File(['model'], 'model.gguf');
     const transfer = { types: ['Files'], items: [], files: [file] };
     drop({ wrapper, transfer, target: 'llama-cpp-browser-drop-zone' });
     await flushPromises();
-    expect(mocks.importModel).toHaveBeenLastCalledWith({ file, signal: expect.any(AbortSignal), onProgress: expect.any(Function) });
-    await wrapper.get('[data-testid="llama-import-mode-temp"]').trigger('click');
+    expect(mocks.importModel).toHaveBeenLastCalledWith({ directory: { rootName: 'model-GGUF', files: [{ relativePath: file.name, file }] }, signal: expect.any(AbortSignal), save: 'later' });
+    await wrapper.get('[data-testid="local-model-save-in-browser"]').setValue(true);
     drop({ wrapper, transfer, target: 'llama-cpp-browser-drop-zone' });
     await flushPromises();
-    expect(mocks.importModel).toHaveBeenLastCalledWith({ file, signal: expect.any(AbortSignal), onProgress: expect.any(Function), storage: 'temp' });
+    expect(mocks.importModel).toHaveBeenLastCalledWith({ directory: { rootName: 'model-GGUF', files: [{ relativePath: file.name, file }] }, signal: expect.any(AbortSignal), save: 'browser' });
     wrapper.unmount();
     const next = render();
-    expect(next.get('[data-testid="llama-import-mode-opfs"]').attributes('aria-pressed')).toBe('true');
+    expect(next.get<HTMLInputElement>('[data-testid="local-model-save-in-browser"]').element.checked).toBe(false);
+  });
+
+  it('shows file inspection without a transfer progress bar while registering original files', async () => {
+    const pending = Promise.withResolvers<void>();
+    mocks.importModel.mockImplementationOnce(() => pending.promise);
+    const wrapper = render();
+    const file = new File(['model'], 'model.gguf');
+    drop({ wrapper, transfer: { types: ['Files'], items: [], files: [file] }, target: 'llama-cpp-browser-drop-zone' });
+    await flushPromises();
+    expect(mocks.importModel).toHaveBeenCalledWith(expect.objectContaining({ save: 'later' }));
+    expect(wrapper.get('[data-testid="llama-cpp-browser-import-status"]').text()).toBe('Checking model files…');
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
+    pending.resolve();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-cpp-browser-import-status"]').exists()).toBe(false);
   });
 
   it('cancels a pending temporary directory traversal before registration', async () => {

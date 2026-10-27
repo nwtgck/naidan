@@ -164,6 +164,7 @@ defineExpose({
           <MessageItem
             :chat-id="previewChatId!"
             :message="msg"
+            :endpoint="undefined"
             :tw-class="['relative z-10', { 'opacity-65': match && idToRaw({ id: msg.id }) !== match.messageId }]"
             @fork="handleDummy"
             @edit="handleDummy"

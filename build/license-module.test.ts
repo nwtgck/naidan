@@ -8,6 +8,8 @@ import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown';
 
 import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin.js';
 import { readSystemJsLicenseDependency } from './file-protocol-standalone/systemjs';
+import { restoreLicenseCatalog } from './test-support/license-catalog.test-support';
+import type { NaidanLicenseCatalog } from '../src/01-models/naidan-license';
 import type { BuildLicenseDependency } from './license-dependencies';
 import {
   createLicenseModulePlugins,
@@ -170,6 +172,57 @@ afterEach(async () => {
 });
 
 describe('createLicenseModulePlugins', () => {
+  it('recollects license text after virtual-module invalidation and server restart', async () => {
+    const root = await createDevelopmentFixture();
+    const server = await createViteServer({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      server: { middlewareMode: true, hmr: false },
+      plugins: [...createLicenseModulePlugins({ getAdditionalDependencies: () => [] })],
+    });
+    try {
+      const first = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: first.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('prod license text');
+      await fs.writeFile(path.join(root, 'node_modules/prod-package/LICENSE'), 'edited license text');
+      server.moduleGraph.invalidateAll();
+      const updated = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: updated.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('edited license text');
+
+      await fs.writeFile(path.join(root, 'node_modules/prod-package/LICENSE'), 'restarted license text');
+      await server.restart();
+      const restarted = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: restarted.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('restarted license text');
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('retries a failed license collection after a dependency is restored', async () => {
+    const root = await createDevelopmentFixture();
+    const packagePath = path.join(root, 'node_modules/prod-package/package.json');
+    const packageContents = await fs.readFile(packagePath);
+    await fs.rm(packagePath);
+    const server = await createViteServer({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      server: { middlewareMode: true, hmr: false },
+      plugins: [...createLicenseModulePlugins({ getAdditionalDependencies: () => [] })],
+    });
+    try {
+      await expect(server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID)).rejects.toThrow(
+        'Required development license dependency is not installed: prod-package',
+      );
+      await fs.writeFile(packagePath, packageContents);
+      server.moduleGraph.invalidateAll();
+      const restored = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID);
+      expect(restoreLicenseCatalog({ factory: restored.default }).find((license) => license.name === 'prod-package')?.licenseText).toBe('prod license text');
+    } finally {
+      await server.close();
+    }
+  });
+
   it('serves installed production licenses from the virtual module during development', async () => {
     const root = await createDevelopmentFixture();
     const server = await createViteServer({
@@ -187,9 +240,9 @@ describe('createLicenseModulePlugins', () => {
       },
     };
     const loaded = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID) as {
-      default: readonly BuildLicenseDependency[],
+      default: () => NaidanLicenseCatalog,
     };
-    expect(loaded.default).toEqual([
+    expect(restoreLicenseCatalog({ factory: loaded.default })).toEqual([
       {
         name: 'prod-package',
         version: '1.0.0',
@@ -204,7 +257,7 @@ describe('createLicenseModulePlugins', () => {
         licenseText: 'transitive license text',
       },
     ]);
-    expect(loaded.default.some((dependency) => dependency.name === 'dev-only-package')).toBe(false);
+    expect(loaded.default().entries.some((dependency) => dependency.name === 'dev-only-package')).toBe(false);
   }, 30_000);
 
   it('injects current-build main and additional licenses into one lazy hosted chunk', async () => {
@@ -340,7 +393,7 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
     expect(licenseAsset === undefined ? false : containsDependencyName({ source: licenseAsset.source, name: 'zod' })).toBe(true);
     expect(licenseAsset?.source).not.toContain('__NAIDAN_LICENSE_PAYLOAD_');
     expect(licenseAsset?.source).not.toContain('JSON.parse');
-    expect(evaluateSystemRegisterDefault({ source: licenseAsset?.source ?? '' })).toEqual(
+    expect(restoreLicenseCatalog({ factory: evaluateSystemRegisterDefault({ source: licenseAsset?.source ?? '' }) })).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'systemjs' }),
         expect.objectContaining({ name: 'zod' }),

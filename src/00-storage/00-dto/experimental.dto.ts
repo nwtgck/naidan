@@ -149,6 +149,7 @@ export const ExperimentalRemoteImageModelFileSchemaDto = dtozod.object({
 
 
 export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  automaticSlots: dtozod.array(dtozod.enum(['vae', 'clipL', 'clipG', 't5', 'lm'])).optional(),
   primary: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     slot: dtozod.enum(['model', 'diffusion']),
     file: ExperimentalRemoteImageModelFileSchemaDto,
@@ -248,16 +249,28 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
 
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
   locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
+  /**
+   * Development convenience only. This does not improve security and MUST NOT
+   * be used for security. A late-applied CSP meta cannot prevent loads that
+   * already occurred. NEVER use this value for feature permissions or ON/OFF
+   * decisions. Clearing the setting means undefined, not an empty string.
+   */
+  metaCsp: missingAsUndefined(dtozod.string()),
   chatBrowserModelPickerTab: missingAsUndefined(dtozod.enum(['files', 'linked-folders', 'hugging-face', 'saved'])),
   modelDiscoveryTab: missingAsUndefined(dtozod.enum(['candidates', 'hugging_face', 'local_files'])),
   markdownRendering: missingAsUndefined(dtozod.union([
     dtozod.literal('block_markdown'),
     dtozod.literal('monolithic_html'),
   ])),
-  toolConfigPersistence: missingAsUndefined(dtozod.literal('enabled')),
+  toolConfigPersistence: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
   toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
   fakeLm: missingAsUndefined(dtozod.literal('enabled')),
   naidanRpc: missingAsUndefined(dtozod.literal('enabled')),
+  generationSpeed: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+    status: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+    inlineStats: missingAsUndefined(dtozod.enum(['on_demand', 'always'])),
+    llamaCppServerTimings: missingAsUndefined(dtozod.enum(['auto', 'enabled', 'disabled'])),
+  }))),
   sidebarSendMessageReorder: missingAsUndefined(dtozod.union([
     dtozod.literal('disabled'),
     dtozod.literal('move_sent_chat'),

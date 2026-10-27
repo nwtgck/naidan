@@ -2,14 +2,17 @@
 import { computed, nextTick, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { ChevronDownIcon, CpuIcon, FolderPlusIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import CspMessageHint from '@/components/csp/CspMessageHint.vue';
+import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
+import LlamaCppBrowserLocalFileRecovery from './LlamaCppBrowserLocalFileRecovery.vue';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { createModuleLoader } from '@/utils/module-loader';
 import { scheduleIdleTask, type ScheduledIdleTask } from '@/utils/idle-task';
 import type { ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
+import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import { localModelDisplayName } from '@/components/browser-model-presentation';
-import { captureDroppedLocalModels, localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
-import LlamaCppBrowserModelFileInput from './LlamaCppBrowserModelFileInput.vue';
+import LlamaCppBrowserLocalFiles from './LlamaCppBrowserLocalFiles.vue';
 import LlamaCppBrowserDownloadProgress from './LlamaCppBrowserDownloadProgress.vue';
 import LlamaCppBrowserModelImportModes from './LlamaCppBrowserModelImportModes.vue';
 import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
@@ -69,6 +72,7 @@ async function changeRepositoryView({ view }: { view: 'search' | 'configuration'
   }
 }
 
+const choosingLayout = ref(false);
 const reading = computed(() => props.state.operation.value?.phase === 'reading');
 const failure = computed(() => {
   const error = props.state.operation.value?.error;
@@ -344,29 +348,23 @@ function tabKeydown({ event }: { event: KeyboardEvent }): void {
   selectTab({ tab: tabs.value[next]!.key, focus: true });
 }
 
-function chooseLocal({ event, selection }: { event: Event, selection: 'files' | 'directory' }): void {
-  if (!(event.target instanceof HTMLInputElement)) {
-    return;
-  }
-  const files = Array.from(event.target.files ?? []);
-  event.target.value = '';
-  if (files.length === 0) {
-    return;
-  }
-  const controller = new AbortController();
-  // accept reserves the chat synchronously, before file parsing can yield.
-  void props.state.accept({ directories: Promise.resolve().then(() => localModelDirectoriesFromFiles({ files, selection })), controller });
+function acceptLocal({ directories, controller, save }: {
+  directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save: 'browser' | 'later',
+}): void {
+  emit('model-drop-area-active');
+  void props.state.accept({ directories, controller, save });
 }
 
-function dropLocal({ event }: { event: DragEvent }): void {
-  emit('model-drop-area-active');
-  if (!event.dataTransfer?.types.includes('Files')) {
-    return;
+function acceptFailedDownloadFiles({ directories, controller, save }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save?: 'browser' | 'later' }): Promise<void> {
+  void directories.catch(() => {});
+  const state = props.state;
+  const operation = state.operation.value;
+  if (props.availability === 'unavailable' || props.expansion !== 'open'
+    || operation?.phase !== 'error' || state.downloadJob.value?.status !== 'failed') {
+    controller.abort();
+    return Promise.resolve();
   }
-  const controller = new AbortController();
-  // Capture entries during dispatch; never await a lazy import first.
-  const directories = captureDroppedLocalModels({ transfer: event.dataTransfer, signal: controller.signal });
-  void props.state.accept({ directories, controller });
+  return state.acceptAfterFailedDownload({ directories, controller, save, operationId: operation.id });
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -391,7 +389,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div :id="panelId" class="chat-model-expander" :inert="expansion === 'closed' || undefined" :aria-hidden="expansion === 'closed'" :tw-class="['grid min-h-0 w-full transition-[grid-template-rows,opacity] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', expansion === 'open' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0']">
       <div class="chat-model-expander-content" tw-class="min-h-0 overflow-hidden">
         <section class="chat-model-content" tw-class="flex h-full min-h-0 flex-col gap-3 pt-4 text-left">
-          <div v-show="state.operation.value === undefined || (layout === 'welcome' && state.operation.value.downloadJobId === undefined)" class="chat-model-sources">
+          <div v-show="choosingLayout || state.operation.value === undefined || (layout === 'welcome' && state.operation.value.downloadJobId === undefined)" class="chat-model-sources">
             <Teleport :to="sourceTabsHost ?? 'body'" :disabled="layout === 'welcome' || sourceTabsHost === undefined">
               <div v-show="layout === 'welcome' || sourceTabsHost !== undefined" role="tablist" :aria-label="lazyStrings.ChatLocalModelInput__model_source()" tw-class="relative mx-auto grid w-full max-w-sm shrink-0 grid-cols-3 border-b border-gray-100 dark:border-gray-800" @keydown="tabKeydown({ event: $event })">
                 <button v-for="tab in tabs" :id="`${panelId}-${tab.key}-tab`" :key="tab.key" type="button" role="tab" :aria-controls="`${panelId}-${tab.key}-panel`" :aria-selected="activeSource === tab.key" :tabindex="activeSource === tab.key ? 0 : -1" :disabled="disabled" :data-testid="`chat-model-tab-${tab.key}`" :tw-class="['inline-flex min-h-10 items-center justify-center gap-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeSource === tab.key ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: tab.key, focus: false })">{{ tab.label }}</button>
@@ -405,7 +403,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   <LlamaCppBrowserModelImportModes :model-value="fileMode" :modes="fileModes" :disabled="disabled || expansion === 'closed' || activeSource !== 'files'" tw-class="mx-auto w-full max-w-sm shrink-0" @update:model-value="selectFileMode({ mode: $event })" />
                   <div class="chat-model-file-views" tw-class="relative min-h-0 flex-1">
                     <div :inert="fileTab !== 'files' || undefined" :aria-hidden="fileTab !== 'files'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']">
-                      <LlamaCppBrowserModelFileInput :disabled="disabled || expansion === 'closed' || activeTab !== 'files'" mode="temp" :layout="layout === 'embedded' ? 'fill' : 'expanded'" :description="lazyStrings.ChatLocalModelInput__start_without_copying_and_save_later()" @files="chooseLocal({ event: $event, selection: 'files' })" @directory="chooseLocal({ event: $event, selection: 'directory' })" @drop-files="dropLocal({ event: $event })" @drag-active="emit('model-drop-area-active')" />
+                      <LlamaCppBrowserLocalFiles :disabled="disabled || expansion === 'closed' || activeTab !== 'files'" :layout="layout === 'embedded' ? 'fill' : 'expanded'" @accept="acceptLocal($event)" @layout-pending="choosingLayout = $event" @drag-active="emit('model-drop-area-active')" />
                     </div>
                     <div data-testid="chat-linked-folders-panel" :inert="fileTab !== 'linked-folders' || undefined" :aria-hidden="fileTab !== 'linked-folders'" :tw-class="['absolute inset-0 space-y-3 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'linked-folders' ? 'opacity-100' : 'pointer-events-none opacity-0']">
                       <div tw-class="mx-auto w-full max-w-xl">
@@ -414,7 +412,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     </div>
                   </div>
                 </div>
-                <div :id="`${panelId}-hugging-face-panel`" ref="repositoryViewport" role="tabpanel" :aria-labelledby="`${panelId}-hugging-face-tab`" :inert="activeTab !== 'hugging-face' || undefined" :aria-hidden="activeTab !== 'hugging-face'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'hugging-face' ? 'opacity-100' : 'pointer-events-none opacity-0']"><RepositoryPicker v-if="preparedTabs.has('hugging-face') && (expansion === 'open' || mountedTabs.has('hugging-face'))" @vue:mounted="markTabMounted({ tab: 'hugging-face' })" :disabled="disabled || expansion === 'closed' || activeTab !== 'hugging-face'" @view-change="changeRepositoryView({ view: $event })" @select="state.useRepositoryModel({ target: $event })" /></div>
+                <div :id="`${panelId}-hugging-face-panel`" ref="repositoryViewport" role="tabpanel" :aria-labelledby="`${panelId}-hugging-face-tab`" :inert="activeTab !== 'hugging-face' || undefined" :aria-hidden="activeTab !== 'hugging-face'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'hugging-face' ? 'opacity-100' : 'pointer-events-none opacity-0']"><RepositoryPicker v-if="preparedTabs.has('hugging-face') && (expansion === 'open' || mountedTabs.has('hugging-face'))" @vue:mounted="markTabMounted({ tab: 'hugging-face' })" :disabled="disabled || expansion === 'closed' || activeTab !== 'hugging-face'" @view-change="changeRepositoryView({ view: $event })" @select="state.useRepositoryModel($event)" @select-model="state.useModel({ model: $event })" /></div>
                 <div :id="`${panelId}-saved-panel`" role="tabpanel" :aria-labelledby="`${panelId}-saved-tab`" :inert="activeTab !== 'saved' || undefined" :aria-hidden="activeTab !== 'saved'" :tw-class="['absolute inset-0 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'saved' ? 'opacity-100' : 'pointer-events-none opacity-0']"><SavedModelPicker v-if="preparedTabs.has('saved') && (expansion === 'open' || mountedTabs.has('saved'))" @vue:mounted="markTabMounted({ tab: 'saved' })" :disabled="disabled || expansion === 'closed' || activeTab !== 'saved'" @select="state.useModel({ model: $event })" @source="selectTab({ tab: $event, focus: true })" /></div>
               </div>
             </div>
@@ -433,6 +431,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <button v-for="candidate in state.operation.value.candidates" :key="candidate.modelId" type="button" tw-class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.choose({ modelId: candidate.modelId })"><span tw-class="min-w-0 truncate">{{ localModelDisplayName({ model: candidate }) }}</span><span tw-class="shrink-0 tabular-nums text-gray-400">{{ formatDownloadBytes({ bytes: candidate.size }) }}</span></button>
             </div>
             <p v-if="failure" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ failure }}</p>
+            <HuggingFaceDownloadFailureHint v-if="failure && state.downloadJob.value?.status === 'failed'" :key="state.operation.value?.id"><LlamaCppBrowserLocalFileRecovery :disabled="availability === 'unavailable' || expansion === 'closed' || state.operation.value?.phase !== 'error'" :accept-local-input="acceptFailedDownloadFiles" /></HuggingFaceDownloadFailureHint>
+            <CspMessageHint v-else-if="state.downloadJob.value?.status === 'paused'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
             <button v-if="state.operation.value?.phase === 'error'" type="button" data-testid="chat-local-model-retry" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.retry()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
             <button v-if="state.operation.value" type="button" :disabled="state.operation.value.phase === 'cancelling' || state.operation.value.phase === 'committing'" data-testid="chat-local-model-cancel" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="state.cancel()">{{ lazyStrings.SHARED__cancel() }}</button>
           </div>

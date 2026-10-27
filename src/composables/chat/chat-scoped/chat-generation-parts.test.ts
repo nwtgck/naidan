@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive, toRaw } from 'vue';
 import { z } from 'zod';
 import type { LmProvider } from '@/01-models/lm';
-import type { AssistantMessageNode, Chat, MessageNode, ToolMessageNode } from '@/01-models/types';
+import type { AssistantMessageNode, Chat, MessageNode, ToolMessageNode, Settings } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { Tool, ToolExecutionOutcome, ToolExecutionResult } from '@/01-models/tool';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId, toToolCallId, type ChatId } from '@/01-models/ids';
@@ -18,6 +18,8 @@ const state = vi.hoisted(() => ({
   current: { value: null as Chat | null },
   provider: undefined as LmProvider | undefined,
   tools: [] as Tool[],
+  generationSpeed: undefined as NonNullable<Settings['experimental']>['generationSpeed'],
+  loadProvider: vi.fn(),
   changed: vi.fn(),
   save: vi.fn(),
   captureWrite: vi.fn(),
@@ -72,7 +74,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   },
 }));
 vi.mock('@/features/llama-cpp-browser/model-recovery/availability', () => ({ inspectLocalModel: state.inspectModel }));
-vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: async () => state.provider }));
+vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: state.loadProvider }));
 vi.mock('@/features/llama-cpp-browser/composables/local-model-launch-session', () => ({ assertLocalModelLaunchReady: state.localPreparation }));
 vi.mock('@/composables/chat/chat-scoped/chat-model-flow', () => ({ fetchAvailableModelsForChat: state.fetchModels }));
 vi.mock('@/composables/chat/chat-scoped/chat-title-flow', () => ({ generateChatTitleForChat: state.title }));
@@ -83,7 +85,7 @@ vi.mock('@/features/tools/factory', () => ({ getEnabledTools: async () => state.
 vi.mock('@/features/tools/composables/useChatTools', () => ({ getEffectiveToolConfigsForChat: () => [] }));
 vi.mock('@/features/tools/composables/useApproval', () => ({ useApproval: () => ({ ensureApproval: vi.fn() }) }));
 vi.mock('@/features/tools/composables/useChoices', () => ({ useChoices: () => ({ requestChoice: vi.fn() }) }));
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: { storageType: 'memory', experimental: { fakeLm: 'disabled' } } }, synchronizeModelBindingSettings: async () => 'synchronized', setOnboardingDraft: state.setOnboardingDraft }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: { storageType: 'memory', experimental: { fakeLm: 'disabled', generationSpeed: state.generationSpeed } } }, synchronizeModelBindingSettings: async () => 'synchronized', setOnboardingDraft: state.setOnboardingDraft }) }));
 vi.mock('@/composables/useAppEntry', () => ({ requestAppSettings: state.openSettings }));
 vi.mock('@/composables/useImageGeneration', () => ({ useImageGeneration: () => ({ isImageMode: () => false, getResolution: () => ({ width: 512, height: 512 }), getCount: () => 1, getSteps: () => undefined, getSeed: () => undefined, getPersistAs: () => 'original' }) }));
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
@@ -115,6 +117,8 @@ describe('chat generation flow with message parts', () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     state.active.clear();
+    state.generationSpeed = undefined;
+    state.loadProvider.mockImplementation(async () => state.provider);
     state.autoTitle = false;
     state.configured = true;
     state.resolvedModelId = 'm';
@@ -771,5 +775,26 @@ describe('regeneration after tool results', () => {
     expect(state.metadata).not.toHaveBeenCalled();
     expect(state.active.size).toBe(0);
     expect(JSON.stringify(fixture.chat)).toBe(before);
+  });
+
+  it.each([
+    { preference: undefined, mode: 'auto' },
+    { preference: { llamaCppServerTimings: 'enabled' }, mode: 'enabled' },
+    { preference: { llamaCppServerTimings: 'disabled' }, mode: 'disabled' },
+    { preference: { status: 'disabled', llamaCppServerTimings: 'enabled' }, mode: 'disabled' },
+  ] satisfies { preference: NonNullable<Settings['experimental']>['generationSpeed'], mode: string }[])('injects global timing preferences at the generation boundary: %j', async ({ preference, mode }) => {
+    state.generationSpeed = preference;
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'answer' });
+          return { type: 'finished', next: 'user' };
+        },
+      }),
+    };
+    await run(createChat());
+    expect(state.loadProvider).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ llamaCppServerTimings: mode }));
   });
 });

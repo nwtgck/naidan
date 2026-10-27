@@ -9,7 +9,6 @@ import { createServer } from 'vite';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
-import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-browser/build-runtime-assets';
 
 const repo = process.cwd();
 const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
@@ -53,7 +52,7 @@ describe('shared browser core package integration', () => {
 
   it('reads the combined inventory and emits the available verified Hosted Wasm payloads without retired CPU64', async () => {
     const files = new Map<string, Uint8Array>();
-    const hook = createLlamaCppRuntimeAssetsPlugin({ rootDir: repo }).generateBundle;
+    const hook = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).runtimeAssetsPlugin.generateBundle;
     if (typeof hook !== 'function') {
       throw new Error('Expected hosted asset hook');
     }

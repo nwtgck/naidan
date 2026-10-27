@@ -1,0 +1,1 @@
+export const ScopedMountSettings__remove_from_this_chat = (): string => "Entferne diesen Ordner aus den eigenen Einstellungen dieses Chats. Die Ordnerregistrierung und die Dateien bleiben erhalten. Geerbte Ordnereinstellungen werden nicht geändert.";

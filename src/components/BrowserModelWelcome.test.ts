@@ -34,7 +34,7 @@ function touchGesture({ type, touches, changedTouches }: { type: string, touches
 }
 
 function renderTouchWelcome() {
-  const wrapper = mount(BrowserModelWelcome, { props: { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined } });
+  const wrapper = mount(BrowserModelWelcome, { props: { modelSource: 'showcase', interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined } });
   const deck = wrapper.get<HTMLElement>('[data-testid="model-swipe"]').element;
   const card = wrapper.get<HTMLButtonElement>('[data-testid="start-model"]').element;
   const capture = vi.fn();
@@ -49,7 +49,7 @@ describe('browser model welcome', () => {
 
   it('keeps preview browsing local and emits the shared catalog identity', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch');
-    const wrapper = mount(BrowserModelWelcome, { props: { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined } });
+    const wrapper = mount(BrowserModelWelcome, { props: { modelSource: 'showcase', interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -73,8 +73,38 @@ describe('browser model welcome', () => {
     expect(wrapper.emitted('start')).toHaveLength(1);
   });
 
+  it('keeps the showcase free of preflight warnings and places guidance only after a preparation error', async () => {
+    const guidance = vi.fn(() => h('aside', { 'data-testid': 'welcome-error-guidance' }, 'Preparation guidance'));
+    const wrapper = mount(BrowserModelWelcome, {
+      props: { modelSource: 'showcase', interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined },
+      slots: { 'start-error-hint': guidance },
+      global: { stubs: { CspMessageHint: { template: '<aside data-testid="preflight-warning" />' } } },
+    });
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const start = wrapper.get('[data-testid="start-model"]').element;
+    expect(wrapper.find('[data-testid="preflight-warning"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="welcome-start-error"]').exists()).toBe(false);
+    expect(guidance).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="start-model"]').trigger('click');
+    expect(wrapper.emitted('start')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="preflight-warning"]').exists()).toBe(false);
+    expect(guidance).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ startError: 'Could not prepare the model.' });
+    const error = wrapper.get('[data-testid="welcome-start-error"]');
+    expect(error.get('[role="alert"]').text()).toBe('Could not prepare the model.');
+    expect(error.get('[role="alert"]').element.nextElementSibling).toBe(error.get('[data-testid="welcome-error-guidance"]').element);
+    expect(wrapper.get('[data-testid="start-model"]').element).toBe(start);
+    expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeUndefined();
+
+    await wrapper.setProps({ startError: undefined });
+    expect(wrapper.find('[data-testid="welcome-start-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="welcome-error-guidance"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="start-model"]').element).toBe(start);
+  });
+
   it('disables initial entry actions until startup is ready', async () => {
-    const wrapper = mount(BrowserModelWelcome, { props: { interaction: 'blocked', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined } });
+    const wrapper = mount(BrowserModelWelcome, { props: { modelSource: 'showcase', interaction: 'blocked', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -131,7 +161,7 @@ describe('browser model welcome', () => {
 
   it('shows GGUF compatibility beside file selection on hover, focus, and pinned clicks without fetching', async () => {
     using fetch = vi.spyOn(globalThis, 'fetch');
-    const wrapper = mount(BrowserModelWelcome, { props: { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined }, attachTo: document.body });
+    const wrapper = mount(BrowserModelWelcome, { props: { modelSource: 'showcase', interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined }, attachTo: document.body });
     using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
     const help = wrapper.get('[data-testid="gguf-compatibility-info"]');
     const trigger = wrapper.get<HTMLButtonElement>('[data-testid="gguf-compatibility-info-trigger"]');
@@ -177,7 +207,7 @@ describe('browser model welcome', () => {
   it('dismisses compatibility help before its containing model dialog on Escape', async () => {
     const wrapper = mount(BrowserModelDialog, {
       props: { open: true, dismissible: true, suspended: false },
-      slots: { default: () => h(BrowserModelWelcome, { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined }) },
+      slots: { default: () => h(BrowserModelWelcome, { modelSource: 'showcase', interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined }) },
       global: { stubs: { teleport: true } },
       attachTo: document.body,
     });

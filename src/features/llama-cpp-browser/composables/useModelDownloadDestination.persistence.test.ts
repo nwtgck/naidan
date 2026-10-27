@@ -125,6 +125,27 @@ afterEach(async () => {
 });
 
 describe('persisted shared LM download destination', () => {
+  it('keeps cached folder access while only the selected destination is being saved', async () => {
+    const first = create();
+    await flushPromises();
+    const revision = first.state.revision.value;
+    const saving = Promise.withResolvers<void>();
+    const update = storageService.updateSettingsForStorage.bind(storageService);
+    vi.spyOn(storageService, 'updateSettingsForStorage').mockImplementationOnce(async input => {
+      await saving.promise;
+      return update(input);
+    });
+    const changing = first.state.view.selectDestination({ id: 'root-a', kind: 'host' });
+    expect(first.state.persistence.value).toBe('saving');
+    expect(first.state.destination.value).toEqual({ kind: 'host', directoryId: 'root-a' });
+    saving.resolve();
+    await changing;
+    await flushPromises();
+    expect(first.state.persistence.value).toBe('saved');
+    expect(first.state.unavailable.value).toBe(false);
+    expect(first.state.revision.value).toBe(revision);
+  });
+
   it.each(['opfs', 'root-a'])('selects and persists a newly linked folder from %s for both selectors', async previous => {
     const first = create(), second = create();
     await flushPromises();

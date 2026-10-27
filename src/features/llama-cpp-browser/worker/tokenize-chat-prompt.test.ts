@@ -9,7 +9,18 @@ function fixture({ parts }: { parts: ChatPromptPart[] }) {
   memory.set(encoded.data, Number(prompt));
   let next = Math.ceil((encoded.data.length + 64) / 16) * 16;
   const allocations = new Map<bigint, number>();
-  const policy = { bos: true, eos: false, sep: false };
+  const policy = { bos: true, eos: false, sep: false, vocabType: 2, mergeWhitespace: false, userDefined: false, userDefinedText: '<u>', ordinaryAttrs: 0, specialAttrs: 0, roundTripMismatch: false };
+  const constants: Record<string, number> = {
+    LLAMA_VOCAB_TYPE_BPE: 2,
+    LLAMA_TOKEN_ATTR_UNKNOWN: 1,
+    LLAMA_TOKEN_ATTR_NORMAL: 4,
+    LLAMA_TOKEN_ATTR_CONTROL: 8,
+    LLAMA_TOKEN_ATTR_USER_DEFINED: 16,
+    LLAMA_TOKEN_ATTR_BYTE: 32,
+    LLAMA_TOKEN_ATTR_NORMALIZED: 64,
+    LLAMA_TOKEN_ATTR_LSTRIP: 128,
+    LLAMA_TOKEN_ATTR_RSTRIP: 256,
+  };
   const tryAlloc = vi.fn(({ bytes }: { bytes: number | bigint }): bigint | undefined => {
     const length = Number(bytes);
     const pointer = BigInt(next);
@@ -18,6 +29,13 @@ function fixture({ parts }: { parts: ChatPromptPart[] }) {
     return pointer;
   });
   const core = {
+    constant: ({ name }: { name: string }): number => {
+      const value = constants[name];
+      if (value === undefined) {
+        throw new Error(`Unknown native constant: ${name}`);
+      }
+      return value;
+    },
     tryAlloc,
     alloc: ({ bytes }: { bytes: number | bigint }) => {
       const pointer = tryAlloc({ bytes });
@@ -33,12 +51,42 @@ function fixture({ parts }: { parts: ChatPromptPart[] }) {
     }),
     bytes: vi.fn(({ pointer, length }: { pointer: bigint, length: number | bigint }) => {
       const capacity = allocations.get(pointer);
-      if (capacity === undefined || capacity < Number(length)) {
+      const source = pointer >= prompt && pointer + BigInt(length) <= prompt + BigInt(encoded.data.length);
+      if (!source && (capacity === undefined || capacity < Number(length))) {
         throw new RangeError('Invalid native token span');
       }
       return memory.subarray(Number(pointer), Number(pointer) + Number(length));
     }),
     api: {
+      llama_vocab_type: vi.fn(async (_vocab: bigint) => policy.vocabType),
+      llama_vocab_get_attr: vi.fn(async (_vocab: bigint, token: number) => token <= 3 ? 8 | policy.specialAttrs : token === 696 ? 16 | policy.specialAttrs : 4 | policy.ordinaryAttrs),
+      llama_token_to_piece: vi.fn(async (_vocab: bigint, token: number, destination: bigint, capacity: number, lstrip: number, special: number) => {
+        let bytes: Uint8Array;
+        switch (token) {
+        case 1: bytes = new TextEncoder().encode(special ? '<s>' : '');
+          break;
+        case 2: bytes = new TextEncoder().encode(special ? '</s>' : '');
+          break;
+        case 3: bytes = new TextEncoder().encode(special ? '<sep>' : '');
+          break;
+        case 695: bytes = Uint8Array.of(32, 10);
+          break;
+        case 696: bytes = new TextEncoder().encode(policy.userDefinedText);
+          break;
+        default: bytes = Uint8Array.of(policy.roundTripMismatch && token === 114 ? 63 : token - 10);
+          break;
+        }
+        let removed = 0;
+        while (removed < lstrip && bytes[removed] === 32) {
+          removed++;
+        }
+        bytes = bytes.subarray(removed);
+        if (bytes.length > capacity) {
+          return -bytes.length;
+        }
+        memory.set(bytes, Number(destination));
+        return bytes.length;
+      }),
       llama_vocab_get_add_bos: vi.fn(async () => Number(policy.bos)),
       llama_vocab_get_add_eos: vi.fn(async () => Number(policy.eos)),
       llama_vocab_get_add_sep: vi.fn(async () => Number(policy.sep)),
@@ -51,13 +99,23 @@ function fixture({ parts }: { parts: ChatPromptPart[] }) {
         if (addSpecial && policy.bos) {
           tokens.push(1);
         }
-        for (const part of text.split(/(<s>|<\/s>)/u)) {
+        for (const part of text.split(/(<s>|<\/s>|<u>|x \ny)/u)) {
           if (parseSpecial && part === '<s>') {
             tokens.push(1);
           } else if (parseSpecial && part === '</s>') {
             tokens.push(2);
+          } else if (policy.userDefined && part === policy.userDefinedText) {
+            tokens.push(696);
           } else {
-            tokens.push(...Array.from(new TextEncoder().encode(part), byte => byte + 10));
+            const bytes = new TextEncoder().encode(part);
+            for (let index = 0; index < bytes.length; index++) {
+              if (policy.mergeWhitespace && bytes[index] === 32 && bytes[index + 1] === 10) {
+                tokens.push(695);
+                index++;
+              } else {
+                tokens.push(bytes[index]! + 10);
+              }
+            }
           }
         }
         if (addSpecial && policy.eos) {
@@ -226,5 +284,221 @@ describe('segmented native chat prompt tokenization', () => {
     const result = await f.run({ contextTokens: 2 });
     expect(result.tokens).toEqual([1]);
     expect(f.core.api.llama_tokenize).toHaveBeenCalledOnce();
+  });
+
+  it('matches ordinary BPE tokenization across an input trailing-space and template newline boundary', async () => {
+    using split = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    using flat = fixture({ parts: [{ text: 'hello \n', isInput: true }] });
+    split.policy.mergeWhitespace = true;
+    flat.policy.mergeWhitespace = true;
+    const result = await split.run({ contextTokens: 32 });
+    const whole = await flat.run({ contextTokens: 32 });
+    expect(result.tokens).toEqual(whole.tokens);
+    expect(result.tokens).toEqual([1, 114, 111, 118, 118, 121, 695]);
+    expect(result.parts).toEqual([{ byteOffset: 0, byteLength: 7, parseSpecial: false, tokenOffset: 1, tokenCount: 6, addSpecial: false }]);
+    expect(new TextDecoder().decode(split.core.bytes({ pointer: split.prompt, length: split.encoded.data.length }))).toBe('hello \n');
+    expect([...split.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it('keeps a string without trailing space equivalent to its unsplit form', async () => {
+    using split = fixture({ parts: [{ text: 'hello', isInput: true }, { text: '\n', isInput: false }] });
+    using flat = fixture({ parts: [{ text: 'hello\n', isInput: true }] });
+    split.policy.mergeWhitespace = true;
+    flat.policy.mergeWhitespace = true;
+    expect((await split.run({ contextTokens: 32 })).tokens).toEqual((await flat.run({ contextTokens: 32 })).tokens);
+  });
+
+  it('does not inspect token pieces when the input/template boundary has no whitespace', async () => {
+    using f = fixture({ parts: [{ text: 'hello', isInput: true }, { text: 'world', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    const result = await f.run({ contextTokens: 32 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('helloworld'), byte => byte + 10)]);
+    expect(f.core.api.llama_vocab_get_attr).not.toHaveBeenCalled();
+    expect(f.core.api.llama_token_to_piece).not.toHaveBeenCalled();
+  });
+
+  it('preserves trusted control tokens while keeping identical input markers literal', async () => {
+    using f = fixture({ parts: [{ text: '<s>', isInput: false }, { text: '<s>hello ', isInput: true }, { text: '\n</s>', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    const result = await f.run({ contextTokens: 40 });
+    expect(result.tokens).toEqual([1, 1, ...Array.from(new TextEncoder().encode('<s>hello'), byte => byte + 10), 695, 2]);
+    expect(result.tokens.filter(token => token === 1)).toHaveLength(2);
+    expect(result.tokens.filter(token => token === 2)).toHaveLength(1);
+    expect(result.parts).toEqual([
+      { byteOffset: 0, byteLength: 3, parseSpecial: true, tokenOffset: 1, tokenCount: 1, addSpecial: false },
+      { byteOffset: 3, byteLength: 10, parseSpecial: false, tokenOffset: 2, tokenCount: 9, addSpecial: false },
+      { byteOffset: 13, byteLength: 4, parseSpecial: true, tokenOffset: 11, tokenCount: 1, addSpecial: false },
+    ]);
+  });
+
+  it('does not recognize a control token assembled across input and template fragments', async () => {
+    using f = fixture({ parts: [{ text: 'x <', isInput: true }, { text: 's> ', isInput: false }, { text: 'y ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    const result = await f.run({ contextTokens: 40 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('x <s> y'), byte => byte + 10), 695]);
+    expect(result.tokens.filter(token => token === 1)).toHaveLength(1);
+  });
+
+  it('keeps recognized user-defined tokens as barriers even when they come from input', async () => {
+    using f = fixture({ parts: [{ text: 'left <u> ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    f.policy.userDefined = true;
+    const result = await f.run({ contextTokens: 40 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('left '), byte => byte + 10), 696, 695]);
+    expect(result.tokens.filter(token => token === 696)).toHaveLength(1);
+  });
+
+  it('falls back if a merged ordinary run would introduce a new user-defined token', async () => {
+    const input = [{ text: 'x ', isInput: true }, { text: '\ny', isInput: false }];
+    using f = fixture({ parts: input });
+    f.policy.mergeWhitespace = true;
+    f.policy.userDefined = true;
+    f.policy.userDefinedText = input.map(part => part.text).join('');
+    const result = await f.run({ contextTokens: 40 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode(f.policy.userDefinedText), byte => byte + 10)]);
+    expect(result.tokens).not.toContain(696);
+    expect(result.tokens).not.toContain(695);
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it('preserves unrelated marked boundaries when a later whitespace boundary is optimized', async () => {
+    using f = fixture({ parts: [{ text: 'x <', isInput: true }, { text: 'u> ', isInput: false }, { text: 'y ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    f.policy.userDefined = true;
+    const result = await f.run({ contextTokens: 40 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('x <u> y'), byte => byte + 10), 695]);
+    expect(result.tokens).not.toContain(696);
+  });
+
+  it.each([64, 128, 256])('keeps baseline tokens when native attributes require normalization or stripping (%s)', async ordinaryAttrs => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    f.policy.ordinaryAttrs = ordinaryAttrs;
+    const result = await f.run({ contextTokens: 32 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect(result.tokens).not.toContain(695);
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it('leaves non-BPE vocabularies on their original segmented path', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.vocabType = 1;
+    f.policy.mergeWhitespace = true;
+    const result = await f.run({ contextTokens: 32 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect(f.core.api.llama_vocab_get_attr).not.toHaveBeenCalled();
+    expect(f.core.api.llama_token_to_piece).not.toHaveBeenCalled();
+  });
+
+  it('falls back when native token pieces do not reconstruct the original bytes', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    f.policy.roundTripMismatch = true;
+    const result = await f.run({ contextTokens: 32 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it('preserves Unicode bytes and NUL while joining an ordinary whitespace boundary', async () => {
+    const text = '日本語\0😀';
+    using f = fixture({ parts: [{ text: `${text} `, isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    const result = await f.run({ contextTokens: 64 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode(text), byte => byte + 10), 695]);
+    expect(Array.from(f.core.bytes({ pointer: f.prompt, length: f.encoded.data.length }))).toEqual(Array.from(new TextEncoder().encode(`${text} \n`)));
+  });
+
+  it('keeps automatic ending tokens outside the canonical run and reserves a generation slot', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    f.policy.eos = true;
+    f.policy.sep = true;
+    await expect(f.run({ contextTokens: 9 })).rejects.toThrow('context-full');
+    expect(f.allocations.size).toBe(0);
+    const result = await f.run({ contextTokens: 10 });
+    expect(result.tokens).toEqual([1, 114, 111, 118, 118, 121, 695, 2, 3]);
+    expect(result.parts).toEqual([{ byteOffset: 0, byteLength: 7, parseSpecial: false, tokenOffset: 1, tokenCount: 6, addSpecial: false }]);
+  });
+
+  it('rejects a candidate whose actual final tokens still fill the context', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    await expect(f.run({ contextTokens: 8 })).rejects.toThrow('context-full');
+    expect(f.core.api.llama_token_to_piece).toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
+    const result = await f.run({ contextTokens: 9 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it.each(['attributes', 'bytes', 'allocation'] as const)('checks the real context budget after an unsafe merge falls back: %s', async condition => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    switch (condition) {
+    case 'attributes': f.policy.ordinaryAttrs = 64;
+      break;
+    case 'bytes': f.policy.roundTripMismatch = true;
+      break;
+    case 'allocation': {
+      const allocate = f.core.tryAlloc.getMockImplementation()!;
+      f.core.tryAlloc.mockImplementation(args => Number(args.bytes) === 256 ? undefined : allocate(args));
+      break;
+    }
+    default: {
+      const exhaustive: never = condition;
+      throw new Error(`Unknown fallback: ${exhaustive}`);
+    }
+    }
+    await expect(f.run({ contextTokens: 8 })).rejects.toThrow('context-full');
+    expect(f.core.api.llama_vocab_get_attr).toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
+    const result = await f.run({ contextTokens: 9 });
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
+  });
+
+  it.each(['no-boundary', 'non-bpe'] as const)('stops at the first oversized span without inspecting later spans: %s', async condition => {
+    using f = fixture({ parts: [{ text: condition === 'no-boundary' ? 'hello' : 'hello ', isInput: true }, { text: '\n', isInput: false }, { text: 'later', isInput: true }] });
+    f.policy.vocabType = condition === 'non-bpe' ? 1 : 2;
+    await expect(f.run({ contextTokens: 4 })).rejects.toThrow('context-full');
+    expect(f.core.api.llama_tokenize).toHaveBeenCalledOnce();
+    expect(f.core.api.llama_vocab_get_attr).not.toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('propagates a native candidate query failure before allocating span buffers', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    const failure = new WebAssembly.RuntimeError('vocabulary query failed');
+    f.core.api.llama_vocab_type.mockRejectedValueOnce(failure);
+    await expect(f.run({ contextTokens: 32 })).rejects.toBe(failure);
+    expect(f.core.api.llama_tokenize).not.toHaveBeenCalled();
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('propagates a native inspection failure and releases every owned allocation', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    const failure = new WebAssembly.RuntimeError('attribute query failed');
+    f.core.api.llama_vocab_get_attr.mockRejectedValueOnce(failure);
+    await expect(f.run({ contextTokens: 32 })).rejects.toBe(failure);
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('retains baseline tokens when optional native piece scratch allocation fails', async () => {
+    using f = fixture({ parts: [{ text: 'hello ', isInput: true }, { text: '\n', isInput: false }] });
+    f.policy.mergeWhitespace = true;
+    const allocate = f.core.tryAlloc.getMockImplementation()!;
+    let declined = false;
+    f.core.tryAlloc.mockImplementation(args => {
+      if (!declined && f.core.api.llama_vocab_get_attr.mock.calls.length > 0) {
+        declined = true;
+        return undefined;
+      }
+      return allocate(args);
+    });
+    const result = await f.run({ contextTokens: 32 });
+    expect(declined).toBe(true);
+    expect(result.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('hello \n'), byte => byte + 10)]);
+    expect(f.core.api.llama_token_to_piece).not.toHaveBeenCalled();
+    expect([...f.allocations.keys()]).toEqual([result.pointer]);
   });
 });

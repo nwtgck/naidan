@@ -2,6 +2,8 @@ import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type { ChatGroup } from '@/01-models/types';
 import type { ToolConfig } from '@/01-models/tool';
 import { storageService } from '@/00-storage/service';
+import { useSettings } from '@/composables/useSettings';
+import { normalizeSavedLocalModelFields } from '@/features/llama-cpp-browser/model-reference-promotion';
 import {
   currentChatGroupRef,
   currentChatRef,
@@ -232,6 +234,7 @@ export function useChatGroups(): ChatGroupsAdapter {
           && currentChatGroupRef.value?.id === chatGroupId
           && currentChatGroupRef.value.updatedAt <= savedChatGroup.updatedAt
         ) {
+          normalizeSavedLocalModelFields({ target: savedChatGroup, endpoint: savedChatGroup.endpoint ?? useSettings().settings.value.endpoint });
           currentChatGroupRef.value = savedChatGroup;
         }
       });

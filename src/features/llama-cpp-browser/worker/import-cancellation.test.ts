@@ -135,7 +135,7 @@ describe('local import cancellation through the public file service', () => {
     expect(stateChanged).not.toHaveBeenCalled();
     await copy({ signal: undefined });
     expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toEqual([
-      { modelId: 'user/same-GGUF', size: file.size, importedAt: 123 },
+      { modelId: 'user/same-GGUF/same', size: file.size, importedAt: 123 },
     ]);
     expect(imported).toHaveBeenCalledOnce();
     expect(TestWorker.instances).toHaveLength(0);

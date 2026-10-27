@@ -1,6 +1,4 @@
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
-import { EventEmitter } from 'node:events';
-import os from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createServer } from 'vite';
 import type { ViteDevServer } from 'vite';
@@ -11,36 +9,36 @@ import { createSiteFixture, parsePage, startSiteDev } from './site.test-support'
 
 type BridgeMiddleware = (request: { url: string; method: string }, response: { statusCode: number; end: (body?: string) => void }, next: (error?: unknown) => void) => Promise<void>;
 
-it('replaces the Docs child after compiler and island registry edits before serving another request', async () => {
-  const watcher = new EventEmitter();
+it('reuses the cached factory and replaces the Docs child after the parent invalidates it', async () => {
   const events: string[] = [];
   let middleware: BridgeMiddleware | undefined;
   let generation = 0;
+  const createFactory = () => ({
+    createDocsDevServer: async () => {
+      const child = ++generation;
+      events.push(`create ${child}`);
+      return {
+        middlewares: (_request: unknown, response: { end: (body: string) => void }) => response.end(`child ${child}`),
+        close: async () => {
+          events.push(`close ${child}`);
+        },
+      };
+    },
+  });
+  let factory = createFactory();
   const parent = {
     config: { root: '/tmp/docs-bridge-probe', logger: { error: vi.fn() } },
-    watcher: { add: vi.fn(), on: watcher.on.bind(watcher) },
     middlewares: {
       use: (handler: BridgeMiddleware) => {
         middleware = handler;
       },
     },
-    ssrLoadModule: vi.fn(async () => ({
-      createDocsDevServer: async () => {
-        const child = ++generation;
-        events.push(`create ${child}`);
-        return {
-          middlewares: (_request: unknown, response: { end: (body: string) => void }) => response.end(`child ${child}`),
-          close: async () => {
-            events.push(`close ${child}`);
-          },
-        };
-      },
-    })),
+    ssrLoadModule: vi.fn(async () => factory),
   } as unknown as ViteDevServer;
   const bridge = createDocsDevBridge();
   const configure = bridge.configureServer as (server: ViteDevServer) => void;
   configure(parent);
-  expect(parent.watcher.add).toHaveBeenCalledWith(expect.arrayContaining(['/tmp/docs-bridge-probe/docs/islands/registry.ts']));
+  expect(parent.ssrLoadModule).not.toHaveBeenCalled();
   const request = async (): Promise<string> => {
     if (!middleware) {
       throw new Error('Missing Docs bridge middleware');
@@ -58,18 +56,71 @@ it('replaces the Docs child after compiler and island registry edits before serv
     return completed;
   };
   expect(await request()).toBe('child 1');
-  watcher.emit('all', 'change', '/tmp/docs-bridge-probe/docs/build/virtual-modules.ts');
+  expect(await request()).toBe('child 1');
+  factory = createFactory();
   expect(await request()).toBe('child 2');
-  watcher.emit('all', 'change', '/tmp/docs-bridge-probe/docs/islands/registry.ts');
+  expect(await request()).toBe('child 2');
+  factory = createFactory();
   expect(await request()).toBe('child 3');
   expect(events).toEqual(['create 1', 'close 1', 'create 2', 'close 2', 'create 3']);
-  expect(parent.ssrLoadModule).toHaveBeenCalledTimes(3);
+  expect(parent.ssrLoadModule).toHaveBeenCalledTimes(5);
+  let releaseFactory: ((factory: ReturnType<typeof createFactory>) => void) | undefined;
+  vi.mocked(parent.ssrLoadModule).mockReturnValueOnce(new Promise(resolve => {
+    releaseFactory = resolve;
+  }));
+  factory = createFactory();
+  const inFlight = request();
   const close = bridge.closeBundle as () => Promise<void>;
   await close();
-  expect(events.at(-1)).toBe('close 3');
+  releaseFactory?.(factory);
+  expect(await inFlight).toBe('');
+  expect(events).toEqual(['create 1', 'close 1', 'create 2', 'close 2', 'create 3', 'close 3']);
 });
 
 describe('Docs development registry', () => {
+  it('reloads the shared search contract after purpose guide edits without restarting the parent', async () => {
+    await using fixture = await createSiteFixture();
+    const purposeFile = path.join(fixture.docs, 'search/search-purpose.ts');
+    const purposeSource = await readFile(purposeFile, 'utf8');
+    const reorderedPurpose = purposeSource.replace("['standalone', 'endpoint-type-ollama'", "['endpoint-type-ollama', 'standalone'");
+    expect(reorderedPurpose).not.toBe(purposeSource);
+    await using dev = await startSiteDev({ root: fixture.root });
+    const assertGuidePurpose = async ({ locale, first, second }: { locale: 'en' | 'ja'; first: string; second: string }): Promise<void> => {
+      const response = await dev.request({ url: `/docs/${locale}/file-access/` });
+      expect(response.status).toBe(200);
+      using page = parsePage({ html: await response.text() });
+      expect(Array.from(page.document.querySelectorAll('[data-testid="docs-search-results"] a'), link => link.getAttribute('href')).slice(0, 2)).toEqual([`/docs/${locale}/${first}/`, `/docs/${locale}/${second}/`]);
+    };
+    const assertHomePurpose = async ({ first, second }: { first: string; second: string }): Promise<void> => {
+      const response = await dev.request({ url: '/docs/' });
+      expect(response.status).toBe(200);
+      using page = parsePage({ html: await response.text() });
+      const templates = page.document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]');
+      expect(templates).toHaveLength(2);
+      for (const template of templates) {
+        const locale = template.getAttribute('data-docs-locale');
+        expect(Array.from(template.content.querySelectorAll('[data-testid="docs-search-results"] a'), link => link.getAttribute('href')).slice(0, 2)).toEqual([`/docs/${locale}/${first}/`, `/docs/${locale}/${second}/`]);
+      }
+    };
+    await assertGuidePurpose({ locale: 'en', first: 'standalone', second: 'endpoint-type-ollama' });
+    await assertGuidePurpose({ locale: 'ja', first: 'standalone', second: 'endpoint-type-ollama' });
+    await assertHomePurpose({ first: 'standalone', second: 'endpoint-type-ollama' });
+
+    await writeFile(purposeFile, reorderedPurpose);
+    await vi.waitFor(async () => {
+      await assertGuidePurpose({ locale: 'en', first: 'endpoint-type-ollama', second: 'standalone' });
+    }, { timeout: 10000, interval: 100 });
+    await assertGuidePurpose({ locale: 'ja', first: 'endpoint-type-ollama', second: 'standalone' });
+    await assertHomePurpose({ first: 'endpoint-type-ollama', second: 'standalone' });
+
+    await writeFile(purposeFile, purposeSource);
+    await vi.waitFor(async () => {
+      await assertGuidePurpose({ locale: 'en', first: 'standalone', second: 'endpoint-type-ollama' });
+    }, { timeout: 10000, interval: 100 });
+    await assertGuidePurpose({ locale: 'ja', first: 'standalone', second: 'endpoint-type-ollama' });
+    await assertHomePurpose({ first: 'standalone', second: 'endpoint-type-ollama' });
+  });
+
   it('serves a styled 404 while the home page has a syntax error', async () => {
     await using fixture = await createSiteFixture();
     const homeFile = path.join(fixture.docs, 'pages/index/index.vue');
@@ -155,18 +206,9 @@ onMounted(() => {});`);
   });
 
   it('isolates a broken page and language, then recovers in the same SSR server', async () => {
-    const repository = process.cwd();
-    const fixture = await mkdtemp(path.join(os.tmpdir(), 'docs-registry-'));
-    await using _fixture = {
-      async [Symbol.asyncDispose]() {
-        await rm(fixture, { recursive: true, force: true });
-      },
-    };
-    await cp(path.join(repository, 'docs'), path.join(fixture, 'docs'), { recursive: true });
-    await cp(path.join(repository, 'tsconfig.node.json'), path.join(fixture, 'tsconfig.node.json'));
-    await symlink(path.join(repository, 'node_modules'), path.join(fixture, 'node_modules'), 'dir');
+    await using fixture = await createSiteFixture();
 
-    const pageFile = path.join(fixture, 'docs/pages/tool-browser-shell/index.vue');
+    const pageFile = path.join(fixture.docs, 'pages/tool-browser-shell/index.vue');
     const pageSource = await readFile(pageFile, 'utf8');
     const brokenPage = pageSource.replace('<script setup lang="ts">', `\
 <script setup lang="ts">
@@ -174,7 +216,7 @@ const broken = ;`);
     expect(brokenPage).not.toBe(pageSource);
     await writeFile(pageFile, brokenPage);
 
-    const parent = await createServer({ configFile: path.join(fixture, 'docs/vite.config.ts'), server: { middlewareMode: true, hmr: false, ws: false }, logLevel: 'silent' });
+    const parent = await createServer({ configFile: path.join(fixture.docs, 'vite.config.ts'), server: { middlewareMode: true, hmr: false, ws: false }, logLevel: 'silent' });
     await using _parent = {
       async [Symbol.asyncDispose]() {
         await parent.close();
@@ -185,7 +227,7 @@ const broken = ;`);
     };
     // The request plugin is under test; no HTTP or HMR socket is needed.
     const parentWithoutListener = { httpServer: undefined } as unknown as ViteDevServer;
-    const server = await factory.createDocsDevServer({ root: path.join(fixture, 'docs'), parentServer: parentWithoutListener });
+    const server = await factory.createDocsDevServer({ root: fixture.docs, parentServer: parentWithoutListener });
     await using _server = {
       async [Symbol.asyncDispose]() {
         await server.close();
@@ -201,7 +243,7 @@ const broken = ;`);
       expect((await renderer.renderPage({ locale: 'en', page: 'tool-browser-shell' })).body).toContain('<h1');
     }, { timeout: 5000, interval: 100 });
 
-    const japaneseFile = path.join(fixture, 'docs/pages/tool-browser-shell/messages/ja.tsx');
+    const japaneseFile = path.join(fixture.docs, 'pages/tool-browser-shell/messages/ja.tsx');
     const japaneseSource = await readFile(japaneseFile, 'utf8');
     await writeFile(japaneseFile, 'export const messages = { broken: ; };');
     server.watcher.emit('change', japaneseFile);

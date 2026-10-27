@@ -8,6 +8,7 @@ export type ZipPackageDefinition = Readonly<{
   folderName: string;
   excludedFileNames?: ReadonlySet<string>;
   fileOverrides?: ReadonlyMap<string, string | Buffer>;
+  layout?: 'standalone';
 }>;
 
 type StagedZipPackage = Readonly<{
@@ -55,7 +56,10 @@ function addDirectoryToZip(zip: JSZip, basePath: string, relativePath = '', opti
     const itemPath = path.join(fullPath, item);
     const itemRelativePath = path.join(relativePath, item);
     const zipFileName = normalizeArchiveRelativePath({ value: itemRelativePath });
-    const stat = fs.statSync(itemPath);
+    const stat = fs.lstatSync(itemPath);
+    if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) {
+      throw new Error(`ZIP input must be a regular file or directory: ${itemPath}`);
+    }
 
     if (stat.isDirectory()) {
       addDirectoryToZip(zip, basePath, itemRelativePath, options);
@@ -67,6 +71,42 @@ function addDirectoryToZip(zip: JSZip, basePath: string, relativePath = '', opti
 
     const content = options.fileOverrides?.get(zipFileName) ?? fs.readFileSync(itemPath);
     zip.file(zipFileName, content);
+  }
+}
+
+/** Check the final archive entries, after locale filtering and VERSION.txt insertion.
+ * Do not silently filter unexpected output: a new top-level asset is a packaging
+ * regression, even when an application build happened to succeed.
+ */
+function assertStandaloneZipLayout({ zip, folderName }: {
+  zip: JSZip;
+  folderName: string;
+}): void {
+  const prefix = `${folderName}/`;
+  const children = new Map<string, boolean>();
+  for (const entry of Object.values(zip.files)) {
+    if (entry.name === prefix && entry.dir) {
+      continue;
+    }
+    if (!entry.name.startsWith(prefix)) {
+      throw new Error(`Standalone ZIP entry is outside its root: ${entry.name}`);
+    }
+    const relative = entry.name.slice(prefix.length);
+    const parts = relative.replace(/\/$/u, '').split('/');
+    if (parts.some(part => !part || part === '.' || part === '..' || part.includes('\\'))) {
+      throw new Error(`Unsafe standalone ZIP entry: ${entry.name}`);
+    }
+    if (parts.length === 1) {
+      if (children.has(parts[0]!)) {
+        throw new Error(`Conflicting standalone ZIP entry: ${entry.name}`);
+      }
+      children.set(parts[0]!, entry.dir);
+    }
+  }
+  const actual = [...children].map(([name, directory]) => name + (directory ? '/' : '')).sort();
+  const expected = ['VERSION.txt', 'assets/', 'favicon.svg', 'index.html'];
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`Invalid standalone ZIP depth 1: expected ${expected.join(', ')}, got ${actual.join(', ')}`);
   }
 }
 
@@ -85,6 +125,19 @@ async function stageZipPackage({
 }>): Promise<StagedZipPackage> {
   console.log(`  \u231B Creating ${definition.zipFileName} package...`);
   const finalPath = path.resolve(archiveDirectory, definition.zipFileName);
+  const standaloneLayout = (() => {
+    switch (definition.layout) {
+    case undefined: return false;
+    case 'standalone': return true;
+    default: {
+      const exhaustive: never = definition.layout;
+      throw new Error(`Unknown ZIP layout: ${exhaustive}`);
+    }
+    }
+  })();
+  if (standaloneLayout && fs.existsSync(path.join(sourceDirectory, 'VERSION.txt'))) {
+    throw new Error('Standalone VERSION.txt must be supplied by the ZIP packager');
+  }
   const zip = new JSZip();
   const folder = zip.folder(definition.folderName);
   if (folder === null) {
@@ -95,6 +148,9 @@ async function stageZipPackage({
     fileOverrides: definition.fileOverrides,
   });
   folder.file('VERSION.txt', version);
+  if (standaloneLayout) {
+    assertStandaloneZipLayout({ zip, folderName: definition.folderName });
+  }
 
   // ZIP timestamps describe the archive entries, not a deployment generation.
   // Normalize ALL entries, including JSZip's implicit parent directories and
@@ -185,7 +241,13 @@ export async function createZipPackages({
 }>): Promise<void> {
   assertPackageDefinitions({ packages });
   if (!fs.existsSync(sourceDirectory)) {
+    if (packages.some(definition => definition.layout === 'standalone')) {
+      throw new Error(`Standalone ZIP input directory is missing: ${sourceDirectory}`);
+    }
     return;
+  }
+  if (!fs.lstatSync(sourceDirectory).isDirectory()) {
+    throw new Error(`ZIP input must be a real directory: ${sourceDirectory}`);
   }
 
   const staged: StagedZipPackage[] = [];
@@ -210,4 +272,5 @@ export async function createZipPackages({
 
 export const TEST_ONLY = {
   promoteStagedZipPackages,
+  assertStandaloneZipLayout,
 };

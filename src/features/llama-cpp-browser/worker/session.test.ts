@@ -1285,6 +1285,28 @@ describe('temporary resident model cache', () => {
     expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(3);
   });
 
+  it('keeps resident File identity across a confirmed saved name and reloads a distinct source with equal file metadata', async () => {
+    vi.stubGlobal('FileReaderSync', class {
+      readAsArrayBuffer(): ArrayBuffer {
+        return new ArrayBuffer(1);
+      }
+    });
+    const file = new File(['x'], 'Model.gguf', { lastModified: 123 });
+    const entry = { relativePath: 'Model.gguf', file, storageKind: 'temp' as const, registrationRevision: 1 };
+    const modelId = '~user/Repo/Model';
+    const resolvedModel = { modelId, location: { kind: 'local-files' as const, rootPath: 'temp/Repo', sourceId: 'first-source', rootName: 'Repo', savedRootName: undefined }, directory: { files: [entry], primaryFile: entry, projectorFile: undefined } };
+    const first = { ...request({ debug: 'off' }), modelId, resolvedModel };
+    await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
+    const saved = { ...first, modelId: 'user/Repo-2/Model', resolvedModel: { ...resolvedModel, modelId: 'user/Repo-2/Model', location: { ...resolvedModel.location, savedRootName: 'Repo-2' } } };
+    await prepareSession({ request: saved, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(1);
+    expect(host.core!.api.llama_model_free).not.toHaveBeenCalled();
+    const replacement = { ...saved, resolvedModel: { ...saved.resolvedModel, location: { ...saved.resolvedModel.location, sourceId: 'different-source' } } };
+    await prepareSession({ request: replacement, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
+    expect(host.core!.api.llama_model_free).toHaveBeenCalledTimes(1);
+  });
+
   it('does not substitute the resident model when a temporary source is absent', async () => {
     await expect(prepareSession({ request: { ...request({ debug: 'off' }), modelId: 'temp/missing' }, onProgress: () => {}, signal: undefined })).rejects.toThrow('missing-model');
     expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();

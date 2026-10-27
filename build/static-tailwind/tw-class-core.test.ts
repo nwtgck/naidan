@@ -1,5 +1,8 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { compile } from '@vue/compiler-dom';
+import { parseCache } from '@vue/compiler-sfc';
 import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +15,7 @@ import {
 } from './tw-class-core';
 import { createTailwindCandidateValidator } from './tailwind-candidate-validator';
 import { scriptKindForFilename } from './typescript-ast-utils';
+import { analyzeSourceModules, createSourceModuleAnalysisCache } from './source-module-analyzer';
 
 function compileTemplate(template: string): string {
   return compile(template, {
@@ -329,6 +333,62 @@ const after = 2;
     expect(original.column).toBe(0);
   });
 
+  it('shares one map-free SFC parse across analysis, collection and transformation while retaining the output map', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-sfc-cache-'));
+    const sourceRoot = path.join(root, 'src');
+    const filename = path.join(sourceRoot, 'SharedParse.vue');
+    using _cleanup = {
+      [Symbol.dispose]() {
+        for (const [key, { descriptor }] of parseCache) {
+          if (descriptor.filename === filename) {
+            parseCache.delete(key);
+          }
+        }
+        fs.rmSync(root, { recursive: true, force: true });
+      },
+    };
+    fs.mkdirSync(sourceRoot);
+    const source = `\
+<template><div tw-class="p-2" /></template>
+<script lang="ts">
+import { tw } from 'virtual:naidan-tailwind';
+export const regular = tw('m-1');
+</script>
+<script setup lang="ts">
+import { tw } from 'virtual:naidan-tailwind';
+const setup = tw('opacity-50');
+const after = 2;
+</script>
+<style scoped>.fixture { color: red; }</style>
+`;
+    fs.writeFileSync(filename, source);
+    const fixtureEntries = () => [...parseCache].filter(([, { descriptor }]) => descriptor.filename === filename);
+    const analysis = await analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache: createSourceModuleAnalysisCache() });
+    const entriesAfterAnalysis = fixtureEntries();
+    expect(entriesAfterAnalysis).toHaveLength(1);
+    const cached = entriesAfterAnalysis[0][1];
+    expect(cached.descriptor.template).not.toBeNull();
+    expect(cached.descriptor.script).not.toBeNull();
+    expect(cached.descriptor.scriptSetup).not.toBeNull();
+    expect(cached.descriptor.styles).toHaveLength(1);
+    for (const block of [cached.descriptor.template, cached.descriptor.script, cached.descriptor.scriptSetup, ...cached.descriptor.styles]) {
+      expect(block?.map).toBeUndefined();
+    }
+    expect(analysis.candidateGroups.flatMap(({ candidates }) => candidates)).toEqual(['p-2', 'm-1', 'opacity-50']);
+
+    const occurrences = collectTwCandidateOccurrencesFromVueSource({ source, filename });
+    expect(occurrences.map(({ candidate }) => candidate)).toEqual(['p-2', 'm-1', 'opacity-50']);
+    expect(fixtureEntries()).toEqual(entriesAfterAnalysis);
+    const result = transformTwCallsInVueSource({ source, filename, additionalImports: ['virtual:naidan-tailwind-css/shared.js'] });
+    expect(fixtureEntries()).toHaveLength(1);
+    expect(fixtureEntries()[0][1]).toBe(cached);
+    expect(result.map).not.toBeNull();
+    const original = originalPositionFor(new TraceMap(JSON.parse(String(result.map))), generatedPosition({ source: result.code, needle: 'const after = 2;' }));
+    expect(original.source).toBe(filename);
+    expect(original.line).toBe(9);
+    expect(original.column).toBe(0);
+  });
+
   it('parses macros in Vue JavaScript, JSX, TypeScript, and TSX script blocks with matching syntax', () => {
     const fixtures = [
       {
@@ -446,6 +506,7 @@ describe('candidate validation', () => {
       projectRoot,
       cssEntryPath: path.join(projectRoot, 'src/style.css'),
       expectedTailwindVersion: '0.0.0',
+      onDependency: undefined,
     })).rejects.toThrow(/Tailwind version mismatch/u);
   });
 
@@ -455,6 +516,7 @@ describe('candidate validation', () => {
       projectRoot,
       cssEntryPath: path.join(projectRoot, 'src/style.css'),
       expectedTailwindVersion: '4.3.2',
+      onDependency: undefined,
     });
     const result = validator.classify({ candidates: ['flex', 'group/card', 'not-prose', 'bg-reed-500'] });
     expect(result.generatedCandidates).toContain('flex');

@@ -1,15 +1,40 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   analyzeSourceModules,
   createSourceModuleAnalysisCache,
+  isBoundaryStringPayloadPath,
   isStaticTailwindSourceFile,
   isStaticTailwindSourcePath,
 } from './source-module-analyzer';
 
 describe('static Tailwind source path boundary', () => {
+  it.each(['messages', 'catalogs'])('excludes only the source-root strings/%s payload', (payload) => {
+    const sourceRoot = path.join(os.tmpdir(), 'strings', 'messages', 'project', 'src');
+    const payloadRoot = path.join(sourceRoot, 'strings', payload);
+    expect(isBoundaryStringPayloadPath({ filename: payloadRoot, sourceRoot })).toBe(true);
+    for (const extension of ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'vue']) {
+      const filename = path.join(payloadRoot, 'nested', '..', `message.${extension}`);
+      expect(isBoundaryStringPayloadPath({ filename, sourceRoot })).toBe(true);
+      expect(isStaticTailwindSourceFile({ filename, sourceRoot })).toBe(false);
+    }
+    for (const filename of [
+      path.join(sourceRoot, 'strings', `${payload}-extra`, 'message.ts'),
+      path.join(sourceRoot, 'features', 'strings', payload, 'message.ts'),
+      path.join(sourceRoot, 'strings', 'runtime.ts'),
+      path.join(sourceRoot, 'strings', 'index.ts'),
+      path.join(sourceRoot, 'strings', 'types.ts'),
+      path.join(sourceRoot, 'strings', 'utils.test-support.ts'),
+    ]) {
+      expect(isBoundaryStringPayloadPath({ filename, sourceRoot })).toBe(false);
+      expect(isStaticTailwindSourceFile({ filename, sourceRoot })).toBe(true);
+    }
+    expect(isBoundaryStringPayloadPath({ filename: path.join(sourceRoot, '..', 'strings', payload), sourceRoot })).toBe(false);
+    expect(isStaticTailwindSourcePath({ filename: path.join(payloadRoot, 'theme.css'), sourceRoot })).toBe(true);
+  });
+
   it('keeps local stylesheet dependencies inside the boundary without treating them as analyzable modules', () => {
     const sourceRoot = path.join(os.tmpdir(), 'naidan-tailwind-source-boundary');
     const stylesheet = path.join(sourceRoot, 'theme.css');
@@ -29,7 +54,61 @@ describe('static Tailwind source path boundary', () => {
 });
 
 describe('static Tailwind source module analysis', () => {
-  it('assigns every candidate to initial CSS without building a module graph in single CSS mode', () => {
+  it('prunes payload directories before enumeration or reads and removes their cached sources', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
+    const sourceRoot = path.join(root, 'src');
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        fs.rmSync(root, { recursive: true, force: true });
+      },
+    };
+    const payloads = [
+      path.join(sourceRoot, 'strings', 'messages', 'Example', 'en.ts'),
+      path.join(sourceRoot, 'strings', 'catalogs', 'en.ts'),
+    ];
+    const supported = [
+      path.join(sourceRoot, 'features', 'strings', 'messages', 'Feature.ts'),
+      path.join(sourceRoot, 'strings', 'messages-extra', 'Feature.ts'),
+      path.join(sourceRoot, 'strings', 'runtime.ts'),
+    ];
+    for (const [index, file] of [...payloads, ...supported].entries()) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `import { tw } from 'virtual:naidan-tailwind'; export const value = tw('p-[${index}px]');`);
+    }
+    const cache = createSourceModuleAnalysisCache();
+    for (const file of payloads) {
+      cache.set(file, { source: 'stale payload', groups: [] });
+    }
+    const originalDirectories = fs.readdirSync;
+    using directories = vi.spyOn(fs, 'readdirSync').mockImplementation((...args) => {
+      if (isBoundaryStringPayloadPath({ filename: String(args[0]), sourceRoot })) {
+        throw new Error('Payload directory must not be enumerated.');
+      }
+      return Reflect.apply(originalDirectories, fs, args) as ReturnType<typeof originalDirectories>;
+    });
+    const originalRead = fs.promises.readFile;
+    using reads = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args) => {
+      if (isBoundaryStringPayloadPath({ filename: String(args[0]), sourceRoot })) {
+        throw new Error('Payload source must not be read.');
+      }
+      return Reflect.apply(originalRead, fs.promises, args) as ReturnType<typeof originalRead>;
+    });
+
+    const analysis = await analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache });
+
+    expect(analysis.files).toEqual(supported);
+    expect(analysis.candidateGroups.map(({ filename }) => filename)).toEqual(supported);
+    expect(analysis.candidateGroups.map(({ candidates }) => candidates)).toEqual([['p-[2px]'], ['p-[3px]'], ['p-[4px]']]);
+    expect(analysis.cssOwners.map(({ root: ownerRoot }) => ownerRoot)).toEqual(supported);
+    expect(reads.mock.calls.map(([file]) => file)).toEqual(supported);
+    expect(directories.mock.calls.map(([directory]) => directory)).not.toContain(path.join(sourceRoot, 'strings', 'messages'));
+    expect(directories.mock.calls.map(([directory]) => directory)).not.toContain(path.join(sourceRoot, 'strings', 'catalogs'));
+    for (const file of payloads) {
+      expect(cache.has(file)).toBe(false);
+    }
+  });
+
+  it('assigns every candidate to initial CSS without building a module graph in single CSS mode', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -46,7 +125,7 @@ describe('static Tailwind source module analysis', () => {
       '<template><div tw-class="underline">feature</div></template>\n',
     );
 
-    const analysis = analyzeSourceModules({
+    const analysis = await analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'single-css',
@@ -56,7 +135,7 @@ describe('static Tailwind source module analysis', () => {
     expect(analysis.candidateOwners.get('underline')).toEqual(new Set(['initial']));
   });
 
-  it('assigns candidates to stable source-module owners without building an import graph', () => {
+  it('assigns candidates to stable source-module owners without building an import graph', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -73,7 +152,7 @@ describe('static Tailwind source module analysis', () => {
     fs.mkdirSync(path.dirname(featureB), { recursive: true });
     fs.writeFileSync(featureB, '<template><div tw-class="underline italic">B</div></template>\n');
 
-    const analysis = analyzeSourceModules({
+    const analysis = await analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'source-module',
@@ -94,7 +173,7 @@ describe('static Tailwind source module analysis', () => {
     ]));
   });
 
-  it('reports Vue script macro candidates at file-relative locations with unique group IDs', () => {
+  it('reports Vue script macro candidates at file-relative locations with unique group IDs', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -119,7 +198,7 @@ describe('static Tailwind source module analysis', () => {
       '',
     ].join('\n'));
 
-    const analysis = analyzeSourceModules({
+    const analysis = await analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'single-css',
@@ -141,7 +220,7 @@ describe('static Tailwind source module analysis', () => {
     ]);
   });
 
-  it('collects candidates from Vue TSX script blocks with JSX syntax intact', () => {
+  it('collects candidates from Vue TSX script blocks with JSX syntax intact', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -162,7 +241,7 @@ describe('static Tailwind source module analysis', () => {
       '',
     ].join('\n'));
 
-    const analysis = analyzeSourceModules({
+    const analysis = await analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'source-module',
@@ -172,7 +251,7 @@ describe('static Tailwind source module analysis', () => {
     expect(analysis.candidateOwners.get('p-4')).toEqual(new Set(['module:src/TsxMacro.vue']));
   });
 
-  it('reports same-line Vue template candidates at absolute source locations', () => {
+  it('reports same-line Vue template candidates at absolute source locations', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -184,7 +263,7 @@ describe('static Tailwind source module analysis', () => {
     const component = path.join(sourceRoot, 'SameLine.vue');
     fs.writeFileSync(component, '<template><div tw-class="p-2 m-1" /></template>\n');
 
-    const analysis = analyzeSourceModules({
+    const analysis = await analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'single-css',
@@ -200,7 +279,7 @@ describe('static Tailwind source module analysis', () => {
     })]);
   });
 
-  it('keeps file ordering deterministic and invalidates changed, deleted, and excluded cache entries', () => {
+  it('keeps file ordering deterministic and invalidates changed, deleted, and excluded cache entries', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     const cache = createSourceModuleAnalysisCache();
@@ -221,7 +300,7 @@ describe('static Tailwind source module analysis', () => {
     fs.writeFileSync(path.join(sourceRoot, 'test-tmp', 'Ignored.vue'), '<template><div tw-class="p-4" /></template>\n');
     fs.writeFileSync(path.join(sourceRoot, 'lint-rule-tmp', 'Ignored.vue'), '<template><div tw-class="p-5" /></template>\n');
 
-    const initial = analyzeSourceModules({
+    const initial = await analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'single-css',
@@ -232,7 +311,7 @@ describe('static Tailwind source module analysis', () => {
 
     fs.writeFileSync(first, '<template><div tw-class="m-1" /></template>\n');
     fs.rmSync(second);
-    const updated = analyzeSourceModules({
+    const updated = await analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'single-css',
@@ -242,9 +321,148 @@ describe('static Tailwind source module analysis', () => {
     expect(updated.files).toEqual([first, path.join(sourceRoot, 'UnrelatedBroken.ts')]);
     expect([...updated.candidateOwners.keys()]).toEqual(['m-1']);
     expect(cache.has(second)).toBe(false);
+
+    const renamed = path.join(sourceRoot, 'nested', 'Renamed.vue');
+    fs.renameSync(first, renamed);
+    const afterRename = await analyzeSourceModules({
+      projectRoot: root,
+      sourceRoot,
+      ownershipMode: 'source-module',
+      cache,
+    });
+    expect(afterRename.files).toEqual([path.join(sourceRoot, 'UnrelatedBroken.ts'), renamed]);
+    expect(afterRename.candidateOwners.get('m-1')).toEqual(new Set(['module:src/nested/Renamed.vue']));
+    expect(cache.has(first)).toBe(false);
   });
 
-  it('reports Vue compiler errors using absolute SFC coordinates', () => {
+  it('bounds concurrent reads and preserves analysis order when a batch finishes in reverse', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
+    const sourceRoot = path.join(root, 'src');
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        fs.rmSync(root, { recursive: true, force: true });
+      },
+    };
+    fs.mkdirSync(sourceRoot);
+    const files = Array.from({ length: 65 }, (_, index) => path.join(sourceRoot, `${String(index).padStart(2, '0')}.ts`));
+    for (const [index, file] of files.entries()) {
+      fs.writeFileSync(file, `import { tw } from 'virtual:naidan-tailwind'; export const value = tw('p-[${index}px]');`);
+    }
+    const originalRead = fs.promises.readFile;
+    const pendingReads = new Map<string, () => void>();
+    const completionOrder: string[] = [];
+    let holdReads = true;
+    let activeReads = 0;
+    let maxActiveReads = 0;
+    using reads = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args) => {
+      activeReads += 1;
+      maxActiveReads = Math.max(maxActiveReads, activeReads);
+      try {
+        const source = await Reflect.apply(originalRead, fs.promises, args) as Awaited<ReturnType<typeof originalRead>>;
+        const file = String(args[0]);
+        if (holdReads) {
+          await new Promise<void>((resolve) => pendingReads.set(file, resolve));
+        }
+        completionOrder.push(file);
+        return source;
+      } finally {
+        activeReads -= 1;
+      }
+    });
+    const cache = createSourceModuleAnalysisCache();
+    const pending = analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache });
+    await using _settleReads = {
+      async [Symbol.asyncDispose]() {
+        holdReads = false;
+        for (const release of pendingReads.values()) {
+          release();
+        }
+        await pending;
+      },
+    };
+    for (const size of [32, 32, 1]) {
+      await vi.waitFor(() => expect(pendingReads.size).toBe(size));
+      const batch = [...pendingReads].sort(([left], [right]) => right.localeCompare(left));
+      pendingReads.clear();
+      for (const [, release] of batch) {
+        release();
+      }
+    }
+    const cold = await pending;
+    holdReads = false;
+    expect(maxActiveReads).toBe(32);
+    expect(activeReads).toBe(0);
+    expect(completionOrder.slice(0, 32)).toEqual(files.slice(0, 32).reverse());
+    expect(cold.files).toEqual(files);
+    expect(cold.candidateGroups.map(({ filename }) => filename)).toEqual(files);
+    expect(cold.cssOwners.map(({ root: ownerRoot }) => ownerRoot)).toEqual(files);
+
+    const warm = await analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache });
+    expect(warm).toEqual(cold);
+    expect(reads).toHaveBeenCalledTimes(files.length * 2);
+  });
+
+  it('preserves diagnostic order ahead of later read failures and propagates the original read error', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
+    const sourceRoot = path.join(root, 'src');
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        fs.rmSync(root, { recursive: true, force: true });
+      },
+    };
+    fs.mkdirSync(sourceRoot);
+    const first = path.join(sourceRoot, 'A.vue');
+    const second = path.join(sourceRoot, 'B.ts');
+    fs.writeFileSync(first, '<template><div tw-content-class="p-2" /></template>');
+    fs.writeFileSync(second, 'export const value = true;');
+    const readError = Object.assign(new Error('source is unreadable'), { code: 'EACCES' });
+    const originalRead = fs.promises.readFile;
+    using _reads = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args) => {
+      if (args[0] === second) {
+        throw readError;
+      }
+      return Reflect.apply(originalRead, fs.promises, args) as ReturnType<typeof originalRead>;
+    });
+    const cache = createSourceModuleAnalysisCache();
+    await expect(analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache }))
+      .rejects.toThrow(/A\.vue:1:16 Unknown Tailwind class attribute/u);
+
+    fs.writeFileSync(first, '<template><div tw-class="p-2" /></template>');
+    await expect(analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache }))
+      .rejects.toBe(readError);
+  });
+
+  it('removes cached candidates when a file disappears after enumeration', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
+    const sourceRoot = path.join(root, 'src');
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        fs.rmSync(root, { recursive: true, force: true });
+      },
+    };
+    fs.mkdirSync(sourceRoot);
+    const file = path.join(sourceRoot, 'Feature.vue');
+    fs.writeFileSync(file, '<template><div tw-class="p-2" /></template>');
+    const cache = createSourceModuleAnalysisCache();
+    await analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache });
+    const missing = Object.assign(new Error('source disappeared'), { code: 'ENOENT' });
+    using _reads = vi.spyOn(fs.promises, 'readFile').mockRejectedValue(missing);
+
+    const analysis = await analyzeSourceModules({ projectRoot: root, sourceRoot, ownershipMode: 'source-module', cache });
+    expect(analysis.files).toEqual([file]);
+    expect(analysis.candidateGroups).toEqual([]);
+    expect(cache.has(file)).toBe(false);
+
+    const absentRoot = await analyzeSourceModules({
+      projectRoot: root,
+      sourceRoot: path.join(root, 'missing'),
+      ownershipMode: 'source-module',
+      cache,
+    });
+    expect(absentRoot.files).toEqual([]);
+  });
+
+  it('reports Vue compiler errors using absolute SFC coordinates', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -258,15 +476,15 @@ describe('static Tailwind source module analysis', () => {
       '<template><div tw-content-class="p-2" /></template>\n',
     );
 
-    expect(() => analyzeSourceModules({
+    await expect(analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'single-css',
       cache: createSourceModuleAnalysisCache(),
-    })).toThrow(/Invalid\.vue:1:16 Unknown Tailwind class attribute tw-content-class/u);
+    })).rejects.toThrow(/Invalid\.vue:1:16 Unknown Tailwind class attribute tw-content-class/u);
   });
 
-  it('reports Vue script macro errors using absolute SFC coordinates', () => {
+  it('reports Vue script macro errors using absolute SFC coordinates', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -281,15 +499,15 @@ describe('static Tailwind source module analysis', () => {
 `,
     );
 
-    expect(() => analyzeSourceModules({
+    await expect(analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'single-css',
       cache: createSourceModuleAnalysisCache(),
-    })).toThrow(/InvalidMacro\.vue:1:85 tw\(\) requires exactly one string literal/u);
+    })).rejects.toThrow(/InvalidMacro\.vue:1:85 tw\(\) requires exactly one string literal/u);
   });
 
-  it('rejects external Vue templates instead of silently omitting their candidates', () => {
+  it('rejects external Vue templates instead of silently omitting their candidates', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -302,26 +520,26 @@ describe('static Tailwind source module analysis', () => {
       path.join(sourceRoot, 'External.vue'),
       '<template src="./External.html"></template>\n',
     );
-    expect(() => analyzeSourceModules({
+    await expect(analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'source-module',
       cache: createSourceModuleAnalysisCache(),
-    })).toThrow(/External Vue template src files are not supported/u);
+    })).rejects.toThrow(/External Vue template src files are not supported/u);
 
     fs.writeFileSync(
       path.join(sourceRoot, 'External.vue'),
       '<template lang="pug">div.p-2</template>\n',
     );
-    expect(() => analyzeSourceModules({
+    await expect(analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'source-module',
       cache: createSourceModuleAnalysisCache(),
-    })).toThrow(/Unsupported Vue template language "pug"/u);
+    })).rejects.toThrow(/Unsupported Vue template language "pug"/u);
   });
 
-  it('validates unreachable source modules with the same macro and template rules as transformed modules', () => {
+  it('validates unreachable source modules with the same macro and template rules as transformed modules', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     using _cleanupResource = {
@@ -338,23 +556,23 @@ describe('static Tailwind source module analysis', () => {
       '',
     ].join('\n'));
 
-    expect(() => analyzeSourceModules({
+    await expect(analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'source-module',
       cache: createSourceModuleAnalysisCache(),
-    })).toThrow(/tw\(\) requires exactly one string literal/u);
+    })).rejects.toThrow(/tw\(\) requires exactly one string literal/u);
 
     fs.rmSync(path.join(sourceRoot, 'InvalidMacro.ts'));
     fs.writeFileSync(
       path.join(sourceRoot, 'InvalidAttribute.vue'),
       '<template><div tw-content-class="p-2" /></template>\n',
     );
-    expect(() => analyzeSourceModules({
+    await expect(analyzeSourceModules({
       projectRoot: root,
       sourceRoot,
       ownershipMode: 'source-module',
       cache: createSourceModuleAnalysisCache(),
-    })).toThrow(/Unknown Tailwind class attribute tw-content-class/u);
+    })).rejects.toThrow(/Unknown Tailwind class attribute tw-content-class/u);
   });
 });

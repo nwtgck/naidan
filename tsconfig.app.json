@@ -38,6 +38,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "build/transformers-js-fixes/**/*.ts", "./typed-router.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "build/transformers-js-fixes/**/*.ts", "build/node-env.ts", "build/gzip-asset.ts", "build/runtime-asset-middleware.test-support.ts", "./typed-router.d.ts"],
   "exclude": ["src/test-tmp"]
 }

@@ -16,7 +16,7 @@ defineExpose({
   <article class="prose" data-testid="docs-models-ollama">
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
-    <p class="app-entry-intro"><RenderText :node="s.open_app({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_app({ locale, destination: { kind: 'screen', screen: 'connection' } })" /></p>
     <p class="before-step">{{ s.ollama_model_prerequisite }}</p>
 
     <section class="walkthrough-step" aria-labelledby="ollama-open">
@@ -55,8 +55,12 @@ defineExpose({
       </figure>
     </section>
 
+    <p><RenderText :node="s.start_chat_after_saving()" /></p>
+
     <h2>{{ s.ollama_troubleshooting_heading }}</h2>
     <p><RenderText :node="s.ollama_troubleshooting()" /></p>
+    <h2>{{ s.alternate_entry_heading }}</h2>
+    <p><RenderText :node="s.alternate_entry_instructions()" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'local-ai-servers', title: s.local_server_guide_title, description: s.local_server_guide_description }]" />
   </article>
 </template>

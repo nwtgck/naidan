@@ -11,6 +11,7 @@ import ImageGenerationHistory from './ImageGenerationHistory.vue';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), dispose: vi.fn(), subscribe: vi.fn(), getType: vi.fn() }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     subscribeToChanges: mocks.subscribe,
     getCurrentType: mocks.getType,
     getFile: async () => undefined,

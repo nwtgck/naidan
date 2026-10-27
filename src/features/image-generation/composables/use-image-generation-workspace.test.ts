@@ -64,7 +64,7 @@ import { useImageGenerationWorkspace, type ImageGenerationWorkspaceView } from '
 
 const mocks = vi.hoisted(() => ({ remove: vi.fn(), confirm: vi.fn(), publish: vi.fn(), subscribe: vi.fn(), getFile: vi.fn(), storage: 'opfs' as StorageType, query: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { deleteImageGenerationOutput: mocks.remove, publishImageGeneration: mocks.publish, getCurrentType: () => mocks.storage, subscribeToChanges: mocks.subscribe, getFile: mocks.getFile } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { subscribeLocalModelPromotions: vi.fn(() => () => {}), deleteImageGenerationOutput: mocks.remove, publishImageGeneration: mocks.publish, getCurrentType: () => mocks.storage, subscribeToChanges: mocks.subscribe, getFile: mocks.getFile } }));
 vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 type Publication = Parameters<typeof storageService.publishImageGeneration>[0];
 type Listener = Parameters<typeof storageService.subscribeToChanges>[0]['listener'];
@@ -343,7 +343,7 @@ describe('Image Generation composition and lifetime', () => {
     const b = (await h.view.newSession({ preserveDraft: false }))!;
     const registration = { registrationId: toNaidanRpcRegistrationId({ raw: 'session-peer' }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) }) };
     const file = { location: { kind: 'opfs' as const, path: 'models/session.gguf' } };
-    location.restoreLocation({ location: { kind: 'naidan_rpc', registration }, modelEditor: { primary: { slot: 'model', file, family: undefined }, components: [], loras: [{ file, enabled: 'disabled', strength: 0.8 }] } });
+    location.restoreLocation({ location: { kind: 'naidan_rpc', registration }, modelEditor: { automaticSlots: [], primary: { slot: 'model', file, family: undefined }, components: [], loras: [{ file, enabled: 'disabled', strength: 0.8 }] } });
     h.generation.parameters.value.prompt = 'Selected peer';
     await h.view.flushDraft();
     // Disabled adapter edits do not change the generated model selection.
@@ -1346,6 +1346,113 @@ describe('session navigation, deletion and persisted chat visibility', () => {
 });
 
 describe('read-only translation controls', () => {
+  const translationCspHintStub = {
+    props: ['endpoint', 'operation', 'presentation', 'activityForDisplayOnly'],
+    template: '<aside v-if="endpoint" data-testid="translation-csp-probe" :data-presentation="presentation" :data-activity="activityForDisplayOnly" :data-endpoint="endpoint.url" />',
+  };
+
+  it('replaces the current translation warning with an adjacent failure hint and restores the warning for a changed destination', async () => {
+    const fixture = await ready();
+    await fixture.view.newSession({ preserveDraft: true });
+    const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
+    const endpoint = { type: 'ollama' as const, url: 'https://translator.test', httpHeaders: undefined };
+    settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, endpoint, defaultModelId: 'translator' } });
+    const surface = mount(ImageGenerationTranslationButton, {
+      props: { workspace: fixture.view, text: 'cat', field: 'prompt', active: true },
+      global: { stubs: { CspLmEndpointHint: translationCspHintStub, ImageGenerationTranslationSettings: true } },
+    });
+    using cleanup = {
+      [Symbol.dispose]() {
+        surface.unmount();
+        settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+      },
+    };
+    await surface.get('[data-testid="view-prompt-translation"]').trigger('click');
+    await flushPromises();
+    const dialogElement = document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]');
+    if (!dialogElement) {
+      throw new Error('The translation dialog did not open');
+    }
+    const dialog = new DOMWrapper(dialogElement);
+    expect(dialog.get('[data-testid="translation-csp-probe"]').attributes('data-activity')).toBe('prompt-translation');
+    expect(translationMocks.translate).not.toHaveBeenCalled();
+    translationMocks.translate.mockRejectedValueOnce(new TypeError('Translation request failed'));
+    await dialog.get('[data-testid="translation-start"]').trigger('click');
+    await flushPromises();
+    const hint = dialog.get('[data-testid="translation-csp-probe"]');
+    expect(dialog.findAll('[data-testid="translation-csp-probe"]')).toHaveLength(1);
+    expect(hint.attributes('data-presentation')).toBe('error');
+    expect(hint.attributes('data-activity')).toBe('prompt-translation');
+    expect(hint.attributes('data-endpoint')).toBe('https://translator.test');
+    expect(dialog.get('[role="alert"]').text()).toBe('Translation request failed');
+    expect(dialog.get('[role="alert"]').element.nextElementSibling).toBe(hint.element);
+    const retry = dialog.get('[data-testid="translation-start"]').element;
+    expect(retry.matches(':disabled')).toBe(false);
+
+    settingsTest.__testOnlySetSettings({ newSettings: { ...settings.value, endpoint: { ...endpoint, url: 'https://other-translator.test' } } });
+    await flushPromises();
+    expect(dialog.find('[role="alert"]').exists()).toBe(false);
+    expect(dialog.findAll('[data-testid="translation-csp-probe"]')).toHaveLength(1);
+    expect(dialog.get('[data-testid="translation-csp-probe"]').attributes('data-presentation')).toBe('compact');
+    expect(dialog.get('[data-testid="translation-csp-probe"]').attributes('data-endpoint')).toBe('https://other-translator.test');
+    expect(dialog.get('[data-testid="translation-start"]').element).toBe(retry);
+    expect(translationMocks.translate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ endpoint, modelId: 'translator' }));
+    void cleanup;
+  });
+
+  it.each(['cache-write', 'cancel'] as const)('keeps the current translation warning without an error hint after %s', async failureKind => {
+    const fixture = await ready();
+    await fixture.view.newSession({ preserveDraft: true });
+    const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
+    settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, endpoint: { type: 'ollama', url: 'https://translator.test', httpHeaders: undefined }, defaultModelId: 'translator' } });
+    const surface = mount(ImageGenerationTranslationButton, {
+      props: { workspace: fixture.view, text: 'cat', field: 'prompt', active: true },
+      global: { stubs: { CspLmEndpointHint: translationCspHintStub, ImageGenerationTranslationSettings: true } },
+    });
+    using cleanup = {
+      [Symbol.dispose]() {
+        surface.unmount();
+        settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+      },
+    };
+    await surface.get('[data-testid="view-prompt-translation"]').trigger('click');
+    await flushPromises();
+    const dialogElement = document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]');
+    if (!dialogElement) {
+      throw new Error('The translation dialog did not open');
+    }
+    const dialog = new DOMWrapper(dialogElement);
+    switch (failureKind) {
+    case 'cache-write':
+      vi.spyOn(fixture.view.translationMemory, 'save').mockImplementationOnce(() => {
+        throw new Error('Cache write failed');
+      });
+      translationMocks.translate.mockResolvedValueOnce('translated cat');
+      await dialog.get('[data-testid="translation-start"]').trigger('click');
+      break;
+    case 'cancel': {
+      const pending = Promise.withResolvers<string>();
+      translationMocks.translate.mockReturnValueOnce(pending.promise);
+      await dialog.get('[data-testid="translation-start"]').trigger('click');
+      await dialog.get('[data-testid="translation-cancel"]').trigger('click');
+      pending.resolve('Late translation');
+      break;
+    }
+    default: {
+      const exhaustive: never = failureKind;
+      throw new Error(exhaustive);
+    }
+    }
+    await flushPromises();
+    expect(dialog.get('[role="alert"]').text()).not.toBe('');
+    expect(dialog.findAll('[data-testid="translation-csp-probe"]')).toHaveLength(1);
+    expect(dialog.get('[data-testid="translation-csp-probe"]').attributes('data-presentation')).toBe('compact');
+    expect(dialog.get('[data-testid="translation-csp-probe"]').attributes('data-activity')).toBe('prompt-translation');
+    expect(dialog.get('[data-testid="translation-start"]').element.matches(':disabled')).toBe(false);
+    expect(translationMocks.translate).toHaveBeenCalledOnce();
+    void cleanup;
+  });
+
   it.each(['prompt', 'negativePrompt'] as const)('views and copies %s translation without editing or persisting a chat', async field => {
     const fixture = await ready();
     await fixture.view.newSession({ preserveDraft: true });

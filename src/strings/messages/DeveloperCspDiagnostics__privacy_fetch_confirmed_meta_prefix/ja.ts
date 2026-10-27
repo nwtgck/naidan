@@ -1,0 +1,1 @@
+export const DeveloperCspDiagnostics__privacy_fetch_confirmed_meta_prefix = ({ confirmed, requested }: { confirmed: number, requested: number }): string => `追加確認済みのmeta: ${confirmed} / ${requested}件（先頭から）`;

@@ -20,7 +20,7 @@ watch(effectiveOpen, open => {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <div class="settings-collapse" :data-open="effectiveOpen" :aria-hidden="!effectiveOpen" :inert="!effectiveOpen"><div ref="body" class="settings-collapse-inner"><slot /></div></div>
+  <div class="settings-collapse" :data-open="effectiveOpen" :aria-hidden="!effectiveOpen" :inert="effectiveOpen ? undefined : true"><div ref="body" class="settings-collapse-inner"><slot /></div></div>
 </template>
 <style scoped>
 .settings-collapse {

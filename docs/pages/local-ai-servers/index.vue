@@ -32,6 +32,7 @@ defineExpose({
   <article class="prose" data-testid="docs-models-local-engines">
     <h1>{{ s.title }}</h1>
     <p v-for="paragraph in s.intro()" :key="paragraph" class="lead">{{ paragraph }}</p>
+    <p class="app-entry-intro"><RenderText :node="s.open_connection_settings({ locale, destination: { kind: 'screen', screen: 'connection' } })" /></p>
 
     <figure class="guide-figure model-flow" data-docs-animation="local-engine-flow">
       <div class="flow-track" aria-hidden="true">
@@ -55,7 +56,7 @@ defineExpose({
       </section>
     </div>
 
-    <h2>{{ s.first_run_connection_heading }}</h2>
+    <h2>{{ s.connection_setup_heading }}</h2>
     <ol class="guide-steps">
       <li v-for="step in steps" :key="step.title"><h3>{{ step.title }}</h3><p><RenderText :node="step.body()" /></p></li>
     </ol>

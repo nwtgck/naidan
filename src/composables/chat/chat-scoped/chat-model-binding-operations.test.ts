@@ -6,6 +6,8 @@ import type { StorageService } from '@/00-storage/service';
 import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import type { Chat, ChatContent, Settings, SidebarItem } from '@/01-models/types';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
+import { registerLocalRepositoryLifetime } from '@/features/llama-cpp-browser/local-repository-lifetime';
+import { rememberSavedLocalModelReference, TEST_ONLY as referenceTest } from '@/00-storage/service/local-model-references';
 
 type ChangeListener = Parameters<StorageService['subscribeToChanges']>[0]['listener'];
 const state = vi.hoisted(() => ({
@@ -89,6 +91,88 @@ function appendAssistant(): void {
 }
 
 describe('chat model binding finalization', () => {
+  it('shares an admitted source pin with retained background work after retirement while new admissions resolve independently', async () => {
+    const pendingModelId = '~user/Repo/Model';
+    const nextModelId = '~user/Other/Model';
+    state.current!.modelId = pendingModelId;
+    let current = true;
+    const release = vi.fn();
+    const retain = vi.fn(() => ({ release }));
+    using _source = { [Symbol.dispose]: registerLocalRepositoryLifetime({ modelIds: [pendingModelId], lifetime: { isCurrent: () => current, retain } }) };
+    const first = await acquireChatModelBindingOperation({ chatId });
+    using _first = { [Symbol.dispose]: () => first.release() };
+    expect(retain).not.toHaveBeenCalled();
+    captureChatContentWrite({ chat: state.current!, dependency: 'model', bindingOperation: first });
+    rememberSavedLocalModelReference({ reference: { sourceModelId: pendingModelId, modelId: 'user/Repo/Model', isCurrent: () => current, isIdentityCurrent: () => release.mock.calls.length === 0, retain: () => ({ release() {} }), withCurrentFiles: async ({ operation }) => operation() } });
+    using _identity = { [Symbol.dispose]: () => referenceTest.reset() };
+    current = false;
+    const background = first.retain();
+    using _background = { [Symbol.dispose]: () => background.release() };
+    background.captureModelSource({ endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/Repo/Model' });
+    first.release();
+    expect(retain).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+
+    const unavailable = await acquireChatModelBindingOperation({ chatId });
+    unavailable.captureModelSource({ endpoint: { type: 'llama_cpp_browser' }, modelId: pendingModelId });
+    unavailable.release();
+    expect(retain).toHaveBeenCalledOnce();
+    const releaseNext = vi.fn();
+    const retainNext = vi.fn(() => ({ release: releaseNext }));
+    using _nextSource = { [Symbol.dispose]: registerLocalRepositoryLifetime({ modelIds: [nextModelId], lifetime: { isCurrent: () => true, retain: retainNext } }) };
+    state.current!.modelId = nextModelId;
+    const next = await acquireChatModelBindingOperation({ chatId });
+    captureChatContentWrite({ chat: state.current!, dependency: 'model', bindingOperation: next });
+    next.release();
+    expect(retainNext).toHaveBeenCalledOnce();
+    expect(releaseNext).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+
+    const last = background.retain();
+    using _last = { [Symbol.dispose]: () => last.release() };
+    background.release();
+    expect(release).not.toHaveBeenCalled();
+    last.release();
+    expect(release).toHaveBeenCalledOnce();
+    expect(() => first.retain()).toThrow('The chat model binding operation has finished');
+  });
+
+  it('pins the binding accepted after synchronization and then captures a different historical generation source before releasing it', async () => {
+    const earlierModelId = '~user/Earlier/Model';
+    const synchronizedModelId = '~user/Current/Model';
+    state.current!.modelId = earlierModelId;
+    state.persistedModelId = synchronizedModelId;
+    const releaseCurrent = vi.fn();
+    const retainCurrent = vi.fn(() => ({ release: releaseCurrent }));
+    const releaseEarlier = vi.fn();
+    const retainEarlier = vi.fn(() => {
+      expect(releaseCurrent).not.toHaveBeenCalled();
+      return { release: releaseEarlier };
+    });
+    using _earlier = { [Symbol.dispose]: registerLocalRepositoryLifetime({ modelIds: [earlierModelId], lifetime: { isCurrent: () => true, retain: retainEarlier } }) };
+    using _current = { [Symbol.dispose]: registerLocalRepositoryLifetime({ modelIds: [synchronizedModelId], lifetime: { isCurrent: () => true, retain: retainCurrent } }) };
+    const operation = await acquireChatModelBindingOperation({ chatId });
+    using _operation = { [Symbol.dispose]: () => operation.release() };
+    expect(retainEarlier).not.toHaveBeenCalled();
+    expect(retainCurrent).not.toHaveBeenCalled();
+    await expect(synchronizeChatModelBindingAdmission({ chatId })).resolves.toBe('synchronized');
+    const write = captureChatContentWrite({ chat: state.current!, dependency: 'model', bindingOperation: operation });
+    expect(readChatContentWrite({ write, id: chatId }).binding?.modelId).toBe(synchronizedModelId);
+    expect(retainCurrent).toHaveBeenCalledOnce();
+    expect(retainEarlier).not.toHaveBeenCalled();
+    const generation = operation.retain();
+    using _generation = { [Symbol.dispose]: () => generation.release() };
+    generation.captureModelSource({ endpoint: { type: 'llama_cpp_browser' }, modelId: earlierModelId });
+    expect(retainEarlier).toHaveBeenCalledOnce();
+    expect(releaseCurrent).toHaveBeenCalledOnce();
+    operation.release();
+    expect(releaseEarlier).not.toHaveBeenCalled();
+    generation.captureModelSource({ endpoint: { type: 'openai', url: '' }, modelId: earlierModelId });
+    expect(releaseEarlier).toHaveBeenCalledOnce();
+    generation.release();
+    expect(releaseEarlier).toHaveBeenCalledOnce();
+  });
+
   it('waits for the retained background operation and prevents the next admission from overtaking it', async () => {
     const first = await acquireChatModelBindingOperation({ chatId });
     const background = first.retain();
@@ -295,7 +379,7 @@ describe('model binding admission synchronization', () => {
         modelId: scope === 'chat_group' ? 'temp/chat-group' : undefined,
       },
     }];
-    const write = captureChatContentWrite({ chat, dependency: 'model' });
+    const write = captureChatContentWrite({ chat, dependency: 'model', bindingOperation: undefined });
     state.settings!.defaultModelId = 'user/another-global';
     const selected = scope === 'chat_group' ? 'temp/chat-group' : `temp/${scope}`;
     expect(readChatContentWrite({ write, id: chatId }).binding).toEqual({
@@ -309,7 +393,7 @@ describe('model binding admission synchronization', () => {
 
   it('captures an empty tree and its temporary model without adopting the later saved binding', () => {
     const chat = state.current!;
-    const write = captureChatContentWrite({ chat, dependency: 'model' });
+    const write = captureChatContentWrite({ chat, dependency: 'model', bindingOperation: undefined });
     chat.modelId = 'user/saved';
     expect(readChatContentWrite({ write, id: chatId })).toMatchObject({
       baseline: chatContentFingerprint({ content: { root: { items: [] } } }),
