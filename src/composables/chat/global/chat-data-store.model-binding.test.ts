@@ -3,10 +3,35 @@ import { nextTick } from 'vue';
 import type { Chat, ChatContent, ChatMeta, UserMessageNode } from '@/01-models/types';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { ChatContentBindingChangedError, createChatContentWrite, snapshotChatContent, type ChatContentWrite } from '@/00-storage/service/chat-content-binding';
+import { rememberSavedLocalModelReference, TEST_ONLY as localReferences, type LocalModelPromotion } from '@/00-storage/service/local-model-references';
 import type { StorageChangeEvent } from '@/00-storage/service/synchronizer';
 
-const { loadChat, updateContent, updateMeta, subscribe } = vi.hoisted(() => ({ loadChat: vi.fn(), updateContent: vi.fn(), updateMeta: vi.fn(), subscribe: vi.fn((_args: { listener: ({ event }: { event: StorageChangeEvent }) => void | Promise<void> }) => () => undefined) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { loadChat, loadChatForModelBinding: async ({ id }: { id: Chat['id'] }) => ({ status: 'loaded', chat: await loadChat({ id }), isCurrent: () => true }), createChatContentWrite: ({ id, content }: { id: Chat['id'], content: ChatContent | undefined }) => createChatContentWrite({ id, content, binding: undefined, isCurrent: () => true }), updateChatContent: updateContent, updateChatMeta: updateMeta, subscribeToChanges: subscribe, getSidebarStructure: vi.fn(async () => []), listChatGroups: vi.fn(async () => []) } }));
+const { loadChat, updateContent, updateMeta, subscribe, promotions } = vi.hoisted(() => ({ promotions: new Set<({ promotion }: { promotion: LocalModelPromotion }) => void>(), loadChat: vi.fn(), updateContent: vi.fn(), updateMeta: vi.fn(), subscribe: vi.fn((_args: { listener: ({ event }: { event: StorageChangeEvent }) => void | Promise<void> }) => () => undefined) }));
+vi.mock('@/composables/useSettings', async () => {
+  const { ref } = await import('vue');
+  const { DEFAULT_SETTINGS } = await import('@/01-models/types');
+  const settings = ref({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } });
+  return { useSettings: () => ({ settings }) };
+});
+
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    subscribeLocalModelPromotions: ({ listener }: { listener({ promotion }: { promotion: LocalModelPromotion }): void }) => {
+      promotions.add(listener);
+      return () => {
+        promotions.delete(listener);
+      };
+    },
+    loadChat,
+    loadChatForModelBinding: async ({ id }: { id: Chat['id'] }) => ({ status: 'loaded', chat: await loadChat({ id }), isCurrent: () => true }),
+    createChatContentWrite: ({ id, content }: { id: Chat['id'], content: ChatContent | undefined }) => createChatContentWrite({ id, content, binding: undefined, isCurrent: () => true }),
+    updateChatContent: updateContent,
+    updateChatMeta: updateMeta,
+    subscribeToChanges: subscribe,
+    getSidebarStructure: vi.fn(async () => []),
+    listChatGroups: vi.fn(async () => []),
+  },
+}));
 import { createChatDataStore, type ChatDataStore } from './chat-data-store';
 
 function chat(): Chat {
@@ -36,7 +61,39 @@ function writeFor({ value }: { value: Chat }): ChatContentWrite {
   return createChatContentWrite({ id: value.id, content: value, binding: undefined, isCurrent: () => true });
 }
 
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  promotions.clear();
+  localReferences.reset();
+});
+
+it('reflects a captured local save in place without replacing streaming message nodes or overwriting newer selections', async () => {
+  const registry = store();
+  const value = branchedChat({ modelId: '~user/Repo/Model' });
+  value.endpoint = { type: 'llama_cpp_browser' };
+  value.systemPrompt = { behavior: 'append', content: 'Keep this prompt' };
+  const live = await installSaved({ registry, value });
+  const root = live.root;
+  const firstNode = root.items[0];
+  const currentLeafId = live.currentLeafId;
+  const reference = { sourceModelId: '~user/Repo/Model', modelId: 'user/Repo-2/Model', isCurrent: () => true, isIdentityCurrent: () => true, retain: () => ({ release() {} }), withCurrentFiles: async ({ operation }: { operation(): Promise<void> }) => operation() };
+  rememberSavedLocalModelReference({ reference });
+  const promotion: LocalModelPromotion = { owner: { kind: 'chat', id: live.id }, changes: [{ slot: 'model', ...reference }], isCurrent: () => true };
+  for (const listener of promotions) {
+    listener({ promotion });
+  }
+  expect(live.modelId).toBe('user/Repo-2/Model');
+  expect(live.root).toBe(root);
+  expect(live.root.items[0]).toBe(firstNode);
+  expect(live.currentLeafId).toBe(currentLeafId);
+  expect(live.systemPrompt).toEqual({ behavior: 'append', content: 'Keep this prompt' });
+  expect(updateContent).not.toHaveBeenCalled();
+  live.modelId = 'hf.co/Other/New:Q4';
+  for (const listener of promotions) {
+    listener({ promotion });
+  }
+  expect(live.modelId).toBe('hf.co/Other/New:Q4');
+});
 
 describe('live chat model-binding content guards', () => {
   it('keeps both current and noncurrent stale registries unchanged when persisted promotion wins', async () => {

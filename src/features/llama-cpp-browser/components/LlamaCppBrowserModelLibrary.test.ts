@@ -9,11 +9,14 @@ import { TEST_ONLY as recentTests } from '@/features/llama-cpp-browser/composabl
 import LlamaCppBrowserModelLibrary from './LlamaCppBrowserModelLibrary.vue';
 import LlamaCppBrowserDefaultModelDialog from './LlamaCppBrowserDefaultModelDialog.vue';
 
+vi.mock('./LlamaCppBrowserLocalRepositorySaves.vue', () => ({ default: { template: '<div />' } }));
+
 const service = vi.hoisted(() => ({ imports: new Set<({ receipt }: { receipt: ModelImportReceipt }) => void>(), models: new Set<() => void>() }));
 vi.mock('@/features/llama-cpp-browser/model-files', () => ({
   llamaCppBrowserModelFiles: {
     listModelEntries: vi.fn(async () => []),
     importModel: vi.fn(),
+    importLocalDirectory: vi.fn(),
     importDirectory: vi.fn(),
     removeTemporaryModel: vi.fn(),
     removeModel: vi.fn(),
@@ -120,7 +123,7 @@ describe('shared file model library', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').text()).toContain(model.modelId);
     expect(llamaCppBrowserModelFiles.listModelEntries).not.toHaveBeenCalled();
-    expect(llamaCppBrowserModelFiles.importModel).not.toHaveBeenCalled();
+    expect(llamaCppBrowserModelFiles.importLocalDirectory).not.toHaveBeenCalled();
     expect(llamaCppBrowserModelFiles.importDirectory).not.toHaveBeenCalled();
     expect(llamaCppBrowserModelFiles.removeTemporaryModel).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
@@ -180,28 +183,27 @@ describe('shared file model library', () => {
     expect(wrapper.find('[data-testid="llama-recent-imports"]').exists()).toBe(false);
   });
 
-  it('shows a confirmed first import before a later file settles and keeps it after that file fails', async () => {
+  it('shows an accepted repository while a second registration is pending and preserves it after that registration fails', async () => {
     vi.mocked(llamaCppBrowserModelFiles.listModelEntries).mockResolvedValue([]);
     const wrapper = render({ createChatGroup: undefined });
     await flushPromises();
     const second = Promise.withResolvers<ModelImportReceipt>();
-    vi.mocked(llamaCppBrowserModelFiles.importModel).mockImplementationOnce(async () => {
+    vi.mocked(llamaCppBrowserModelFiles.importLocalDirectory).mockImplementationOnce(async () => {
       vi.mocked(llamaCppBrowserModelFiles.listModelEntries).mockResolvedValue([model]);
       publish({ generation: 1, current: () => true });
       return { storage: 'temp', models: [model], publication: { generation: 1, isCurrent: () => true } };
-    }).mockImplementationOnce(({ onProgress }) => {
-      onProgress?.({ progress: { phase: 'importing', completed: 1, total: 4 } });
-      return second.promise;
-    });
-    await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', {
-      dataTransfer: { types: ['Files'], items: [], files: [new File(['one'], 'one.gguf'), new File(['two'], 'two.gguf')] },
-    });
-    await flushPromises();
-    expect(llamaCppBrowserModelFiles.importModel).toHaveBeenCalledTimes(2);
+    }).mockImplementationOnce(() => second.promise);
+    for (const name of ['one.gguf', 'two.gguf']) {
+      await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', {
+        dataTransfer: { types: ['Files'], items: [], files: [new File(['fixture'], name)] },
+      });
+      await flushPromises();
+    }
+    expect(llamaCppBrowserModelFiles.importLocalDirectory).toHaveBeenCalledTimes(2);
     expect(wrapper.get('[data-testid="llama-recent-imports"]').text()).toContain(model.modelId);
     expect(wrapper.find('[data-testid="llama-cpp-browser-cancel"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="llama-cpp-browser-import-status"]').text()).toContain('Importing');
-    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('25');
+    expect(wrapper.get('[data-testid="llama-cpp-browser-import-status"]').text()).toContain('Checking model files');
+    expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
     second.reject(new Error('later import failed'));
     await flushPromises();
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);

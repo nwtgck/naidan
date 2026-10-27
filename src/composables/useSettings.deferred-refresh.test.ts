@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/00-storage/service', () => ({
   storageService: {
     init: vi.fn(async () => {}),
+    subscribeLocalModelPromotions: vi.fn<typeof storageService.subscribeLocalModelPromotions>().mockReturnValue(() => {}),
     loadSettings: async () => mocks.stored ?? null,
     updateSettings: async ({ updater }: Parameters<typeof storageService.updateSettings>[0]) => {
       mocks.stored = await updater({ current: mocks.stored ?? null });

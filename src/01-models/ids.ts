@@ -34,6 +34,7 @@ export type AttachmentId = BrandedId<'AttachmentId'>;
 export type BinaryObjectId = BrandedId<'BinaryObjectId'>;
 export type VolumeId = BrandedId<'VolumeId'>;
 export type HostModelDirectoryId = BrandedId<'HostModelDirectoryId'>;
+export type LocalModelSourceId = BrandedId<'LocalModelSourceId'>;
 export type ImageGenerationId = BrandedId<'ImageGenerationId'>;
 export type ImageGenerationStoreId = BrandedId<'ImageGenerationStoreId'>;
 export type ImageGenerationSessionId = BrandedId<'ImageGenerationSessionId'>;
@@ -95,6 +96,10 @@ export function toVolumeId({ raw }: { raw: string }): VolumeId {
 
 export function toHostModelDirectoryId({ raw }: { raw: string }): HostModelDirectoryId {
   return raw as unknown as HostModelDirectoryId;
+}
+
+export function toLocalModelSourceId({ raw }: { raw: string }): LocalModelSourceId {
+  return raw as unknown as LocalModelSourceId;
 }
 
 export function toImageGenerationId({ raw }: { raw: string }): ImageGenerationId {

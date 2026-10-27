@@ -11,6 +11,7 @@ const selection = ref<{
   error: 'start-failed' | undefined,
 } | undefined>();
 vi.mock('@/composables/useLocalModelStart', () => ({ useBrowserModelLocalInputSelection: () => ({ selection, ...mocks }) }));
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalRepositorySaves.vue', () => ({ default: { props: ['offeredVisibility'], template: '<aside data-testid="selection-copy-progress" :data-offered="offeredVisibility" />' } }));
 const wrappers: VueWrapper[] = [];
 
 beforeEach(async () => {
@@ -38,6 +39,7 @@ function render() {
 it('waits for an explicit configuration choice before starting', async () => {
   const wrapper = render();
   const start = wrapper.get('[data-testid="local-model-selection-start"]');
+  expect(wrapper.get('[data-testid="selection-copy-progress"]').attributes('data-offered')).toBe('hidden');
   expect(start.attributes('disabled')).toBeDefined();
   expect(mocks.choose).not.toHaveBeenCalled();
   const choice = wrapper.get<HTMLInputElement>('[data-testid="local-model-choice-temp/local:Q8"]');

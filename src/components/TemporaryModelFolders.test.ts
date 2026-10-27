@@ -26,8 +26,10 @@ it('shows the same roots in two feature panes, unregisters globally and does not
   };
   const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: [{ relativePath: 'weights/model.gguf', file: new File(['weights'], 'model.gguf') }] }, signal: undefined });
   await nextTick();
-  expect(a.text()).toContain(root.rootPath);
-  expect(b.text()).toContain(root.rootPath);
+  expect(a.get('[data-testid="registered-model-folder-name"]').text()).toBe(root.rootName);
+  expect(b.get('[data-testid="registered-model-folder-name"]').text()).toBe(root.rootName);
+  expect(a.text()).not.toContain(root.rootPath);
+  expect(b.text()).not.toContain(root.rootPath);
   expect(a.text()).toContain('both');
   const disabled = b.get<HTMLButtonElement>(`[data-testid="unregister-${root.rootPath}"]`);
   expect(disabled.element.disabled).toBe(true);

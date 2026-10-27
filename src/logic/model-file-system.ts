@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { BrowserImageModelLocation } from '@/01-models/types';
 import type { TemporaryModelDirectory } from '@/01-models/temporary-model-files';
-import { temporaryRootPathSchema } from '@/01-models/temporary-model-files';
+import { hasTemporaryModelPathPrefix, temporaryRootPathSchema } from '@/01-models/temporary-model-files';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { OPFS_MODELS_DIR } from '@/constants';
 
@@ -66,7 +66,7 @@ export function modelFileLocation({ repositoryKey, hostSource, relativePath }: {
     unhandledSource satisfies Record<PropertyKey, never>;
     return { kind: 'host', directoryId: toHostModelDirectoryId({ raw: directoryId }), path: `${repository}/${relativePath}` };
   }
-  if (repositoryKey.startsWith('temp/')) {
+  if (hasTemporaryModelPathPrefix({ path: repositoryKey })) {
     temporaryRootPathSchema.parse(repositoryKey);
     return { kind: 'temp', path: `${repositoryKey}/${relativePath}` };
   }

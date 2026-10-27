@@ -1,6 +1,7 @@
 import { computed, shallowRef } from 'vue';
 import { llamaCppBrowserModelFiles, type ModelImportReceipt } from '@/features/llama-cpp-browser/model-files';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
+import { localRepositories } from '@/features/llama-cpp-browser/runtime/local-repository-store';
 
 type RecentModel = { model: LocalModel, publication: ModelImportReceipt['publication'] };
 const entries = shallowRef<readonly RecentModel[]>([]);
@@ -30,7 +31,10 @@ function publish({ receipt }: { receipt: ModelImportReceipt }): void {
   ];
 }
 
-const recentModels = computed(() => entries.value.filter(({ model, publication }) => publication.isCurrent({ modelId: model.modelId })).map(({ model }) => model));
+const recentModels = computed(() => [...new Map(entries.value.filter(({ model, publication }) => publication.isCurrent({ modelId: model.modelId })).map(({ model }) => {
+  const modelId = localRepositories.savedModelId({ modelId: model.modelId });
+  return [modelId, modelId === model.modelId ? model : { ...model, modelId }] as const;
+})).values()]);
 
 function dismiss(): void {
   dismissedThrough = latestGeneration;

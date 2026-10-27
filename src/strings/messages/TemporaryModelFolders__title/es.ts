@@ -1,1 +1,1 @@
-export const TemporaryModelFolders__title = (): string => "Carpetas temporales de modelos";
+export const TemporaryModelFolders__title = (): string => "Carpetas de modelos abiertas en esta página";

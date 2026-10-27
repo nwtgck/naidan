@@ -1,19 +1,20 @@
 <script setup lang="ts">
-import { computed, markRaw, onScopeDispose, ref, shallowRef, watch, type Component } from 'vue';
+import { computed, defineAsyncComponent, markRaw, onScopeDispose, ref, shallowRef, watch, type Component } from 'vue';
 import { Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { createModuleLoader } from '@/utils/module-loader';
 import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
-import { captureDroppedLocalModels, localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
 import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
-import LlamaCppBrowserModelFileInput from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelFileInput.vue';
+import LlamaCppBrowserLocalFiles from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFiles.vue';
 import LlamaCppBrowserModelImportModes from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelImportModes.vue';
 import OnBoardingModalV2ModelSources from './OnBoardingModalV2ModelSources.vue';
 
+const RepositorySaves = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalRepositorySaves.vue'));
+const copyProgressPrepared = ref(false);
 const props = defineProps<{
   active: boolean,
   disabled: boolean,
-  acceptLocalInput: ({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }) => void | Promise<void>,
+  acceptLocalInput: ({ directories, controller, save, repositoryLayout }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save?: 'browser' | 'later', repositoryLayout?: 'confirmed' }) => void | Promise<void>,
 }>();
 const emit = defineEmits<{ busy: [value: boolean] }>();
 const mode = ref<'temp' | 'host'>('temp');
@@ -89,7 +90,7 @@ function selectMode({ value }: { value: 'opfs' | 'temp' | 'host' }): void {
   }
 }
 
-async function handOff({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }): Promise<void> {
+async function handOff({ directories, controller, save, repositoryLayout }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save: 'browser' | 'later', repositoryLayout: 'confirmed' }): Promise<void> {
   void directories.catch(() => {});
   if (disposed || disabled.value || mode.value !== 'temp') {
     controller.abort();
@@ -97,45 +98,18 @@ async function handOff({ directories, controller }: { directories: Promise<Model
   }
   accepting.value = true;
   inputFailed.value = false;
+  copyProgressPrepared.value ||= save === 'browser';
   try {
     // Reserve the owner's action synchronously, before enumeration yields.
-    await props.acceptLocalInput({ directories, controller });
+    await props.acceptLocalInput({ directories, controller, save, repositoryLayout });
   } catch {
-    if (!disposed) {
+    if (!disposed && !controller.signal.aborted) {
       inputFailed.value = true;
     }
   } finally {
     if (!disposed) {
       accepting.value = false;
     }
-  }
-}
-
-function chooseFiles({ event, selection }: { event: Event, selection: 'files' | 'directory' }): void {
-  if (!(event.target instanceof HTMLInputElement)) {
-    return;
-  }
-  const files = Array.from(event.target.files ?? []);
-  event.target.value = '';
-  if (files.length === 0 || disposed || disabled.value || mode.value !== 'temp') {
-    return;
-  }
-  const controller = new AbortController();
-  void handOff({ directories: Promise.resolve().then(() => localModelDirectoriesFromFiles({ files, selection })), controller });
-}
-
-function dropFiles({ event }: { event: DragEvent }): void {
-  if (disposed || disabled.value || mode.value !== 'temp' || !event.dataTransfer?.types.includes('Files')) {
-    return;
-  }
-  const controller = new AbortController();
-  try {
-    // Capture handles during dispatch; lazy imports must not reread the drop.
-    const directories = captureDroppedLocalModels({ transfer: event.dataTransfer, signal: controller.signal });
-    void handOff({ directories, controller });
-  } catch {
-    controller.abort();
-    inputFailed.value = true;
   }
 }
 
@@ -151,7 +125,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div data-testid="onboarding-local-model-input" :inert="!active || undefined" :aria-hidden="!active" tw-class="mx-auto w-full max-w-xl space-y-3 text-left">
     <LlamaCppBrowserModelImportModes :model-value="mode" :modes="modes" :disabled="disabled" tw-class="mx-auto w-full max-w-sm" @update:model-value="selectMode({ value: $event })" />
-    <LlamaCppBrowserModelFileInput v-show="mode === 'temp'" :inert="mode !== 'temp' || undefined" :aria-hidden="mode !== 'temp'" :disabled="disabled || mode !== 'temp'" mode="temp" layout="expanded" :description="lazyStrings.OnBoardingModalV2LocalModelInput__start_without_copying_and_save_later()" @files="chooseFiles({ event: $event, selection: 'files' })" @directory="chooseFiles({ event: $event, selection: 'directory' })" @drop-files="dropFiles({ event: $event })" />
+    <LlamaCppBrowserLocalFiles v-show="mode === 'temp'" :inert="mode !== 'temp' || undefined" :aria-hidden="mode !== 'temp'" :disabled="disabled || mode !== 'temp'" layout="expanded" @accept="handOff($event)" />
     <!-- Do not feed linkBusy back as disabled: the link operation owns it. -->
     <div v-show="mode === 'host'" :inert="mode !== 'host' || !active || undefined" :aria-hidden="mode !== 'host' || !active">
       <LinkedFolders v-if="LinkedFolders && (linkedFoldersMounted || (mode === 'host' && active))" :disabled="props.disabled || !active || accepting || mode !== 'host'" @busy="updateLinkBusy({ value: $event })" @vue:mounted="linkedFoldersMounted = true" />
@@ -159,6 +133,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div v-else-if="linkLoadFailed" role="alert" tw-class="space-y-2 rounded-xl border border-gray-200 p-4 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300"><p>{{ lazyStrings.OnBoardingModalV2LocalModelInput__could_not_open_local_model_files() }}</p><button type="button" :disabled="props.disabled || !active" tw-class="min-h-9 rounded-lg px-3 py-2 font-medium text-blue-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-blue-400 dark:hover:bg-gray-800 disabled:opacity-50" @click="loadLinkedFolders">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button></div>
     </div>
     <p v-if="inputFailed" role="alert" tw-class="text-sm text-red-600 dark:text-red-400">{{ lazyStrings.OnBoardingModalV2LocalModelInput__could_not_open_local_model_files() }}</p>
+    <RepositorySaves v-if="copyProgressPrepared" offered-visibility="hidden" />
     <OnBoardingModalV2ModelSources />
   </div>
 </template>

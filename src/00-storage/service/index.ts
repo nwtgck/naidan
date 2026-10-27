@@ -8,13 +8,15 @@ import type { ImageGenerationStoreAccess } from './image-generation';
 import type { ImageGenerationBinaryFile } from './image-generation-binaries';
 import { prepareModelLaunchChat, detachRemovedModelLaunchOwners, detachModelLaunchOwner, detachModelLaunchChatGroupOwners, readModelLaunch, observeModelLaunch, forgetModelLaunches, type ModelLaunchChatRequest } from './model-launch';
 import { ChatContentBindingChangedError, createChatContentWrite, readChatContentWrite, withChatContentWrite, chatContentFingerprint, snapshotChatContent, type ChatContentWrite, type ChatContentModelBinding } from './chat-content-binding';
-import { areEndpointsEqual } from '@/01-models/endpoint';
 import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
 export { ChatContentBindingChangedError } from './chat-content-binding';
 export type { ChatContentWrite, ChatContentModelBinding } from './chat-content-binding';
 import { captureModelBinding, promoteModelBinding, sameModelBindingFields, type ModelBindingSnapshot, type ModelBindingPromotionResult } from './model-binding';
 export type { ModelBindingSnapshot, ModelBindingPromotionResult } from './model-binding';
 import { prepareLocalModelChat, type LocalModelChatRequest } from './local-model-chat';
+import { localModelPromotionChanges, localModelReferenceIds, observeLocalModelReferences, observedLocalModelReferenceOwners, promoteLocalModelId, promoteLocalTitleModel, promoteScopedLocalTitleModel, rememberSavedLocalModelReference, savedLocalModelReferences, sameLocalModelBinding, type LocalModelReferenceOwner, type LocalModelPromotion } from './local-model-references';
+export { sameLocalModelBinding } from './local-model-references';
+export type { LocalModelPromotion } from './local-model-references';
 export type { LocalModelChatRequest } from './local-model-chat';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/01-models/types';
@@ -72,6 +74,15 @@ function mountPathsAreEquivalent({ left, right }: { left: string, right: string 
  * Use `updateHierarchy` for structural changes.
  */
 export class StorageService {
+  private localModelPromotionListeners = new Set<({ promotion }: { promotion: LocalModelPromotion }) => void>();
+
+  subscribeLocalModelPromotions({ listener }: { listener({ promotion }: { promotion: LocalModelPromotion }): void }): () => void {
+    this.localModelPromotionListeners.add(listener);
+    return () => {
+      this.localModelPromotionListeners.delete(listener);
+    };
+  }
+
   private provider: IStorageProvider | null = null;
   private currentType: 'local' | 'opfs' | 'memory' | null = null;
   private synchronizer: StorageSynchronizer;
@@ -123,6 +134,7 @@ export class StorageService {
 
   private observeChatMetaRead({ provider, id, meta }: { provider: IStorageProvider, id: ChatId, meta: ChatMeta | null }): void {
     if (meta !== null) {
+      this.observeLocalReferences({ provider, owner: { kind: 'chat', id }, modelIds: localModelReferenceIds({ modelId: meta.modelId, titleGeneration: meta.titleGeneration }) });
       observeModelLaunch({ provider, meta });
       return;
     }
@@ -135,6 +147,163 @@ export class StorageService {
       const exhaustive: never = phase;
       throw new Error(String(exhaustive));
     }
+    }
+  }
+
+  private observeLocalReferences({ provider, owner, modelIds }: {
+    provider: IStorageProvider, owner: LocalModelReferenceOwner, modelIds: readonly string[],
+  }): void {
+    observeLocalModelReferences({ provider, owner, modelIds });
+    const references = savedLocalModelReferences({ modelIds });
+    if (!references.length) {
+      return;
+    }
+    // A selection or a late read can arrive after a fast background copy.
+    // Reuse its proven result after the current operation releases its lock.
+    const isStorageCurrent = this.captureSettingsStorage();
+    queueMicrotask(() => {
+      for (const reference of references) {
+        if (!reference.isCurrent() || !isStorageCurrent()) {
+          continue;
+        }
+        void this.promoteLocalModelReferences({ mappings: [reference], isCurrent: () => reference.isCurrent() && isStorageCurrent(), retain: reference.retain, isModelCurrent: () => reference.isCurrent(), isIdentityCurrent: () => reference.isIdentityCurrent(), withCurrentFiles: ({ operation }) => reference.withCurrentFiles({ operation }) })
+          .catch(error => this.handleStorageError({ error, source: 'promoteLocalModelReferences' }));
+      }
+    });
+  }
+
+  /** A narrow File-to-OPFS identity change; it never rewrites chat content. */
+  async promoteLocalModelReferences({ mappings, isCurrent, retain, isModelCurrent, isIdentityCurrent, withCurrentFiles }: {
+    mappings: readonly { sourceModelId: string, modelId: string }[], isCurrent(): boolean, retain(): { release(): void }, isModelCurrent({ modelId }: { modelId: string }): boolean, isIdentityCurrent({ modelId }: { modelId: string }): boolean, withCurrentFiles({ modelIds, operation }: { modelIds: readonly string[], operation(): Promise<void> }): Promise<void>,
+  }): Promise<void> {
+    if (!isCurrent()) {
+      return;
+    }
+    const provider = this.getProvider();
+    const isStorageCurrent = this.captureSettingsStorage();
+    const current = () => isCurrent() && isStorageCurrent();
+    const replacements = new Map(mappings.filter(mapping => isModelCurrent({ modelId: mapping.modelId })).map(mapping => [mapping.sourceModelId, mapping.modelId]));
+    for (const mapping of mappings) {
+      rememberSavedLocalModelReference({ reference: { ...mapping, isCurrent: () => isCurrent() && isModelCurrent({ modelId: mapping.modelId }), isIdentityCurrent: () => isIdentityCurrent({ modelId: mapping.modelId }), retain, withCurrentFiles: ({ operation }) => withCurrentFiles({ modelIds: [mapping.modelId], operation }) } });
+    }
+    let settingsWritten = false;
+    const changedOwners: string[] = [];
+    const promotions: LocalModelPromotion[] = [];
+    const pin = retain();
+    try {
+      await withCurrentFiles({
+        modelIds: mappings.map(mapping => mapping.modelId),
+        operation: () => this.synchronizer.withLock({
+          lockKey: LOCK_METADATA,
+          fn: () => this.synchronizer.withLock({
+            lockKey: SYNC_LOCK_KEY,
+            fn: async () => {
+              if (!current()) {
+                return;
+              }
+              let settings = await provider.loadSettings();
+              if (!current()) {
+                return;
+              }
+              const owners = observedLocalModelReferenceOwners({ provider, sourceModelIds: mappings.map(mapping => mapping.sourceModelId) });
+              for (const owner of owners) {
+                if (!current()) {
+                  return;
+                }
+                switch (owner.kind) {
+                case 'global': {
+                  if (settings === null) {
+                    continue;
+                  }
+                  const defaultModelId = promoteLocalModelId({ endpoint: settings.endpoint, modelId: settings.defaultModelId, mappings: replacements });
+                  const titleGeneration = promoteLocalTitleModel({ endpoint: settings.endpoint, titleGeneration: settings.titleGeneration, mappings: replacements });
+                  if (defaultModelId !== settings.defaultModelId || titleGeneration !== settings.titleGeneration) {
+                    if (!current()) {
+                      return;
+                    }
+                    settings = { ...settings, defaultModelId, titleGeneration };
+                    // A provider can commit and then lose its acknowledgement. Other
+                    // pages must re-read even when this attempt rejects.
+                    settingsWritten = true;
+                    await provider.saveSettings({ settings });
+                  }
+                  const changes = localModelPromotionChanges({ fields: { modelId: defaultModelId, titleGeneration }, endpoint: settings.endpoint, mappings: replacements });
+                  if (changes.length) {
+                    promotions.push({ owner, changes, isCurrent: current });
+                  }
+                  break;
+                }
+                case 'chat_group': {
+                  const chatGroup = await provider.loadChatGroupConfiguration({ id: owner.id });
+                  if (!chatGroup || !current()) {
+                    continue;
+                  }
+                  const endpoint = resolveChatModelBinding({ chat: {}, chatGroup, settings }).chatGroup.endpoint;
+                  const modelId = promoteLocalModelId({ endpoint, modelId: chatGroup.modelId, mappings: replacements });
+                  const titleGeneration = promoteScopedLocalTitleModel({ endpoint, titleGeneration: chatGroup.titleGeneration, mappings: replacements });
+                  if (modelId !== chatGroup.modelId || titleGeneration !== chatGroup.titleGeneration) {
+                    changedOwners.push(idToRaw({ id: owner.id }));
+                    // Sidebar items belong to the separate hierarchy, never this DTO.
+                    await provider.saveChatGroup({ chatGroup: { ...chatGroup, modelId, titleGeneration, items: [] } });
+                  }
+                  const changes = localModelPromotionChanges({ fields: { modelId, titleGeneration }, endpoint, mappings: replacements });
+                  if (changes.length) {
+                    promotions.push({ owner, changes, isCurrent: current });
+                  }
+                  break;
+                }
+                case 'chat': {
+                  const meta = await provider.loadChatMeta({ id: owner.id });
+                  if (!meta || !current()) {
+                    continue;
+                  }
+                  const chatGroup = meta.groupId == null ? undefined : await provider.loadChatGroupConfiguration({ id: meta.groupId });
+                  if (!current()) {
+                    return;
+                  }
+                  const endpoint = resolveChatModelBinding({ chat: meta, chatGroup, settings }).chat.endpoint;
+                  const modelId = promoteLocalModelId({ endpoint, modelId: meta.modelId, mappings: replacements });
+                  const titleGeneration = promoteScopedLocalTitleModel({ endpoint, titleGeneration: meta.titleGeneration, mappings: replacements });
+                  if (modelId !== meta.modelId || titleGeneration !== meta.titleGeneration) {
+                    changedOwners.push(idToRaw({ id: owner.id }));
+                    await provider.saveChatMeta({ meta: { ...meta, modelId, titleGeneration } });
+                  }
+                  const changes = localModelPromotionChanges({ fields: { modelId, titleGeneration }, endpoint, mappings: replacements });
+                  if (changes.length) {
+                    promotions.push({ owner, changes, isCurrent: current });
+                  }
+                  break;
+                }
+                default: {
+                  const exhaustive: never = owner;
+                  throw new Error(String(exhaustive));
+                }
+                }
+              }
+            },
+          }),
+        }),
+      });
+    } finally {
+      try {
+        for (const promotion of promotions) {
+          for (const listener of this.localModelPromotionListeners) {
+            try {
+              listener({ promotion });
+            } catch (error) {
+              console.error('Could not reflect a saved local model', error);
+            }
+          }
+        }
+      } finally {
+        pin.release();
+        if (settingsWritten) {
+          this.notify({ event: { type: 'settings', timestamp: Date.now() } });
+        }
+        for (const id of changedOwners) {
+          this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
+        }
+      }
     }
   }
 
@@ -354,6 +523,7 @@ export class StorageService {
             return 'changed' as const;
           }
           await provider.saveSettings({ settings: updated });
+          this.observeLocalReferences({ provider, owner: { kind: 'global' }, modelIds: localModelReferenceIds({ modelId: updated.defaultModelId, titleGeneration: updated.titleGeneration }) });
           return 'saved' as const;
         },
         lockKey: SYNC_LOCK_KEY,
@@ -442,7 +612,7 @@ export class StorageService {
             if (!isStorageCurrent() || (isCurrent !== undefined && !isCurrent())) {
               throw new Error('The local model launch source changed');
             }
-            return prepareLocalModelChat({
+            const chat = await prepareLocalModelChat({
               provider,
               request,
               beforeWrite: () => {
@@ -452,6 +622,14 @@ export class StorageService {
                 }
               },
             });
+            this.observeLocalReferences({ provider, owner: { kind: 'chat', id: chat.id }, modelIds: localModelReferenceIds({ modelId: chat.modelId, titleGeneration: chat.titleGeneration }) });
+            if (chat.groupId != null) {
+              const chatGroup = await provider.loadChatGroup({ id: chat.groupId });
+              if (chatGroup) {
+                this.observeLocalReferences({ provider, owner: { kind: 'chat_group', id: chatGroup.id }, modelIds: localModelReferenceIds({ modelId: chatGroup.modelId, titleGeneration: chatGroup.titleGeneration }) });
+              }
+            }
+            return chat;
           },
         }),
       }),
@@ -577,6 +755,7 @@ export class StorageService {
             fn: async () => {
               assertCurrent();
               await provider.saveChatMeta({ meta: updated });
+              this.observeLocalReferences({ provider, owner: { kind: 'chat', id }, modelIds: localModelReferenceIds({ modelId: updated.modelId, titleGeneration: updated.titleGeneration }) });
               if (previousBinding === undefined || !sameModelBindingFields({ left: previousBinding, right: updated })) {
                 this.chatModelBindingRevisions.set(id, (this.chatModelBindingRevisions.get(id) ?? 0) + 1);
               }
@@ -657,13 +836,13 @@ export class StorageService {
                       if (state.binding !== undefined) {
                         const meta = await provider.loadChatMeta({ id });
                         const settings = await provider.loadSettings();
-                        if (meta === null || settings === null) {
+                        if (meta === null) {
                           throw new ChatContentBindingChangedError();
                         }
                         const chatGroup = meta.groupId == null ? undefined : await provider.loadChatGroup({ id: meta.groupId });
                         const resolved = resolveChatModelBinding({ chat: meta, chatGroup, settings });
                         const actual: ChatContentModelBinding = { groupId: meta.groupId == null ? undefined : idToRaw({ id: meta.groupId }), endpoint: resolved.chat.endpoint, modelId: resolved.chat.modelId, endpointSource: resolved.sources.endpoint, modelSource: resolved.sources.modelId };
-                        if (actual.groupId !== state.binding.groupId || actual.modelId !== state.binding.modelId || actual.endpointSource !== state.binding.endpointSource || actual.modelSource !== state.binding.modelSource || !areEndpointsEqual({ left: actual.endpoint, right: state.binding.endpoint })) {
+                        if (actual.groupId !== state.binding.groupId || !sameLocalModelBinding({ left: actual, right: state.binding }) || actual.endpointSource !== state.binding.endpointSource || actual.modelSource !== state.binding.modelSource) {
                           throw new ChatContentBindingChangedError();
                         }
                       }
@@ -691,7 +870,7 @@ export class StorageService {
     const provider = this.getProvider();
     const chat = await provider.loadChat({ id });
     if (chat !== null) {
-      observeModelLaunch({ provider, meta: chat });
+      this.observeChatMetaRead({ provider, id, meta: chat });
     } else {
       const phase = readModelLaunch({ provider, chatId: id })?.phase;
       switch (phase) {
@@ -726,7 +905,7 @@ export class StorageService {
               return { status: 'changed' as const };
             }
             if (chat !== null) {
-              observeModelLaunch({ provider, meta: chat });
+              this.observeChatMetaRead({ provider, id, meta: chat });
             }
             return { status: 'loaded' as const, chat, isCurrent };
           },
@@ -772,6 +951,7 @@ export class StorageService {
             return;
           }
           await provider.saveChatGroup({ chatGroup: updated });
+          this.observeLocalReferences({ provider, owner: { kind: 'chat_group', id }, modelIds: localModelReferenceIds({ modelId: updated.modelId, titleGeneration: updated.titleGeneration }) });
           if (previousBinding === undefined || !sameModelBindingFields({ left: previousBinding, right: updated })) {
             detachModelLaunchChatGroupOwners({ provider, chatGroupId: id });
             this.chatGroupModelBindingRevisions.set(id, (this.chatGroupModelBindingRevisions.get(id) ?? 0) + 1);
@@ -788,7 +968,12 @@ export class StorageService {
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
-    return this.getProvider().loadChatGroup({ id });
+    const provider = this.getProvider();
+    const chatGroup = await provider.loadChatGroup({ id });
+    if (chatGroup) {
+      this.observeLocalReferences({ provider, owner: { kind: 'chat_group', id }, modelIds: localModelReferenceIds({ modelId: chatGroup.modelId, titleGeneration: chatGroup.titleGeneration }) });
+    }
+    return chatGroup;
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
@@ -814,11 +999,29 @@ export class StorageService {
   }
 
   async listChatGroups(): Promise<ChatGroup[]> {
-    return this.getProvider().listChatGroups();
+    const provider = this.getProvider();
+    const chatGroups = await provider.listChatGroups();
+    for (const chatGroup of chatGroups) {
+      this.observeLocalReferences({ provider, owner: { kind: 'chat_group', id: chatGroup.id }, modelIds: localModelReferenceIds({ modelId: chatGroup.modelId, titleGeneration: chatGroup.titleGeneration }) });
+    }
+    return chatGroups;
   }
 
   async getSidebarStructure(): Promise<SidebarItem[]> {
-    return this.getProvider().getSidebarStructure();
+    const provider = this.getProvider();
+    const items = await provider.getSidebarStructure();
+    for (const item of items) {
+      switch (item.type) {
+      case 'chat_group': this.observeLocalReferences({ provider, owner: { kind: 'chat_group', id: item.chatGroup.id }, modelIds: localModelReferenceIds({ modelId: item.chatGroup.modelId, titleGeneration: item.chatGroup.titleGeneration }) });
+        break;
+      case 'chat': break;
+      default: {
+        const exhaustive: never = item;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
+    return items;
   }
 
   /** Serialize automatic creation separately from the metadata locks acquired
@@ -915,6 +1118,7 @@ export class StorageService {
           const current = await this.loadSettings();
           const updated = await updater({ current: current });
           await this.getProvider().saveSettings({ settings: updated });
+          this.observeLocalReferences({ provider: this.getProvider(), owner: { kind: 'global' }, modelIds: localModelReferenceIds({ modelId: updated.defaultModelId, titleGeneration: updated.titleGeneration }) });
         },
         lockKey: SYNC_LOCK_KEY,
         ...this.getLockOptions({ source: 'updateSettings' }),
@@ -936,7 +1140,12 @@ export class StorageService {
   }
 
   async loadSettings(): Promise<Settings | null> {
-    return this.getProvider().loadSettings();
+    const provider = this.getProvider();
+    const settings = await provider.loadSettings();
+    if (settings) {
+      this.observeLocalReferences({ provider, owner: { kind: 'global' }, modelIds: localModelReferenceIds({ modelId: settings.defaultModelId, titleGeneration: settings.titleGeneration }) });
+    }
+    return settings;
   }
 
   async clearAll(): Promise<void> {

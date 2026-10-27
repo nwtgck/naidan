@@ -371,11 +371,11 @@ it.each(['failed', 'projector-conflict', 'selection-unavailable'] as const)('rep
   const controller = new AbortController();
   expect(failed.controller.signal.aborted).toBe(false);
   expect(mocks.importFiles).not.toHaveBeenCalled();
-  const pending = command.acceptAfterFailedDownload({ operationId: failed.state.id, directories: Promise.resolve([directory]), controller });
+  const pending = command.acceptAfterFailedDownload({ operationId: failed.state.id, directories: Promise.resolve([directory]), controller, save: 'browser' });
   expect(failed.controller.signal.aborted).toBe(true);
   await pending;
   expect(controller.signal.aborted).toBe(false);
-  expect(mocks.importFiles).toHaveBeenCalledExactlyOnceWith({ directories: [directory], signal: controller.signal });
+  expect(mocks.importFiles).toHaveBeenCalledExactlyOnceWith({ directories: [directory], signal: controller.signal, save: 'browser' });
   expect(mocks.chat?.value?.modelId).toBe(model.modelId);
   expect(mocks.settings?.value.defaultModelId).toBe('remote');
   expect(command.operation.value).toBeUndefined();

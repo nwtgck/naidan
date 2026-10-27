@@ -1,6 +1,6 @@
 import { awaitInspection } from '@/logic/model-file-inspection/abort';
 import { modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
-import type { TemporaryModelDirectory } from '@/01-models/temporary-model-files';
+import { hasTemporaryModelPathPrefix, temporaryModelRootPath, type TemporaryModelDirectory } from '@/01-models/temporary-model-files';
 import { readTemporaryModelFile } from '@/logic/model-file-system';
 import { createTemporaryModelFiles, temporaryModelFiles, type TemporaryModelFiles } from '@/logic/temporary-model-files';
 import { modelGroups, modelVariantName } from '@/features/llama-cpp-browser/hugging-face/model-variants';
@@ -9,6 +9,7 @@ import { LlamaCppBrowserError, modelsSchema, type LocalModel, type ModelDirector
 import { describeDirectory, modelDirectory, validGguf, type ModelDirectory, type ResolvedModel } from './model-directory';
 import { normalizeModelDirectoryInput } from './model-directory-input';
 import { parseTemporaryModelReference, temporaryModelReference } from '@/features/llama-cpp-browser/temporary-model-reference';
+import { isLocalRepositoryRoot } from '@/features/llama-cpp-browser/local-repository-lifetime';
 
 type ProjectionEntry = { resolvedModel: ResolvedModel, variantRepository: string };
 
@@ -146,13 +147,13 @@ function createTemporaryModelStore({ registry }: { registry: TemporaryModelFiles
   }
   async function ensure({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
     signal?.throwIfAborted();
-    const pending = registry.list().map(root => ensureRoot({ root }));
+    const pending = registry.list().filter(root => !isLocalRepositoryRoot({ root })).map(root => ensureRoot({ root }));
     await awaitInspection({ task: Promise.all(pending), signal });
     signal?.throwIfAborted();
   }
   function resolveProjectedModel({ modelId }: { modelId: string }): ResolvedModel {
     const { rootName, selector } = parseTemporaryModelReference({ modelId });
-    const rootPath = `temp/${rootName}`;
+    const rootPath = temporaryModelRootPath({ rootName });
     const projection = projections.get(rootPath);
     const found = projection?.models.get(modelId);
     const root = registry.get({ rootPath });
@@ -168,7 +169,10 @@ function createTemporaryModelStore({ registry }: { registry: TemporaryModelFiles
     return copyResolvedModel({ resolvedModel: found.resolvedModel });
   }
   function list(): LocalModel[] {
-    return [...projections.values()].flatMap(({ models }) => [...models.values()].map(({ resolvedModel }) => describeDirectory({ modelId: resolvedModel.modelId, directory: resolvedModel.directory })))
+    return [...projections].filter(([rootPath]) => {
+      const root = registry.get({ rootPath });
+      return root !== undefined && !isLocalRepositoryRoot({ root });
+    }).flatMap(([, { models }]) => [...models.values()].map(({ resolvedModel }) => describeDirectory({ modelId: resolvedModel.modelId, directory: resolvedModel.directory })))
       .sort((a, b) => a.modelId.localeCompare(b.modelId));
   }
   async function registerDirectoryWithRoot({ directory, signal }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined }): Promise<{ root: TemporaryModelDirectory, models: LocalModel[] }> {
@@ -204,12 +208,12 @@ function createTemporaryModelStore({ registry }: { registry: TemporaryModelFiles
       return [...projections].flatMap(([rootPath, projection]) => projection.issue ? [{ rootPath, message: projection.issue.message }] : []);
     },
     async resolveModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<ResolvedModel | undefined> {
-      if (!modelId.startsWith('temp/')) {
+      if (!hasTemporaryModelPathPrefix({ path: modelId })) {
         return undefined;
       }
       const { rootName } = parseTemporaryModelReference({ modelId });
-      const root = registry.get({ rootPath: `temp/${rootName}` });
-      if (!root) {
+      const root = registry.get({ rootPath: temporaryModelRootPath({ rootName }) });
+      if (!root || isLocalRepositoryRoot({ root })) {
         throw new LlamaCppBrowserError({ code: 'missing-model' });
       }
       await awaitInspection({ task: ensureRoot({ root }), signal });
@@ -223,7 +227,7 @@ function createTemporaryModelStore({ registry }: { registry: TemporaryModelFiles
       const { rootName } = parseTemporaryModelReference({ modelId });
       // Preserve shared files for image generation and preserve exclusions for
       // this root revision. Explicit unregister starts a separate lifecycle.
-      if (projections.get(`temp/${rootName}`)?.models.delete(modelId)) {
+      if (projections.get(temporaryModelRootPath({ rootName }))?.models.delete(modelId)) {
         notify();
       }
     },

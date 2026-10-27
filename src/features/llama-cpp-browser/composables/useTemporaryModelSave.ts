@@ -6,7 +6,8 @@ import { useSettings } from '@/composables/useSettings';
 import { getLiveChatById, loadData, rootItems, synchronizeModelBindingContent, updateChatScopedSettings } from '@/composables/chat/global/chat-core-singletons';
 import { withChatModelBindingFinalization } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
-import { captureModelFileStorage, copyTemporaryModel, llamaCppBrowserModelFiles, waitForModelFileMutation, withSavedTemporaryModelFiles, type SavedTemporaryModel, type TemporaryModelSource } from '@/features/llama-cpp-browser/model-files';
+import { cancelLocalRepositorySave, localRepositorySaveState, saveLocalRepository, subscribeLocalRepositorySaves, captureModelFileStorage, copyTemporaryModel, llamaCppBrowserModelFiles, waitForModelFileMutation, withSavedTemporaryModelFiles, type SavedTemporaryModel, type TemporaryModelSource } from '@/features/llama-cpp-browser/model-files';
+import { localRepositories } from '@/features/llama-cpp-browser/runtime/local-repository-store';
 import { errorCode, LlamaCppBrowserError, type ErrorCode, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { localModelLaunchSession, registerLocalModelLaunchSession } from './local-model-launch-session';
 import { suspendLocalModelLaunchPreparation } from './useLocalModelLaunchChat';
@@ -29,6 +30,12 @@ type SaveEntry = {
   pending: Promise<void> | undefined,
 };
 const entries = shallowRef(new Map<ChatId, SaveEntry>());
+const repositorySaveRevision = shallowRef(0);
+subscribeLocalRepositorySaves({
+  listener: () => {
+    repositorySaveRevision.value++;
+  },
+});
 
 function changed(): void {
   entries.value = new Map(entries.value);
@@ -225,7 +232,15 @@ async function saveEntry({ entry, controller }: { entry: SaveEntry, controller: 
 export function useTemporaryModelSave({ chatId }: { chatId: Readonly<Ref<ChatId | undefined>> }) {
   const entry = computed(() => chatId.value === undefined ? undefined : entries.value.get(chatId.value));
   const state = computed(() => {
+    void repositorySaveRevision.value;
     const current = entry.value;
+    if (current?.source.localSource && available({ entry: current })) {
+      const source = current.source.localSource;
+      const saved = localRepositorySaveState({ source });
+      const modelId = localRepositories.savedModelId({ modelId: current.source.model.modelId });
+      const phase = saved.phase === 'saved' && modelId === current.source.model.modelId ? 'offered' : saved.phase;
+      return { ...saved, phase, model: { ...current.source.model, modelId }, sourceModel: current.source.model };
+    }
     return current !== undefined && available({ entry: current }) ? { ...current.notice, sourceModel: current.source.model } : undefined;
   });
   const notice = computed(() => {
@@ -239,11 +254,14 @@ export function useTemporaryModelSave({ chatId }: { chatId: Readonly<Ref<ChatId 
     }
     }
   });
-  const hiddenNotice = computed(() => entry.value?.visibility === 'hidden' && entry.value.pending !== undefined ? state.value : undefined);
+  const hiddenNotice = computed(() => entry.value?.visibility === 'hidden' && (entry.value.pending !== undefined || (state.value?.phase === 'saving' || state.value?.phase === 'finalizing')) ? state.value : undefined);
   function save(): Promise<void> {
     const current = entry.value;
     if (current === undefined || !available({ entry: current }) || current.notice.phase === 'saved') {
       return Promise.resolve();
+    }
+    if (current.source.localSource) {
+      return saveLocalRepository({ source: current.source.localSource });
     }
     if (current.pending === undefined) {
       const controller = new AbortController();
@@ -268,6 +286,10 @@ export function useTemporaryModelSave({ chatId }: { chatId: Readonly<Ref<ChatId 
   async function cancel(): Promise<void> {
     const current = entry.value;
     if (current === undefined || current.notice.phase === 'finalizing') {
+      return;
+    }
+    if (current.source.localSource) {
+      cancelLocalRepositorySave({ source: current.source.localSource });
       return;
     }
     current.controller?.abort();

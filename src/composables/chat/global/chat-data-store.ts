@@ -3,7 +3,12 @@ import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/01-models/types';
 import { storageService, type ChatContentWrite } from '@/00-storage/service';
-import { chatContentFingerprint } from '@/00-storage/service/chat-content-binding';
+import { useSettings } from '@/composables/useSettings';
+import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
+import { cloneEndpoint } from '@/01-models/endpoint';
+import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
+import { applyLocalModelPromotion, normalizeSavedLocalModelFields } from '@/features/llama-cpp-browser/model-reference-promotion';
+import { chatContentFingerprint, type ChatContentModelBinding } from '@/00-storage/service/chat-content-binding';
 import { ChatContentBindingChangedError } from '@/00-storage/service/chat-content-binding';
 import { findDeepestLeaf, findNodeInBranch } from '@/logic/chat-tree';
 import { idToRaw, toChatId } from '@/01-models/ids';
@@ -146,6 +151,84 @@ export function createChatDataStore({
   const scopedSettingUpdateQueues = new Map<ChatId, Promise<void>>();
   const savedContentSnapshots = new Map<ChatId, string>();
 
+  function readModelBinding({ chat }: { chat: Chat }) {
+    const item = rootItems.value.find(item => item.type === 'chat_group' && item.chatGroup.id === chat.groupId);
+    const chatGroup = (() => {
+      if (!item) {
+        return undefined;
+      }
+      switch (item.type) {
+      case 'chat_group': return item.chatGroup;
+      case 'chat': return undefined;
+      default: {
+        const exhaustive: never = item;
+        throw new Error(String(exhaustive));
+      }
+      }
+    })();
+    return resolveChatModelBinding({ chat, chatGroup, settings: useSettings().settings.value });
+  }
+
+  function modelBindingSnapshot({ chat }: { chat: Chat }): ChatContentModelBinding {
+    const resolved = readModelBinding({ chat });
+    return { groupId: chat.groupId == null ? undefined : idToRaw({ id: chat.groupId }), endpoint: cloneEndpoint({ endpoint: resolved.chat.endpoint }), modelId: resolved.chat.modelId, endpointSource: resolved.sources.endpoint, modelSource: resolved.sources.modelId };
+  }
+
+  function normalizeLocalChat({ chat }: { chat: Chat }): void {
+    normalizeSavedLocalModelFields({ target: chat, endpoint: readModelBinding({ chat }).chat.endpoint });
+  }
+
+  function normalizeLocalSidebar({ items }: { items: SidebarItem[] }): void {
+    const settings = useSettings().settings.value;
+    for (const item of items) {
+      switch (item.type) {
+      case 'chat_group': normalizeSavedLocalModelFields({ target: item.chatGroup, endpoint: item.chatGroup.endpoint ?? settings.endpoint });
+        break;
+      case 'chat': break;
+      default: {
+        const exhaustive: never = item;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
+  }
+
+  storageService.subscribeLocalModelPromotions({
+    listener: ({ promotion }) => {
+      if (!promotion.isCurrent()) {
+        return;
+      }
+      const settings = useSettings().settings.value;
+      switch (promotion.owner.kind) {
+      case 'global': return;
+      case 'chat': {
+        const chat = liveChatRegistry.get(promotion.owner.id);
+        if (chat) {
+          normalizeLocalChat({ chat });
+        }
+        break;
+      }
+      case 'chat_group': {
+        const chatGroupId = promotion.owner.id;
+        for (const item of rootItems.value) {
+          if (item.type === 'chat_group' && item.chatGroup.id === chatGroupId) {
+            applyLocalModelPromotion({ target: item.chatGroup, endpoint: item.chatGroup.endpoint ?? settings.endpoint, changes: promotion.changes });
+          }
+        }
+        const chatGroup = currentChatGroupRef.value;
+        if (chatGroup?.id === chatGroupId) {
+          applyLocalModelPromotion({ target: chatGroup, endpoint: chatGroup.endpoint ?? settings.endpoint, changes: promotion.changes });
+        }
+        break;
+      }
+      default: {
+        const exhaustive: never = promotion.owner;
+        throw new Error(String(exhaustive));
+      }
+      }
+    },
+  });
+
   function contentSnapshot({ chat }: { chat: ChatContent }): string {
     return chatContentFingerprint({ content: chat });
   }
@@ -170,6 +253,7 @@ export function createChatDataStore({
     }
 
     if (!liveChatRegistry.has(raw.id)) {
+      normalizeLocalChat({ chat });
       savedContentSnapshots.delete(raw.id);
       liveChatRegistry.set(raw.id, isProxy(chat) ? chat : reactive(chat));
     }
@@ -284,6 +368,7 @@ export function createChatDataStore({
           continue;
         }
 
+        normalizeLocalSidebar({ items: sidebarStructure });
         rootItems.value = sidebarStructure;
         syncLiveInstancesWithSidebar();
         sidebarLoadState = {
@@ -327,6 +412,7 @@ export function createChatDataStore({
   }: {
     items: SidebarItem[],
   }) {
+    normalizeLocalSidebar({ items });
     rootItems.value = items;
     syncLiveInstancesWithSidebar();
   }
@@ -439,7 +525,7 @@ export function createChatDataStore({
     const existing = getLiveChatById({ chatId });
     const before = existing === null ? undefined : contentSnapshot({ chat: existing });
     const saved = savedContentSnapshots.get(chatId);
-    const metadataBefore = existing === null ? undefined : metadataSnapshot({ chat: existing });
+    const bindingBefore = existing === null ? undefined : modelBindingSnapshot({ chat: existing });
     if (existing !== null && saved !== undefined && before !== saved) {
       return 'changed';
     }
@@ -458,15 +544,28 @@ export function createChatDataStore({
       throw new Error(String(exhaustive));
     }
     }
-    if (fresh === null || getLiveChatById({ chatId }) !== existing || (existing !== null && (
-      contentSnapshot({ chat: existing }) !== before || metadataSnapshot({ chat: existing }) !== metadataBefore ||
-      (saved === undefined && contentSnapshot({ chat: fresh }) !== before)
-    ))) {
+    if (fresh === null || getLiveChatById({ chatId }) !== existing) {
       return 'changed';
     }
     if (existing !== null) {
+      const binding = modelBindingSnapshot({ chat: existing });
+      if (bindingBefore === undefined || contentSnapshot({ chat: existing }) !== before
+        || binding.groupId !== bindingBefore.groupId || !sameLocalModelBinding({ left: binding, right: bindingBefore })
+        || binding.endpointSource !== bindingBefore.endpointSource || binding.modelSource !== bindingBefore.modelSource
+        || (saved === undefined && contentSnapshot({ chat: fresh }) !== before)) {
+        return 'changed';
+      }
       pruneVolatileAssistantErrorsForChat({ chat: fresh });
-      Object.assign(existing, fresh);
+      // Admission refreshes the tree and the binding it will use. Other live
+      // metadata belongs to its own updates and may have changed during this read.
+      if (contentSnapshot({ chat: fresh }) !== before) {
+        existing.root = fresh.root;
+        existing.currentLeafId = fresh.currentLeafId;
+      }
+      existing.groupId = fresh.groupId;
+      existing.endpoint = fresh.endpoint;
+      existing.modelId = fresh.modelId;
+      normalizeLocalChat({ chat: existing });
       if (currentChatRef.value?.id === chatId) {
         triggerRef(currentChatRef);
       }
@@ -528,6 +627,7 @@ export function createChatDataStore({
     });
     if (acceptedChanges !== undefined && existing !== undefined && liveChatRegistry.get(id) === existing && metadataSnapshot({ chat: existing }) === before) {
       Object.assign(existing, acceptedChanges);
+      normalizeLocalChat({ chat: existing });
       if (currentChatRef.value?.id === id) {
         triggerRef(currentChatRef);
       }
@@ -596,6 +696,7 @@ export function createChatDataStore({
           ),
         });
         Object.assign(existing, updated);
+        normalizeLocalChat({ chat: existing });
         if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
           triggerRef(currentChatRef);
         }
@@ -643,6 +744,7 @@ export function createChatDataStore({
       const existing = liveChatRegistry.get(chatId);
       if (existing !== undefined) {
         Object.assign(existing, applyScopedSettingChangesToChat({ current: toRaw(existing), changes: queuedChanges, updatedAt: Math.max(updatedAt, existing.updatedAt + 1) }));
+        normalizeLocalChat({ chat: existing });
         if (currentChatRef.value?.id === chatId) {
           triggerRef(currentChatRef);
         }

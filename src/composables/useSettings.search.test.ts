@@ -6,6 +6,7 @@ const storageMocks = vi.hoisted(() => ({
     updater: ({ current }: { current: Settings | undefined }) => Settings,
   }) => updater({ current: undefined })),
   subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  subscribeLocalModelPromotions: vi.fn().mockReturnValue(() => {}),
 }));
 
 vi.mock('../00-storage/service', () => ({

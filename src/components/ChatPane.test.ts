@@ -864,6 +864,7 @@ vi.mock('../00-storage/service', () => ({
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     subscribeToChanges: vi.fn(),
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
   },
 }));
 

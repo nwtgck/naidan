@@ -32,12 +32,12 @@ export function captureDroppedLocalModels({ transfer, signal }: { transfer: Data
   return captured.then(({ directories, files }) => [...directories, ...localModelDirectoriesFromFiles({ files, selection: 'files' })]);
 }
 
-export async function importLocalModelDirectories({ directories, signal }: { directories: readonly ModelDirectoryInput[], signal: AbortSignal | undefined }): Promise<LocalModel[]> {
+export async function importLocalModelDirectories({ directories, signal, save }: { directories: readonly ModelDirectoryInput[], signal: AbortSignal | undefined, save?: 'browser' | 'later' }): Promise<LocalModel[]> {
   const { llamaCppBrowserModelFiles } = await import('@/features/llama-cpp-browser/model-files');
   const models: LocalModel[] = [];
   for (const directory of directories) {
     signal?.throwIfAborted();
-    const receipt = await llamaCppBrowserModelFiles.importDirectory({ directory, storage: 'temp', signal });
+    const receipt = await llamaCppBrowserModelFiles.importLocalDirectory({ directory, save: save ?? 'later', signal });
     models.push(...receipt.models);
   }
   if (!models.length) {

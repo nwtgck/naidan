@@ -1,1 +1,1 @@
-export const TemporaryModelFolders__help = (): string => "Wird auf dieser Seite gemeinsam für Text- und Bildgenerierung verwendet. Das Entfernen der Registrierung entfernt den Ordner aus beiden Bereichen; die Originaldateien werden nicht gelöscht.";
+export const TemporaryModelFolders__help = (): string => "Diese Ordner werden auf dieser Seite gemeinsam für die Text- und Bildgenerierung verwendet. Das Aufheben der Registrierung entfernt den Ordner aus beiden Listen. Originaldateien und im Browser gespeicherte Kopien bleiben erhalten.";

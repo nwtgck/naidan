@@ -34,7 +34,7 @@ import { cloneToolConfigs } from '@/features/tools/tool-config';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
-import { assertChatContentWriteCurrent, captureChatContentWrite, acquireChatModelBindingOperation, synchronizeChatModelBindingAdmission, withChatModelBindingOperation } from './chat-model-binding-operations';
+import { assertChatContentWriteCurrent, captureChatContentWrite, acquireChatModelBindingOperation, synchronizeChatModelBindingAdmission, withChatModelBindingOperation, type ChatModelBindingOperation } from './chat-model-binding-operations';
 
 export async function forkChatForChat({
   chatId,
@@ -84,11 +84,11 @@ export async function switchVersionForChat({
 }): Promise<void> {
   await withChatModelBindingOperation({
     chatId,
-    operation: async () => {
+    operation: async ({ bindingOperation }) => {
       await assertHistoryBindingAdmission({ chatId });
       const targetChat = getLiveChatById({ chatId });
       if (targetChat !== null) {
-        await switchVersionInTarget({ targetChat, messageId });
+        await switchVersionInTarget({ targetChat, messageId, bindingOperation });
       }
     },
   });
@@ -109,7 +109,7 @@ export async function commitFullHistoryManipulationForChat({
   if (chat === null) {
     return;
   }
-  const write = expectation.write ?? captureChatContentWrite({ chat, dependency: 'model' });
+  const write = expectation.write ?? captureChatContentWrite({ chat, dependency: 'model', bindingOperation: undefined });
 
   // Snapshot the complete proposed branch before any storage awaits. Only these
   // copies become the new branch; the editor and existing replies remain intact.
@@ -131,14 +131,14 @@ export async function commitFullHistoryManipulationForChat({
     }
   })();
 
-  await withChatModelBindingOperation({ chatId, operation: () => commitFullHistoryWithBinding({ chat, newNodes, prompt, write }) });
+  await withChatModelBindingOperation({ chatId, operation: ({ bindingOperation }) => commitFullHistoryWithBinding({ chat, newNodes, prompt, write, bindingOperation }) });
 }
 
-async function commitFullHistoryWithBinding({ chat, newNodes, prompt, write }: {
-  chat: Chat, newNodes: MessageNode[], prompt: SystemPrompt | undefined, write: ChatContentWrite,
+async function commitFullHistoryWithBinding({ chat, newNodes, prompt, write, bindingOperation }: {
+  chat: Chat, newNodes: MessageNode[], prompt: SystemPrompt | undefined, write: ChatContentWrite, bindingOperation: ChatModelBindingOperation,
 }): Promise<void> {
   await assertHistoryBindingAdmission({ chatId: chat.id });
-  assertChatContentWriteCurrent({ chat: getLiveChatById({ chatId: chat.id }) ?? chat, write });
+  assertChatContentWriteCurrent({ chat: getLiveChatById({ chatId: chat.id }) ?? chat, write, bindingOperation });
   for (const message of newNodes) {
     switch (message.role) {
     case 'user': break;
@@ -302,7 +302,7 @@ async function editMessageInTarget({
   try {
     await assertHistoryBindingAdmission({ chatId: targetChat.id });
     const mutableChat = getLiveChat({ chat: targetChat });
-    const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+    const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model', bindingOperation });
     const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
     if (node === null) {
       return;
@@ -380,12 +380,14 @@ async function editMessageInTarget({
 async function switchVersionInTarget({
   targetChat,
   messageId,
+  bindingOperation,
 }: {
   targetChat: Chat | Readonly<Chat>,
   messageId: MessageId,
+  bindingOperation: ChatModelBindingOperation,
 }): Promise<void> {
   const mutableChat = getLiveChat({ chat: targetChat });
-  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model', bindingOperation });
   const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
   if (node === null) {
     return;

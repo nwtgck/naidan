@@ -38,7 +38,7 @@ vi.mock('@/composables/chat/chat-scoped/chat-model-binding-operations', () => ({
 vi.mock('@/features/llama-cpp-browser/model-files', () => ({
   llamaCppBrowserModelFiles: {
     getModelEntry: mocks.getModel,
-    importDirectory: mocks.importDirectory,
+    importLocalDirectory: mocks.importDirectory,
     subscribeModelList: ({ listener }: { listener(): void }) => {
       mocks.modelListeners.add(listener);
       return () => {
@@ -50,8 +50,8 @@ vi.mock('@/features/llama-cpp-browser/model-files', () => ({
 }));
 vi.mock('@/features/llama-cpp-browser/composables/useTemporaryModelSave', () => ({ offerTemporaryModelSave: mocks.offer }));
 
-const first: LocalModel = { modelId: 'temp/local:Q4', size: 128, importedAt: 1 };
-const second: LocalModel = { modelId: 'temp/local:Q8', size: 256, importedAt: 1 };
+const first: LocalModel = { modelId: '~user/local/Model-Q4', size: 128, importedAt: 1 };
+const second: LocalModel = { modelId: '~user/local/Model-Q8', size: 256, importedAt: 1 };
 const wrappers: VueWrapper[] = [];
 
 function notifyModels(): void {
@@ -114,14 +114,26 @@ it('registers the actual temporary model before creating its chat, initializing 
   const directory = { rootName: 'local', files: [{ relativePath: 'model.gguf', file: new File(['gguf'], 'model.gguf') }] };
   const controller = new AbortController();
   await startLocalModelInput({ directories: Promise.resolve([directory]), controller, context: context({ isCurrent: () => true }) });
-  expect(mocks.importDirectory).toHaveBeenCalledExactlyOnceWith({ directory, storage: 'temp', signal: controller.signal });
+  expect(mocks.importDirectory).toHaveBeenCalledExactlyOnceWith({ directory, save: 'later', signal: controller.signal });
   const request = mocks.prepare.mock.calls[0]?.[0].request;
-  expect(request).toMatchObject({ modelId: first.modelId, chatGroupName: 'local:Q4' });
+  expect(request).toMatchObject({ modelId: first.modelId, chatGroupName: 'Model-Q4' });
   expect(mocks.initializeDefaults).toHaveBeenCalledWith({ modelId: first.modelId, expected: expect.objectContaining({ modelId: undefined }) });
   expect(mocks.navigate).toHaveBeenCalledWith(expect.objectContaining({ chatPath: `/chat/${idToRaw({ id: request.chatId })}` }));
   expect(mocks.registerLive.mock.invocationCallOrder[0]).toBeLessThan(mocks.registerOrigin.mock.invocationCallOrder[0]!);
   expect(mocks.registerOrigin.mock.invocationCallOrder[0]).toBeLessThan(mocks.navigate.mock.invocationCallOrder[0]!);
   expect(mocks.offer).toHaveBeenCalledWith({ chatId: request.chatId, source: expect.objectContaining({ registrationRevision: 1 }), chatGroupId: request.chatGroupId });
+});
+
+it.each(['browser', 'later'] as const)('starts a confirmed repository with %s persistence without asking for its layout again', async save => {
+  const directory = {
+    rootName: 'local',
+    files: ['Q4/model.gguf', 'Q8/model.gguf'].map(relativePath => ({ relativePath, file: new File(['gguf'], 'model.gguf') })),
+  };
+  const controller = new AbortController();
+  await startLocalModelInput({ directories: Promise.resolve([directory]), controller, context: context({ isCurrent: () => true }), save, repositoryLayout: 'confirmed' });
+  expect(mocks.importDirectory).toHaveBeenCalledExactlyOnceWith({ directory, save, signal: controller.signal });
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  expect(useBrowserModelLocalInputSelection().selection.value).toBeUndefined();
 });
 
 it('requires a real configuration choice and preserves the first default snapshot while waiting', async () => {
@@ -136,6 +148,37 @@ it('requires a real configuration choice and preserves the first default snapsho
   expect(mocks.prepare.mock.calls[0]?.[0].request.modelId).toBe(second.modelId);
   expect(mocks.captureDefaults).toHaveBeenCalledOnce();
   expect(mocks.importDirectory).toHaveBeenCalledOnce();
+});
+
+it('confirms raw repositories before handing files to an existing chat without pairing across repositories', async () => {
+  const directory = {
+    rootName: 'Models',
+    files: [
+      { relativePath: 'Text/model.gguf', file: new File(['gguf'], 'model.gguf') },
+      { relativePath: 'Other/mmproj.gguf', file: new File(['gguf'], 'mmproj.gguf') },
+    ],
+  };
+  const controller = new AbortController();
+  const acceptFiles = vi.fn();
+  const pending = startLocalModelInput({ directories: Promise.resolve([directory]), controller, context: context({ isCurrent: () => true }), save: 'browser', acceptFiles });
+  const { selection, cancel } = useBrowserModelLocalInputSelection();
+  await vi.waitFor(() => expect(selection.value?.kind).toBe('layout'));
+  expect(acceptFiles).not.toHaveBeenCalled();
+  const choice = selection.value;
+  if (choice?.kind !== 'layout') {
+    throw new Error('Expected a repository layout choice');
+  }
+  choice.chooseLayout({ layout: 'repositories' });
+  await pending;
+  expect(acceptFiles).toHaveBeenCalledOnce();
+  const request = acceptFiles.mock.calls[0]?.[0];
+  await expect(request.directories).resolves.toEqual([{ rootName: 'Text', files: [{ relativePath: 'model.gguf', file: directory.files[0]!.file }] }]);
+  expect(request).toMatchObject({ controller, save: 'browser' });
+  expect(mocks.importDirectory).not.toHaveBeenCalled();
+  expect(mocks.prepare).not.toHaveBeenCalled();
+  expect(mocks.navigate).not.toHaveBeenCalled();
+  cancel();
+  expect(controller.signal.aborted).toBe(false);
 });
 
 it.each(['route', 'storage', 'abort'])('does not import after file enumeration loses its capability (%s)', async reason => {

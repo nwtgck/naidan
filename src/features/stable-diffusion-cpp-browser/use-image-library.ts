@@ -1,5 +1,6 @@
 import { validateLinkedModelRoot } from '@/logic/model-directory-input';
 import { temporaryModelFiles } from '@/logic/temporary-model-files';
+import { hasTemporaryModelPathPrefix } from '@/01-models/temporary-model-files';
 import { temporaryImageRepositories, restoreTemporaryImageFiles } from './logic/temporary-repositories';
 import { imageModelLocation, sameImageModelLocation } from './logic/model-location';
 import { createDownloadManager, getDownloadManager, type DownloadExecution, type DownloadManager } from '@/logic/download-manager';
@@ -1008,7 +1009,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         const inspected = await awaitInspection({
           signal: scan.signal,
           task: dependencies ? (async () => {
-            const storedIds = repositoryKeys?.filter(id => !id.startsWith('temp/'));
+            const storedIds = repositoryKeys?.filter(id => !hasTemporaryModelPathPrefix({ path: id }));
             const stored = storedIds?.length === 0 ? []
               : await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryKeys: storedIds }), signal: scan.signal });
             const repositories = [...stored, ...temporaryImageRepositories({ roots: temporaryRoots })];

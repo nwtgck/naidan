@@ -600,6 +600,12 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
  * Converts a Chat Group DTO into a Domain ChatGroup.
  * Resolves nested items using the hierarchy and provided chat metadata.
  */
+/** Configuration reads do not hydrate every chat summary in the hierarchy. */
+export function chatGroupConfigurationToDomain({ dto }: { dto: ChatGroupDto }): Omit<ChatGroup, 'items'> {
+  const { items: _items, ...configuration } = chatGroupToDomain({ dto, hierarchy: { items: [] }, chatMetas: [] });
+  return configuration;
+}
+
 export const chatGroupToDomain = (
   { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] },
 ): ChatGroup => {

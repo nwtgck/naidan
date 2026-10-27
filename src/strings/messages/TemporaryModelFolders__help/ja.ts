@@ -1,1 +1,1 @@
-export const TemporaryModelFolders__help = (): string => "このページのテキスト生成と画像生成で共有します。フォルダの登録を解除すると両方で利用できなくなります。元のファイルは削除しません。";
+export const TemporaryModelFolders__help = (): string => "このページのテキスト生成と画像生成で共有するフォルダです。登録を解除すると両方の一覧から外れます。元のファイルやブラウザに保存したコピーは削除されません。";

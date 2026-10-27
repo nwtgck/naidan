@@ -16,6 +16,7 @@ import {
   chatToDomain,
   chatToDto,
   chatGroupToDomain,
+  chatGroupConfigurationToDomain,
   chatGroupToDto,
   settingsToDto,
   hierarchyToDomain,
@@ -211,6 +212,11 @@ export class MemoryStorageProvider extends IStorageProvider {
     const dto = chatGroupToDto({ domain: chatGroup });
     JSON.stringify(ChatGroupSchemaDto.parse(dto));
     this.chatGroups.set(chatGroup.id, dto);
+  }
+
+  async loadChatGroupConfiguration({ id }: { id: ChatGroupId }): Promise<Omit<ChatGroup, 'items'> | null> {
+    const raw = this.chatGroups.get(id);
+    return raw ? chatGroupConfigurationToDomain({ dto: ChatGroupSchemaDto.parse(raw) }) : null;
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {

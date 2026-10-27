@@ -1,3 +1,4 @@
+import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
 import { generationMetricsState } from '@/composables/chat/global/generation-metrics-state';
 import type { ChatContentWrite } from '@/00-storage/service';
 import { getImageGenerationToolsForChat } from '@/features/image-generation/session/assistant-registry';
@@ -243,7 +244,7 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
 
   const normalizedAttachments = attachments ?? [];
   const mutableChat = getLiveChat({ chat: targetChat });
-  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model', bindingOperation });
   chatRuntimeStore.startTask({ key: { kind: 'process', chatId: mutableChat.id } });
   registerLiveInstance({ chat: mutableChat });
 
@@ -358,7 +359,7 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
     switch (endpoint.type) {
     case 'llama_cpp_browser': {
       const current = resolveGenerationSettings({ chat: mutableChat });
-      if (current.endpoint.type !== 'llama_cpp_browser' || current.modelId !== resolved.modelId
+      if (current.endpoint.type !== 'llama_cpp_browser' || !sameLocalModelBinding({ left: current, right: { endpoint, modelId: resolved.modelId } })
         || (pinnedTarget !== undefined && storageService.getModelLaunch({ chatId: mutableChat.id })?.effectiveModelId !== pinnedTarget.effectiveModelId)) {
         throw new Error(await ensureStrings.LlamaCppBrowserModelLaunch__chat_settings_changed());
       }
@@ -448,6 +449,7 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
     });
     const generationOperation = bindingOperation.retain();
     generateResponseWithContentWrite({
+      bindingOperation: generationOperation,
       chat: mutableChat,
       assistantId: assistantMessage.id,
       lmParameters: effectiveLmParameters,
@@ -500,13 +502,14 @@ export async function generateResponseForAssistant({
     }
     const mutableChat = getLiveChat({ chat });
     preparationAdmission.assertCurrent();
-    await generateResponseWithContentWrite({ chat: mutableChat, assistantId, lmParameters, onReady, target: undefined, write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }) });
+    await generateResponseWithContentWrite({ bindingOperation, chat: mutableChat, assistantId, lmParameters, onReady, target: undefined, write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }) });
   } finally {
     bindingOperation.release();
   }
 }
 
-async function generateResponseWithContentWrite({ chat, assistantId, lmParameters, onReady, write, target }: {
+async function generateResponseWithContentWrite({ bindingOperation, chat, assistantId, lmParameters, onReady, write, target }: {
+  bindingOperation: ChatModelBindingOperation,
   chat: Chat | Readonly<Chat>, assistantId: MessageId, lmParameters: LmParameters | undefined,
   onReady: (() => void) | undefined, write: ChatContentWrite,
   target: ReturnType<typeof resolveGenerationSettings> | undefined,
@@ -616,6 +619,7 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
       resolvedModelId: resolved.modelId,
       availableModels: availableGenerationModels,
     });
+    bindingOperation.captureModelSource({ endpoint: resolved.endpoint, modelId: resolvedModel });
     bindingGeneration = beginChatModelBindingGeneration({ chatId: mutableChat.id, endpoint: resolved.endpoint, modelId: resolvedModel });
     bindingGeneration.recordAssistant({ messageId: assistantId });
     const finalLmParameters = usesBrowserProvidedLm
@@ -978,7 +982,7 @@ async function regenerateMessageWithBindingOperation({ targetChat, failedMessage
 }): Promise<void> {
 
   const mutableChat = getLiveChat({ chat: targetChat });
-  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model' });
+  const write = captureChatContentWrite({ chat: mutableChat, dependency: 'model', bindingOperation });
   chatRuntimeStore.startTask({ key: { kind: 'process', chatId: mutableChat.id } });
   registerLiveInstance({ chat: mutableChat });
 
@@ -1058,6 +1062,7 @@ async function regenerateMessageWithBindingOperation({ targetChat, failedMessage
     });
     const generationOperation = bindingOperation.retain();
     generateResponseWithContentWrite({
+      bindingOperation: generationOperation,
       chat: mutableChat,
       assistantId: newAssistantMessage.id,
       lmParameters: failedNode.lmParameters,

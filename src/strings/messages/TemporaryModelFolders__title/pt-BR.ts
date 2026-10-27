@@ -1,1 +1,1 @@
-export const TemporaryModelFolders__title = (): string => "Pastas temporárias de modelos";
+export const TemporaryModelFolders__title = (): string => "Pastas de modelos abertas nesta página";
