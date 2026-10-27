@@ -1,0 +1,116 @@
+name: Upload node_modules
+
+run-name: Upload node_modules (${{ inputs.target_ref }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Branch, tag, or commit SHA to install
+        type: string
+        required: true
+        default: develop
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.target_ref }}
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: npm
+
+      # Keep this independent of composite actions in the target branch.
+      # Match the Node/Debian environment used by the main CI workflow.
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.npm"
+
+          for attempt in 1 2 3; do
+            if docker run --rm \
+              --cap-drop=ALL \
+              --security-opt=no-new-privileges:true \
+              -u "$(id -u):$(id -g)" \
+              -v "$GITHUB_WORKSPACE:/work" \
+              -v "$HOME/.npm:/npm-cache" \
+              -w /work \
+              -e HOME=/tmp \
+              -e CI=true \
+              -e npm_config_cache=/npm-cache \
+              node:22-bookworm npm ci; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::npm ci failed after 3 attempts"
+              exit 1
+            fi
+
+            delay=$((attempt * 15))
+            echo "::warning::npm ci failed (attempt ${attempt}/3); retrying in ${delay}s"
+            sleep "$delay"
+          done
+
+      - name: Create maximum-compression archive
+        shell: bash
+        env:
+          TARGET_REF: ${{ inputs.target_ref }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/node-modules-without-onnxruntime-bin.tar.zst"
+          contents="$RUNNER_TEMP/node-modules-archive-contents.txt"
+          metrics="$RUNNER_TEMP/node-modules-compression-metrics.txt"
+
+          test -d node_modules
+
+          # Omit platform binaries and the large bicore WASM payloads, but keep
+          # the packages' JavaScript, type declarations, and other resources.
+          tar \
+            --exclude='node_modules/onnxruntime-node/bin' \
+            --exclude='node_modules/llama-cpp-browser-core/*.wasm' \
+            --exclude='node_modules/stable-diffusion-cpp-browser-core/*.wasm' \
+            -cf - node_modules \
+            | /usr/bin/time \
+                -f 'Compression: %e seconds; peak RSS: %M KiB' \
+                -o "$metrics" \
+                zstd --ultra -22 -T2 -o "$archive"
+
+          test -s "$archive"
+          zstd -t "$archive"
+          zstd -dc "$archive" | tar -tf - > "$contents"
+          if grep -Eq '^node_modules/onnxruntime-node/bin(/|$)|^node_modules/(llama-cpp-browser-core|stable-diffusion-cpp-browser-core)/.*\.wasm$' "$contents"; then
+            echo '::error::Excluded binaries were found in the archive'
+            exit 1
+          fi
+
+          {
+            echo '### node_modules archive'
+            echo "- Requested ref: \`$TARGET_REF\`"
+            echo "- Source commit: \`$(git rev-parse HEAD)\`"
+            echo "- File: \`$(basename "$archive")\`"
+            echo "- Size: $(du -h "$archive" | cut -f1)"
+            echo "- SHA-256: \`$(sha256sum "$archive" | cut -d' ' -f1)\`"
+            echo ''
+            cat "$metrics"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ runner.temp }}/node-modules-without-onnxruntime-bin.tar.zst
+          if-no-files-found: error
+          archive: false
