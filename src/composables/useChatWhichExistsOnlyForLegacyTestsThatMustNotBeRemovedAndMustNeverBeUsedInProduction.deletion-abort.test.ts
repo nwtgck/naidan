@@ -10,6 +10,7 @@ const mockAddToast = vi.fn();
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),

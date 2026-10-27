@@ -32,6 +32,7 @@ vi.mock('@/components/AppAuxiliaryUi.vue', () => ({ __esModule: true, __isTelepo
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => settingsStore }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getSidebarStructure: async () => sidebarItems.value,
     subscribeToChanges: () => () => {},
   },

@@ -16,6 +16,7 @@ import { TEST_ONLY } from '@/utils/stream-download';
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
     deleteBinaryObject: vi.fn(),

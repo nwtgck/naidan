@@ -62,7 +62,14 @@ function createLocalRepositoryStore({ registry }: { registry: TemporaryModelFile
     if (!hasLocalRepositoryReferencePrefix({ modelId, storage: undefined })) {
       return undefined;
     }
-    const reference = parseLocalRepositoryReference({ modelId });
+    let reference: ReturnType<typeof parseLocalRepositoryReference>;
+    try {
+      reference = parseLocalRepositoryReference({ modelId });
+    } catch {
+      // An invalid public reference cannot belong to a registered source.
+      // The model resolver reports the existing structured missing-model error.
+      return undefined;
+    }
     switch (reference.storage) {
     case 'pending': {
       const entry = entries.get(reference.rootName);

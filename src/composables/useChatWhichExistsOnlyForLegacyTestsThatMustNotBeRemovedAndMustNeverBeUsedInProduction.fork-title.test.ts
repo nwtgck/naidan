@@ -9,6 +9,7 @@ import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     updateChatContent: vi.fn(),
     updateChatMeta: vi.fn(),

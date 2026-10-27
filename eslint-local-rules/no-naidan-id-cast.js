@@ -17,6 +17,7 @@ const NAIDAN_ID_TYPES = new Set([
   'BinaryObjectId',
   'VolumeId',
   'HostModelDirectoryId',
+  'LocalModelSourceId',
   'ImageGenerationId',
   'ImageGenerationStoreId',
   'ImageGenerationSessionId',

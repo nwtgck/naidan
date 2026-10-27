@@ -33,6 +33,7 @@ vi.mock('../composables/useSettings', () => ({
 // Mock storage service
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getFile: vi.fn().mockResolvedValue(new Blob(['data'], { type: 'image/png' })),
     getBinaryObject: vi.fn().mockResolvedValue({
       id: 'default-id',

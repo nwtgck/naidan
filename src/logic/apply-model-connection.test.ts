@@ -14,10 +14,11 @@ const mocks = vi.hoisted(() => ({
   loadChat: vi.fn(),
 }));
 
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ commitGlobalModelConnection: mocks.commitGlobal, resumeModelRefresh: mocks.resumeModels }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: { endpoint: { type: 'openai', url: '' } } }, commitGlobalModelConnection: mocks.commitGlobal, resumeModelRefresh: mocks.resumeModels }) }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({ updateChatScopedSettings: mocks.applyChat }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getSidebarStructure: vi.fn(async () => []),
     loadChat: mocks.loadChat,
     listChatGroups: vi.fn(async () => []),

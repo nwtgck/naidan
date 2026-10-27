@@ -32,6 +32,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
     subscribeToChanges: vi.fn(() => vi.fn()), // Returns an unsubscribe function
