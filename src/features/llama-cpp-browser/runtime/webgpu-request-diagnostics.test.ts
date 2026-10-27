@@ -1,6 +1,8 @@
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';
 import { describe, expect, it, vi } from 'vitest';
 import { beginGpuMeasurement, createGpuRequestObserver, associateGpuRequests, readGpuRequests } from './webgpu-request-diagnostics';
+import { memoryDiagnosticSchema } from '@/features/llama-cpp-browser/memory-diagnostics';
+import { memoryDiagnosticsSchema } from '@/features/llama-cpp-browser/performance/memory-schema';
 
 function fixture() {
   const buffers = new WeakSet<object>();
@@ -292,6 +294,8 @@ it('captures only actual selected adapter/device metadata, treating redaction an
   const adapter = {
     info: {
       vendor: 'vendor',
+      subgroupMinSize: 32,
+      subgroupMaxSize: 64,
       architecture: '',
       device: '',
       get description() {
@@ -308,11 +312,73 @@ it('captures only actual selected adapter/device metadata, treating redaction an
   const selected = await navigator.gpu.requestAdapter();
   await selected!.requestDevice();
   const snapshot = observer.snapshot()!;
-  expect(snapshot.metadata).toEqual({ adapterInfo: { vendor: 'vendor' }, fallbackAdapter: false, adapterFeatures: ['shader-f16', 'timestamp-query'], deviceFeatures: ['shader-f16'], deviceLimits: { maxComputeWorkgroupsPerDimension: 65535 } });
+  expect(snapshot.metadata).toEqual({ adapterInfo: { vendor: 'vendor', subgroupMinSize: 32, subgroupMaxSize: 64 }, fallbackAdapter: false, adapterFeatures: ['shader-f16', 'timestamp-query'], deviceFeatures: ['shader-f16'], deviceLimits: { maxComputeWorkgroupsPerDimension: 65535 } });
+  const sample = { kind: 'naidan-llama-cpp-memory', instanceId: 'runtime', profile: 'webgpu-wasm64-jspi', checkpoint: 'runtime-ready', gpuRequests: snapshot, capacityBytes: 0, timestamp: 0 };
+  const diagnostics = { samples: [sample], droppedSamples: 0, nativeAllocations: [], droppedNativeAllocations: 0, nativeSettings: [], droppedNativeSettings: 0 };
+  expect(memoryDiagnosticsSchema.safeParse(JSON.parse(JSON.stringify(diagnostics))).success).toBe(true);
   snapshot.metadata!.adapterInfo!.vendor = 'changed';
   expect(observer.snapshot()!.metadata!.adapterInfo!.vendor).toBe('vendor');
   expect(gpu.requestAdapter).toHaveBeenCalledTimes(1);
   expect(adapter.requestDevice).toHaveBeenCalledTimes(1);
+});
+
+it('omits absent or invalid subgroup metadata and retains existing adapter metadata', () => {
+  const invalid = [undefined, null, '32', NaN, Infinity, -Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1];
+  for (const value of invalid) {
+    const observer = createGpuRequestObserver();
+    const device = fixture().device;
+    Object.assign(device.limits, { subgroupMinSize: 8, subgroupMaxSize: 128 });
+    observer.wrapDevice({ device, adapter: { info: { vendor: 'vendor', subgroupMinSize: value, subgroupMaxSize: value } } as unknown as GPUAdapter });
+    const snapshot = observer.snapshot()!;
+    expect(snapshot.metadata!.adapterInfo).toEqual({ vendor: 'vendor' });
+    expect(snapshot.metadata!.deviceLimits).not.toHaveProperty('subgroupMinSize');
+    expect(snapshot.metadata!.deviceLimits).not.toHaveProperty('subgroupMaxSize');
+    expect(memoryDiagnosticSchema.safeParse({ kind: 'naidan-llama-cpp-memory', instanceId: 'runtime', profile: 'webgpu-wasm64-jspi', checkpoint: 'runtime-ready', gpuRequests: snapshot, capacityBytes: 0, timestamp: 0 }).success).toBe(true);
+  }
+  const absent = createGpuRequestObserver();
+  absent.wrapDevice({ device: fixture().device, adapter: { info: { vendor: 'vendor' } } as unknown as GPUAdapter });
+  expect(absent.snapshot()!.metadata!.adapterInfo).toEqual({ vendor: 'vendor' });
+});
+
+it('reads subgroup getters once and isolates their failures', () => {
+  const min = vi.fn(() => {
+    throw new Error('unavailable');
+  });
+  const max = vi.fn(() => 64);
+  const observer = createGpuRequestObserver();
+  observer.wrapDevice({
+    device: fixture().device,
+    adapter: {
+      info: {
+        vendor: 'vendor',
+        get subgroupMinSize() {
+          return min();
+        },
+        get subgroupMaxSize() {
+          return max();
+        },
+      },
+    } as unknown as GPUAdapter,
+  });
+  expect(observer.snapshot()!.metadata!.adapterInfo).toEqual({ vendor: 'vendor', subgroupMaxSize: 64 });
+  expect(observer.snapshot()!.metadata!.adapterInfo).toEqual({ vendor: 'vendor', subgroupMaxSize: 64 });
+  expect(min).toHaveBeenCalledTimes(1);
+  expect(max).toHaveBeenCalledTimes(1);
+});
+
+it('validates subgroup metadata in snapshots while accepting older snapshots', () => {
+  const observer = createGpuRequestObserver();
+  observer.wrapDevice({ device: fixture().device, adapter: { info: { vendor: 'vendor' } } as unknown as GPUAdapter });
+  const requests = observer.snapshot()!;
+  const sample = { kind: 'naidan-llama-cpp-memory', instanceId: 'runtime', profile: 'webgpu-wasm64-jspi', checkpoint: 'runtime-ready', gpuRequests: requests, capacityBytes: 0, timestamp: 0 };
+  expect(memoryDiagnosticSchema.safeParse(JSON.parse(JSON.stringify(sample))).success).toBe(true);
+  const withInfo = ({ adapterInfo }: { adapterInfo: object }) => ({ ...sample, gpuRequests: { ...requests, metadata: { adapterInfo } } });
+  expect(memoryDiagnosticSchema.safeParse(withInfo({ adapterInfo: { subgroupMinSize: 0, subgroupMaxSize: Number.MAX_SAFE_INTEGER } })).success).toBe(true);
+  for (const name of ['subgroupMinSize', 'subgroupMaxSize'] as const) {
+    for (const value of [null, '32', NaN, Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(memoryDiagnosticSchema.safeParse(withInfo({ adapterInfo: { [name]: value } })).success).toBe(false);
+    }
+  }
 });
 
 it('prefers current adapter-info fallback status over the legacy adapter property', () => {

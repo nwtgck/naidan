@@ -86,5 +86,23 @@ export function hostedArtifactProfiles({ files, readArtifact }: { files: ReturnT
   return [...chatProfileSchema.options, gpuProfilingProfile];
 }
 
+/** The optional extension belongs to one profiling artifact. Never resolve a
+ * package import for it: earlier published packages have neither sidecar. */
+export function readQ8DiagnosticArtifact({ artifact }: { artifact: Pick<ReturnType<typeof readLlamaArtifactPackage>, 'files' | 'readArtifact'> }) {
+  const prefix = `profiles/${gpuProfilingProfile}/browser/q8-diagnostic-v1`;
+  const paths = [`${prefix}.schema.json`, `${prefix}.functions.d.ts`];
+  const present = paths.filter(relative => artifact.files.has(relative));
+  if (present.length === 0) {
+    return undefined;
+  }
+  if (present.length !== paths.length) {
+    throw new Error('Incomplete Q8 diagnostic extension artifact');
+  }
+  const relative = paths[0]!;
+  const schema = artifact.readArtifact({ relative });
+  artifact.readArtifact({ relative: paths[1]! });
+  return { relative, ...schema };
+}
+
 export const TEST_ONLY = {
 };

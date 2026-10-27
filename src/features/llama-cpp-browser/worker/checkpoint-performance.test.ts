@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCheckpointPerformance } from './checkpoint-performance';
-import { checkpointPerformanceSchema } from '@/features/llama-cpp-browser/performance/checkpoint-schema';
+import { checkpointPerformanceSchema, checkpointPhaseSchema } from '@/features/llama-cpp-browser/performance/checkpoint-schema';
 
 describe('bounded checkpoint phase observations', () => {
   it('separates repeated readbacks and restores without double-counting idle time', () => {
@@ -14,6 +14,8 @@ describe('bounded checkpoint phase observations', () => {
     time = 2;
     observation.enter({ phase: 'capture-allocation' });
     time = 3;
+    observation.enter({ phase: 'capture-prior-compute-wait' });
+    time = 183;
     observation.enter({ phase: 'capture-readback' });
     time = 203;
     observation.end();
@@ -28,11 +30,22 @@ describe('bounded checkpoint phase observations', () => {
     const result = checkpointPerformanceSchema.parse(observation.snapshot());
     expect(result).toMatchObject({ captureAttempts: 1, restoreAttempts: 1, retainedRestoredCaptures: 1 });
     expect(result.phases.reduce((sum, phase) => sum + phase.elapsedMs, 0)).toBe(214);
-    expect(result.phases.find(phase => phase.phase === 'capture-readback')?.elapsedMs).toBe(200);
+    expect(result.phases.find(phase => phase.phase === 'capture-prior-compute-wait')?.elapsedMs).toBe(180);
+    expect(result.phases.find(phase => phase.phase === 'capture-readback')?.elapsedMs).toBe(20);
     observation.enter({ phase: 'capture-readback' });
     time = 2005;
-    expect(observation.snapshot().phases.find(phase => phase.phase === 'capture-readback')).toEqual({ phase: 'capture-readback', visits: 2, elapsedMs: 205 });
+    expect(observation.snapshot().phases.find(phase => phase.phase === 'capture-readback')).toEqual({ phase: 'capture-readback', visits: 2, elapsedMs: 25 });
     expect(result.phases.find(phase => phase.phase === 'capture-readback')?.visits).toBe(1);
+  });
+
+  it('accepts every capture and restore phase in the same request', () => {
+    const observation = createCheckpointPerformance({ now: () => 0 });
+    for (const phase of checkpointPhaseSchema.options) {
+      observation.enter({ phase });
+    }
+    const result = observation.snapshot();
+    expect(checkpointPerformanceSchema.parse(result).phases).toHaveLength(10);
+    expect(result).toMatchObject({ captureAttempts: 1, restoreAttempts: 1 });
   });
 
   it('finishes an active phase on a failed request and keeps counts bounded by phase variety', () => {

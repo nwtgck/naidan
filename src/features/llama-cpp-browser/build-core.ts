@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { NativeLicenseSource } from '../../01-models/native-license-build-source';
 import { normalizePath, type Plugin } from 'vite';
 import { gpuProfilingProfile, profileSchema, type LlamaCppProfile } from './types';
-import { hostedArtifactProfiles, readLlamaArtifactPackage } from './build-artifact-package';
+import { hostedArtifactProfiles, readLlamaArtifactPackage, readQ8DiagnosticArtifact } from './build-artifact-package';
 import { createLlamaCppRuntimeAssetsPlugin } from './build-runtime-assets';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
@@ -37,6 +37,13 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   })();
   const profiles: readonly LlamaCppProfile[] = isStandalone ? standaloneProfiles : hostedArtifactProfiles({ files, readArtifact });
   const gpuProfilingAvailable = !isStandalone && profiles.includes(gpuProfilingProfile);
+  const q8Diagnostic = gpuProfilingAvailable ? readQ8DiagnosticArtifact({ artifact }) : undefined;
+  const q8KernelDiagnosticSchemaAsset = q8Diagnostic === undefined ? undefined : {
+    // The worker's asset base already ends in /profiles/.
+    relativePath: `${gpuProfilingProfile}/q8-diagnostic-v1.schema.json`,
+    bytes: q8Diagnostic.bytes,
+    sha256: q8Diagnostic.sha256,
+  };
   const availabilityId = '\0' + virtualPrefix + 'availability';
   const unavailableProfileId = '\0' + virtualPrefix + 'unavailable-gpu-profile';
   const cores = profiles.map(profile => {
@@ -51,7 +58,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   const profileRoot = normalizePath(artifactProfiles) + '/';
   const byId = new Map(cores.map(entry => [normalizePath(entry.core.filePath), entry]));
   const byVirtualId = new Map(cores.map(entry => [virtualPrefix + entry.profile, normalizePath(entry.core.filePath)]));
-  const identity = createHash('sha256').update(cores.map(entry => entry.core.sha256).join('\0')).digest('hex');
+  const identity = createHash('sha256').update([...cores.map(entry => entry.core.sha256), ...(q8Diagnostic ? [q8Diagnostic.sha256] : [])].join('\0')).digest('hex');
 
   const licenseFiles = [...files.keys()].filter(relative => relative === 'LICENSE' || relative.startsWith('licenses/'));
 
@@ -86,7 +93,16 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
       },
       load(id) {
         if (id === availabilityId) {
-          return `export const gpuProfilingAvailable = ${gpuProfilingAvailable};`;
+          for (const manifestPath of manifestPaths) {
+            this.addWatchFile(manifestPath);
+          }
+          if (q8Diagnostic) {
+            this.addWatchFile(q8Diagnostic.filePath);
+          }
+          return `\
+export const gpuProfilingAvailable = ${gpuProfilingAvailable};
+export const q8KernelDiagnosticSchemaAsset = ${JSON.stringify(q8KernelDiagnosticSchemaAsset)};
+`;
         }
         if (id === unavailableProfileId) {
           return 'export default function() { throw new Error("GPU profiling artifact is not installed"); }';

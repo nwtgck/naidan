@@ -9,7 +9,7 @@ const partialOnly = 1;
 type CheckpointCore = Pick<Core, 'pointerBytes' | 'tryAlloc' | 'bytes' | 'free'> & {
   api: Pick<Core['api'], 'llama_get_memory' | 'llama_memory_seq_pos_min' | 'llama_memory_seq_pos_max'
     | 'llama_state_seq_get_size_ext' | 'llama_state_seq_get_data_ext' | 'llama_state_seq_set_data_ext'
-    | 'llama_memory_seq_rm' | 'llama_tokenize'>,
+    | 'llama_memory_seq_rm' | 'llama_tokenize' | 'llama_synchronize'>,
 };
 
 export type PromptCheckpoint = {
@@ -62,6 +62,12 @@ export async function capturePromptCheckpoint({ core, context, tokens, observer 
     try {
       // Check the complete range before the native writer uses this pointer.
       core.bytes({ pointer, length: bytes });
+      if (observer) {
+        // The native writer also synchronizes. Only diagnostics add this earlier
+        // wait to separate prior inference from serialization and readback.
+        observer.enter({ phase: 'capture-prior-compute-wait' });
+        await api.llama_synchronize(context);
+      }
       observer?.enter({ phase: 'capture-readback' });
       if (await api.llama_state_seq_get_data_ext(context, pointer, size, 0, partialOnly) !== size) {
         logDiagnostic({ diagnostic: { event: 'checkpoint-skipped', reason: 'checkpoint-invalid', bytes, tokens: tokens.length } });

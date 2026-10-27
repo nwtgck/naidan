@@ -3,13 +3,17 @@ import { nanoid } from 'nanoid';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import { type GenerateInput, type RuntimeOptions, errorCode } from '@/features/llama-cpp-browser/types';
 import { planSchema, type PerformanceSnapshot, type PerformanceStep, type PerformanceTrial } from './types';
+import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
+import { q8DiagnosticWorkerResultSchema } from './q8-diagnostic-worker-types';
+import { q8KernelBenchmarkProgressSchema } from './q8-kernel-schema';
 
 /** No chat store, alternate inference loop, rendering or archive work here. */
-export function createPerformanceRunner({ service, now, date, hidden, waitUntilVisible, publish }: {
+export function createPerformanceRunner({ service, now, date, hidden, waitUntilVisible, publish, runKernelDiagnostic }: {
   service: Pick<LlamaCppBrowserService, 'runPerformanceOperation' | 'listModelEntries'>,
   now: () => number, date: () => string, hidden: () => boolean,
   waitUntilVisible: ({ signal }: { signal: AbortSignal }) => Promise<void>,
   publish: ({ snapshot, current }: { snapshot: PerformanceSnapshot, current: PerformanceTrial | undefined }) => void,
+  runKernelDiagnostic: Q8DiagnosticClient['run'] | undefined,
 }) {
   let controller: AbortController | undefined;
   let snapshot: PerformanceSnapshot | undefined;
@@ -65,6 +69,9 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
     visibilityChanged(): void {
       if (current && hidden()) {
         current.hiddenObserved = true;
+      }
+      if (snapshot?.q8KernelDiagnostic?.status === 'running' && hidden()) {
+        snapshot.q8KernelDiagnostic.hiddenObserved = true;
       }
       if (controller && runStarted !== undefined && snapshot?.execution) {
         const execution = snapshot.execution;
@@ -483,6 +490,71 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
           }
           if (resuming?.interruption && resuming.interruption.recovery === 'pending') {
             resuming.interruption.recovery = 'stopped';
+          }
+        }
+        if (runKernelDiagnostic && !control.signal.aborted && performanceLanes({ mode: plan.settings.mode }).includes('gpu-profile')) {
+          const diagnostic: NonNullable<PerformanceSnapshot['q8KernelDiagnostic']> = { status: 'running', startedMs: elapsed(), hiddenObserved: hidden() };
+          activeSnapshot.q8KernelDiagnostic = diagnostic;
+          notify();
+          try {
+            await waitUntilVisible({ signal: control.signal });
+            control.signal.throwIfAborted();
+            // The existing service owns exclusion and global cancellation. This
+            // callback uses no model, generation request or synthetic model ID.
+            await service.runPerformanceOperation({
+              options: optionsForLane({ plan, lane: 'gpu-profile' }),
+              signal: control.signal,
+              operation: async ({ scope }) => {
+                const abort = () => control.abort();
+                scope.signal.addEventListener('abort', abort, { once: true });
+                if (scope.signal.aborted) {
+                  abort();
+                }
+                try {
+                  scope.signal.throwIfAborted();
+                  diagnostic.result = q8DiagnosticWorkerResultSchema.parse(await runKernelDiagnostic({
+                    signal: scope.signal,
+                    timeoutMs: Math.min(plan.settings.timeoutMs, 120000),
+                    onProgress: ({ progress }) => {
+                      if (diagnostic.status !== 'running' || control.signal.aborted) {
+                        return;
+                      }
+                      diagnostic.progress = q8KernelBenchmarkProgressSchema.parse(progress);
+                      diagnostic.hiddenObserved ||= hidden();
+                      notify();
+                    },
+                  }));
+                  control.signal.throwIfAborted();
+                  diagnostic.status = diagnostic.result.status;
+                } catch (error) {
+                  // Retain the diagnostic cause before the service translates
+                  // failures to its public error code.
+                  diagnostic.error = (error instanceof Error ? error.message : String(error)).slice(0, 1000);
+                  throw error;
+                } finally {
+                  scope.signal.removeEventListener('abort', abort);
+                }
+              },
+            });
+          } catch (error) {
+            const code = errorCode({ error });
+            switch (code) {
+            case 'aborted': control.abort();
+              break;
+            case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model': case 'storage-error':
+            case 'runtime-error': case 'template-unsupported': case 'reasoning-unsupported': case 'context-full': case 'unsupported-input':
+            case 'busy': case 'worker-failed': case 'audio-model-unsupported': case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty': break;
+            default: {
+              const exhaustive: never = code;
+              throw new Error(`Unhandled diagnostic error code: ${exhaustive}`);
+            }
+            }
+            diagnostic.status = control.signal.aborted ? 'cancelled' : 'failed';
+            diagnostic.error ??= (error instanceof Error ? error.message : String(error)).slice(0, 1000);
+          } finally {
+            diagnostic.elapsedMs = Math.max(0, elapsed() - diagnostic.startedMs);
+            diagnostic.hiddenObserved ||= hidden();
+            notify();
           }
         }
       } finally {

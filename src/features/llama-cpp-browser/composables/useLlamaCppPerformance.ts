@@ -10,6 +10,7 @@ import { gpuProfilingProfile, type LocalModel, type RuntimeOptions, usesWebGpu }
 import { resolveProfilePreference, type ProfileCapabilities } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { createPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
 import { createPerformanceRunner } from '@/features/llama-cpp-browser/performance/runner';
+import { runQ8Diagnostic } from '@/features/llama-cpp-browser/performance/run-q8-diagnostic';
 import { measurementLanes, protocolSchema, type MeasurementMode, type PerformanceSnapshot, type PerformanceTrial } from '@/features/llama-cpp-browser/performance/types';
 
 export function useLlamaCppPerformance() {
@@ -54,6 +55,7 @@ export function useLlamaCppPerformance() {
   const callCount = computed(() => selectedModels.value.length * (1 + repeats.value * 4 + (diagnostics.value ? 1 : 0)) * measurementLanes({ mode: mode.value }).length);
   const runner = createPerformanceRunner({
     service,
+    runKernelDiagnostic: runQ8Diagnostic,
     now: () => performance.now(),
     date: () => new Date().toISOString(),
     hidden: () => document.hidden,

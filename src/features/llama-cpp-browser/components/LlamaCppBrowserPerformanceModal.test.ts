@@ -361,7 +361,7 @@ describe('profiling modes and safe result actions', () => {
     expect(wrapper!.get<HTMLInputElement>('[data-testid="llama-performance-mode-gpu-profile"]').element.checked).toBe(true);
     await wrapper!.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
-    expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce();
+    expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
     expect(mocks.runPerformanceOperation.mock.calls[0]![0].options.profile).toBe('webgpu-wasm64-jspi-gpu-profile');
     expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(6);
   });
@@ -372,7 +372,7 @@ describe('profiling modes and safe result actions', () => {
     await wrapper!.get(`[data-testid="llama-performance-mode-${mode}"]`).setValue(true);
     await wrapper!.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
-    expect(mocks.runPerformanceOperation.mock.calls.map(([args]) => args.options.profile)).toEqual(mode === 'both' ? ['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile'] : ['webgpu-wasm64-jspi']);
+    expect(mocks.runPerformanceOperation.mock.calls.map(([args]) => args.options.profile)).toEqual(mode === 'both' ? ['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm64-jspi-gpu-profile'] : ['webgpu-wasm64-jspi']);
     expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(mode === 'both' ? 12 : 6);
     expect(mocks.archive.mock.calls[0]![0].snapshot.plan.settings.mode).toBe(mode);
   });

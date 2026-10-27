@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
 import { createGzipAsset } from '../../../build/gzip-asset';
-import type { readLlamaArtifactPackage } from './build-artifact-package';
-import type { LlamaCppProfile } from './types';
+import { readQ8DiagnosticArtifact, type readLlamaArtifactPackage } from './build-artifact-package';
+import { gpuProfilingProfile, type LlamaCppProfile } from './types';
 
 /** Copy the installed artifact, never compile llama.cpp as part of Naidan's build. */
 export function createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }: { artifact: ReturnType<typeof readLlamaArtifactPackage>, profiles: readonly LlamaCppProfile[] }): Plugin {
@@ -11,6 +11,12 @@ export function createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }: { arti
     for (const profile of profiles) {
       const relative = `profiles/${profile}/browser/core.wasm`;
       result.set(`profiles/${profile}/core.wasm.gz`, createGzipAsset({ read: () => artifact.readArtifact({ relative }).data }));
+    }
+    if (profiles.includes(gpuProfilingProfile)) {
+      const diagnostic = readQ8DiagnosticArtifact({ artifact });
+      if (diagnostic) {
+        result.set(`profiles/${gpuProfilingProfile}/q8-diagnostic-v1.schema.json`, async () => artifact.readArtifact({ relative: diagnostic.relative }).data);
+      }
     }
     return result;
   }
@@ -38,7 +44,7 @@ export function createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }: { arti
         }
         void readAsset().then(bytes => {
           // The loader explicitly decompresses .gz. Do not add Content-Encoding.
-          res.setHeader('Content-Type', relative.endsWith('.gz') ? 'application/gzip' : 'text/javascript');
+          res.setHeader('Content-Type', relative.endsWith('.gz') ? 'application/gzip' : 'application/json');
           res.end(bytes);
         }, next);
       });
