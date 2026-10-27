@@ -9,6 +9,7 @@ import type { ChatParams, NativeChat } from './chat-bindings';
 import { gpuProfilingProfile, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
+import type { Q8DiagnosticAccess, Q8KernelDiagnosticAdapter } from './q8-kernel-diagnostic';
 
 // Direct access is restricted to width-independent runtime exports. Size-dependent
 // C fields use the generated schema; correlated Embind handles use chat-bindings.
@@ -240,6 +241,122 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     assertIdle();
     native({ name: '_lcb_free' })(pointer);
   }
+  function q8KernelDiagnosticAvailability(): 'available' | 'unavailable' {
+    assertIdle();
+    const exports = ['version', 'run_v1', 'schema_hash', 'sizeof_record', 'alignof_record', 'offsetof_field', 'sizeof_field', 'constant']
+      .map(suffix => Reflect.get(module, `_lcb_webgpu_q8_diagnostic_${suffix}`) as unknown);
+    if (exports.every(value => value === undefined)) {
+      return 'unavailable';
+    }
+    if (exports.some(value => typeof value !== 'function')) {
+      throw new Error('Incomplete Q8 diagnostic native exports');
+    }
+    return 'available';
+  }
+  async function createQ8KernelDiagnostic({ schemaBytes }: { schemaBytes: Uint8Array }): Promise<Q8KernelDiagnosticAdapter | undefined> {
+    const availability = q8KernelDiagnosticAvailability();
+    switch (availability) {
+    case 'unavailable': return undefined;
+    case 'available': break;
+    default: {
+      const exhaustive: never = availability;
+      throw new Error(`Unhandled Q8 diagnostic availability: ${exhaustive}`);
+    }
+    }
+    if (schemaBytes.byteLength > 256 * 1024) {
+      throw new Error('Invalid Q8 diagnostic schema bytes');
+    }
+    const schemaSnapshot = new Uint8Array(schemaBytes);
+    const diagnostic = await import('./q8-kernel-diagnostic');
+    assertIdle();
+    // This access object never leaves the adapter. Its owner can use only these
+    // fixed leaves, and holds the ordinary busy gate through report cleanup.
+    const metadata = ({ suffix, args }: { suffix: string, args: NativeScalar[] }) => {
+      assertIdle();
+      return scalar({ name: `_lcb_webgpu_q8_diagnostic_${suffix}`, args });
+    };
+    const access: Q8DiagnosticAccess = {
+      assertIdle,
+      schemaHash: () => metadata({ suffix: 'schema_hash', args: [] }),
+      recordSize: ({ recordId }) => metadata({ suffix: 'sizeof_record', args: [recordId] }),
+      recordAlignment: ({ recordId }) => metadata({ suffix: 'alignof_record', args: [recordId] }),
+      fieldOffset: ({ recordId, fieldId }) => metadata({ suffix: 'offsetof_field', args: [recordId, fieldId] }),
+      fieldSize: ({ recordId, fieldId }) => metadata({ suffix: 'sizeof_field', args: [recordId, fieldId] }),
+      constant: ({ id }) => metadata({ suffix: 'constant', args: [id] }),
+      bytes: ({ pointer, length }) => {
+        assertIdle();
+        return bytes({ pointer, length });
+      },
+      async withAccess({ operation }) {
+        assertIdle();
+        busy = true;
+        let active = true;
+        let poisoned = false;
+        function assertOwner() {
+          if (!active || poisoned) {
+            throw new Error('Q8 diagnostic runtime must be discarded');
+          }
+        }
+        const leaf = ({ name, args }: { name: string, args: NativeScalar[] }) => {
+          assertOwner();
+          try {
+            return scalar({ name, args });
+          } catch (error) {
+            poisoned = true;
+            throw error;
+          }
+        };
+        try {
+          return await operation({
+            owner: {
+              isHealthy: () => active && !poisoned,
+              poison() {
+                poisoned = true;
+              },
+              version: ({ backend }) => leaf({ name: '_lcb_webgpu_q8_diagnostic_version', args: [backend] }),
+              allocate: ({ length }) => {
+                const pointer = BigInt(leaf({ name: '_lcb_malloc', args: [BigInt(length)] }));
+                return pointer === 0n ? undefined : pointer;
+              },
+              bytes: ({ pointer, length }) => {
+                assertOwner();
+                return bytes({ pointer, length });
+              },
+              free: ({ pointer }) => {
+                assertOwner();
+                try {
+                  const result = native({ name: '_lcb_free' })(pointer);
+                  if (result !== undefined) {
+                    throw new TypeError('Expected synchronous Q8 diagnostic release');
+                  }
+                } catch (error) {
+                  poisoned = true;
+                  throw error;
+                }
+              },
+              async invoke({ backend, dst, request, report, capacity }) {
+                assertOwner();
+                try {
+                  return await native({ name: '_lcb_webgpu_q8_diagnostic_run_v1' })(backend, dst, request, report, capacity);
+                } catch (error) {
+                  poisoned = true;
+                  throw error;
+                }
+              },
+            },
+          });
+        } finally {
+          active = false;
+          // A rejected suspension or corrupt report may still own borrowed
+          // native objects. Keep the existing gate closed until Worker disposal.
+          if (!poisoned) {
+            busy = false;
+          }
+        }
+      },
+    };
+    return diagnostic.createQ8KernelDiagnosticAdapter({ schemaBytes: schemaSnapshot, access });
+  }
   return {
     module,
     api: api as unknown as LowLevelFunctions,
@@ -250,6 +367,8 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     tryAlloc,
     recordSize,
     fieldLayout,
+    q8KernelDiagnosticAvailability,
+    createQ8KernelDiagnostic,
     /** Prepare a read-only native callback reader while idle. This deliberately
      * does NOT expose general reentrant native calls. The allowed read-only getters
      * inspect buffer/capability metadata, do not allocate or suspend, and are

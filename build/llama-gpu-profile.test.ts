@@ -41,7 +41,7 @@ describe('Hosted-only GPU profiling distribution', () => {
       throw new Error('Expected plugin hooks');
     }
     const availability = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
-    expect(await load.call({} as never, String(availability))).toContain('gpuProfilingAvailable = false');
+    expect(await load.call({ addWatchFile() {} } as never, String(availability))).toContain('gpuProfilingAvailable = false');
     const fallback = await resolveId.call({} as never, `virtual:llama-cpp-browser-core/${diagnosticProfile}`, undefined, {} as never);
     expect(await load.call({} as never, String(fallback))).toContain('GPU profiling artifact is not installed');
     expect((await emitted({ root: fixture.root })).size).toBe(4);
@@ -74,7 +74,7 @@ describe('Hosted-only GPU profiling distribution', () => {
     expect(() => resolveId.call({} as never, `virtual:llama-cpp-browser-core/${diagnosticProfile}`, undefined, {} as never)).toThrow('Unavailable');
     expect(() => load.call({} as never, fixture.file({ profile: diagnosticProfile, name: 'core.mjs' }))).toThrow('Unavailable');
     const availability = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
-    expect(await load.call({} as never, String(availability))).toContain('gpuProfilingAvailable = false');
+    expect(await load.call({ addWatchFile() {} } as never, String(availability))).toContain('gpuProfilingAvailable = false');
   });
 
   it('uses the same lazy virtual import and explicit gzip endpoint in Vite development', async () => {
