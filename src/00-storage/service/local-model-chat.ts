@@ -3,6 +3,7 @@ import type { Chat, ChatMeta, Hierarchy, SettingsTitleGeneration } from '@/01-mo
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { IStorageProvider } from './interface';
 import { hierarchyToDomain, hierarchyToDto } from '@/00-storage/mapper/mappers';
+import { sameLocalModelBinding } from './local-model-references';
 
 export type LocalModelChatRequest = {
   chatId: ChatId,
@@ -63,7 +64,7 @@ export async function prepareLocalModelChat({ provider, request, beforeWrite }: 
     throw new Error('The local model chat request changed');
   }
   const rawSettingsChanged = meta !== null && (meta.endpoint !== undefined || meta.modelId !== undefined);
-  const groupChanged = chatGroup !== null && (chatGroup.endpoint?.type !== 'llama_cpp_browser' || chatGroup.modelId !== modelId);
+  const groupChanged = chatGroup !== null && !sameLocalModelBinding({ left: chatGroup, right: { endpoint: { type: 'llama_cpp_browser' }, modelId } });
   if (receipt.phase === 'detached' || rawSettingsChanged || groupChanged
     || (location !== undefined && location.chatGroupId !== chatGroupId)
     || (receipt.phase === 'active' && (meta === null || content === null || chatGroup === null || location === undefined))

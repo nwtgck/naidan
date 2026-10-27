@@ -64,7 +64,7 @@ import { useImageGenerationWorkspace, type ImageGenerationWorkspaceView } from '
 
 const mocks = vi.hoisted(() => ({ remove: vi.fn(), confirm: vi.fn(), publish: vi.fn(), subscribe: vi.fn(), getFile: vi.fn(), storage: 'opfs' as StorageType, query: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { deleteImageGenerationOutput: mocks.remove, publishImageGeneration: mocks.publish, getCurrentType: () => mocks.storage, subscribeToChanges: mocks.subscribe, getFile: mocks.getFile } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { subscribeLocalModelPromotions: vi.fn(() => () => {}), deleteImageGenerationOutput: mocks.remove, publishImageGeneration: mocks.publish, getCurrentType: () => mocks.storage, subscribeToChanges: mocks.subscribe, getFile: mocks.getFile } }));
 vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 type Publication = Parameters<typeof storageService.publishImageGeneration>[0];
 type Listener = Parameters<typeof storageService.subscribeToChanges>[0]['listener'];

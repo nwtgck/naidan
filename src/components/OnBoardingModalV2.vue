@@ -396,7 +396,7 @@ function confirm({ mainFilePath, companionFilePath, multimodal }: { mainFilePath
   }
 }
 
-async function localInput({ directories, controller }: { directories: BrowserModelLocalInput['directories'], controller: AbortController }): Promise<void> {
+async function localInput({ directories, controller, save, repositoryLayout }: { directories: BrowserModelLocalInput['directories'], controller: AbortController, save?: 'browser' | 'later', repositoryLayout?: 'confirmed' }): Promise<void> {
   void directories.catch(() => {});
   const selection = entry.modelSelection.value;
   if (entry.interaction.value !== 'ready' || selection?.phase !== 'open') {
@@ -405,17 +405,20 @@ async function localInput({ directories, controller }: { directories: BrowserMod
   }
   recordWelcomeInteraction();
   const target = selection.target;
-  switch (target.kind) {
-  case 'chat':
-    target.acceptFiles({ directories, controller });
-    entry.closeModelSelection();
-    return;
-  case 'home': break;
-  default: {
-    const exhaustive: never = target;
-    throw new Error(String(exhaustive));
-  }
-  }
+  let handedOff = false;
+  const acceptFiles = (() => {
+    switch (target.kind) {
+    case 'chat': return ({ directories, controller, save }: { directories: BrowserModelLocalInput['directories'], controller: AbortController, save: 'browser' | 'later' }) => {
+      target.acceptFiles({ directories, controller, save });
+      handedOff = true;
+    };
+    case 'home': return undefined;
+    default: {
+      const exhaustive: never = target;
+      throw new Error(String(exhaustive));
+    }
+    }
+  })();
   const context = entry.captureModelLaunchStartContext();
   const input = { context, controller };
   localInputs.add(input);
@@ -432,7 +435,7 @@ async function localInput({ directories, controller }: { directories: BrowserMod
       controller.abort();
       return;
     }
-    await module.startLocalModelInput({ directories, controller, context });
+    await module.startLocalModelInput({ directories, controller, context, save, repositoryLayout, acceptFiles });
   } catch (error) {
     if (!controller.signal.aborted && context.isCurrent()) {
       console.error('[OnBoardingModalV2] Could not open local model:', error);
@@ -443,6 +446,9 @@ async function localInput({ directories, controller }: { directories: BrowserMod
     }
   } finally {
     localInputs.delete(input);
+  }
+  if (handedOff && !controller.signal.aborted && entry.modelSelection.value === selection && selection.phase === 'open') {
+    entry.closeModelSelection();
   }
 }
 

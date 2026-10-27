@@ -73,7 +73,7 @@ watch(() => props.isOpen, (open, wasOpen) => {
   if (open && currentChat.value) {
     setActiveFocusArea({ area: 'dialog' });
     editingChatId.value = currentChat.value.id;
-    editingContentWrite.value = captureChatContentWrite({ chat: currentChat.value, dependency: 'model' });
+    editingContentWrite.value = captureChatContentWrite({ chat: currentChat.value, dependency: 'model', bindingOperation: undefined });
     inheritedSystemPromptMessages.value = [...(inheritedSettings.value?.systemPromptMessages ?? [])];
     localSystemPrompt.value = currentChat.value.systemPrompt === undefined ? undefined : { ...currentChat.value.systemPrompt };
     // Tool results and reasoning are part of the selected history, not disposable

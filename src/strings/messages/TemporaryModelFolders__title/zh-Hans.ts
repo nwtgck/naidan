@@ -1,1 +1,1 @@
-export const TemporaryModelFolders__title = (): string => "临时模型文件夹";
+export const TemporaryModelFolders__title = (): string => "此页面中打开的模型文件夹";

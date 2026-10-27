@@ -71,6 +71,7 @@ const mocks = vi.hoisted(() => ({
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
   changeListeners: new Set<ChangeListener>(),
+  subscribeLocalModelPromotions: () => () => {},
   subscribeToChanges: vi.fn<({ listener }: { listener: ChangeListener }) => () => void>(({ listener }) => {
     mocks.changeListeners.add(listener);
     return () => mocks.changeListeners.delete(listener);

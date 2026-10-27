@@ -1,3 +1,4 @@
+import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
 import { configureRpcFeature } from '@/features/naidan-rpc-integration/runtime/feature';
 import { canInitializeModelLaunchDefaults, type ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
@@ -20,6 +21,7 @@ import {
   type UiLocale,
 } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+import { applyLocalModelPromotion, normalizeSavedLocalModelFields, type LocalModelPromotionFields } from '@/features/llama-cpp-browser/model-reference-promotion';
 import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { loadLmProvider, prefetchLmProvider } from '@/features/lm/providerFactory';
@@ -50,8 +52,33 @@ watch(() => _settings.value.experimental?.naidanRpc ?? 'disabled', status => {
 let globalDefaultRevision = 0;
 let unsavedGlobalDefaultRevision: number | undefined;
 let settingsPublishedWithoutPrefetch: Settings | undefined;
+
+function normalizeLocalSettings(): void {
+  const current = _settings.value;
+  const fields: LocalModelPromotionFields = { modelId: current.defaultModelId, titleGeneration: current.titleGeneration };
+  normalizeSavedLocalModelFields({ target: fields, endpoint: current.endpoint });
+  if (fields.titleGeneration !== undefined && fields.titleGeneration !== 'inherit'
+    && (fields.modelId !== current.defaultModelId || fields.titleGeneration !== current.titleGeneration)) {
+    _settings.value = { ...current, defaultModelId: fields.modelId, titleGeneration: fields.titleGeneration };
+  }
+}
+
+watch(() => ({ endpoint: _settings.value.endpoint, modelId: _settings.value.defaultModelId, titleGeneration: _settings.value.titleGeneration }), normalizeLocalSettings, { flush: 'sync' });
+storageService.subscribeLocalModelPromotions({
+  listener: ({ promotion }) => {
+    if (promotion.owner.kind !== 'global' || !promotion.isCurrent()) {
+      return;
+    }
+    const current = _settings.value;
+    const fields: LocalModelPromotionFields = { modelId: current.defaultModelId, titleGeneration: current.titleGeneration };
+    applyLocalModelPromotion({ target: fields, endpoint: current.endpoint, changes: promotion.changes });
+    if (fields.titleGeneration !== undefined && fields.titleGeneration !== 'inherit') {
+      _settings.value = { ...current, defaultModelId: fields.modelId, titleGeneration: fields.titleGeneration };
+    }
+  },
+});
 watch(() => ({ endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId }), (next, previous) => {
-  if (next.modelId !== previous.modelId || !areEndpointsEqual({ left: next.endpoint, right: previous.endpoint })) {
+  if (!sameLocalModelBinding({ left: next, right: previous })) {
     globalDefaultRevision++;
   }
 }, { flush: 'sync' });
@@ -755,9 +782,15 @@ export function useSettings(): UseSettingsApi {
     const isStorageCurrent = storageService.captureSettingsStorage();
     const revision = globalDefaultRevision;
     const fresh = await storageService.loadSettings();
-    if (!fresh || !isCurrent() || !isStorageCurrent() || revision !== globalDefaultRevision
+    if (!isCurrent() || !isStorageCurrent() || revision !== globalDefaultRevision
       || unsavedGlobalDefaultRevision === globalDefaultRevision) {
       return 'changed';
+    }
+    if (fresh === null) {
+      // First use does not persist settings until something is changed. A
+      // chat-scoped model can already be usable with this untouched global pair.
+      return areEndpointsEqual({ left: _settings.value.endpoint, right: { type: 'openai', url: '' } })
+        && !_settings.value.defaultModelId ? 'synchronized' : 'changed';
     }
     const endpointChanged = !areEndpointsEqual({ left: fresh.endpoint, right: _settings.value.endpoint });
     if (endpointChanged || fresh.defaultModelId !== _settings.value.defaultModelId) {

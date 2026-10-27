@@ -10,7 +10,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import type { Chat } from '@/01-models/types';
 
-vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn().mockResolvedValue(null), getBinaryObject: vi.fn().mockResolvedValue(null), subscribeToChanges: vi.fn().mockReturnValue(() => {}) } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { subscribeLocalModelPromotions: vi.fn(() => () => {}), getFile: vi.fn().mockResolvedValue(null), getBinaryObject: vi.fn().mockResolvedValue(null), subscribeToChanges: vi.fn().mockReturnValue(() => {}) } }));
 
 function assistant({ parts, interruption }: { parts: AssistantMessageNode['parts'], interruption: AssistantMessageNode['interruption'] }): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts, interruption, createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } };

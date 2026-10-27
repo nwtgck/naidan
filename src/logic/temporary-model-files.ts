@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { temporaryFilePathSchema, temporaryRootNameSchema, type TemporaryModelDirectory, type TemporaryModelDirectoryInput } from '@/01-models/temporary-model-files';
+import { temporaryModelFilePath, temporaryModelRootPath, temporaryRootNameSchema, type TemporaryModelDirectory, type TemporaryModelDirectoryInput } from '@/01-models/temporary-model-files';
 
 const fileSchema = z.custom<File>(value => typeof File !== 'undefined' && value instanceof File && Number.isSafeInteger(value.size) && value.size >= 0);
 
@@ -25,7 +25,7 @@ export function createTemporaryModelFiles() {
     const paths = new Set<string>();
     const files = directory.files.map(({ relativePath, file, ...unhandled }) => {
       unhandled satisfies Record<PropertyKey, never>;
-      temporaryFilePathSchema.parse(`temp/${name}/${relativePath}`);
+      temporaryModelFilePath({ rootPath: temporaryModelRootPath({ rootName: name }), relativePath });
       if (paths.has(relativePath) || relativePath.split('/').includes('.git')) {
         throw new Error('Duplicate or reserved path in temporary model folder');
       }
@@ -52,7 +52,7 @@ export function createTemporaryModelFiles() {
     // Validate first, then reserve synchronously: concurrent drops cannot publish
     // the same name. Only live roots reserve names; removal permits immediate reuse.
     let available = name;
-    for (let suffix = 2; roots.has(`temp/${available}`); suffix++) {
+    for (let suffix = 2; roots.has(temporaryModelRootPath({ rootName: available })); suffix++) {
       const ending = `-${suffix}`;
       const characters = Array.from(name);
       while (new TextEncoder().encode(characters.join('') + ending).length > 255) {
@@ -60,7 +60,7 @@ export function createTemporaryModelFiles() {
       }
       available = characters.join('') + ending;
     }
-    const root = Object.freeze({ rootPath: `temp/${available}`, rootName: available, sourceRootName: name, registrationRevision: ++revision, files: Object.freeze(files) });
+    const root = Object.freeze({ rootPath: temporaryModelRootPath({ rootName: available }), rootName: available, sourceRootName: name, registrationRevision: ++revision, files: Object.freeze(files) });
     roots.set(root.rootPath, root);
     notify({ rootPath: root.rootPath });
     return root;

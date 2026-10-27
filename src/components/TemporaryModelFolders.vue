@@ -24,7 +24,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.TemporaryModelFolders__help() }}</p>
     <ul tw-class="divide-y divide-gray-100 dark:divide-gray-800">
       <li v-for="root in roots" :key="root.rootPath" tw-class="flex flex-wrap items-center gap-3 py-2 text-xs">
-        <code tw-class="min-w-0 flex-1 break-all">{{ root.rootPath }}</code>
+        <span tw-class="min-w-0 flex-1 break-all" data-testid="registered-model-folder-name">{{ root.rootName }}</span>
         <button type="button" :disabled="disabled" :data-testid="'unregister-' + root.rootPath" @click="unregister({ rootPath: root.rootPath })" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-gray-600 dark:text-gray-300 disabled:opacity-50">{{ lazyStrings.TemporaryModelFolders__unregister() }}</button>
       </li>
     </ul>

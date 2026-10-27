@@ -1176,8 +1176,8 @@ function requestModelSelection(): void {
     target: {
       kind: 'chat',
       chatId: props.chatId,
-      acceptFiles: ({ directories, controller }) => {
-        void chatModelSelection.accept({ directories, controller });
+      acceptFiles: ({ directories, controller, save }) => {
+        void chatModelSelection.accept({ directories, controller, save });
       },
       useRepositoryModel: ({ target }) => {
         void chatModelSelection.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });

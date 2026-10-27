@@ -12,6 +12,7 @@ vi.mock('@/00-storage/service', () => ({
     updateSettingsForStorage: mocks.updateForStorage,
     getCurrentType: () => mocks.stored?.storageType ?? 'local',
     subscribeToChanges: vi.fn(() => () => {}),
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     loadSettings: mocks.load,
     captureSettingsStorage: () => {
       const generation = mocks.storageGeneration;
@@ -369,6 +370,35 @@ describe('temporary model global promotion', () => {
 });
 
 describe('model binding admission settings synchronization', () => {
+  it('accepts the untouched initial global binding before a settings record has ever been saved', async () => {
+    const api = useSettings();
+    const initial: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, systemPrompt: 'Keep this live setting' };
+    api.TEST_ONLY.__testOnlySetSettings({ newSettings: initial });
+    mocks.stored = undefined;
+    await api.init({ storageTypeOverride: 'local', dataZipBase64: undefined, modelRefresh: 'background' });
+    await flushPromises();
+    mocks.scheduleIdleTask.mockClear();
+
+    expect(await api.synchronizeModelBindingSettings({ isCurrent: () => true })).toBe('synchronized');
+
+    expect(api.settings.value).toEqual(initial);
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.updateForStorage).not.toHaveBeenCalled();
+    expect(mocks.loadProvider).not.toHaveBeenCalled();
+    expect(mocks.scheduleIdleTask).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a missing settings record as proof that a selected global binding was saved', async () => {
+    const api = useSettings();
+    mocks.stored = undefined;
+
+    expect(await api.synchronizeModelBindingSettings({ isCurrent: () => true })).toBe('changed');
+
+    expect(api.settings.value.endpoint).toEqual(original.endpoint);
+    expect(api.settings.value.defaultModelId).toBe(original.defaultModelId);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it('publishes the latest binding pair without fetching models, prefetching providers, or replacing other live settings', async () => {
     const api = useSettings();
     await api.init({ storageTypeOverride: 'local', dataZipBase64: undefined, modelRefresh: 'background' });

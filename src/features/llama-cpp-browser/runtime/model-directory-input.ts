@@ -13,6 +13,20 @@ export function directoryForModelFile({ file }: { file: File }): ModelDirectoryI
   }
 }
 
+/** Publication sidecars describe the source filesystem's writes, not the
+ * imported File snapshots. Never replay them as authority in our OPFS tree. */
+export function localRepositoryInput({ directory }: { directory: ModelDirectoryInput }): ModelDirectoryInput {
+  return normalizeModelDirectoryInput({
+    directory: {
+      ...directory,
+      files: directory.files.filter(({ relativePath }) => {
+        const name = relativePath.split('/').at(-1)!;
+        return name !== modelImportPendingName && !/^\..+\.gguf\.(?:pending|complete)$/i.test(name);
+      }),
+    },
+  });
+}
+
 /** These tree invariants deliberately apply to both saved and temporary imports.
  * Storage writes, collision policy and model grouping do not belong here. */
 export function normalizeModelDirectoryInput({ directory }: { directory: ModelDirectoryInput }): ModelDirectoryInput {

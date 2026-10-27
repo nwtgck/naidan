@@ -89,6 +89,7 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     clearAll: vi.fn(),

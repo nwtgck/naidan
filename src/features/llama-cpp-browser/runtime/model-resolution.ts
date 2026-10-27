@@ -2,15 +2,25 @@ import { storageService } from '@/00-storage/service';
 import { resolveRepositoryModel, parseModelReference } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { resolveHostModel } from './host-model-store';
-import { allowedModelDirectory, existingUserModelDirectory, resolveDirectory, type ResolvedModel } from './model-directory';
+import { existingUserModelDirectory, resolveDirectory, resolveLocalRepositoryDirectories, type ResolvedModel } from './model-directory';
 import { temporaryModels } from './temporary-model-store';
+import { localRepositories } from './local-repository-store';
+import { hasLocalRepositoryReferencePrefix, parseLocalRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
+import { hasTemporaryModelPathPrefix } from '@/01-models/temporary-model-files';
 
 /** Resolve before queueing. Workers receive these captured files and handles,
  * so later alias edits cannot select a different model for an accepted request.
  */
 export async function resolveModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<ResolvedModel> {
   signal?.throwIfAborted();
-  if (modelId.startsWith('temp/')) {
+  const local = await localRepositories.resolve({ modelId, signal });
+  if (local) {
+    return local;
+  }
+  if (hasLocalRepositoryReferencePrefix({ modelId, storage: 'pending' })) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
+  if (hasTemporaryModelPathPrefix({ path: modelId })) {
     const resolved = await temporaryModels.resolveModel({ modelId, signal });
     if (!resolved) {
       throw new LlamaCppBrowserError({ code: 'missing-model' });
@@ -28,16 +38,24 @@ export async function resolveModel({ modelId, signal }: { modelId: string, signa
     signal?.throwIfAborted();
     return { modelId, location: { kind: 'hugging-face', repository }, directory };
   }
-  const [source, rootName, ...extra] = modelId.split('/');
-  if (source !== 'user' || !rootName || extra.length || !allowedModelDirectory({ name: rootName })) {
+  let reference: ReturnType<typeof parseLocalRepositoryReference>;
+  try {
+    reference = parseLocalRepositoryReference({ modelId });
+  } catch {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
+  const { rootName, selector } = reference;
   try {
     const parent = await existingUserModelDirectory();
     if (!parent) {
       throw new LlamaCppBrowserError({ code: 'missing-model' });
     }
-    const directory = await resolveDirectory({ folder: await parent.getDirectoryHandle(rootName), signal });
+    const folder = await parent.getDirectoryHandle(rootName);
+    const directory = selector === undefined ? await resolveDirectory({ folder, signal })
+      : (await resolveLocalRepositoryDirectories({ folder, rootName, signal })).find(configuration => configuration.selector === selector)?.directory;
+    if (!directory) {
+      throw new LlamaCppBrowserError({ code: 'missing-model' });
+    }
     signal?.throwIfAborted();
     return { modelId, location: { kind: 'opfs-user', rootName }, directory };
   } catch (error) {

@@ -117,8 +117,8 @@ describe('chat local file entry', () => {
       throw new Error('Expected the current chat local-input owner');
     }
     const directories = Promise.resolve<ModelDirectoryInput[]>([]), controller = new AbortController();
-    await acceptLocalInput({ directories, controller });
-    expect(state.acceptAfterFailedDownload).toHaveBeenCalledExactlyOnceWith({ directories, controller, operationId: 8 });
+    await acceptLocalInput({ directories, controller, save: 'browser' });
+    expect(state.acceptAfterFailedDownload).toHaveBeenCalledExactlyOnceWith({ directories, controller, save: 'browser', operationId: 8 });
     expect(state.accept).not.toHaveBeenCalled();
     expect(state.cancel).not.toHaveBeenCalled();
     await wrapper.setProps({ expansion: 'closed' });

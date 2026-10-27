@@ -23,6 +23,7 @@ import {
   chatToDomain,
   chatToDto,
   chatGroupToDomain,
+  chatGroupConfigurationToDomain,
   chatGroupToDto,
   settingsToDomain,
   settingsToDto,
@@ -654,6 +655,23 @@ export class OPFSStorageProvider extends IStorageProvider {
     const writable = await fileHandle.createWritable();
     await writable.write(serialized);
     await writable.close();
+  }
+
+  async loadChatGroupConfiguration({ id }: { id: ChatGroupId }): Promise<Omit<ChatGroup, 'items'> | null> {
+    await this.ensureRoot();
+    const dir = await this.getDir({ name: 'chat-groups' });
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await dir.getFileHandle(`${idToRaw({ id })}.json`);
+    } catch (error) {
+      // An acquired file that later fails to read is not a missing group.
+      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+        return null;
+      }
+      throw error;
+    }
+    const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+    return chatGroupConfigurationToDomain({ dto: groupDto });
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {

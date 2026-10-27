@@ -46,6 +46,7 @@ vi.mock('../features/lm/ollama', () => ({
 // Mock storage service
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),

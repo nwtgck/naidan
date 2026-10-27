@@ -14,8 +14,16 @@ const {
   mockUpdateChatMeta: vi.fn(),
 }));
 
+vi.mock('@/composables/useSettings', async () => {
+  const { ref } = await import('vue');
+  const { DEFAULT_SETTINGS } = await import('@/01-models/types');
+  const settings = ref(DEFAULT_SETTINGS);
+  return { useSettings: () => ({ settings }) };
+});
+
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: () => () => {},
     getSidebarStructure: mockGetSidebarStructure,
     loadChat: mockLoadChat,
     listChatGroups: vi.fn().mockResolvedValue([]),

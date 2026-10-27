@@ -1,3 +1,4 @@
+import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
 import { shallowReactive, shallowRef, watch } from 'vue';
 import type { ChatId } from '@/01-models/ids';
 import type { Chat, Endpoint } from '@/01-models/types';
@@ -57,7 +58,7 @@ export function assertLocalModelLaunchReady({ chat, endpoint, modelId }: {
   const assertCurrent = () => {
     if (sessions.value.get(chat.id) !== session || !session.isCurrent()
       || !bindingMatches({ session, binding: session.readBinding() })
-      || endpoint.type !== 'llama_cpp_browser' || modelId !== selectedModelId || session.model.modelId !== selectedModelId) {
+      || !sameLocalModelBinding({ left: { endpoint, modelId }, right: { endpoint: { type: 'llama_cpp_browser' }, modelId: selectedModelId } }) || session.model.modelId !== selectedModelId) {
       throw new LlamaCppBrowserError({ code: 'missing-model' });
     }
     switch (session.status) {
@@ -83,7 +84,7 @@ export function updateLocalModelLaunchSession({ session }: { session: LocalModel
 
 function bindingMatches({ session, binding }: { session: LocalModelLaunchSession, binding: LocalModelLaunchBinding }): boolean {
   return binding.chatGroupId === session.chatGroupId && binding.endpoint.type === 'llama_cpp_browser'
-    && binding.modelId !== undefined && binding.modelId === session.model.modelId;
+    && binding.modelId !== undefined && sameLocalModelBinding({ left: binding, right: { endpoint: { type: 'llama_cpp_browser' }, modelId: session.model.modelId } });
 }
 
 export function retireLocalModelLaunchSession({ session }: { session: LocalModelLaunchSession }): void {

@@ -222,7 +222,7 @@ describe('parts history branches', () => {
     if (change === 'empty model binding') {
       chat.root.items = [];
     }
-    const write = captureChatContentWrite({ chat, dependency: 'model' });
+    const write = captureChatContentWrite({ chat, dependency: 'model', bindingOperation: undefined });
     const baseline = readChatContentWrite({ write, id: chat.id }).baseline;
     if (change === 'content') {
       chat.root.items = [];

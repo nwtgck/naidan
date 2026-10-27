@@ -85,6 +85,7 @@ vi.mock('../00-storage/service', () => ({
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    subscribeLocalModelPromotions: vi.fn<StorageService['subscribeLocalModelPromotions']>().mockReturnValue(() => {}),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };

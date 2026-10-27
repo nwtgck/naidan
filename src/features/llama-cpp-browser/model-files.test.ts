@@ -140,7 +140,7 @@ describe('local model publication and saving', () => {
     const file = await replacement.getFileHandle('model.gguf', { create: true });
     file.data = new Uint8Array(await gguf({ name: 'model.gguf', marker: 2 }).arrayBuffer());
     const models = await llamaCppBrowserModelFiles.listModelEntries({ signal: undefined });
-    expect(models.some(model => model.modelId === modelId)).toBe(true);
+    expect(models.some(model => model.modelId === 'user/model-GGUF/model')).toBe(true);
     expect(imported.publication.isCurrent({ modelId })).toBe(false);
     expect(notified).toHaveBeenCalledOnce();
     await llamaCppBrowserModelFiles.listModelEntries({ signal: undefined });

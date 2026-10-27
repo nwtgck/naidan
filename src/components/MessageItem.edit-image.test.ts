@@ -30,6 +30,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 // Mock storage service
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
     subscribeToChanges: vi.fn(),

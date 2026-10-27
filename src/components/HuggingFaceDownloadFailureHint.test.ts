@@ -117,6 +117,7 @@ describe('shared Hugging Face failure guidance and feature-owned recovery', () =
     const input = wrapper.get<HTMLInputElement>(`[data-testid="llama-cpp-browser-${selection === 'files' ? 'file' : 'directory'}"]`);
     Object.defineProperty(input.element, 'files', { configurable: true, value: [file] });
     await input.trigger('change');
+    await flushPromises();
     expect(accept).toHaveBeenCalledOnce();
     const request = accept.mock.calls[0]?.[0];
     expect(request).toBeDefined();
@@ -126,7 +127,7 @@ describe('shared Hugging Face failure guidance and feature-owned recovery', () =
     expect(request?.controller.signal.aborted).toBe(false);
   });
 
-  it('captures a drop during dispatch and leaves accepted operation cancellation with its owner', async () => {
+  it('captures a drop during dispatch and finishes shared input preparation before replacing its owner', async () => {
     const pending = Promise.withResolvers<ModelDirectoryInput[]>();
     fixture.capture.mockReturnValue(pending.promise);
     const accept = vi.fn<AcceptInput>().mockImplementation(({ directories }) => directories.then(() => {}));
@@ -135,16 +136,33 @@ describe('shared Hugging Face failure guidance and feature-owned recovery', () =
     const dispatch = wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', { dataTransfer: transfer });
     expect(fixture.capture).toHaveBeenCalledOnce();
     expect(fixture.capture.mock.calls[0]?.[0].transfer).toBe(transfer);
-    expect(accept).toHaveBeenCalledOnce();
-    const request = accept.mock.calls[0]?.[0];
-    expect(request?.directories).toBe(pending.promise);
+    expect(accept).not.toHaveBeenCalled();
     await dispatch;
     await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', { dataTransfer: transfer });
-    expect(accept).toHaveBeenCalledOnce();
-    wrapper.unmount();
-    expect(request?.controller.signal.aborted).toBe(false);
+    expect(accept).not.toHaveBeenCalled();
     pending.resolve([directory]);
     await flushPromises();
+    expect(accept).toHaveBeenCalledOnce();
+    const request = accept.mock.calls[0]?.[0];
+    await expect(request?.directories).resolves.toEqual([directory]);
+    expect(request).toMatchObject({ save: 'later', repositoryLayout: 'confirmed' });
+    wrapper.unmount();
+    expect(request?.controller.signal.aborted).toBe(false);
+  });
+
+  it('cancels unfinished input preparation without replacing a failed download after its view closes', async () => {
+    const pending = Promise.withResolvers<ModelDirectoryInput[]>();
+    fixture.capture.mockReturnValue(pending.promise);
+    const accept = vi.fn<AcceptInput>();
+    const wrapper = await renderRecovery({ disabled: false, acceptLocalInput: accept });
+    await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', { dataTransfer: { types: ['Files'], items: [] } });
+    expect(accept).not.toHaveBeenCalled();
+    const signal = fixture.capture.mock.calls[0]?.[0].signal;
+    wrapper.unmount();
+    expect(signal.aborted).toBe(true);
+    pending.resolve([directory]);
+    await flushPromises();
+    expect(accept).not.toHaveBeenCalled();
   });
 
   it('uses the parent action state for disabled controls without starting a capture', async () => {
@@ -190,6 +208,7 @@ describe('shared Hugging Face failure guidance and feature-owned recovery', () =
     expect(wrapper.text()).not.toContain('Private owner error');
     expect(input.element.disabled).toBe(false);
     await input.trigger('change');
+    await flushPromises();
     expect(accept).toHaveBeenCalledTimes(2);
   });
 

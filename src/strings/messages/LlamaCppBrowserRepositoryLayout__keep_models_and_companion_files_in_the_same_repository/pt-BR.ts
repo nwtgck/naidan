@@ -1,0 +1,1 @@
+export const LlamaCppBrowserRepositoryLayout__keep_models_and_companion_files_in_the_same_repository = (): string => "Modelos e arquivos complementares são combinados apenas dentro do mesmo repositório.";

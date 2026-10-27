@@ -19,6 +19,7 @@ const { mockLoadChat, mockSetCurrentChatId, mockUpdateContent, mockUpdateMeta, m
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     loadChat: mockLoadChat,
     captureSettingsStorage: () => () => true,
     updateChatContent: mockUpdateContent,

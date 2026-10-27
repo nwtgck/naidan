@@ -1,5 +1,5 @@
-import { modelImportPendingName, normalizeModelDirectoryInput } from './model-directory-input';
-import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-id';
+import { localRepositoryInput, modelImportPendingName, normalizeModelDirectoryInput } from './model-directory-input';
+import { isModelSourceSegment, localRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
 import { readStoredModelFile, type ModelFile, type StoredModelFile } from '@/logic/model-file-system';
 import { resolveModelFiles } from './model-file-selection';
 export { resolveModelFiles } from './model-file-selection';
@@ -10,6 +10,7 @@ import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-var
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 import { withModelMutationLock } from './model-mutation-lock';
+import { localRepositoryDirectories } from './local-repository-layout';
 
 const pendingName = modelImportPendingName;
 export type { ModelFile, StoredModelFile } from '@/logic/model-file-system';
@@ -18,6 +19,7 @@ export type ModelRootLocation =
   | { kind: 'opfs-user', rootName: string }
   | { kind: 'hugging-face', repository: string }
   | { kind: 'host', directoryId: string, repository: string }
+  | { kind: 'local-files', rootPath: string, sourceId: string, rootName: string, savedRootName?: string }
   | { kind: 'temp', rootPath: string };
 export type ResolvedModel = { modelId: string, location: ModelRootLocation, directory: ModelDirectory };
 
@@ -129,6 +131,25 @@ export async function resolveDirectory({ folder, signal }: { folder: FileSystemD
   return modelDirectory({ files });
 }
 
+export async function resolveLocalRepositoryDirectories({ folder, rootName, signal }: {
+  folder: FileSystemDirectoryHandle, rootName: string, signal: AbortSignal | undefined,
+}): Promise<{ selector: string, directory: ModelDirectory }[]> {
+  if (!allowedModelDirectory({ name: rootName })) {
+    throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  }
+  if (await hasPendingImport({ folder })) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
+  const files = await readModelFiles({ folder, prefix: '', storageKind: 'opfs', signal });
+  for (const entry of files) {
+    signal?.throwIfAborted();
+    if (!await validGguf({ file: entry.file })) {
+      throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+    }
+  }
+  return localRepositoryDirectories({ files });
+}
+
 export function describeDirectory({ directory, modelId }: { directory: ModelDirectory, modelId: string }): LocalModel {
   return modelSchema.parse({ modelId, size: directory.files.reduce((sum, entry) => sum + entry.file.size, 0), importedAt: Math.max(...directory.files.map(entry => entry.file.lastModified)) });
 }
@@ -177,6 +198,7 @@ async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal
 
 /** A source-neutral import boundary shared by dropped folders and future downloads. */
 export type CapturedModelImport = { model: LocalModel, parent: FileSystemDirectoryHandle, folder: FileSystemDirectoryHandle, directory: ModelDirectory };
+export type CapturedRepositoryImport = { rootName: string, models: CapturedModelImport[] };
 
 export async function importModelDirectory({ directory, onProgress, signal }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   return (await importCapturedModelDirectory({ directory, onProgress, signal, collision: 'reject' })).model;
@@ -186,14 +208,28 @@ export async function importCapturedModelDirectory({ directory, onProgress, sign
   return withModelMutationLock({
     signal,
     operation: async () => {
-      const captured = await writeModelDirectory({ directory, onProgress, signal, collision });
+      const repository = await writeModelDirectory({ directory, onProgress, signal, collision, layout: 'single' });
+      const captured = repository.models[0]!;
       onCommitted?.({ captured });
       return captured;
     },
   });
 }
 
-async function writeModelDirectory({ directory, onProgress, signal, collision }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, collision: 'reject' | 'rename', onProgress: ({ progress }: { progress: Progress }) => void }): Promise<CapturedModelImport> {
+export async function importCapturedModelRepository({ directory, onProgress, signal, onCommitted }: {
+  signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void, onCommitted({ captured }: { captured: CapturedRepositoryImport }): void,
+}): Promise<CapturedRepositoryImport> {
+  return withModelMutationLock({
+    signal,
+    operation: async () => {
+      const captured = await writeModelDirectory({ directory: localRepositoryInput({ directory }), onProgress, signal, collision: 'rename', layout: 'repository' });
+      onCommitted({ captured });
+      return captured;
+    },
+  });
+}
+
+async function writeModelDirectory({ directory, onProgress, signal, collision, layout }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, collision: 'reject' | 'rename', onProgress: ({ progress }: { progress: Progress }) => void, layout: 'single' | 'repository' }): Promise<CapturedRepositoryImport> {
   const checkCancelled = (): void => {
     if (signal?.aborted) {
       throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -205,7 +241,16 @@ async function writeModelDirectory({ directory, onProgress, signal, collision }:
   const paths = new Set(directory.files.map(entry => entry.relativePath));
   const ggufs = directory.files.filter(entry => /\.gguf$/i.test(entry.relativePath));
   try {
-    resolveModelFiles({ files: ggufs });
+    switch (layout) {
+    case 'single': resolveModelFiles({ files: ggufs });
+      break;
+    case 'repository': localRepositoryDirectories({ files: ggufs.map(entry => ({ ...entry, storageKind: 'temp', registrationRevision: 1 })) });
+      break;
+    default: {
+      const exhaustive: never = layout;
+      throw new Error(String(exhaustive));
+    }
+    }
   } catch (error) {
     logDiagnostic({ diagnostic: { event: 'failed', stage: 'model-resolve', reason: 'model-directory-layout', code: errorCode({ error }) } });
     throw error;
@@ -315,10 +360,27 @@ async function writeModelDirectory({ directory, onProgress, signal, collision }:
     // Only the transient pending marker guards publication; each load resolves the files anew.
     checkCancelled();
     await folder.removeEntry(pendingName);
-    const capturedDirectory = await resolveDirectory({ folder, signal });
-    const model = describeDirectory({ directory: capturedDirectory, modelId: `user/${rootName}` });
+    let configurations: { selector: string | undefined, directory: ModelDirectory }[];
+    switch (layout) {
+    case 'single': configurations = [{ selector: undefined, directory: await resolveDirectory({ folder, signal }) }];
+      break;
+    case 'repository': configurations = await resolveLocalRepositoryDirectories({ folder, rootName, signal });
+      break;
+    default: {
+      const exhaustive: never = layout;
+      throw new Error(String(exhaustive));
+    }
+    }
     checkCancelled();
-    return { model, parent, folder, directory: capturedDirectory };
+    return {
+      rootName,
+      models: configurations.map(({ selector, directory: capturedDirectory }) => ({
+        model: describeDirectory({ directory: capturedDirectory, modelId: localRepositoryReference({ storage: 'saved', rootName, selector }) }),
+        parent,
+        folder,
+        directory: capturedDirectory,
+      })),
+    };
   } catch (error) {
     await parent.removeEntry(rootName, { recursive: true }).catch(() => {});
     throw error;

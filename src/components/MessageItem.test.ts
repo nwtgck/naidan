@@ -40,6 +40,7 @@ vi.mock('../composables/useSettings', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getFile: vi.fn().mockResolvedValue(null),
     getBinaryObject: vi.fn().mockResolvedValue(null),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

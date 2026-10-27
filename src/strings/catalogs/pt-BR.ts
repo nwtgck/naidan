@@ -322,7 +322,6 @@ import { ChatLocalModelInput__load_model } from '@/strings/messages/ChatLocalMod
 import { ChatLocalModelInput__model_source } from '@/strings/messages/ChatLocalModelInput__model_source/pt-BR';
 import { ChatLocalModelInput__pause_download } from '@/strings/messages/ChatLocalModelInput__pause_download/pt-BR';
 import { ChatLocalModelInput__saved_models } from '@/strings/messages/ChatLocalModelInput__saved_models/pt-BR';
-import { ChatLocalModelInput__start_without_copying_and_save_later } from '@/strings/messages/ChatLocalModelInput__start_without_copying_and_save_later/pt-BR';
 import { ChatLocalModelInput__this_chat_already_has_messages } from '@/strings/messages/ChatLocalModelInput__this_chat_already_has_messages/pt-BR';
 import { ChatLocalModelInput__use_a_saved_model } from '@/strings/messages/ChatLocalModelInput__use_a_saved_model/pt-BR';
 import { ChatLocalModelInput__use_local_model_files } from '@/strings/messages/ChatLocalModelInput__use_local_model_files/pt-BR';
@@ -1366,6 +1365,9 @@ import { LlamaCppBrowserLocalFileRecovery__choose_the_added_model_from_the_model
 import { LlamaCppBrowserLocalFileRecovery__could_not_open_local_model_files } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__could_not_open_local_model_files/pt-BR';
 import { LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder/pt-BR';
 import { LlamaCppBrowserLocalFileRecovery__use_local_model_files } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__use_local_model_files/pt-BR';
+import { LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser } from '@/strings/messages/LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser/pt-BR';
+import { LlamaCppBrowserLocalFiles__start_now_and_save_in_background } from '@/strings/messages/LlamaCppBrowserLocalFiles__start_now_and_save_in_background/pt-BR';
+import { LlamaCppBrowserLocalFiles__start_without_copying_and_save_later } from '@/strings/messages/LlamaCppBrowserLocalFiles__start_without_copying_and_save_later/pt-BR';
 import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } from '@/strings/messages/LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it/pt-BR';
 import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/pt-BR';
 import { LlamaCppBrowserModelAction__model_actions } from '@/strings/messages/LlamaCppBrowserModelAction__model_actions/pt-BR';
@@ -1416,6 +1418,11 @@ import { LlamaCppBrowserModelParameterFilter__up_to_parameters } from '@/strings
 import { LlamaCppBrowserQuantizationPicker__could_not_fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__could_not_fetch_options/pt-BR';
 import { LlamaCppBrowserQuantizationPicker__fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetch_options/pt-BR';
 import { LlamaCppBrowserQuantizationPicker__fetching_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetching_options/pt-BR';
+import { LlamaCppBrowserRepositoryLayout__confirm_folder_layout } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__confirm_folder_layout/pt-BR';
+import { LlamaCppBrowserRepositoryLayout__keep_models_and_companion_files_in_the_same_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__keep_models_and_companion_files_in_the_same_repository/pt-BR';
+import { LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository/pt-BR';
+import { LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders/pt-BR';
+import { LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository/pt-BR';
 import { LlamaCppBrowserRepositoryPicker__back_to_search } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__back_to_search/pt-BR';
 import { LlamaCppBrowserRepositoryPicker__check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__check_repository/pt-BR';
 import { LlamaCppBrowserRepositoryPicker__could_not_check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__could_not_check_repository/pt-BR';
@@ -1768,7 +1775,6 @@ import { OllamaPsView__unloading } from '@/strings/messages/OllamaPsView__unload
 import { OllamaPsView__vram_size } from '@/strings/messages/OllamaPsView__vram_size/pt-BR';
 import { OnBoardingModalV2LocalModelInput__could_not_open_local_model_files } from '@/strings/messages/OnBoardingModalV2LocalModelInput__could_not_open_local_model_files/pt-BR';
 import { OnBoardingModalV2LocalModelInput__load_model } from '@/strings/messages/OnBoardingModalV2LocalModelInput__load_model/pt-BR';
-import { OnBoardingModalV2LocalModelInput__start_without_copying_and_save_later } from '@/strings/messages/OnBoardingModalV2LocalModelInput__start_without_copying_and_save_later/pt-BR';
 import { OnBoardingModalV2ModelSources__download_a_model } from '@/strings/messages/OnBoardingModalV2ModelSources__download_a_model/pt-BR';
 import { OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites } from '@/strings/messages/OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites/pt-BR';
 import { OnBoardingModalV2ModelSources__download_and_use_in_naidan } from '@/strings/messages/OnBoardingModalV2ModelSources__download_and_use_in_naidan/pt-BR';
@@ -2884,6 +2890,7 @@ import { llamaCppBrowser__automatic_profile_description } from '@/strings/messag
 import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/pt-BR';
 import { llamaCppBrowser__check_browser_support } from '@/strings/messages/llamaCppBrowser__check_browser_support/pt-BR';
 import { llamaCppBrowser__checking_browser_support } from '@/strings/messages/llamaCppBrowser__checking_browser_support/pt-BR';
+import { llamaCppBrowser__checking_model_files } from '@/strings/messages/llamaCppBrowser__checking_model_files/pt-BR';
 import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/pt-BR';
 import { llamaCppBrowser__choose_model_folder } from '@/strings/messages/llamaCppBrowser__choose_model_folder/pt-BR';
 import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/pt-BR';
@@ -3643,7 +3650,6 @@ export const catalog = {
   ChatLocalModelInput__model_source,
   ChatLocalModelInput__pause_download,
   ChatLocalModelInput__saved_models,
-  ChatLocalModelInput__start_without_copying_and_save_later,
   ChatLocalModelInput__this_chat_already_has_messages,
   ChatLocalModelInput__use_a_saved_model,
   ChatLocalModelInput__use_local_model_files,
@@ -4687,6 +4693,9 @@ export const catalog = {
   LlamaCppBrowserLocalFileRecovery__could_not_open_local_model_files,
   LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder,
   LlamaCppBrowserLocalFileRecovery__use_local_model_files,
+  LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser,
+  LlamaCppBrowserLocalFiles__start_now_and_save_in_background,
+  LlamaCppBrowserLocalFiles__start_without_copying_and_save_later,
   LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it,
   LlamaCppBrowserModelAction__create_chat_group,
   LlamaCppBrowserModelAction__model_actions,
@@ -4737,6 +4746,11 @@ export const catalog = {
   LlamaCppBrowserQuantizationPicker__could_not_fetch_options,
   LlamaCppBrowserQuantizationPicker__fetch_options,
   LlamaCppBrowserQuantizationPicker__fetching_options,
+  LlamaCppBrowserRepositoryLayout__confirm_folder_layout,
+  LlamaCppBrowserRepositoryLayout__keep_models_and_companion_files_in_the_same_repository,
+  LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository,
+  LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders,
+  LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository,
   LlamaCppBrowserRepositoryPicker__back_to_search,
   LlamaCppBrowserRepositoryPicker__check_repository,
   LlamaCppBrowserRepositoryPicker__could_not_check_repository,
@@ -5089,7 +5103,6 @@ export const catalog = {
   OllamaPsView__vram_size,
   OnBoardingModalV2LocalModelInput__could_not_open_local_model_files,
   OnBoardingModalV2LocalModelInput__load_model,
-  OnBoardingModalV2LocalModelInput__start_without_copying_and_save_later,
   OnBoardingModalV2ModelSources__download_a_model,
   OnBoardingModalV2ModelSources__download_and_run_models_in_these_naidan_sites,
   OnBoardingModalV2ModelSources__download_and_use_in_naidan,
@@ -6205,6 +6218,7 @@ export const catalog = {
   llamaCppBrowser__automatic_recommended,
   llamaCppBrowser__check_browser_support,
   llamaCppBrowser__checking_browser_support,
+  llamaCppBrowser__checking_model_files,
   llamaCppBrowser__choose_gguf_files,
   llamaCppBrowser__choose_model_folder,
   llamaCppBrowser__context_size,

@@ -58,7 +58,7 @@ vi.mock('@/composables/chat/chat-scoped/chat-model-binding-operations', () => ({
     }
   },
 }));
-vi.mock('../model-files', () => ({ captureModelFileStorage: () => () => mocks.storageCurrent, copyTemporaryModel: mocks.copy, withSavedTemporaryModelFiles: mocks.validate, waitForModelFileMutation: mocks.wait, llamaCppBrowserModelFiles: { subscribeModelList: () => () => {} } }));
+vi.mock('../model-files', () => ({ subscribeLocalRepositorySaves: () => () => {}, captureModelFileStorage: () => () => mocks.storageCurrent, copyTemporaryModel: mocks.copy, withSavedTemporaryModelFiles: mocks.validate, waitForModelFileMutation: mocks.wait, llamaCppBrowserModelFiles: { subscribeModelList: () => () => {} } }));
 let sequence = 0;
 
 function fixture({ home }: { home: boolean }) {

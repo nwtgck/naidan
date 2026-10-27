@@ -155,6 +155,7 @@ export abstract class IStorageProvider {
   abstract deleteChat({ id }: { id: ChatId }): Promise<void>;
 
   abstract saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void>;
+  abstract loadChatGroupConfiguration({ id }: { id: ChatGroupId }): Promise<Omit<ChatGroup, 'items'> | null>;
   abstract loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null>;
   abstract deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void>;
 

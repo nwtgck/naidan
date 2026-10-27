@@ -456,7 +456,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
     if (chat === null) {
       return;
     }
-    const write = captureChatContentWrite({ chat, dependency: 'model' });
+    const write = captureChatContentWrite({ chat, dependency: 'model', bindingOperation: undefined });
 
     const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
     const endpoint = (() => {

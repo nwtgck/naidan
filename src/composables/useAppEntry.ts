@@ -36,7 +36,7 @@ export type ModelLaunchStartContext = ModelLaunchAppContext & Readonly<{ default
 export type AppEntrySettingsOverlay = { owner: symbol, tab: SettingsNavigationTab, opener: HTMLElement | undefined };
 export type ModelSelectionTarget =
   | { kind: 'home' }
-  | { kind: 'chat', chatId: ChatId, acceptFiles({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }): void, useRepositoryModel({ target }: { target: ModelLaunchTarget }): void, useModel({ model }: { model: LocalModel }): void };
+  | { kind: 'chat', chatId: ChatId, acceptFiles({ directories, controller, save }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save?: 'browser' | 'later' }): void, useRepositoryModel({ target }: { target: ModelLaunchTarget }): void, useModel({ model }: { model: LocalModel }): void };
 export type ModelSelectionPresentation = { phase: 'open' | 'closing', owner: symbol, target: ModelSelectionTarget, selection: AppEntrySelection, opener: HTMLElement | undefined };
 type NotFoundRecovery = { sourcePath: string, location: 'source' | 'root' };
 

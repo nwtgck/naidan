@@ -3,6 +3,10 @@ import { ref } from 'vue';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { CspHintMessage } from '@/logic/csp-message-hints/types';
+import type { ModelSelectionTarget } from '@/composables/useAppEntry';
+import type { startLocalModelInput } from '@/composables/useLocalModelStart';
+import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import { toChatId } from '@/01-models/ids';
 import { modelLaunchCommand, setModelLaunchEntryState, TEST_ONLY as launchTest } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
 import LlamaCppBrowserModelConfiguration from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelConfiguration.vue';
@@ -16,7 +20,7 @@ const initialViewCspHint = ref<CspHintMessage>();
 const entry = {
   intent: ref({ kind: 'home', input: undefined as string | undefined }),
   interaction: ref('ready'),
-  modelSelection: ref<{ phase: 'open' | 'closing', target: { kind: 'home' }, selection: { suggestionId: string, quantizationId: string } } | undefined>(),
+  modelSelection: ref<{ phase: 'open' | 'closing', target: ModelSelectionTarget, selection: { suggestionId: string, quantizationId: string } } | undefined>(),
   discovery: ref(undefined),
   closeModelSelection: vi.fn(),
   finishModelSelectionClose: vi.fn(),
@@ -33,6 +37,7 @@ vi.mock('@/composables/useCspMessageHintsOnly', () => ({ useCspMessageHintsOnly:
 vi.mock('@/composables/useLocalModelStart', () => ({ startLocalModelInput: localInput }));
 vi.mock('@/features/llama-cpp-browser/logic/local-model-input', () => ({ captureDroppedLocalModels: captureDrop, localModelDirectoriesFromFiles: captureFiles }));
 vi.mock('./LocalModelSelectionDialog.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div />' } }));
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalRepositorySaves.vue', () => ({ __esModule: true, default: { props: ['offeredVisibility'], template: '<aside data-testid="onboarding-copy-progress" :data-offered="offeredVisibility" />' } }));
 vi.mock('./BrowserConnectionSelection.vue', () => {
   throw new Error('Connection settings module failed to load');
 });
@@ -45,6 +50,7 @@ beforeEach(async () => {
   localInput.mockReset().mockResolvedValue(undefined);
   captureDrop.mockReset().mockResolvedValue([]);
   captureFiles.mockReset().mockReturnValue([]);
+  entry.closeModelSelection.mockReset();
   initialViewCspHint.value = undefined;
   await ensureAllStringsForTest({ locale: 'en' });
 });
@@ -90,6 +96,83 @@ it('lets people switch to local files and back before late CSP evidence arrives'
   expect(toggle.attributes('aria-pressed')).toBe('false');
   expect(wrapper.find('[data-testid="model-swipe"]').exists()).toBe(true);
   expect(modelLaunchCommand.value).toBeUndefined();
+});
+
+it.each(['later', 'browser'] as const)('forwards %s saving from the shared file view after one repository confirmation', async save => {
+  const directory: ModelDirectoryInput = {
+    rootName: 'Models',
+    files: ['Q4/model.gguf', 'Q8/model.gguf'].map(relativePath => ({ relativePath, file: new File(['gguf'], 'model.gguf') })),
+  };
+  captureFiles.mockReturnValue([directory]);
+  localInput.mockImplementation(({ directories }: { directories: Promise<ModelDirectoryInput[]> }) => directories.then(() => {}));
+  const wrapper = mountWelcomeEntry({ cspHint: 'absent' });
+  await wrapper.get('[data-testid="onboarding-local-model-toggle"]').trigger('click');
+  await vi.waitFor(() => expect(wrapper.find('[data-testid="local-model-save-in-browser"]').exists()).toBe(true));
+  const toggle = wrapper.get<HTMLInputElement>('[data-testid="local-model-save-in-browser"]');
+  expect(toggle.element.checked).toBe(false);
+  expect(wrapper.find('[data-testid="onboarding-copy-progress"]').exists()).toBe(false);
+  await toggle.setValue(save === 'browser');
+  const input = wrapper.get<HTMLInputElement>('[data-testid="llama-cpp-browser-directory"]');
+  Object.defineProperty(input.element, 'files', { configurable: true, value: directory.files.map(file => file.file) });
+  await input.trigger('change');
+  await vi.waitFor(() => expect(localInput).toHaveBeenCalledOnce());
+  const request = localInput.mock.calls[0]?.[0];
+  expect(request).toMatchObject({ save, repositoryLayout: 'confirmed', controller: expect.any(AbortController) });
+  await vi.dynamicImportSettled();
+  await flushPromises();
+  expect(wrapper.find('[data-testid="local-model-repository-layout"]').exists()).toBe(true);
+  await wrapper.get('[data-testid="local-model-layout-repository"]').trigger('click');
+  await expect(request.directories).resolves.toEqual([directory]);
+  expect(localInput).toHaveBeenCalledOnce();
+  expect(request.controller.signal.aborted).toBe(false);
+  switch (save) {
+  case 'browser': {
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="onboarding-copy-progress"]').exists()).toBe(true));
+    expect(wrapper.get('[data-testid="onboarding-copy-progress"]').attributes('data-offered')).toBe('hidden');
+    break;
+  }
+  case 'later':
+    expect(wrapper.find('[data-testid="onboarding-copy-progress"]').exists()).toBe(false);
+    break;
+  default: {
+    const exhaustive: never = save;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
+
+it('keeps the file view mounted during inspection and forwards browser saving to an existing chat', async () => {
+  const directories = Promise.withResolvers<ModelDirectoryInput[]>();
+  captureDrop.mockReturnValue(directories.promise);
+  localInput.mockImplementation(async (request: Parameters<typeof startLocalModelInput>[0]) => {
+    const confirmed = await request.directories;
+    request.acceptFiles?.({ directories: Promise.resolve(confirmed), controller: request.controller, save: request.save ?? 'later' });
+  });
+  const acceptFiles = vi.fn();
+  entry.modelSelection.value = {
+    phase: 'open',
+    target: { kind: 'chat', chatId: toChatId({ raw: 'existing' }), acceptFiles, useModel: vi.fn(), useRepositoryModel: vi.fn() },
+    selection: entry.homeSelection.value,
+  };
+  entry.closeModelSelection.mockImplementation(() => {
+    entry.modelSelection.value = undefined;
+  });
+  const wrapper = mountWelcomeEntry({ cspHint: 'absent' });
+  await wrapper.get('[data-testid="onboarding-local-model-toggle"]').trigger('click');
+  await vi.waitFor(() => expect(wrapper.find('[data-testid="local-model-save-in-browser"]').exists()).toBe(true));
+  await wrapper.get('[data-testid="local-model-save-in-browser"]').setValue(true);
+  await wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', { dataTransfer: { types: ['Files'], items: [] } });
+  expect(acceptFiles).not.toHaveBeenCalled();
+  expect(entry.closeModelSelection).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(localInput).toHaveBeenCalledOnce());
+  expect(localInput.mock.calls[0]?.[0]).toMatchObject({ repositoryLayout: 'confirmed', save: 'browser', acceptFiles: expect.any(Function) });
+  directories.resolve([{ rootName: 'Repo', files: [] }]);
+  await vi.waitFor(() => expect(entry.closeModelSelection).toHaveBeenCalledOnce());
+  expect(acceptFiles).toHaveBeenCalledOnce();
+  const request = acceptFiles.mock.calls[0]?.[0];
+  expect(request).toMatchObject({ save: 'browser', controller: expect.any(AbortController) });
+  wrapper.unmount();
+  expect(request.controller.signal.aborted).toBe(false);
 });
 
 it('defaults to local files with HF restriction evidence and keeps the cards manually available', async () => {

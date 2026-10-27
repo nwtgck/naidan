@@ -11,6 +11,7 @@ import LlamaCppBrowserLoadingIndicator from '@/features/llama-cpp-browser/compon
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: ref({}) }) }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getFile: vi.fn().mockResolvedValue(undefined),
     getBinaryObject: vi.fn().mockResolvedValue(undefined),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

@@ -8,6 +8,7 @@ import { toChatGroupId } from '@/01-models/ids';
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
+    subscribeLocalModelPromotions: vi.fn(() => () => {}),
     getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined),
     updateChatContent: vi.fn<StorageService['updateChatContent']>().mockImplementation(async ({ updater }) => updater({ current: null })),
     getSidebarStructure: vi.fn().mockResolvedValue([]),

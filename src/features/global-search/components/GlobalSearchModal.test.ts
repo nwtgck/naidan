@@ -7,6 +7,8 @@ import { computed, ref, nextTick } from 'vue';
 import { setupScrollToMock } from '@/utils/utils.test-support';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { storageService } from '@/00-storage/service';
+import type { FlatSearchResultItem } from '@/features/global-search/types';
 
 enableAutoUnmount(afterEach);
 
@@ -54,7 +56,7 @@ vi.mock('../composables/useGlobalSearch', () => ({
 const mockQuery = ref('');
 const mockIsSearching = ref(false);
 const mockIsScanningContent = ref(false);
-const mockResults = ref([]);
+const mockResults = ref<FlatSearchResultItem[]>([]);
 const mockSearch = vi.fn();
 const mockClearSearch = vi.fn();
 const mockStopSearch = vi.fn();
@@ -120,6 +122,7 @@ vi.mock('../../../00-storage/service', () => ({
     loadChatContent: vi.fn().mockResolvedValue(null),
     listChats: vi.fn().mockResolvedValue([]),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    subscribeLocalModelPromotions: vi.fn().mockReturnValue(() => {}),
   },
 }));
 
@@ -186,6 +189,33 @@ describe('GlobalSearchModal Component', () => {
     const wrapper = mount(GlobalSearchModal);
     expect(wrapper.find('[data-testid="search-input"]').exists()).toBe(true);
   });
+
+  it('should load and render the asynchronous preview for the selected chat', async () => {
+    mockResults.value = [{
+      type: 'chat',
+      item: {
+        type: 'chat',
+        chatId: 'preview-chat',
+        title: 'Selected chat preview',
+        updatedAt: 1,
+        matchType: 'title',
+        contentMatches: [],
+      },
+    }];
+    const wrapper = mount(GlobalSearchModal);
+
+    // Exercise the real lazy preview and its message-rendering imports.
+    await vi.dynamicImportSettled();
+    await vi.waitFor(() => {
+      const preview = wrapper.get('[data-testid="search-preview-container"]')
+        .findComponent({ name: 'SearchPreview' });
+      expect(preview.exists()).toBe(true);
+      expect(preview.text()).toContain('Selected chat preview');
+    });
+    expect(storageService.loadChatContent).toHaveBeenCalledWith({
+      id: toChatId({ raw: 'preview-chat' }),
+    });
+  }, 30_000);
 
   it('should list all titles immediately when mounted open with an empty query', async () => {
     mount(GlobalSearchModal);

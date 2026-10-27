@@ -67,7 +67,7 @@ it('does not create a native worker to dispose an unused resource owner', async 
   expect(fixture.create).not.toHaveBeenCalled();
 });
 
-it.each(['', 'unknown', 'user/../outside', 'temp/not-registered'])('fails current model resolution before starting a worker for %j', async modelId => {
+it.each(['', 'unknown', 'user/../outside', '~user/../outside', 'user/Repo/../model', '~user//model', 'temp/not-registered'])('fails current model resolution before starting a worker for %j', async modelId => {
   const resources = create({ directories: () => [] });
   await using _resources = {
     async [Symbol.asyncDispose]() {

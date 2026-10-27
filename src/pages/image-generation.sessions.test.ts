@@ -21,7 +21,7 @@ import { generationQueryResultSchema } from '@/features/image-generation/session
 import ImageGenerationPage from './image-generation.vue';
 import ImageGenerationWorkspace from '@/features/image-generation/components/ImageGenerationWorkspace.vue';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), publish: vi.fn(), restore: vi.fn(), confirm: vi.fn(), owners: 0, disposed: 0 }));
-vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () => 'opfs', subscribeToChanges: () => () => {}, publishImageGeneration: mocks.publish } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { subscribeLocalModelPromotions: vi.fn(() => () => {}), getCurrentType: () => 'opfs', subscribeToChanges: () => () => {}, publishImageGeneration: mocks.publish } }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
 vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 vi.mock('@/features/image-generation/use-image-generation', async () => {
