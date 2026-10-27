@@ -10,6 +10,8 @@ const gpuMetadataSchema = z.object({
     architecture: z.string().min(1).max(256).optional(),
     device: z.string().min(1).max(256).optional(),
     description: z.string().min(1).max(256).optional(),
+    subgroupMinSize: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+    subgroupMaxSize: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   }).strict().optional(),
   fallbackAdapter: z.boolean().optional(),
   adapterFeatures: z.array(z.string().max(128)).max(128).optional(),
