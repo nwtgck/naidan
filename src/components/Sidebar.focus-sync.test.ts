@@ -325,6 +325,25 @@ describe('Sidebar Focus Sync', () => {
     expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: top - (100 - 40) / 3, behavior: 'auto' });
   });
 
+  it.each(['/chat/chat-1', '/chat-group/g1'])('reveals the new URL %s during search before the selected body is loaded', async path => {
+    mockCurrentChat.value = null;
+    mockCurrentChatGroup.value = null;
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Chat group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockEffectiveRoute.value = router.resolve('/');
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    await nextTick();
+    await nextTick();
+    expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
+
+    layout.setActiveFocusArea({ area: 'search' });
+    mockEffectiveRoute.value = router.resolve(path);
+    await nextTick();
+    await nextTick();
+
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 132.5, behavior: 'smooth' });
+    expect(layout.activeFocusArea.value).toBe('search');
+  });
+
   it('ignores stale selected state after leaving a chat route', async () => {
     mockEffectiveRoute.value = router.resolve('/');
     wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });

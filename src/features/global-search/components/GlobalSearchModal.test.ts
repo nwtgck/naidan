@@ -325,6 +325,7 @@ describe('GlobalSearchModal Component', () => {
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
 
     expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat2' });
+    expect(mockPush).toHaveBeenCalledWith('/chat/chat2');
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -393,6 +394,7 @@ describe('GlobalSearchModal Component', () => {
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
     expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat1' });
+    expect(mockPush).toHaveBeenCalledWith('/chat/chat1');
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -412,7 +414,10 @@ describe('GlobalSearchModal Component', () => {
     selectSpy.mockRestore();
   });
 
-  it('should navigate to group when a chat_group result is selected', async () => {
+  it.each([
+    { action: 'click', selector: '[data-testid="search-result-item-0"]', event: 'click', options: {} },
+    { action: 'Enter', selector: '[data-testid="search-input"]', event: 'keydown', options: { key: 'Enter' } },
+  ])('should navigate to the chat group URL when selected with $action', async ({ selector, event, options }) => {
     mockQuery.value = 'work';
     mockResults.value = [
       { type: 'chat_group', item: { groupId: 'g1', name: 'Work', updatedAt: 1, chatCount: 5, matchType: 'title' } },
@@ -421,9 +426,10 @@ describe('GlobalSearchModal Component', () => {
     const wrapper = mount(GlobalSearchModal);
     await nextTick();
 
-    await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
+    await wrapper.get(selector).trigger(event, options);
 
     expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
+    expect(mockPush).toHaveBeenCalledExactlyOnceWith('/chat-group/g1');
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
