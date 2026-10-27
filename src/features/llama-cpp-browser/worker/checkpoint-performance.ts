@@ -4,7 +4,9 @@ export type CheckpointObserver = { enter: ({ phase }: { phase: CheckpointPhase }
 
 /** Request-local, phase-level wall timings. Construct only for debug logging or
  * explicit measurement, never install native callbacks or per-token clocks. These are
- * children of cache-checkpoint, not additional exclusive GPU/CPU durations. */
+ * children of cache-checkpoint, not additional exclusive GPU/CPU durations.
+ * Captures add an explicit prior-compute wait only while this observer is installed;
+ * capture-readback still includes serialization and the native writer's own sync. */
 export function createCheckpointPerformance({ now }: { now: () => number }) {
   const phases = new Map<CheckpointPhase, CheckpointPerformance['phases'][number]>();
   let current: CheckpointPerformance['phases'][number] | undefined;
@@ -31,7 +33,7 @@ export function createCheckpointPerformance({ now }: { now: () => number }) {
         break;
       case 'restore-memory': restoreAttempts++;
         break;
-      case 'boundary-tokenize': case 'capture-size': case 'capture-allocation': case 'capture-readback':
+      case 'boundary-tokenize': case 'capture-size': case 'capture-allocation': case 'capture-prior-compute-wait': case 'capture-readback':
       case 'restore-write': case 'restore-trim': case 'restore-verify': break;
       default: {
         const exhaustive: never = phase;

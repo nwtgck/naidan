@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { capturePromptCheckpoint, disposePromptCheckpoint, promptCheckpointBoundary as nativePromptCheckpointBoundary, restorePromptCheckpoint } from './prompt-checkpoint';
+import { createCheckpointPerformance } from './checkpoint-performance';
 
 function promptCheckpointBoundary({ core, vocab, prompt, promptPointer, generationPrompt, tokens, onTokenize }: {
   core: Parameters<typeof nativePromptCheckpointBoundary>[0]['core'], vocab: bigint, prompt: string,
@@ -28,6 +29,7 @@ function fixture() {
     llama_state_seq_set_data_ext: vi.fn(async () => 64n),
     llama_memory_seq_rm: vi.fn(async () => 1),
     llama_tokenize: vi.fn(async () => 3),
+    llama_synchronize: vi.fn(async () => {}),
   };
   const core = {
     api,
@@ -46,6 +48,7 @@ describe('owned host prompt checkpoints', () => {
     const checkpoint = await capturePromptCheckpoint({ core, context: 20n, tokens });
     expect(checkpoint).toEqual({ pointer: 100n, bytes: 64, tokens, positionMin: 2, positionMax: 3 });
     expect(api.llama_state_seq_get_data_ext).toHaveBeenCalledExactlyOnceWith(20n, 100n, 64n, 0, 1);
+    expect(api.llama_synchronize).not.toHaveBeenCalled();
     expect(core.free).not.toHaveBeenCalled();
     tokens.push(5);
     if (!checkpoint) {
@@ -113,6 +116,48 @@ describe('owned host prompt checkpoints', () => {
     expect(core.free).not.toHaveBeenCalled();
     disposePromptCheckpoint({ core, checkpoint });
     expect(core.free).toHaveBeenCalledOnce();
+  });
+
+  it('observes prior computation separately and owns the buffer through both asynchronous waits', async () => {
+    const { core, api } = fixture();
+    let time = 0;
+    const observation = createCheckpointPerformance({ now: () => time });
+    const computation = Promise.withResolvers<void>();
+    const writer = Promise.withResolvers<bigint>();
+    api.llama_synchronize.mockReturnValue(computation.promise);
+    api.llama_state_seq_get_data_ext.mockReturnValue(writer.promise);
+    const pending = capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4], observer: observation });
+    await vi.waitFor(() => expect(api.llama_synchronize).toHaveBeenCalledExactlyOnceWith(20n));
+    expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled();
+    expect(core.free).not.toHaveBeenCalled();
+    time = 200;
+    computation.resolve();
+    await vi.waitFor(() => expect(api.llama_state_seq_get_data_ext).toHaveBeenCalledOnce());
+    expect(core.free).not.toHaveBeenCalled();
+    time = 207;
+    writer.resolve(64n);
+    const checkpoint = await pending;
+    expect(checkpoint?.bytes).toBe(64);
+    time = 1000;
+    expect(observation.snapshot().phases.slice(-2)).toEqual([
+      { phase: 'capture-prior-compute-wait', visits: 1, elapsedMs: 200 },
+      { phase: 'capture-readback', visits: 1, elapsedMs: 7 },
+    ]);
+    expect(core.free).not.toHaveBeenCalled();
+    disposePromptCheckpoint({ core, checkpoint });
+    expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
+  });
+
+  it('releases the buffer and finishes observation when the diagnostic synchronization fails', async () => {
+    const { core, api } = fixture();
+    const observer = { enter: vi.fn(), end: vi.fn() };
+    const failure = new WebAssembly.RuntimeError('synchronization trap');
+    api.llama_synchronize.mockRejectedValue(failure);
+    await expect(capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4], observer })).rejects.toBe(failure);
+    expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
+    expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled();
+    expect(observer.enter).toHaveBeenLastCalledWith({ phase: 'capture-prior-compute-wait' });
+    expect(observer.end).toHaveBeenCalledOnce();
   });
 
   it.each(['short-read', 'refused-trim', 'lost-window', 'wrong-frontier'] as const)('rejects an unverifiable restored state: %s', async failure => {

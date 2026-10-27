@@ -4404,8 +4404,11 @@ describe('measurement contracts with supplied native Wasm', () => {
     host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
     const factory = vi.spyOn(checkpointPerformanceModule, 'createCheckpointPerformance');
     const req = { ...request({ messages: [{ role: 'user', content: 'Explain a local model.' }] }), debug: 'off' as const };
+    const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    using synchronize = vi.spyOn(session.core.api, 'llama_synchronize');
     const ordinary = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(factory).not.toHaveBeenCalled();
+    expect(synchronize).not.toHaveBeenCalled();
     const reports: unknown[] = [];
     const measured = await generate({
       request: { ...req, measurement: { sequence: 'fresh' } },
@@ -4416,9 +4419,10 @@ describe('measurement contracts with supplied native Wasm', () => {
     });
     expectSameGenerationResult({ actual: measured, expected: ordinary });
     expect(factory).toHaveBeenCalledOnce();
+    expect(synchronize).toHaveBeenCalledExactlyOnceWith(session.context);
     const checkpoint = diagnosticSchema.parse(reports[0]).performance?.checkpoint;
     expect(checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 0, retainedRestoredCaptures: 0 });
-    expect(checkpoint?.phases.map(phase => phase.phase)).toEqual(['boundary-tokenize', 'capture-position', 'capture-size', 'capture-allocation', 'capture-readback']);
+    expect(checkpoint?.phases.map(phase => phase.phase)).toEqual(['boundary-tokenize', 'capture-position', 'capture-size', 'capture-allocation', 'capture-prior-compute-wait', 'capture-readback']);
     expect(checkpoint?.phases.every(phase => phase.elapsedMs >= 0 && phase.visits === 1)).toBe(true);
   }, 30000);
 
