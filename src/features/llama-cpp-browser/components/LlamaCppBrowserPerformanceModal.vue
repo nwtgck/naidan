@@ -13,7 +13,7 @@ import type { PerformanceTrial } from '@/features/llama-cpp-browser/performance/
 const props = defineProps<{ isOpen: boolean, defaultModel: string | undefined }>();
 const emit = defineEmits<{ close: [] }>();
 const view = useLlamaCppPerformance();
-const { canInterruptCurrent, interruptionPending, mode, profilingUnavailableReason, profilingSupported, modelDraft, modelInputError, diagnostics, models, selected, query, repeats, maxTokens, timeoutMinutes, notes, profile, running, stopping, exporting,
+const { workload, canInterruptCurrent, interruptionPending, mode, profilingUnavailableReason, profilingSupported, modelDraft, modelInputError, diagnostics, models, selected, query, repeats, maxTokens, timeoutMinutes, notes, profile, running, stopping, exporting,
   loading, error, downloadStarted, pageHidden, snapshot, current, preview, filteredModels, otherWork, canStart, callCount, selectedModels } = view;
 const measurementProfile = computed({
   get: () => {
@@ -36,6 +36,27 @@ const measurementProfile = computed({
       throw new Error(String(exhaustive));
     }
     }
+  },
+});
+const outputLimit = computed({
+  get: () => {
+    switch (workload.value) {
+    case 'vision': return Math.min(32, maxTokens.value);
+    case 'text': return maxTokens.value;
+    default: {
+      const exhaustive: never = workload.value;
+      throw new Error(String(exhaustive));
+    }
+    }
+  },
+  set: (value: number) => {
+    maxTokens.value = value;
+  },
+});
+const operationDiagnostic = computed({
+  get: () => workload.value === 'text' && diagnostics.value,
+  set: (value: boolean) => {
+    diagnostics.value = value;
   },
 });
 const dialog = ref<HTMLDialogElement>(), heading = ref<HTMLElement>();
@@ -179,6 +200,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
             </details>
           </fieldset>
           <section tw-class="min-w-0 space-y-3">
+            <fieldset :disabled="running || exporting" data-testid="llama-performance-workload" tw-class="space-y-2 text-sm">
+              <legend>{{ lazyStrings.llamaCppPerformance__workload() }}</legend>
+              <label tw-class="mr-4 inline-flex items-center gap-2"><input v-model="workload" value="text" type="radio" name="llama-performance-workload" data-testid="llama-performance-workload-text" />{{ lazyStrings.llamaCppPerformance__text() }}</label>
+              <label tw-class="inline-flex items-center gap-2"><input v-model="workload" value="vision" type="radio" name="llama-performance-workload" data-testid="llama-performance-workload-vision" />{{ lazyStrings.llamaCppPerformance__image_input() }}</label>
+              <p v-if="workload === 'vision'" data-testid="llama-performance-vision-help" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppPerformance__fixed_image_measurement_help() }}</p>
+            </fieldset>
             <fieldset :disabled="running || exporting || loading" data-testid="llama-performance-modes" tw-class="space-y-2 rounded-xl border border-gray-200/70 bg-white/70 p-3.5 text-sm leading-5 dark:border-gray-800/80 dark:bg-gray-900/40">
               <legend tw-class="px-1 font-semibold">{{ lazyStrings.llamaCppPerformance__measurement_mode() }}</legend>
               <label tw-class="flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/40"><input v-model="mode" value="gpu-profile" type="radio" name="llama-performance-mode" :disabled="!profilingSupported" data-testid="llama-performance-mode-gpu-profile" tw-class="mt-1 h-3.5 w-3.5 shrink-0 accent-blue-500" /><span>{{ lazyStrings.llamaCppPerformance__gpu_profiling() }}<small tw-class="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppPerformance__gpu_profiling_help() }}</small></span></label>
@@ -192,7 +219,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
               <summary tw-class="flex min-h-7 cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-gray-700 outline-none focus-visible:text-blue-600 dark:text-gray-300 [&::-webkit-details-marker]:hidden">{{ lazyStrings.llamaCppPerformance__advanced_conditions() }}<ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 transition-transform duration-200 group-open/performance-conditions:rotate-90 motion-reduce:transition-none" /></summary>
               <fieldset :disabled="running || exporting" tw-class="mt-3 grid gap-3 text-sm disabled:opacity-60 sm:grid-cols-2">
                 <label tw-class="grid gap-1.5">{{ lazyStrings.llamaCppPerformance__repeats() }}<input v-model.number="repeats" type="number" min="1" max="5" step="1" tw-class="min-h-10 w-full rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-sm tabular-nums outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700/70 dark:bg-gray-800/35" /></label>
-                <label tw-class="grid gap-1.5">{{ lazyStrings.llamaCppPerformance__maximum_output_tokens() }}<input v-model.number="maxTokens" type="number" min="1" max="512" step="1" tw-class="min-h-10 w-full rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-sm tabular-nums outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700/70 dark:bg-gray-800/35" /></label>
+                <label tw-class="grid gap-1.5">{{ lazyStrings.llamaCppPerformance__maximum_output_tokens() }}<input v-model.number="outputLimit" type="number" min="1" :max="workload === 'vision' ? 32 : 512" step="1" tw-class="min-h-10 w-full rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-sm tabular-nums outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700/70 dark:bg-gray-800/35" /></label>
                 <label tw-class="grid gap-1.5">{{ lazyStrings.llamaCppPerformance__per_request_timeout_minutes() }}<input v-model.number="timeoutMinutes" type="number" min="1" max="60" step="1" tw-class="min-h-10 w-full rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-sm tabular-nums outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700/70 dark:bg-gray-800/35" /></label>
                 <label tw-class="grid min-w-0 gap-1.5">{{ lazyStrings.llamaCppPerformance__runtime_profile() }}<span tw-class="relative block"><select v-model="measurementProfile" :disabled="mode !== 'standard'" tw-class="min-h-10 w-full appearance-none rounded-lg border border-gray-200 bg-gray-50/60 py-2 pl-3 pr-8 text-sm text-gray-700 outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50 dark:border-gray-700/70 dark:bg-gray-800/35 dark:text-gray-300"><option v-for="item in selectableProfiles" :key="item" :value="item">{{ item }}</option></select><ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" /></span></label>
                 <label tw-class="grid gap-1.5 sm:col-span-2">{{ lazyStrings.llamaCppPerformance__environment_notes() }}<textarea v-model="notes" rows="3" maxlength="10000" tw-class="w-full resize-y rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2 text-sm leading-6 outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700/70 dark:bg-gray-800/35" /></label>
@@ -200,7 +227,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
               </fieldset>
             </details>
             <fieldset :disabled="running || exporting" tw-class="space-y-2 rounded-xl border border-gray-200/70 bg-white/60 p-3.5 text-sm leading-5 dark:border-gray-800/80 dark:bg-gray-900/20">
-              <label tw-class="flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/40"><SettingsChoiceControl presentation="checkbox"><input v-model="diagnostics" type="checkbox" data-testid="llama-performance-diagnostic" /></SettingsChoiceControl>{{ lazyStrings.llamaCppPerformance__operation_diagnostic() }}</label>
+              <label tw-class="flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/40"><SettingsChoiceControl presentation="checkbox"><input v-model="operationDiagnostic" :disabled="workload === 'vision'" type="checkbox" data-testid="llama-performance-diagnostic" /></SettingsChoiceControl>{{ lazyStrings.llamaCppPerformance__operation_diagnostic() }}</label>
               <p tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppPerformance__operation_diagnostic_help() }}</p>
             </fieldset>
             <p tw-class="flex items-center gap-2 rounded-lg bg-blue-50/70 px-3 py-2.5 text-xs font-medium text-gray-700 dark:bg-blue-500/8 dark:text-gray-300"><GaugeIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.llamaCppPerformance__planned_calls({ models: selectedModels.length, calls: callCount }) }}</p>
@@ -224,7 +251,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
           </p>
           <template v-if="current && currentStep">
             <p tw-class="break-words font-medium">{{ snapshot.plan.models[current.modelIndex]?.modelId }}</p>
-            <p tw-class="text-sm">{{ lazyStrings.llamaCppPerformance__initial_short_long_or_continuation({ value: currentStep.scenario }) }} · {{ lazyStrings.llamaCppPerformance__preparation_or_measurement({ value: currentStep.role }) }} {{ currentStep.repetition }} · {{ current.lane === 'gpu-profile' ? lazyStrings.llamaCppPerformance__gpu_profiling() : lazyStrings.llamaCppPerformance__standard_measurement() }}</p>
+            <p tw-class="text-sm">{{ currentStep.vision ? lazyStrings.llamaCppPerformance__image_residency({ value: currentStep.vision.residency }) : lazyStrings.llamaCppPerformance__initial_short_long_or_continuation({ value: currentStep.scenario }) }} · {{ lazyStrings.llamaCppPerformance__preparation_or_measurement({ value: currentStep.role }) }} {{ currentStep.repetition }} · {{ current.lane === 'gpu-profile' ? lazyStrings.llamaCppPerformance__gpu_profiling() : lazyStrings.llamaCppPerformance__standard_measurement() }}</p>
             <LlamaCppBrowserModelLoadProgress v-if="current.lastProgress?.phase === 'loading' || current.lastProgress?.phase === 'initializing'" :progress="current.lastProgress" />
             <p v-else-if="phaseLabel" role="status" data-testid="llama-performance-phase" tw-class="text-sm text-gray-600 dark:text-gray-400">{{ phaseLabel }}</p>
             <details open><summary tw-class="text-sm leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppPerformance__output_preview() }}</summary><pre tw-class="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-3 text-xs dark:bg-gray-900">{{ preview }}</pre></details>
@@ -236,7 +263,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
                 <thead><tr tw-class="border-b border-gray-200 dark:border-gray-800"><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__saved_models() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__standard_measurement() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__first_received_ms() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__generation_tokens_per_second() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__elapsed_ms() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__gpu_pass_time_ms() }}</th></tr></thead>
                 <tbody><tr v-for="trial in snapshot.trials" :key="trial.id" tw-class="border-b border-gray-100 align-top dark:border-gray-900">
                   <td tw-class="max-w-56 break-words p-2">{{ snapshot.plan.models[trial.modelIndex]?.modelId }}</td>
-                  <td tw-class="p-2"><template v-if="stepFor({ trial })">{{ lazyStrings.llamaCppPerformance__initial_short_long_or_continuation({ value: stepFor({ trial })!.scenario }) }} ({{ stepFor({ trial })!.position }}) · {{ lazyStrings.llamaCppPerformance__preparation_or_measurement({ value: stepFor({ trial })!.role }) }}</template><br />{{ trial.lane === 'gpu-profile' ? lazyStrings.llamaCppPerformance__gpu_profiling() : lazyStrings.llamaCppPerformance__standard_measurement() }}<br />{{ lazyStrings.llamaCppPerformance__trial_status({ value: trial.status }) }}<span v-if="trial.error || trial.exclusion.length || trial.warnings.length" tw-class="block max-w-64 break-words text-amber-700 dark:text-amber-400">{{ trial.error }} {{ trial.exclusion.join(', ') }} {{ trial.warnings.join(', ') }}</span></td>
+                  <td tw-class="p-2"><template v-if="stepFor({ trial })">{{ trial.vision ? lazyStrings.llamaCppPerformance__image_residency({ value: trial.vision.residency }) : lazyStrings.llamaCppPerformance__initial_short_long_or_continuation({ value: stepFor({ trial })!.scenario }) }} ({{ stepFor({ trial })!.position }}) · {{ lazyStrings.llamaCppPerformance__preparation_or_measurement({ value: stepFor({ trial })!.role }) }}</template><br />{{ trial.lane === 'gpu-profile' ? lazyStrings.llamaCppPerformance__gpu_profiling() : lazyStrings.llamaCppPerformance__standard_measurement() }}<br />{{ lazyStrings.llamaCppPerformance__trial_status({ value: trial.status }) }}<span v-if="trial.error || trial.exclusion.length || trial.warnings.length" tw-class="block max-w-64 break-words text-amber-700 dark:text-amber-400">{{ trial.skipReason === 'missing-projector' || trial.skipReason === 'native-no-vision' ? lazyStrings.llamaCppPerformance__image_skip_reason({ value: trial.skipReason }) : trial.error }} {{ trial.exclusion.join(', ') }} {{ trial.warnings.join(', ') }}</span></td>
                   <td tw-class="p-2">{{ numberText({ value: trial.firstReceivedMs }) }}</td><td tw-class="p-2">{{ trial.exclusion.includes('instrumented') ? '—' : numberText({ value: trialRates({ trial }).generationTokensPerSecond }) }}</td><td tw-class="p-2">{{ numberText({ value: trial.elapsedMs }) }}</td><td tw-class="p-2">{{ numberText({ value: trial.summary?.performance?.gpuProfile?.status === 'unavailable' ? undefined : trial.summary?.performance?.gpuProfile?.totalGpuMs }) }}</td>
                 </tr></tbody>
               </table>

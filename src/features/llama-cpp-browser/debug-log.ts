@@ -1,5 +1,6 @@
 import { gpuProfileSchema } from './performance/gpu-profile-schema';
 import { nativeGraphCountersSchema } from './performance/native-graph-counters-schema';
+import { visionDiagnosticSchema } from './performance/vision-diagnostic-schema';
 import { earlyGenerationTimingSchema } from './performance/early-generation-timing-schema';
 import { loadedModelDescriptorSchema } from './loaded-model-descriptor';
 import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
@@ -98,6 +99,7 @@ export const diagnosticSchema = z.object({
     peakPending: z.number().int().nonnegative().max(1),
   }).strict().optional(),
   performance: z.object({
+    vision: visionDiagnosticSchema.optional(),
     // Existing load counters, without enabling per-read clocks in standard measurement.
     modelReads: fileReadSchema.optional(),
     backendCensus: backendCensusSchema.optional(),

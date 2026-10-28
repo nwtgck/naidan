@@ -1,3 +1,4 @@
+import type { VisionDiagnostic } from '@/features/llama-cpp-browser/performance/vision-diagnostic-schema';
 import { beginGpuMeasurement } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { createProgressQueue } from './progress-queue';
 import { audioGenerationResultSchema, audioPreviewEventSchema } from '@/features/audio-generation/types';
@@ -98,6 +99,37 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     }
   }
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
+    async prepareVision(request, onProgress) {
+      const { generationId, ...accepted } = workerPrepareCallSchema.parse(request);
+      if (active) {
+        throw new LlamaCppBrowserError({ code: 'busy' });
+      }
+      const controller = new AbortController();
+      active = { generationId, controller };
+      const events = eventQueue();
+      try {
+        return await guarded({
+          operation: async () => {
+            const { prepareVisionMeasurement } = await import('./vision-admission');
+            return prepareVisionMeasurement({
+              request: accepted,
+              signal: controller.signal,
+              now: () => performance.now(),
+              onProgress: ({ progress }) => {
+                events.send({ operation: () => onProgress(progress) });
+              },
+            });
+          },
+        });
+      } finally {
+        try {
+          await events.finish();
+        } finally {
+          active = undefined;
+        }
+      }
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with a top-level callback.
     async prepareModel(request, onProgress) {
       const { generationId, ...accepted } = workerPrepareCallSchema.parse(request);
@@ -280,6 +312,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       let modelReads: Diagnostic['fileReads'];
       const measuredAt = accepted.measurement ? performance.now() : undefined;
       const preparationEvents: NonNullable<NonNullable<Diagnostic['performance']>['preparationEvents']> = [];
+      let vision: ReturnType<typeof import('./vision-measurement')['createVisionMeasurement']> | undefined;
       if (active) {
         throw new LlamaCppBrowserError({ code: "busy" });
       }
@@ -326,6 +359,20 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         },
       });
       try {
+        const imageObservation = accepted.measurement?.observation;
+        switch (imageObservation) {
+        case 'vision': {
+          const { createVisionMeasurement } = await import('./vision-measurement');
+          controller.signal.throwIfAborted();
+          vision = createVisionMeasurement({ directory: accepted.resolvedModel.directory, now: () => performance.now() });
+          break;
+        }
+        case 'placement': case undefined: break;
+        default: {
+          const exhaustive: never = imageObservation;
+          throw new Error(String(exhaustive));
+        }
+        }
         const result = await guarded({
           operation: () => generate({
             request: accepted,
@@ -371,10 +418,18 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       } finally {
         unsubscribe();
         stopGpuMeasurement?.();
+        let visionSummary: VisionDiagnostic | undefined;
+        try {
+          visionSummary = vision?.finish({ outcome: summary?.performance?.outcome ?? (controller.signal.aborted ? 'aborted' : 'failed') });
+        } catch {
+          // This module is already loaded by the image collector. Keep the native outcome.
+          const { unavailableVisionDiagnostic } = await import('@/features/llama-cpp-browser/performance/vision-diagnostic-schema');
+          visionSummary = unavailableVisionDiagnostic({ outcome: summary?.performance?.outcome ?? (controller.signal.aborted ? 'aborted' : 'failed') });
+        }
         if (summary && onSummary && accepted.measurement) {
           const value: Diagnostic = {
             ...summary,
-            performance: summary.performance ? { ...summary.performance, preparationEvents, modelReads } : undefined,
+            performance: summary.performance ? { ...summary.performance, preparationEvents, modelReads, ...(visionSummary ? { vision: visionSummary } : {}) } : undefined,
           };
           events.send({ operation: () => onSummary({ diagnostic: diagnosticSchema.parse(value) }) });
         }

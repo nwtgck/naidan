@@ -14,10 +14,11 @@ import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnos
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import type { AcceptedGenerateInput, AcceptedAudioInput } from './types';
+import { visionAdmission } from '@/features/llama-cpp-browser/performance/vision.test-support';
 import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { release: vi.fn(), prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModelEntries: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+const transport = vi.hoisted(() => ({ remote: { release: vi.fn(), prepareVision: vi.fn(), prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModelEntries: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({
   ...await importOriginal<typeof import('@/utils/worker-transport')>(),
   wrapWorkerRemote: () => transport.remote,
@@ -881,5 +882,51 @@ describe('temporary files on the existing worker transport', () => {
     // An accepted snapshot remains usable after the registry projection is removed.
     await replacement.prepareModel({ request: { modelId: model!.modelId, resolvedModel, options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: undefined });
     expect(transport.remote.prepareModel.mock.calls).toHaveLength(count + 1);
+  });
+});
+
+describe('image diagnostic admission before Blob transport', () => {
+  it.each(['missing-projector', 'native-no-vision'] as const)('skips %s without sending the image or calling generate', async decision => {
+    transport.remote.prepareVision.mockResolvedValueOnce(visionAdmission({ decision }));
+    const admission = vi.fn();
+    const client = createLlamaCppWorkerClient();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        client.dispose();
+      },
+    };
+    await expect(client.generate({ request: { ...generationInput(), messages: [{ role: 'user', content: [{ type: 'image', blob: new Blob(['private-image'], { type: 'image/png' }) }] }], measurement: { sequence: 'fresh', observation: 'vision' } }, onEvent: () => {}, onProgress: () => {}, onVisionAdmission: admission, signal: undefined })).rejects.toThrow('unsupported-input');
+    expect(admission).toHaveBeenCalledWith({ admission: expect.objectContaining({ status: 'skipped', reason: decision }) });
+    expect(transport.remote.prepareVision.mock.calls[0]![0]).not.toHaveProperty('messages');
+    expect(transport.remote.generate).not.toHaveBeenCalled();
+  });
+
+  it('sends the image only after native admission has resolved, under the same exclusive invoke', async () => {
+    const pending = Promise.withResolvers<ReturnType<typeof visionAdmission>>();
+    transport.remote.prepareVision.mockReturnValueOnce(pending.promise);
+    transport.remote.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    const client = createLlamaCppWorkerClient();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        client.dispose();
+      },
+    };
+    const result = client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh', observation: 'vision' } }, onEvent: () => {}, onProgress: () => {}, signal: undefined });
+    await vi.waitFor(() => expect(transport.remote.prepareVision).toHaveBeenCalledOnce());
+    expect(transport.remote.generate).not.toHaveBeenCalled();
+    await expect(client.releaseRuntime({ signal: undefined })).rejects.toThrow('busy');
+    pending.resolve(visionAdmission({ decision: 'ready' }));
+    await result;
+    expect(transport.remote.generate).toHaveBeenCalledOnce();
+  });
+
+  it('preserves failed load evidence and retires the Worker without a generation retry', async () => {
+    transport.remote.prepareVision.mockResolvedValueOnce(visionAdmission({ decision: 'failed' }));
+    const admission = vi.fn();
+    const client = createLlamaCppWorkerClient();
+    await expect(client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh', observation: 'vision' } }, onEvent: () => {}, onProgress: () => {}, onVisionAdmission: admission, signal: undefined })).rejects.toThrow('runtime-error');
+    expect(admission).toHaveBeenCalledWith({ admission: expect.objectContaining({ status: 'failed', error: 'runtime-error' }) });
+    expect(transport.remote.generate).not.toHaveBeenCalled();
+    expect(TestWorker.instances[0]!.terminate).toHaveBeenCalledOnce();
   });
 });

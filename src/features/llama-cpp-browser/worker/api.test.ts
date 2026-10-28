@@ -19,6 +19,18 @@ import { createWorkerApi } from "./api";
 import type { WorkerGenerateCall } from "./types";
 import type { generate } from "./generation";
 
+const visionCreated = vi.hoisted(() => vi.fn());
+vi.mock('./vision-measurement', async importOriginal => {
+  const actual = await importOriginal<typeof import('./vision-measurement')>();
+  return {
+    ...actual,
+    createVisionMeasurement: ({ directory, now }: Parameters<typeof actual.createVisionMeasurement>[0]) => {
+      visionCreated();
+      return actual.createVisionMeasurement({ directory, now });
+    },
+  };
+});
+
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
 
 const completed = () => ({ ...result, toolCalls: [] });
@@ -992,4 +1004,40 @@ it('posts cooperative Stop observations before rejection without waiting for dia
   expect(post.mock.calls.map(([diagnostic]) => diagnostic.event)).toEqual(['context-start', 'native-info']);
   expect(receive).not.toHaveBeenCalled();
   await expect(api.release()).resolves.toBeUndefined();
+});
+
+describe('explicit image workload observation', () => {
+  it('does not create an image collector for ordinary chat or a text measurement', async () => {
+    calls.generate.mockImplementation(async ({ onSummary }) => {
+      onSummary?.({ diagnostic: performanceReport() });
+      return completed();
+    });
+    const api = createWorkerApi();
+    await api.generate(request({ generationId: 5001 }), async () => {}, () => {});
+    await api.generate({ ...request({ generationId: 5002 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, () => {});
+    expect(visionCreated).not.toHaveBeenCalled();
+  });
+
+  it('retains actual native media observations with the terminal summary, including failures', async () => {
+    calls.generate.mockImplementationOnce(async ({ onSummary }) => {
+      await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate' } });
+      logNativeDiagnostic({ message: 'encoding image slice...' });
+      logNativeDiagnostic({ message: 'image slice encoded in 17 ms' });
+      logNativeDiagnostic({ message: 'ggml_backend_cpu_buffer_type_alloc_buffer: failed to allocate 4096 bytes' });
+      onSummary?.({ diagnostic: performanceReport({ outcome: 'failed' }) });
+      throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+    });
+    const summaries: Parameters<NonNullable<Parameters<ReturnType<typeof createWorkerApi>['generate']>[4]>>[0][] = [];
+    const api = createWorkerApi();
+    await expect(api.generate({ ...request({ generationId: 5003 }), measurement: { sequence: 'fresh', observation: 'vision' } }, async () => {}, () => {}, undefined, value => {
+      summaries.push(value);
+    })).rejects.toThrow('unsupported-input');
+    expect(visionCreated).toHaveBeenCalledOnce();
+    expect(summaries[0]?.diagnostic.performance?.vision).toMatchObject({ outcome: 'failed', pendingOperations: 1, storagePolicy: 'runtime-default', pureLmPrefill: 'unavailable', physicalMemoryPeak: 'unavailable' });
+    expect(summaries[0]?.diagnostic.performance?.vision?.rows[2]).toMatchObject({ nativeElapsedMs: 17, stage: 'media-encode', event: 'operation-complete' });
+    // The subscription ends with this owner; later unrelated native events cannot mutate it.
+    const count = summaries[0]!.diagnostic.performance!.vision!.rows.length;
+    logNativeDiagnostic({ message: 'encoding image slice...' });
+    expect(summaries[0]!.diagnostic.performance!.vision!.rows).toHaveLength(count);
+  });
 });

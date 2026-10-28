@@ -104,6 +104,22 @@ describe('in-app llama performance screen', () => {
     expect(document.activeElement?.id).toBe('llama-performance-heading');
   });
 
+  it('keeps text as the default and explicitly selects a fixed image workload with separate initial/resident runs', async () => {
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
+    await flushPromises();
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-workload-text"]').element.checked).toBe(true);
+    await wrapper.get('[data-testid="llama-performance-workload-vision"]').setValue(true);
+    expect(wrapper.get('[data-testid="llama-performance-vision-help"]').text()).toContain('512');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-performance-diagnostic"]').element.disabled).toBe(true);
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await saveManually();
+    const saved = mocks.archive.mock.calls[0]![0].snapshot;
+    expect(saved.plan.protocol).toBe('targeted-vision-en-v1');
+    expect(saved.plan.steps).toHaveLength(2);
+    expect(saved.plan.steps.map((step: { vision: { residency: string } }) => step.vision.residency)).toEqual(['cold', 'warm']);
+    expect(saved.q8KernelDiagnostic).toBeUndefined();
+  });
+
   it('runs multiple selected models with one click, exports only on a separate click and retains results on close', async () => {
     wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();

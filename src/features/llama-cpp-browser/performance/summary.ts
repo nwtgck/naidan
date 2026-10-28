@@ -9,7 +9,7 @@ export function trialRates({ trial }: { trial: PerformanceTrial }) {
   return {
     generationTokensPerSecond: tokens !== undefined && tokens > 1 && start !== undefined && end !== undefined && end > start
       ? (tokens - 1) * 1000 / (end - start) : undefined,
-    prefillTokensPerSecond: prefillMs !== undefined && prefillMs > 0 && metrics?.prefillDecodedTokens
+    prefillTokensPerSecond: metrics?.input !== 'multimodal' && prefillMs !== undefined && prefillMs > 0 && metrics?.prefillDecodedTokens
       ? metrics.prefillDecodedTokens * 1000 / prefillMs : undefined,
   };
 }
@@ -28,7 +28,7 @@ function median({ values }: { values: number[] }): number | undefined {
 export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapshot }) {
   const groups = new Map<string, { modelIndex: number, runtimeSegment: number, runtimeRestarted: boolean, scenario: string, position: string, profile: string, contextTokens: number | undefined,
     batchTokens: number | undefined, finishReason: string | undefined, parentFinishReason: string | undefined, promptTokens: number | undefined,
-    reusedTokens: number | undefined, generatedTokens: number | undefined, trials: PerformanceTrial[] }>();
+    reusedTokens: number | undefined, generatedTokens: number | undefined, vision: { fixtureSha256: string | undefined, residency: 'cold' | 'warm', files: NonNullable<NonNullable<NonNullable<PerformanceTrial['summary']>['performance']>['vision']>['files'] | undefined } | undefined, trials: PerformanceTrial[] }>();
   for (const trial of snapshot.trials) {
     const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
     if (!step || step.role !== 'measurement' || isGpuProfileTrial({ trial, snapshot }) || trial.status !== 'succeeded' || trial.exclusion.length) {
@@ -39,7 +39,7 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
       modelIndex: trial.modelIndex,
       runtimeSegment: trial.runtimeSegment ?? 0,
       runtimeRestarted: trial.warnings.includes('runtime-restarted'),
-      scenario: step.scenario,
+      scenario: step.vision ? `image-${step.vision.residency}` : step.scenario,
       position: step.position,
       profile: trial.options.profile,
       contextTokens: metrics?.contextTokens,
@@ -49,6 +49,7 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
       promptTokens: metrics?.promptTokens,
       reusedTokens: metrics?.reusedTokens,
       generatedTokens: metrics?.nonEogTokens,
+      vision: step.vision ? { fixtureSha256: snapshot.plan.visionFixture?.sha256, residency: step.vision.residency, files: metrics?.vision?.files } : undefined,
     };
     const key = JSON.stringify(condition);
     const group = groups.get(key) ?? { ...condition, trials: [] };

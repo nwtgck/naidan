@@ -1,3 +1,5 @@
+import { visionAdmissionSchema } from './vision-admission-schema';
+import { visionFixtureSchema, visionPrompt, visionProtocol, visionTrialSchema } from './vision-plan';
 import { memoryDiagnosticsSchema } from './memory-schema';
 import { q8DiagnosticObservationSchema } from './q8-diagnostic-observation';
 import { z } from 'zod';
@@ -49,10 +51,12 @@ export const stepSchema = z.object({
   sequence: z.enum(['fresh', 'continue']),
   dependsOn: idSchema.optional(),
   prompt: z.string(),
+  vision: visionTrialSchema.optional(),
 }).strict();
 export const planSchema = z.object({
   version: z.literal(1),
-  protocol: z.enum(['targeted-text-en-v3', performanceProtocol]),
+  protocol: z.enum(['targeted-text-en-v3', performanceProtocol, visionProtocol]),
+  visionFixture: visionFixtureSchema.optional(),
   id: idSchema,
   createdAt: z.string(),
   models: z.array(modelSchema).min(1).max(16),
@@ -83,9 +87,31 @@ export const planSchema = z.object({
     throw new Error(String(exhaustive));
   }
   }
+  if ((plan.protocol === visionProtocol) !== (plan.visionFixture !== undefined)) {
+    context.addIssue({ code: 'custom', message: 'Image protocol requires its fixed fixture metadata' });
+  }
   const allowed = measurementLanes({ mode: plan.settings.mode });
+  if (plan.protocol === visionProtocol) {
+    const expected = plan.models.flatMap((_, modelIndex) => allowed.flatMap(lane => Array.from({ length: plan.settings.repeats + 1 }, (_, repetition) => ({ modelIndex, lane, repetition }))));
+    if (plan.settings.diagnostics !== 'none' || expected.length !== plan.steps.length || expected.some((value, index) => {
+      const actual = plan.steps[index];
+      return actual?.modelIndex !== value.modelIndex || actual.lane !== value.lane || actual.repetition !== value.repetition;
+    })) {
+      context.addIssue({ code: 'custom', message: 'Image workload order must contain an initial request followed by its resident requests' });
+    }
+  }
   const seen = new Map<string, typeof plan.steps[number]>();
   for (const step of plan.steps) {
+    if (plan.protocol === visionProtocol) {
+      if (!step.vision || step.dependsOn !== undefined || step.sequence !== 'fresh' || step.prompt !== visionPrompt
+        || step.maxTokens !== Math.min(32, plan.settings.maxTokens) || step.role !== 'measurement'
+        || step.scenario !== (step.repetition === 0 ? 'initial' : 'short') || step.position !== (step.repetition === 0 ? 'initial' : 'workload')
+        || (step.vision.residency === 'cold') !== (step.repetition === 0)) {
+        context.addIssue({ code: 'custom', message: 'Invalid image workload step' });
+      }
+    } else if (step.vision) {
+      context.addIssue({ code: 'custom', message: 'Text protocol cannot contain an image workload' });
+    }
     if (!allowed.includes(step.lane ?? 'standard')) {
       context.addIssue({ code: 'custom', message: 'Measurement lane does not match the selected mode' });
     }
@@ -118,11 +144,13 @@ export const trialSchema = z.object({
   interruption: interruptionSchema.optional(),
   // Segment is local to model/lane. Omitted in older archives (segment zero).
   runtimeSegment: z.number().int().nonnegative().optional(),
-  skipReason: z.enum(['dependency-interrupted', 'dependency-runtime-reset']).optional(),
+  skipReason: z.enum(['dependency-interrupted', 'dependency-runtime-reset', 'missing-projector', 'native-no-vision']).optional(),
   startedAt: z.string(),
   startedMs: milliseconds.optional(),
   elapsedMs: milliseconds.optional(),
   input: z.array(textMessageSchema),
+  visionAdmission: visionAdmissionSchema.optional(),
+  vision: visionTrialSchema.optional(),
   options: runtimeOptionsSchema,
   output: generationResultSchema.optional(),
   partialText: z.string(),
@@ -138,8 +166,8 @@ export const trialSchema = z.object({
   summary: diagnosticSchema.optional(),
   memoryDiagnostics: memoryDiagnosticsSchema.optional(),
   error: z.string().optional(),
-  warnings: z.array(z.enum(['incomplete-parent', 'placement-layout-only', 'placement-missing', 'placement-incomplete', 'gpu-profile-missing', 'gpu-profile-incomplete', 'runtime-restarted'])),
-  exclusion: z.array(z.enum(['page-hidden', 'missing-summary', 'incomplete-summary', 'unexpected-reuse', 'incomplete-output', 'failed', 'instrumented', 'interrupted', 'dependency-unavailable'])),
+  warnings: z.array(z.enum(['incomplete-parent', 'placement-layout-only', 'placement-missing', 'placement-incomplete', 'gpu-profile-missing', 'gpu-profile-incomplete', 'runtime-restarted', 'vision-residency-unconfirmed'])),
+  exclusion: z.array(z.enum(['page-hidden', 'missing-summary', 'incomplete-summary', 'unexpected-reuse', 'incomplete-output', 'failed', 'instrumented', 'interrupted', 'dependency-unavailable', 'residency-unconfirmed'])),
 }).strict();
 const intervalSchema = z.object({
   runtimeSegment: z.number().int().nonnegative().optional(),
