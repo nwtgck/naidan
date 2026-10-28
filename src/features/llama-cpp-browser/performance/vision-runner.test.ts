@@ -9,7 +9,7 @@ import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from '@/feature
 import { snapshotSchema } from './types';
 import { performanceArchive } from './archive';
 import { visionAdmission } from './vision.test-support';
-import { trialRates } from './summary';
+import { trialRates, summarizePerformance } from './summary';
 
 function setup({ mode, models }: { mode: 'standard' | 'gpu-profile', models: number }) {
   const plan = createVisionPerformancePlan(performancePlan({ repeats: 2, mode, models }));
@@ -55,6 +55,33 @@ function setup({ mode, models }: { mode: 'standard' | 'gpu-profile', models: num
 }
 
 describe('image workload through the ordinary generation scope', () => {
+  it('preserves requested storage evidence in the ZIP and separates equal image work by mode', async () => {
+    const test = setup({ mode: 'standard', models: 1 });
+    test.generate.mockImplementation(async ({ onSummary, onVisionAdmission }) => {
+      const selectedMode = test.generate.mock.calls.length === 3 ? 'legacy-expand' : 'retain-checked';
+      const storage = { preference: selectedMode, selectedMode, contextRequestedMode: selectedMode, capability: 'available', status: 'initialized', apiVersion: 1, evidence: 'requested-policy-only', reason: 'explicit' } as const;
+      const admission = visionAdmission({ decision: 'ready' });
+      admission.diagnostic.storage = storage;
+      onVisionAdmission?.({ admission });
+      const report = performanceReport();
+      report.performance!.input = 'multimodal';
+      report.performance!.sessionPreparation = { projector: test.generate.mock.calls.length === 1 ? 'loaded' : 'reused', releasedTextContext: false };
+      report.performance!.visionStorage = storage;
+      onSummary({ diagnostic: report });
+      return { content: 'answer', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+    });
+    await test.start();
+    const snapshot = test.runner.snapshot()!;
+    const warm = summarizePerformance({ snapshot }).filter(group => group.scenario === 'image-warm');
+    expect(warm.map(group => group.vision?.storage?.selectedMode)).toEqual(['retain-checked', 'legacy-expand']);
+    expect(warm.map(group => group.count)).toEqual([1, 1]);
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot })).arrayBuffer());
+    const records = (await zip.file('trials.jsonl')!.async('string')).trim().split('\n').map(line => JSON.parse(line));
+    expect(records[1].summary.performance.visionStorage).toMatchObject({ selectedMode: 'retain-checked', contextRequestedMode: 'retain-checked', evidence: 'requested-policy-only' });
+    expect(records[2].summary.performance.visionStorage.selectedMode).toBe('legacy-expand');
+    expect(await zip.file('README.md')!.async('string')).toContain('not proof of GPU BF16 residency');
+  });
+
   it.each(['standard', 'gpu-profile'] as const)('uses identical committed Blob bytes, fresh sequences and no automatic Q8 workload: %s', async mode => {
     const test = setup({ mode, models: 1 });
     await test.start();

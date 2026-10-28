@@ -80,12 +80,12 @@ beforeEach(() => {
   host.load.mockImplementation(async ({ debug }) => {
     const release = vi.fn(async () => {});
     releases.push(release);
-    return { pointer: BigInt(30 + releases.length), debug, release };
+    return { pointer: BigInt(30 + releases.length), debug, release, purpose: 'chat', visionStorage: { preference: 'default', selectedMode: 'legacy-expand', capability: 'absent', status: 'initialized', evidence: 'requested-policy-only', reason: 'default-legacy-api-absent' } };
   });
 });
 
 beforeEach(() => {
-  host.loadAudio.mockImplementation(host.load);
+  host.loadAudio.mockImplementation(async args => ({ ...await host.load(args), purpose: 'audio', visionStorage: undefined }));
 });
 
 afterEach(async () => {
@@ -1310,5 +1310,56 @@ describe('temporary resident model cache', () => {
   it('does not substitute the resident model when a temporary source is absent', async () => {
     await expect(prepareSession({ request: { ...request({ debug: 'off' }), modelId: 'temp/missing' }, onProgress: () => {}, signal: undefined })).rejects.toThrow('missing-model');
     expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
+  });
+});
+
+describe('immutable vision storage identity', () => {
+  function modernProjectors(): void {
+    host.load.mockImplementation(async ({ debug, visionBf16Storage }) => {
+      const release = vi.fn(async () => {});
+      releases.push(release);
+      const selectedMode = visionBf16Storage ?? 'retain-checked';
+      return { pointer: BigInt(100 + releases.length), debug, release, purpose: 'chat', visionStorage: { preference: visionBf16Storage ?? 'default', selectedMode, contextRequestedMode: selectedMode, capability: 'available', status: 'initialized', apiVersion: 1, evidence: 'requested-policy-only', reason: visionBf16Storage === undefined ? 'default-retain' : 'explicit' } };
+    });
+  }
+
+  it('reuses equal effective modes and replaces only the projector on both storage transitions', async () => {
+    modernProjectors();
+    const first = request({ debug: 'off' });
+    const a = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    const same = request({ debug: 'off' });
+    same.options.visionBf16Storage = 'retain-checked';
+    const b = await prepareSession({ request: same, signal: undefined, onProgress: () => {} });
+    expect(b.projector).toBe(a.projector);
+    expect(host.load).toHaveBeenCalledOnce();
+    const legacy = request({ debug: 'off' });
+    legacy.options.visionBf16Storage = 'legacy-expand';
+    const c = await prepareSession({ request: legacy, signal: undefined, onProgress: () => {} });
+    const d = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    expect(c.projector).not.toBe(a.projector);
+    expect(d.projector).not.toBe(c.projector);
+    expect(host.load).toHaveBeenCalledTimes(3);
+    expect(releases[0]).toHaveBeenCalledOnce();
+    expect(releases[1]).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_free).not.toHaveBeenCalled();
+  });
+
+  it('does not reload or probe the retained projector when only text is requested after a mode change', async () => {
+    modernProjectors();
+    const image = request({ debug: 'off' });
+    image.messages[0]!.content = [{ type: 'image', blob: new Blob(['fixture']) }];
+    const a = await prepareGenerationSession({ request: image, signal: undefined, onProgress: () => {} });
+    const text = request({ debug: 'off' });
+    text.options.visionBf16Storage = 'legacy-expand';
+    const b = await prepareGenerationSession({ request: text, signal: undefined, onProgress: () => {} });
+    expect(b.projector).toBe(0n);
+    expect(b.projectorStorage).toBeUndefined();
+    expect(b.context).toBe(a.context);
+    expect(host.load).toHaveBeenCalledOnce();
+    expect(releases[0]).not.toHaveBeenCalled();
+    expect(a.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_init_from_model).toHaveBeenCalledOnce();
   });
 });

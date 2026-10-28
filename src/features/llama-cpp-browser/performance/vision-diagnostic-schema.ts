@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { visionBf16StorageObservationSchema } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage-schema';
 
 export const visionStageSchema = z.enum(['projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'media-encode', 'media-decode']);
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -6,7 +7,8 @@ const milliseconds = z.number().finite().nonnegative();
 export const visionDiagnosticSchema = z.object({
   version: z.literal(1),
   captureStatus: z.enum(['observed', 'unavailable']),
-  storagePolicy: z.literal('runtime-default'),
+  storagePolicy: z.enum(['runtime-default', 'legacy-expand', 'retain-checked']),
+  storage: visionBf16StorageObservationSchema.optional(),
   storageComparison: z.literal('unavailable'),
   pureLmPrefill: z.literal('unavailable'),
   physicalMemoryPeak: z.literal('unavailable'),
@@ -34,7 +36,13 @@ export const visionDiagnosticSchema = z.object({
   pendingOperations: count,
   unmatchedCompletions: count,
   clockAnomalies: count,
-  nativeFailures: z.array(z.object({ stage: z.string().max(64).optional(), failureKind: z.string().max(64).optional(), requestedBytes: count.optional(), statusCode: z.number().int().optional() }).strict()).max(16),
+  nativeFailures: z.array(z.object({
+    event: z.enum(['native-error', 'failed']).optional(),
+    stage: z.string().max(64).optional(),
+    failureKind: z.string().max(64).optional(),
+    requestedBytes: count.optional(),
+    statusCode: z.number().int().optional(),
+  }).strict()).max(16),
   droppedFailures: count,
   // Capacity and requested API bytes are observations, never live/physical memory.
   memorySamples: count,

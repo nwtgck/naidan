@@ -1,5 +1,5 @@
 import { llamaCppBrowserModelFiles } from './model-files';
-import { captureChatOptions, capturePerformanceOptions } from './runtime/chat-options';
+import { captureProjectorOptions, captureChatInputOptions, createOperationOptionsCapture } from './runtime/chat-options';
 import { promiseAllKeyed } from '@/utils/promise';
 import { resolveModel } from './runtime/model-resolution';
 import type { ResolvedModel } from './runtime/model-directory';
@@ -26,7 +26,7 @@ function acceptModelRequest<T extends { modelId: string }>({ request, signal }: 
 function acceptChatRequest({ request, signal }: { request: GenerateInput, signal: AbortSignal | undefined }): Promise<AcceptedGenerateInput> {
   const pending = promiseAllKeyed({
     request: acceptModelRequest({ request, signal }),
-    options: captureChatOptions({ options: request.options }),
+    options: captureChatInputOptions({ options: request.options, messages: request.messages }),
   }).then(({ request, options }) => ({ ...request, options }));
   void pending.catch(() => {});
   return pending;
@@ -364,7 +364,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     if (signal?.aborted) {
       throw new LlamaCppBrowserError({ code: 'aborted' });
     }
-    const acceptedOptions = captureChatOptions({ options: { ...options } });
+    const acceptedOptions = captureProjectorOptions({ options: { ...options } });
     // Resolve at acceptance so a shared advisory probe cannot retarget warmup.
     const accepted = acceptModelRequest({ request: { modelId: generateInputSchema.shape.modelId.parse(modelId) }, signal });
     // A capability-only probe owns no model. Share it instead of suppressing
@@ -523,7 +523,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         }
       } catch { /* Display observers cannot invalidate a healthy model. */ }
     };
-    const capturedOptions = captureChatOptions({ options: { ...options } });
+    const optionCapture = createOperationOptionsCapture({ options: { ...options }, kind: 'chat' });
+    const capturedOptions = optionCapture.initial;
     let callbackCompleted = false;
     let observedFailure: { error: unknown } | undefined;
     try {
@@ -560,7 +561,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
             if (controller.signal.aborted) {
               throw new LlamaCppBrowserError({ code: 'aborted' });
             }
-            const acceptedRequest = acceptModelRequest({ request: generateInputSchema.parse({ ...input, options: acceptedOptions }), signal });
+            const acceptedInput = generateInputSchema.parse({ ...input, options: acceptedOptions });
+            const requestOptions = optionCapture.forMessages({ messages: acceptedInput.messages });
+            const acceptedRequest = acceptModelRequest({ request: acceptedInput, signal });
             const local = new AbortController();
             const sources = [...new Set([signal, controller.signal].filter(value => value !== undefined))];
             const removers = sources.map(source => {
@@ -586,7 +589,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
                 const request = await acceptedRequest;
                 local.signal.throwIfAborted();
                 report({ progress: { phase: 'prefill', completed: 0, total: 0 } });
-                const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions, signal: undefined });
+                const concreteOptions = await resolveGenerationOptions({ worker, options: await requestOptions, signal: undefined });
                 if (local.signal.aborted) {
                   throw new LlamaCppBrowserError({ code: 'aborted' });
                 }
@@ -641,7 +644,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     }
   },
   async runPerformanceOperation({ options, signal, operation }) {
-    const acceptedOptions = capturePerformanceOptions({ options });
+    const optionCapture = createOperationOptionsCapture({ options, kind: 'measurement' });
+    const acceptedOptions = optionCapture.initial;
     // Fail rather than silently warming behind an unrelated operation.
     if (laneReservations > 0) {
       throw new LlamaCppBrowserError({ code: 'busy' });
@@ -672,7 +676,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           if (failure) {
             throw failure.error;
           }
-          const acceptedRequest = acceptModelRequest({ request: generateInputSchema.parse({ ...input, options: concreteOptions }), signal });
+          const acceptedInput = generateInputSchema.parse({ ...input, options: concreteOptions });
+          const requestOptions = optionCapture.forMessages({ messages: acceptedInput.messages });
+          const acceptedRequest = acceptModelRequest({ request: acceptedInput, signal });
           const local = new AbortController();
           const abort = () => local.abort();
           const sources = [...new Set([signal, controller.signal])];
@@ -688,7 +694,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
               const request = await acceptedRequest;
               local.signal.throwIfAborted();
               return await worker.generate({
-                request: { ...request, measurement: { sequence, observation } },
+                request: { ...request, options: { ...await requestOptions, profile: concreteOptions.profile }, measurement: { sequence, observation } },
                 onVisionAdmission,
                 onEvent,
                 onSummary,

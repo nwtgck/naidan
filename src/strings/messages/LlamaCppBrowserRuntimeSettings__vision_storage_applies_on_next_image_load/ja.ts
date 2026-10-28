@@ -1,0 +1,1 @@
+export const LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load = (): string => '次の画像用projectorの読み込み時に適用されます。テキストのみの要求ではモデルとコンテキストを維持します。保持方式での読み込みに失敗しても、従来方式やCPUへ自動で切り替えません。CPUを明示した場合は従来の動作を維持します。';

@@ -46,6 +46,7 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
     stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
   }
   const counters = {
+    visionStorage: undefined as PerformanceSummary['visionStorage'],
     gpuProfile: undefined as PerformanceSummary['gpuProfile'],
     checkpoint: undefined as PerformanceSummary['checkpoint'],
     cacheReuse: undefined as PerformanceSummary['cacheReuse'],

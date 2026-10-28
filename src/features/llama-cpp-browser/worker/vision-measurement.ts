@@ -25,13 +25,19 @@ export function createVisionMeasurement({ directory, now }: { directory: ModelDi
   let observed = 0, droppedRows = 0, unmatchedCompletions = 0, droppedFailures = 0, memorySamples = 0;
   let wasmCapacityMaxObservedBytes: number | undefined;
   let result: VisionDiagnostic | undefined;
+  let storage: VisionDiagnostic['storage'];
   const unsubscribe = subscribeDiagnostics({
     debug: 'off',
     listener: ({ diagnostic }) => {
       switch (diagnostic.event) {
-      case 'native-error': {
+      case 'native-info':
+        if (diagnostic.visionStorage) {
+          storage = diagnostic.visionStorage;
+        }
+        return;
+      case 'failed': case 'native-error': {
         if (nativeFailures.length < 16) {
-          nativeFailures.push({ stage: diagnostic.stage, failureKind: diagnostic.failureKind, requestedBytes: diagnostic.requestedBytes, statusCode: diagnostic.statusCode });
+          nativeFailures.push({ event: diagnostic.event, stage: diagnostic.stage, failureKind: diagnostic.failureKind, requestedBytes: diagnostic.requestedBytes, statusCode: diagnostic.statusCode });
         } else {
           droppedFailures++;
         }
@@ -92,6 +98,9 @@ export function createVisionMeasurement({ directory, now }: { directory: ModelDi
     },
   });
   return {
+    recordStorage({ value }: { value: NonNullable<VisionDiagnostic['storage']> }): void {
+      storage = value;
+    },
     finish({ outcome }: { outcome: VisionDiagnostic['outcome'] }): VisionDiagnostic {
       if (result) {
         return result;
@@ -101,7 +110,8 @@ export function createVisionMeasurement({ directory, now }: { directory: ModelDi
       result = visionDiagnosticSchema.parse({
         version: 1,
         captureStatus: 'observed',
-        storagePolicy: 'runtime-default',
+        storagePolicy: storage?.preference === 'legacy-expand' || storage?.preference === 'retain-checked' ? storage.preference : 'runtime-default',
+        storage,
         storageComparison: 'unavailable',
         pureLmPrefill: 'unavailable',
         physicalMemoryPeak: 'unavailable',

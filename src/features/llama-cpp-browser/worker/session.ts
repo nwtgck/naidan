@@ -1,3 +1,4 @@
+import { defaultVisionBf16Storage } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage-schema';
 import { fileBackedRowsCapability } from '@/features/llama-cpp-browser/runtime/file-backed-rows';
 import { createModelFileDiagnostics } from '@/features/llama-cpp-browser/runtime/model-file-diagnostics';
 import { readLoadedModelDescriptor } from './loaded-model-descriptor';
@@ -534,7 +535,26 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     projector: directory.projectorFile ? (useProjector ? 'reused' : current.projector ? 'retained' : 'deferred') : 'absent',
     releasedTextContext: false,
   };
-  if (useProjector && directory.projectorFile && (!current.projector || current.projector.debug !== debug)) {
+  const storageChanged = (() => {
+    if (!useProjector || !current.projector) {
+      return false;
+    }
+    switch (purpose.kind) {
+    case 'audio': return current.projector.purpose !== 'audio';
+    case 'chat': {
+      if (current.projector.purpose !== 'chat' || !current.projector.visionStorage) {
+        return true;
+      }
+      const selected = request.options.visionBf16Storage ?? defaultVisionBf16Storage({ capability: current.projector.visionStorage.capability });
+      return current.projector.visionStorage.selectedMode !== selected;
+    }
+    default: {
+      const exhaustive: never = purpose;
+      throw new Error(String(exhaustive));
+    }
+    }
+  })();
+  if (useProjector && directory.projectorFile && (!current.projector || current.projector.debug !== debug || storageChanged)) {
     // Weight loading is complete, but companion/context setup has no measured
     // denominator. Do not keep advertising a completed load percentage here.
     onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
@@ -551,9 +571,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     checkCancelled();
     const file = directory.projectorFile;
     switch (purpose.kind) {
-    case 'chat': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal });
+    case 'chat': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal, visionBf16Storage: request.options.visionBf16Storage, observation: request.measurement !== undefined || debug === 'on' ? 'enabled' : 'disabled' });
       break;
-    case 'audio': current.projector = await loadProjectorForBackend({ core, model: current.model, file, profile, debug, signal, backend: purpose.audioBackend });
+    case 'audio': current.projector = await loadProjectorForBackend({ core, model: current.model, file, profile, debug, signal, backend: purpose.audioBackend, purpose: 'audio', visionBf16Storage: undefined, observation: 'disabled' });
       break;
     default: {
       const exhaustive: never = purpose;
@@ -708,7 +728,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   }
   checkCancelled();
   current.census?.reset();
-  return { core, census: current.census, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: useProjector ? current.projector?.pointer ?? 0n : 0n, chatMetadata: current.chatMetadata, preparation };
+  return { core, census: current.census, model: current.model, context: current.context, sequenceRemoval: current.sequenceRemoval, slidingWindow: current.slidingWindow, cache: current.cache, projector: useProjector ? current.projector?.pointer ?? 0n : 0n, projectorStorage: useProjector ? current.projector?.visionStorage : undefined, chatMetadata: current.chatMetadata, preparation };
 }
 
 export const TEST_ONLY = {

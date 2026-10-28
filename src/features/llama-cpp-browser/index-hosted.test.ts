@@ -659,6 +659,7 @@ describe('idle model preparation', () => {
   });
 
   it('owns a settings rejection when preparation is cancelled just after a shared probe settles', async () => {
+    service.setOptions({ options: { profile: 'auto', contextTokens: 4096 } });
     const gate = Promise.withResolvers<ProfileCapabilities>();
     worker.probeProfiles.mockReturnValueOnce(gate.promise);
     const probe = service.probeProfiles({ signal: undefined });
@@ -1024,6 +1025,34 @@ describe('investigation and read-only cache ownership', () => {
 });
 
 describe('stored chat allocation targets', () => {
+  it.each([undefined, 'legacy-expand'] as const)('captures the same projector mode for explicit-context warmup and an image send: %s', async visionBf16Storage => {
+    service.setOptions({ options: { profile: 'cpu-wasm32', contextTokens: 4096 } });
+    vi.mocked(storage.loadSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { visionBf16Storage } } });
+    await service.prepareModel({ modelId: 'user/local', signal: undefined });
+    const image = input();
+    image.messages = [{ role: 'user', content: [{ type: 'image', blob: new Blob(['fixture'], { type: 'image/png' }) }] }];
+    await service.generate({ input: image, onEvent: () => {}, signal: undefined });
+    expect(worker.prepareModel.mock.calls[0]?.[0].request.options.visionBf16Storage).toBe(visionBf16Storage);
+    expect(worker.generate.mock.calls[0]?.[0].request.options.visionBf16Storage).toBe(visionBf16Storage);
+    expect(storage.loadSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it('owns a late projector-settings rejection when explicit-context preparation is skipped by a busy lane', async () => {
+    service.setOptions({ options: { profile: 'cpu-wasm32', contextTokens: 4096 } });
+    const blocked = Promise.withResolvers<GenerationResult>();
+    worker.generate.mockReturnValueOnce(blocked.promise);
+    const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
+    const settings = Promise.withResolvers<Awaited<ReturnType<typeof storage.loadSettings>>>();
+    vi.mocked(storage.loadSettings).mockReturnValueOnce(settings.promise);
+    await expect(service.prepareModel({ modelId: 'user/local', signal: undefined })).resolves.toBe('skipped-busy');
+    settings.reject(new Error('late settings error'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    blocked.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await sending;
+  });
+
   it('uses the saved target for warmup and the next generation', async () => {
     vi.mocked(storage.loadSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { contextTokens: 65536 } } });
     await service.prepareModel({ modelId: 'user/local', signal: undefined });

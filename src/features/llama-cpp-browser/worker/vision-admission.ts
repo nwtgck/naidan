@@ -1,3 +1,4 @@
+import { captureVisionStorageObservation } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage-schema';
 import { visionAdmissionSchema, type VisionAdmission } from '@/features/llama-cpp-browser/performance/vision-admission-schema';
 import { errorCode, type Progress } from '@/features/llama-cpp-browser/types';
 import { createVisionMeasurement } from './vision-measurement';
@@ -17,6 +18,10 @@ export async function prepareVisionMeasurement({ request, signal, onProgress, no
     } else {
       const session = await prepareSession({ request: { ...request, measurement: { sequence: 'fresh', observation: 'vision' } }, signal, onProgress });
       signal.throwIfAborted();
+      if (session.projectorStorage) {
+        const preference = request.options.visionBf16Storage;
+        observation.recordStorage({ value: captureVisionStorageObservation({ value: session.projectorStorage, preference }) });
+      }
       if (session.projector === 0n) {
         throw new Error('Projector initialization produced no context');
       }

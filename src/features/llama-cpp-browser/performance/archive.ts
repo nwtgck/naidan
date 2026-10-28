@@ -71,7 +71,12 @@ first-content clocks include admission; the generation Worker's first-sample
 clock starts later. Admission and generation vision rows have separate origins.
 media-encode/decode nativeElapsedMs are integer native-helper wall times, not GPU
 kernel time; image-evaluate includes vision and LM work. Pure LM prefill and
-physical memory peak are unavailable. wasmCapacityMaxObservedBytes is observed
+physical memory peak are unavailable. vision.storage separates the saved/default
+preference, selected mode and the native context's requested policy. Its getter
+is not proof of GPU BF16 residency. New compatible runtimes default to
+retain-checked; older runtimes without the API use legacy-expand only for an
+unset or explicit legacy preference, with the reason recorded. Mode comparison
+is not performed in this workload. wasmCapacityMaxObservedBytes is observed
 linear-memory capacity. captureStatus=unavailable means its empty counters do not
 prove zero work. A requested resident run is excluded when preflight reload or
 missing reuse evidence prevents confirming it. expectedRgbSha256 describes the
@@ -548,7 +553,7 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
       });
       const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason']];
       if (snapshot.plan.visionFixture) {
-        await add({ name: 'vision-fixture.json', text: json({ value: { ...snapshot.plan.visionFixture, imageBytesIncluded: false, decodedRgbIdentity: 'not-observed', storagePolicy: 'runtime-default', storageComparison: 'unavailable', pureLmPrefill: 'unavailable', physicalMemoryPeak: 'unavailable' } }) });
+        await add({ name: 'vision-fixture.json', text: json({ value: { ...snapshot.plan.visionFixture, imageBytesIncluded: false, decodedRgbIdentity: 'not-observed', storagePolicy: 'see-trial-vision-storage', storageComparison: 'unavailable', pureLmPrefill: 'unavailable', physicalMemoryPeak: 'unavailable' } }) });
       }
       for (const trial of snapshot.trials) {
         if (trial.memoryDiagnostics) {

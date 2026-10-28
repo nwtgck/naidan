@@ -419,6 +419,9 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         unsubscribe();
         stopGpuMeasurement?.();
         let visionSummary: VisionDiagnostic | undefined;
+        if (vision && summary?.performance?.visionStorage) {
+          vision.recordStorage({ value: summary.performance.visionStorage });
+        }
         try {
           visionSummary = vision?.finish({ outcome: summary?.performance?.outcome ?? (controller.signal.aborted ? 'aborted' : 'failed') });
         } catch {
