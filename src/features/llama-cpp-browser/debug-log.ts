@@ -1,5 +1,6 @@
 import { gpuProfileSchema } from './performance/gpu-profile-schema';
 import { nativeGraphCountersSchema } from './performance/native-graph-counters-schema';
+import { earlyGenerationTimingSchema } from './performance/early-generation-timing-schema';
 import { loadedModelDescriptorSchema } from './loaded-model-descriptor';
 import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
 import { backendCensusSchema } from './performance/backend-census-schema';
@@ -115,6 +116,7 @@ export const diagnosticSchema = z.object({
       firstMs: z.number().finite().nonnegative(),
       lastMs: z.number().finite().nonnegative(),
     }).strict()).max(256).optional(),
+    earlyGenerationTiming: earlyGenerationTimingSchema.optional(),
     version: z.literal(1),
     outcome: z.enum(['completed', 'aborted', 'failed']),
     input: z.enum(['text', 'multimodal', 'unknown']),

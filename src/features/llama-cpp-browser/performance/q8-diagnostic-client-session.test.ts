@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerRemote } from '@/utils/worker-transport';
 import { createQ8DiagnosticClientSession } from './q8-diagnostic-client-session';
 import type { Q8DiagnosticClient, Q8DiagnosticWorkerApi, Q8DiagnosticWorkerResult } from './q8-diagnostic-worker-types';
+import { createQ8PairedBenchmarkWireFixture } from './q8-kernel-schema.test-support';
 
 const request = { assetBaseURL: 'https://fixture.invalid/profiles/', schemaAssetSha256: 'a'.repeat(64) };
 const unavailable = { status: 'unavailable', reason: 'native-exports' } as const;
@@ -59,6 +60,40 @@ describe('dedicated Q8 diagnostic Worker lifetime', () => {
     // A transport rejection arriving after termination is still observed.
     test.pending.reject(new Error('late native rejection'));
     await Promise.resolve();
+    expect(test.disposeTransport).toHaveBeenCalledOnce();
+  });
+
+  it('passes bounded paired progress and the optional comparison through the dedicated Worker without declaring completion at 192', async () => {
+    const test = setup();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        test.client.dispose();
+      },
+    };
+    const pending = test.client.run({ signal: undefined, timeoutMs: 1000, onProgress: test.onProgress });
+    const pairedProgress = {
+      ...progress,
+      shapeIndex: 7,
+      phase: 'measuring',
+      section: 'paired',
+      completedSamples: 192,
+      totalSamples: 256,
+      baseCompletedSamples: 168,
+      pairedCompletedSamples: 24,
+    };
+    test.worker.dispatchEvent(new MessageEvent('message', { data: { kind: 'naidan-q8-kernel-progress', progress: pairedProgress } }));
+    test.worker.dispatchEvent(new MessageEvent('message', { data: { kind: 'naidan-q8-kernel-progress', progress: { ...pairedProgress, completedSamples: 193 } } }));
+    expect(test.onProgress).toHaveBeenCalledExactlyOnceWith({ progress: pairedProgress });
+    expect(test.disposeTransport).not.toHaveBeenCalled();
+    const response: Q8DiagnosticWorkerResult = {
+      status: 'completed',
+      schemaAssetSha256: request.schemaAssetSha256,
+      compiledSchemaSha256: 'c'.repeat(64),
+      setupWallMs: 1,
+      benchmark: createQ8PairedBenchmarkWireFixture({ sameShader: true }),
+    };
+    test.pending.resolve(response);
+    await expect(pending).resolves.toEqual(response);
     expect(test.disposeTransport).toHaveBeenCalledOnce();
   });
 

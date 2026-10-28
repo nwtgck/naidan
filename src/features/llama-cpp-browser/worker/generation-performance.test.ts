@@ -38,6 +38,18 @@ describe('bounded generation performance summaries', () => {
     expect(report.elapsedMs).toBe(20);
     expect(report.performance).toEqual({
       sampleWindows: [],
+      earlyGenerationTiming: {
+        version: 1,
+        limit: 16,
+        stageIntervals: [
+          { stage: 'native-sample', ordinal: 1, sampleCountAtStart: 0, startMs: 9, elapsedMs: 2, closedBy: 'stage-transition' },
+          { stage: 'native-sample', ordinal: 2, sampleCountAtStart: 1, startMs: 15, elapsedMs: 3, closedBy: 'stage-transition' },
+        ],
+        samples: [{ ordinal: 1, atMs: 11 }, { ordinal: 2, atMs: 18 }],
+        intervalsTruncated: false,
+        samplesTruncated: false,
+        clockAnomalies: 0,
+      },
       nonEogTokens: 0,
       version: 1,
       outcome: 'completed',
@@ -86,7 +98,9 @@ describe('bounded generation performance summaries', () => {
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.performance!.stages).toHaveLength(3);
     expect(report.performance!.sampledTokens).toBe(10000);
-    expect(JSON.stringify(report).length).toBeLessThan(1500);
+    expect(report.performance!.earlyGenerationTiming!.stageIntervals).toHaveLength(32);
+    expect(report.performance!.earlyGenerationTiming!.samples).toHaveLength(16);
+    expect(JSON.stringify(report).length).toBeLessThan(10000);
   });
 
   it('snapshots numeric settings without retaining a mutable sampling object', () => {
@@ -535,5 +549,159 @@ describe('passive native graph counter summaries', () => {
       ...report,
       performance: { ...report.performance!, nativeGraphCounters: { method: 'llama-perf-context', errors: 1 } },
     }).success).toBe(true);
+  });
+});
+
+describe('early generation wall timing', () => {
+  it('separates the first long interval from the following six and reuses every existing clock', () => {
+    let at = 0;
+    const now = vi.fn(() => at);
+    const metrics = createGenerationPerformance({ enabled: true, now });
+    const decodeMs = [1512, 150, 140, 160, 170, 160, 190];
+    for (let index = 0; index < 8; index++) {
+      metrics.enter({ next: 'native-sample' });
+      at += 2;
+      metrics.sampled();
+      metrics.enter({ next: 'token-render' });
+      metrics.rendered({ endOfGeneration: false });
+      if (index < decodeMs.length) {
+        metrics.enter({ next: index % 2 ? 'generation-decode' : 'generation-overlap' });
+        at += decodeMs[index]!;
+        metrics.counters.decodedTokens++;
+        metrics.enter({ next: 'event-loop-yield' });
+      }
+    }
+    expect(now).toHaveBeenCalledTimes(1 + 8 * 3 + 7 * 2);
+    const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+    expect(now).toHaveBeenCalledTimes(2 + 8 * 3 + 7 * 2);
+    const timing = report.performance!.earlyGenerationTiming!;
+    const sampling = timing.stageIntervals.filter(interval => interval.stage === 'native-sample');
+    const decoding = timing.stageIntervals.filter(interval => interval.stage !== 'native-sample');
+    expect(sampling.map(interval => interval.elapsedMs)).toEqual(Array(8).fill(2));
+    expect(decoding.map(interval => interval.elapsedMs)).toEqual(decodeMs);
+    expect(decoding.map(interval => interval.ordinal)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(decoding.map(interval => interval.sampleCountAtStart)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(decoding[0]).toMatchObject({ stage: 'generation-overlap', ordinal: 1, startMs: 2, elapsedMs: 1512 });
+    expect(decoding[1]).toMatchObject({ stage: 'generation-decode', ordinal: 2, elapsedMs: 150 });
+    expect(decoding.slice(1).reduce((sum, interval) => sum + interval.elapsedMs, 0)).toBe(970);
+    expect(timing.samples.map(sample => sample.ordinal)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(timing.samples.slice(1).map((sample, index) => sample.atMs - timing.samples[index]!.atMs)).toEqual(decodeMs.map(duration => duration + 2));
+    expect(timing).toMatchObject({ intervalsTruncated: false, samplesTruncated: false, clockAnomalies: 0 });
+    expect(report.performance!.stages.reduce((sum, interval) => sum + interval.elapsedMs, 0)).toBe(at);
+    expect(report.performance!.postFirstSample!.elapsedMs).toBe(at - 2);
+  });
+
+  it.each([16, 17, 1000])('bounds both interval series and sample times at %s samples', count => {
+    const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
+    for (let index = 0; index < count; index++) {
+      metrics.enter({ next: 'native-sample' });
+      metrics.sampled();
+      metrics.enter({ next: index % 2 ? 'generation-decode' : 'generation-overlap' });
+    }
+    const timing = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile })).performance!.earlyGenerationTiming!;
+    expect(timing.stageIntervals).toHaveLength(32);
+    expect(timing.samples).toHaveLength(16);
+    expect(timing.stageIntervals.filter(interval => interval.stage === 'native-sample').map(interval => interval.ordinal)).toEqual(Array.from({ length: 16 }, (_, index) => index + 1));
+    expect(timing.stageIntervals.filter(interval => interval.stage !== 'native-sample').map(interval => interval.ordinal)).toEqual(Array.from({ length: 16 }, (_, index) => index + 1));
+    expect(timing.intervalsTruncated).toBe(count > 16);
+    expect(timing.samplesTruncated).toBe(count > 16);
+  });
+
+  it.each(['aborted', 'failed'] as const)('closes an active %s request without claiming a completed decode', outcome => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 10;
+    metrics.enter({ next: 'generation-overlap' });
+    at = 40;
+    const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
+    expect(report.performance!.decodedTokens).toBe(0);
+    expect(report.performance!.earlyGenerationTiming!.stageIntervals).toEqual([
+      { stage: 'generation-overlap', ordinal: 1, sampleCountAtStart: 0, startMs: 10, elapsedMs: 30, closedBy: 'request-finish' },
+    ]);
+    expect(report.performance!.outcome).toBe(outcome);
+  });
+
+  it.each(['aborted', 'failed'] as const)('retains the stage-transition boundary when %s cleanup closes an unfinished decode', outcome => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    metrics.enter({ next: 'generation-decode' });
+    at = 20;
+    metrics.enter({ next: 'cleanup' });
+    at = 25;
+    const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
+    expect(report.performance!.decodedTokens).toBe(0);
+    expect(report.performance!.earlyGenerationTiming!.stageIntervals).toEqual([
+      { stage: 'generation-decode', ordinal: 1, sampleCountAtStart: 0, startMs: 0, elapsedMs: 20, closedBy: 'stage-transition' },
+    ]);
+  });
+
+  it('reports exceptional, non-finite and backward clocks without interrupting measurement', () => {
+    const now = vi.fn<() => number>()
+      .mockReturnValueOnce(100)
+      .mockReturnValueOnce(110)
+      .mockImplementationOnce(() => {
+        throw new Error('clock failure');
+      })
+      .mockReturnValueOnce(NaN)
+      .mockReturnValueOnce(90)
+      .mockReturnValueOnce(130);
+    const metrics = createGenerationPerformance({ enabled: true, now });
+    metrics.enter({ next: 'native-sample' });
+    metrics.sampled();
+    metrics.enter({ next: 'generation-decode' });
+    metrics.delivered();
+    const report = diagnosticSchema.parse(metrics.finish({ outcome: 'failed', profile }));
+    expect(now).toHaveBeenCalledTimes(6);
+    expect(report.elapsedMs).toBe(30);
+    expect(report.performance!.stages.reduce((sum, interval) => sum + interval.elapsedMs, 0)).toBe(30);
+    expect(report.performance!.earlyGenerationTiming).toMatchObject({
+      clockAnomalies: 3,
+      samples: [{ ordinal: 1, atMs: 10 }],
+      stageIntervals: [{ stage: 'native-sample', elapsedMs: 0 }, { stage: 'generation-decode', elapsedMs: 20 }],
+    });
+  });
+
+  it.each([NaN, Infinity, -Infinity, -1])('marks invalid initial clock %s and keeps later fields finite', initial => {
+    const now = vi.fn().mockReturnValueOnce(initial).mockReturnValue(5);
+    const metrics = createGenerationPerformance({ enabled: true, now });
+    metrics.enter({ next: 'native-sample' });
+    metrics.sampled();
+    const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+    expect(report.performance!.earlyGenerationTiming!.clockAnomalies).toBe(1);
+    expect(report.performance!.earlyGenerationTiming!.samples).toEqual([{ ordinal: 1, atMs: 5 }]);
+  });
+
+  it('keeps request snapshots independent and accepts old summaries without the optional trace', () => {
+    let at = 0;
+    const first = createGenerationPerformance({ enabled: true, now: () => at });
+    const second = createGenerationPerformance({ enabled: true, now: () => at });
+    first.enter({ next: 'native-sample' });
+    at = 1;
+    first.sampled();
+    const firstReport = first.finish({ outcome: 'completed', profile })!;
+    second.enter({ next: 'native-sample' });
+    at = 3;
+    second.sampled();
+    const secondReport = second.finish({ outcome: 'completed', profile })!;
+    const firstTiming = firstReport.performance!.earlyGenerationTiming!;
+    const secondTiming = secondReport.performance!.earlyGenerationTiming!;
+    expect(firstTiming.stageIntervals).not.toBe(secondTiming.stageIntervals);
+    expect(firstTiming.samples).not.toBe(secondTiming.samples);
+    firstTiming.samples[0]!.atMs = 999;
+    firstTiming.stageIntervals[0]!.elapsedMs = 999;
+    expect(secondTiming.samples[0]!.atMs).toBe(3);
+    expect(secondTiming.stageIntervals[0]!.elapsedMs).toBe(2);
+    const before = JSON.stringify(secondReport);
+    second.enter({ next: 'generation-decode' });
+    second.sampled();
+    expect(JSON.stringify(secondReport)).toBe(before);
+    const { earlyGenerationTiming: _timing, ...older } = secondReport.performance!;
+    expect(diagnosticSchema.safeParse({ ...secondReport, performance: older }).success).toBe(true);
+    for (const extra of [{ tokens: [123] }, { output: 'private' }, { clockAnomalies: -1 }, { samples: Array(17).fill({ ordinal: 1, atMs: 0 }) },
+      { stageIntervals: [{ ...secondTiming.stageIntervals[0]!, ordinal: 17 }] },
+      { stageIntervals: [{ ...secondTiming.stageIntervals[0]!, elapsedMs: Infinity }] },
+      { stageIntervals: [{ ...secondTiming.stageIntervals[0]!, tokenId: 123 }] }]) {
+      expect(diagnosticSchema.safeParse({ ...secondReport, performance: { ...secondReport.performance!, earlyGenerationTiming: { ...secondTiming, ...extra } } }).success).toBe(false);
+    }
   });
 });

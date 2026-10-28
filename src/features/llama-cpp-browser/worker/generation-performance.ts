@@ -1,7 +1,20 @@
 import type { Diagnostic, DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { LlamaCppProfile } from '@/features/llama-cpp-browser/types';
+import { earlyGenerationTimingLimit, type EarlyGenerationTiming } from '@/features/llama-cpp-browser/performance/early-generation-timing-schema';
 
 type PerformanceSummary = NonNullable<Diagnostic['performance']>;
+
+function readClock({ now, state }: { now: () => number, state: { last: number, anomalies: number } }): number {
+  try {
+    const at = now();
+    if (Number.isFinite(at) && at >= state.last) {
+      state.last = at;
+      return at;
+    }
+  } catch { /* Measurement must not interrupt generation or cleanup. */ }
+  state.anomalies = Math.min(Number.MAX_SAFE_INTEGER, state.anomalies + 1);
+  return state.last;
+}
 
 function sampleRate({ sampledTokens, elapsedMs }: { sampledTokens: number, elapsedMs: number }): NonNullable<PerformanceSummary['postFirstSample']> {
   const rate = sampledTokens > 0 && elapsedMs > 0 ? sampledTokens * 1000 / elapsedMs : undefined;
@@ -11,12 +24,23 @@ function sampleRate({ sampledTokens, elapsedMs }: { sampledTokens: number, elaps
 
 /** Bounded request-local counters; debug-only progress after 100 total samples
  * and at most every 3 seconds on a new sample, plus one final summary. No timer, native callbacks, token
- * histories, prompt bytes, token IDs or model names. */
+ * unbounded histories, prompt bytes, token IDs or model names. Early stage and
+ * sample timings reuse existing clocks and are allocated only when enabled. */
 export function createGenerationPerformance({ enabled, now }: { enabled: boolean, now: () => number }) {
-  const started = enabled ? now() : 0;
+  const clock = enabled ? { now, state: { last: 0, anomalies: 0 } } : undefined;
+  const started = clock ? readClock(clock) : 0;
   let since = started;
   let stage: DiagnosticStage = 'session';
   let finished = false;
+  const stageIntervals: EarlyGenerationTiming['stageIntervals'] | undefined = enabled ? [] : undefined;
+  const samples: EarlyGenerationTiming['samples'] | undefined = enabled ? [] : undefined;
+  let sampleIntervals = 0;
+  let decodeIntervals = 0;
+  let intervalStage: EarlyGenerationTiming['stageIntervals'][number]['stage'] | undefined;
+  let intervalOrdinal = 0;
+  let intervalSampleCount = 0;
+  let intervalsTruncated = false;
+  let samplesTruncated = false;
   const stages = new Map<DiagnosticStage, { stage: DiagnosticStage, visits: number, elapsedMs: number }>();
   if (enabled) {
     stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
@@ -61,10 +85,18 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   let progressSampleMs: number | undefined;
   let progressSampledTokens = 0;
   let firstDeliveryMs: number | undefined;
-  const settle = ({ at }: { at: number }): void => {
+  const settle = ({ at, closedBy }: { at: number, closedBy: EarlyGenerationTiming['stageIntervals'][number]['closedBy'] }): void => {
+    const elapsedMs = Math.max(0, at - since);
     const current = stages.get(stage);
     if (current) {
-      current.elapsedMs += Math.max(0, at - since);
+      current.elapsedMs += elapsedMs;
+    }
+    if (stageIntervals && intervalStage !== undefined) {
+      if (intervalOrdinal <= earlyGenerationTimingLimit) {
+        stageIntervals.push({ stage: intervalStage, ordinal: intervalOrdinal, sampleCountAtStart: intervalSampleCount, startMs: since - started, elapsedMs, closedBy });
+      } else {
+        intervalsTruncated = true;
+      }
     }
     since = at;
   };
@@ -78,8 +110,33 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       if (!enabled || finished) {
         return;
       }
-      settle({ at: now() });
+      settle({ at: readClock(clock!), closedBy: 'stage-transition' });
       stage = next;
+      intervalStage = undefined;
+      switch (stage) {
+      case 'native-sample':
+        intervalStage = stage;
+        sampleIntervals = Math.min(earlyGenerationTimingLimit + 1, sampleIntervals + 1);
+        intervalOrdinal = sampleIntervals;
+        break;
+      case 'generation-overlap': case 'generation-decode':
+        intervalStage = stage;
+        decodeIntervals = Math.min(earlyGenerationTimingLimit + 1, decodeIntervals + 1);
+        intervalOrdinal = decodeIntervals;
+        break;
+      case 'audio-info': case 'audio-reference': case 'audio-input': case 'audio-prompt': case 'audio-frame': case 'audio-output':
+      case 'media-encode': case 'media-decode': case 'model-resolve': case 'model-load': case 'projector-trace': case 'projector-load':
+      case 'image-decode': case 'image-tokenize': case 'image-evaluate': case 'session': case 'cache-prepare': case 'cache-probe':
+      case 'cache-checkpoint': case 'prefill': case 'template': case 'tokenize': case 'prefill-decode': case 'sampler-create':
+      case 'reasoning-state': case 'grammar-switch': case 'reasoning-accept': case 'reasoning-replay':
+      case 'token-render': case 'partial-parse': case 'stream-emit': case 'final-parse': case 'cleanup': case 'event-loop-yield':
+      case 'worker-operation': case 'worker-callback': case 'worker-rpc': case 'worker-error': case 'worker-messageerror': break;
+      default: {
+        const exhaustive: never = stage;
+        throw new Error(`Unhandled generation timing stage: ${exhaustive}`);
+      }
+      }
+      intervalSampleCount = counters.sampledTokens;
       const current = stages.get(stage);
       if (current) {
         current.visits++;
@@ -95,7 +152,12 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       if (!enabled) {
         return undefined;
       }
-      lastSampleMs = Math.max(0, now() - started);
+      lastSampleMs = Math.max(0, readClock(clock!) - started);
+      if (samples && samples.length < earlyGenerationTimingLimit) {
+        samples.push({ ordinal: counters.sampledTokens, atMs: lastSampleMs });
+      } else {
+        samplesTruncated = true;
+      }
       firstSampleMs ??= lastSampleMs;
       if (progressSampleMs === undefined) {
         progressSampleMs = lastSampleMs;
@@ -139,7 +201,7 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
     },
     delivered(): void {
       if (enabled && !finished && firstDeliveryMs === undefined) {
-        firstDeliveryMs = Math.max(0, now() - started);
+        firstDeliveryMs = Math.max(0, readClock(clock!) - started);
       }
     },
     finish({ outcome, profile }: { outcome: PerformanceSummary['outcome'], profile: LlamaCppProfile }): Diagnostic | undefined {
@@ -147,8 +209,8 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
         return undefined;
       }
       finished = true;
-      const ended = now();
-      settle({ at: ended });
+      const ended = readClock(clock!);
+      settle({ at: ended, closedBy: 'request-finish' });
       return {
         event: 'generation-performance',
         profile,
@@ -165,6 +227,15 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
           } : undefined,
           memoryObservation: counters.memoryObservation ? { ...counters.memoryObservation } : undefined,
           sampleWindows: counters.sampleWindows?.map(window => ({ ...window })),
+          earlyGenerationTiming: stageIntervals && samples ? {
+            version: 1,
+            limit: earlyGenerationTimingLimit,
+            stageIntervals: stageIntervals.map(interval => ({ ...interval })),
+            samples: samples.map(sample => ({ ...sample })),
+            intervalsTruncated,
+            samplesTruncated,
+            clockAnomalies: clock!.state.anomalies,
+          } : undefined,
           sampling: counters.sampling ? { ...counters.sampling } : undefined,
           sessionPreparation: counters.sessionPreparation ? { ...counters.sessionPreparation } : undefined,
           cacheReuse: counters.cacheReuse ? { ...counters.cacheReuse } : undefined,

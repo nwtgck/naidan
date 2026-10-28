@@ -52,6 +52,16 @@ terminal summary leaves final effective conditions unknown.
 This ZIP is a self-describing investigation handoff, not a stable API. Layout and
 fields may change on every commit; use this README and this run's actual plan.
 
+Optional earlyGenerationTiming reuses existing Worker clocks for the first 16
+sampler-stage intervals, first 16 combined serial/overlap decode-stage intervals,
+and first 16 sample timestamps, including stop/EOG samples. The two interval
+series have separate ordinals; sampleCountAtStart is a count, never a token ID.
+These are stage residence times: generation-overlap includes delivery and decode
+as joint wall time, not decode-only or GPU time. Neither closure boundary proves a
+completed native call: failed/aborted cleanup can also cause stage-transition. Truncated
+flags mark the capture limits. Nonzero clockAnomalies invalidates timing precision;
+exceptional, non-finite or backward clock reads retain the last valid timestamp.
+
 Raw memory histories appear only in the referenced memory/<attemptId>.json file,
 not a second copy in trials.jsonl. If memoryDiagnosticsFile is absent, that attempt
 has no captured raw memory history; inspect summary.performance.memoryObservation

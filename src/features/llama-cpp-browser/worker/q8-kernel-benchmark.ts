@@ -1,7 +1,7 @@
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { Q8KernelDiagnosticAdapter, Q8KernelDiagnosticResult, Q8KernelDiagnosticVariant } from '@/features/llama-cpp-browser/runtime/q8-kernel-diagnostic';
 import { beginGpuProfileMeasurement } from '@/features/llama-cpp-browser/runtime/gpu-profiler';
-import { q8KernelBenchmarkSchema, q8KernelBenchmarkProgressSchema, q8KernelProfileQualified, q8KernelShapes, q8KernelVariants, type Q8KernelBenchmark, type Q8KernelBenchmarkProgress, type Q8KernelShape, type Q8KernelSample } from '@/features/llama-cpp-browser/performance/q8-kernel-schema';
+import { q8KernelBenchmarkSchema, q8KernelBenchmarkProgressSchema, createQ8KernelPairedSchedule, q8KernelPairedShapes, q8KernelPairedVariants, q8KernelProfileQualified, q8KernelShapes, q8KernelVariants, type Q8KernelBenchmark, type Q8KernelBenchmarkProgress, type Q8KernelShape, type Q8KernelSample } from '@/features/llama-cpp-browser/performance/q8-kernel-schema';
 
 const transferBytes = 64 * 1024;
 const fixtureSeed = 0x6d2b79f5;
@@ -59,13 +59,14 @@ function identity({ report }: { report: Q8KernelShape['variants'][number]['prepa
   return JSON.stringify(tuple);
 }
 
-async function runBenchmark({ input, shapes, validate }: { input: BenchmarkInput, shapes: readonly Shape[], validate: ({ result }: { result: Q8KernelBenchmark }) => Q8KernelBenchmark }): Promise<Q8KernelBenchmark> {
+async function runBenchmark({ input, shapes, pairedShapes, validate }: { input: BenchmarkInput, shapes: readonly Shape[], pairedShapes: readonly Shape[], validate: ({ result }: { result: Q8KernelBenchmark }) => Q8KernelBenchmark }): Promise<Q8KernelBenchmark> {
   const { core, diagnostic, signal, onProgress } = input;
   const cancelled = Symbol('Q8 benchmark cancellation');
   let safeToCleanup = true;
   let backend = 0n;
-  let completedSamples = 0;
-  const result: Q8KernelBenchmark = { version: 1, fixtureId: 'q8-dyadic-v1', status: 'complete', repetitions: 32, rounds: 4, shapes: [] };
+  let baseCompletedSamples = 0, pairedCompletedSamples = 0;
+  const runStarted = performance.now();
+  const result: Q8KernelBenchmark = { version: 1, fixtureId: 'q8-dyadic-v1', status: 'complete', repetitions: 32, rounds: 4, pairedComparisonProtocol: 'abba-baab-v1', shapes: [] };
   const boundary = (): void => {
     if (signal?.aborted) {
       throw cancelled;
@@ -83,8 +84,19 @@ async function runBenchmark({ input, shapes, validate }: { input: BenchmarkInput
     safeToCleanup = true;
     return value;
   };
-  const progress = ({ shapeIndex, phase }: { shapeIndex: number, phase: Q8KernelBenchmarkProgress['phase'] }) => {
-    onProgress({ progress: q8KernelBenchmarkProgressSchema.parse({ shapeIndex, shapeCount: 8, phase, completedSamples, totalSamples: 192 }) });
+  const progress = ({ shapeIndex, phase, section }: { shapeIndex: number, phase: Q8KernelBenchmarkProgress['phase'], section: 'base' | 'paired' }) => {
+    onProgress({
+      progress: q8KernelBenchmarkProgressSchema.parse({
+        shapeIndex,
+        shapeCount: 8,
+        phase,
+        section,
+        completedSamples: baseCompletedSamples + pairedCompletedSamples,
+        totalSamples: 256,
+        baseCompletedSamples,
+        pairedCompletedSamples,
+      }),
+    });
   };
   const fail = ({ message }: { message: string }): never => {
     safeToCleanup = false;
@@ -119,7 +131,7 @@ async function runBenchmark({ input, shapes, validate }: { input: BenchmarkInput
     boundary();
     for (const [shapeIndex, [k, m]] of shapes.entries()) {
       boundary();
-      progress({ shapeIndex, phase: 'preparing' });
+      progress({ shapeIndex, phase: 'preparing', section: 'base' });
       const fixture = createFixture({ k, m });
       const shape: Q8KernelShape = {
         k,
@@ -198,18 +210,23 @@ async function runBenchmark({ input, shapes, validate }: { input: BenchmarkInput
           }
           return captured;
         };
-        const invoke = async ({ variant, phase, repetitions }: { variant: Q8KernelDiagnosticVariant, phase: 'prepare' | 'execute', repetitions: number }): Promise<NativeCall> => {
+        const timedInvoke = async ({ variant, phase, repetitions }: { variant: Q8KernelDiagnosticVariant, phase: 'prepare' | 'execute', repetitions: number }) => {
           boundary();
-          const started = performance.now();
+          const callStartedMs = performance.now() - runStarted;
           const report = await native({ call: () => diagnostic.run({ backend, dst, variant, phase, repetitions }) });
+          const callEndedMs = performance.now() - runStarted;
           if (report.status !== 'ok' && report.status !== 'unsupported') {
             fail({ message: `Unexpected Q8 native status: ${report.status}` });
           }
-          return { report, wallMs: performance.now() - started };
+          return { report, wallMs: callEndedMs - callStartedMs, callStartedMs, callEndedMs };
+        };
+        const invoke = async ({ variant, phase, repetitions }: { variant: Q8KernelDiagnosticVariant, phase: 'prepare' | 'execute', repetitions: number }): Promise<NativeCall> => {
+          const { report, wallMs } = await timedInvoke({ variant, phase, repetitions });
+          return { report, wallMs };
         };
         const ready = new Map<Q8KernelDiagnosticVariant, string>();
         for (const variant of q8KernelVariants) {
-          progress({ shapeIndex, phase: 'preparing' });
+          progress({ shapeIndex, phase: 'preparing', section: 'base' });
           const prepared = { variant, prepare: await invoke({ variant, phase: 'prepare', repetitions: 0 }) } as Q8KernelShape['variants'][number];
           shape.variants.push(prepared);
           boundary();
@@ -222,7 +239,7 @@ async function runBenchmark({ input, shapes, validate }: { input: BenchmarkInput
           if (unsupported({ report: prepared.prepare.report })) {
             continue;
           }
-          progress({ shapeIndex, phase: 'warming' });
+          progress({ shapeIndex, phase: 'warming', section: 'base' });
           const warmup = { call: await invoke({ variant, phase: 'execute', repetitions: 1 }) } as NonNullable<typeof prepared.warmup>;
           prepared.warmup = warmup;
           boundary();
@@ -240,6 +257,28 @@ async function runBenchmark({ input, shapes, validate }: { input: BenchmarkInput
           ready.set(variant, identity({ report: prepared.prepare.report }));
           boundary();
         }
+        const measure = async ({ variant }: { variant: Q8KernelDiagnosticVariant }) => {
+          const measurement = beginGpuProfileMeasurement();
+          let sample: Awaited<ReturnType<typeof timedInvoke>>;
+          let gpuProfile: ReturnType<typeof measurement.finish>;
+          try {
+            sample = await timedInvoke({ variant, phase: 'execute', repetitions: 32 });
+          } finally {
+            gpuProfile = measurement.finish();
+          }
+          if (sample.report.status !== 'ok' || identity({ report: sample.report }) !== ready.get(variant)) {
+            fail({ message: 'Q8 measured shader or launch identity changed' });
+          }
+          const complete = q8KernelProfileQualified({ profile: gpuProfile });
+          const timingStatus: Q8KernelSample['timingStatus'] = complete ? gpuProfile.zeroDurationPasses ? 'quantized' : 'measured' : gpuProfile.measuredPasses ? 'partial' : 'unavailable';
+          boundary();
+          const readbackStarted = performance.now();
+          const actual = await download({ tensor: dst, data: fixture.expected });
+          const readbackMs = performance.now() - readbackStarted;
+          const exact = { words: m, mismatches: 0 as const, expectedSha256: shape.fixture.expectedSha256, actualSha256: await sha256({ bytes: actual }), guards: true as const };
+          boundary();
+          return { ...sample, gpuProfile, timingStatus, gpuMsPerDispatch: complete ? gpuProfile.totalGpuMs / 32 : undefined, readbackMs, exact };
+        };
         for (let round = 0; round < 4; round++) {
           const order = round % 2 ? [...q8KernelVariants].reverse() : [...q8KernelVariants];
           for (const [position, variant] of order.entries()) {
@@ -247,32 +286,56 @@ async function runBenchmark({ input, shapes, validate }: { input: BenchmarkInput
               continue;
             }
             boundary();
-            progress({ shapeIndex, phase: 'measuring' });
-            const measurement = beginGpuProfileMeasurement();
-            let sample: NativeCall;
-            let gpuProfile: ReturnType<typeof measurement.finish>;
-            try {
-              sample = await invoke({ variant, phase: 'execute', repetitions: 32 });
-            } finally {
-              gpuProfile = measurement.finish();
-            }
-            if (sample.report.status !== 'ok' || identity({ report: sample.report }) !== ready.get(variant)) {
-              fail({ message: 'Q8 measured shader or launch identity changed' });
-            }
-            const complete = q8KernelProfileQualified({ profile: gpuProfile });
-            const timingStatus: Q8KernelSample['timingStatus'] = complete ? gpuProfile.zeroDurationPasses ? 'quantized' : 'measured' : gpuProfile.measuredPasses ? 'partial' : 'unavailable';
-            boundary();
-            const readbackStarted = performance.now();
-            const actual = await download({ tensor: dst, data: fixture.expected });
-            const readbackMs = performance.now() - readbackStarted;
-            const exact = { words: m, mismatches: 0 as const, expectedSha256: shape.fixture.expectedSha256, actualSha256: await sha256({ bytes: actual }), guards: true as const };
-            boundary();
-            shape.samples.push({ variant, round, position, ...sample, gpuProfile, timingStatus, gpuMsPerDispatch: complete ? gpuProfile.totalGpuMs / 32 : undefined, readbackMs, exact });
-            completedSamples++;
+            progress({ shapeIndex, phase: 'measuring', section: 'base' });
+            const { callStartedMs: _start, callEndedMs: _end, ...sample } = await measure({ variant });
+            shape.samples.push({ variant, round, position, ...sample });
+            baseCompletedSamples++;
             boundary();
           }
         }
-        progress({ shapeIndex, phase: 'verifying' });
+        if (pairedShapes.some(([pairedK, pairedM]) => pairedK === k && pairedM === m)) {
+          const paired: NonNullable<Q8KernelShape['pairedComparison']> = { status: 'cancelled', clock: 'run-relative-performance-now', warmups: [], samples: [] };
+          shape.pairedComparison = paired;
+          if (!q8KernelPairedVariants.every(variant => ready.has(variant))) {
+            paired.status = 'unsupported';
+          } else {
+            let pairedReady = true;
+            // Re-warm only A/B, then keep all 32 paired calls adjacent on these
+            // same tensors/backend. Actual A/B identities may be identical.
+            for (const variant of q8KernelPairedVariants) {
+              boundary();
+              progress({ shapeIndex, phase: 'warming', section: 'paired' });
+              const warmup = { variant, call: await invoke({ variant, phase: 'execute', repetitions: 1 }) } as typeof paired.warmups[number];
+              paired.warmups.push(warmup);
+              boundary();
+              if (unsupported({ report: warmup.call.report })) {
+                pairedReady = false;
+                paired.status = 'unsupported';
+                result.status = 'partial';
+                break;
+              }
+              if (identity({ report: warmup.call.report }) !== ready.get(variant)) {
+                fail({ message: 'Q8 paired warmup shader or launch identity changed' });
+              }
+              const readbackStarted = performance.now();
+              const actual = await download({ tensor: dst, data: fixture.expected });
+              warmup.readbackMs = performance.now() - readbackStarted;
+              warmup.exact = { words: m, mismatches: 0, expectedSha256: shape.fixture.expectedSha256, actualSha256: await sha256({ bytes: actual }), guards: true };
+              boundary();
+            }
+            if (pairedReady) {
+              for (const scheduled of createQ8KernelPairedSchedule({ blocks: 8 })) {
+                boundary();
+                progress({ shapeIndex, phase: 'measuring', section: 'paired' });
+                paired.samples.push({ ...scheduled, ...await measure({ variant: scheduled.variant }) });
+                pairedCompletedSamples++;
+                boundary();
+              }
+              paired.status = 'complete';
+            }
+          }
+        }
+        progress({ shapeIndex, phase: 'verifying', section: 'base' });
         await download({ tensor: weights, data: fixture.weights });
         boundary();
         await download({ tensor: vector, data: fixture.input });
@@ -319,7 +382,7 @@ export function runQ8KernelBenchmark({ core, diagnostic, signal, onProgress }: {
   core: Core, diagnostic: Q8KernelDiagnosticAdapter, signal: AbortSignal | undefined,
   onProgress: ({ progress }: { progress: Q8KernelBenchmarkProgress }) => void,
 }): Promise<Q8KernelBenchmark> {
-  return runBenchmark({ input: { core, diagnostic, signal, onProgress }, shapes: q8KernelShapes, validate: ({ result }) => q8KernelBenchmarkSchema.parse(result) });
+  return runBenchmark({ input: { core, diagnostic, signal, onProgress }, shapes: q8KernelShapes, pairedShapes: q8KernelPairedShapes, validate: ({ result }) => q8KernelBenchmarkSchema.parse(result) });
 }
 
 export const TEST_ONLY = {

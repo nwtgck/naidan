@@ -10,10 +10,10 @@ export function createBenchmarkFixture({ base }: { base: Core }) {
   const gpu = createGpuProfileFixture();
   const state: {
     unsupported: Set<Q8KernelDiagnosticVariant>, delay: Promise<void> | undefined, fail: boolean, corrupt: boolean,
-    timestamps: 'measured' | 'quantized' | 'unavailable', calls: { variant: Q8KernelDiagnosticVariant, phase: string, repetitions: number }[],
+    timestamps: 'measured' | 'quantized' | 'unavailable', calls: { backend: bigint, dst: bigint, variant: Q8KernelDiagnosticVariant, phase: string, repetitions: number }[],
     onInvoke: (() => void) | undefined, cleanupTrap: boolean,
-    corruptAtRepetitions: number | undefined, readbackDelay: Promise<void> | undefined, onReadback: (() => void) | undefined,
-  } = { unsupported: new Set(), delay: undefined, fail: false, corrupt: false, timestamps: 'measured', calls: [], onInvoke: undefined, cleanupTrap: false, corruptAtRepetitions: undefined, readbackDelay: undefined, onReadback: undefined };
+    corruptAtRepetitions: number | undefined, corruptAtCall: number | undefined, sameShader: boolean, readbackDelay: Promise<void> | undefined, onReadback: (() => void) | undefined,
+  } = { unsupported: new Set(), delay: undefined, fail: false, corrupt: false, timestamps: 'measured', calls: [], onInvoke: undefined, cleanupTrap: false, corruptAtRepetitions: undefined, corruptAtCall: undefined, sameShader: false, readbackDelay: undefined, onReadback: undefined };
   const own = ({ bytes }: { bytes: number }) => {
     const pointer = base.alloc({ bytes });
     allocations.add(pointer);
@@ -111,9 +111,9 @@ export function createBenchmarkFixture({ base }: { base: Core }) {
     },
   } satisfies Core;
   const diagnostic: Q8KernelDiagnosticAdapter = {
-    async run({ dst, variant, phase, repetitions }) {
+    async run({ backend, dst, variant, phase, repetitions }) {
       events.push(`run-${phase}-${repetitions}`);
-      state.calls.push({ variant, phase, repetitions });
+      state.calls.push({ backend, dst, variant, phase, repetitions });
       state.onInvoke?.();
       if (state.delay) {
         await state.delay;
@@ -123,7 +123,7 @@ export function createBenchmarkFixture({ base }: { base: Core }) {
       }
       const unsupported = state.unsupported.has(variant);
       const independent = variant.startsWith('independent') || variant === 'auto';
-      const rows = variant.endsWith('r1') ? 1 : variant.endsWith('r2') || variant === 'auto' ? 2 : 4;
+      const rows = variant.endsWith('r1') ? 1 : variant.endsWith('r2') || variant === 'auto' && !state.sameShader ? 2 : 4;
       const report: Q8KernelDiagnosticResult = {
         status: unsupported ? 'unsupported' : 'ok',
         variant,
@@ -165,7 +165,7 @@ export function createBenchmarkFixture({ base }: { base: Core }) {
             }
             output.setFloat32(row * 4, sum, true);
           }
-          if (state.corrupt || state.corruptAtRepetitions === repetitions) {
+          if (state.corrupt || state.corruptAtRepetitions === repetitions || state.corruptAtCall === state.calls.length) {
             result[0] = result[0]! ^ 1;
           }
           base.bytes({ pointer: transfer, length: result.length }).set(result);

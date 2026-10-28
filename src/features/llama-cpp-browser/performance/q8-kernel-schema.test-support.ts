@@ -1,4 +1,4 @@
-import { q8KernelShapes, q8KernelVariants, type Q8KernelBenchmark, type Q8KernelShape, type Q8KernelSample } from './q8-kernel-schema';
+import { createQ8KernelPairedSchedule, q8KernelPairedVariants, q8KernelShapes, q8KernelVariants, type Q8KernelBenchmark, type Q8KernelShape, type Q8KernelSample } from './q8-kernel-schema';
 
 /** Schema-only data, not timings or output from an executed GPU runtime. */
 export function createQ8BenchmarkWireFixture(): Q8KernelBenchmark {
@@ -99,4 +99,33 @@ export function createQ8BenchmarkWireFixture(): Q8KernelBenchmark {
       return shape;
     }),
   };
+}
+
+export function createQ8PairedBenchmarkWireFixture({ sameShader }: { sameShader: boolean }): Q8KernelBenchmark {
+  const value = createQ8BenchmarkWireFixture();
+  value.pairedComparisonProtocol = 'abba-baab-v1';
+  for (const [shapeIndex, shape] of value.shapes.entries()) {
+    if (shapeIndex < 6) {
+      continue;
+    }
+    if (sameShader) {
+      const forced = shape.variants[2]!.prepare.report;
+      shape.variants[0]!.prepare.report = { ...forced, variant: 'auto' };
+      shape.variants[0]!.warmup!.call.report = { ...forced, variant: 'auto', phase: 'execute', dispatches: 1 };
+      for (const sample of shape.samples.filter(sample => sample.variant === 'auto')) {
+        sample.report = { ...forced, variant: 'auto', phase: 'execute', dispatches: 32 };
+      }
+    }
+    shape.pairedComparison = {
+      status: 'complete',
+      clock: 'run-relative-performance-now',
+      warmups: q8KernelPairedVariants.map(variant => ({ variant, ...structuredClone(shape.variants.find(row => row.variant === variant)!.warmup!) })),
+      samples: createQ8KernelPairedSchedule({ blocks: 8 }).map(scheduled => {
+        const { round: _round, position: _position, ...sample } = structuredClone(shape.samples.find(row => row.variant === scheduled.variant)!);
+        const callStartedMs = shapeIndex * 1000 + scheduled.sequence * 10;
+        return { ...sample, ...scheduled, callStartedMs, callEndedMs: callStartedMs + sample.wallMs };
+      }),
+    };
+  }
+  return value;
 }

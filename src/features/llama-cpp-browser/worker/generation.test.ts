@@ -4420,7 +4420,12 @@ describe('measurement contracts with supplied native Wasm', () => {
     expectSameGenerationResult({ actual: measured, expected: ordinary });
     expect(factory).toHaveBeenCalledOnce();
     expect(synchronize).toHaveBeenCalledExactlyOnceWith(session.context);
-    const checkpoint = diagnosticSchema.parse(reports[0]).performance?.checkpoint;
+    const performance = diagnosticSchema.parse(reports[0]).performance!;
+    const checkpoint = performance.checkpoint;
+    expect(performance.earlyGenerationTiming?.samples).toHaveLength(performance.sampledTokens);
+    expect(performance.earlyGenerationTiming?.samples[0]?.ordinal).toBe(1);
+    expect(performance.earlyGenerationTiming?.stageIntervals[0]).toMatchObject({ stage: 'native-sample', ordinal: 1, sampleCountAtStart: 0 });
+    expect(performance.earlyGenerationTiming?.clockAnomalies).toBe(0);
     expect(checkpoint).toMatchObject({ captureAttempts: 1, restoreAttempts: 0, retainedRestoredCaptures: 0 });
     expect(checkpoint?.phases.map(phase => phase.phase)).toEqual(['boundary-tokenize', 'capture-position', 'capture-size', 'capture-allocation', 'capture-prior-compute-wait', 'capture-readback']);
     expect(checkpoint?.phases.every(phase => phase.elapsedMs >= 0 && phase.visits === 1)).toBe(true);
