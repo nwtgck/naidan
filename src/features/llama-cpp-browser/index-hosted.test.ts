@@ -922,6 +922,61 @@ describe('measured generation operation ownership', () => {
 });
 
 describe('investigation and read-only cache ownership', () => {
+  it('holds the measurement lane for a callback that generates no model tokens', async () => {
+    const entered = Promise.withResolvers<void>(), finish = Promise.withResolvers<void>();
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        finish.resolve();
+      },
+    };
+    const pending = service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async () => {
+        entered.resolve();
+        await finish.promise;
+      },
+    });
+    await entered.promise;
+    expect(worker.generate).not.toHaveBeenCalled();
+    await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation: async () => {} })).rejects.toThrow('busy');
+    finish.resolve();
+    await pending;
+    expect(worker.releaseRuntime).toHaveBeenCalledOnce();
+    expect(worker.generate).not.toHaveBeenCalled();
+    await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation: async () => {} })).resolves.toBeUndefined();
+  });
+
+  it('cancels a model-free callback but keeps its lane until Worker retirement settles', async () => {
+    const entered = Promise.withResolvers<void>(), retirement = Promise.withResolvers<void>();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        retirement.resolve();
+        service.cancel();
+      },
+    };
+    worker.dispose.mockReturnValueOnce(retirement.promise);
+    const pending = service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        entered.resolve();
+        await new Promise<void>((_resolve, reject) => {
+          scope.signal.addEventListener('abort', () => reject(new LlamaCppBrowserError({ code: 'aborted' })), { once: true });
+        });
+      },
+    });
+    const cancelled = expect(pending).rejects.toThrow('aborted');
+    await entered.promise;
+    service.cancel();
+    await vi.waitFor(() => expect(worker.dispose).toHaveBeenCalledOnce());
+    await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation: async () => {} })).rejects.toThrow('busy');
+    expect(worker.generate).not.toHaveBeenCalled();
+    retirement.resolve();
+    await cancelled;
+    await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation: async () => {} })).resolves.toBeUndefined();
+  });
+
   it('does not queue investigation behind a reserved read-only invocation or evict its cache', async () => {
     const reader = (await import('./index-hosted')).createReadOnlyLlamaCppClient();
     const operation = vi.fn(async () => {});
@@ -1026,7 +1081,7 @@ describe('trial interruption through the unchanged real performance service', ()
       return { ...worker };
     });
     vi.mocked(listStoredModels).mockResolvedValue(plan.models);
-    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    const runner = createPerformanceRunner({ service, runKernelDiagnostic: undefined, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
     using _stop = {
       [Symbol.dispose]() {
         runner.stop();
@@ -1061,7 +1116,7 @@ describe('trial interruption through the unchanged real performance service', ()
     const plan = performancePlan();
     vi.mocked(listStoredModels).mockResolvedValue(plan.models);
     const retirement = Promise.withResolvers<void>();
-    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    const runner = createPerformanceRunner({ service, runKernelDiagnostic: undefined, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
     using _cleanup = {
       [Symbol.dispose]() {
         retirement.resolve();

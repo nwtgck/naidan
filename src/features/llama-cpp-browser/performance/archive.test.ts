@@ -37,6 +37,22 @@ function snapshot(): PerformanceSnapshot {
 }
 
 describe('portable performance results', () => {
+  it('keeps optional kernel diagnostics separate from model trials and throughput summaries', async () => {
+    const source = snapshot();
+    const summary = summarizePerformance({ snapshot: source });
+    source.q8KernelDiagnostic = { status: 'unavailable', startedMs: 500, elapsedMs: 1, hiddenObserved: false, result: { status: 'unavailable', reason: 'artifact' } };
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    expect(JSON.parse(await zip.file('q8-kernel-diagnostic.json')!.async('string'))).toEqual(source.q8KernelDiagnostic);
+    expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toEqual(JSON.parse(JSON.stringify(summary)));
+    expect(await zip.file('trials.jsonl')!.async('string')).not.toContain('q8KernelDiagnostic');
+    const readme = await zip.file('README.md')!.async('string');
+    expect(readme).toContain('self-authored Q8 weights');
+    expect(readme).toContain(`\
+neither
+ordinary chat tok/s`);
+    expect(readme).toContain('timingStatus=quantized');
+  });
+
   it('writes an actual readable ZIP, keeping messages in per-attempt outputs rather than metrics', async () => {
     const source = snapshot();
     const archive = await performanceArchive({ snapshot: source });
@@ -51,6 +67,7 @@ describe('portable performance results', () => {
     expect(JSON.parse(await zip.file('environment.json')!.async('string')).timeOrigin).toBe(1000);
     expect(Object.keys(zip.files).some(name => name.endsWith('.gguf'))).toBe(false);
     expect(source.trials[0]?.output?.content).toBe('answer');
+    expect(zip.file('q8-kernel-diagnostic.json')).toBeNull();
   });
 
   it('preserves the request-local cache decision and checkpoint phases in the existing trials export', async () => {

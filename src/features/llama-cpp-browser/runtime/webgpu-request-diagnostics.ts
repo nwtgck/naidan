@@ -41,11 +41,17 @@ function safelyRead<T>({ read }: { read: () => T }): T | undefined {
 }
 
 function readMetadata({ device, adapter }: { device: GPUDevice, adapter: GPUAdapter | undefined }): GpuMetadata {
-  const adapterInfo: Record<string, string> = {};
-  for (const name of ['vendor', 'architecture', 'device', 'description']) {
+  const adapterInfo: NonNullable<GpuMetadata['adapterInfo']> = {};
+  for (const name of ['vendor', 'architecture', 'device', 'description'] as const) {
     const value = safelyRead({ read: () => Reflect.get(adapter?.info ?? {}, name) as unknown });
     if (typeof value === 'string' && value.length > 0) {
       adapterInfo[name] = value.slice(0, 256);
+    }
+  }
+  for (const name of ['subgroupMinSize', 'subgroupMaxSize'] as const) {
+    const value = safelyRead({ read: () => Reflect.get(adapter?.info ?? {}, name) as unknown });
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+      adapterInfo[name] = value;
     }
   }
   const currentFallback = safelyRead({ read: () => adapter?.info?.isFallbackAdapter });

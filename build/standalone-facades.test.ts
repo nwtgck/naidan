@@ -4,6 +4,19 @@ import { describe, expect, it } from 'vitest';
 import { createStandaloneFacadeAliases, STANDALONE_FACADES } from './standalone-facades.js';
 
 describe('standalone facades', () => {
+  it('replaces the lazy kernel diagnostic client with its Worker-free standalone facade', () => {
+    const facadePath = '@/features/llama-cpp-browser/performance/q8-diagnostic-client';
+    const owner = readFileSync(resolve(process.cwd(), 'src/features/llama-cpp-browser/performance/run-q8-diagnostic.ts'), 'utf8');
+    expect(owner).toContain(`import('${facadePath}')`);
+    const aliases = createStandaloneFacadeAliases({ resolvePath: path => `/repo/${path}` });
+    const alias = aliases.find(({ find }) => find instanceof RegExp && find.test(facadePath));
+    expect(alias?.replacement).toBe('/repo/src/features/llama-cpp-browser/performance/q8-diagnostic-client-standalone.ts');
+    expect(alias?.find).toBeInstanceOf(RegExp);
+    if (alias?.find instanceof RegExp) {
+      expect(alias.find.test(`${facadePath}-hosted`)).toBe(false);
+    }
+  });
+
   it('replaces the browser model download boundary without importing its hosted worker', () => {
     const facadePath = '@/features/llama-cpp-browser/hugging-face/download';
     const standalonePath = 'src/features/llama-cpp-browser/hugging-face/download-standalone.ts';
