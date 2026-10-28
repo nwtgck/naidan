@@ -8,8 +8,25 @@ on:
       - 'v*'
 
 jobs:
+  # Keep the existing required check name; skipped/cancelled shards cannot pass.
   lint:
     runs-on: ubuntu-latest
+    needs: lint_checks
+    if: ${{ always() }}
+    steps:
+      - name: Require both lint checks
+        env:
+          LINT_RESULT: ${{ needs.lint_checks.result }}
+        run: test "$LINT_RESULT" = success
+
+  lint_checks:
+    name: lint (${{ matrix.scope }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        scope: [strings, other]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -38,7 +55,7 @@ jobs:
             -u "$(id -u):$(id -g)" \
             -v "$PWD:/work" -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
-            node:22-bookworm npm run lint
+            node:22-bookworm npm run lint:ci:${{ matrix.scope }}
 
   test:
     runs-on: ubuntu-latest

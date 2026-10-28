@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ESLint } from 'eslint';
+import { ESLint, Linter } from 'eslint';
 import * as tsParser from '@typescript-eslint/parser';
 import vueParser from 'vue-eslint-parser';
 import { describe, expect, it } from 'vitest';
@@ -176,4 +176,50 @@ describe('validate-worker-api rule', () => {
       expect.stringContaining('generic-transport-bridge-not-allowed'),
     ]);
   }, 20_000);
+  it('does not resolve signatures when neither a contract nor an exposed value exists', () => {
+    let resolutions = 0;
+    const parser = {
+      parseForESLint(source: string) {
+        const parsed = tsParser.parseForESLint(source, { range: true, loc: true, tokens: true, comment: true });
+        return {
+          ...parsed,
+          services: {
+            ...parsed.services,
+            program: {
+              getTypeChecker: () => ({
+                getResolvedSignature() {
+                  resolutions += 1;
+                  return undefined;
+                },
+              }),
+            },
+          },
+        };
+      },
+    };
+    const messages = new Linter({ cwd: projectRoot }).verify(`
+ordinary();
+wrapWorkerRemote();
+exposeWorkerRemote();
+Comlink.wrap();
+Comlink.expose();
+alias?.();
+`, [{
+      languageOptions: { parser },
+      plugins: { local: { rules: { api: rule } } },
+      rules: { 'local/api': 'error' },
+    }], { filename: 'src/query-probe.js' });
+    expect(messages).toEqual([]);
+    expect(resolutions).toBe(0);
+  });
+
+  it('still resolves aliases and validates explicit contracts even without runtime arguments', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-call-selection-probe.ts')]);
+    expect(result.fatalErrorCount).toBe(0);
+    expect(result.messages.map(message => [message.line, message.messageId])).toEqual([
+      [11, 'invalidApi'], [12, 'invalidApi'], [13, 'invalidApi'],
+      [14, 'invalidApi'], [15, 'invalidApi'], [16, 'invalidApi'],
+    ]);
+    expect(result.messages.every(message => message.message.includes('function-must-be-proxied'))).toBe(true);
+  });
 });

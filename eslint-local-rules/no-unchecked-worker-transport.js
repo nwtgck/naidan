@@ -25,7 +25,7 @@ function getObjectTypeInfo(context, node) {
     return undefined;
   }
   const type = checker.getTypeAtLocation(tsNode);
-  return { type, checker, displayName: checker.typeToString(type) };
+  return { type, checker };
 }
 
 function collectTypeHierarchyNames(type, names = new Set(), seen = new Set()) {
@@ -107,6 +107,19 @@ function staticPatternPropertyName(property) {
   return undefined;
 }
 
+// Classify syntax before asking TypeScript about the receiver. Unknown computed
+// keys must remain candidates: they can hide a transport member at runtime.
+function transportMessageId({ memberName, dynamic }) {
+  if (memberName === 'postMessage') {
+    return 'directPostMessage';
+  }
+  if (memberName === 'onmessage' || memberName === 'addEventListener') {
+    return 'directMessageListener';
+  }
+  return memberName === undefined && dynamic ? 'dynamicWorkerMember' : undefined;
+}
+
+/** @type {import('eslint').Rule.RuleModule} */
 export const rule = {
   meta: {
     type: 'problem',
@@ -180,83 +193,75 @@ export const rule = {
         if (!target || target.type === 'SpreadElement') {
           return;
         }
+        const messageId = transportMessageId({
+          memberName: staticStringValue(node.arguments[1]),
+          dynamic: true,
+        });
+        if (messageId === undefined) {
+          return;
+        }
         const typeInfo = getObjectTypeInfo(context, target);
         if (!isWorkerMessageEndpoint(typeInfo?.type)) {
           return;
         }
-        const typeName = typeInfo?.displayName ?? 'Worker endpoint';
-        const propertyName = staticStringValue(node.arguments[1]);
-        if (propertyName === undefined) {
-          context.report({ node, messageId: 'dynamicWorkerMember', data: { typeName } });
-        } else if (propertyName === 'postMessage') {
-          context.report({ node, messageId: 'directPostMessage', data: { typeName } });
-        } else if (propertyName === 'onmessage' || propertyName === 'addEventListener') {
-          context.report({ node, messageId: 'directMessageListener', data: { typeName } });
-        }
+        // Formatting a large unrelated type can be expensive. Only format a
+        // confirmed endpoint when its name is needed in a diagnostic.
+        const typeName = typeInfo.checker.typeToString(typeInfo.type);
+        context.report({ node, messageId, data: { typeName } });
       },
       ObjectPattern(node) {
         if (allowLegacyRawTransport) {
+          return;
+        }
+        const candidates = [];
+        for (const property of node.properties) {
+          if (property.type === 'RestElement') {
+            continue;
+          }
+          const messageId = transportMessageId({
+            memberName: staticPatternPropertyName(property),
+            dynamic: property.computed,
+          });
+          if (messageId !== undefined) {
+            candidates.push({ node: property, messageId });
+          }
+        }
+        if (candidates.length === 0) {
           return;
         }
         const typeInfo = getObjectTypeInfo(context, node);
         if (!isWorkerMessageEndpoint(typeInfo?.type)) {
           return;
         }
-        const typeName = typeInfo?.displayName ?? 'Worker endpoint';
-        for (const property of node.properties) {
-          if (property.type === 'RestElement') {
-            continue;
-          }
-          const memberName = staticPatternPropertyName(property);
-          if (memberName === undefined) {
-            if (property.computed) {
-              context.report({ node: property, messageId: 'dynamicWorkerMember', data: { typeName } });
-            }
-            continue;
-          }
-          if (memberName === 'postMessage') {
-            context.report({ node: property, messageId: 'directPostMessage', data: { typeName } });
-          } else if (memberName === 'onmessage' || memberName === 'addEventListener') {
-            context.report({ node: property, messageId: 'directMessageListener', data: { typeName } });
-          }
+        const typeName = typeInfo.checker.typeToString(typeInfo.type);
+        for (const candidate of candidates) {
+          context.report({ ...candidate, data: { typeName } });
         }
       },
       MemberExpression(node) {
         if (allowLegacyRawTransport) {
           return;
         }
+        const memberName = staticMemberName(node);
+        const messageId = transportMessageId({ memberName, dynamic: node.computed });
+        if (messageId === undefined) {
+          return;
+        }
+        if (memberName === 'addEventListener') {
+          const parent = node.parent;
+          if (parent?.type === 'CallExpression' && parent.callee === node) {
+            const eventName = staticStringValue(parent.arguments[0]);
+            if (eventName !== undefined && eventName !== 'message') {
+              return;
+            }
+          }
+        }
         const typeInfo = getObjectTypeInfo(context, node.object);
         if (!isWorkerMessageEndpoint(typeInfo?.type)) {
           return;
         }
-        const typeName = typeInfo?.displayName ?? 'Worker endpoint';
-        const memberName = staticMemberName(node);
-        if (memberName === undefined) {
-          if (node.computed) {
-            context.report({ node, messageId: 'dynamicWorkerMember', data: { typeName } });
-          }
-          return;
-        }
-        if (memberName === 'postMessage') {
-          context.report({ node, messageId: 'directPostMessage', data: { typeName } });
-          return;
-        }
-        if (memberName === 'onmessage') {
-          context.report({ node, messageId: 'directMessageListener', data: { typeName } });
-          return;
-        }
-        if (memberName !== 'addEventListener') {
-          return;
-        }
-
-        const parent = node.parent;
-        if (parent?.type === 'CallExpression' && parent.callee === node) {
-          const eventName = staticStringValue(parent.arguments[0]);
-          if (eventName !== undefined && eventName !== 'message') {
-            return;
-          }
-        }
-        context.report({ node, messageId: 'directMessageListener', data: { typeName } });
+        const typeName = typeInfo.checker.typeToString(typeInfo.type);
+        context.report({ node, messageId, data: { typeName } });
       },
     };
   },

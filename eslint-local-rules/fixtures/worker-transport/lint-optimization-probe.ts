@@ -1,0 +1,46 @@
+// Deliberately invalid transport boundaries; never execute this fixture.
+declare const worker: Worker;
+declare const shared: SharedWorker;
+declare const port: MessagePort;
+declare const scope: DedicatedWorkerGlobalScope;
+interface DerivedWorker extends Worker { readonly derived: true }
+declare const derived: DerivedWorker;
+type WorkerAlias = Worker;
+declare const alias: WorkerAlias;
+declare const intersection: Worker & { readonly tag: string };
+declare const union: Worker | MessagePort;
+declare const nullable: Worker | undefined;
+declare const key: string;
+declare const event: string;
+
+worker.postMessage({});
+worker['postMessage']({});
+worker[`postMessage`]({});
+nullable?.postMessage({});
+worker.onmessage = null;
+worker['onmessage'] = null;
+worker[`onmessage`] = null;
+worker.addEventListener('message', () => {});
+worker.addEventListener(`message`, () => {});
+worker.addEventListener(event, () => {});
+worker.addEventListener;
+worker['addEventListener'];
+worker[key];
+worker[0];
+worker[`post${key}`];
+Reflect.get(worker, 'postMessage');
+Reflect.set(worker, `onmessage`, null);
+Reflect.get(worker, 'addEventListener');
+Reflect.get(worker, key);
+Reflect.get(worker, 0);
+const { postMessage: send, onmessage: receive, addEventListener: listen } = worker;
+const { ['postMessage']: computedSend, [`onmessage`]: computedReceive } = worker;
+const { [key]: dynamic, [0]: numeric } = worker;
+({ postMessage: send } = worker);
+alias.postMessage({});
+intersection.postMessage({});
+union.postMessage({});
+derived.postMessage({});
+shared.port.postMessage({});
+port.onmessage = null;
+scope.addEventListener('message', () => {});

@@ -419,6 +419,7 @@ function resolvedCallDeclarationName({ tsCall, checker }) {
   return undefined;
 }
 
+/** @type {import('eslint').Rule.RuleModule} */
 export const rule = {
   meta: {
     type: "problem",
@@ -458,6 +459,12 @@ export const rule = {
       CallExpression(node) {
         const tsCall = services.esTreeNodeToTSNodeMap.get(node);
         if (!ts.isCallExpression(tsCall)) {
+          return;
+        }
+        // Every validation path below needs an explicit contract or an exposed
+        // value. Calls with neither cannot report, regardless of alias/overload
+        // resolution. Keep semantic resolution for all remaining calls.
+        if (!tsCall.typeArguments?.[0] && !tsCall.arguments[0]) {
           return;
         }
         const resolvedCalleeName = resolvedCallDeclarationName({ tsCall, checker });
