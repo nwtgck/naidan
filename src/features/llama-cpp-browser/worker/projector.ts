@@ -126,12 +126,14 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     if (access.getSize() !== file.file.size) {
       throw new LlamaCppBrowserError({ code: 'storage-error' });
     }
+    const readWithTail = access.readWithTail?.bind(access);
     mounted = mountReadOnlyFile({
       core,
       path: `/models/${file.relativePath}`,
       source: readCache.wrap({
         source: {
           size: access.getSize(),
+          ...(readWithTail ? { readWithTail } : {}),
           read({ destination, offset }) {
             return access.read(destination, { at: offset });
           },

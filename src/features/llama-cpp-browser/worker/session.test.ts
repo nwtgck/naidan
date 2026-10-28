@@ -9,6 +9,8 @@ import type { ModelDirectory, StoredModelFile } from '@/features/llama-cpp-brows
 import type { loadProjector, loadProjectorForBackend } from './projector';
 import type { WorkerGenerateInput } from './types';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
+import * as modelFileModule from './model-file-access';
+import type { ModelFileSource } from '@/features/llama-cpp-browser/runtime/model-file-source';
 import { prepareSession, prepareGenerationSession, prepareAudioSession, releaseSession } from './session';
 
 const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as (Omit<ModelDirectory, 'files'> & { files: StoredModelFile[] }) | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
@@ -93,6 +95,42 @@ afterEach(async () => {
 });
 
 describe('resident projector debug changes', () => {
+  it('forwards a host bulk tail through shard diagnostics and releases it after loading', async () => {
+    const size = 100000;
+    const primary = host.directory!.files[0]!;
+    primary.file = new File([new Uint8Array(size)], 'model.gguf', { lastModified: 1 });
+    host.directory!.files = [primary];
+    const close = vi.fn();
+    const read = vi.fn(() => {
+      throw new Error('Tail should satisfy the second read');
+    });
+    const readWithTail = vi.fn<NonNullable<ModelFileSource['readWithTail']>>(({ destination, tail }) => {
+      destination.fill(31);
+      tail.fill(47);
+      return destination.length + tail.length;
+    });
+    using _access = vi.spyOn(modelFileModule, 'openModelFileAccess').mockResolvedValue({ getSize: () => size, read, readWithTail, close });
+    let source: ModelFileSource | undefined;
+    using _mount = vi.spyOn(readOnlyModule, 'mountReadOnlyFile').mockImplementation(args => {
+      source = args.source;
+      return { path: args.path, remove: () => {} };
+    });
+    vi.mocked(host.core!.api.llama_model_load_from_file).mockImplementationOnce(async () => {
+      expect(close).not.toHaveBeenCalled();
+      const body = new Uint8Array(65536), tail = new Uint8Array(1024);
+      expect(source!.read({ destination: body, offset: 0 })).toBe(65536);
+      expect(source!.read({ destination: tail, offset: 65536 })).toBe(1024);
+      expect(body.every(value => value === 31)).toBe(true);
+      expect(tail.every(value => value === 47)).toBe(true);
+      return 10n;
+    });
+    await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(readWithTail).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+    expect(() => source!.read({ destination: new Uint8Array(1), offset: 65536 })).toThrow('disposed');
+  });
+
   it('records failed model-load capacity without replacing the native error', async () => {
     const core = host.core;
     if (!core) {

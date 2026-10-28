@@ -345,10 +345,12 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         if (access.getSize() !== entry.file.size) {
           throw new LlamaCppBrowserError({ code: 'storage-error' });
         }
+        const readWithTail = access.readWithTail?.bind(access);
         const traced = createModelFileDiagnostics({
           ordinal: index + 1,
           source: {
             size: access.getSize(),
+            ...(readWithTail ? { readWithTail } : {}),
             read({ destination, offset }) {
               // This source outlives the loading request when PLE is file-backed.
               // Do not capture its AbortSignal as the lifetime cancellation token.

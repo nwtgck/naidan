@@ -2,6 +2,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
+import * as modelFileModule from './model-file-access';
+import * as readOnlyModule from '@/features/llama-cpp-browser/runtime/read-only-file';
+import type { ModelFileSource } from '@/features/llama-cpp-browser/runtime/model-file-source';
 import { createVisionMeasurement } from './vision-measurement';
 import { visionBf16Metadata } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage.test-support';
 import { loadProjector, loadProjectorForBackend } from './projector';
@@ -59,6 +62,41 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
 }
 
 describe('projector callback ownership', () => {
+  it('forwards a host tail capability during loading and disposes its cache afterward', async () => {
+    const f = fixture({ pointerBytes: 4 });
+    const size = 100000;
+    f.file.file = new File([new Uint8Array(size)], 'mmproj.gguf');
+    const read = vi.fn(() => {
+      throw new Error('Tail should satisfy the second read');
+    });
+    const readWithTail = vi.fn<NonNullable<ModelFileSource['readWithTail']>>(({ destination, tail }) => {
+      destination.fill(31);
+      tail.fill(47);
+      return destination.length + tail.length;
+    });
+    using _access = vi.spyOn(modelFileModule, 'openModelFileAccess').mockResolvedValue({ getSize: () => size, read, readWithTail, close: f.close });
+    let source: ModelFileSource | undefined;
+    using _mount = vi.spyOn(readOnlyModule, 'mountReadOnlyFile').mockImplementation(args => {
+      source = args.source;
+      return { path: args.path, remove: mount.remove };
+    });
+    f.api.mtmd_init_from_file.mockImplementationOnce(async () => {
+      expect(f.close).not.toHaveBeenCalled();
+      const body = new Uint8Array(65536), tail = new Uint8Array(1024);
+      expect(source!.read({ destination: body, offset: 0 })).toBe(65536);
+      expect(source!.read({ destination: tail, offset: 65536 })).toBe(1024);
+      expect(body.every(value => value === 31)).toBe(true);
+      expect(tail.every(value => value === 47)).toBe(true);
+      return 500n;
+    });
+    const loaded = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'off', signal: undefined, visionBf16Storage: undefined, observation: 'disabled' });
+    await using _projector = { [Symbol.asyncDispose]: () => loaded.release() };
+    expect(readWithTail).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    expect(f.close).toHaveBeenCalledOnce();
+    expect(() => source!.read({ destination: new Uint8Array(1), offset: 65536 })).toThrow('disposed');
+  });
+
   it.each([4, 8] as const)('keeps the %i-byte callback alive until native projector release', async pointerBytes => {
     const f = fixture({ pointerBytes });
     const projector = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: undefined, visionBf16Storage: undefined, observation: 'disabled' });
