@@ -1,16 +1,48 @@
-import { ref, computed } from 'vue';
+import { ref, computed, readonly } from 'vue';
 import { useOverlay } from '@/composables/useOverlay';
+import { createSearchQueryMemory, type SearchQueryMemoryContext } from '@/features/global-search/logic/query-memory';
 
-const { activeOverlay, openOverlay: _openOverlay, closeOverlay: _closeOverlay, toggleOverlay: _toggleOverlay } = useOverlay();
+const { activeOverlay, openOverlay: _openOverlay, closeOverlay: _closeOverlay } = useOverlay();
 
 const isSearchOpen = computed(() => activeOverlay.value === 'search');
 const chatGroupIds = ref<string[]>([]);
 const chatId = ref<string | undefined>(undefined);
+const searchRequestId = ref(0);
+const queryMemory = createSearchQueryMemory({ targetLimit: 100 });
+let queryContext: SearchQueryMemoryContext = { type: 'global' };
+const currentQuery = ref('');
+const query = computed({
+  get: () => currentQuery.value,
+  set: (value: string) => {
+    currentQuery.value = value;
+    // Remember input before the debounced search, including the last keystroke before closing.
+    queryMemory.rememberQuery({ context: queryContext, query: value });
+  },
+});
+
+function resolveQueryContext({ chatId, chatGroupIds }: {
+  chatId: string | undefined,
+  chatGroupIds: string[],
+}): SearchQueryMemoryContext {
+  if (chatId !== undefined) {
+    return { type: 'chat', chatId };
+  }
+  const [chatGroupId] = chatGroupIds;
+  if (chatGroupIds.length === 1 && chatGroupId !== undefined) {
+    return { type: 'chat_group', chatGroupId };
+  }
+  return { type: 'global' };
+}
 
 export function useGlobalSearch() {
   const openSearch = ({ groupIds, chatId: cid }: { groupIds?: string[], chatId?: string }) => {
-    chatGroupIds.value = groupIds || [];
+    const initialChatGroupIds = groupIds === undefined ? [] : [...groupIds];
+    // Keep this context fixed while the user changes filters within the modal.
+    queryContext = resolveQueryContext({ chatId: cid, chatGroupIds: initialChatGroupIds });
+    currentQuery.value = queryMemory.restoreQuery({ context: queryContext });
+    chatGroupIds.value = initialChatGroupIds;
     chatId.value = cid;
+    searchRequestId.value++;
     _openOverlay({ type: 'search' });
   };
 
@@ -33,15 +65,14 @@ export function useGlobalSearch() {
   };
 
   const toggleSearch = () => {
-    _toggleOverlay({ type: 'search' });
     const overlay = activeOverlay.value;
     switch (overlay) {
     case 'search':
+      closeSearch();
       break;
     case 'recent':
     case 'none':
-      chatGroupIds.value = [];
-      chatId.value = undefined;
+      openSearch({});
       break;
     default: {
       const _ex: never = overlay;
@@ -54,6 +85,8 @@ export function useGlobalSearch() {
     isSearchOpen,
     chatGroupIds,
     chatId,
+    query,
+    searchRequestId: readonly(searchRequestId),
     openSearch,
     closeSearch,
     toggleSearch,

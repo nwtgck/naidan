@@ -1,7 +1,7 @@
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { mount, DOMWrapper, enableAutoUnmount } from '@vue/test-utils';
+import { mount, DOMWrapper, enableAutoUnmount, flushPromises } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
 import { computed, ref, nextTick } from 'vue';
 import { setupScrollToMock } from '@/utils/utils.test-support';
@@ -24,6 +24,7 @@ beforeEach(async () => {
 // --- Mocks ---
 
 const mockIsSearchOpen = ref(false);
+const mockSearchRequestId = ref(0);
 const mockChatGroupIds = ref<string[]>([]);
 const mockChatId = ref<string | undefined>(undefined);
 const mockCloseSearch = vi.fn();
@@ -49,6 +50,8 @@ vi.mock('../composables/useGlobalSearch', () => ({
     isSearchOpen: mockIsSearchOpen,
     chatGroupIds: mockChatGroupIds,
     chatId: mockChatId,
+    query: mockQuery,
+    searchRequestId: mockSearchRequestId,
     closeSearch: mockCloseSearch,
   }),
 }));
@@ -64,7 +67,6 @@ const mockDisposeSearch = vi.fn();
 
 vi.mock('../composables/useChatSearch', () => ({
   useChatSearch: () => ({
-    query: mockQuery,
     isSearching: mockIsSearching,
     isScanningContent: mockIsScanningContent,
     results: mockResults,
@@ -142,10 +144,21 @@ async function openSelectMenu({ trigger }: { trigger: Pick<DOMWrapper<Element>, 
 
 // --- Tests ---
 
+function chatResult({ chatId }: { chatId: string }): FlatSearchResultItem {
+  return { type: 'chat', item: { type: 'chat', chatId, title: chatId, updatedAt: 1, matchType: 'title', contentMatches: [] } };
+}
+
+function movePointer({ target, x, y, pointerType }: { target: EventTarget, x: number, y: number, pointerType: 'mouse' | 'touch' }): void {
+  const event = new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y });
+  Object.defineProperty(event, 'pointerType', { value: pointerType });
+  target.dispatchEvent(event);
+}
+
 describe('GlobalSearchModal Component', () => {
   beforeEach(() => {
     setupScrollToMock();
     mockIsSearchOpen.value = true;
+    mockSearchRequestId.value = 0;
     mockQuery.value = '';
     mockChatGroupIds.value = [];
     mockChatId.value = undefined;
@@ -513,7 +526,8 @@ describe('GlobalSearchModal Component', () => {
     await nextTick();
 
     // Initial state
-    expect((wrapper.vm as any).activePane).toBe('results');
+    expect((wrapper.vm as any).activePane).toBe('query');
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowDown' });
 
     // ArrowRight to switch to preview
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowRight' });
@@ -654,7 +668,8 @@ describe('GlobalSearchModal Component', () => {
     const wrapper = mount(GlobalSearchModal);
     await nextTick();
 
-    expect((wrapper.vm as any).activePane).toBe('results');
+    expect((wrapper.vm as any).activePane).toBe('query');
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowDown' });
 
     // ArrowRight to switch to preview
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowRight' });
@@ -860,5 +875,157 @@ describe('GlobalSearchModal Component', () => {
     expect(selectSpy).toHaveBeenCalled();
 
     selectSpy.mockRestore();
+  });
+
+  it('allows native Right after reopening, then enters the preview after result navigation', async () => {
+    mockQuery.value = 'saved query';
+    mockResults.value = [chatResult({ chatId: 'chat1' })];
+    const wrapper = mount(GlobalSearchModal, { attachTo: document.body });
+    await nextTick();
+    const input = wrapper.get<HTMLInputElement>('[data-testid="search-input"]');
+    expect(input.element.selectionStart).toBe(0);
+    expect(input.element.selectionEnd).toBe('saved query'.length);
+    const right = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    input.element.dispatchEvent(right);
+    expect(right.defaultPrevented).toBe(false);
+    expect(wrapper.vm).toHaveProperty('activePane', 'query');
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'ArrowRight' });
+    expect(wrapper.vm).toHaveProperty('activePane', 'preview');
+    await input.trigger('keydown', { key: 'ArrowLeft' });
+    expect(wrapper.vm).toHaveProperty('activePane', 'results');
+    await input.trigger('pointerdown');
+    expect(wrapper.vm).toHaveProperty('activePane', 'query');
+  });
+
+  it.each([
+    { key: 'ArrowDown', isComposing: true },
+    { key: 'ArrowRight', isComposing: true },
+    { key: 'ArrowLeft', shiftKey: true },
+    { key: 'ArrowRight', ctrlKey: true },
+    { key: 'ArrowDown', altKey: true },
+    { key: 'ArrowRight', metaKey: true },
+    { key: 'End' },
+  ])('keeps native editing for $key with IME or editing modifiers', async options => {
+    mockResults.value = [chatResult({ chatId: 'chat1' })];
+    const wrapper = mount(GlobalSearchModal);
+    const input = wrapper.get('[data-testid="search-input"]');
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    const event = new KeyboardEvent('keydown', { ...options, bubbles: true, cancelable: true });
+    input.element.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(wrapper.vm).toHaveProperty('activePane', 'query');
+  });
+
+  it('preserves preview navigation when streaming results move the selected item', async () => {
+    mockResults.value = [chatResult({ chatId: 'a' })];
+    const wrapper = mount(GlobalSearchModal);
+    const input = wrapper.get('[data-testid="search-input"]');
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'ArrowRight' });
+    mockResults.value = [chatResult({ chatId: 'new' }), chatResult({ chatId: 'a' })];
+    await nextTick();
+    expect(wrapper.vm).toHaveProperty('selectedIndex', 1);
+    expect(wrapper.vm).toHaveProperty('activePane', 'preview');
+    await input.setValue('edited');
+    expect(wrapper.vm).toHaveProperty('activePane', 'query');
+  });
+
+  it('responds to actual pointer motion while stationary pointers and touch scrolling preserve selection', async () => {
+    mockResults.value = [chatResult({ chatId: 'a' }), chatResult({ chatId: 'b' })];
+    const wrapper = mount(GlobalSearchModal, { attachTo: document.body });
+    await nextTick();
+    movePointer({ target: document, x: 10, y: 10, pointerType: 'mouse' });
+    movePointer({ target: wrapper.get('[data-testid="search-result-item-1"]').element, x: 20, y: 20, pointerType: 'mouse' });
+    expect(wrapper.vm).toHaveProperty('selectedIndex', 1);
+    expect(wrapper.vm).toHaveProperty('activePane', 'query');
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowDown' });
+    movePointer({ target: wrapper.get('[data-testid="search-result-item-0"]').element, x: 20, y: 20, pointerType: 'mouse' });
+    expect(wrapper.vm).toHaveProperty('selectedIndex', 1);
+    mockResults.value = [chatResult({ chatId: 'b' }), chatResult({ chatId: 'a' })];
+    await nextTick();
+    movePointer({ target: wrapper.get('[data-testid="search-result-item-1"]').element, x: 20, y: 20, pointerType: 'mouse' });
+    expect(wrapper.vm).toHaveProperty('selectedIndex', 0);
+    movePointer({ target: wrapper.get('[data-testid="search-result-item-1"]').element, x: 30, y: 30, pointerType: 'touch' });
+    expect(wrapper.vm).toHaveProperty('selectedIndex', 0);
+    movePointer({ target: wrapper.get('[data-testid="search-result-item-1"]').element, x: 21, y: 20, pointerType: 'mouse' });
+    expect(wrapper.vm).toHaveProperty('selectedIndex', 1);
+  });
+
+  it('updates pointer position outside the rows without stealing keyboard navigation', async () => {
+    mockResults.value = [chatResult({ chatId: 'a' }), chatResult({ chatId: 'b' })];
+    const wrapper = mount(GlobalSearchModal, { attachTo: document.body });
+    await nextTick();
+    movePointer({ target: document, x: 10, y: 10, pointerType: 'mouse' });
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowDown' });
+    movePointer({ target: document, x: 50, y: 50, pointerType: 'mouse' });
+    movePointer({ target: wrapper.get('[data-testid="search-result-item-0"]').element, x: 50, y: 50, pointerType: 'mouse' });
+    expect(wrapper.vm).toHaveProperty('selectedIndex', 1);
+    expect(wrapper.vm).toHaveProperty('activePane', 'results');
+  });
+
+  it('switches an open request without running the previous debounce or losing the original focus return', async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+    mockActiveFocusArea.value = 'search';
+    await wrapper.get('[data-testid="search-input"]').setValue('old pending');
+    mockSearch.mockClear();
+    mockQuery.value = 'restored';
+    mockChatId.value = 'new-chat';
+    mockSearchRequestId.value++;
+    await nextTick();
+    vi.advanceTimersByTime(500);
+    expect(mockSearch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ searchQuery: 'restored', options: expect.objectContaining({ chatId: 'new-chat' }) }));
+    mockIsSearchOpen.value = false;
+    await nextTick();
+    expect(mockSetActiveFocusArea).toHaveBeenLastCalledWith({ area: 'chat' });
+  });
+
+  it.each(['chat', 'message'] as const)('does not close a new request when an old %s selection finishes', async kind => {
+    const navigation = useChatNavigation();
+    const gate = Promise.withResolvers<void>();
+    const delayedChat = vi.fn<typeof navigation.openChat>(async request => {
+      await gate.promise;
+      return navigation.openChat(request);
+    });
+    const delayedMessage = vi.fn<typeof navigation.openChatAtMessage>(async request => {
+      await gate.promise;
+      return navigation.openChatAtMessage(request);
+    });
+    vi.mocked(useChatNavigation).mockReturnValue({ ...navigation, openChat: delayedChat, openChatAtMessage: delayedMessage });
+    await using _release = {
+      async [Symbol.asyncDispose]() {
+        gate.resolve();
+        await flushPromises();
+      },
+    };
+    mockResults.value = kind === 'chat' ? [chatResult({ chatId: 'old' })] : [{
+      type: 'message',
+      item: { chatId: 'old', messageId: 'message', excerpt: 'old', role: 'user', targetLeafId: 'message', timestamp: 1, isCurrentThread: true },
+    }];
+    const wrapper = mount(GlobalSearchModal);
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
+    const isCurrent = kind === 'chat' ? delayedChat.mock.calls[0]?.[0].isCurrent : delayedMessage.mock.calls[0]?.[0].isCurrent;
+    expect(isCurrent?.()).toBe(true);
+    mockSearchRequestId.value++;
+    await nextTick();
+    expect(isCurrent?.()).toBe(false);
+    gate.resolve();
+    await flushPromises();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockCloseSearch).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending input debounce when the search scope changes', async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+    mockSearch.mockClear();
+    await wrapper.get('[data-testid="search-input"]').setValue('latest');
+    mockGlobalSearchScope.value = 'all';
+    await nextTick();
+    vi.advanceTimersByTime(500);
+    expect(mockSearch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ searchQuery: 'latest', options: expect.objectContaining({ scope: 'all' }) }));
   });
 });

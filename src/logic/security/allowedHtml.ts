@@ -355,7 +355,8 @@ export function highlightSearchTextAsHtml({
     }
   })();
 
-  const emphasisClasses = twClassString('font-bold', 'rounded', 'px-0.5');
+  // Keep font metrics and inline spacing unchanged when highlighting appears.
+  const emphasisClasses = twClassString('rounded');
   const highlighted = text.split(regex).map(part => {
     const isMatch = keywords.some(keyword => part.toLowerCase() === keyword);
     const escaped = String(escapeTextAsHtml({ text: part }));
