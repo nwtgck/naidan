@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { modelLaunchTargetSchema } from '@/01-models/llama-cpp-browser-model-launch';
-import { confirmModelLaunchConfiguration, modelLaunchChoices, resolveModelLaunchConfiguration, resolveModelLaunchTarget, targetForChoice, readLaunchCatalog, rememberLaunchCatalog, TEST_ONLY } from './target';
+import { confirmModelLaunchConfiguration, initialRepositorySelection, modelLaunchChoices, resolveModelLaunchConfiguration, resolveModelLaunchTarget, targetForChoice, readLaunchCatalog, rememberLaunchCatalog, TEST_ONLY } from './target';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 
 function catalog({ paths }: { paths: string[] }): RepositoryCatalog {
@@ -111,5 +111,27 @@ describe('model launch resolution', () => {
     expect(readLaunchCatalog({ repository: value.repository })).toBe(value);
     TEST_ONLY.reset();
     expect(readLaunchCatalog({ repository: value.repository })).toBeUndefined();
+  });
+});
+
+describe('explicit repository preview defaults', () => {
+  it('uses the existing quantization ranking and excludes auxiliary weights', () => {
+    const value = catalog({ paths: ['Model-Q8_0.gguf', 'Model-drafter-Q4_K_M.gguf', 'Model-Q4_K_M.gguf'] });
+    expect(initialRepositorySelection({ catalog: value, requestedVariant: undefined })).toEqual({ mainPath: 'Model-Q4_K_M.gguf', companionPath: '', multimodal: 'off' });
+    expect(initialRepositorySelection({ catalog: value, requestedVariant: 'Q8_0' }).mainPath).toBe('Model-Q8_0.gguf');
+  });
+
+  it.each(['Q6_K', 'Q4_K_M'])('leaves unavailable or ambiguous explicit %s unresolved', requestedVariant => {
+    const value = catalog({ paths: ['first-Q4_K_M.gguf', 'second-Q4_K_M.gguf'] });
+    expect(initialRepositorySelection({ catalog: value, requestedVariant }).mainPath).toBe('');
+    expect(initialRepositorySelection({ catalog: value, requestedVariant: 'second-Q4_K_M.gguf' }).mainPath).toBe('second-Q4_K_M.gguf');
+  });
+
+  it('uses the shared companion preference only within an unambiguous family', () => {
+    const value = catalog({ paths: ['Model-Q4_K_M.gguf'] });
+    value.projectors = [{ path: 'mmproj-F16.gguf', size: 64 }, { path: 'mmproj-Q8_0.gguf', size: 48 }];
+    expect(initialRepositorySelection({ catalog: value, requestedVariant: undefined }).companionPath).toBe('mmproj-Q8_0.gguf');
+    value.projectors.push({ path: 'other-mmproj-Q8_0.gguf', size: 48 });
+    expect(initialRepositorySelection({ catalog: value, requestedVariant: undefined })).toMatchObject({ companionPath: '', multimodal: 'on' });
   });
 });

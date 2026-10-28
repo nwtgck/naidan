@@ -13,8 +13,8 @@ import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-fac
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/repository-input';
 import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import { installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
-import { formatDownloadBytes, preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
-import { confirmModelLaunchConfiguration, modelLaunchChoices, resolveModelLaunchConfiguration } from '@/features/llama-cpp-browser/model-launch/target';
+import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { confirmModelLaunchConfiguration, initialRepositorySelection, modelLaunchChoices } from '@/features/llama-cpp-browser/model-launch/target';
 import LlamaCppBrowserModelConfiguration from './LlamaCppBrowserModelConfiguration.vue';
 import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
@@ -150,31 +150,11 @@ async function checkRepository({ value }: { value: string }): Promise<void> {
       return;
     }
     catalog.value = found;
-    const configuration = resolveModelLaunchConfiguration({ input: value, requestedVariant: parsed.requestedVariant, catalog: found, multimodal: 'auto' });
-    const available = modelLaunchChoices({ catalog: found });
-    switch (configuration.status) {
-    case 'resolved':
-      mainPath.value = configuration.target.mainFilePath;
-      companionPath.value = found.projectors.find(file => configuration.target.selection.files.some(selected => selected.path === file.path))?.path ?? '';
-      break;
-    case 'needs-selection':
-      mainPath.value = configuration.selectedMainPath ?? configuration.mainChoices[0]?.path ?? '';
-      companionPath.value = configuration.selectedCompanionPath ?? '';
-      break;
-    case 'invalid':
-      mainPath.value = available[0]?.primaryRelativePath ?? '';
-      companionPath.value = '';
-      error.value = available.length === 0;
-      break;
-    default: {
-      const exhaustive: never = configuration;
-      throw new Error(String(exhaustive));
-    }
-    }
-    // Match settings: enable available multimodal support and prefer only an
-    // unambiguous companion. Different projector families need a real choice.
-    multimodal.value = found.projectors.length > 0 ? 'on' : 'off';
-    companionPath.value ||= preferredProjector({ files: found.projectors })?.path ?? '';
+    const initial = initialRepositorySelection({ catalog: found, requestedVariant: parsed.requestedVariant });
+    mainPath.value = initial.mainPath;
+    companionPath.value = initial.companionPath;
+    multimodal.value = initial.multimodal;
+    error.value = modelLaunchChoices({ catalog: found }).length === 0;
   } catch {
     if (!controller.signal.aborted) {
       error.value = true;

@@ -420,3 +420,14 @@ it('keeps companion choices inside the same dialog and retries a failed confirme
   await wrapper.get('[data-testid="browser-model-files-confirm"]').trigger('click');
   expect(modelLaunchCommand.value).toMatchObject({ kind: 'retry', operation: command.operation });
 });
+
+it.each(['home', 'chat'] as const)('opens the shared Hugging Face discovery panel from the %s entry', async kind => {
+  const wrapper = mountEntry();
+  entry.openDiscovery.mockClear();
+  if (kind === 'chat') {
+    entry.modelSelection.value = { phase: 'open', target: { kind: 'chat', chatId: toChatId({ raw: 'existing' }), acceptFiles: vi.fn(), useModel: vi.fn(), useRepositoryModel: vi.fn() }, selection: entry.homeSelection.value };
+  }
+  await flushPromises();
+  wrapper.getComponent(BrowserModelWelcome).vm.$emit('open-discovery', { tab: 'hugging-face' });
+  expect(entry.openDiscovery).toHaveBeenCalledWith({ tab: 'hugging-face' });
+});

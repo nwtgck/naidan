@@ -6,7 +6,6 @@ import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { Settings } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
-import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import type { ModelDirectoryInput, LocalModel } from '@/features/llama-cpp-browser/types';
 import type { SettingsNavigationTab } from '@/components/settings-navigation';
 import { useSettings } from '@/composables/useSettings';
@@ -14,7 +13,7 @@ import { hasSelectedGlobalChatModel, MODEL_ENTRY_QUERY, resolveAppEntryKind } fr
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
 import type { StartupState } from '@/logic/startup/types';
 import type { ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
-import { registerModelLaunchEntryContext } from '@/features/llama-cpp-browser/model-launch/entry-state';
+import { registerModelLaunchEntryContext, type ModelLaunchCommandContext } from '@/features/llama-cpp-browser/model-launch/entry-state';
 
 export type AppEntryMode = 'home' | 'model-preview' | 'ordinary';
 export type AppEntryInteraction = 'blocked' | 'ready';
@@ -32,11 +31,11 @@ export type ModelLaunchAppContext = Readonly<{
   routePath: string,
   isCurrent(): boolean,
 }>;
-export type ModelLaunchStartContext = ModelLaunchAppContext & Readonly<{ defaults: Promise<ModelLaunchDefaultSnapshot | undefined>, applyTarget?: ({ target }: { target: ModelLaunchTarget }) => void }>;
+export type ModelLaunchStartContext = ModelLaunchAppContext & Readonly<{ defaults: Promise<ModelLaunchDefaultSnapshot | undefined>, applyTarget?: ModelLaunchCommandContext['applyTarget'] }>;
 export type AppEntrySettingsOverlay = { owner: symbol, tab: SettingsNavigationTab, opener: HTMLElement | undefined };
 export type ModelSelectionTarget =
   | { kind: 'home' }
-  | { kind: 'chat', chatId: ChatId, acceptFiles({ directories, controller, save }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save?: 'browser' | 'later' }): void, useRepositoryModel({ target }: { target: ModelLaunchTarget }): void, useModel({ model }: { model: LocalModel }): void };
+  | { kind: 'chat', chatId: ChatId, acceptFiles({ directories, controller, save }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save?: 'browser' | 'later' }): void, useRepositoryModel: NonNullable<ModelLaunchCommandContext['applyTarget']>, useModel({ model }: { model: LocalModel }): void };
 export type ModelSelectionPresentation = { phase: 'open' | 'closing', owner: symbol, target: ModelSelectionTarget, selection: AppEntrySelection, opener: HTMLElement | undefined };
 type NotFoundRecovery = { sourcePath: string, location: 'source' | 'root' };
 
@@ -376,8 +375,8 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
           ...context,
           isCurrent: () => context.isCurrent() && modelSelection.value?.phase === 'open' && modelSelection.value.target === target,
           defaults: Promise.resolve(undefined),
-          applyTarget: ({ target: model }) => {
-            target.useRepositoryModel({ target: model });
+          applyTarget: ({ target: model, destination, authorizeDestination }) => {
+            target.useRepositoryModel({ target: model, destination, authorizeDestination });
             closeDiscovery();
             closeModelSelection();
           },

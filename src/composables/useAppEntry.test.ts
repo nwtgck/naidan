@@ -2,6 +2,8 @@ import { flushPromises } from '@vue/test-utils';
 import { defineComponent, effectScope, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter, START_LOCATION } from 'vue-router';
 import { describe, expect, it, vi } from 'vitest';
+import { toChatId } from '@/01-models/ids';
+import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
 import type { Settings } from '@/01-models/types';
 import type { StartupState } from '@/logic/startup/types';
 import { TEST_ONLY, useAppEntry } from './useAppEntry';
@@ -433,4 +435,18 @@ describe('application entry ownership', () => {
     expect(fallback.intent.value.kind).toBe('ordinary');
     expect(fallback.interaction.value).toBe('blocked');
   });
+});
+
+it('passes a discovered target with its selected folder and click-time authorization to the existing chat owner', async () => {
+  using harness = await createEntryHarness({ path: '/chat/existing', startupKind: 'ready' });
+  const useRepositoryModel = vi.fn();
+  harness.entry.openModelSelection({ target: { kind: 'chat', chatId: toChatId({ raw: 'existing' }), acceptFiles: vi.fn(), useModel: vi.fn(), useRepositoryModel }, selection: { suggestionId: 'gemma-4-e2b', quantizationId: undefined }, opener: undefined });
+  const context = harness.entry.captureModelLaunchStartContext();
+  const target = targetForSelection({ selection: { repository: 'owner/Model', revision: 'a'.repeat(40), files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] } });
+  const authorizeDestination = vi.fn(async () => ({ destination: { kind: 'host' as const, directoryId: 'root-a' }, expectedRoot: undefined }));
+  const request = { target, destination: { kind: 'host' as const, directoryId: 'root-a' }, authorizeDestination };
+  context.applyTarget?.(request);
+  expect(useRepositoryModel).toHaveBeenCalledWith(request);
+  expect(harness.entry.modelSelection.value?.phase).toBe('closing');
+  expect(harness.captureDefaults).not.toHaveBeenCalled();
 });

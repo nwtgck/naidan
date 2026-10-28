@@ -14,7 +14,7 @@ export type ModelLaunchStartRequest = {
 export type ModelLaunchFileChoice = { path: string, label: string, size: number };
 export type ModelLaunchDestinationAuthorization = { destination: DownloadDestination, expectedRoot: FileSystemDirectoryHandle | undefined };
 export type AuthorizeModelLaunchDestination = ({ destination }: { destination: DownloadDestination }) => Promise<ModelLaunchDestinationAuthorization>;
-export type ModelLaunchCommandContext = { owner: symbol, isCurrent(): boolean, defaults: Promise<ModelLaunchDefaultSnapshot | undefined>, applyTarget?: ({ target }: { target: ModelLaunchTarget }) => void };
+export type ModelLaunchCommandContext = { owner: symbol, isCurrent(): boolean, defaults: Promise<ModelLaunchDefaultSnapshot | undefined>, applyTarget?: ({ target, destination, authorizeDestination }: { target: ModelLaunchTarget, destination: DownloadDestination, authorizeDestination: AuthorizeModelLaunchDestination | undefined }) => void };
 export type ModelLaunchEntryState =
   | { status: 'idle' }
   | { status: 'checking', operation: symbol, input: string, phase: 'metadata' | 'opening-chat' }
@@ -22,7 +22,7 @@ export type ModelLaunchEntryState =
   | { status: 'failed', operation: symbol, input: string, problem: ModelLaunchProblem | 'failed' };
 
 export type ModelLaunchCommand =
-  | { kind: 'start', operation: symbol, request: ModelLaunchStartRequest, authorization: Promise<ModelLaunchDestinationAuthorization> | undefined, context: ModelLaunchCommandContext | undefined }
+  | { kind: 'start', operation: symbol, request: ModelLaunchStartRequest, authorization: Promise<ModelLaunchDestinationAuthorization> | undefined, context: ModelLaunchCommandContext | undefined, target?: ModelLaunchTarget }
   | { kind: 'confirm', operation: symbol, mainFilePath: string, companionFilePath: string | undefined, multimodal?: 'on' | 'off', authorization: Promise<ModelLaunchDestinationAuthorization> | undefined }
   | { kind: 'retry', operation: symbol }
   | { kind: 'retire', operation: symbol };
@@ -45,19 +45,28 @@ export function registerModelLaunchEntryContext({ capture }: { capture: () => Mo
 }
 
 /** This bridge carries explicit UI actions without importing the coordinator. */
-export function startModelLaunch({ request, authorizeDestination }: { request: ModelLaunchStartRequest, authorizeDestination?: AuthorizeModelLaunchDestination }): symbol {
+export function startModelLaunch({ request, authorizeDestination, target }: { request: ModelLaunchStartRequest, authorizeDestination?: AuthorizeModelLaunchDestination, target?: ModelLaunchTarget }): symbol {
   if (entryState.value.status === 'checking' && currentRequest?.context?.isCurrent() !== false) {
     return entryState.value.operation;
   }
   const operation = Symbol('model-launch');
   const captured = structuredClone(request);
   const context = captureEntryContext?.();
+  const prepared = target === undefined ? undefined : structuredClone(target);
+  if (prepared !== undefined && context?.applyTarget !== undefined) {
+    // The existing-chat owner starts permission UI in this same click, rather
+    // than receiving it after the coordinator's async metadata/route work.
+    if (context.isCurrent()) {
+      context.applyTarget({ target: prepared, destination: captured.destination, authorizeDestination });
+    }
+    return operation;
+  }
   currentRequest = { operation, request: captured, context };
   const authorization = authorizeDestination?.({ destination: captured.destination });
   // Permission rejection is displayed by the command owner after activation.
   void authorization?.catch(() => {});
   entryState.value = { status: 'checking', operation, input: captured.input, phase: 'metadata' };
-  command.value = { kind: 'start', operation, request: captured, authorization, context };
+  command.value = { kind: 'start', operation, request: captured, authorization, context, target: prepared };
   return operation;
 }
 

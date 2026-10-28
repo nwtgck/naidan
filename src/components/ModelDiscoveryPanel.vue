@@ -20,7 +20,7 @@ import BrowserModelPreparation from './BrowserModelPreparation.vue';
 import SettingsSelect from './SettingsSelect.vue';
 import LlamaCppBrowserModelActionButton from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelActionButton.vue';
 
-type ModelPreview = { suggestionId: string | undefined, repository: string, variant: string, name: string, developer: string };
+type ModelPreview = { input?: string, suggestionId: string | undefined, repository: string, variant: string, name: string, developer: string };
 const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab | undefined, interaction?: 'blocked' | 'ready', currentModelId?: string, selectionTarget?: 'chat' }>();
 const emit = defineEmits<{ close: [] }>();
 const inventory = shallowRef<LocalModel[]>([]);
@@ -54,6 +54,24 @@ const preview = shallowRef<ModelPreview>();
 const operation = ref<symbol>();
 const HuggingFaceSearch = shallowRef<Component>();
 const LocalModels = shallowRef<Component>();
+const RepositoryPreview = shallowRef<Component>();
+const repositoryPreviewLoadFailed = ref(false);
+
+async function loadRepositoryPreview(): Promise<void> {
+  const selected = preview.value;
+  repositoryPreviewLoadFailed.value = false;
+  try {
+    const module = await import('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPreview.vue');
+    if (!disposed && open.value && preview.value === selected) {
+      RepositoryPreview.value = module.default;
+    }
+  } catch {
+    if (!disposed && open.value && preview.value === selected) {
+      repositoryPreviewLoadFailed.value = true;
+    }
+  }
+}
+
 const loadError = ref(false);
 const loading = new Map<ModelDiscoveryTab, { session: object, promise: Promise<void> }>();
 let preparationSession: object | undefined;
@@ -296,6 +314,9 @@ function showPreview({ value }: { value: ModelPreview }): void {
   }
   selectedRow = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
   preview.value = value;
+  if (value.input !== undefined && RepositoryPreview.value === undefined) {
+    void loadRepositoryPreview();
+  }
   void nextTick(() => previewHeading.value?.focus({ preventScroll: true }));
 }
 
@@ -314,7 +335,7 @@ function chooseRepository({ input }: { input: string }): void {
     const suggestion = modelSuggestions.find(candidate => candidate.quantizationHints.some(hint => hint.hfRepository.toLowerCase() === repository.toLowerCase()));
     const hint = suggestion?.quantizationHints.find(candidate => candidate.hfRepository.toLowerCase() === repository.toLowerCase() && (requestedVariant === undefined || candidate.preferredQuantization === requestedVariant));
     repositoryError.value = false;
-    showPreview({ value: { suggestionId: suggestion?.id, repository, variant: requestedVariant ?? hint?.preferredQuantization ?? '', name: suggestion?.name ?? repository.split('/').slice(1).join('/').replace(/-GGUF$/i, ''), developer: suggestion?.developer ?? repository.split('/')[0]! } });
+    showPreview({ value: { input, suggestionId: suggestion?.id, repository, variant: requestedVariant ?? hint?.preferredQuantization ?? '', name: suggestion?.name ?? repository.split('/').slice(1).join('/').replace(/-GGUF$/i, ''), developer: suggestion?.developer ?? repository.split('/')[0]! } });
   } catch {
     repositoryError.value = true;
   }
@@ -697,7 +718,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
           <Transition name="discovery-detail">
             <section v-if="preview && previewModel" key="detail" data-testid="discovery-detail" tw-class="absolute inset-0 flex min-h-0 flex-col">
-              <div data-testid="discovery-detail-viewport" tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-5 sm:px-8 sm:pt-8">
+              <template v-if="preview.input !== undefined">
+                <component :is="RepositoryPreview" v-if="RepositoryPreview" :key="preview.input" :input="preview.input" :active="open" :disabled="interaction === 'blocked'" :operation="operation" :selection-target="selectionTarget" :current-model-id="currentModelId" @started="operation = $event" @selection-changed="retireOperation" />
+                <div v-else role="status" tw-class="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                  <template v-if="repositoryPreviewLoadFailed"><p>{{ lazyStrings.ModelDiscoveryPanel__could_not_load_models() }}</p><button type="button" tw-class="min-h-9 rounded-lg border border-gray-200 px-3 text-blue-600 dark:border-gray-700 dark:text-blue-400" @click="loadRepositoryPreview">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button></template>
+                  <Loader2Icon v-else tw-class="h-5 w-5 animate-spin motion-reduce:animate-none" />
+                </div>
+              </template>
+              <div v-else data-testid="discovery-detail-viewport" tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-5 sm:px-8 sm:pt-8">
                 <div tw-class="space-y-4">
                   <p tw-class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400"><span>{{ previewModel.developer }}</span><span v-if="previewCurrent || previewSaved" data-testid="model-preview-availability" tw-class="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"><CheckIcon aria-hidden="true" tw-class="h-3 w-3" />{{ previewCurrent ? lazyStrings.ModelDiscoveryPanel__in_use_in_this_chat() : lazyStrings.ModelDiscoveryPanel__saved() }}</span></p>
                   <h3 ref="previewHeading" tabindex="-1" tw-class="text-[clamp(28px,6vw,36px)] font-semibold leading-[1.15] tracking-tight text-gray-900 outline-none dark:text-gray-100 [overflow-wrap:anywhere]">{{ previewModel.name }}</h3>
@@ -725,7 +753,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   <CspMessageHint v-else-if="!previewSaved && !startError" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" tw-class="mt-5" />
                 </div>
               </div>
-              <footer v-if="!selectionState" tw-class="shrink-0 space-y-3 border-t border-gray-100 bg-white px-5 pb-5 pt-4 dark:border-gray-800 dark:bg-gray-900 sm:px-8 sm:pb-6">
+              <footer v-if="preview.input === undefined && !selectionState" tw-class="shrink-0 space-y-3 border-t border-gray-100 bg-white px-5 pb-5 pt-4 dark:border-gray-800 dark:bg-gray-900 sm:px-8 sm:pb-6">
                 <button type="button" data-testid="discovery-start" :disabled="starting === 'starting' || globalStarting === 'creating'" :aria-busy="starting === 'starting'" class="discovery-start" tw-class="group relative flex min-h-16 w-full items-center justify-center rounded-2xl border border-blue-400/80 bg-white px-14 py-4 text-center text-base font-bold text-gray-900 transition-[border-color,box-shadow,transform] duration-300 hover:border-blue-500 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait dark:border-blue-500/70 dark:bg-gray-800 dark:text-gray-100 motion-reduce:transition-none" @click="startPreview">
                   {{ lazyStrings.SHARED__run_in_your_browser() }}<span aria-hidden="true" tw-class="absolute right-3 grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white dark:bg-blue-500"><Loader2Icon v-if="starting === 'starting'" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" /><ArrowRightIcon v-else tw-class="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span>
                 </button>

@@ -3,7 +3,7 @@ import type { Chat, ChatMeta, ChatGroup } from '@/01-models/types';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 import { toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { assertModelLaunchReady, applicableModelLaunchTarget } from './readiness';
+import { assertModelLaunchReady, applicableModelLaunchTarget, isModelLaunchTargetReady } from './readiness';
 import type { ChatModelLaunch, ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import { registerModelLaunchPreparation, TEST_ONLY as preparationTestOnly } from './preparation';
 const installed = vi.fn();
@@ -173,4 +173,12 @@ describe('model launch generation preflight', () => {
     expect(await assertModelLaunchReady({ chat: launchChat(), endpoint: { type: 'openai', url: 'https://external.example' }, modelId: 'remote-model' })).toBeUndefined();
     expect(inspectLocal).not.toHaveBeenCalled();
   });
+});
+
+it('keeps the selected physical host root when checking a prepared saved model', async () => {
+  const expectedRoot = { name: 'Models' } as FileSystemDirectoryHandle;
+  const destination = { kind: 'host' as const, directoryId: 'root-a' };
+  installed.mockResolvedValue({ modelId: 'host/Models/owner/Model:model' });
+  expect(await isModelLaunchTargetReady({ target, destination, effectiveModelId: 'host/Models/owner/Model:model', expectedRoot })).toBe(true);
+  expect(installed).toHaveBeenCalledWith({ selection: target.selection, destination, expectedRoot });
 });

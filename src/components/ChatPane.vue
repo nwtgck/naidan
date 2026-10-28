@@ -1179,8 +1179,8 @@ function requestModelSelection(): void {
       acceptFiles: ({ directories, controller, save }) => {
         void chatModelSelection.accept({ directories, controller, save });
       },
-      useRepositoryModel: ({ target }) => {
-        void chatModelSelection.useRepositoryModel({ target, destination: { kind: 'opfs' }, authorizeDestination: undefined });
+      useRepositoryModel: ({ target, destination, authorizeDestination }) => {
+        void chatModelSelection.useRepositoryModel({ target, destination, authorizeDestination });
       },
       useModel: ({ model }) => {
         void chatModelSelection.useModel({ model });
