@@ -203,6 +203,7 @@ export interface StatusBarInfo {
 export interface FileExplorerPathSegment {
   name: string,
   path: string,
+  kind: 'root' | 'directory' | 'archive',
 }
 
 export interface FileExplorerContext {
@@ -248,6 +249,7 @@ export interface FileExplorerContext {
   cancelRename: () => void,
 
   previewState: PreviewState,
+  openEntry: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>,
   loadPreview: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>,
   loadPreviewForced: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>,
   clearPreview: () => void,
@@ -272,6 +274,7 @@ export interface FileExplorerContext {
   onDragEnd: () => void,
 
   readOnly: boolean,
+  readOnlyReason: 'lock' | 'source' | undefined,
 
   isLocked: boolean,
   toggleLock: () => void,

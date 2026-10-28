@@ -3,13 +3,15 @@ import { ref, computed } from 'vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
 import type { FileExplorerEntry, SortConfig, ColumnPaneState, FileExplorerPathSegment } from '@/features/file-explorer/logic/types';
 import { sortEntries, filterEntries } from '@/features/file-explorer/logic/utils';
+import { isFileExplorerNotDirectoryError } from '@/features/file-explorer/logic/errors';
+
+type NavigationResult = 'navigated' | 'not-directory' | 'failed';
 
 function normalizeExplorerPath({ path }: { path: string }): string {
-  const trimmed = path.trim();
-  if (!trimmed || trimmed === '/') {
+  if (!path || path === '/') {
     return '/';
   }
-  return `/${trimmed.split('/').filter(segment => segment.length > 0).join('/')}`;
+  return `/${path.split('/').filter(segment => segment.length > 0).join('/')}`;
 }
 
 function getParentPath({ path }: { path: string }): string {
@@ -58,21 +60,53 @@ export function useFileExplorerNavigation({
     }),
   );
 
-  async function loadDirectory({ path }: { path: string }): Promise<void> {
+  async function loadDirectory({
+    path,
+    errorMode,
+  }: {
+    path: string,
+    errorMode: 'report' | 'silent',
+  }): Promise<NavigationResult> {
     const normalizedPath = normalizeExplorerPath({ path });
     isLoading.value = true;
-    loadError.value = undefined;
+    switch (errorMode) {
+    case 'report':
+      loadError.value = undefined;
+      break;
+    case 'silent':
+      break;
+    default: {
+      const _exhaustiveCheck: never = errorMode;
+      throw new Error(`Unhandled directory load error mode: ${_exhaustiveCheck}`);
+    }
+    }
     try {
       const response = await client.readDirectory({ path: normalizedPath });
+      loadError.value = undefined;
       currentDirectoryPath.value = response.directoryPath;
       currentDirectoryName.value = response.directoryName;
       currentDirectoryReadOnly.value = response.readOnly;
       pathSegments.value = response.pathSegments;
       entries.value = response.entries;
+      return 'navigated';
     } catch (error) {
+      switch (errorMode) {
+      case 'report':
+        break;
+      case 'silent':
+        if (isFileExplorerNotDirectoryError({ error })) {
+          return 'not-directory';
+        }
+        break;
+      default: {
+        const _exhaustiveCheck: never = errorMode;
+        throw new Error(`Unhandled directory load error mode: ${_exhaustiveCheck}`);
+      }
+      }
       loadError.value = await ensureStrings.fileExplorer__failed_to_load_directory({
         errorMessage: await resolveDirectoryLoadError({ error }),
       });
+      return 'failed';
     } finally {
       isLoading.value = false;
     }
@@ -142,9 +176,30 @@ export function useFileExplorerNavigation({
     }
   }
 
+  function syncColumnPanesAfterNavigation({ result }: { result: NavigationResult }): void {
+    switch (result) {
+    case 'navigated':
+      syncColumnPanesToPath();
+      break;
+    case 'not-directory':
+    case 'failed':
+      break;
+    default: {
+      const _exhaustiveCheck: never = result;
+      throw new Error(`Unhandled navigation result: ${_exhaustiveCheck}`);
+    }
+    }
+  }
+
   async function navigateToDirectory({ path }: { path: string }): Promise<void> {
-    await loadDirectory({ path });
-    syncColumnPanesToPath();
+    const result = await loadDirectory({ path, errorMode: 'report' });
+    syncColumnPanesAfterNavigation({ result });
+  }
+
+  async function tryNavigateToDirectory({ path }: { path: string }): Promise<NavigationResult> {
+    const result = await loadDirectory({ path, errorMode: 'silent' });
+    syncColumnPanesAfterNavigation({ result });
+    return result;
   }
 
   async function navigateUp(): Promise<void> {
@@ -163,7 +218,7 @@ export function useFileExplorerNavigation({
   }
 
   async function refresh(): Promise<void> {
-    await loadDirectory({ path: currentDirectoryPath.value });
+    await loadDirectory({ path: currentDirectoryPath.value, errorMode: 'report' });
     syncColumnPanesToPath();
   }
 
@@ -200,8 +255,8 @@ export function useFileExplorerNavigation({
     }
   }
 
-  void loadDirectory({ path: currentDirectoryPath.value }).then(() => {
-    syncColumnPanesToPath();
+  void loadDirectory({ path: currentDirectoryPath.value, errorMode: 'report' }).then((result) => {
+    syncColumnPanesAfterNavigation({ result });
   });
 
   return {
@@ -215,6 +270,7 @@ export function useFileExplorerNavigation({
     loadError,
     columnPanes,
     navigateToDirectory,
+    tryNavigateToDirectory,
     navigateUp,
     jumpToBreadcrumb,
     refresh,

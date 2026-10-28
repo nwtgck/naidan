@@ -137,6 +137,36 @@ export async function useFileExplorer({
     sel.applySelection({ action });
   }
 
+  async function openEntry({ entry }: { entry: FileExplorerEntry }): Promise<void> {
+    switch (entry.kind) {
+    case 'directory':
+      await nav.navigateToDirectory({ path: entry.path });
+      sel.clearSelectionForNewDirectory();
+      return;
+    case 'file': {
+      const result = await nav.tryNavigateToDirectory({ path: entry.path });
+      switch (result) {
+      case 'navigated':
+        sel.clearSelectionForNewDirectory();
+        return;
+      case 'not-directory':
+        await preview.loadPreview({ entry });
+        return;
+      case 'failed':
+        return;
+      default: {
+        const _exhaustiveCheck: never = result;
+        throw new Error(`Unhandled navigation result: ${_exhaustiveCheck}`);
+      }
+      }
+    }
+    default: {
+      const _exhaustiveCheck: never = entry.kind;
+      throw new Error(`Unhandled entry kind: ${_exhaustiveCheck}`);
+    }
+    }
+  }
+
   async function executeContextAction({ action }: { action: ContextMenuAction }): Promise<void> {
     const targetCtx = ctxMenu.contextMenuState.value.target;
     ctxMenu.hideContextMenu();
@@ -145,19 +175,7 @@ export async function useFileExplorer({
     case 'open':
       switch (targetCtx.kind) {
       case 'entry':
-        switch (targetCtx.entry.kind) {
-        case 'directory':
-          await nav.navigateToDirectory({ path: targetCtx.entry.path });
-          sel.clearSelectionForNewDirectory();
-          break;
-        case 'file':
-          await preview.loadPreview({ entry: targetCtx.entry });
-          break;
-        default: {
-          const _exhaustiveCheck: never = targetCtx.entry.kind;
-          throw new Error(`Unhandled entry kind: ${_exhaustiveCheck}`);
-        }
-        }
+        await openEntry({ entry: targetCtx.entry });
         break;
       case 'background':
         break;
@@ -374,6 +392,15 @@ export async function useFileExplorer({
     get readOnly() {
       return isLocked.value || nav.currentDirectoryReadOnly.value;
     },
+    get readOnlyReason() {
+      if (nav.currentDirectoryReadOnly.value) {
+        return 'source';
+      }
+      if (isLocked.value) {
+        return 'lock';
+      }
+      return undefined;
+    },
     get pathSegments() {
       return nav.pathSegments.value;
     },
@@ -444,6 +471,7 @@ export async function useFileExplorer({
     get previewState() {
       return preview.previewState.value;
     },
+    openEntry,
     loadPreview: preview.loadPreview,
     loadPreviewForced: preview.loadPreviewForced,
     clearPreview: preview.clearPreview,

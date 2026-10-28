@@ -19,6 +19,12 @@ export type FileExplorerModalOptions =
     rootName: string,
     mounts: WeshMount[],
     initialPath: string[] | undefined,
+  }
+  | {
+    kind: 'archive-root',
+    title: string,
+    rootName: string,
+    archive: Extract<FileExplorerRootDescriptor, { kind: 'archive-root' }>['archive'],
   };
 
 export function mapFileExplorerModalOptionsToRootDescriptor({
@@ -46,6 +52,12 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
       rootName: options.rootName,
       mounts: mapWeshMountsToWorkerMounts({ mounts: options.mounts }),
     };
+  case 'archive-root':
+    return {
+      kind: 'archive-root',
+      rootName: options.rootName,
+      archive: options.archive,
+    };
   default: {
     const _exhaustiveCheck: never = options;
     throw new Error(`Unhandled file explorer modal options: ${JSON.stringify(_exhaustiveCheck)}`);
@@ -64,6 +76,7 @@ export function useFileExplorerModal() {
 
   function closeFileExplorer(): void {
     isOpen.value = false;
+    options.value = { kind: 'opfs-root' };
   }
 
   return {

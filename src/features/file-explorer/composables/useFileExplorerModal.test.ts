@@ -46,6 +46,44 @@ describe('useFileExplorerModal', () => {
     }))).not.toThrow();
   });
 
+  it('releases archive root options when the modal closes', () => {
+    const blob = new Blob(['PK\u0003\u0004']);
+    const { closeFileExplorer, fileExplorerOptions, openFileExplorer } = useFileExplorerModal();
+
+    openFileExplorer({
+      options: {
+        kind: 'archive-root',
+        title: 'Export',
+        rootName: 'export.zip',
+        archive: { format: 'zip', source: { kind: 'blob', blob } },
+      },
+    });
+    expect(fileExplorerOptions.value.kind).toBe('archive-root');
+
+    closeFileExplorer();
+
+    expect(fileExplorerOptions.value).toEqual({ kind: 'opfs-root' });
+  });
+
+  it('maps a ZIP Blob to a structured-cloneable archive root descriptor', () => {
+    const blob = new Blob(['PK\u0003\u0004']);
+    const descriptor = mapFileExplorerModalOptionsToRootDescriptor({
+      options: {
+        kind: 'archive-root',
+        title: 'Export',
+        rootName: 'export.zip',
+        archive: { format: 'zip', source: { kind: 'blob', blob } },
+      },
+    });
+
+    expect(descriptor).toMatchObject({
+      kind: 'archive-root',
+      rootName: 'export.zip',
+      archive: { format: 'zip', source: { kind: 'blob', blob } },
+    });
+    expect(() => structuredClone(descriptor)).not.toThrow();
+  });
+
   it('maps the OPFS root label to "OPFS root"', () => {
     expect(mapFileExplorerModalOptionsToRootDescriptor({
       options: { kind: 'opfs-root' },

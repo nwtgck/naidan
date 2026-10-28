@@ -43,6 +43,7 @@ export async function createFileExplorerWorkerClient({
     switch (root.kind) {
     case 'native-directory':
     case 'opfs-root':
+    case 'archive-root':
       return undefined;
     case 'wesh-mounts':
       return createNaidanSysfsRemoteReaderForMounts({ mounts: root.mounts });

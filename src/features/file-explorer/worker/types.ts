@@ -5,7 +5,21 @@ import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types
 import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-handle-transport';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
 
+function isBlob(value: unknown): value is Blob {
+  return typeof Blob !== 'undefined' && value instanceof Blob;
+}
+
 const fileExplorerPathSchema = z.string().min(1);
+const fileExplorerArchiveSourceDescriptorSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('blob'),
+    blob: z.custom<Blob>(isBlob),
+  }),
+]);
+const fileExplorerArchiveDescriptorSchema = z.object({
+  format: z.literal('zip'),
+  source: fileExplorerArchiveSourceDescriptorSchema,
+});
 const fileExplorerZipPreviewRelativePathSchema = z.string().refine(value => {
   if (value === '') {
     return true;
@@ -34,6 +48,11 @@ export const fileExplorerRootDescriptorSchema = z.discriminatedUnion('kind', [
     rootName: z.string().min(1),
     mounts: z.array(weshWorkerMountSchema),
   }),
+  z.object({
+    kind: z.literal('archive-root'),
+    rootName: z.string().min(1),
+    archive: fileExplorerArchiveDescriptorSchema,
+  }),
 ]);
 
 export const fileExplorerEntryRecordSchema = z.object({
@@ -58,6 +77,11 @@ export const fileExplorerEntryRecordSchema = z.object({
 export const fileExplorerPathSegmentSchema = z.object({
   name: z.string().min(1),
   path: fileExplorerPathSchema,
+  kind: z.union([
+    z.literal('root'),
+    z.literal('directory'),
+    z.literal('archive'),
+  ]),
 });
 
 export const fileExplorerPrepareSessionRequestSchema = z.object({

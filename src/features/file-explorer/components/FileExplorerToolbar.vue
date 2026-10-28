@@ -78,6 +78,21 @@ function toggleSearch(): void {
   }
 }
 
+function readOnlyActionTitle({ unlockedTitle, lockedTitle }: { unlockedTitle: string | undefined, lockedTitle: string | undefined }): string | undefined {
+  switch (ctx.readOnlyReason) {
+  case 'source':
+    return lazyStrings.fileExplorer__read_only();
+  case 'lock':
+    return lockedTitle;
+  case undefined:
+    return unlockedTitle;
+  default: {
+    const _exhaustiveCheck: never = ctx.readOnlyReason;
+    throw new Error(`Unhandled read-only reason: ${_exhaustiveCheck}`);
+  }
+  }
+}
+
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
@@ -122,14 +137,17 @@ defineExpose({
       </button>
 
       <button
-        :title="ctx.isLocked ? lazyStrings.fileExplorer__locked_click_to_unlock() : lazyStrings.fileExplorer__unlocked_click_to_lock()"
+        :title="ctx.readOnlyReason === 'source' ? lazyStrings.fileExplorer__read_only() : (ctx.isLocked ? lazyStrings.fileExplorer__locked_click_to_unlock() : lazyStrings.fileExplorer__unlocked_click_to_lock())"
         data-testid="lock-toggle"
-        :tw-class="['p-1.5 rounded-lg transition-colors', ctx.isLocked
-          ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20'
-          : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800']"
-        @click="ctx.toggleLock()"
+        :tw-class="['p-1.5 rounded-lg transition-colors', ctx.readOnlyReason === 'source'
+          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+          : ctx.isLocked
+            ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20'
+            : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800']"
+        :disabled="ctx.readOnlyReason === 'source'"
+        @click="ctx.readOnlyReason !== 'source' && ctx.toggleLock()"
       >
-        <component :is="ctx.isLocked ? LockIcon : LockOpenIcon" tw-class="w-3.5 h-3.5" />
+        <component :is="ctx.readOnlyReason === 'source' || ctx.isLocked ? LockIcon : LockOpenIcon" tw-class="w-3.5 h-3.5" />
       </button>
 
       <button
@@ -144,7 +162,7 @@ defineExpose({
       </button>
 
       <button
-        :title="ctx.readOnly ? lazyStrings.fileExplorer__upload_files_unlock_to_enable() : lazyStrings.fileExplorer__upload_files()"
+        :title="readOnlyActionTitle({ unlockedTitle: lazyStrings.fileExplorer__upload_files(), lockedTitle: lazyStrings.fileExplorer__upload_files_unlock_to_enable() })"
         data-testid="upload-button"
         :tw-class="['p-1.5 rounded-lg transition-colors', ctx.readOnly
           ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
@@ -164,7 +182,7 @@ defineExpose({
       />
 
       <button
-        :title="ctx.readOnly ? lazyStrings.fileExplorer__new_file_unlock_to_enable() : lazyStrings.fileExplorer__new_file()"
+        :title="readOnlyActionTitle({ unlockedTitle: lazyStrings.fileExplorer__new_file(), lockedTitle: lazyStrings.fileExplorer__new_file_unlock_to_enable() })"
         data-testid="new-file-button"
         :tw-class="['p-1.5 rounded-lg transition-colors', ctx.readOnly
           ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
@@ -176,7 +194,7 @@ defineExpose({
       </button>
 
       <button
-        :title="ctx.readOnly ? lazyStrings.fileExplorer__new_folder_unlock_to_enable() : lazyStrings.fileExplorer__new_folder()"
+        :title="readOnlyActionTitle({ unlockedTitle: lazyStrings.fileExplorer__new_folder(), lockedTitle: lazyStrings.fileExplorer__new_folder_unlock_to_enable() })"
         data-testid="new-folder-button"
         :tw-class="['p-1.5 rounded-lg transition-colors', ctx.readOnly
           ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'

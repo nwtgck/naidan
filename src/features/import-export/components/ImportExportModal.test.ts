@@ -1,4 +1,4 @@
-import { mount, flushPromises } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   executeImport: vi.fn(),
   compressingData: vi.fn<() => Promise<string>>(),
   exportSuccessful: vi.fn<() => Promise<string>>(),
+  openFileExplorer: vi.fn(),
 }));
 
 vi.mock('@/strings', async importOriginal => {
@@ -46,6 +47,12 @@ vi.mock('@/00-storage/service', () => ({
   storageService: {},
 }));
 
+vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({
+  useFileExplorerModal: vi.fn(() => ({
+    openFileExplorer: mocks.openFileExplorer,
+  })),
+}));
+
 
 vi.mock('@/composables/useToast', () => ({
   useToast: vi.fn(() => ({
@@ -64,12 +71,24 @@ function mountModal({ initialMode }: { initialMode: 'menu' | 'export' }) {
   });
 }
 
-function mountModalResource({ initialMode }: { initialMode: 'menu' | 'export' }) {
-  const wrapper = mountModal({ initialMode });
+function mountModalResource({ initialMode, teleport }: { initialMode: 'menu' | 'export', teleport: 'stubbed' | 'real' }) {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const wrapper = mount(ImportExportModal, {
+    attachTo: host,
+    props: { isOpen: true, initialMode },
+    global: {
+      stubs: {
+        Teleport: teleport === 'stubbed',
+      },
+    },
+  });
   return {
     wrapper,
+    surface: new DOMWrapper(document.body),
     [Symbol.dispose]() {
       wrapper.unmount();
+      host.remove();
     },
   };
 }
@@ -303,6 +322,159 @@ describe('ImportExportModal.vue', () => {
     });
   });
 
+  it('uses Download ZIP as the default split-button action', async () => {
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
+    const { wrapper } = view;
+    await openExportMode({ wrapper });
+
+    expect(wrapper.find('[data-testid="import-export-export-now-button"]').text()).toContain('Download ZIP');
+    const actionMenuButton = wrapper.find('[data-testid="import-export-export-action-menu-button"]');
+    expect(actionMenuButton.attributes('aria-label')).toBe('Export options');
+    expect(actionMenuButton.attributes('aria-haspopup')).toBe('menu');
+    await exportNow({ wrapper });
+
+    expect(mocks.openFileExplorer).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('closes the export action menu when clicking outside the split button', async () => {
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
+    const { wrapper } = view;
+    await openExportMode({ wrapper });
+
+    await wrapper.find('[data-testid="import-export-export-action-menu-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="import-export-export-action-menu"]').exists()).toBe(true);
+
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="import-export-export-action-menu"]').exists()).toBe(false);
+  });
+
+  it('can switch the export split button to open the generated ZIP in File Explorer', async () => {
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
+    const { wrapper } = view;
+    await openExportMode({ wrapper });
+
+    await wrapper.find('[data-testid="import-export-export-action-menu-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="import-export-export-action-download"]').attributes('aria-checked')).toBe('true');
+    expect(wrapper.find('[data-testid="import-export-export-action-file-explorer"]').attributes('aria-checked')).toBe('false');
+    await wrapper.find('[data-testid="import-export-export-action-file-explorer"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="import-export-export-now-button"]').text()).toContain('View in File Explorer');
+
+    await wrapper.get('[data-testid="import-export-export-now-button"]').trigger('click');
+    await flushPromises();
+
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(mocks.openFileExplorer).toHaveBeenCalledOnce();
+    });
+    const call = mocks.openFileExplorer.mock.calls[0]?.[0];
+    expect(call).toMatchObject({
+      options: {
+        kind: 'archive-root',
+        title: 'naidan-data-test.zip',
+        rootName: 'naidan-data-test.zip',
+        archive: {
+          format: 'zip',
+          source: { kind: 'blob' },
+        },
+      },
+    });
+    if (call?.options.kind !== 'archive-root' || call.options.archive.source.kind !== 'blob') {
+      throw new Error('Expected Blob-backed archive root options');
+    }
+    expect(call.options.archive.source.blob).toMatchObject({ size: 3 });
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(mocks.addToast).not.toHaveBeenCalled();
+    expect(wrapper.emitted('close')).toHaveLength(1);
+  });
+
+  it('moves between export actions with the keyboard and restores focus on selection and Escape', async () => {
+    using view = mountModalResource({ initialMode: 'export', teleport: 'real' });
+    const { surface } = view;
+    await flushPromises();
+    const trigger = () => surface.get('[data-testid="import-export-export-action-menu-button"]');
+    await trigger().trigger('keydown', { key: 'ArrowDown' });
+    await nextTick();
+    const download = surface.get('[data-testid="import-export-export-action-download"]');
+    const explorer = surface.get('[data-testid="import-export-export-action-file-explorer"]');
+    const menu = surface.get('[data-testid="import-export-export-action-menu"]');
+    expect(trigger().attributes('aria-controls')).toBe(menu.attributes('id'));
+    expect(document.activeElement).toBe(download.element);
+    await download.trigger('keydown', { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(explorer.element);
+    await explorer.trigger('click');
+    expect(document.activeElement).toBe(trigger().element);
+    expect(surface.get('[data-testid="import-export-export-now-button"]').text()).toContain('View in File Explorer');
+    expect(mocks.exportData).not.toHaveBeenCalled();
+    await trigger().trigger('keydown', { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(surface.get('[data-testid="import-export-export-action-file-explorer"]').element);
+    await surface.get('[data-testid="import-export-export-action-menu"]').trigger('keydown', { key: 'Escape' });
+    expect(surface.find('[data-testid="import-export-export-action-menu"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger().element);
+  });
+
+  it('closes an export action menu when its view is left and resets the action on reopening', async () => {
+    using view = mountModalResource({ initialMode: 'export', teleport: 'real' });
+    const { wrapper, surface } = view;
+    await surface.get('[data-testid="import-export-export-action-menu-button"]').trigger('click');
+    await surface.get('[data-testid="import-export-export-action-file-explorer"]').trigger('click');
+    await surface.get('[data-testid="import-export-export-action-menu-button"]').trigger('click');
+    await surface.get('[data-testid="import-export-export-back"]').trigger('click');
+    expect(surface.find('[data-testid="import-export-export-action-menu"]').exists()).toBe(false);
+    await wrapper.setProps({ isOpen: false });
+    await wrapper.setProps({ isOpen: true });
+    expect(surface.get('[data-testid="import-export-export-now-button"]').text()).toContain('Download ZIP');
+  });
+
+  it('cancels a late archive source instead of opening File Explorer after the modal reopens', async () => {
+    using view = mountModalResource({ initialMode: 'export', teleport: 'real' });
+    const { wrapper, surface } = view;
+    const output = Promise.withResolvers<{ stream: ReadableStream<Uint8Array>, filename: string }>();
+    mocks.exportData.mockReturnValueOnce(output.promise);
+    await surface.get('[data-testid="import-export-export-action-menu-button"]').trigger('click');
+    await surface.get('[data-testid="import-export-export-action-file-explorer"]').trigger('click');
+    await surface.get('[data-testid="import-export-export-now-button"]').trigger('click');
+    await vi.waitFor(() => expect(mocks.exportData).toHaveBeenCalledOnce());
+    await wrapper.setProps({ isOpen: false });
+    await wrapper.setProps({ isOpen: true });
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    const stream = new ReadableStream<Uint8Array>({ cancel });
+    output.resolve({ filename: 'late.zip', stream });
+    await flushPromises();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
+    expect(mocks.openFileExplorer).not.toHaveBeenCalled();
+    expect(wrapper.emitted('close')).toBeUndefined();
+  });
+
+  it('cancels archive buffering when the modal closes without waiting for producer cleanup', async () => {
+    using view = mountModalResource({ initialMode: 'export', teleport: 'real' });
+    const { wrapper, surface } = view;
+    const cancel = vi.fn(() => new Promise<void>(() => {}));
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('partial'));
+      },
+      cancel,
+    });
+    mocks.exportData.mockResolvedValueOnce({ filename: 'partial.zip', stream });
+    await surface.get('[data-testid="import-export-export-action-menu-button"]').trigger('click');
+    await surface.get('[data-testid="import-export-export-action-file-explorer"]').trigger('click');
+    await surface.get('[data-testid="import-export-export-now-button"]').trigger('click');
+    await vi.waitFor(() => expect(stream.locked).toBe(true));
+    await wrapper.setProps({ isOpen: false });
+    await flushPromises();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
+    expect(mocks.openFileExplorer).not.toHaveBeenCalled();
+    expect(wrapper.emitted('close')).toBeUndefined();
+  });
+
   it('resets export exclusion checkboxes when the modal is reopened', async () => {
     const wrapper = mountModal({ initialMode: 'menu' });
     await openExportMode({ wrapper });
@@ -322,7 +494,7 @@ describe('ImportExportModal.vue', () => {
   it('prepares raw ZIP Base64 and copies the same bytes only on a separate click', async () => {
     const writeText = vi.fn<Clipboard['writeText']>().mockResolvedValue(undefined);
     using clipboard = installClipboard({ writeText });
-    using view = mountModalResource({ initialMode: 'export' });
+    using view = mountModalResource({ initialMode: 'export', teleport: 'stubbed' });
     const { wrapper } = view;
     const bytes = Uint8Array.of(0xfb, 0xff);
     mocks.exportData.mockResolvedValueOnce({
@@ -356,7 +528,7 @@ describe('ImportExportModal.vue', () => {
     const pending = Promise.withResolvers<void>();
     const writeText = vi.fn<Clipboard['writeText']>().mockRejectedValueOnce(new Error('private clipboard diagnostic')).mockReturnValueOnce(pending.promise);
     using clipboard = installClipboard({ writeText });
-    using view = mountModalResource({ initialMode: 'export' });
+    using view = mountModalResource({ initialMode: 'export', teleport: 'stubbed' });
     const { wrapper } = view;
     await wrapper.get('[data-testid="import-export-base64-generate"]').trigger('click');
     await vi.waitFor(() => expect(wrapper.find('[data-testid="import-export-base64-copy"]').exists()).toBe(true));
@@ -381,7 +553,7 @@ describe('ImportExportModal.vue', () => {
     mocks.exportData.mockReturnValueOnce(pending.promise);
     const cancel = vi.fn();
     const stream = new ReadableStream<Uint8Array>({ cancel });
-    using view = mountModalResource({ initialMode: 'export' });
+    using view = mountModalResource({ initialMode: 'export', teleport: 'stubbed' });
     const { wrapper } = view;
     await wrapper.get('[data-testid="import-export-base64-generate"]').trigger('click');
     await wrapper.setProps({ isOpen: false });
@@ -397,7 +569,7 @@ describe('ImportExportModal.vue', () => {
     const cancel = vi.fn();
     const stream = new ReadableStream<Uint8Array>({ cancel });
     mocks.exportData.mockResolvedValueOnce({ filename: 'active.zip', stream });
-    using view = mountModalResource({ initialMode: 'export' });
+    using view = mountModalResource({ initialMode: 'export', teleport: 'stubbed' });
     const { wrapper } = view;
     await wrapper.get('[data-testid="import-export-base64-generate"]').trigger('click');
     await vi.waitFor(() => expect(stream.locked).toBe(true));
@@ -421,7 +593,7 @@ describe('ImportExportModal.vue', () => {
     mocks.executeImport.mockImplementation(async () => {
       order.push('execute');
     });
-    using view = mountModalResource({ initialMode: 'menu' });
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
     const { wrapper } = view;
     await pasteAndRead({ wrapper, serialized: '+/8=' });
     expect(wrapper.find('[data-testid="import-export-preview"]').exists()).toBe(true);
@@ -440,7 +612,7 @@ describe('ImportExportModal.vue', () => {
   });
 
   it('rejects invalid Base64 before analysis and keeps malformed ZIP analysis failures local', async () => {
-    using view = mountModalResource({ initialMode: 'menu' });
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
     const { wrapper } = view;
     await pasteAndRead({ wrapper, serialized: '%invalid-base64' });
     expect(wrapper.get('[data-testid="import-export-base64-paste-error"]').text()).toBe('Could not read the ZIP from Base64.');
@@ -458,7 +630,7 @@ describe('ImportExportModal.vue', () => {
 
   it('does not execute an import after verification fails', async () => {
     mocks.verify.mockRejectedValueOnce(new Error('ZIP verification failed'));
-    using view = mountModalResource({ initialMode: 'menu' });
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
     const { wrapper } = view;
     await pasteAndRead({ wrapper, serialized: 'emlw' });
     await wrapper.get('[data-testid="import-export-preview-next"]').trigger('click');
@@ -473,7 +645,7 @@ describe('ImportExportModal.vue', () => {
   it('discards late analysis after close and clears pasted data in a reopened modal', async () => {
     const pending = Promise.withResolvers<ImportPreview>();
     mocks.analyze.mockReturnValueOnce(pending.promise);
-    using view = mountModalResource({ initialMode: 'menu' });
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
     const { wrapper } = view;
     await pasteAndRead({ wrapper, serialized: 'emlw' });
     expect(mocks.analyze).toHaveBeenCalledOnce();
@@ -493,7 +665,7 @@ describe('ImportExportModal.vue', () => {
   it('does not begin execution when verification completes after close and reopen', async () => {
     const pending = Promise.withResolvers<void>();
     mocks.verify.mockReturnValueOnce(pending.promise);
-    using view = mountModalResource({ initialMode: 'menu' });
+    using view = mountModalResource({ initialMode: 'menu', teleport: 'stubbed' });
     const { wrapper } = view;
     await pasteAndRead({ wrapper, serialized: 'emlw' });
     await wrapper.get('[data-testid="import-export-preview-next"]').trigger('click');

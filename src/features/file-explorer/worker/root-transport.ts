@@ -8,6 +8,7 @@ export function hasFileExplorerFileSystemHandles({
 }): boolean {
   switch (root.kind) {
   case 'opfs-root':
+  case 'archive-root':
     return false;
   case 'native-directory': {
     switch (root.handle.kind) {
@@ -38,6 +39,7 @@ export async function mapFileExplorerRootToOpfsLocators({
   const opfsRoot = await navigator.storage.getDirectory();
   switch (root.kind) {
   case 'opfs-root':
+  case 'archive-root':
     return root;
   case 'native-directory': {
     const { kind, rootName, handle, readOnly, ...unhandledRoot } = root;

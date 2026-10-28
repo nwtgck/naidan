@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
   FolderIcon, FileTextIcon, ImageIcon, VideoIcon, MusicIcon, FileIcon,
-  FileCodeIcon, FileJsonIcon, FileTypeIcon,
+  FileCodeIcon, FileJsonIcon, FileTypeIcon, FileArchiveIcon,
 } from 'lucide-vue-next';
 import type { EntryKind, MimeCategory } from '@/features/file-explorer/logic/types';
 import { tw, twClasses, twClassString, type TailwindClass } from 'virtual:naidan-tailwind';
@@ -27,6 +27,23 @@ function getIcon() {
     const _ex: never = props.kind;
     void _ex;
   }
+  }
+
+  switch (props.extension) {
+  case '.zip':
+  case '.jar':
+  case '.xlsx':
+  case '.docx':
+  case '.pptx':
+  case '.odt':
+  case '.ods':
+  case '.odp':
+  case '.epub':
+  case '.apk':
+  case '.3mf':
+    return FileArchiveIcon;
+  default:
+    break;
   }
 
   switch (props.mimeCategory) {

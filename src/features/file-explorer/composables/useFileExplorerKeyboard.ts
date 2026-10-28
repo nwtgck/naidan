@@ -95,19 +95,7 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
       );
       if (focused) {
         event.preventDefault();
-        switch (focused.kind) {
-        case 'directory':
-          await ctx.navigateToDirectory({ path: focused.path });
-          ctx.applySelection({ action: { type: 'clear' } });
-          break;
-        case 'file':
-          await ctx.loadPreview({ entry: focused });
-          break;
-        default: {
-          const _ex: never = focused.kind;
-          throw new Error(`Unhandled kind: ${_ex}`);
-        }
-        }
+        await ctx.openEntry({ entry: focused });
       }
       return;
     }

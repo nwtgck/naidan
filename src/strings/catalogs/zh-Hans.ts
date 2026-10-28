@@ -1219,6 +1219,7 @@ import { ImportExportModal__custom_click_to_reset } from '@/strings/messages/Imp
 import { ImportExportModal__default_marker } from '@/strings/messages/ImportExportModal__default_marker/zh-Hans';
 import { ImportExportModal__default_model } from '@/strings/messages/ImportExportModal__default_model/zh-Hans';
 import { ImportExportModal__download_full_backup } from '@/strings/messages/ImportExportModal__download_full_backup/zh-Hans';
+import { ImportExportModal__download_zip } from '@/strings/messages/ImportExportModal__download_zip/zh-Hans';
 import { ImportExportModal__error } from '@/strings/messages/ImportExportModal__error/zh-Hans';
 import { ImportExportModal__exclude_attachments } from '@/strings/messages/ImportExportModal__exclude_attachments/zh-Hans';
 import { ImportExportModal__exclude_chat_history } from '@/strings/messages/ImportExportModal__exclude_chat_history/zh-Hans';
@@ -1227,6 +1228,7 @@ import { ImportExportModal__experimental } from '@/strings/messages/ImportExport
 import { ImportExportModal__export } from '@/strings/messages/ImportExportModal__export/zh-Hans';
 import { ImportExportModal__export_failed } from '@/strings/messages/ImportExportModal__export_failed/zh-Hans';
 import { ImportExportModal__export_now } from '@/strings/messages/ImportExportModal__export_now/zh-Hans';
+import { ImportExportModal__export_options } from '@/strings/messages/ImportExportModal__export_options/zh-Hans';
 import { ImportExportModal__export_successful } from '@/strings/messages/ImportExportModal__export_successful/zh-Hans';
 import { ImportExportModal__failed_to_analyze_file } from '@/strings/messages/ImportExportModal__failed_to_analyze_file/zh-Hans';
 import { ImportExportModal__filename_tag_example } from '@/strings/messages/ImportExportModal__filename_tag_example/zh-Hans';
@@ -1266,6 +1268,7 @@ import { ImportExportModal__untitled_chat } from '@/strings/messages/ImportExpor
 import { ImportExportModal__upload_backup_to_restore_or_merge } from '@/strings/messages/ImportExportModal__upload_backup_to_restore_or_merge/zh-Hans';
 import { ImportExportModal__url_and_http_headers } from '@/strings/messages/ImportExportModal__url_and_http_headers/zh-Hans';
 import { ImportExportModal__verifying_integrity } from '@/strings/messages/ImportExportModal__verifying_integrity/zh-Hans';
+import { ImportExportModal__view_in_file_explorer } from '@/strings/messages/ImportExportModal__view_in_file_explorer/zh-Hans';
 import { ImportExportModal__zip_contains_all_data_by_default } from '@/strings/messages/ImportExportModal__zip_contains_all_data_by_default/zh-Hans';
 import { ImportExportService__export_dump_failed } from '@/strings/messages/ImportExportService__export_dump_failed/zh-Hans';
 import { ImportExportService__invalid_zip_file } from '@/strings/messages/ImportExportService__invalid_zip_file/zh-Hans';
@@ -2603,6 +2606,7 @@ import { fileExplorer__planned_addition } from '@/strings/messages/fileExplorer_
 import { fileExplorer__planned_merge } from '@/strings/messages/fileExplorer__planned_merge/zh-Hans';
 import { fileExplorer__planned_overwrite } from '@/strings/messages/fileExplorer__planned_overwrite/zh-Hans';
 import { fileExplorer__preview } from '@/strings/messages/fileExplorer__preview/zh-Hans';
+import { fileExplorer__read_only } from '@/strings/messages/fileExplorer__read_only/zh-Hans';
 import { fileExplorer__refresh } from '@/strings/messages/fileExplorer__refresh/zh-Hans';
 import { fileExplorer__relative_path } from '@/strings/messages/fileExplorer__relative_path/zh-Hans';
 import { fileExplorer__rename } from '@/strings/messages/fileExplorer__rename/zh-Hans';
@@ -4547,6 +4551,7 @@ export const catalog = {
   ImportExportModal__default_marker,
   ImportExportModal__default_model,
   ImportExportModal__download_full_backup,
+  ImportExportModal__download_zip,
   ImportExportModal__error,
   ImportExportModal__exclude_attachments,
   ImportExportModal__exclude_chat_history,
@@ -4555,6 +4560,7 @@ export const catalog = {
   ImportExportModal__export,
   ImportExportModal__export_failed,
   ImportExportModal__export_now,
+  ImportExportModal__export_options,
   ImportExportModal__export_successful,
   ImportExportModal__failed_to_analyze_file,
   ImportExportModal__filename_tag_example,
@@ -4594,6 +4600,7 @@ export const catalog = {
   ImportExportModal__upload_backup_to_restore_or_merge,
   ImportExportModal__url_and_http_headers,
   ImportExportModal__verifying_integrity,
+  ImportExportModal__view_in_file_explorer,
   ImportExportModal__zip_contains_all_data_by_default,
   ImportExportService__export_dump_failed,
   ImportExportService__invalid_zip_file,
@@ -5931,6 +5938,7 @@ export const catalog = {
   fileExplorer__planned_merge,
   fileExplorer__planned_overwrite,
   fileExplorer__preview,
+  fileExplorer__read_only,
   fileExplorer__refresh,
   fileExplorer__relative_path,
   fileExplorer__rename,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
 import { inject, ref } from 'vue';
-import { ChevronRightIcon, ChevronLeftIcon } from 'lucide-vue-next';
+import { ChevronRightIcon, ChevronLeftIcon, FileArchiveIcon } from 'lucide-vue-next';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
@@ -86,12 +86,13 @@ defineExpose({
       <template v-for="(seg, i) in ctx.pathSegments" :key="i">
         <button
           v-if="i < ctx.pathSegments.length - 1"
-          tw-class="px-1.5 py-0.5 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors shrink-0 max-w-[120px] truncate"
+          tw-class="flex items-center gap-1 px-1.5 py-0.5 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors shrink-0 max-w-[120px] truncate"
           :title="seg.name"
           :data-testid="`breadcrumb-${i}`"
           @click="ctx.jumpToBreadcrumb({ index: i })"
         >
-          {{ seg.name }}
+          <FileArchiveIcon v-if="seg.kind === 'archive'" tw-class="w-3 h-3 shrink-0 text-amber-500" />
+          <span tw-class="truncate">{{ seg.name }}</span>
         </button>
         <ChevronRightIcon
           v-if="i < ctx.pathSegments.length - 1"
@@ -99,10 +100,11 @@ defineExpose({
         />
         <span
           v-if="i === ctx.pathSegments.length - 1"
-          tw-class="px-1.5 py-0.5 text-[11px] font-bold text-gray-800 dark:text-gray-200 truncate"
+          tw-class="flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-bold text-gray-800 dark:text-gray-200 truncate"
           :data-testid="`breadcrumb-current`"
         >
-          {{ seg.name }}
+          <FileArchiveIcon v-if="seg.kind === 'archive'" tw-class="w-3 h-3 shrink-0 text-amber-500" />
+          <span tw-class="truncate">{{ seg.name }}</span>
         </span>
       </template>
     </div>
