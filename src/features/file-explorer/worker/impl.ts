@@ -1,6 +1,9 @@
 import { serveByteStream, byteStreamPortSchema } from '@/utils/byte-stream-port';
 
 import type { WorkerServerApi } from '@/utils/worker-transport';
+import { createRemoteDirectoryHandle, remoteDirectoryEntrySchema } from '@/utils/remote-directory-handle';
+import type { ManagedVolumeRemoteAccess } from '@/features/wesh/worker/managed-volume-access';
+import { getEffectiveWeshMounts } from '@/features/wesh/mount-policy';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
 import { createWeshZipRandomAccessSource } from '@/features/wesh/zip-stream';
@@ -250,9 +253,11 @@ function getSession({ sessionId }: { sessionId: string }): FileExplorerSession {
 async function createSessionFromRoot({
   root,
   naidanSysfsRemoteReader,
+  managedVolumeRemoteAccess,
 }: {
   root: FileExplorerRootDescriptor,
   naidanSysfsRemoteReader: NaidanSysfsRemoteReader | undefined,
+  managedVolumeRemoteAccess: ManagedVolumeRemoteAccess | undefined,
 }): Promise<FileExplorerSession> {
   const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
   const archiveViews = new Map<string, CachedArchiveView>();
@@ -275,7 +280,7 @@ async function createSessionFromRoot({
     };
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined });
-    for (const mount of root.mounts) {
+    for (const mount of getEffectiveWeshMounts({ mounts: root.mounts })) {
       switch (mount.type) {
       case 'directory':
         await vfs.mount({
@@ -284,6 +289,22 @@ async function createSessionFromRoot({
           readOnly: mount.readOnly,
         });
         break;
+      case 'managed_directory': {
+        if (managedVolumeRemoteAccess === undefined) {
+          throw new Error('Managed volume access is required for this directory');
+        }
+        const remoteAccess = managedVolumeRemoteAccess;
+        const directoryRoot = remoteDirectoryEntrySchema.parse(await remoteAccess.getRoot({ path: mount.path }));
+        await vfs.mount({
+          path: mount.path,
+          handle: createRemoteDirectoryHandle({
+            root: directoryRoot,
+            access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
+          }),
+          readOnly: mount.readOnly,
+        });
+        break;
+      }
       case 'naidan_sysfs': {
         const reader = await (() => {
           switch (mount.storageType) {
@@ -1676,12 +1697,13 @@ async function listZipUploadExistingEntries({
 export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker> {
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
-    async prepareSession({ request }, naidanSysfsRemoteReader) {
+    async prepareSession({ request }, naidanSysfsRemoteReader, managedVolumeRemoteAccess) {
       const validated = fileExplorerPrepareSessionRequestSchema.parse(request);
       const sessionId = createSessionId();
       sessions.set(sessionId, await createSessionFromRoot({
         root: validated.root,
         naidanSysfsRemoteReader,
+        managedVolumeRemoteAccess,
       }));
       return fileExplorerPrepareSessionResponseSchema.parse({ sessionId });
     },

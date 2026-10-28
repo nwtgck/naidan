@@ -6,6 +6,7 @@ import {
   type WeshWorkerInitRequest,
 } from './types';
 import type { WeshMount } from '@/features/wesh/types';
+import { getEffectiveWeshMounts } from '@/features/wesh/mount-policy';
 
 export type WeshFileSystemHandleTransport = 'direct' | 'opfs-locator';
 
@@ -16,7 +17,7 @@ export function hasWeshFileSystemHandles({
   rootHandle: FileSystemDirectoryHandle | 'readonly',
   mounts: WeshMount[],
 }): boolean {
-  return rootHandle !== 'readonly' || mounts.some(mount => mount.type === 'directory');
+  return rootHandle !== 'readonly' || getEffectiveWeshMounts({ mounts }).some(mount => mount.type === 'directory');
 }
 
 export async function createWeshWorkerInitRequest({

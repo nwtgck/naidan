@@ -1,12 +1,14 @@
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { computed, nextTick, ref } from 'vue';
-import { toVolumeId, toChatId } from '@/01-models/ids';
-import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { toVolumeId, toChatId, type ChatId } from '@/01-models/ids';
+import { EMPTY_LM_PARAMETERS, type Mount, type Volume } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
+import { listLazyVolumeStates, publishLazyVolumeState, removeLazyVolumeState } from '@/00-storage/service/lazy-volume-state';
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import type { AppInteraction } from '@/composables/useAppPresentation';
 
@@ -14,7 +16,7 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-const { mockRouter, mockScheduleUnusedEmptyVolumeCleanup, mockRemoveMount } = vi.hoisted(() => ({
+const { mockRouter, mockScheduleUnusedEmptyVolumeCleanup, mockRemoveMount, mockAddMount, mockEnableToolForChat } = vi.hoisted(() => ({
   mockRouter: {
     currentRoute: { value: { query: {} as Record<string, string> } },
     replace: vi.fn(),
@@ -22,7 +24,16 @@ const { mockRouter, mockScheduleUnusedEmptyVolumeCleanup, mockRemoveMount } = vi
   },
   mockScheduleUnusedEmptyVolumeCleanup: vi.fn(),
   mockRemoveMount: vi.fn(),
+  mockAddMount: vi.fn(),
+  mockEnableToolForChat: vi.fn(),
 }));
+const mockMountsByChat = new Map<ChatId, Mount[]>();
+
+afterEach(() => {
+  for (const state of listLazyVolumeStates()) {
+    removeLazyVolumeState({ volumeId: state.volume.id });
+  }
+});
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -92,6 +103,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
 
 // Mock new composables and services
 vi.mock('../features/tools/composables/useChatTools', () => ({
+  setToolEnabledForChat: mockEnableToolForChat,
   useChatTools: () => ({
     setToolEnabled: vi.fn(),
   }),
@@ -122,7 +134,12 @@ vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
 vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolume: vi.fn(),
+    loadChatMeta: vi.fn(),
     createVolumeFromFiles: vi.fn(),
+    registerLazyVolume: vi.fn(),
+    resolveVolumeAccess: vi.fn(),
+    pauseLazyVolumeCopy: vi.fn(),
+    retryLazyVolumeCopy: vi.fn(),
     createVolume: vi.fn(),
     getVolumeDirectoryHandle: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob([])),
@@ -449,7 +466,7 @@ vi.mock('../composables/chat/useChatMounts', () => ({
 
       return mockCurrentChat.value?.mounts ?? [];
     }),
-    addMount: vi.fn(),
+    addMount: mockAddMount,
     removeMount: mockRemoveMount,
     updateMount: vi.fn(),
   }),
@@ -489,6 +506,15 @@ describe('ChatInput Integration', () => {
     mockSendMessageForChat.mockResolvedValue(true);
     mockChatStore.fetchAvailableModels.mockReset();
     mockChatStore.fetchAvailableModels.mockResolvedValue([]);
+    mockMountsByChat.clear();
+    mockAddMount.mockReset();
+    mockAddMount.mockResolvedValue(undefined);
+    vi.mocked(storageService.resolveVolumeAccess).mockImplementation(async ({ volumeId }) => ({ kind: 'missing', volumeId }));
+    vi.mocked(storageService.loadChatMeta).mockImplementation(async ({ id }) => ({
+      ...mockCurrentChat.value,
+      id,
+      mounts: mockMountsByChat.get(id) ?? (mockCurrentChat.value?.id === id ? mockCurrentChat.value.mounts : []),
+    }));
   });
 
   const getWrapper = ({ autoSendPrompt, isSubmissionEnabled, textSubmissionAction }: {
@@ -525,6 +551,197 @@ describe('ChatInput Integration', () => {
         },
       },
     },
+  });
+
+  it('mounts a registered folder while its background copy is still unfinished', async () => {
+    const volume: Volume = { id: toVolumeId({ raw: 'lazy-copy' }), name: 'Documents', type: 'opfs', createdAt: 1 };
+    const file = new File(['document'], 'notes.txt', { type: 'text/plain' });
+    Object.defineProperty(file, 'webkitRelativePath', { value: 'Documents/notes.txt' });
+    vi.mocked(storageService.registerLazyVolume).mockImplementation(async () => {
+      publishLazyVolumeState({ state: { volume, phase: 'copying', progress: { processed: 0, total: 1 }, error: undefined } });
+      return volume;
+    });
+    mockAddMount.mockImplementation(async ({ mount }: { mount: Mount }) => {
+      mockCurrentChat.value.mounts = [mount];
+    });
+    const wrapper = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    wrapper.getComponent({ name: 'ChatAttachMenu' }).vm.$emit('folder-copy', 'Documents', [file]);
+    await flushPromises();
+
+    expect(storageService.registerLazyVolume).toHaveBeenCalledWith({
+      name: 'Documents',
+      entries: [{ file, relativePath: 'Documents/notes.txt' }],
+      signal: undefined,
+    });
+    expect(mockAddMount).toHaveBeenCalledWith({
+      chatId: toChatId({ raw: 'chat-1' }),
+      mount: { type: 'volume', volumeId: volume.id, mountPath: '/home/user/documents', readOnly: true },
+    });
+    expect(mockEnableToolForChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }), name: 'shell_execute', enabled: true });
+    expect(wrapper.get('[data-testid="copy-progress"]').text()).toContain('not finished yet');
+    expect(storageService.createVolumeFromFiles).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="copy-pause-btn"]').trigger('click');
+    expect(storageService.pauseLazyVolumeCopy).toHaveBeenCalledWith({ volumeId: volume.id });
+    expect(mockRemoveMount).not.toHaveBeenCalled();
+    void cleanup;
+  });
+
+  it('keeps the registration target and its mount path when the displayed chat changes', async () => {
+    const registration = Promise.withResolvers<Volume>();
+    const targetChatId = toChatId({ raw: 'chat-1' });
+    const volume: Volume = { id: toVolumeId({ raw: 'late-copy' }), name: 'Documents', type: 'opfs', createdAt: 1 };
+    mockMountsByChat.set(targetChatId, [{ type: 'volume', volumeId: toVolumeId({ raw: 'existing' }), mountPath: '/home/user/documents', readOnly: true }]);
+    vi.mocked(storageService.registerLazyVolume).mockReturnValue(registration.promise);
+    const wrapper = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    wrapper.getComponent({ name: 'ChatAttachMenu' }).vm.$emit('folder-copy', 'Documents', [new File(['data'], 'notes.txt')]);
+    const otherChat = { ...mockCurrentChat.value, id: 'chat-2', mounts: [] };
+    mockCurrentChat.value = otherChat;
+    await wrapper.setProps({ chatId: toChatId({ raw: 'chat-2' }), chat: otherChat });
+    registration.resolve(volume);
+    await flushPromises();
+
+    expect(mockAddMount).toHaveBeenCalledExactlyOnceWith({
+      chatId: targetChatId,
+      mount: { type: 'volume', volumeId: volume.id, mountPath: '/home/user/documents-2', readOnly: true },
+    });
+    expect(mockEnableToolForChat).toHaveBeenCalledExactlyOnceWith({ chatId: targetChatId, name: 'shell_execute', enabled: true });
+    void cleanup;
+  });
+
+  it('assigns different paths to concurrent same-name folder attachments in one chat', async () => {
+    const first: Volume = { id: toVolumeId({ raw: 'same-name-first' }), name: 'Documents', type: 'opfs', createdAt: 1 };
+    const second: Volume = { ...first, id: toVolumeId({ raw: 'same-name-second' }) };
+    const firstMountStarted = Promise.withResolvers<void>();
+    const finishFirstMount = Promise.withResolvers<void>();
+    vi.mocked(storageService.registerLazyVolume).mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    mockAddMount.mockImplementation(async ({ chatId, mount }: { chatId: ChatId, mount: Mount }) => {
+      if (mount.volumeId === first.id) {
+        firstMountStarted.resolve();
+        await finishFirstMount.promise;
+      }
+      const mounts = [...(mockMountsByChat.get(chatId) ?? []), mount];
+      mockMountsByChat.set(chatId, mounts);
+      mockCurrentChat.value.mounts = mounts;
+    });
+    const wrapper = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        finishFirstMount.resolve();
+        wrapper.unmount();
+      },
+    };
+    const picker = wrapper.getComponent({ name: 'ChatAttachMenu' });
+    picker.vm.$emit('folder-copy', 'Documents', [new File(['first'], 'notes.txt')]);
+    picker.vm.$emit('folder-copy', 'Documents', [new File(['second'], 'notes.txt')]);
+    await firstMountStarted.promise;
+    await flushPromises();
+    expect(storageService.registerLazyVolume).toHaveBeenCalledTimes(2);
+    expect(mockAddMount).toHaveBeenCalledTimes(1);
+    finishFirstMount.resolve();
+    await flushPromises();
+    expect(mockAddMount.mock.calls.map(([request]) => request.mount)).toEqual([
+      { type: 'volume', volumeId: first.id, mountPath: '/home/user/documents', readOnly: true },
+      { type: 'volume', volumeId: second.id, mountPath: '/home/user/documents-2', readOnly: true },
+    ]);
+    void cleanup;
+  });
+
+  it('captures the dropped directory owner before asynchronous file enumeration', async () => {
+    const volume: Volume = { id: toVolumeId({ raw: 'dropped-copy' }), name: 'Documents', type: 'opfs', createdAt: 1 };
+    vi.mocked(storageService.registerLazyVolume).mockResolvedValue(volume);
+    let deliverEntries: ((entries: FileSystemEntry[]) => void) | undefined;
+    let batches = 0;
+    const file = new File(['data'], 'notes.txt');
+    const fileEntry = { isFile: true, isDirectory: false, name: 'notes.txt', file: (success: (file: File) => void) => success(file) } as unknown as FileSystemFileEntry;
+    const directory = {
+      isFile: false,
+      isDirectory: true,
+      name: 'Documents',
+      createReader: () => ({
+        readEntries: (success: (entries: FileSystemEntry[]) => void) => {
+          batches++;
+          if (batches === 1) {
+            deliverEntries = success;
+          } else {
+            success([]);
+          }
+        },
+      }),
+    } as unknown as FileSystemDirectoryEntry;
+    const item = { kind: 'file', webkitGetAsEntry: () => directory } as unknown as DataTransferItem;
+    const wrapper = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const pendingDrop = wrapper.vm.processDropItems({ items: [item] });
+    const otherChat = { ...mockCurrentChat.value, id: 'chat-2', mounts: [] };
+    mockCurrentChat.value = otherChat;
+    await wrapper.setProps({ chatId: toChatId({ raw: 'chat-2' }), chat: otherChat });
+    if (deliverEntries === undefined) {
+      throw new Error('Expected directory enumeration to have started');
+    }
+    deliverEntries([fileEntry]);
+    await pendingDrop;
+    await flushPromises();
+    expect(mockAddMount).toHaveBeenCalledExactlyOnceWith({
+      chatId: toChatId({ raw: 'chat-1' }),
+      mount: { type: 'volume', volumeId: volume.id, mountPath: '/home/user/documents', readOnly: true },
+    });
+    void cleanup;
+  });
+
+  it('keeps host directory drops linked without starting a lazy OPFS copy', async () => {
+    const directory = { kind: 'directory', name: 'Linked' } as FileSystemDirectoryHandle;
+    const volume: Volume = { id: toVolumeId({ raw: 'linked-drop' }), name: 'Linked', type: 'host', createdAt: 1 };
+    vi.mocked(storageService.createVolume).mockResolvedValue(volume);
+    const item = { kind: 'file', getAsFileSystemHandle: async () => directory } as unknown as DataTransferItem;
+    const wrapper = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.vm.processDropItems({ items: [item] });
+    expect(storageService.createVolume).toHaveBeenCalledWith({ name: 'Linked', type: 'host', sourceHandle: directory });
+    expect(storageService.registerLazyVolume).not.toHaveBeenCalled();
+    expect(mockAddMount).toHaveBeenCalledWith({
+      chatId: toChatId({ raw: 'chat-1' }),
+      mount: { type: 'volume', volumeId: volume.id, mountPath: '/home/user/linked', readOnly: true },
+    });
+    void cleanup;
+  });
+
+  it('restores unfinished copy controls when the composer is reopened', async () => {
+    const volume: Volume = { id: toVolumeId({ raw: 'retained-copy' }), name: 'Documents', type: 'opfs', createdAt: 1 };
+    mockCurrentChat.value.mounts = [{ type: 'volume', volumeId: volume.id, mountPath: '/home/user/documents', readOnly: true }];
+    publishLazyVolumeState({ state: { volume, phase: 'paused', progress: { processed: 1, total: 3 }, error: undefined } });
+    const original = getWrapper();
+    expect(original.get('[data-testid="copy-resume-btn"]').text()).toBe('Resume');
+    original.unmount();
+    publishLazyVolumeState({ state: { volume, phase: 'failed', progress: { processed: 1, total: 3 }, error: 'Storage is full' } });
+    const reopened = getWrapper();
+    using cleanup = {
+      [Symbol.dispose]() {
+        reopened.unmount();
+      },
+    };
+    expect(reopened.get('[data-testid="copy-progress"]').text()).toContain('Storage is full');
+    await reopened.get('[data-testid="copy-retry-btn"]').trigger('click');
+    await flushPromises();
+    expect(storageService.retryLazyVolumeCopy).toHaveBeenCalledWith({ volumeId: volume.id });
+    void cleanup;
   });
 
   it('leaves connection notice content to the parent slot and preserves input controls when endpoints change', async () => {

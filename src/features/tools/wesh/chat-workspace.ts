@@ -22,7 +22,7 @@ function hasMountAtWorkspacePath({ mounts }: { mounts: Mount[] | undefined }): b
   }) ?? false;
 }
 
-async function provisionChatWorkspace({ chat }: { chat: Chat }): Promise<void> {
+async function provisionChatWorkspace({ chat }: { chat: Pick<Chat, 'id' | 'mounts'> }): Promise<void> {
   if (storageService.getCurrentType() !== 'opfs' || hasMountAtWorkspacePath({ mounts: chat.mounts })) {
     return;
   }
@@ -62,7 +62,7 @@ async function provisionChatWorkspace({ chat }: { chat: Chat }): Promise<void> {
   }
 }
 
-export async function ensureChatWorkspaceMounted({ chat }: { chat: Chat }): Promise<void> {
+export async function ensureChatWorkspaceMounted({ chat }: { chat: Pick<Chat, 'id' | 'mounts'> }): Promise<void> {
   const previous = provisioningByChat.get(chat.id) ?? Promise.resolve();
   const next = previous.then(async () => {
     await provisionChatWorkspace({ chat });

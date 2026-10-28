@@ -8,6 +8,7 @@ import {
   STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
 } from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
+import { createManagedVolumeRemoteAccess, observeManagedVolumeWorker } from '@/features/wesh/worker/managed-volume-access';
 import {
   fileExplorerAnalyzeZipUploadResponseSchema,
   fileExplorerExecuteZipUploadResponseSchema,
@@ -23,6 +24,8 @@ import {
   type IFileExplorerWorker,
 } from './types';
 import {
+  getFileExplorerRootMounts,
+  normalizeFileExplorerRootMounts,
   hasFileExplorerFileSystemHandles,
   mapFileExplorerRootToOpfsLocators,
 } from './root-transport';
@@ -39,6 +42,7 @@ export async function createFileExplorerWorkerClient({
 }: {
   root: FileExplorerRootDescriptor,
 }): Promise<FileExplorerWorkerClient> {
+  root = normalizeFileExplorerRootMounts({ root });
   const naidanSysfsRemoteReader = (() => {
     switch (root.kind) {
     case 'native-directory':
@@ -56,29 +60,40 @@ export async function createFileExplorerWorkerClient({
   const createRuntime = async ({ requestRoot }: {
     requestRoot: FileExplorerRootDescriptor,
   }) => {
-    const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
-    const { remote } = session;
+    const managedVolumes = await createManagedVolumeRemoteAccess({ mounts: getFileExplorerRootMounts({ root: requestRoot }) });
     try {
-      const prepareResponse = await remote.prepareSession(
-        workerCapability({
-          value: { request: { root: requestRoot } },
-          capability: 'file-system-handle-clone',
-        }),
-        naidanSysfsRemoteReader
-          ? workerProxy({ value: naidanSysfsRemoteReader })
-          : undefined,
-      );
-      return {
-        session,
-        remote,
-        sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
-      };
+      const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
+      const { remote } = session;
+      const stopObserving = observeManagedVolumeWorker({ worker: session.worker, connection: managedVolumes });
+      try {
+        const prepareResponse = await remote.prepareSession(
+          workerCapability({
+            value: { request: { root: requestRoot } },
+            capability: 'file-system-handle-clone',
+          }),
+          naidanSysfsRemoteReader
+            ? workerProxy({ value: naidanSysfsRemoteReader })
+            : undefined,
+          ...(managedVolumes.remote ? [workerProxy({ value: managedVolumes.remote })] as const : []),
+        );
+        return {
+          session,
+          remote,
+          sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
+          managedVolumes,
+          stopObserving,
+        };
+      } catch (error) {
+        stopObserving();
+        await disposeStandaloneWorkerSession({
+          session,
+          beforeRelease: undefined,
+          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+        }).catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
-      await disposeStandaloneWorkerSession({
-        session,
-        beforeRelease: undefined,
-        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      }).catch(() => undefined);
+      await managedVolumes.dispose().catch(() => undefined);
       throw error;
     }
   };
@@ -173,11 +188,16 @@ export async function createFileExplorerWorkerClient({
     },
     async dispose() {
       streams.disposeStreams();
-      await disposeStandaloneWorkerSession({
-        session,
-        beforeRelease: () => remote.disposeSession({ request: { sessionId } }),
-        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      });
+      try {
+        await runtime.managedVolumes.dispose();
+      } finally {
+        runtime.stopObserving();
+        await disposeStandaloneWorkerSession({
+          session,
+          beforeRelease: () => remote.disposeSession({ request: { sessionId } }),
+          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+        });
+      }
     },
   };
 }

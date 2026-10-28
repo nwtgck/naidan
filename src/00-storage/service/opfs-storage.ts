@@ -36,6 +36,7 @@ import {
   buildSidebarItemsFromHierarchy,
   binaryObjectToDomain,
   volumeToDomain,
+  volumeToDto,
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
 
@@ -48,6 +49,8 @@ import {
 import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
 import { promiseAllKeyed } from '@/utils/promise';
 import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import type { StoredVolumeAccess } from '@/01-models/volume-access';
+import type { StorageSynchronizer } from './synchronizer';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
@@ -57,6 +60,18 @@ const MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS = 'v1_uploaded_files_to_bina
 const NAIDAN_RPC_REGISTRY_FILE = 'naidan-rpc-connections.json';
 
 type BinaryShardIndex = BinaryShardIndexDto;
+
+let volumeSynchronizer: StorageSynchronizer | undefined;
+
+async function getVolumeSynchronizer(): Promise<StorageSynchronizer> {
+  const { StorageSynchronizer } = await import('./synchronizer');
+  volumeSynchronizer ??= new StorageSynchronizer();
+  return volumeSynchronizer;
+}
+
+function isVolumeEntryNotFound({ error }: { error: unknown }): boolean {
+  return (error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError';
+}
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
@@ -918,10 +933,14 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async clearAll(): Promise<void> {
-    await this.ensureRoot();
-    for await (const key of this.root!.keys()) {
-      await this.root!.removeEntry(key, { recursive: true });
-    }
+    await this.withVolumeFilesLock({
+      operation: async () => {
+        await this.ensureRoot();
+        for await (const key of this.root!.keys()) {
+          await this.root!.removeEntry(key, { recursive: true });
+        }
+      },
+    });
   }
 
   // --- Migration Implementation ---
@@ -1063,28 +1082,212 @@ export class OPFSStorageProvider extends IStorageProvider {
     return await this.getDir({ name: 'volumes' });
   }
 
+  private async findVolumesBaseDir(): Promise<FileSystemDirectoryHandle | undefined> {
+    await this.ensureRoot();
+    try {
+      return await this.root!.getDirectoryHandle('volumes');
+    } catch (error) {
+      if (isVolumeEntryNotFound({ error })) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   private async getVolumeShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle> {
     const baseDir = await this.getVolumesBaseDir();
     return await this.getDir({ name: shard, parent: baseDir });
   }
 
-  private async loadVolumeShardIndex({ shard }: { shard: string }): Promise<VolumeIndexDto> {
+  private async findVolumeShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle | undefined> {
+    const baseDir = await this.findVolumesBaseDir();
+    if (baseDir === undefined) {
+      return undefined;
+    }
     try {
-      const dir = await this.getVolumeShardDir({ shard });
-      const fileHandle = await dir.getFileHandle('index.json');
-      const file = await fileHandle.getFile();
-      return VolumeIndexSchemaDto.parse(JSON.parse(await file.text()));
-    } catch {
-      return { volumes: {} };
+      return await baseDir.getDirectoryHandle(shard);
+    } catch (error) {
+      if (isVolumeEntryNotFound({ error })) {
+        return undefined;
+      }
+      throw error;
     }
   }
 
+  private async withVolumeFilesLock<T>({ operation }: { operation(): Promise<T> }): Promise<T> {
+    const synchronizer = await getVolumeSynchronizer();
+    // Serialize root creation/removal and metadata publication, never file-byte
+    // copying. Publication can then validate its captured root before indexing it.
+    return await synchronizer.withLock({ lockKey: 'naidan-volume-files', fn: operation });
+  }
+
+  private async loadVolumeShardIndex({ shard }: { shard: string }): Promise<VolumeIndexDto> {
+    const dir = await this.findVolumeShardDir({ shard });
+    if (dir === undefined) {
+      return { volumes: {} };
+    }
+    let fileHandle: FileSystemFileHandle;
+    try {
+      fileHandle = await dir.getFileHandle('index.json');
+    } catch (error) {
+      if (isVolumeEntryNotFound({ error })) {
+        return { volumes: {} };
+      }
+      throw error;
+    }
+    const file = await fileHandle.getFile();
+    return VolumeIndexSchemaDto.parse(JSON.parse(await file.text()));
+  }
+
+  private async withVolumeIndexLock({ shard, operation }: {
+    shard: string,
+    operation(): Promise<void>,
+  }): Promise<void> {
+    await this.withVolumeFilesLock({
+      operation: async () => {
+        const synchronizer = await getVolumeSynchronizer();
+        await synchronizer.withLock({
+          // Keep this below outer chat/settings locks. Using LOCK_METADATA again
+          // would deadlock callers that already hold that lock during cleanup.
+          lockKey: `naidan-volume-index:${shard}`,
+          fn: operation,
+        });
+      },
+    });
+  }
+
+  private async updateVolumeShardIndex({ shard, update }: {
+    shard: string,
+    update({ index }: { index: VolumeIndexDto }): Promise<void>,
+  }): Promise<void> {
+    await this.withVolumeIndexLock({
+      shard,
+      operation: async () => {
+        const index = await this.loadVolumeShardIndex({ shard });
+        await update({ index });
+        await this.saveVolumeShardIndex({ shard, index });
+      },
+    });
+  }
+
+  private async createVolumeDirectory({ volumeId }: { volumeId: VolumeId }): Promise<{ root: FileSystemDirectoryHandle, parent: FileSystemDirectoryHandle }> {
+    const shard = this.getVolumeShardPath({ id: volumeId });
+    const parent = await this.getVolumeShardDir({ shard });
+    const root = await parent.getDirectoryHandle(idToRaw({ id: volumeId }), { create: true });
+    return { root, parent };
+  }
+
+  override async ensureVolumeDirectory({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle> {
+    return await this.withVolumeFilesLock({ operation: async () => (await this.createVolumeDirectory({ volumeId })).root });
+  }
+
+  override async publishVolume({ volume, root }: { volume: Volume, root: FileSystemDirectoryHandle | undefined }): Promise<void> {
+    const shard = this.getVolumeShardPath({ id: volume.id });
+    await this.withVolumeIndexLock({
+      shard,
+      operation: async () => {
+        switch (volume.type) {
+        case 'opfs': {
+          const directory = await this.findVolumeShardDir({ shard });
+          if (directory === undefined) {
+            throw new DOMException('The browser folder no longer exists', 'NotFoundError');
+          }
+          const current = await directory.getDirectoryHandle(idToRaw({ id: volume.id }));
+          // A path reused after clearAll must not publish an older copy task.
+          if (root !== undefined && !await current.isSameEntry(root)) {
+            throw new DOMException('The browser folder was replaced before publication', 'InvalidStateError');
+          }
+          break;
+        }
+        case 'host':
+          await this.getVolumeShardDir({ shard });
+          break;
+        default: {
+          const exhaustive: never = volume.type;
+          throw new Error(`Unhandled volume type: ${String(exhaustive)}`);
+        }
+        }
+        const index = await this.loadVolumeShardIndex({ shard });
+        index.volumes[idToRaw({ id: volume.id })] = volumeToDto({ domain: volume });
+        await this.saveVolumeShardIndex({ shard, index });
+      },
+    });
+  }
+
+  override async probeVolumeAccess({ volumeId }: { volumeId: VolumeId }): Promise<StoredVolumeAccess> {
+    const shard = this.getVolumeShardPath({ id: volumeId });
+    const index = await this.loadVolumeShardIndex({ shard });
+    const dto = index.volumes[idToRaw({ id: volumeId })];
+    if (dto !== undefined) {
+      switch (dto.type) {
+      case 'host': {
+        const handle = await this.hostVolumeDB.get({ id: idToRaw({ id: volumeId }) });
+        return handle ? { kind: 'native', volume: volumeToDomain({ dto }), handle } : { kind: 'missing', volumeId };
+      }
+      case 'opfs':
+        break;
+      default: {
+        const exhaustive: never = dto;
+        throw new Error(`Unhandled volume type: ${String(exhaustive)}`);
+      }
+      }
+    }
+    const shardDir = await this.findVolumeShardDir({ shard });
+    if (shardDir === undefined) {
+      return { kind: 'missing', volumeId };
+    }
+    let handle: FileSystemDirectoryHandle;
+    try {
+      handle = await shardDir.getDirectoryHandle(idToRaw({ id: volumeId }));
+    } catch (error) {
+      if (isVolumeEntryNotFound({ error })) {
+        return { kind: 'missing', volumeId };
+      }
+      throw error;
+    }
+    return dto === undefined ? { kind: 'incomplete', volumeId, handle } : { kind: 'native', volume: volumeToDomain({ dto }), handle };
+  }
+
+  override async deleteUnpublishedVolumeDirectory({ volumeId }: { volumeId: VolumeId }): Promise<void> {
+    const shard = this.getVolumeShardPath({ id: volumeId });
+    await this.withVolumeIndexLock({
+      shard,
+      operation: async () => {
+        const index = await this.loadVolumeShardIndex({ shard });
+        if (index.volumes[idToRaw({ id: volumeId })] !== undefined) {
+          throw new DOMException('The folder has already been published', 'InvalidStateError');
+        }
+        const shardDir = await this.findVolumeShardDir({ shard });
+        if (shardDir === undefined) {
+          return;
+        }
+        try {
+          await shardDir.removeEntry(idToRaw({ id: volumeId }), { recursive: true });
+        } catch (error) {
+          if (!isVolumeEntryNotFound({ error })) {
+            throw error;
+          }
+        }
+      },
+    });
+  }
+
   private async saveVolumeShardIndex({ shard, index }: { shard: string, index: VolumeIndexDto }): Promise<void> {
-    const dir = await this.getVolumeShardDir({ shard });
+    const dir = await this.findVolumeShardDir({ shard });
+    if (dir === undefined) {
+      throw new DOMException('The browser folder index no longer exists', 'NotFoundError');
+    }
     const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
-    await writable.close();
+    try {
+      await writable.write(JSON.stringify(index));
+      await writable.close();
+    } catch (error) {
+      try {
+        await writable.abort(error);
+      } catch { /* Preserve the metadata failure, including if abort also fails. */ }
+      throw error;
+    }
   }
 
   private async copyDirectory({ source, destination }: { source: FileSystemDirectoryHandle, destination: FileSystemDirectoryHandle }): Promise<void> {
@@ -1114,7 +1317,10 @@ export class OPFSStorageProvider extends IStorageProvider {
   async *listVolumes(): AsyncIterable<Volume> {
     await this.ensureRoot();
     try {
-      const baseDir = await this.getVolumesBaseDir();
+      const baseDir = await this.findVolumesBaseDir();
+      if (baseDir === undefined) {
+        return;
+      }
       for await (const shardEntry of baseDir.values()) {
         switch (shardEntry.kind) {
         case 'directory': {
@@ -1143,15 +1349,14 @@ export class OPFSStorageProvider extends IStorageProvider {
   }): Promise<Volume> {
     const id = generateId<VolumeId>();
     const createdAt = Date.now();
-    const shard = this.getVolumeShardPath({ id });
 
     let volumeDto: VolumeDto;
+    let volumeRoot: FileSystemDirectoryHandle | undefined;
 
     switch (type) {
     case 'opfs': {
-      const shardDir = await this.getVolumeShardDir({ shard });
-      const volumeDir = await shardDir.getDirectoryHandle(idToRaw({ id }), { create: true });
-      await this.copyDirectory({ source: sourceHandle, destination: volumeDir });
+      volumeRoot = await this.ensureVolumeDirectory({ volumeId: id });
+      await this.copyDirectory({ source: sourceHandle, destination: volumeRoot });
 
       volumeDto = {
         type: 'opfs',
@@ -1177,11 +1382,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
     }
 
-    const index = await this.loadVolumeShardIndex({ shard });
-    index.volumes[idToRaw({ id })] = volumeDto;
-    await this.saveVolumeShardIndex({ shard, index });
-
-    return volumeToDomain({ dto: volumeDto });
+    const volume = volumeToDomain({ dto: volumeDto });
+    await this.publishVolume({ volume, root: volumeRoot });
+    return volume;
   }
 
   async createVolumeFromFiles({ name, entries, onProgress, signal }: {
@@ -1192,10 +1395,8 @@ export class OPFSStorageProvider extends IStorageProvider {
   }): Promise<Volume> {
     const id = generateId<VolumeId>();
     const createdAt = Date.now();
-    const shard = this.getVolumeShardPath({ id });
 
-    const shardDir = await this.getVolumeShardDir({ shard });
-    const volumeDir = await shardDir.getDirectoryHandle(idToRaw({ id }), { create: true });
+    const { root: volumeDir, parent: shardDir } = await this.withVolumeFilesLock({ operation: () => this.createVolumeDirectory({ volumeId: id }) });
 
     for (let i = 0; i < entries.length; i++) {
       if (signal?.aborted) {
@@ -1234,32 +1435,22 @@ export class OPFSStorageProvider extends IStorageProvider {
       createdAt,
     };
 
-    const index = await this.loadVolumeShardIndex({ shard });
-    index.volumes[idToRaw({ id })] = volumeDto;
-    await this.saveVolumeShardIndex({ shard, index });
-
-    return volumeToDomain({ dto: volumeDto });
+    const volume = volumeToDomain({ dto: volumeDto });
+    await this.publishVolume({ volume, root: volumeDir });
+    return volume;
   }
 
   async getVolumeDirectoryHandle({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle | null> {
     try {
-      const shard = this.getVolumeShardPath({ id: volumeId });
-      const index = await this.loadVolumeShardIndex({ shard });
-      const volume = index.volumes[idToRaw({ id: volumeId })];
-
-      if (!volume) {
+      const access = await this.probeVolumeAccess({ volumeId });
+      switch (access.kind) {
+      case 'native':
+        return access.handle;
+      case 'incomplete':
+      case 'missing':
         return null;
-      }
-
-      switch (volume.type) {
-      case 'opfs': {
-        const shardDir = await this.getVolumeShardDir({ shard });
-        return await shardDir.getDirectoryHandle(idToRaw({ id: volumeId }));
-      }
-      case 'host':
-        return await this.hostVolumeDB.get({ id: idToRaw({ id: volumeId }) }) || null;
       default: {
-        const _ex: never = volume;
+        const _ex: never = access;
         throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
       }
       }
@@ -1271,41 +1462,49 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async renameVolume({ volumeId, name }: { volumeId: VolumeId, name: string }): Promise<void> {
     const shard = this.getVolumeShardPath({ id: volumeId });
-    const index = await this.loadVolumeShardIndex({ shard });
-    const volume = index.volumes[idToRaw({ id: volumeId })];
-    if (!volume) {
-      throw new Error(`Volume not found: ${idToRaw({ id: volumeId })}`);
-    }
-    index.volumes[idToRaw({ id: volumeId })] = { ...volume, name };
-    await this.saveVolumeShardIndex({ shard, index });
+    await this.updateVolumeShardIndex({
+      shard,
+      update: async ({ index }) => {
+        const volume = index.volumes[idToRaw({ id: volumeId })];
+        if (!volume) {
+          throw new Error(`Volume not found: ${idToRaw({ id: volumeId })}`);
+        }
+        index.volumes[idToRaw({ id: volumeId })] = { ...volume, name };
+      },
+    });
   }
 
   async deleteVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
     const shard = this.getVolumeShardPath({ id: volumeId });
 
     try {
-      const index = await this.loadVolumeShardIndex({ shard });
-      const volume = index.volumes[idToRaw({ id: volumeId })];
+      await this.withVolumeIndexLock({
+        shard,
+        operation: async () => {
+          const index = await this.loadVolumeShardIndex({ shard });
+          const volume = index.volumes[idToRaw({ id: volumeId })];
+          if (volume === undefined) {
+            return;
+          }
+          switch (volume.type) {
+          case 'opfs': {
+            const shardDir = await this.getVolumeShardDir({ shard });
+            await shardDir.removeEntry(idToRaw({ id: volumeId }), { recursive: true });
+            break;
+          }
+          case 'host':
+            await this.hostVolumeDB.delete({ id: idToRaw({ id: volumeId }) });
+            break;
+          default: {
+            const _ex: never = volume;
+            throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
+          }
+          }
 
-      if (volume) {
-        switch (volume.type) {
-        case 'opfs': {
-          const shardDir = await this.getVolumeShardDir({ shard });
-          await shardDir.removeEntry(idToRaw({ id: volumeId }), { recursive: true });
-          break;
-        }
-        case 'host':
-          await this.hostVolumeDB.delete({ id: idToRaw({ id: volumeId }) });
-          break;
-        default: {
-          const _ex: never = volume;
-          throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
-        }
-        }
-
-        delete index.volumes[idToRaw({ id: volumeId })];
-        await this.saveVolumeShardIndex({ shard, index });
-      }
+          delete index.volumes[idToRaw({ id: volumeId })];
+          await this.saveVolumeShardIndex({ shard, index });
+        },
+      });
     } catch (e) {
       console.error('Failed to delete volume:', e);
     }

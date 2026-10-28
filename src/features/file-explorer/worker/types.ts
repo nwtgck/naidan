@@ -4,6 +4,7 @@ import type { WorkerCapability, WorkerProxy, WorkerTransfer } from '@/utils/work
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-handle-transport';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
+import type { ManagedVolumeRemoteAccess } from '@/features/wesh/worker/managed-volume-access';
 
 function isBlob(value: unknown): value is Blob {
   return typeof Blob !== 'undefined' && value instanceof Blob;
@@ -417,6 +418,7 @@ export interface IFileExplorerWorker {
       'file-system-handle-clone'
     >,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
+    managedVolumeRemoteAccess?: WorkerProxy<ManagedVolumeRemoteAccess>,
   ): Promise<FileExplorerPrepareSessionResponse>,
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,

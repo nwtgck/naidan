@@ -13,7 +13,7 @@ import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import ChatToolsMenu from '@/features/tools/components/ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
-import { useChatTools } from '@/features/tools/composables/useChatTools';
+import { setToolEnabledForChat } from '@/features/tools/composables/useChatTools';
 import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
 import { useChatConversation } from '@/composables/chat/useChatConversation';
 import { useChatDraft } from '@/composables/useChatDraft';
@@ -22,7 +22,7 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { storageService } from '@/00-storage/service';
-import { startVolumeExtensionScan } from '@/features/tools/wesh/volume-extension-cache';
+import { startVolumeAccessExtensionScan } from '@/features/tools/wesh/volume-extension-cache';
 import { scheduleUnusedEmptyVolumeCleanup } from '@/features/tools/wesh/chat-workspace';
 import { checkFileSystemAccessSupport } from '@/utils/opfs-detection';
 import { useToast } from '@/composables/useToast';
@@ -33,6 +33,9 @@ import { settingsSourcePresentation, type SettingsSource } from '@/logic/setting
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import { lazyStrings, ensureStrings } from '@/strings';
 import { loadChatWorkerMountsModule } from '@/features/wesh/chat-worker-mounts-loader';
+import { useLazyVolumeCopies } from '@/composables/useLazyVolumeCopies';
+import VolumeCopyProgress from './VolumeCopyProgress.vue';
+import { queueChatVolumeMount } from '@/logic/chat-volume-mount-queue';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
@@ -42,14 +45,12 @@ import {
   SquareIcon, Minimize2Icon, Maximize2Icon, ArrowUpIcon,
   XIcon, ImageIcon,
   ChevronDownIcon, ChevronUpIcon, Edit2Icon, FileEditIcon,
-  Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, Chat, ChatGroup, Endpoint, LmParameters, Reasoning } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
-import type { AttachmentId, BinaryObjectId, ChatId, VolumeCopyOperationId, VolumeId } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/01-models/ids';
 
-const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
@@ -296,13 +297,9 @@ watch(chatId, () => {
 });
 const hasFileSystemAccess = checkFileSystemAccessSupport();
 
-type ActiveCopy = {
-  id: VolumeCopyOperationId,
-  name: string,
-  progress: { processed: number, total: number } | null,
-  abort: AbortController,
-};
-const activeCopies = ref<ActiveCopy[]>([]);
+const { pendingStates: activeCopies } = useLazyVolumeCopies({
+  volumeIds: computed(() => chatMountList.value.map(mount => mount.volumeId)),
+});
 
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
@@ -471,8 +468,7 @@ async function processFiles({ files }: { files: File[] }) {
   nextTick(() => adjustTextareaHeight({}));
 }
 
-function generateChatMountPath({ baseName }: { baseName: string }): string {
-  const existingPaths = chatMountList.value.map(m => m.mountPath);
+function generateChatMountPath({ baseName, existingPaths }: { baseName: string, existingPaths: readonly string[] }): string {
   const sanitized = baseName.toLowerCase().replace(/[^a-z0-9]/g, '-');
   let path = `/home/user/${sanitized}`;
   const basePath = path;
@@ -484,47 +480,39 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
   return path;
 }
 
-async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: string }) {
-  if (!chat.value) {
-    return;
-  }
-  const mountPath = generateChatMountPath({ baseName: name });
-  await chatMounts.addMount({
-    chatId: props.chatId,
-    mount: { type: 'volume', volumeId, mountPath, readOnly: true },
+async function finishMount({ volumeId, name, targetChatId }: { volumeId: VolumeId, name: string, targetChatId: ChatId }) {
+  await queueChatVolumeMount({
+    chatId: targetChatId,
+    operation: async () => {
+      const storedChat = await storageService.loadChatMeta({ id: targetChatId });
+      const targetMounts = chatMounts.getMounts({ chatId: ref(targetChatId) }).value;
+      const existingPaths = [...(storedChat?.mounts ?? []), ...targetMounts].map(mount => mount.mountPath);
+      const mountPath = generateChatMountPath({ baseName: name, existingPaths });
+      await chatMounts.addMount({
+        chatId: targetChatId,
+        mount: { type: 'volume', volumeId, mountPath, readOnly: true },
+      });
+    },
   });
-  setToolEnabled({ name: 'shell_execute', enabled: true });
-  void storageService.getVolumeDirectoryHandle({ volumeId }).then(handle => {
-    if (handle) {
-      startVolumeExtensionScan({ volumeId, handle });
-    }
-  });
+  await setToolEnabledForChat({ chatId: targetChatId, name: 'shell_execute', enabled: true });
+  void storageService.resolveVolumeAccess({ volumeId })
+    .then(access => startVolumeAccessExtensionScan({ volumeId, access }))
+    .catch(error => console.warn('Failed to scan attached folder extensions:', error));
 }
 
-async function attachCopyAsVolume({ entries, name }: {
+async function attachCopyAsVolume({ entries, name, targetChatId }: {
   entries: Array<{ file: File, relativePath: string }>,
   name: string,
+  targetChatId: ChatId,
 }) {
-  if (!chat.value) {
-    return;
-  }
-  const copyId = generateId<VolumeCopyOperationId>();
-  const abort = new AbortController();
-  const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
-  activeCopies.value = [...activeCopies.value, copy];
   const releaseActivity = titleActivity.hold();
   try {
-    const vol = await storageService.createVolumeFromFiles({
+    const vol = await storageService.registerLazyVolume({
       name,
       entries,
-      signal: abort.signal,
-      onProgress: ({ processed, total }) => {
-        activeCopies.value = activeCopies.value.map(c =>
-          c.id === copyId ? { ...c, progress: { processed, total } } : c,
-        );
-      },
+      signal: undefined,
     });
-    await finishMount({ volumeId: vol.id, name });
+    await finishMount({ volumeId: vol.id, name, targetChatId });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
       addToast({
@@ -536,7 +524,14 @@ async function attachCopyAsVolume({ entries, name }: {
     }
   } finally {
     releaseActivity();
-    activeCopies.value = activeCopies.value.filter(c => c.id !== copyId);
+  }
+}
+
+async function resumeCopy({ volumeId }: { volumeId: VolumeId }): Promise<void> {
+  try {
+    await storageService.retryLazyVolumeCopy({ volumeId });
+  } catch (error) {
+    console.error('Failed to resume folder copy:', error);
   }
 }
 
@@ -544,12 +539,13 @@ async function attachLinkAsVolume() {
   if (!chat.value) {
     return;
   }
+  const targetChatId = props.chatId;
   const releaseActivity = titleActivity.hold();
   try {
     // @ts-expect-error: File System Access API
     const handle = await window.showDirectoryPicker({ mode: 'read' });
     const vol = await storageService.createVolume({ name: handle.name, type: 'host', sourceHandle: handle });
-    await finishMount({ volumeId: vol.id, name: vol.name });
+    await finishMount({ volumeId: vol.id, name: vol.name, targetChatId });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
       addToast({
@@ -564,7 +560,7 @@ async function attachLinkAsVolume() {
 }
 
 // Handlers for ChatAttachMenu emits
-async function onAttachFilesSelected({ files }: { files: File[] }) {
+async function onAttachFilesSelected({ files, targetChatId }: { files: File[], targetChatId: ChatId }) {
   if (files.length === 0) {
     return;
   }
@@ -573,13 +569,13 @@ async function onAttachFilesSelected({ files }: { files: File[] }) {
   } else {
     const name = files.length === 1 ? files[0]!.name : `${files.length} files`;
     const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
-    await attachCopyAsVolume({ entries, name });
+    await attachCopyAsVolume({ entries, name, targetChatId });
   }
 }
 
-async function onAttachFolderCopy({ folderName, files }: { folderName: string, files: File[] }) {
+async function onAttachFolderCopy({ folderName, files, targetChatId }: { folderName: string, files: File[], targetChatId: ChatId }) {
   const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
-  await attachCopyAsVolume({ entries, name: folderName });
+  await attachCopyAsVolume({ entries, name: folderName, targetChatId });
 }
 
 // Collects all files from a FileSystemDirectoryEntry recursively.
@@ -623,6 +619,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
   if (!chat.value) {
     return;
   }
+  const targetChatId = props.chatId;
 
   const releaseActivity = titleActivity.hold();
   try {
@@ -662,7 +659,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
           // Attach as host volume — read permission is already granted by the browser drop gesture
           const dirHandle = handle as FileSystemDirectoryHandle;
           const vol = await storageService.createVolume({ name: dirHandle.name, type: 'host', sourceHandle: dirHandle });
-          await finishMount({ volumeId: vol.id, name: vol.name });
+          await finishMount({ volumeId: vol.id, name: vol.name, targetChatId });
           break;
         }
         case 'file':
@@ -685,7 +682,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
         } else if (entry.isDirectory) {
           // Non-Chromium fallback: collect files and copy to OPFS
           const entries = await collectFilesFromDirectoryEntry({ dirEntry: entry as FileSystemDirectoryEntry });
-          await attachCopyAsVolume({ entries, name: entry.name });
+          await attachCopyAsVolume({ entries, name: entry.name, targetChatId });
         }
         break;
       }
@@ -704,7 +701,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
     }
 
     if (plainFiles.length > 0) {
-      await onAttachFilesSelected({ files: plainFiles });
+      await onAttachFilesSelected({ files: plainFiles, targetChatId });
     }
   } finally {
     releaseActivity();
@@ -1427,39 +1424,13 @@ defineExpose({
       >
         <!-- Active copy progress bars -->
         <div v-if="activeCopies.length > 0" tw-class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
-          <div
+          <VolumeCopyProgress
             v-for="copy in activeCopies"
-            :key="idToRaw({ id: copy.id })"
-            tw-class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
-            data-testid="copy-progress"
-          >
-            <div tw-class="px-3 pt-3 pb-2.5">
-              <div tw-class="flex items-center justify-between mb-2">
-                <span tw-class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
-                  <Loader2Icon tw-class="w-3.5 h-3.5 animate-spin shrink-0" />
-                  {{ lazyStrings.ChatInput__copying_name({ name: copy.name }) }}
-                </span>
-                <div tw-class="flex items-center gap-3">
-                  <span v-if="copy.progress" tw-class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
-                    {{ copy.progress.processed }} / {{ copy.progress.total }}
-                  </span>
-                  <button
-                    @click="copy.abort.abort()"
-                    tw-class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                    data-testid="copy-cancel-btn"
-                  >
-                    {{ lazyStrings.ChatInput__cancel() }}
-                  </button>
-                </div>
-              </div>
-              <div tw-class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
-                <div
-                  tw-class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
-                  :style="{ width: `${copy.progress ? (copy.progress.processed / copy.progress.total) * 100 : 5}%` }"
-                ></div>
-              </div>
-            </div>
-          </div>
+            :key="idToRaw({ id: copy.volume.id })"
+            :state="copy"
+            @pause="storageService.pauseLazyVolumeCopy({ volumeId: copy.volume.id })"
+            @resume="resumeCopy({ volumeId: copy.volume.id })"
+          />
         </div>
 
         <!-- Folder/File Mounts attached to this chat -->
@@ -1560,8 +1531,8 @@ defineExpose({
               surface="composer"
               :disabled="visibility === 'submerged' || presentation === 'hidden'"
               :has-file-system-access="hasFileSystemAccess"
-              @files-selected="onAttachFilesSelected({ files: $event })"
-              @folder-copy="(folderName, files) => onAttachFolderCopy({ folderName, files })"
+              @files-selected="onAttachFilesSelected({ files: $event, targetChatId: chatId })"
+              @folder-copy="(folderName, files) => onAttachFolderCopy({ folderName, files, targetChatId: chatId })"
               @folder-link="attachLinkAsVolume"
               @update:open="updatePopupState({ popup: 'attach', open: $event })"
             />

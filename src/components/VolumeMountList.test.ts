@@ -1,11 +1,14 @@
-import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mount, Volume } from '@/01-models/types';
 import { toVolumeId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import VolumeMountList from './VolumeMountList.vue';
+import { storageService } from '@/00-storage/service';
+import { listLazyVolumeStates, publishLazyVolumeState, removeLazyVolumeState } from '@/00-storage/service/lazy-volume-state';
 
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
+vi.mock('@/00-storage/service', () => ({ storageService: { pauseLazyVolumeCopy: vi.fn(), retryLazyVolumeCopy: vi.fn() } }));
 
 const activeId = toVolumeId({ raw: 'active-volume' });
 const availableId = toVolumeId({ raw: 'available-volume' });
@@ -16,7 +19,14 @@ const volumes: Volume[] = [
 const activeMount: Mount = { type: 'volume', volumeId: activeId, mountPath: '/project-notes', readOnly: true };
 
 beforeEach(async () => {
+  vi.clearAllMocks();
   await ensureAllStringsForTest({ locale: 'en' });
+});
+
+afterEach(() => {
+  for (const state of listLazyVolumeStates()) {
+    removeLazyVolumeState({ volumeId: state.volume.id });
+  }
 });
 
 function mountList({ management }: { management: boolean }) {
@@ -104,5 +114,33 @@ describe('VolumeMountList', () => {
     expect(view.wrapper.find('[data-testid="volume-delete-btn"]').exists()).toBe(false);
     expect(view.wrapper.find('[data-testid="volume-add-btn-available-volume"]').exists()).toBe(true);
     expect(view.wrapper.find('[data-testid="volume-stop-using-btn"]').exists()).toBe(true);
+  });
+
+  it('shows unfinished storage without calling the folder copied and shares pause/resume actions', async () => {
+    const volume = volumes[0];
+    if (volume === undefined) {
+      throw new Error('Expected active volume');
+    }
+    publishLazyVolumeState({ state: { volume, phase: 'copying', progress: { processed: 0, total: 2 }, error: undefined } });
+    using view = mountList({ management: true });
+    const row = view.wrapper.get('[data-testid="volume-row-active-volume"]');
+    expect(row.find('[data-testid="copy-progress"]').exists()).toBe(true);
+    expect(row.text()).not.toContain('Copied Folder');
+    await row.get('[data-testid="copy-pause-btn"]').trigger('click');
+    await flushPromises();
+    expect(storageService.pauseLazyVolumeCopy).toHaveBeenCalledWith({ volumeId: activeId });
+    expect(view.wrapper.emitted('remove')).toBeUndefined();
+    expect(view.wrapper.emitted('delete-volume')).toBeUndefined();
+
+    publishLazyVolumeState({ state: { volume, phase: 'paused', progress: { processed: 1, total: 2 }, error: undefined } });
+    await flushPromises();
+    await row.get('[data-testid="copy-resume-btn"]').trigger('click');
+    await flushPromises();
+    expect(storageService.retryLazyVolumeCopy).toHaveBeenCalledWith({ volumeId: activeId });
+
+    publishLazyVolumeState({ state: { volume, phase: 'saved', progress: { processed: 2, total: 2 }, error: undefined } });
+    await flushPromises();
+    expect(row.find('[data-testid="copy-progress"]').exists()).toBe(false);
+    expect(row.text()).toContain('Copied Folder');
   });
 });

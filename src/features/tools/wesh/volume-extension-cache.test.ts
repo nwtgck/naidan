@@ -1,12 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   startVolumeExtensionScan,
+  startVolumeAccessExtensionScan,
   abortOngoingScans,
   getVolumeExtensions,
   isVolumeScanned,
   TEST_ONLY,
 } from './volume-extension-cache';
 import { toVolumeId } from '@/01-models/ids';
+
+const mocks = vi.hoisted(() => ({ createManagedVolumeAccess: vi.fn() }));
+vi.mock('@/00-storage/service', () => ({
+  storageService: { createManagedVolumeAccess: mocks.createManagedVolumeAccess },
+}));
 
 function makeFileHandle(name: string): FileSystemFileHandle {
   return { kind: 'file', name } as FileSystemFileHandle;
@@ -29,6 +35,49 @@ function makeDirHandle(
 
 beforeEach(() => {
   TEST_ONLY.reset();
+  vi.clearAllMocks();
+});
+
+describe('startVolumeAccessExtensionScan', () => {
+  it('scans managed directories through a temporary read-only grant and releases it', async () => {
+    const volumeId = toVolumeId({ raw: 'managed-documents' });
+    const reference = { volumeId };
+    const grant = {
+      root: { id: 'root', kind: 'directory', name: 'Documents' },
+      access: {
+        request: vi.fn().mockResolvedValue({
+          status: 'ok',
+          result: { kind: 'entries', entries: [{ id: 'report', kind: 'file', name: 'report.docx' }] },
+        }),
+      },
+      dispose: vi.fn(async () => {}),
+    };
+    mocks.createManagedVolumeAccess.mockResolvedValueOnce(grant);
+    await startVolumeAccessExtensionScan({
+      volumeId,
+      access: { kind: 'managed', volume: { id: volumeId, name: 'Documents', type: 'opfs', createdAt: 0 }, reference },
+    });
+    expect(mocks.createManagedVolumeAccess).toHaveBeenCalledWith({ reference, readOnly: true });
+    expect(grant.access.request).toHaveBeenCalledWith({ request: { type: 'list', id: 'root' } });
+    expect(getVolumeExtensions({ volumeId })).toEqual(new Set(['.docx']));
+    expect(grant.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('releases a managed scan grant when its directory becomes inaccessible', async () => {
+    const volumeId = toVolumeId({ raw: 'inaccessible-managed' });
+    const grant = {
+      root: { id: 'root', kind: 'directory', name: 'Documents' },
+      access: { request: vi.fn().mockResolvedValue({ status: 'error', name: 'NotFoundError', message: 'Removed' }) },
+      dispose: vi.fn(async () => {}),
+    };
+    mocks.createManagedVolumeAccess.mockResolvedValueOnce(grant);
+    await startVolumeAccessExtensionScan({
+      volumeId,
+      access: { kind: 'managed', volume: { id: volumeId, name: 'Documents', type: 'opfs', createdAt: 0 }, reference: { volumeId } },
+    });
+    expect(getVolumeExtensions({ volumeId }).size).toBe(0);
+    expect(grant.dispose).toHaveBeenCalledOnce();
+  });
 });
 
 describe('getVolumeExtensions', () => {

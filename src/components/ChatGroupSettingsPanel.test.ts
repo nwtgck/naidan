@@ -16,7 +16,8 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
-import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-models/ids';
+import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId, type VolumeId } from '@/01-models/ids';
+import type { VolumeAccess } from '@/01-models/volume-access';
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   removeMountFromChatGroup: vi.fn().mockResolvedValue(undefined),
   updateChatGroupMount: vi.fn().mockResolvedValue(undefined),
   getVolumeDirectoryHandle: vi.fn(),
+  resolveVolumeAccess: vi.fn(),
   updateChatGroup: vi.fn(),
   openFileExplorer: vi.fn(),
   fetchingModels: { value: false },
@@ -96,6 +98,7 @@ function expectLatestGroupUpdate({
 vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    resolveVolumeAccess: mocks.resolveVolumeAccess,
     async *listVolumes() {
       for (const mount of mockCurrentGroup.value.mounts ?? []) {
         yield { id: mount.volumeId, name: mount.mountPath.split('/').at(-1), type: 'opfs', createdAt: 0 };
@@ -1517,9 +1520,14 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     it('opens file explorer with group mounts when mount path is clicked', async () => {
       const handle = { kind: 'directory', name: 'work' } as unknown as FileSystemDirectoryHandle;
-      mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
+      const volumeId = toVolumeId({ raw: 'vol-1' });
+      mocks.resolveVolumeAccess.mockResolvedValue({
+        kind: 'native',
+        volume: { id: volumeId, name: 'work', type: 'opfs', createdAt: 0 },
+        handle,
+      } satisfies VolumeAccess);
       mockGroup.mounts = [
-        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
+        { type: 'volume', volumeId, mountPath: '/home/user/work', readOnly: false },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
@@ -1527,23 +1535,34 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await wrapper.find('[data-testid="mount-open"]').trigger('click');
       await flushPromises();
 
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
+      expect(mocks.resolveVolumeAccess).toHaveBeenCalledWith({ volumeId });
+      expect(mocks.getVolumeDirectoryHandle).not.toHaveBeenCalled();
       expect(mocks.openFileExplorer).toHaveBeenCalledWith({
         options: expect.objectContaining({
           kind: 'wesh-mounts',
           rootName: 'Files',
           title: 'Folders',
           initialPath: ['home', 'user', 'work'],
+          mounts: [{ type: 'directory', path: '/home/user/work', handle, readOnly: false }],
         }),
       });
     });
 
     it('opens explorer with correct initialPath derived from clicked mount', async () => {
-      const handle = { kind: 'directory', name: 'docs' } as unknown as FileSystemDirectoryHandle;
-      mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
+      const alphaId = toVolumeId({ raw: 'vol-A' });
+      const betaId = toVolumeId({ raw: 'vol-B' });
+      const alphaHandle = { kind: 'directory', name: 'alpha' } as FileSystemDirectoryHandle;
+      const betaHandle = { kind: 'directory', name: 'beta' } as FileSystemDirectoryHandle;
+      const handles = new Map<VolumeId, FileSystemDirectoryHandle>([[alphaId, alphaHandle], [betaId, betaHandle]]);
+      mocks.resolveVolumeAccess.mockImplementation(async ({ volumeId }: { volumeId: VolumeId }): Promise<VolumeAccess> => {
+        const handle = handles.get(volumeId);
+        return handle === undefined
+          ? { kind: 'missing', volumeId }
+          : { kind: 'native', volume: { id: volumeId, name: handle.name, type: 'opfs', createdAt: 0 }, handle };
+      });
       mockGroup.mounts = [
-        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-A' }), mountPath: '/home/user/alpha', readOnly: true },
-        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-B' }), mountPath: '/home/user/beta', readOnly: false },
+        { type: 'volume', volumeId: alphaId, mountPath: '/home/user/alpha', readOnly: true },
+        { type: 'volume', volumeId: betaId, mountPath: '/home/user/beta', readOnly: false },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
@@ -1556,6 +1575,10 @@ describe('ChatGroupSettingsPanel.vue', () => {
       expect(mocks.openFileExplorer).toHaveBeenCalledWith({
         options: expect.objectContaining({
           initialPath: ['home', 'user', 'beta'],
+          mounts: [
+            { type: 'directory', path: '/home/user/alpha', handle: alphaHandle, readOnly: true },
+            { type: 'directory', path: '/home/user/beta', handle: betaHandle, readOnly: false },
+          ],
         }),
       });
     });

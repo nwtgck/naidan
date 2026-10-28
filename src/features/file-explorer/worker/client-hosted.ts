@@ -2,6 +2,7 @@ import { createFileExplorerStreamClient } from './stream-client';
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
+import { createManagedVolumeRemoteAccess, observeManagedVolumeWorker } from '@/features/wesh/worker/managed-volume-access';
 import {
   fileExplorerAnalyzeZipUploadResponseSchema,
   fileExplorerExecuteZipUploadResponseSchema,
@@ -17,6 +18,8 @@ import {
   type IFileExplorerWorker,
 } from './types';
 import {
+  getFileExplorerRootMounts,
+  normalizeFileExplorerRootMounts,
   hasFileExplorerFileSystemHandles,
   mapFileExplorerRootToOpfsLocators,
 } from './root-transport';
@@ -33,6 +36,7 @@ export async function createFileExplorerWorkerClient({
 }: {
   root: FileExplorerRootDescriptor,
 }): Promise<FileExplorerWorkerClient> {
+  root = normalizeFileExplorerRootMounts({ root });
   const naidanSysfsRemoteReader = (() => {
     switch (root.kind) {
     case 'native-directory':
@@ -50,31 +54,42 @@ export async function createFileExplorerWorkerClient({
   const createRuntime = async ({ requestRoot }: {
     requestRoot: FileExplorerRootDescriptor,
   }) => {
-    const worker = new Worker(
-      new URL('./entry.ts', import.meta.url),
-      {
-        type: 'module',
-        name: 'naidan-file-explorer-worker',
-      },
-    );
-    const remote = wrapWorkerRemote<IFileExplorerWorker>({ endpoint: worker });
+    const managedVolumes = await createManagedVolumeRemoteAccess({ mounts: getFileExplorerRootMounts({ root: requestRoot }) });
     try {
-      const prepareResponse = await remote.prepareSession(
-        workerCapability({
-          value: { request: { root: requestRoot } },
-          capability: 'file-system-handle-clone',
-        }),
-        naidanSysfsRemoteReader
-          ? workerProxy({ value: naidanSysfsRemoteReader })
-          : undefined,
+      const worker = new Worker(
+        new URL('./entry.ts', import.meta.url),
+        {
+          type: 'module',
+          name: 'naidan-file-explorer-worker',
+        },
       );
-      return {
-        worker,
-        remote,
-        sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
-      };
+      const stopObserving = observeManagedVolumeWorker({ worker, connection: managedVolumes });
+      try {
+        const remote = wrapWorkerRemote<IFileExplorerWorker>({ endpoint: worker });
+        const prepareResponse = await remote.prepareSession(
+          workerCapability({
+            value: { request: { root: requestRoot } },
+            capability: 'file-system-handle-clone',
+          }),
+          naidanSysfsRemoteReader
+            ? workerProxy({ value: naidanSysfsRemoteReader })
+            : undefined,
+          ...(managedVolumes.remote ? [workerProxy({ value: managedVolumes.remote })] as const : []),
+        );
+        return {
+          worker,
+          remote,
+          sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
+          managedVolumes,
+          stopObserving,
+        };
+      } catch (error) {
+        stopObserving();
+        worker.terminate();
+        throw error;
+      }
     } catch (error) {
-      worker.terminate();
+      await managedVolumes.dispose().catch(() => undefined);
       throw error;
     }
   };
@@ -170,10 +185,15 @@ export async function createFileExplorerWorkerClient({
     async dispose() {
       streams.disposeStreams();
       try {
+        await runtime.managedVolumes.dispose();
         await remote.disposeSession({ request: { sessionId } });
-        await releaseWorkerRemote({ remote });
       } finally {
-        worker.terminate();
+        try {
+          await releaseWorkerRemote({ remote });
+        } finally {
+          runtime.stopObserving();
+          worker.terminate();
+        }
       }
     },
   };

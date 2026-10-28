@@ -2,6 +2,7 @@ import { useSettings } from '@/composables/useSettings';
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
 import { storageService } from '@/00-storage/service';
 import type { WeshMount } from '@/features/wesh/types';
+import { volumeAccessToWeshMount } from '@/features/wesh/volume-mount';
 
 const store = createWeshTerminalSessions({
   opfsRootName: 'naidan-debug-wesh',
@@ -19,11 +20,12 @@ async function buildWorkerMounts(): Promise<WeshMount[]> {
     if (mount.type !== 'volume') {
       continue;
     }
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) {
+    const access = await storageService.resolveVolumeAccess({ volumeId: mount.volumeId });
+    const entry = volumeAccessToWeshMount({ mount, access });
+    if (entry === undefined) {
       continue;
     }
-    mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
+    mounts.push(entry);
   }
   return mounts;
 }

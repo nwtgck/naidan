@@ -3,9 +3,14 @@ import { useSettings } from '@/composables/useSettings';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { Mount } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+import { volumeAccessToWeshMount } from './volume-mount';
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { createNaidanSysfsMount } from '@/features/wesh/naidan-sysfs/mount';
 import type { NaidanSysfsAccessScope, WeshMount } from '@/features/wesh/types';
+
+async function resolveWeshVolumeMount({ mount }: { mount: Mount }) {
+  return volumeAccessToWeshMount({ mount, access: await storageService.resolveVolumeAccess({ volumeId: mount.volumeId }) });
+}
 
 export async function buildWorkerMountsForChat({
   chatMounts,
@@ -59,11 +64,11 @@ export async function buildWorkerMountsForChat({
     if (mount.type !== 'volume') {
       continue;
     }
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) {
+    const entry = await resolveWeshVolumeMount({ mount });
+    if (entry === undefined) {
       continue;
     }
-    result.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
+    result.push(entry);
   }
 
   // Chat group mounts override any global mount sharing the same path.
@@ -71,12 +76,11 @@ export async function buildWorkerMountsForChat({
     if (mount.type !== 'volume') {
       continue;
     }
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) {
+    const entry = await resolveWeshVolumeMount({ mount });
+    if (entry === undefined) {
       continue;
     }
     const existing = result.findIndex(m => m.path === mount.mountPath);
-    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {
       result[existing] = entry;
     } else {
@@ -89,12 +93,11 @@ export async function buildWorkerMountsForChat({
     if (mount.type !== 'volume') {
       continue;
     }
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) {
+    const entry = await resolveWeshVolumeMount({ mount });
+    if (entry === undefined) {
       continue;
     }
     const existing = result.findIndex(m => m.path === mount.mountPath);
-    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {
       result[existing] = entry;
     } else {

@@ -2,6 +2,8 @@ import type { Tool } from '@/01-models/tool';
 import type { ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import type { Mount, Settings } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+import type { VolumeAccess } from '@/01-models/volume-access';
+import { volumeAccessToWeshMount } from '@/features/wesh/volume-mount';
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import type { NaidanSysfsAccessScope, WeshMount } from '@/features/wesh/types';
 import { createNaidanSysfsMount } from '@/features/wesh/naidan-sysfs/mount';
@@ -11,7 +13,7 @@ import {
   abortOngoingScans,
   getVolumeExtensions,
   isVolumeScanned,
-  startVolumeExtensionScan,
+  startVolumeAccessExtensionScan,
 } from '@/features/tools/wesh/volume-extension-cache';
 import { buildShellDescription } from '@/features/tools/wesh/shell-description';
 
@@ -65,17 +67,13 @@ export async function createShellExecuteTool({
   }
   }
 
-  const volumeHandles = new Map<VolumeId, FileSystemDirectoryHandle>();
+  const volumeAccesses = new Map<VolumeId, VolumeAccess>();
   for (const mount of allMounts) {
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (handle !== undefined && handle !== null) {
-      resolvedMounts.push({
-        type: 'directory',
-        path: mount.mountPath,
-        handle,
-        readOnly: mount.readOnly,
-      });
-      volumeHandles.set(mount.volumeId, handle);
+    const access = await storageService.resolveVolumeAccess({ volumeId: mount.volumeId });
+    const resolved = volumeAccessToWeshMount({ mount, access });
+    if (resolved !== undefined) {
+      resolvedMounts.push(resolved);
+      volumeAccesses.set(mount.volumeId, access);
     }
   }
 
@@ -96,9 +94,9 @@ export async function createShellExecuteTool({
     }
   }
 
-  for (const [volumeId, handle] of volumeHandles) {
+  for (const [volumeId, access] of volumeAccesses) {
     if (!isVolumeScanned({ volumeId })) {
-      startVolumeExtensionScan({ volumeId, handle });
+      void startVolumeAccessExtensionScan({ volumeId, access }).catch(() => undefined);
     }
   }
 

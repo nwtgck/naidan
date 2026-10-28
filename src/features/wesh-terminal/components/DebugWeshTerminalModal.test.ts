@@ -11,7 +11,11 @@ const mocks = vi.hoisted(() => ({
   disposeExecution: vi.fn().mockResolvedValue(undefined),
   dispose: vi.fn().mockResolvedValue(undefined),
   createClient: vi.fn(),
-  getVolumeDirectoryHandle: vi.fn().mockResolvedValue({} as FileSystemDirectoryHandle),
+  resolveVolumeAccess: vi.fn(async ({ volumeId }: { volumeId: import('@/01-models/ids').VolumeId }) => ({
+    kind: 'native',
+    volume: { id: volumeId, name: 'Files', type: 'opfs', createdAt: 0 },
+    handle: {} as FileSystemDirectoryHandle,
+  })),
   getDirectory: vi.fn(),
   showConfirm: vi.fn(),
 }));
@@ -28,7 +32,7 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    resolveVolumeAccess: mocks.resolveVolumeAccess,
   },
 }));
 

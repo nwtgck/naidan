@@ -296,7 +296,6 @@ import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSetti
 import { ChatGroupSettingsPanel__working } from '@/strings/messages/ChatGroupSettingsPanel__working/es';
 import { ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings } from '@/strings/messages/ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings/es';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/es';
-import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_name/es';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/es';
 import { ChatInput__failed_to_copy } from '@/strings/messages/ChatInput__failed_to_copy/es';
 import { ChatInput__failed_to_link_folder } from '@/strings/messages/ChatInput__failed_to_link_folder/es';
@@ -2253,6 +2252,14 @@ import { TransformersJsUpsell__add_manage_models } from '@/strings/messages/Tran
 import { TransformersJsUpsell__local_browser_models } from '@/strings/messages/TransformersJsUpsell__local_browser_models/es';
 import { TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser } from '@/strings/messages/TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser/es';
 import { UnselectedChatPane__select_or_create_a_chat_to_start } from '@/strings/messages/UnselectedChatPane__select_or_create_a_chat_to_start/es';
+import { VolumeCopyProgress__copy_paused_name } from '@/strings/messages/VolumeCopyProgress__copy_paused_name/es';
+import { VolumeCopyProgress__copying_name_to_browser } from '@/strings/messages/VolumeCopyProgress__copying_name_to_browser/es';
+import { VolumeCopyProgress__could_not_copy_name } from '@/strings/messages/VolumeCopyProgress__could_not_copy_name/es';
+import { VolumeCopyProgress__current_file_finishes_before_pausing } from '@/strings/messages/VolumeCopyProgress__current_file_finishes_before_pausing/es';
+import { VolumeCopyProgress__pause } from '@/strings/messages/VolumeCopyProgress__pause/es';
+import { VolumeCopyProgress__resume } from '@/strings/messages/VolumeCopyProgress__resume/es';
+import { VolumeCopyProgress__retry } from '@/strings/messages/VolumeCopyProgress__retry/es';
+import { VolumeCopyProgress__use_now_copy_is_not_finished } from '@/strings/messages/VolumeCopyProgress__use_now_copy_is_not_finished/es';
 import { WelcomeScreen__all_conversations_are_stored_locally } from '@/strings/messages/WelcomeScreen__all_conversations_are_stored_locally/es';
 import { WelcomeScreen__brainstorm } from '@/strings/messages/WelcomeScreen__brainstorm/es';
 import { WelcomeScreen__code_help } from '@/strings/messages/WelcomeScreen__code_help/es';
@@ -3629,7 +3636,6 @@ export const catalog = {
   ChatGroupSettingsPanel__working,
   ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings,
   ChatInput__cancel,
-  ChatInput__copying_name,
   ChatInput__edit_image,
   ChatInput__failed_to_copy,
   ChatInput__failed_to_link_folder,
@@ -5586,6 +5592,14 @@ export const catalog = {
   TransformersJsUpsell__local_browser_models,
   TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser,
   UnselectedChatPane__select_or_create_a_chat_to_start,
+  VolumeCopyProgress__copy_paused_name,
+  VolumeCopyProgress__copying_name_to_browser,
+  VolumeCopyProgress__could_not_copy_name,
+  VolumeCopyProgress__current_file_finishes_before_pausing,
+  VolumeCopyProgress__pause,
+  VolumeCopyProgress__resume,
+  VolumeCopyProgress__retry,
+  VolumeCopyProgress__use_now_copy_is_not_finished,
   WelcomeScreen__all_conversations_are_stored_locally,
   WelcomeScreen__brainstorm,
   WelcomeScreen__code_help,

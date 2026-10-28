@@ -15,6 +15,7 @@ import { storageService } from '@/00-storage/service';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 import type { WeshMount } from '@/features/wesh/types';
 import type { WeshWorkerMount } from '@/features/wesh/worker/types';
+import { getEffectiveWeshMounts } from '@/features/wesh/mount-policy';
 import {
   naidanSysfsRemoteBinaryObjectSchema,
   naidanSysfsRemoteChatContentPayloadSchema,
@@ -40,9 +41,10 @@ export function createNaidanSysfsRemoteReaderForMounts({
 }: {
   mounts: Array<WeshMount | WeshWorkerMount>,
 }): NaidanSysfsRemoteReader | undefined {
-  for (const mount of mounts) {
+  for (const mount of getEffectiveWeshMounts({ mounts })) {
     switch (mount.type) {
     case 'directory':
+    case 'managed_directory':
       continue;
     case 'naidan_sysfs':
       switch (mount.storageType) {

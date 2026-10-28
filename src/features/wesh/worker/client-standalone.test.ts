@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Comlink from 'comlink';
 import { wrapWorkerRemote } from '@/utils/worker-transport';
+import { toVolumeId } from '@/01-models/ids';
 
-const { createStandaloneWorkerMock } = vi.hoisted(() => ({
+const { createStandaloneWorkerMock, createManagedVolumeAccessMock } = vi.hoisted(() => ({
   createStandaloneWorkerMock: vi.fn(),
+  createManagedVolumeAccessMock: vi.fn(),
+}));
+
+vi.mock('@/00-storage/service', () => ({
+  storageService: { createManagedVolumeAccess: createManagedVolumeAccessMock },
 }));
 
 vi.mock('virtual:file-protocol-standalone/worker/wesh', () => ({
@@ -22,9 +28,9 @@ import { createFileProtocolCompatibleWeshWorkerClient } from './client-standalon
 import type { IWeshWorker } from './types';
 
 function createWorkerMock(): Worker {
-  return {
+  return Object.assign(new EventTarget(), {
     terminate: vi.fn(),
-  } as unknown as Worker;
+  }) as unknown as Worker;
 }
 
 function createRemote({
@@ -57,6 +63,74 @@ afterEach(() => {
 });
 
 describe('standalone Wesh Worker client lifecycle', () => {
+  it('releases managed grants and the standalone session when initialization fails', async () => {
+    const initializationError = new Error('managed init failed');
+    const worker = createWorkerMock();
+    const grant = {
+      root: { id: 'root', kind: 'directory', name: 'Documents' },
+      access: { request: vi.fn() },
+      dispose: vi.fn(async () => {}),
+    };
+    createManagedVolumeAccessMock.mockResolvedValueOnce(grant);
+    const remote = createRemote({
+      init: async () => {
+        throw initializationError;
+      },
+      awaitExecution: async () => ({ exitCode: 0 }),
+    });
+    createStandaloneWorkerMock.mockResolvedValueOnce(worker);
+    vi.mocked(wrapWorkerRemote).mockReturnValueOnce(remote);
+
+    await expect(createFileProtocolCompatibleWeshWorkerClient({
+      rootHandle: 'readonly',
+      mounts: [{ type: 'managed_directory', path: '/documents', reference: { volumeId: toVolumeId({ raw: 'managed' }) }, readOnly: true }],
+      user: 'user',
+      initialEnv: {},
+      initialCwd: undefined,
+    })).rejects.toBe(initializationError);
+
+    expect(vi.mocked(remote.init).mock.calls[0]).toHaveLength(3);
+    expect(grant.dispose).toHaveBeenCalledOnce();
+    expect(remote[Comlink.releaseProxy]).toHaveBeenCalledOnce();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('revokes managed access on runtime failure and keeps final disposal idempotent', async () => {
+    const worker = createWorkerMock();
+    const reference = { volumeId: toVolumeId({ raw: 'managed' }) };
+    const grant = {
+      root: { id: 'root', kind: 'directory', name: 'Documents' },
+      access: { request: vi.fn() },
+      dispose: vi.fn(async () => {}),
+    };
+    createManagedVolumeAccessMock.mockResolvedValueOnce(grant);
+    const remote = createRemote({ init: async () => {}, awaitExecution: async () => ({ exitCode: 0 }) });
+    createStandaloneWorkerMock.mockResolvedValueOnce(worker);
+    vi.mocked(wrapWorkerRemote).mockReturnValueOnce(remote);
+    const client = await createFileProtocolCompatibleWeshWorkerClient({
+      rootHandle: 'readonly',
+      mounts: [{ type: 'managed_directory', path: '/documents', reference, readOnly: false }],
+      user: 'user',
+      initialEnv: {},
+      initialCwd: undefined,
+    });
+    {
+      await using _cleanup = {
+        async [Symbol.asyncDispose]() {
+          await client.dispose();
+        },
+      };
+      expect(createManagedVolumeAccessMock).toHaveBeenCalledWith({ reference, readOnly: false });
+      const access = vi.mocked(remote.init).mock.calls[0]?.[2];
+      expect(await access!.getRoot({ path: '/documents' })).toEqual(grant.root);
+      worker.dispatchEvent(new Event('error'));
+      await expect(access!.getRoot({ path: '/documents' })).rejects.toMatchObject({ name: 'InvalidStateError' });
+    }
+    expect(grant.dispose).toHaveBeenCalledOnce();
+    expect(remote[Comlink.releaseProxy]).toHaveBeenCalledOnce();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
   it('releases and terminates a Worker when remote initialization fails', async () => {
     const initializationError = new Error('init failed');
     const worker = createWorkerMock();

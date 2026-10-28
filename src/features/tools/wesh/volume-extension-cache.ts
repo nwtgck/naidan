@@ -1,4 +1,5 @@
 import type { VolumeId } from '@/01-models/ids';
+import type { VolumeAccess } from '@/01-models/volume-access';
 
 const _extensionsByVolume = new Map<VolumeId, Set<string>>();
 const _controllers = new Map<VolumeId, AbortController>();
@@ -72,13 +73,41 @@ export function startVolumeExtensionScan({
 }: {
   volumeId: VolumeId,
   handle: FileSystemDirectoryHandle,
-}): void {
+}): Promise<void> {
   _controllers.get(volumeId)?.abort();
   const controller = new AbortController();
   _controllers.set(volumeId, controller);
   const promise = _doScan({ volumeId, handle, maxFiles: 300, maxDepth: 4, signal: controller.signal });
   _scanPromises.set(volumeId, promise);
-  void promise;
+  return promise;
+}
+
+export async function startVolumeAccessExtensionScan({ volumeId, access }: {
+  volumeId: VolumeId,
+  access: VolumeAccess,
+}): Promise<void> {
+  switch (access.kind) {
+  case 'native':
+    return startVolumeExtensionScan({ volumeId, handle: access.handle });
+  case 'managed': {
+    const { storageService } = await import('@/00-storage/service');
+    const { createRemoteDirectoryHandle } = await import('@/utils/remote-directory-handle');
+    const connection = await storageService.createManagedVolumeAccess({ reference: access.reference, readOnly: true });
+    try {
+      await startVolumeExtensionScan({ volumeId, handle: createRemoteDirectoryHandle(connection) });
+    } finally {
+      await connection.dispose();
+    }
+    return;
+  }
+  case 'incomplete':
+  case 'missing':
+    return;
+  default: {
+    const exhaustive: never = access;
+    throw new Error(`Unhandled volume access: ${String(exhaustive)}`);
+  }
+  }
 }
 
 export function abortOngoingScans(): void {

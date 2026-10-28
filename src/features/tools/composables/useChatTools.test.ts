@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { reactive } from 'vue';
-import { getEffectiveToolConfigsForChat, useChatTools } from './useChatTools';
+import { getEffectiveToolConfigsForChat, setToolEnabledForChat, useChatTools } from './useChatTools';
 import type { Chat, ChatMeta, Volume } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
 import { toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
@@ -13,6 +13,7 @@ vi.mock('@/00-storage/service', () => ({
     subscribeLocalModelPromotions: vi.fn(() => () => {}),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     updateChatMeta: vi.fn().mockResolvedValue(undefined),
+    loadChatMeta: vi.fn().mockResolvedValue(null),
     updateSettings: vi.fn().mockResolvedValue(undefined),
     getCurrentType: vi.fn().mockReturnValue('local'),
     createVolumeFromFiles: vi.fn().mockResolvedValue({
@@ -36,6 +37,7 @@ describe('useChatTools', () => {
     liveChatRegistry.clear();
     rootItems.value = [];
     vi.mocked(storageService.updateChatMeta).mockClear();
+    vi.mocked(storageService.loadChatMeta).mockReset().mockResolvedValue(null);
     vi.mocked(storageService.getCurrentType).mockReturnValue('local');
     vi.mocked(storageService.createVolumeFromFiles).mockClear();
     vi.mocked(storageService.addMountToChatIfPathAvailable).mockClear();
@@ -410,6 +412,130 @@ describe('useChatTools', () => {
   });
 
   describe('per-chat isolation', () => {
+    it.each(['enabled', 'disabled'] as const)('provisions the offscreen target workspace from metadata when persistence is %s', async persistence => {
+      setToolConfigPersistence({ persistence });
+      vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
+      const targetId = toChatId({ raw: 'offscreen-workspace' });
+      let meta: ChatMeta = createTestChat({ id: targetId });
+      vi.mocked(storageService.loadChatMeta).mockImplementation(async () => meta);
+      vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
+        const updated = await updater({ current: meta });
+        if (updated !== undefined) {
+          meta = updated;
+        }
+      });
+
+      await setToolEnabledForChat({ chatId: targetId, name: 'shell_execute', enabled: true });
+
+      expect(storageService.addMountToChatIfPathAvailable).toHaveBeenCalledWith(expect.objectContaining({ chatId: targetId }));
+      expect(meta.mounts?.[0]?.mountPath).toBe('/workspace');
+      expect(useChatTools().TEST_ONLY._currentChatId.value).toBeNull();
+    });
+
+    it('preserves an offscreen chat own shell access scope when persistence is disabled', async () => {
+      const targetId = toChatId({ raw: 'offscreen-own-tools' });
+      const groupId = toChatGroupId({ raw: 'wider-shell-access' });
+      const target = createTestChat({
+        id: targetId,
+        groupId,
+        toolConfigs: [{ key: 'builtin.wesh', status: 'disabled', naidanSysfs: { accessScope: 'none' } }],
+      });
+      rootItems.value = [{
+        id: 'chat_group:wider-shell-access',
+        type: 'chat_group',
+        chatGroup: {
+          id: groupId,
+          name: 'Wider shell access',
+          isCollapsed: false,
+          updatedAt: 0,
+          items: [],
+          toolConfigs: [{ key: 'builtin.wesh', status: 'disabled', naidanSysfs: { accessScope: 'main_chats' } }],
+        },
+      }];
+      vi.mocked(storageService.loadChatMeta).mockResolvedValue(target);
+
+      await setToolEnabledForChat({ chatId: targetId, name: 'shell_execute', enabled: true });
+
+      expect(getEffectiveToolConfigsForChat({ chat: target })).toContainEqual({
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: { accessScope: 'none' },
+      });
+      expect(storageService.updateChatMeta).not.toHaveBeenCalled();
+      expect(target.toolConfigs).toEqual([{ key: 'builtin.wesh', status: 'disabled', naidanSysfs: { accessScope: 'none' } }]);
+    });
+
+    it('keeps the chat group tool options after the captured chat leaves the live registry', async () => {
+      const targetId = toChatId({ raw: 'offscreen-chat' });
+      const groupId = toChatGroupId({ raw: 'offscreen-chat-group' });
+      const target = createTestChat({ id: targetId, groupId });
+      rootItems.value = [{
+        id: 'chat_group:offscreen-chat-group',
+        type: 'chat_group',
+        chatGroup: {
+          id: groupId,
+          name: 'Offscreen chat group',
+          isCollapsed: false,
+          updatedAt: 0,
+          items: [],
+          toolConfigs: [{ key: 'builtin.wesh', status: 'disabled', naidanSysfs: { accessScope: 'current_chat_with_chat_group' } }],
+        },
+      }];
+      vi.mocked(storageService.loadChatMeta).mockResolvedValue(target);
+
+      await setToolEnabledForChat({ chatId: targetId, name: 'shell_execute', enabled: true });
+
+      expect(storageService.loadChatMeta).toHaveBeenCalledWith({ id: targetId });
+      expect(getEffectiveToolConfigsForChat({ chat: target })).toContainEqual({
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: { accessScope: 'current_chat_with_chat_group' },
+      });
+      expect(useChatTools().TEST_ONLY._currentChatId.value).toBeNull();
+    });
+
+    it.each(['enabled', 'disabled'] as const)('enables a captured chat without changing the displayed chat when persistence is %s', async persistence => {
+      setToolConfigPersistence({ persistence });
+      const originalId = toChatId({ raw: 'captured-chat' });
+      const displayedId = toChatId({ raw: 'displayed-chat' });
+      const original = createTestChat({ id: originalId });
+      const displayed = createTestChat({ id: displayedId });
+      liveChatRegistry.set(originalId, original);
+      liveChatRegistry.set(displayedId, displayed);
+      const { setCurrentChatId, isToolEnabled } = useChatTools();
+      setCurrentChatId({ chatId: displayedId });
+
+      await setToolEnabledForChat({ chatId: originalId, name: 'calculator', enabled: true });
+
+      expect(isToolEnabled({ name: 'calculator' })).toBe(false);
+      expect(displayed.toolConfigs).toBeUndefined();
+      expect(getEffectiveToolConfigsForChat({ chat: original })).toContainEqual({ key: 'builtin.calculator', status: 'enabled' });
+      if (persistence === 'enabled') {
+        expect(storageService.updateChatMeta).toHaveBeenCalledWith({ id: originalId, updater: expect.any(Function) });
+      } else {
+        expect(storageService.updateChatMeta).not.toHaveBeenCalled();
+      }
+    });
+
+    it('provisions the captured chat workspace instead of the displayed chat', async () => {
+      vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
+      const originalId = toChatId({ raw: 'captured-shell-chat' });
+      const displayedId = toChatId({ raw: 'displayed-shell-chat' });
+      const original = createTestChat({ id: originalId });
+      const displayed = createTestChat({ id: displayedId });
+      liveChatRegistry.set(originalId, original);
+      liveChatRegistry.set(displayedId, displayed);
+      const { setCurrentChatId, isToolEnabled } = useChatTools();
+      setCurrentChatId({ chatId: displayedId });
+
+      await setToolEnabledForChat({ chatId: originalId, name: 'shell_execute', enabled: true });
+
+      expect(original.mounts?.[0]?.mountPath).toBe('/workspace');
+      expect(displayed.mounts).toBeUndefined();
+      expect(isToolEnabled({ name: 'shell_execute' })).toBe(false);
+      expect(storageService.addMountToChatIfPathAvailable).toHaveBeenCalledWith(expect.objectContaining({ chatId: originalId }));
+    });
+
     it('enabling a tool in one chat does not affect another chat', () => {
       const { setCurrentChatId, setToolEnabled, isToolEnabled } = useChatTools();
 

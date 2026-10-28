@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { toVolumeId, toChatId, toChatGroupId } from '@/01-models/ids';
 
 const mocks = vi.hoisted(() => ({
-  getVolumeDirectoryHandle: vi.fn(),
+  resolveVolumeAccess: vi.fn(),
   createClient: vi.fn(),
   getDirectory: vi.fn(),
   ensureChatTmpDirectory: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    resolveVolumeAccess: mocks.resolveVolumeAccess,
   },
 }));
 
@@ -55,7 +55,11 @@ describe('useChatWeshTerminalSessions', () => {
     mocks.settingsValue.mounts = [
       { type: 'volume', volumeId: 'global-vol-1', mountPath: '/home/user/global', readOnly: true },
     ];
-    mocks.getVolumeDirectoryHandle.mockResolvedValue({ kind: 'directory', name: 'dir' } as FileSystemDirectoryHandle);
+    mocks.resolveVolumeAccess.mockImplementation(async ({ volumeId }: { volumeId: import('@/01-models/ids').VolumeId }) => ({
+      kind: 'native',
+      volume: { id: volumeId, name: 'dir', type: 'opfs', createdAt: 0 },
+      handle: { kind: 'directory', name: 'dir' } as FileSystemDirectoryHandle,
+    }));
     mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
     mocks.createClient.mockResolvedValue({
       startExecution: vi.fn(),
@@ -77,6 +81,30 @@ describe('useChatWeshTerminalSessions', () => {
   });
 
   describe('buildWorkerMountsForChat', () => {
+    it('keeps a managed chat mount and its read-write grant when overriding a global path', async () => {
+      const { buildWorkerMountsForChat } = await import('./useChatWeshTerminalSessions');
+      mocks.settingsValue.mounts = [{ type: 'volume', volumeId: 'global', mountPath: '/home/user/shared', readOnly: true }];
+      mocks.resolveVolumeAccess.mockImplementation(async ({ volumeId }: { volumeId: import('@/01-models/ids').VolumeId }) => ({
+        kind: 'managed',
+        volume: { id: volumeId, name: 'Documents', type: 'opfs', createdAt: 0 },
+        reference: { volumeId },
+      }));
+      const result = await buildWorkerMountsForChat({
+        chatMounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'chat' }), mountPath: '/home/user/shared', readOnly: false }],
+        chatGroupMounts: undefined,
+        chatId: undefined,
+        chatGroupId: undefined,
+        naidanSysfsAccessScope: 'none',
+      });
+      expect(result).toEqual([{ type: 'managed_directory', path: '/home/user/shared', reference: { volumeId: toVolumeId({ raw: 'chat' }) }, readOnly: false }]);
+    });
+
+    it('does not mount an incomplete stored directory as a complete writable volume', async () => {
+      const { buildWorkerMountsForChat } = await import('./useChatWeshTerminalSessions');
+      mocks.resolveVolumeAccess.mockResolvedValue({ kind: 'incomplete', volumeId: toVolumeId({ raw: 'incomplete' }), handle: createDirectoryHandleMock({ name: 'partial' }) });
+      expect(await buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsAccessScope: 'none' })).toEqual([]);
+    });
+
     it('includes global settings mounts when chat has no mounts and no chatId', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { TEST_ONLY } = useChatWeshTerminalSessions();
@@ -187,7 +215,7 @@ describe('useChatWeshTerminalSessions', () => {
       // Only one mount at that path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' }) });
+      expect(mocks.resolveVolumeAccess).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' }) });
     });
 
     it('includes chat group mounts between global and chat mounts', async () => {
@@ -221,7 +249,7 @@ describe('useChatWeshTerminalSessions', () => {
 
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'group-vol-override' }) });
+      expect(mocks.resolveVolumeAccess).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'group-vol-override' }) });
     });
 
     it('chat mount overrides chat group mount at the same path', async () => {
@@ -240,7 +268,7 @@ describe('useChatWeshTerminalSessions', () => {
       // Only one mount at the shared path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/shared')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/shared')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' }) });
+      expect(mocks.resolveVolumeAccess).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' }) });
     });
 
     it('works with only chat group mounts and no chat-level mounts', async () => {

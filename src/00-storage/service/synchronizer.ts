@@ -29,6 +29,9 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('migration'),
     timestamp: z.number(),
+    // A metadata restore/import leaves volume files intact. Only an actual
+    // OPFS clear retires other pages' captured File-backed volume sources.
+    volumeFilesRemoved: z.literal(true).optional(),
   }),
   z.object({
     type: z.literal('naidan_rpc_registry'),

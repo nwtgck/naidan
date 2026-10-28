@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { workerTransfer } from '@/utils/worker-transport';
 import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
+import { createRemoteDirectoryHandle, remoteDirectoryEntrySchema } from '@/utils/remote-directory-handle';
+import { getEffectiveWeshMounts } from '@/features/wesh/mount-policy';
 
 import { Wesh } from '@/features/wesh';
 import { createTextShellSource } from '@/features/wesh/shell/source';
@@ -166,7 +168,7 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
 
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    async init(requestOrOptions, naidanSysfsRemoteReader) {
+    async init(requestOrOptions, naidanSysfsRemoteReader, managedVolumeRemoteAccess) {
       const normalizedRequest = (() => {
         if (
           typeof requestOrOptions === 'object'
@@ -190,7 +192,7 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
         initialCwd: validated.initialCwd,
       });
 
-      for (const mount of validated.mounts) {
+      for (const mount of getEffectiveWeshMounts({ mounts: validated.mounts })) {
         switch (mount.type) {
         case 'directory':
           await wesh.vfs.mount({
@@ -199,6 +201,22 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
             readOnly: mount.readOnly,
           });
           break;
+        case 'managed_directory': {
+          if (managedVolumeRemoteAccess === undefined) {
+            throw new Error('Managed volume access is required for this directory');
+          }
+          const remoteAccess = managedVolumeRemoteAccess;
+          const root = remoteDirectoryEntrySchema.parse(await remoteAccess.getRoot({ path: mount.path }));
+          await wesh.vfs.mount({
+            path: mount.path,
+            handle: createRemoteDirectoryHandle({
+              root,
+              access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
+            }),
+            readOnly: mount.readOnly,
+          });
+          break;
+        }
         case 'naidan_sysfs': {
           const reader = await (() => {
             switch (mount.storageType) {

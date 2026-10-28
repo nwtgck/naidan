@@ -10,6 +10,7 @@ import type { SettingsSource } from '@/logic/settings-labels';
 const mocks = vi.hoisted(() => ({
   listVolumes: vi.fn(),
   getVolumeDirectoryHandle: vi.fn(),
+  resolveVolumeAccess: vi.fn(),
   chatAdd: vi.fn(),
   chatRemove: vi.fn(),
   chatUpdate: vi.fn(),
@@ -21,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   addToast: vi.fn(),
   showConfirm: vi.fn(),
 }));
-vi.mock('@/00-storage/service', () => ({ storageService: { listVolumes: mocks.listVolumes, getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle, createVolume: mocks.createVolume } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { listVolumes: mocks.listVolumes, getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle, resolveVolumeAccess: mocks.resolveVolumeAccess, createVolume: mocks.createVolume } }));
 vi.mock('@/composables/chat/useChatMounts', () => ({ useChatMounts: () => ({ addMount: mocks.chatAdd, removeMount: mocks.chatRemove, updateMount: mocks.chatUpdate }) }));
 vi.mock('@/composables/chat/useChatGroupMounts', () => ({ useChatGroupMounts: () => ({ addMount: mocks.chatGroupAdd, removeMount: mocks.chatGroupRemove, setMountReadOnly: mocks.chatGroupReadOnly }) }));
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({ useFileExplorerModal: () => ({ openFileExplorer: mocks.openFileExplorer }) }));
@@ -68,6 +69,12 @@ beforeEach(async () => {
   vi.resetAllMocks();
   mocks.showConfirm.mockResolvedValue(true);
   mocks.listVolumes.mockImplementation(async function* () {});
+  mocks.resolveVolumeAccess.mockImplementation(async ({ volumeId }: { volumeId: Mount['volumeId'] }) => {
+    const handle = await mocks.getVolumeDirectoryHandle({ volumeId });
+    return handle === undefined || handle === null
+      ? { kind: 'missing', volumeId }
+      : { kind: 'native', volume: { id: volumeId, name: handle.name, type: 'opfs', createdAt: 0 }, handle };
+  });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
@@ -358,6 +365,29 @@ describe('ScopedMountSettings', () => {
     await row.get('[data-testid="inherited-mount-open"]').trigger('click');
     await flushPromises();
     expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({ initialPath: ['home', 'user', 'shared'], mounts: [expect.objectContaining({ path: inherited.mountPath, readOnly: false })] }) });
+  });
+
+  it('opens a managed volume through its stable reference and preserves its access mode', async () => {
+    const entry = folder({ name: 'lazy-docs', readOnly: false });
+    mocks.resolveVolumeAccess.mockResolvedValue({ kind: 'managed', volume: metadata({ mount: entry, type: 'opfs' }), reference: { volumeId: entry.volumeId } });
+    using view = mountSettings({ owner: chatOwner, mounts: [entry], inheritedMounts: [] });
+    await view.wrapper.get('[data-testid="mount-open"]').trigger('click');
+    await flushPromises();
+    expect(mocks.openFileExplorer).toHaveBeenCalledWith({
+      options: expect.objectContaining({
+        mounts: [{ type: 'managed_directory', path: entry.mountPath, reference: { volumeId: entry.volumeId }, readOnly: false }],
+      }),
+    });
+    expect(mocks.getVolumeDirectoryHandle).not.toHaveBeenCalled();
+  });
+
+  it('does not turn an incomplete stored copy into a normal writable mount', async () => {
+    const entry = folder({ name: 'incomplete-docs', readOnly: false });
+    mocks.resolveVolumeAccess.mockResolvedValue({ kind: 'incomplete', volumeId: entry.volumeId, handle: { kind: 'directory', name: 'partial' } });
+    using view = mountSettings({ owner: chatOwner, mounts: [entry], inheritedMounts: [] });
+    await view.wrapper.get('[data-testid="mount-open"]').trigger('click');
+    await flushPromises();
+    expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({ mounts: [] }) });
   });
 
   it('does not open an explorer after its owner component unmounts', async () => {
