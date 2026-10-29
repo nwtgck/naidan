@@ -1435,9 +1435,15 @@ import { LlamaCppBrowserRepositoryPreview__not_estimated } from '@/strings/messa
 import { LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats/pt-BR';
 import { LlamaCppBrowserRuntimeSettings__context_size_tokens } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__context_size_tokens/pt-BR';
 import { LlamaCppBrowserRuntimeSettings__could_not_save_context_size } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__could_not_save_context_size/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage/pt-BR';
 import { LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__legacy_expand } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__legacy_expand/pt-BR';
 import { LlamaCppBrowserRuntimeSettings__reset_to_default } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__reset_to_default/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__retain_checked } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__retain_checked/pt-BR';
 import { LlamaCppBrowserRuntimeSettings__save } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__save/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__vision_storage_status } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__vision_storage_status/pt-BR';
 import { LlamaCppBrowserSavedModelPicker__available_models } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__available_models/pt-BR';
 import { LlamaCppBrowserSavedModelPicker__could_not_read_models } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__could_not_read_models/pt-BR';
 import { LlamaCppBrowserSavedModelPicker__filter_models } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__filter_models/pt-BR';
@@ -2954,10 +2960,14 @@ import { llamaCppPerformance__download_requested } from '@/strings/messages/llam
 import { llamaCppPerformance__elapsed_ms } from '@/strings/messages/llamaCppPerformance__elapsed_ms/pt-BR';
 import { llamaCppPerformance__environment_notes } from '@/strings/messages/llamaCppPerformance__environment_notes/pt-BR';
 import { llamaCppPerformance__first_received_ms } from '@/strings/messages/llamaCppPerformance__first_received_ms/pt-BR';
+import { llamaCppPerformance__fixed_image_measurement_help } from '@/strings/messages/llamaCppPerformance__fixed_image_measurement_help/pt-BR';
 import { llamaCppPerformance__generation_tokens_per_second } from '@/strings/messages/llamaCppPerformance__generation_tokens_per_second/pt-BR';
 import { llamaCppPerformance__gpu_pass_time_ms } from '@/strings/messages/llamaCppPerformance__gpu_pass_time_ms/pt-BR';
 import { llamaCppPerformance__gpu_profiling } from '@/strings/messages/llamaCppPerformance__gpu_profiling/pt-BR';
 import { llamaCppPerformance__gpu_profiling_help } from '@/strings/messages/llamaCppPerformance__gpu_profiling_help/pt-BR';
+import { llamaCppPerformance__image_input } from '@/strings/messages/llamaCppPerformance__image_input/pt-BR';
+import { llamaCppPerformance__image_residency } from '@/strings/messages/llamaCppPerformance__image_residency/pt-BR';
+import { llamaCppPerformance__image_skip_reason } from '@/strings/messages/llamaCppPerformance__image_skip_reason/pt-BR';
 import { llamaCppPerformance__initial_short_long_or_continuation } from '@/strings/messages/llamaCppPerformance__initial_short_long_or_continuation/pt-BR';
 import { llamaCppPerformance__interrupt_current_and_continue } from '@/strings/messages/llamaCppPerformance__interrupt_current_and_continue/pt-BR';
 import { llamaCppPerformance__interrupt_current_help } from '@/strings/messages/llamaCppPerformance__interrupt_current_help/pt-BR';
@@ -3002,9 +3012,11 @@ import { llamaCppPerformance__start_measurement } from '@/strings/messages/llama
 import { llamaCppPerformance__stop_and_return_to_settings } from '@/strings/messages/llamaCppPerformance__stop_and_return_to_settings/pt-BR';
 import { llamaCppPerformance__stop_measurement } from '@/strings/messages/llamaCppPerformance__stop_measurement/pt-BR';
 import { llamaCppPerformance__stopping } from '@/strings/messages/llamaCppPerformance__stopping/pt-BR';
+import { llamaCppPerformance__text } from '@/strings/messages/llamaCppPerformance__text/pt-BR';
 import { llamaCppPerformance__trial_status } from '@/strings/messages/llamaCppPerformance__trial_status/pt-BR';
 import { llamaCppPerformance__wait_for_other_work } from '@/strings/messages/llamaCppPerformance__wait_for_other_work/pt-BR';
 import { llamaCppPerformance__waiting_for_visible_page } from '@/strings/messages/llamaCppPerformance__waiting_for_visible_page/pt-BR';
+import { llamaCppPerformance__workload } from '@/strings/messages/llamaCppPerformance__workload/pt-BR';
 import { naidanRpc__add_header } from '@/strings/messages/naidanRpc__add_header/pt-BR';
 import { naidanRpc__apply_methods } from '@/strings/messages/naidanRpc__apply_methods/pt-BR';
 import { naidanRpc__chat } from '@/strings/messages/naidanRpc__chat/pt-BR';
@@ -4775,9 +4787,15 @@ export const catalog = {
   LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats,
   LlamaCppBrowserRuntimeSettings__context_size_tokens,
   LlamaCppBrowserRuntimeSettings__could_not_save_context_size,
+  LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage,
   LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum,
+  LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage,
+  LlamaCppBrowserRuntimeSettings__legacy_expand,
   LlamaCppBrowserRuntimeSettings__reset_to_default,
+  LlamaCppBrowserRuntimeSettings__retain_checked,
   LlamaCppBrowserRuntimeSettings__save,
+  LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load,
+  LlamaCppBrowserRuntimeSettings__vision_storage_status,
   LlamaCppBrowserSavedModelPicker__available_models,
   LlamaCppBrowserSavedModelPicker__could_not_read_models,
   LlamaCppBrowserSavedModelPicker__filter_models,
@@ -6294,10 +6312,14 @@ export const catalog = {
   llamaCppPerformance__elapsed_ms,
   llamaCppPerformance__environment_notes,
   llamaCppPerformance__first_received_ms,
+  llamaCppPerformance__fixed_image_measurement_help,
   llamaCppPerformance__generation_tokens_per_second,
   llamaCppPerformance__gpu_pass_time_ms,
   llamaCppPerformance__gpu_profiling,
   llamaCppPerformance__gpu_profiling_help,
+  llamaCppPerformance__image_input,
+  llamaCppPerformance__image_residency,
+  llamaCppPerformance__image_skip_reason,
   llamaCppPerformance__initial_short_long_or_continuation,
   llamaCppPerformance__interrupt_current_and_continue,
   llamaCppPerformance__interrupt_current_help,
@@ -6342,9 +6364,11 @@ export const catalog = {
   llamaCppPerformance__stop_and_return_to_settings,
   llamaCppPerformance__stop_measurement,
   llamaCppPerformance__stopping,
+  llamaCppPerformance__text,
   llamaCppPerformance__trial_status,
   llamaCppPerformance__wait_for_other_work,
   llamaCppPerformance__waiting_for_visible_page,
+  llamaCppPerformance__workload,
   naidanRpc__add_header,
   naidanRpc__apply_methods,
   naidanRpc__chat,

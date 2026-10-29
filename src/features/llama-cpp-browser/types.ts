@@ -26,8 +26,10 @@ export const minimumChatContextTokens = 512;
 export const maximumChatContextTokens = 1048576;
 export const chatContextTokensSchema = z.number().int().min(minimumChatContextTokens).max(maximumChatContextTokens);
 export const defaultChatContextTokens = 32768;
+export const visionBf16StorageSchema = z.enum(['legacy-expand', 'retain-checked']);
 
 export const runtimeOptionsSchema = z.object({
+  visionBf16Storage: visionBf16StorageSchema.optional(),
   contextTokens: chatContextTokensSchema.optional(),
   profile: z.union([z.literal('auto'), profileSchema]),
 }).strict();

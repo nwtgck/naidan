@@ -3,6 +3,23 @@ import { gpuProfileSchema, type GpuProfile } from './gpu-profile-schema';
 
 export const q8KernelVariants = ['auto', 'cooperative-wg256-r4', 'independent-wg128-r4', 'independent-wg128-r1', 'independent-wg128-r2', 'cooperative-wg128-r2'] as const;
 export const q8KernelShapes = [[2560, 10240], [2560, 6144], [6144, 2560], [10240, 320], [2560, 640], [2560, 512], [320, 10240], [640, 2560]] as const;
+export const q8KernelPairedShapes = [[320, 10240], [640, 2560]] as const;
+export const q8KernelPairedVariants = ['auto', 'independent-wg128-r4'] as const;
+
+export function createQ8KernelPairedSchedule({ blocks }: { blocks: 8 }) {
+  return Array.from({ length: blocks }, (_, block) => {
+    const order = block % 2 ? 'BAAB' as const : 'ABBA' as const;
+    return [...order].map((arm, position) => ({
+      block,
+      order,
+      arm: arm as 'A' | 'B',
+      position,
+      sequence: block * 4 + position,
+      variant: q8KernelPairedVariants[arm === 'A' ? 0 : 1],
+    }));
+  }).flat();
+}
+
 export const q8KernelVariantSchema = z.enum(q8KernelVariants);
 const count = z.number().int().nonnegative().max(0xffffffff);
 const milliseconds = z.number().finite().nonnegative();
@@ -57,6 +74,7 @@ function reportIdentity({ report }: { report: z.infer<typeof q8KernelNativeRepor
 
 const callSchema = z.strictObject({ report: q8KernelNativeReportSchema, wallMs: milliseconds });
 const exactSchema = z.strictObject({ words: count, mismatches: z.literal(0), expectedSha256: sha256, actualSha256: sha256, guards: z.literal(true) });
+const warmupSchema = z.strictObject({ call: callSchema, readbackMs: milliseconds.optional(), exact: exactSchema.optional() });
 const boundedProfileSchema = gpuProfileSchema.superRefine((profile, context) => {
   const passCounts = [profile.observedPasses, profile.measuredPasses, profile.pendingPasses, profile.invalidPasses, profile.droppedPasses, profile.ungroupedPasses, profile.ambiguousPasses, profile.zeroDurationPasses];
   const passes = profile.rows.reduce((sum, row) => sum + row.passes, 0), dispatches = profile.rows.reduce((sum, row) => sum + row.dispatches, 0);
@@ -95,6 +113,22 @@ export const q8KernelSampleSchema = z.strictObject({
   readbackMs: milliseconds,
   exact: exactSchema,
 });
+const pairedSampleSchema = q8KernelSampleSchema.omit({ round: true, position: true }).extend({
+  variant: z.enum(q8KernelPairedVariants),
+  arm: z.enum(['A', 'B']),
+  order: z.enum(['ABBA', 'BAAB']),
+  block: z.number().int().min(0).max(7),
+  position: z.number().int().min(0).max(3),
+  sequence: z.number().int().min(0).max(31),
+  callStartedMs: milliseconds,
+  callEndedMs: milliseconds,
+});
+const pairedComparisonSchema = z.strictObject({
+  status: z.enum(['complete', 'unsupported', 'cancelled']),
+  clock: z.literal('run-relative-performance-now'),
+  warmups: z.array(warmupSchema.extend({ variant: z.enum(q8KernelPairedVariants) })).max(2),
+  samples: z.array(pairedSampleSchema).max(32),
+});
 export const q8KernelShapeSchema = z.strictObject({
   k: z.number().int().min(32).max(16384).multipleOf(32),
   m: z.number().int().min(1).max(65536),
@@ -111,9 +145,10 @@ export const q8KernelShapeSchema = z.strictObject({
   variants: z.array(z.strictObject({
     variant: q8KernelVariantSchema,
     prepare: callSchema,
-    warmup: z.strictObject({ call: callSchema, readbackMs: milliseconds.optional(), exact: exactSchema.optional() }).optional(),
+    warmup: warmupSchema.optional(),
   })).max(6),
   samples: z.array(q8KernelSampleSchema).max(24),
+  pairedComparison: pairedComparisonSchema.optional(),
   inputsUnchanged: z.strictObject({
     weights: z.literal(true),
     input: z.literal(true),
@@ -124,13 +159,27 @@ export const q8KernelShapeSchema = z.strictObject({
     inputSha256: sha256,
   }).optional(),
 });
-export const q8KernelBenchmarkProgressSchema = z.strictObject({
+const progressFields = {
   shapeIndex: z.number().int().min(0).max(7),
   shapeCount: z.literal(8),
   phase: z.enum(['preparing', 'warming', 'measuring', 'verifying']),
+};
+export const q8KernelBenchmarkProgressSchema = z.union([z.strictObject({
+  ...progressFields,
   completedSamples: z.number().int().min(0).max(192),
   totalSamples: z.literal(192),
-});
+}), z.strictObject({
+  ...progressFields,
+  section: z.enum(['base', 'paired']),
+  completedSamples: z.number().int().min(0).max(256),
+  totalSamples: z.literal(256),
+  baseCompletedSamples: z.number().int().min(0).max(192),
+  pairedCompletedSamples: z.number().int().min(0).max(64),
+}).superRefine((progress, context) => {
+  if (progress.completedSamples !== progress.baseCompletedSamples + progress.pairedCompletedSamples) {
+    context.addIssue({ code: 'custom', message: 'Q8 progress sample totals differ' });
+  }
+})]);
 export type Q8KernelBenchmarkProgress = z.infer<typeof q8KernelBenchmarkProgressSchema>;
 export const q8KernelBenchmarkSchema = z.strictObject({
   version: z.literal(1),
@@ -138,16 +187,20 @@ export const q8KernelBenchmarkSchema = z.strictObject({
   status: z.enum(['complete', 'partial', 'cancelled']),
   repetitions: z.literal(32),
   rounds: z.literal(4),
+  pairedComparisonProtocol: z.literal('abba-baab-v1').optional(),
   shapes: z.array(q8KernelShapeSchema).max(8),
 }).superRefine((value, context) => {
   const invalid = ({ message }: { message: string }) => context.addIssue({ code: 'custom', message });
-  const hasUnsupported = value.shapes.some(shape => shape.variants.some(row => row.prepare.report.status === 'unsupported' || row.warmup?.call.report.status === 'unsupported'));
+  const hasUnsupported = value.shapes.some(shape => shape.variants.some(row => row.prepare.report.status === 'unsupported' || row.warmup?.call.report.status === 'unsupported')
+    || shape.pairedComparison?.status === 'unsupported');
   if (value.status === 'complete' && hasUnsupported || value.status === 'partial' && !hasUnsupported) {
     invalid({ message: 'Inconsistent Q8 completion status' });
   }
   if (value.status !== 'cancelled' && value.shapes.length !== 8) {
     invalid({ message: 'Incomplete Q8 shape set' });
   }
+  let previousPairedCallEnd = 0;
+  const pairedSchedule = value.pairedComparisonProtocol ? createQ8KernelPairedSchedule({ blocks: 8 }) : [];
   for (const [index, shape] of value.shapes.entries()) {
     const expected = q8KernelShapes[index];
     if (!expected || shape.k !== expected[0] || shape.m !== expected[1]) {
@@ -213,6 +266,65 @@ export const q8KernelBenchmarkSchema = z.strictObject({
       }
       if ((sample.timingStatus === 'partial' || sample.timingStatus === 'unavailable') && sample.gpuMsPerDispatch !== undefined) {
         invalid({ message: 'Unqualified Q8 per-dispatch timing' });
+      }
+    }
+    const paired = shape.pairedComparison;
+    const pairedShape = q8KernelPairedShapes.some(([k, m]) => shape.k === k && shape.m === m);
+    const hasLaterShape = index < value.shapes.length - 1;
+    if (paired && (!value.pairedComparisonProtocol || !pairedShape)
+      || value.pairedComparisonProtocol && pairedShape && (value.status !== 'cancelled' || hasLaterShape) && !paired
+      || value.pairedComparisonProtocol && pairedShape && hasLaterShape && !shape.inputsUnchanged) {
+      invalid({ message: 'Unexpected or missing Q8 paired comparison' });
+    }
+    if (paired) {
+      const pairReady = q8KernelPairedVariants.every(variant => ready.has(variant));
+      const pairUnsupported = !pairReady || paired.warmups.some(warmup => warmup.call.report.status === 'unsupported');
+      if (paired.status === 'cancelled' && (value.status !== 'cancelled' || hasLaterShape) || paired.status === 'unsupported' && !pairUnsupported
+        || paired.status === 'complete' && (pairUnsupported || paired.warmups.length !== 2 || paired.samples.length !== 32)
+        || paired.status === 'unsupported' && paired.samples.length !== 0
+        || shape.samples.length !== schedule.length) {
+        invalid({ message: 'Inconsistent Q8 paired completion or base prefix' });
+      }
+      for (const [warmupIndex, warmup] of paired.warmups.entries()) {
+        const variant = q8KernelPairedVariants[warmupIndex];
+        const prepared = shape.variants.find(row => row.variant === variant)?.prepare.report;
+        if (!pairReady || warmup.variant !== variant || warmup.call.report.variant !== variant || warmup.call.report.phase !== 'execute'
+          || warmup.call.report.dispatches !== ({ ok: 1, unsupported: 0, unavailable: 0, 'bad-request': 0, 'not-prepared': 0, busy: 0 }[warmup.call.report.status])
+          || !prepared || warmup.call.report.status === 'ok' && reportIdentity({ report: warmup.call.report }) !== reportIdentity({ report: prepared })
+          || warmup.call.report.status === 'unsupported' && (warmup.exact || warmup.readbackMs !== undefined || warmupIndex !== paired.warmups.length - 1)
+          || warmup.exact && warmup.readbackMs === undefined
+          || warmup.call.report.status === 'ok' && (!warmup.exact || warmup.readbackMs === undefined)
+            && (paired.status !== 'cancelled' || warmupIndex !== paired.warmups.length - 1)) {
+          invalid({ message: 'Invalid Q8 paired warmup prefix' });
+        }
+        if (warmup.exact && (warmup.exact.words !== shape.m || warmup.exact.actualSha256 !== shape.fixture.expectedSha256
+          || warmup.exact.expectedSha256 !== shape.fixture.expectedSha256)) {
+          invalid({ message: 'Unverified Q8 paired warmup' });
+        }
+      }
+      if (paired.samples.length && (paired.warmups.length !== 2 || paired.warmups.some(warmup => warmup.call.report.status !== 'ok' || !warmup.exact || warmup.readbackMs === undefined))) {
+        invalid({ message: 'Q8 paired samples precede verified warmups' });
+      }
+      for (const [sampleIndex, sample] of paired.samples.entries()) {
+        const expectedSample = pairedSchedule[sampleIndex];
+        const prepared = shape.variants.find(row => row.variant === sample.variant)?.prepare.report;
+        const qualified = q8KernelProfileQualified({ profile: sample.gpuProfile });
+        const timingStatus = qualified ? sample.gpuProfile.zeroDurationPasses ? 'quantized' : 'measured' : sample.gpuProfile.measuredPasses ? 'partial' : 'unavailable';
+        if (!expectedSample || sample.arm !== expectedSample.arm || sample.order !== expectedSample.order || sample.block !== expectedSample.block
+          || sample.position !== expectedSample.position || sample.sequence !== expectedSample.sequence || sample.variant !== expectedSample.variant
+          || sample.report.variant !== sample.variant || sample.report.status !== 'ok' || sample.report.phase !== 'execute' || sample.report.dispatches !== 32
+          || !prepared || reportIdentity({ report: sample.report }) !== reportIdentity({ report: prepared })) {
+          invalid({ message: 'Invalid Q8 paired order or identity' });
+        }
+        if (sample.callStartedMs < previousPairedCallEnd || sample.callEndedMs < sample.callStartedMs
+          || sample.wallMs !== sample.callEndedMs - sample.callStartedMs) {
+          invalid({ message: 'Invalid Q8 paired monotonic call interval' });
+        }
+        previousPairedCallEnd = sample.callEndedMs;
+        if (sample.timingStatus !== timingStatus || (qualified ? sample.gpuMsPerDispatch !== sample.gpuProfile.totalGpuMs / 32 : sample.gpuMsPerDispatch !== undefined)
+          || sample.exact.words !== shape.m || sample.exact.expectedSha256 !== shape.fixture.expectedSha256 || sample.exact.actualSha256 !== shape.fixture.expectedSha256) {
+          invalid({ message: 'Invalid Q8 paired timing or exact evidence' });
+        }
       }
     }
     if (shape.inputsUnchanged && (shape.inputsUnchanged.weightBytes !== shape.fixture.weightBytes || shape.inputsUnchanged.inputBytes !== shape.fixture.inputBytes

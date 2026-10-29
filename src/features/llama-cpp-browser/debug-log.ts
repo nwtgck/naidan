@@ -1,5 +1,8 @@
 import { gpuProfileSchema } from './performance/gpu-profile-schema';
 import { nativeGraphCountersSchema } from './performance/native-graph-counters-schema';
+import { visionBf16StorageObservationSchema } from './runtime/vision-bf16-storage-schema';
+import { visionDiagnosticSchema } from './performance/vision-diagnostic-schema';
+import { earlyGenerationTimingSchema } from './performance/early-generation-timing-schema';
 import { loadedModelDescriptorSchema } from './loaded-model-descriptor';
 import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
 import { backendCensusSchema } from './performance/backend-census-schema';
@@ -65,6 +68,7 @@ export const nativeFlashAttentionSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const diagnosticSchema = z.object({
+  visionStorage: visionBf16StorageObservationSchema.optional(),
   event: eventSchema,
   generationThroughput: z.object({
     sampledTokens: z.number().int().positive(),
@@ -97,6 +101,8 @@ export const diagnosticSchema = z.object({
     peakPending: z.number().int().nonnegative().max(1),
   }).strict().optional(),
   performance: z.object({
+    visionStorage: visionBf16StorageObservationSchema.optional(),
+    vision: visionDiagnosticSchema.optional(),
     // Existing load counters, without enabling per-read clocks in standard measurement.
     modelReads: fileReadSchema.optional(),
     backendCensus: backendCensusSchema.optional(),
@@ -115,6 +121,7 @@ export const diagnosticSchema = z.object({
       firstMs: z.number().finite().nonnegative(),
       lastMs: z.number().finite().nonnegative(),
     }).strict()).max(256).optional(),
+    earlyGenerationTiming: earlyGenerationTimingSchema.optional(),
     version: z.literal(1),
     outcome: z.enum(['completed', 'aborted', 'failed']),
     input: z.enum(['text', 'multimodal', 'unknown']),

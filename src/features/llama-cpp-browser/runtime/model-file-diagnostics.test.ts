@@ -2,6 +2,37 @@ import { describe, expect, it, vi } from 'vitest';
 import { createModelFileDiagnostics } from './model-file-diagnostics';
 
 describe('ordinal-only model file read diagnostics', () => {
+  it('forwards optional tail reads while counting one attempt and all returned bytes', () => {
+    const readWithTail = vi.fn(() => 65536 + 1024);
+    const source = { size: 2 ** 40, read: vi.fn(() => 0), readWithTail };
+    const trace = createModelFileDiagnostics({ ordinal: 1, source });
+    const destination = new Uint8Array(65536), tail = new Uint8Array(1024), offset = 2 ** 32 + 17;
+    expect(trace.source.readWithTail!({ destination, offset, tail })).toBe(66560);
+    expect(readWithTail).toHaveBeenCalledExactlyOnceWith({ destination, offset, tail });
+    expect(source.read).not.toHaveBeenCalled();
+    expect(trace.counters).toMatchObject({ sourceCalls: 1, sourceBytes: 66560, maximumReadEndBytes: offset + 66560, lastOffsetBytes: offset });
+    expect(createModelFileDiagnostics({ ordinal: 2, source: { size: 100, read: () => 0 } }).source.readWithTail).toBeUndefined();
+  });
+
+  it.each([-1, NaN, Infinity, 0.5, 66561])('rejects an invalid combined tail result %s', count => {
+    const trace = createModelFileDiagnostics({ ordinal: 1, source: { size: 100000, read: () => 0, readWithTail: () => count } });
+    expect(() => trace.source.readWithTail!({ destination: new Uint8Array(65536), offset: 0, tail: new Uint8Array(1024) })).toThrow('Invalid model read count');
+    expect(trace.counters).toMatchObject({ sourceCalls: 1, sourceBytes: 0, failures: 1 });
+  });
+
+  it('rejects tail bytes beyond EOF and records an original source exception', () => {
+    const failure = new Error('snapshot unavailable');
+    const readWithTail = vi.fn(() => 1025);
+    const trace = createModelFileDiagnostics({ ordinal: 1, source: { size: 1024, read: () => 0, readWithTail } });
+    const args = { destination: new Uint8Array(1024), offset: 0, tail: new Uint8Array(1024) };
+    expect(() => trace.source.readWithTail!(args)).toThrow('Invalid model read count');
+    readWithTail.mockImplementationOnce(() => {
+      throw failure;
+    });
+    expect(() => trace.source.readWithTail!(args)).toThrow(failure);
+    expect(trace.counters).toMatchObject({ sourceCalls: 2, sourceBytes: 0, failures: 2 });
+  });
+
   it('preserves offsets above 4 GiB and records delivered rather than requested bytes', () => {
     const size = 50_000_000_000;
     const read = vi.fn(() => 7);

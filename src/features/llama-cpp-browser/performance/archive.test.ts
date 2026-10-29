@@ -95,12 +95,23 @@ ordinary chat tok/s`);
       retainedRestoredCaptures: 1,
       phases: [{ phase: 'restore-write', visits: 1, elapsedMs: 123 }],
     };
+    metrics.earlyGenerationTiming = {
+      version: 1,
+      limit: 16,
+      stageIntervals: [{ stage: 'generation-overlap', ordinal: 1, sampleCountAtStart: 1, startMs: 100, elapsedMs: 1512, closedBy: 'stage-transition' }],
+      samples: [{ ordinal: 1, atMs: 99 }, { ordinal: 2, atMs: 1613 }],
+      intervalsTruncated: false,
+      samplesTruncated: false,
+      clockAnomalies: 0,
+    };
     const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
     const record = JSON.parse(await zip.file('trials.jsonl')!.async('string'));
     const exported = diagnosticSchema.parse(record.summary).performance!;
     expect(exported.cacheReuse).toEqual(metrics.cacheReuse);
     expect(exported.checkpoint).toEqual(metrics.checkpoint);
+    expect(exported.earlyGenerationTiming).toEqual(metrics.earlyGenerationTiming);
     expect(await zip.file('README.md')!.async('string')).toContain('cacheReuse records the cache decision before prefill');
+    expect(await zip.file('README.md')!.async('string')).toContain('generation-overlap includes delivery and decode');
   });
 
   it.each(['clean', 'dirty', 'unknown'] as const)('preserves the run app identity with a %s working tree at export', async workingTree => {

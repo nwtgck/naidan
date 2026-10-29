@@ -57,6 +57,58 @@ function fixture({ size }: { size: number }): {
 }
 
 describe('direct linked-folder model reads', () => {
+  it('scatters one bounded FileReaderSync slice into the body and copied tail', async () => {
+    const host = fixture({ size: 100000 });
+    const access = await openModelFileAccess({ entry: host.entry });
+    using _cleanup = { [Symbol.dispose]: () => access.close() };
+    const destination = new Uint8Array(new SharedArrayBuffer(65536 + 8)).fill(255);
+    const tail = new Uint8Array(2048).fill(255);
+    expect(access.readWithTail!({ destination: destination.subarray(4, -4), offset: 7, tail })).toBe(65536 + 1024);
+    expect(host.slice).toHaveBeenCalledExactlyOnceWith(7, 7 + 65536 + 1024);
+    expect(readAsArrayBuffer).toHaveBeenCalledOnce();
+    expect(destination.subarray(4, -4)).toEqual(host.bytes.subarray(7, 65543));
+    expect(destination.subarray(0, 4)).toEqual(new Uint8Array(4).fill(255));
+    expect(destination.subarray(-4)).toEqual(new Uint8Array(4).fill(255));
+    expect(tail.subarray(0, 1024)).toEqual(host.bytes.subarray(65543, 66567));
+    expect(tail.subarray(1024)).toEqual(new Uint8Array(1024).fill(255));
+    new Uint8Array(readAsArrayBuffer.mock.results[0]!.value as ArrayBuffer).fill(0);
+    expect(tail.subarray(0, 1024)).toEqual(host.bytes.subarray(65543, 66567));
+    expect(host.sync).not.toHaveBeenCalled();
+    expect(opfs).not.toHaveBeenCalled();
+  });
+
+  it('caps the combined slice to 8 MiB plus 1 KiB and leaves the tail empty for a partial body', async () => {
+    const host = fixture({ size: 9 * 1024 * 1024 });
+    const access = await openModelFileAccess({ entry: host.entry });
+    using _cleanup = { [Symbol.dispose]: () => access.close() };
+    const destination = new Uint8Array(9 * 1024 * 1024), tail = new Uint8Array(65536).fill(255);
+    expect(access.readWithTail!({ destination, offset: 0, tail })).toBe(8 * 1024 * 1024);
+    expect(tail.every(value => value === 255)).toBe(true);
+    expect(access.readWithTail!({ destination: destination.subarray(0, 8 * 1024 * 1024), offset: 0, tail })).toBe(8 * 1024 * 1024 + 1024);
+    expect(host.slice.mock.calls).toEqual([[0, 8 * 1024 * 1024], [0, 8 * 1024 * 1024 + 1024]]);
+    expect(tail.subarray(1024).every(value => value === 255)).toBe(true);
+  });
+
+  it('clamps a tail at EOF, rejects short combined reads and observes close', async () => {
+    const host = fixture({ size: 65537 });
+    const access = await openModelFileAccess({ entry: host.entry });
+    using _cleanup = { [Symbol.dispose]: () => access.close() };
+    const destination = new Uint8Array(65536), tail = new Uint8Array(1024).fill(255);
+    expect(access.readWithTail!({ destination, offset: 0, tail })).toBe(65537);
+    expect(tail[0]).toBe(host.bytes[65536]);
+    expect(tail.subarray(1).every(value => value === 255)).toBe(true);
+    destination.fill(255);
+    tail.fill(255);
+    readAsArrayBuffer.mockReturnValueOnce(new ArrayBuffer(65536));
+    expect(() => access.readWithTail!({ destination, offset: 0, tail })).toThrow('storage-error');
+    expect(destination.every(value => value === 255)).toBe(true);
+    expect(tail.every(value => value === 255)).toBe(true);
+    access.close();
+    const calls = host.slice.mock.calls.length;
+    expect(() => access.readWithTail!({ destination, offset: 0, tail })).toThrow('storage-error');
+    expect(host.slice).toHaveBeenCalledTimes(calls);
+  });
+
   it('reads the requested slice directly without OPFS or a synchronous access handle', async () => {
     const host = fixture({ size: 64 });
     const access = await openModelFileAccess({ entry: host.entry });

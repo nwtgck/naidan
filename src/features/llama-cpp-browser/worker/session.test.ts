@@ -9,6 +9,8 @@ import type { ModelDirectory, StoredModelFile } from '@/features/llama-cpp-brows
 import type { loadProjector, loadProjectorForBackend } from './projector';
 import type { WorkerGenerateInput } from './types';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
+import * as modelFileModule from './model-file-access';
+import type { ModelFileSource } from '@/features/llama-cpp-browser/runtime/model-file-source';
 import { prepareSession, prepareGenerationSession, prepareAudioSession, releaseSession } from './session';
 
 const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as (Omit<ModelDirectory, 'files'> & { files: StoredModelFile[] }) | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
@@ -80,12 +82,12 @@ beforeEach(() => {
   host.load.mockImplementation(async ({ debug }) => {
     const release = vi.fn(async () => {});
     releases.push(release);
-    return { pointer: BigInt(30 + releases.length), debug, release };
+    return { pointer: BigInt(30 + releases.length), debug, release, purpose: 'chat', visionStorage: { preference: 'default', selectedMode: 'legacy-expand', capability: 'absent', status: 'initialized', evidence: 'requested-policy-only', reason: 'default-legacy-api-absent' } };
   });
 });
 
 beforeEach(() => {
-  host.loadAudio.mockImplementation(host.load);
+  host.loadAudio.mockImplementation(async args => ({ ...await host.load(args), purpose: 'audio', visionStorage: undefined }));
 });
 
 afterEach(async () => {
@@ -93,6 +95,42 @@ afterEach(async () => {
 });
 
 describe('resident projector debug changes', () => {
+  it('forwards a host bulk tail through shard diagnostics and releases it after loading', async () => {
+    const size = 100000;
+    const primary = host.directory!.files[0]!;
+    primary.file = new File([new Uint8Array(size)], 'model.gguf', { lastModified: 1 });
+    host.directory!.files = [primary];
+    const close = vi.fn();
+    const read = vi.fn(() => {
+      throw new Error('Tail should satisfy the second read');
+    });
+    const readWithTail = vi.fn<NonNullable<ModelFileSource['readWithTail']>>(({ destination, tail }) => {
+      destination.fill(31);
+      tail.fill(47);
+      return destination.length + tail.length;
+    });
+    using _access = vi.spyOn(modelFileModule, 'openModelFileAccess').mockResolvedValue({ getSize: () => size, read, readWithTail, close });
+    let source: ModelFileSource | undefined;
+    using _mount = vi.spyOn(readOnlyModule, 'mountReadOnlyFile').mockImplementation(args => {
+      source = args.source;
+      return { path: args.path, remove: () => {} };
+    });
+    vi.mocked(host.core!.api.llama_model_load_from_file).mockImplementationOnce(async () => {
+      expect(close).not.toHaveBeenCalled();
+      const body = new Uint8Array(65536), tail = new Uint8Array(1024);
+      expect(source!.read({ destination: body, offset: 0 })).toBe(65536);
+      expect(source!.read({ destination: tail, offset: 65536 })).toBe(1024);
+      expect(body.every(value => value === 31)).toBe(true);
+      expect(tail.every(value => value === 47)).toBe(true);
+      return 10n;
+    });
+    await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(readWithTail).toHaveBeenCalledOnce();
+    expect(read).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+    expect(() => source!.read({ destination: new Uint8Array(1), offset: 65536 })).toThrow('disposed');
+  });
+
   it('records failed model-load capacity without replacing the native error', async () => {
     const core = host.core;
     if (!core) {
@@ -1310,5 +1348,56 @@ describe('temporary resident model cache', () => {
   it('does not substitute the resident model when a temporary source is absent', async () => {
     await expect(prepareSession({ request: { ...request({ debug: 'off' }), modelId: 'temp/missing' }, onProgress: () => {}, signal: undefined })).rejects.toThrow('missing-model');
     expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
+  });
+});
+
+describe('immutable vision storage identity', () => {
+  function modernProjectors(): void {
+    host.load.mockImplementation(async ({ debug, visionBf16Storage }) => {
+      const release = vi.fn(async () => {});
+      releases.push(release);
+      const selectedMode = visionBf16Storage ?? 'retain-checked';
+      return { pointer: BigInt(100 + releases.length), debug, release, purpose: 'chat', visionStorage: { preference: visionBf16Storage ?? 'default', selectedMode, contextRequestedMode: selectedMode, capability: 'available', status: 'initialized', apiVersion: 1, evidence: 'requested-policy-only', reason: visionBf16Storage === undefined ? 'default-retain' : 'explicit' } };
+    });
+  }
+
+  it('reuses equal effective modes and replaces only the projector on both storage transitions', async () => {
+    modernProjectors();
+    const first = request({ debug: 'off' });
+    const a = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    const same = request({ debug: 'off' });
+    same.options.visionBf16Storage = 'retain-checked';
+    const b = await prepareSession({ request: same, signal: undefined, onProgress: () => {} });
+    expect(b.projector).toBe(a.projector);
+    expect(host.load).toHaveBeenCalledOnce();
+    const legacy = request({ debug: 'off' });
+    legacy.options.visionBf16Storage = 'legacy-expand';
+    const c = await prepareSession({ request: legacy, signal: undefined, onProgress: () => {} });
+    const d = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    expect(c.projector).not.toBe(a.projector);
+    expect(d.projector).not.toBe(c.projector);
+    expect(host.load).toHaveBeenCalledTimes(3);
+    expect(releases[0]).toHaveBeenCalledOnce();
+    expect(releases[1]).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_free).not.toHaveBeenCalled();
+  });
+
+  it('does not reload or probe the retained projector when only text is requested after a mode change', async () => {
+    modernProjectors();
+    const image = request({ debug: 'off' });
+    image.messages[0]!.content = [{ type: 'image', blob: new Blob(['fixture']) }];
+    const a = await prepareGenerationSession({ request: image, signal: undefined, onProgress: () => {} });
+    const text = request({ debug: 'off' });
+    text.options.visionBf16Storage = 'legacy-expand';
+    const b = await prepareGenerationSession({ request: text, signal: undefined, onProgress: () => {} });
+    expect(b.projector).toBe(0n);
+    expect(b.projectorStorage).toBeUndefined();
+    expect(b.context).toBe(a.context);
+    expect(host.load).toHaveBeenCalledOnce();
+    expect(releases[0]).not.toHaveBeenCalled();
+    expect(a.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(a.core.api.llama_init_from_model).toHaveBeenCalledOnce();
   });
 });

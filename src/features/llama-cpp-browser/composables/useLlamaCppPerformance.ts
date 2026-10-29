@@ -8,13 +8,14 @@ import { llamaCppBrowserService as service } from '@/features/llama-cpp-browser'
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { gpuProfilingProfile, type LocalModel, type RuntimeOptions, usesWebGpu } from '@/features/llama-cpp-browser/types';
 import { resolveProfilePreference, type ProfileCapabilities } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
-import { createPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
+import { createPerformancePlan, createVisionPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
 import { createPerformanceRunner } from '@/features/llama-cpp-browser/performance/runner';
 import { runQ8Diagnostic } from '@/features/llama-cpp-browser/performance/run-q8-diagnostic';
 import { measurementLanes, protocolSchema, type MeasurementMode, type PerformanceSnapshot, type PerformanceTrial } from '@/features/llama-cpp-browser/performance/types';
 
 export function useLlamaCppPerformance() {
   const models = shallowRef<LocalModel[]>([]), selected = ref<string[]>([]), query = ref('');
+  const workload = ref<'text' | 'vision'>('text');
   const repeats = ref(1), maxTokens = ref(64), timeoutMinutes = ref(15), notes = ref('');
   const modelDraft = ref('');
   const diagnostics = ref(true);
@@ -52,7 +53,19 @@ export function useLlamaCppPerformance() {
     && notes.value.length <= 10000 && new Set(selectedModels.value.map(model => model.modelId)).size === selectedModels.value.length
     && protocolSchema.safeParse({ mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
   const canStart = computed(() => !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value && (mode.value === 'standard' || profilingSupported.value));
-  const callCount = computed(() => selectedModels.value.length * (1 + repeats.value * 4 + (diagnostics.value ? 1 : 0)) * measurementLanes({ mode: mode.value }).length);
+  const callCount = computed(() => {
+    const perModel = (() => {
+      switch (workload.value) {
+      case 'vision': return 1 + repeats.value;
+      case 'text': return 1 + repeats.value * 4 + (diagnostics.value ? 1 : 0);
+      default: {
+        const exhaustive: never = workload.value;
+        throw new Error(String(exhaustive));
+      }
+      }
+    })();
+    return selectedModels.value.length * perModel * measurementLanes({ mode: mode.value }).length;
+  });
   const runner = createPerformanceRunner({
     service,
     runKernelDiagnostic: runQ8Diagnostic,
@@ -255,7 +268,17 @@ export function useLlamaCppPerformance() {
       return;
     }
     // Capture the form before any await, including capability detection.
-    let plan = createPerformancePlan({
+    const createPlan = (() => {
+      switch (workload.value) {
+      case 'vision': return createVisionPerformancePlan;
+      case 'text': return createPerformancePlan;
+      default: {
+        const exhaustive: never = workload.value;
+        throw new Error(String(exhaustive));
+      }
+      }
+    })();
+    let plan = createPlan({
       id: nanoid(),
       createdAt: new Date().toISOString(),
       models: selectedModels.value,
@@ -358,6 +381,7 @@ export function useLlamaCppPerformance() {
     document.removeEventListener('visibilitychange', visibilityChanged);
   });
   return {
+    workload,
     canInterruptCurrent,
     interruptionPending,
     interruptCurrent,

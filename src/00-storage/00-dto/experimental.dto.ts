@@ -209,6 +209,7 @@ export const ExperimentalBrowserImageModelSelectionSchemaDto = dtozod.object({
   })),
 });
 export const ExperimentalLlamaCppBrowserSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  visionBf16Storage: missingAsUndefined(dtozod.enum(['legacy-expand', 'retain-checked'])),
   contextTokens: missingAsUndefined(dtozod.number()),
   modelDownloadDestination: missingAsUndefined(dtozod.discriminatedUnion('kind', [
     dtozod.object({ kind: dtozod.literal('opfs') }),

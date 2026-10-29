@@ -4,6 +4,8 @@ import { ref } from 'vue';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import type { useSettings } from '@/composables/useSettings';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import type { VisionBf16Capability } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage';
+import SettingsSelect from '@/components/SettingsSelect.vue';
 import { captureChatOptions } from '@/features/llama-cpp-browser/runtime/chat-options';
 import LlamaCppBrowserRuntimeSettings from './LlamaCppBrowserRuntimeSettings.vue';
 
@@ -11,6 +13,11 @@ const host = vi.hoisted(() => ({
   update: vi.fn<ReturnType<typeof useSettings>['updateExperimentalForStorage']>(),
   capture: vi.fn<ReturnType<typeof useSettings>['captureExperimentalStorage']>(),
   setOptions: vi.fn(),
+  storageCapability: vi.fn<() => Promise<VisionBf16Capability>>(),
+}));
+vi.mock('../runtime/vision-bf16-storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@/features/llama-cpp-browser/runtime/vision-bf16-storage')>(),
+  loadVisionBf16Capability: host.storageCapability,
 }));
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'opfs' });
 const initialized = ref(true);
@@ -35,6 +42,7 @@ function render({ disabled }: { disabled: boolean }) {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  host.storageCapability.mockResolvedValue({ status: 'absent', reason: 'api-absent' });
   settings.value = {
     ...DEFAULT_SETTINGS,
     endpoint: { type: 'llama_cpp_browser' },
@@ -183,6 +191,57 @@ describe('persisted chat context controls', () => {
     await view.wrapper.setProps({ disabled: true });
     expect(input.attributes('disabled')).toBeDefined();
     await view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]').trigger('click');
+    expect(host.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('image BF16 storage settings', () => {
+  it('uses available legacy on an old artifact without saving an override or instantiating a runtime', async () => {
+    using view = render({ disabled: false });
+    await flushPromises();
+    const control = view.wrapper.findAllComponents(SettingsSelect).find(component => component.vm.$attrs['data-testid'] === 'llama-cpp-browser-vision-storage')!;
+    expect(control.props('modelValue')).toBe('legacy-expand');
+    expect(control.props('options').find(option => option.value === 'retain-checked')?.disabled).toBe(true);
+    expect(view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-status"]').text()).toContain('no retained-storage API');
+    expect(host.update).not.toHaveBeenCalled();
+    expect(host.setOptions).not.toHaveBeenCalled();
+  });
+
+  it('defaults new artifacts to retain and persists an explicit legacy request independently of context', async () => {
+    host.storageCapability.mockResolvedValue({ status: 'available' });
+    settings.value.experimental!.llamaCppBrowser!.contextTokens = 65536;
+    using view = render({ disabled: false });
+    await flushPromises();
+    const control = view.wrapper.findAllComponents(SettingsSelect).find(component => component.vm.$attrs['data-testid'] === 'llama-cpp-browser-vision-storage')!;
+    expect(control.props('modelValue')).toBe('retain-checked');
+    control.vm.$emit('update:modelValue', 'legacy-expand');
+    await flushPromises();
+    await view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-save"]').trigger('click');
+    await flushPromises();
+    expect(settings.value.experimental?.llamaCppBrowser).toMatchObject({ visionBf16Storage: 'legacy-expand', contextTokens: 65536 });
+    expect(host.setOptions).not.toHaveBeenCalled();
+    await view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-reset"]').trigger('click');
+    await flushPromises();
+    expect(settings.value.experimental?.llamaCppBrowser?.visionBf16Storage).toBeUndefined();
+    expect(control.props('modelValue')).toBe('retain-checked');
+  });
+
+  it('does not silently use legacy for a stored explicit retain request on an old artifact', async () => {
+    settings.value.experimental!.llamaCppBrowser!.visionBf16Storage = 'retain-checked';
+    using view = render({ disabled: false });
+    await flushPromises();
+    expect(view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-status"]').text()).toContain('selected but unavailable');
+    expect(view.wrapper.get<HTMLButtonElement>('[data-testid="llama-cpp-browser-vision-storage-save"]').element.disabled).toBe(true);
+    expect(settings.value.experimental?.llamaCppBrowser?.visionBf16Storage).toBe('retain-checked');
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps incompatible/busy controls unavailable without changing the saved preference', async () => {
+    host.storageCapability.mockResolvedValue({ status: 'incompatible', reason: 'api-incompatible' });
+    using view = render({ disabled: true });
+    await flushPromises();
+    expect(view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-status"]').text()).toContain('incompatible');
+    await view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-reset"]').trigger('click');
     expect(host.update).not.toHaveBeenCalled();
   });
 });
