@@ -8,7 +8,8 @@ import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
-const otherIgnores = ['src/strings/**'];
+const firstTargets = ['src/strings', 'src/components'];
+const otherIgnores = firstTargets.map(directory => `${directory}/**`);
 
 function createFixture() {
   const directory = mkdtempSync(path.join(tmpdir(), 'naidan-lint-partitions-'));
@@ -28,11 +29,11 @@ function createFixture() {
   };
 }
 
-function createEslint({ directory, ignoreStrings = false }: { directory: string, ignoreStrings?: boolean }) {
+function createEslint({ directory, ignoreFirstPartition = false }: { directory: string, ignoreFirstPartition?: boolean }) {
   return new ESLint({
     cwd: directory,
     overrideConfigFile: path.join(repoRoot, 'eslint.config.js'),
-    ignorePatterns: ignoreStrings ? otherIgnores : [],
+    ignorePatterns: ignoreFirstPartition ? otherIgnores : [],
     // Only the tiny fixture projects replace Naidan's real TypeScript projects.
     // Keep the actual rules, processors, severity, ignores and inline directives.
     overrideConfig: [
@@ -71,8 +72,8 @@ describe('two-way CI lint partition contract', () => {
     const { scripts } = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
     expect(scripts.lint).toBe('eslint . --max-warnings 0');
     expect(scripts['lint:fix']).toBe('eslint --fix');
-    expect(scripts['lint:ci:strings']).toBe('eslint src/strings --max-warnings 0 --concurrency off');
-    expect(scripts['lint:ci:other']).toBe("eslint . --ignore-pattern 'src/strings/**' --max-warnings 0 --concurrency off");
+    expect(scripts['lint:ci:strings-components']).toBe('eslint src/strings src/components --max-warnings 0 --concurrency off');
+    expect(scripts['lint:ci:other']).toBe("eslint . --ignore-pattern 'src/strings/**' --ignore-pattern 'src/components/**' --max-warnings 0 --concurrency off");
   });
 
   it('keeps both checks isolated and the existing lint gate fail-closed', () => {
@@ -80,7 +81,7 @@ describe('two-way CI lint partition contract', () => {
     expect(jobs.lint_checks.strategy).toEqual({
       'fail-fast': false,
       'max-parallel': 2,
-      matrix: { scope: ['strings', 'other'] },
+      matrix: { scope: ['strings-components', 'other'] },
     });
     expect(jobs.lint_checks['continue-on-error']).toBeUndefined();
     const run = jobs.lint_checks.steps.find((step: { name: string }) => step.name === 'Run lint');
@@ -112,8 +113,12 @@ describe('two-way CI lint partition contract', () => {
       'src/strings/suppressed.ts': '// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fixture\nexport const value: any = 1;\n',
       'src/strings/unused-directive.ts': '// eslint-disable-next-line no-alert\nexport const unusedDirective = 1;\n',
       'src/stringsExtra/other.ts': 'export const notInStrings = 1;\n',
+      'src/componentsExtra/other.ts': 'export const notInComponents = 1;\n',
+      'src/components/nested/future-component.ts': 'export const value: any = 1;\n',
+      'src/components/style.css': '.box{color:red;background:blue;}\n',
       'src/main.ts': 'export const value: any = 1;\n',
       'src/view.tsx': 'export const view = <div />;\n',
+      'src/components/View.vue': '<script setup lang="ts">\ndeclare const worker: Worker;\nworker.postMessage({});\n</script>\n<template><div>Ready</div></template>\n<style>.box{color:red;background:blue;}</style>\n',
       'src/View.vue': '<script setup lang="ts">\ndeclare const worker: Worker;\nworker.postMessage({});\n</script>\n<template><div>Ready</div></template>\n<style>.box{color:red;background:blue;}</style>\n',
       'src/style.css': '.box{color:red;background:blue;}\n',
       'src/broken.ts': 'export const = ;\n',
@@ -140,26 +145,29 @@ describe('two-way CI lint partition contract', () => {
     });
     const eslint = createEslint({ directory: fixture.directory });
     const baseline = normalize({ results: await eslint.lintFiles(['.']), directory: fixture.directory });
-    const strings = normalize({ results: await eslint.lintFiles(['src/strings']), directory: fixture.directory });
+    const first = normalize({ results: await eslint.lintFiles(firstTargets), directory: fixture.directory });
     const other = normalize({
-      results: await createEslint({ directory: fixture.directory, ignoreStrings: true }).lintFiles(['.']),
+      results: await createEslint({ directory: fixture.directory, ignoreFirstPartition: true }).lintFiles(['.']),
       directory: fixture.directory,
     });
     expect(baseline.map(result => result.file).sort()).toEqual(Object.keys(checkedFiles).sort());
-    expect(strings.every(result => result.file.startsWith('src/strings/'))).toBe(true);
-    expect(other.every(result => !result.file.startsWith('src/strings/'))).toBe(true);
-    expect([...strings, ...other].sort((left, right) => left.file.localeCompare(right.file))).toEqual(baseline);
+    expect(first.every(result => firstTargets.some(directory => result.file.startsWith(`${directory}/`)))).toBe(true);
+    expect(other.every(result => firstTargets.every(directory => !result.file.startsWith(`${directory}/`)))).toBe(true);
+    expect([...first, ...other].sort((left, right) => left.file.localeCompare(right.file))).toEqual(baseline);
     // Ensure this is not a vacuous comparison of successful or ignored inputs.
-    expect(strings.some(result => result.errorCount > 0)).toBe(true);
-    expect(strings.some(result => result.warningCount > 0)).toBe(true);
-    expect(strings.some(result => result.suppressedMessages.length > 0)).toBe(true);
+    expect(first.some(result => result.errorCount > 0)).toBe(true);
+    expect(first.some(result => result.warningCount > 0)).toBe(true);
+    expect(first.some(result => result.suppressedMessages.length > 0)).toBe(true);
+    for (const filename of ['src/components/View.vue', 'src/components/style.css']) {
+      expect(first.find(result => result.file === filename)!.messages.length).toBeGreaterThan(0);
+    }
     expect(other.filter(result => result.fatalErrorCount > 0).map(result => result.file)).toEqual(['src/broken.ts']);
     for (const filename of ['src/View.vue', 'src/style.css', 'docs/client.ts', 'scripts/owned.mts']) {
       expect(other.find(result => result.file === filename)!.messages.length).toBeGreaterThan(0);
     }
   }, 30_000);
 
-  it('sees a dependency change in the other partition without changing the consumer', async () => {
+  it.each(firstTargets)('sees an other-partition dependency change from %s without changing the consumer', async (directory) => {
     using fixture = createFixture();
     fixture.write({
       'tsconfig.app.json': JSON.stringify({
@@ -167,10 +175,10 @@ describe('two-way CI lint partition contract', () => {
         include: ['src/**/*.ts'],
       }),
       'src/dependency.ts': 'export declare const endpoint: BroadcastChannel;\n',
-      'src/strings/consumer.ts': 'import { endpoint } from "../dependency";\nendpoint.postMessage({});\n',
+      [`${directory}/consumer.ts`]: 'import { endpoint } from "../dependency";\nendpoint.postMessage({});\n',
     });
-    const consumer = readFileSync(path.join(fixture.directory, 'src/strings/consumer.ts'), 'utf8');
-    const before = await createEslint({ directory: fixture.directory }).lintFiles(['src/strings']);
+    const consumer = readFileSync(path.join(fixture.directory, directory, 'consumer.ts'), 'utf8');
+    const before = await createEslint({ directory: fixture.directory }).lintFiles([directory]);
     const transportMessages = (results: ESLint.LintResult[]) => results.flatMap(result => result.messages)
       .filter(message => message.ruleId === 'local-rules-worker-transport/no-unchecked-worker-transport');
     expect(before.every(result => result.fatalErrorCount === 0)).toBe(true);
@@ -179,9 +187,9 @@ describe('two-way CI lint partition contract', () => {
     fixture.write({ 'src/dependency.ts': 'export declare const endpoint: Worker;\n' });
     // Model a fresh CI invocation, not an editor's persistent watch program.
     tsParser.clearCaches();
-    const after = await createEslint({ directory: fixture.directory }).lintFiles(['src/strings']);
+    const after = await createEslint({ directory: fixture.directory }).lintFiles([directory]);
     expect(after.every(result => result.fatalErrorCount === 0)).toBe(true);
-    expect(readFileSync(path.join(fixture.directory, 'src/strings/consumer.ts'), 'utf8')).toBe(consumer);
+    expect(readFileSync(path.join(fixture.directory, directory, 'consumer.ts'), 'utf8')).toBe(consumer);
     expect(transportMessages(after).map(message => message.messageId)).toEqual(['directPostMessage']);
   }, 30_000);
 });

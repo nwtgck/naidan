@@ -26,7 +26,8 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        scope: [strings, other]
+        # Move the component subtree off the slower non-translation check.
+        scope: [strings-components, other]
     steps:
       - name: Checkout
         uses: actions/checkout@v7

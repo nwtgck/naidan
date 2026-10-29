@@ -308,3 +308,32 @@ describe('Vue expression boundaries', () => {
     expect(lint({ code: '<template><div v-for="process in processes">{{ process.env.get("USER") }}</div></template>', filename: 'src/View.vue' })).toEqual([]);
   });
 });
+
+
+describe('destructuring preflight preserves the diagnostic walk', () => {
+  it.each([
+    ["const { default: { env: value } } = process;", 'directEnvironment'],
+    ["const { default: { default: { loadEnvFile: load } } } = process;", 'directEnvironment'],
+    ["const { default: { ...rest } } = process;", 'processReflection'],
+    ["const { default: { [key]: value } } = process;", 'dynamicProcessKey'],
+    ["const key = 'en' + 'v'; const { [key]: value } = process;", 'directEnvironment'],
+    ["({ env: value = {} } = process);", 'directEnvironment'],
+    ["const f = function ({ default: { env: value } } = process) {};", 'directEnvironment'],
+    ["const f = ({ default: { ...rest } } = process) => {};", 'processReflection'],
+    ["const { process: { env: value } } = globalThis;", 'directEnvironment'],
+    ["import * as v from 'vitest'; const { vi: { stubEnv: stub } } = v;", 'testStubOnly'],
+    ["const { stubEnv: stub } = vi;", 'testStubOnly'],
+  ])('retains %s', (code, messageId) => {
+    expect(lint({ code })).toContain(messageId);
+  });
+
+  it.each([
+    'const { pid, cwd } = process;',
+    'const { default: { pid } } = process;',
+    'const { arbitrary: { ...rest } } = process;',
+    'const { env } = { env: {} };',
+    'const f = ({ pid }: NodeJS.Process) => pid;',
+  ])('does not invent a violation for %s', code => {
+    expect(lint({ code })).toEqual([]);
+  });
+});

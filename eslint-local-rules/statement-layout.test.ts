@@ -2,7 +2,7 @@
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { ESLint, Linter } from 'eslint';
+import { ESLint, Linter, type Rule } from 'eslint';
 import * as tsParser from '@typescript-eslint/parser';
 import * as vueParser from 'vue-eslint-parser';
 import ts from 'typescript';
@@ -48,6 +48,44 @@ function expectFixed({ code, expected, preserveAst }: { code: string; expected: 
 }
 
 describe('statement layout', () => {
+  it('builds the whitespace protection index only on the first report in each lint pass', () => {
+    let indexes = 0;
+    const wrapped = statementLayout.plugins['local-rules-statement-layout'].rules['no-trailing-spaces'];
+    const measured: Rule.RuleModule = {
+      ...wrapped,
+      create(context) {
+        const sourceCode = Object.create(context.sourceCode, {
+          getTokens: {
+            value(node: Rule.Node) {
+              if (node === context.sourceCode.ast) {
+                indexes += 1;
+              }
+              return context.sourceCode.getTokens(node);
+            },
+          },
+        });
+        return wrapped.create(Object.create(context, { sourceCode: { value: sourceCode } }));
+      },
+    };
+    const measuredConfig: Linter.Config[] = [{
+      plugins: { measured: { rules: { whitespace: measured } } },
+      rules: { 'measured/whitespace': 'error' },
+    }];
+    const verify = (code: string) => linter.verify(code, measuredConfig);
+    expect(verify('const value = 1;\n')).toEqual([]);
+    expect(indexes).toBe(0);
+    const invalid = 'const first = 1;  \nconst second = 2;  \n';
+    expect(verify(invalid)).toHaveLength(2);
+    expect(indexes).toBe(1);
+    expect(verify(invalid)).toHaveLength(2);
+    expect(indexes).toBe(2);
+    const fixed = linter.verifyAndFix(invalid, measuredConfig);
+    expect(fixed.output).toBe('const first = 1;\nconst second = 2;\n');
+    expect(fixed.messages).toEqual([]);
+    // One index for the invalid pass, none for the clean verification pass.
+    expect(indexes).toBe(3);
+  });
+
   it.each([
     ['calls', 'first(); second(); third();', 'first();\nsecond();\nthird();'],
     ['declarations', 'const a = 1; let b = 2; var c = 3;', 'const a = 1;\nlet b = 2;\nvar c = 3;'],
