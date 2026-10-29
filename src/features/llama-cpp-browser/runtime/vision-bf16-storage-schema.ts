@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { visionBf16StorageSchema } from '@/features/llama-cpp-browser/types';
 
-export const visionBf16StorageSchema = z.enum(['legacy-expand', 'retain-checked']);
+export { visionBf16StorageSchema };
 export type VisionBf16Storage = z.infer<typeof visionBf16StorageSchema>;
 export const visionBf16StorageObservationSchema = z.object({
   preference: z.enum(['default', ...visionBf16StorageSchema.options]),

@@ -10,18 +10,16 @@ import { visionBf16Metadata } from '@/features/llama-cpp-browser/runtime/vision-
 import { loadProjector, loadProjectorForBackend } from './projector';
 
 const metadata = vi.hoisted(() => ({ value: undefined as unknown }));
-vi.mock('llama-cpp-browser-core/api/schema.mjs', async importOriginal => {
-  const original = await importOriginal<{ default: unknown }>();
-  return {
-    get default() {
-      return metadata.value ?? original.default;
-    },
-  };
-});
+vi.mock('llama-cpp-browser-core/api/schema.mjs', () => ({
+  get default() {
+    return metadata.value;
+  },
+}));
 
 beforeEach(() => {
   vi.resetModules();
-  metadata.value = undefined;
+  // The default Core fixture has only the legacy projector API.
+  metadata.value = { constants: [], functions: [], records: [] };
 });
 
 const mount = vi.hoisted(() => ({ remove: vi.fn() }));

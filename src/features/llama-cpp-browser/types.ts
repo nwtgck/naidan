@@ -1,7 +1,6 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Vite configuration imports these schemas before application aliases are available.
 import { parseGenerationMetrics } from '../../01-models/generation-metrics';
 import { z } from 'zod';
-import { visionBf16StorageSchema } from './runtime/vision-bf16-storage-schema';
 
 export const chatProfileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm32']);
 // Diagnostic artifacts are deliberately not part of ordinary chat selection.
@@ -27,6 +26,7 @@ export const minimumChatContextTokens = 512;
 export const maximumChatContextTokens = 1048576;
 export const chatContextTokensSchema = z.number().int().min(minimumChatContextTokens).max(maximumChatContextTokens);
 export const defaultChatContextTokens = 32768;
+export const visionBf16StorageSchema = z.enum(['legacy-expand', 'retain-checked']);
 
 export const runtimeOptionsSchema = z.object({
   visionBf16Storage: visionBf16StorageSchema.optional(),
