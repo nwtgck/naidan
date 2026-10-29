@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { storageService } from '@/00-storage/service';
 import type { Volume, Mount } from '@/01-models/types';
 import { useToast } from '@/composables/useToast';
@@ -7,34 +7,56 @@ import { useConfirm } from '@/composables/useConfirm';
 import { FolderIcon, FolderInputIcon, Loader2Icon } from 'lucide-vue-next';
 import VolumeCreator from './VolumeCreator.vue';
 import VolumeMountList from './VolumeMountList.vue';
-import type { VolumeId } from '@/01-models/ids';
+import { idToRaw, type VolumeId } from '@/01-models/ids';
 import { lazyStrings, ensureStrings } from '@/strings';
+import { useLazyVolumeCopies } from '@/composables/useLazyVolumeCopies';
 
 const volumes = ref<Volume[]>([]);
 const mounts = ref<Mount[]>([]);
 const isLoading = ref(false);
 const volumeDeletionPending = ref(false);
+let loadGeneration = 0;
+let disposed = false;
+onUnmounted(() => {
+  disposed = true;
+});
 
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
 
 const existingMountPaths = computed(() => mounts.value.map(m => m.mountPath));
+const { states: copyStates } = useLazyVolumeCopies({ volumeIds: undefined });
+
+// A newly registered volume is usable before it enters the persistent index.
+// Progress updates alone do not reload the volume/settings lists.
+watch(() => copyStates.value.map(state => idToRaw({ id: state.volume.id })).join(','), () => {
+  void loadData();
+});
 
 async function loadData() {
+  const generation = ++loadGeneration;
   isLoading.value = true;
   try {
     const list: Volume[] = [];
     for await (const vol of storageService.listVolumes()) {
       list.push(vol);
     }
-    volumes.value = list.sort((a, b) => b.createdAt - a.createdAt);
     const settings = await storageService.loadSettings();
+    if (disposed || generation !== loadGeneration) {
+      return;
+    }
+    volumes.value = list.sort((a, b) => b.createdAt - a.createdAt);
     mounts.value = settings?.mounts || [];
   } catch (e) {
+    if (disposed || generation !== loadGeneration) {
+      return;
+    }
     console.error('Failed to load volumes:', e);
     addToast({ message: await ensureStrings.volumes__failed_to_load_folders() });
   } finally {
-    isLoading.value = false;
+    if (!disposed && generation === loadGeneration) {
+      isLoading.value = false;
+    }
   }
 }
 

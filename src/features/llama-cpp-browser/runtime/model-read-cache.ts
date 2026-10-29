@@ -1,10 +1,13 @@
+import type { ModelFileSource } from './model-file-source';
+import { maximumModelReadTailBytes } from './model-file-source';
+
 /** One read window, shared by all model shards during load and retained only
  * when the model reads file-backed rows during inference. Sources must remain
- * immutable until disposal (the callers hold exclusive OPFS sync handles).
- * Large tensor reads still go straight into the native destination. */
+ * immutable until disposal. Large reads copy straight into the native destination;
+ * only an optional small tail is retained in this window. */
 const windowBytes = 64 * 1024;
 const maximumSmallReadBytes = 4096;
-type Source = { size: number, read: ({ destination, offset }: { destination: Uint8Array, offset: number }) => number };
+const minimumTailReadBytes = windowBytes;
 
 export function createModelReadCache({ mode, now }: {
   mode: 'read-ahead' | 'direct', now: (() => number) | undefined,
@@ -42,21 +45,47 @@ export function createModelReadCache({ mode, now }: {
       throw new Error('Model read cache has been disposed');
     }
   };
+  const getBuffer = (): Uint8Array | undefined => {
+    if (buffer || allocationFailed) {
+      return buffer;
+    }
+    try {
+      buffer = new Uint8Array(windowBytes);
+    } catch (error) {
+      if (!(error instanceof RangeError)) {
+        throw error;
+      }
+      allocationFailed = true;
+      counters.allocationFallbacks++;
+      return undefined;
+    }
+    counters.peakBufferBytes = buffer.byteLength;
+    return buffer;
+  };
   return {
     counters,
-    wrap({ source }: { source: Source }): Source {
+    wrap({ source }: { source: ModelFileSource }): ModelFileSource {
       assertLive();
       const size = source.size;
       if (!Number.isSafeInteger(size) || size < 0) {
         throw new RangeError('Invalid model source size');
       }
       const identity = Symbol();
-      const readSource = ({ destination, offset }: { destination: Uint8Array, offset: number }): number => {
+      const readSource = ({ destination, offset, tail }: {
+        destination: Uint8Array, offset: number, tail: Uint8Array | undefined,
+      }): number => {
         counters.sourceCalls++;
         const began = now ? readTime() : undefined;
         let count: number;
         try {
-          count = source.read({ destination, offset });
+          if (tail) {
+            if (!source.readWithTail) {
+              throw new Error('Model source does not support tail reads');
+            }
+            count = source.readWithTail({ destination, offset, tail });
+          } else {
+            count = source.read({ destination, offset });
+          }
         } finally {
           if (began !== undefined && now && counters.sourceReadMs !== undefined) {
             const elapsed = (readTime() ?? NaN) - began;
@@ -65,7 +94,7 @@ export function createModelReadCache({ mode, now }: {
             }
           }
         }
-        if (!Number.isSafeInteger(count) || count < 0 || count > destination.byteLength) {
+        if (!Number.isSafeInteger(count) || count < 0 || count > destination.byteLength + (tail?.byteLength ?? 0) || count > size - offset) {
           throw new Error('Invalid model source read count');
         }
         counters.sourceBytes += count;
@@ -86,7 +115,7 @@ export function createModelReadCache({ mode, now }: {
           const small = wanted <= maximumSmallReadBytes;
           const direct = (): number => {
             counters.directReads++;
-            const count = readSource({ destination: destination.subarray(0, wanted), offset });
+            const count = readSource({ destination: destination.subarray(0, wanted), offset, tail: undefined });
             next = small && count > 0 ? { owner: identity, offset: offset + count } : undefined;
             counters.deliveredBytes += count;
             return count;
@@ -100,9 +129,32 @@ export function createModelReadCache({ mode, now }: {
               throw new Error(String(exhaustive));
             }
             }
-            // Never stage large weights through a second host buffer, even if
-            // their initial bytes happen to be in the read-ahead window.
-            if (!small || allocationFailed) {
+            if (!small) {
+              // FileReaderSync can fetch the stdio read-ahead in the same call.
+              // The large body is never retained in the shared small window.
+              if (!allocationFailed && source.readWithTail && wanted >= minimumTailReadBytes && wanted < size - offset) {
+                const window = getBuffer();
+                if (window) {
+                  owner = undefined;
+                  length = 0;
+                  next = undefined;
+                  counters.directReads++;
+                  const count = readSource({
+                    destination: destination.subarray(0, wanted),
+                    offset,
+                    tail: window.subarray(0, Math.min(maximumModelReadTailBytes, size - offset - wanted)),
+                  });
+                  start = offset + wanted;
+                  length = Math.max(0, count - wanted);
+                  owner = length > 0 ? identity : undefined;
+                  const delivered = Math.min(wanted, count);
+                  counters.deliveredBytes += delivered;
+                  return delivered;
+                }
+              }
+              return direct();
+            }
+            if (allocationFailed) {
               return direct();
             }
             if (buffer && owner === identity && offset >= start && offset - start < length) {
@@ -119,30 +171,21 @@ export function createModelReadCache({ mode, now }: {
             if (next?.owner !== identity || next.offset !== offset) {
               return direct();
             }
-            if (!buffer) {
-              try {
-                buffer = new Uint8Array(windowBytes);
-              } catch (error) {
-                if (!(error instanceof RangeError)) {
-                  throw error;
-                }
-                allocationFailed = true;
-                counters.allocationFallbacks++;
-                return direct();
-              }
-              counters.peakBufferBytes = buffer.byteLength;
+            const window = getBuffer();
+            if (!window) {
+              return direct();
             }
             // Invalidate before overwriting: a short, failed, or invalid fill
             // must never expose old bytes under the previous source identity.
             owner = undefined;
             length = 0;
             counters.fills++;
-            const count = readSource({ destination: buffer.subarray(0, Math.min(windowBytes, size - offset)), offset });
+            const count = readSource({ destination: window.subarray(0, Math.min(windowBytes, size - offset)), offset, tail: undefined });
             start = offset;
             length = count;
             owner = identity;
             const delivered = Math.min(wanted, count);
-            destination.set(buffer.subarray(0, delivered));
+            destination.set(window.subarray(0, delivered));
             counters.deliveredBytes += delivered;
             next = delivered > 0 ? { owner: identity, offset: offset + delivered } : undefined;
             return delivered;
@@ -150,8 +193,8 @@ export function createModelReadCache({ mode, now }: {
             owner = undefined;
             length = 0;
             next = undefined;
-            // Storage errors are not allocation failures: never retry or hide
-            // them, and never reuse a window after a failed source operation.
+            // Storage failures are not optional allocation failures. Do not
+            // retry a failed source operation or preserve its previous window.
             throw error;
           }
         },
@@ -170,4 +213,5 @@ export function createModelReadCache({ mode, now }: {
 export const TEST_ONLY = {
   windowBytes,
   maximumSmallReadBytes,
+  minimumTailReadBytes,
 };

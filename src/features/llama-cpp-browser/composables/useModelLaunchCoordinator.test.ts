@@ -9,6 +9,9 @@ import { useModelLaunchCoordinator } from './useModelLaunchCoordinator';
 import { confirmModelLaunchSelection, modelLaunchEntryState, registerModelLaunchEntryContext, retireModelLaunch, startModelLaunch, retryModelLaunch, TEST_ONLY } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import { consumeModelLaunchSession, readModelLaunchSession, TEST_ONLY as sessionTestOnly } from '@/features/llama-cpp-browser/model-launch/session';
 import type { ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
+import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-launch/readiness';
+import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
+import { toHostModelDirectoryId } from '@/01-models/ids';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 const initialized = ref(true);
 const settings = ref({ ...DEFAULT_SETTINGS, storageType: 'memory' as const, endpoint: { type: 'openai' as const, url: '' } });
@@ -16,6 +19,7 @@ const interaction = ref('enabled');
 let provider: MemoryStorageProvider;
 let storageCurrent = true;
 const inspect = vi.fn();
+const hostRoot = vi.hoisted(() => vi.fn());
 const enqueue = vi.fn();
 const captureDefaults = vi.fn<() => Promise<ModelLaunchDefaultSnapshot | undefined>>(async () => undefined);
 let entryRouter: ReturnType<typeof createRouter>;
@@ -50,12 +54,14 @@ vi.mock('@/composables/useAppPresentation', () => ({ useAppPresentation: () => (
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({ loadData: vi.fn(async () => {}), registerLiveInstance: vi.fn() }));
 vi.mock('../hugging-face/download-queue', () => ({ getDownloadQueue: () => ({ enqueue }) }));
 vi.mock('../model-launch/readiness', () => ({ isModelLaunchTargetReady: vi.fn(async () => false) }));
+vi.mock('../runtime/model-destination', async () => ({ ...await import('@/features/llama-cpp-browser/runtime/model-destination-types'), hostModelRoot: hostRoot }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect }) }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
     loadChatMeta: ({ id }: Parameters<MemoryStorageProvider['loadChatMeta']>[0]) => provider.loadChatMeta({ id }),
     loadChat: ({ id }: Parameters<MemoryStorageProvider['loadChat']>[0]) => provider.loadChat({ id }),
     loadChatContent: ({ id }: Parameters<MemoryStorageProvider['loadChatContent']>[0]) => provider.loadChatContent({ id }),
+    loadHostModelDirectories: async () => [{ id: toHostModelDirectoryId({ raw: 'root-a' }), name: 'Models' }],
     loadChatGroup: ({ id }: Parameters<MemoryStorageProvider['loadChatGroup']>[0]) => provider.loadChatGroup({ id }),
     loadHierarchy: async () => (await provider.loadHierarchy()) ?? { items: [] },
     getModelLaunch: ({ chatId }: { chatId: ModelLaunchChatRequest['chatId'] }) => readModelLaunch({ provider, chatId }),
@@ -480,4 +486,90 @@ it('distinguishes metadata waiting from durable chat creation without guessing a
   expect(router.currentRoute.value.path).toBe('/');
   saving.resolve();
   await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
+});
+
+it('starts a prepared target without reading metadata or repeating file selection', async () => {
+  const router = await mountCoordinator({ path: '/' });
+  const target = targetForSelection({ selection: { repository: catalog.repository, revision: catalog.revision, files: catalog.models[0]!.files } });
+  startModelLaunch({ target, request: { input: catalog.repository, requestedVariant: target.mainFilePath, multimodal: 'off', destination: { kind: 'opfs' }, source: 'hugging-face' } });
+  await vi.waitFor(() => expect(enqueue).toHaveBeenCalledOnce());
+  expect(inspect).not.toHaveBeenCalled();
+  expect(modelLaunchEntryState.value.status).toBe('idle');
+  expect(router.currentRoute.value.path).toMatch(/^\/chat\//);
+  await expect(enqueue.mock.calls[0]![0].prepare()).resolves.toEqual(target.selection);
+});
+
+it.each(['revision', 'companion'] as const)('does not reuse a prepared chat when its %s changes', async change => {
+  homeOriginId = 'prepared-home';
+  const router = await mountCoordinator({ path: '/' });
+  const first = targetForSelection({ selection: { repository: catalog.repository, revision: catalog.revision, files: [...catalog.models[0]!.files, { path: 'mmproj-first-F16.gguf', size: 64 }] } });
+  const request = { input: catalog.repository, requestedVariant: first.mainFilePath, multimodal: 'on' as const, destination: { kind: 'opfs' as const }, source: 'hugging-face' as const };
+  startModelLaunch({ target: first, request });
+  await vi.waitFor(() => expect(enqueue).toHaveBeenCalledOnce());
+  const firstPath = router.currentRoute.value.path;
+  await router.push('/');
+  const selection = change === 'revision' ? { ...first.selection, revision: 'b'.repeat(40) }
+    : { ...first.selection, files: [...catalog.models[0]!.files, { path: 'mmproj-second-F16.gguf', size: 64 }] };
+  const second = targetForSelection({ selection });
+  startModelLaunch({ target: second, request });
+  await vi.waitFor(() => expect(enqueue).toHaveBeenCalledTimes(2));
+  expect(router.currentRoute.value.path).not.toBe(firstPath);
+  await expect(enqueue.mock.calls[1]![0].prepare()).resolves.toEqual(second.selection);
+  expect(inspect).not.toHaveBeenCalled();
+});
+
+it('rejects a prepared target from another repository before creating a chat', async () => {
+  await mountCoordinator({ path: '/' });
+  const target = targetForSelection({ selection: { repository: catalog.repository, revision: catalog.revision, files: catalog.models[0]!.files } });
+  startModelLaunch({ target, request: { input: 'owner/other', requestedVariant: target.mainFilePath, multimodal: 'off', destination: { kind: 'opfs' }, source: 'hugging-face' } });
+  await flushPromises();
+  expect(modelLaunchEntryState.value).toMatchObject({ status: 'failed', problem: 'invalid-input' });
+  expect(inspect).not.toHaveBeenCalled();
+  expect(prepare).not.toHaveBeenCalled();
+  expect(enqueue).not.toHaveBeenCalled();
+});
+
+it('rejects a relinked host root after authorization and before durable chat creation', async () => {
+  const router = await mountCoordinator({ path: '/' });
+  const root = { isSameEntry: async () => true } as unknown as FileSystemDirectoryHandle;
+  hostRoot.mockResolvedValue({ isSameEntry: async () => false });
+  const target = targetForSelection({ selection: { repository: catalog.repository, revision: catalog.revision, files: catalog.models[0]!.files } });
+  startModelLaunch({ target, request: { input: catalog.repository, requestedVariant: target.mainFilePath, multimodal: 'off', destination: { kind: 'host', directoryId: 'root-a' }, source: 'hugging-face' }, authorizeDestination: async () => ({ destination: { kind: 'host', directoryId: 'root-a' }, expectedRoot: root }) });
+  await vi.waitFor(() => expect(modelLaunchEntryState.value.status).toBe('failed'));
+  expect(prepare).not.toHaveBeenCalled();
+  expect(enqueue).not.toHaveBeenCalled();
+  expect(router.currentRoute.value.path).toBe('/');
+});
+
+it('rejects a host relink while the prepared chat is being saved, before navigation or ready checks', async () => {
+  const router = await mountCoordinator({ path: '/' });
+  const saving = Promise.withResolvers<void>();
+  const root = { isSameEntry: async () => true } as unknown as FileSystemDirectoryHandle;
+  hostRoot.mockResolvedValue(root);
+  prepare.mockImplementationOnce(async ({ request }) => {
+    await saving.promise;
+    return prepareModelLaunchChat({ provider, request });
+  });
+  const target = targetForSelection({ selection: { repository: catalog.repository, revision: catalog.revision, files: catalog.models[0]!.files } });
+  startModelLaunch({ target, request: { input: catalog.repository, requestedVariant: target.mainFilePath, multimodal: 'off', destination: { kind: 'host', directoryId: 'root-a' }, source: 'hugging-face' }, authorizeDestination: async () => ({ destination: { kind: 'host', directoryId: 'root-a' }, expectedRoot: root }) });
+  await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+  hostRoot.mockResolvedValue({ isSameEntry: async () => false });
+  saving.resolve();
+  await vi.waitFor(() => expect(modelLaunchEntryState.value.status).toBe('failed'));
+  expect(enqueue).not.toHaveBeenCalled();
+  expect(router.currentRoute.value.path).toBe('/');
+});
+
+it('passes the authorized read-only host root through the saved-model readiness check', async () => {
+  const router = await mountCoordinator({ path: '/' });
+  const root = { isSameEntry: async () => true } as unknown as FileSystemDirectoryHandle;
+  hostRoot.mockResolvedValue(root);
+  vi.mocked(isModelLaunchTargetReady).mockResolvedValueOnce(true);
+  const target = targetForSelection({ selection: { repository: catalog.repository, revision: catalog.revision, files: catalog.models[0]!.files } });
+  startModelLaunch({ target, request: { input: catalog.repository, requestedVariant: target.mainFilePath, multimodal: 'off', destination: { kind: 'host', directoryId: 'root-a' }, source: 'hugging-face' }, authorizeDestination: async () => ({ destination: { kind: 'host', directoryId: 'root-a' }, expectedRoot: root }) });
+  await vi.waitFor(() => expect(isModelLaunchTargetReady).toHaveBeenCalledOnce());
+  expect(isModelLaunchTargetReady).toHaveBeenCalledWith({ target, destination: { kind: 'host', directoryId: 'root-a' }, effectiveModelId: 'host/Models/owner/Model-GGUF:Q4_K_M', expectedRoot: root });
+  expect(enqueue).not.toHaveBeenCalled();
+  expect(router.currentRoute.value.path).toMatch(/^\/chat\//);
+  expect(hostRoot.mock.calls.every(([request]) => request.mode === 'read')).toBe(true);
 });

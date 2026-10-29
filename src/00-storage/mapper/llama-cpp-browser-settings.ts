@@ -11,7 +11,7 @@ export const llamaCppBrowserSettingsToDomain = ({ dto }: { dto: LlamaCppBrowserS
   if (dto === undefined) {
     return undefined;
   }
-  const { modelDownloadDestination, contextTokens, ...unhandled } = dto;
+  const { modelDownloadDestination, contextTokens, visionBf16Storage, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
 
   const destination = (() => {
@@ -36,14 +36,14 @@ export const llamaCppBrowserSettingsToDomain = ({ dto }: { dto: LlamaCppBrowserS
     }
   })();
 
-  return exactObject<LlamaCppBrowserSettings>()({ modelDownloadDestination: destination, contextTokens });
+  return exactObject<LlamaCppBrowserSettings>()({ modelDownloadDestination: destination, contextTokens, visionBf16Storage });
 };
 
 export const llamaCppBrowserSettingsToDto = ({ domain }: { domain: LlamaCppBrowserSettings | undefined }): LlamaCppBrowserSettingsDto | undefined => {
   if (domain === undefined) {
     return undefined;
   }
-  const { modelDownloadDestination, contextTokens, ...unhandled } = domain;
+  const { modelDownloadDestination, contextTokens, visionBf16Storage, ...unhandled } = domain;
   unhandled satisfies Record<PropertyKey, never>;
 
   const destination = (() => {
@@ -68,7 +68,7 @@ export const llamaCppBrowserSettingsToDto = ({ domain }: { domain: LlamaCppBrows
     }
   })();
 
-  return exactObject<LlamaCppBrowserSettingsDto>()({ modelDownloadDestination: destination, contextTokens });
+  return exactObject<LlamaCppBrowserSettingsDto>()({ modelDownloadDestination: destination, contextTokens, visionBf16Storage });
 };
 
 export const TEST_ONLY = {

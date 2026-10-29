@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } from '@/00-storage/mapper/mappers';
 import { createFileExplorerWorker } from './impl';
+import { ZipArchiveView } from './zip-archive-view';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
@@ -88,6 +89,374 @@ describe('file-explorer.worker.impl', () => {
     };
     expect(await worker.prepareFileDownload({ request: { sessionId, path: '/mount/file' } })).toEqual({ kind: 'stream' });
     expect(open).not.toHaveBeenCalled();
+  });
+
+  async function createZipBlob({ files }: { files: Record<string, string | Uint8Array> }): Promise<Blob> {
+    const zip = new JSZip();
+    for (const [name, content] of Object.entries(files)) {
+      zip.file(name, content);
+    }
+    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    return new Blob([Uint8Array.from(bytes).buffer]);
+  }
+
+  it('browses an archive root as a read-only virtual directory', async () => {
+    const blob = await createZipBlob({
+      files: {
+        'src/index.ts': 'export const value = 1;',
+        'README.md': '# demo',
+      },
+    });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'archive-root',
+          rootName: 'export.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob } },
+        },
+      },
+    });
+
+    const root = await worker.readDirectory({ request: { sessionId, path: '/' } });
+    expect(root.readOnly).toBe(true);
+    expect(root.pathSegments).toEqual([
+      { name: 'export.zip', path: '/', kind: 'archive' },
+    ]);
+    expect(root.entries.map(entry => [entry.name, entry.kind])).toEqual([
+      ['src', 'directory'],
+      ['README.md', 'file'],
+    ]);
+
+    const src = await worker.readDirectory({ request: { sessionId, path: '/src' } });
+    expect(src.pathSegments).toEqual([
+      { name: 'export.zip', path: '/', kind: 'archive' },
+      { name: 'src', path: '/src', kind: 'directory' },
+    ]);
+    expect(src.entries.map(entry => entry.name)).toEqual(['index.ts']);
+
+    const preview = await worker.readPreview({
+      request: { sessionId, path: '/src/index.ts', mode: 'bounded' },
+    });
+    expect(preview).toMatchObject({
+      kind: 'text',
+      rawText: 'export const value = 1;',
+      oversized: false,
+    });
+  });
+
+  it('rejects archive roots whose entries escape the virtual root', async () => {
+    const zip = new JSZip();
+    zip.file('../escape.txt', 'nope');
+    const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const blob = new Blob([Uint8Array.from(bytes).buffer]);
+
+    await expect(worker.prepareSession({
+      request: {
+        root: {
+          kind: 'archive-root',
+          rootName: 'unsafe.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob } },
+        },
+      },
+    })).rejects.toThrow(/archive root|escapes|path/u);
+  });
+
+  it('keeps ZIP file downloads lazy and streams their original content', async () => {
+    const blob = await createZipBlob({ files: { 'docs/note.txt': 'streamed from ZIP' } });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'archive-root',
+          rootName: 'export.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob } },
+        },
+      },
+    });
+    const readBlob = vi.spyOn(ZipArchiveView.prototype, 'readFileBlob');
+    const openStream = vi.spyOn(ZipArchiveView.prototype, 'openFileStream');
+    const channel = new MessageChannel();
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        readBlob.mockRestore();
+        openStream.mockRestore();
+        channel.port1.close();
+        channel.port2.close();
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    expect(await worker.prepareFileDownload({ request: { sessionId, path: '/docs/note.txt' } }))
+      .toEqual({ kind: 'stream' });
+    expect(readBlob).not.toHaveBeenCalled();
+    expect(openStream).not.toHaveBeenCalled();
+
+    const received = receiveByteStream({ port: channel.port1 as unknown as MessagePort });
+    const text = new Response(received.stream).text();
+    await worker.streamFile({
+      request: { sessionId, path: '/docs/note.txt' },
+      port: channel.port2 as unknown as MessagePort,
+    });
+    expect(await text).toBe('streamed from ZIP');
+    expect(readBlob).not.toHaveBeenCalled();
+  });
+
+  it('preserves whitespace in ZIP directory and file names', async () => {
+    const blob = await createZipBlob({ files: { ' folder /note.txt ': 'spaced path' } });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'archive-root',
+          rootName: 'export.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob } },
+        },
+      },
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    const listing = await worker.readDirectory({ request: { sessionId, path: '/ folder ' } });
+    expect(listing.entries.map(entry => entry.name)).toEqual(['note.txt ']);
+    const file = await worker.readFile({ request: { sessionId, path: '/ folder /note.txt ' } });
+    expect(await file.blob.text()).toBe('spaced path');
+  });
+
+  it('distinguishes ordinary files from ZIP parsing failures during directory probes', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'files' });
+    (await root.getFileHandle('note.txt', { create: true })).content = new TextEncoder().encode('plain text');
+    (await root.getFileHandle('broken.zip', { create: true })).content = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: root as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    await expect(worker.readDirectory({ request: { sessionId, path: '/note.txt' } }))
+      .rejects.toMatchObject({ name: 'FileExplorerNotDirectoryError' });
+    await expect(worker.readDirectory({ request: { sessionId, path: '/broken.zip' } }))
+      .rejects.not.toMatchObject({ name: 'FileExplorerNotDirectoryError' });
+    await expect(worker.readDirectory({ request: { sessionId, path: '/missing' } }))
+      .rejects.not.toMatchObject({ name: 'FileExplorerNotDirectoryError' });
+  });
+
+  it('rejects oversized ZIP previews before reading the entry and skips binary payloads', async () => {
+    const blob = await createZipBlob({
+      files: {
+        'large.txt': 'x'.repeat(TEXT_PREVIEW_SIZE_LIMIT + 1),
+        'unsupported.bin': new Uint8Array([1, 2, 3]),
+      },
+    });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'archive-root',
+          rootName: 'export.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob } },
+        },
+      },
+    });
+    const openStream = vi.spyOn(ZipArchiveView.prototype, 'openFileStream');
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        openStream.mockRestore();
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    expect(await worker.readPreview({ request: { sessionId, path: '/large.txt', mode: 'bounded' } }))
+      .toMatchObject({ kind: 'text', oversized: true, rawText: '' });
+    expect(await worker.readPreview({ request: { sessionId, path: '/unsupported.bin', mode: 'bounded' } }))
+      .toEqual({ kind: 'binary', oversized: false });
+    expect(openStream).not.toHaveBeenCalled();
+  });
+
+  it('preserves nested Wesh mount contents and permissions beneath native directories', async () => {
+    const parent = new MockFileSystemDirectoryHandle({ name: 'parent' });
+    const hidden = await parent.getDirectoryHandle('child', { create: true });
+    (await hidden.getFileHandle('wrong.txt', { create: true })).content = new TextEncoder().encode('hidden');
+    const child = new MockFileSystemDirectoryHandle({ name: 'child-mount' });
+    (await child.getFileHandle('note.txt', { create: true })).content = new TextEncoder().encode('mounted');
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [
+            { type: 'directory', path: '/parent', handle: parent as unknown as FileSystemDirectoryHandle, readOnly: false },
+            { type: 'directory', path: '/parent/child', handle: child as unknown as FileSystemDirectoryHandle, readOnly: true },
+          ],
+        },
+      },
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    const listing = await worker.readDirectory({ request: { sessionId, path: '/parent/child' } });
+    expect(listing.readOnly).toBe(true);
+    expect(listing.entries.map(entry => entry.name)).toEqual(['note.txt']);
+    const prepared = await worker.prepareFileDownload({ request: { sessionId, path: '/parent/child/note.txt' } });
+    expect(prepared.kind).toBe('file');
+    if (prepared.kind !== 'file') {
+      throw new Error('Expected a native File from the nested mount');
+    }
+    expect(await prepared.blob.text()).toBe('mounted');
+    await expect(worker.createFile({ request: { sessionId, parentPath: '/parent/child', name: 'blocked.txt' } }))
+      .rejects.toThrow('Read-only file system');
+    await expect(hidden.getFileHandle('blocked.txt')).rejects.toThrow();
+    await expect(child.getFileHandle('blocked.txt')).rejects.toThrow();
+  });
+
+  it('browses ZIP contents through a Wesh source without a native handle', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'virtual' });
+    const archive = await root.getFileHandle('bundle.data', { create: true });
+    archive.content = new Uint8Array(await (await createZipBlob({ files: { 'docs/note.txt': 'virtual ZIP' } })).arrayBuffer());
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{ type: 'directory', path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }],
+        },
+      },
+    });
+    const nativeHandle = vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        nativeHandle.mockRestore();
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    const listing = await worker.readDirectory({ request: { sessionId, path: '/mount/bundle.data/docs' } });
+    expect(listing.readOnly).toBe(true);
+    expect(listing.pathSegments).toEqual([
+      { name: 'Files', path: '/', kind: 'root' },
+      { name: 'mount', path: '/mount', kind: 'directory' },
+      { name: 'bundle.data', path: '/mount/bundle.data', kind: 'archive' },
+      { name: 'docs', path: '/mount/bundle.data/docs', kind: 'directory' },
+    ]);
+    expect(listing.entries.map(entry => entry.name)).toEqual(['note.txt']);
+    expect(await worker.readPreview({ request: { sessionId, path: '/mount/bundle.data/docs/note.txt', mode: 'bounded' } }))
+      .toMatchObject({ kind: 'text', rawText: 'virtual ZIP', oversized: false });
+  });
+
+  it('browses nested ZIP containers without relying on the file extension', async () => {
+    const innerBlob = await createZipBlob({
+      files: {
+        'xl/workbook.xml': '<workbook />',
+      },
+    });
+    const outerZip = new JSZip();
+    outerZip.file('report.data', new Uint8Array(await innerBlob.arrayBuffer()));
+    outerZip.file('plain.txt', 'not an archive');
+    const outerBytes = await outerZip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const outerBlob = new Blob([Uint8Array.from(outerBytes).buffer]);
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'archive-root',
+          rootName: 'outer.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob: outerBlob } },
+        },
+      },
+    });
+
+    const nestedRoot = await worker.readDirectory({
+      request: { sessionId, path: '/report.data' },
+    });
+    expect(nestedRoot.pathSegments).toEqual([
+      { name: 'outer.zip', path: '/', kind: 'archive' },
+      { name: 'report.data', path: '/report.data', kind: 'archive' },
+    ]);
+    expect(nestedRoot.entries.map(entry => entry.name)).toEqual(['xl']);
+
+    const readFileBlobSpy = vi.spyOn(ZipArchiveView.prototype, 'readFileBlob')
+      .mockRejectedValue(new Error('cached nested archive should not be materialized again'));
+    try {
+      const nestedDirectory = await worker.readDirectory({
+        request: { sessionId, path: '/report.data/xl' },
+      });
+      expect(nestedDirectory.entries.map(entry => entry.name)).toEqual(['workbook.xml']);
+      expect(readFileBlobSpy).not.toHaveBeenCalled();
+    } finally {
+      readFileBlobSpy.mockRestore();
+    }
+
+    await expect(worker.readDirectory({
+      request: { sessionId, path: '/plain.txt' },
+    })).rejects.toMatchObject({ name: 'FileExplorerNotDirectoryError' });
+  });
+
+  it('rejects oversized nested ZIP materialization before reading the full entry', async () => {
+    const innerBlob = await createZipBlob({ files: { 'inside.txt': 'small fixture' } });
+    const outerZip = new JSZip();
+    outerZip.file('huge.data', new Uint8Array(await innerBlob.arrayBuffer()));
+    const outerBytes = await outerZip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const outerBlob = new Blob([Uint8Array.from(outerBytes).buffer]);
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'archive-root',
+          rootName: 'outer.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob: outerBlob } },
+        },
+      },
+    });
+
+    const getFileSizeSpy = vi.spyOn(ZipArchiveView.prototype, 'getFileSize')
+      .mockReturnValue(Number.MAX_SAFE_INTEGER);
+    const readFileBlobSpy = vi.spyOn(ZipArchiveView.prototype, 'readFileBlob');
+    try {
+      await expect(worker.readDirectory({
+        request: { sessionId, path: '/huge.data' },
+      })).rejects.toThrow('Nested ZIP is too large to browse safely');
+      expect(readFileBlobSpy).not.toHaveBeenCalled();
+    } finally {
+      getFileSizeSpy.mockRestore();
+      readFileBlobSpy.mockRestore();
+    }
+  });
+
+  it('invalidates a cached native archive when the file changes', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const archiveHandle = await rootHandle.getFileHandle('changing.data', { create: true });
+    const firstBlob = await createZipBlob({ files: { 'first.txt': 'one' } });
+    let writable = await archiveHandle.createWritable();
+    await writable.write(await firstBlob.arrayBuffer());
+    await writable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    const first = await worker.readDirectory({ request: { sessionId, path: '/changing.data' } });
+    expect(first.entries.map(entry => entry.name)).toEqual(['first.txt']);
+
+    const secondBlob = await createZipBlob({ files: { 'second-longer-name.txt': 'two' } });
+    writable = await archiveHandle.createWritable();
+    await writable.write(await secondBlob.arrayBuffer());
+    await writable.close();
+
+    const second = await worker.readDirectory({ request: { sessionId, path: '/changing.data' } });
+    expect(second.entries.map(entry => entry.name)).toEqual(['second-longer-name.txt']);
   });
 
   it('lists native directory entries with metadata', async () => {
@@ -419,6 +788,114 @@ describe('file-explorer.worker.impl', () => {
       expect(response.rawText).toBe('{"a":1}');
       expect(response.displayText).toContain('\n');
     }
+  });
+
+  it('copies files and directories out of a ZIP virtual directory', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const targetHandle = await rootHandle.getDirectoryHandle('target', { create: true });
+    const archiveHandle = await rootHandle.getFileHandle('bundle.zip', { create: true });
+    const archiveBlob = await createZipBlob({
+      files: {
+        'top.txt': 'top level',
+        'docs/readme.txt': 'nested readme',
+      },
+    });
+    const writable = await archiveHandle.createWritable();
+    await writable.write(await archiveBlob.arrayBuffer());
+    await writable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await worker.copyEntries({
+      request: {
+        sessionId,
+        sourcePaths: ['/bundle.zip/top.txt', '/bundle.zip/docs'],
+        targetDirectoryPath: '/target',
+      },
+    });
+
+    expect(await (await targetHandle.getFileHandle('top.txt')).getFile().then(file => file.text())).toBe('top level');
+    const copiedDocs = await targetHandle.getDirectoryHandle('docs');
+    expect(await (await copiedDocs.getFileHandle('readme.txt')).getFile().then(file => file.text())).toBe('nested readme');
+  });
+
+  it('rejects moving a ZIP entry before copying it into the writable target', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const targetHandle = await rootHandle.getDirectoryHandle('target', { create: true });
+    const archiveHandle = await rootHandle.getFileHandle('bundle.zip', { create: true });
+    const archiveBlob = await createZipBlob({ files: { 'inside.txt': 'read only' } });
+    const writable = await archiveHandle.createWritable();
+    await writable.write(await archiveBlob.arrayBuffer());
+    await writable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await expect(worker.moveEntries({
+      request: {
+        sessionId,
+        sourcePaths: ['/bundle.zip/inside.txt'],
+        targetDirectoryPath: '/target',
+      },
+    })).rejects.toThrow('Read-only file system');
+
+    await expect(targetHandle.getFileHandle('inside.txt')).rejects.toThrow();
+  });
+
+  it('copies a nested ZIP container as the original file rather than extracting it', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const targetHandle = await rootHandle.getDirectoryHandle('target', { create: true });
+    const archiveHandle = await rootHandle.getFileHandle('outer.zip', { create: true });
+    const innerBlob = await createZipBlob({ files: { 'inside.txt': 'nested' } });
+    const outerBlob = await createZipBlob({
+      files: {
+        'inner.data': new Uint8Array(await innerBlob.arrayBuffer()),
+      },
+    });
+    const writable = await archiveHandle.createWritable();
+    await writable.write(await outerBlob.arrayBuffer());
+    await writable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await worker.copyEntries({
+      request: {
+        sessionId,
+        sourcePaths: ['/outer.zip/inner.data'],
+        targetDirectoryPath: '/target',
+      },
+    });
+
+    const copiedFile = await (await targetHandle.getFileHandle('inner.data')).getFile();
+    const copiedBytes = new Uint8Array(await copiedFile.arrayBuffer());
+    expect(copiedBytes).toEqual(new Uint8Array(await innerBlob.arrayBuffer()));
+    await expect(targetHandle.getDirectoryHandle('inner.data')).rejects.toThrow();
   });
 
   it('creates, copies, moves, and deletes entries inside a session', async () => {

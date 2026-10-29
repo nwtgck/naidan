@@ -434,6 +434,7 @@ export type BrowserImageModelSelection = {
 };
 
 export type LlamaCppBrowserSettings = {
+  visionBf16Storage?: 'legacy-expand' | 'retain-checked',
   contextTokens?: number,
   modelDownloadDestination?: { kind: 'opfs' } | { kind: 'host', directoryId: HostModelDirectoryId },
 };

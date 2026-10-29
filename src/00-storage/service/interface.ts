@@ -3,6 +3,7 @@ import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/00-storage/00-dt
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
 import type { ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+import type { StoredVolumeAccess } from '@/01-models/volume-access';
 
 export type { ChatSummary };
 
@@ -52,6 +53,32 @@ export abstract class IStorageProvider {
     volumeId: VolumeId,
     name: string,
   }): Promise<void>;
+
+  async ensureVolumeDirectory({ volumeId: _volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle> {
+    throw new Error('This storage provider cannot create a browser folder');
+  }
+
+  async publishVolume({ volume: _volume, root: _root }: { volume: Volume, root: FileSystemDirectoryHandle | undefined }): Promise<void> {
+    throw new Error('This storage provider cannot publish a browser folder');
+  }
+
+  async deleteUnpublishedVolumeDirectory({ volumeId: _volumeId }: { volumeId: VolumeId }): Promise<void> {
+    throw new Error('This storage provider cannot remove an unpublished browser folder');
+  }
+
+  async probeVolumeAccess({ volumeId }: { volumeId: VolumeId }): Promise<StoredVolumeAccess> {
+    for await (const volume of this.listVolumes()) {
+      if (idToRaw({ id: volume.id }) !== idToRaw({ id: volumeId })) {
+        continue;
+      }
+      const handle = await this.getVolumeDirectoryHandle({ volumeId });
+      if (handle !== null) {
+        return { kind: 'native', volume, handle };
+      }
+      break;
+    }
+    return { kind: 'missing', volumeId };
+  }
 
   // --- Data Access Methods ---
   protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;

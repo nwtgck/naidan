@@ -4,7 +4,7 @@ import type { DownloadSelection } from '@/features/llama-cpp-browser/hugging-fac
 import { parseRepository, type RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
 import { variantLabel } from '@/features/llama-cpp-browser/hugging-face/model-variants';
-import { matchesQuantizationChoice, preferredProjector, projectorChoices, quantizationChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { matchesQuantizationChoice, preferredProjector, projectorChoices, quantizationChoices, selectedQuantizationChoice } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { resolveModelFiles } from '@/features/llama-cpp-browser/runtime/model-directory';
 
 export type ModelLaunchProblem = 'invalid-input' | 'variant-unavailable' | 'companion-required';
@@ -20,6 +20,17 @@ export class ModelLaunchTargetError extends Error {
 export function modelLaunchChoices({ catalog }: { catalog: RepositoryCatalog }) {
   return quantizationChoices({ repository: catalog.repository, models: catalog.models })
     .filter(choice => artifactRole({ path: choice.primaryRelativePath }) === 'model');
+}
+
+/** Initial values for an explicitly opened repository, using the shared ranking. */
+export function initialRepositorySelection({ catalog, requestedVariant }: { catalog: RepositoryCatalog, requestedVariant: string | undefined }): { mainPath: string, companionPath: string, multimodal: 'on' | 'off' } {
+  const choices = modelLaunchChoices({ catalog });
+  const main = requestedVariant === undefined ? choices[0] : selectedQuantizationChoice({ choices, variant: requestedVariant });
+  return {
+    mainPath: main?.primaryRelativePath ?? '',
+    companionPath: preferredProjector({ files: catalog.projectors })?.path ?? '',
+    multimodal: catalog.projectors.length > 0 ? 'on' : 'off',
+  };
 }
 
 export function targetForChoice({ catalog, path }: { catalog: RepositoryCatalog, path: string }): ModelLaunchTarget {

@@ -49,10 +49,9 @@ async function onEntryClick({ entry }: { entry: FileExplorerEntry }): Promise<vo
 }
 
 async function onEntryDblClick({ entry }: { entry: FileExplorerEntry }): Promise<void> {
-  // In column view, dblclick is same as single click (navigation already happened)
   switch (entry.kind) {
   case 'file':
-    await ctx.loadPreview({ entry });
+    await ctx.openEntry({ entry });
     break;
   case 'directory':
     break;

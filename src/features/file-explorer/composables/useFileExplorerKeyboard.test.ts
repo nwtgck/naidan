@@ -99,6 +99,7 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     root: { kind: 'opfs-root', rootName: 'OPFS' },
     currentDirectoryPath: '/',
     readOnly: false,
+    readOnlyReason: undefined,
     pathSegments: [],
     navigateToDirectory: vi.fn().mockResolvedValue(undefined),
     navigateUp: vi.fn().mockResolvedValue(undefined),
@@ -141,6 +142,7 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
       errorMessage: undefined,
       oversized: false,
     },
+    openEntry: vi.fn().mockResolvedValue(undefined),
     loadPreview: vi.fn().mockResolvedValue(undefined),
     loadPreviewForced: vi.fn().mockResolvedValue(undefined),
     clearPreview: vi.fn(),
@@ -299,7 +301,7 @@ describe('useFileExplorerKeyboard', () => {
 
   // ---- Enter ----
 
-  it('Enter navigates into directory', async () => {
+  it('Enter opens a focused directory through the shared open action', async () => {
     const dir = makeDirEntry('docs', '/docs');
     const entries = [dir];
     ctx = makeCtx({
@@ -308,11 +310,10 @@ describe('useFileExplorerKeyboard', () => {
     });
     ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
     await handleKeyDown({ event: makeKey('Enter') });
-    expect(ctx.navigateToDirectory).toHaveBeenCalledWith({ path: '/docs' });
-    expect(ctx.applySelection).toHaveBeenCalledWith({ action: { type: 'clear' } });
+    expect(ctx.openEntry).toHaveBeenCalledWith({ entry: dir });
   });
 
-  it('Enter loads preview for file', async () => {
+  it('Enter opens a focused file through the shared open action', async () => {
     const file = makeEntry('readme.txt', 'file');
     const entries = [file];
     ctx = makeCtx({
@@ -321,7 +322,7 @@ describe('useFileExplorerKeyboard', () => {
     });
     ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
     await handleKeyDown({ event: makeKey('Enter') });
-    expect(ctx.loadPreview).toHaveBeenCalledWith({ entry: file });
+    expect(ctx.openEntry).toHaveBeenCalledWith({ entry: file });
   });
 
   // ---- Arrow navigation ----

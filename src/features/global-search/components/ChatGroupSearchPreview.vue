@@ -22,7 +22,7 @@ const props = defineProps<{
 const router = useRouter();
 const { openChat } = useChatNavigation();
 const documentMetadata = useDocumentMetadata();
-const { closeSearch } = useGlobalSearch();
+const { closeSearch, isSearchOpen, searchRequestId } = useGlobalSearch();
 const { sidebarItems } = useCurrentChatState();
 
 const chats = computed<ChatSummary[]>(() => {
@@ -43,8 +43,17 @@ const exposedSelectedChatId = computed(() => selectedChatId.value === null ? nul
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
 async function selectAndNavigate({ chatId }: { chatId: ChatId }) {
+  const requestId = searchRequestId.value;
+  const isCurrent = () => isSearchOpen.value && searchRequestId.value === requestId;
   documentMetadata?.finishHomeIntroduction();
-  await openChat({ chatId });
+  await openChat({ chatId, isCurrent }).catch((error: unknown) => {
+    if (isCurrent()) {
+      throw error;
+    }
+  });
+  if (!isCurrent()) {
+    return;
+  }
   router.push(`/chat/${idToRaw({ id: chatId })}`);
   closeSearch();
 }

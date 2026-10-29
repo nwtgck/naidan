@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { downloadReadableStream } from '@/utils/stream-download';
+import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import { ref, computed, nextTick, watch, onBeforeUnmount, useId, useTemplateRef } from 'vue';
 import {
   XIcon, UploadIcon, DownloadIcon, FileArchiveIcon,
   CheckCircle2Icon, AlertTriangleIcon, Loader2Icon,
   RefreshCwIcon, CopyPlusIcon, CopyIcon, ArrowRightIcon,
-  DatabaseIcon, Settings2Icon, FolderInputIcon,
+  DatabaseIcon, Settings2Icon, FolderInputIcon, ChevronDownIcon, FolderOpenIcon, CheckIcon,
 } from 'lucide-vue-next';
 import { ImportExportService } from '@/features/import-export/service';
 import { storageService } from '@/00-storage/service';
@@ -20,6 +21,9 @@ import type { ImportExportInitialMode } from '@/features/import-export/composabl
 import { lazyStrings, ensureStrings } from '@/strings';
 import ActionButton from '@/components/ActionButton.vue';
 import { decodeZipBase64, encodeZipStreamAsBase64 } from '@/features/import-export/zip-base64';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
+import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -32,6 +36,7 @@ const emit = defineEmits<{
 
 const service = new ImportExportService({ storage: storageService });
 const { addToast } = useToast();
+const { openFileExplorer } = useFileExplorerModal();
 
 /**
  * Directional icons chosen based on data flow relative to the application:
@@ -69,6 +74,16 @@ onBeforeUnmount(() => {
   importPreview.value = null;
 });
 const exportName = ref('');
+const exportAction = ref<'download' | 'file_explorer'>('download');
+const isExportActionMenuOpen = ref(false);
+const exportActionButton = ref<HTMLButtonElement | null>(null);
+const exportActionMenu = ref<HTMLElement | null>(null);
+const exportActionMenuId = useId();
+const exportActionPopup = useAnchoredPopup({
+  anchor: exportActionButton,
+  preferredWidth: { unit: 'rem', value: 18 },
+  maxWidthPx: 400,
+});
 const {
   excludeChats,
   excludeChatHistory,
@@ -181,6 +196,8 @@ function resetState() {
   selectedFile.value = null;
   importPreview.value = null;
   exportName.value = '';
+  exportAction.value = 'download';
+  isExportActionMenuOpen.value = false;
   resetExportExclusions();
   importConfig.value = JSON.parse(JSON.stringify(APPEND_DEFAULT_CONFIG));
 }
@@ -231,7 +248,7 @@ watch(() => props.isOpen, (isOpen) => {
     resetState();
     mode.value = props.initialMode;
     void nextTick(() => {
-      if (props.isOpen) {
+      if (!disposed && props.isOpen && !isExportActionMenuOpen.value && !modalPanel.value?.contains(document.activeElement)) {
         modalPanel.value?.focus();
       }
     });
@@ -302,11 +319,14 @@ async function copyBase64(): Promise<void> {
   }
 }
 
-async function handleExport() {
+async function handleExport({ action }: { action: 'download' | 'file_explorer' }) {
+  if (disposed || !props.isOpen || mode.value === 'processing' || base64Operation.value !== undefined) {
+    return;
+  }
   exportAbort?.abort();
   const abort = new AbortController();
   exportAbort = abort;
-  const isCurrent = () => exportAbort === abort && !abort.signal.aborted && props.isOpen;
+  const isCurrent = () => !disposed && exportAbort === abort && !abort.signal.aborted && props.isOpen;
   const exclude = buildExportExclude();
   const options = {
     fileNameSegment: exportName.value.trim(),
@@ -314,6 +334,7 @@ async function handleExport() {
   };
   mode.value = 'processing';
   error.value = null;
+  isExportActionMenuOpen.value = false;
 
   try {
     const preparing = await ensureStrings.ImportExportModal__compressing_data();
@@ -323,17 +344,49 @@ async function handleExport() {
     processingMessage.value = preparing;
     const { stream, filename } = await service.exportData(options);
 
-    // The download helper owns and cancels a late source when this view closed.
-    await downloadReadableStream({ stream, filename, size: undefined, signal: abort.signal });
-    if (!isCurrent()) {
-      return;
+    switch (action) {
+    case 'download': {
+      // The download helper owns and cancels a late source when this view closed.
+      await downloadReadableStream({ stream, filename, size: undefined, signal: abort.signal });
+      if (!isCurrent()) {
+        return;
+      }
+      const message = await ensureStrings.ImportExportModal__export_successful();
+      if (!isCurrent()) {
+        return;
+      }
+      addToast({ message, duration: 3000 });
+      emit('close');
+      break;
     }
-    const message = await ensureStrings.ImportExportModal__export_successful();
-    if (!isCurrent()) {
-      return;
+    case 'file_explorer': {
+      // Browsing needs a seekable snapshot; closing the view must cancel its source.
+      const blob = await new Response(createAbortableByteStream({ stream, signal: abort.signal, onCancel: undefined })).blob();
+      if (!isCurrent()) {
+        return;
+      }
+      openFileExplorer({
+        options: {
+          kind: 'archive-root',
+          title: filename,
+          rootName: filename,
+          archive: {
+            format: 'zip',
+            source: {
+              kind: 'blob',
+              blob,
+            },
+          },
+        },
+      });
+      emit('close');
+      break;
     }
-    addToast({ message, duration: 3000 });
-    emit('close');
+    default: {
+      const _exhaustiveCheck: never = action;
+      throw new Error(`Unhandled export action: ${_exhaustiveCheck}`);
+    }
+    }
   } catch (e) {
     if (!isCurrent()) {
       return;
@@ -350,6 +403,74 @@ async function handleExport() {
     }
   }
 }
+
+function selectExportAction({ action }: { action: 'download' | 'file_explorer' }): void {
+  exportAction.value = action;
+  closeExportActionMenu({ restoreFocus: true });
+}
+
+function closeExportActionMenu({ restoreFocus }: { restoreFocus: boolean }): void {
+  isExportActionMenuOpen.value = false;
+  if (restoreFocus && props.isOpen && mode.value === 'export') {
+    exportActionButton.value?.focus();
+  }
+}
+
+async function toggleExportActionMenu(): Promise<void> {
+  if (isExportActionMenuOpen.value) {
+    closeExportActionMenu({ restoreFocus: false });
+    return;
+  }
+  if (!props.isOpen || mode.value !== 'export' || base64Operation.value !== undefined) {
+    return;
+  }
+  exportActionPopup.refresh();
+  isExportActionMenuOpen.value = true;
+  await nextTick();
+  if (isExportActionMenuOpen.value) {
+    exportActionMenu.value?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+  }
+}
+
+function handleExportActionMenuKeydown({ event }: { event: KeyboardEvent }): void {
+  if (event.isComposing) {
+    return;
+  }
+  switch (event.key) {
+  case 'Escape':
+    event.preventDefault();
+    event.stopPropagation();
+    closeExportActionMenu({ restoreFocus: true });
+    return;
+  case 'Tab':
+    closeExportActionMenu({ restoreFocus: true });
+    return;
+  }
+  const buttons = [...(exportActionMenu.value?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? [])];
+  const current = buttons.findIndex(button => button === document.activeElement);
+  const next = event.key === 'ArrowDown' ? (current + 1) % buttons.length
+    : event.key === 'ArrowUp' ? (current - 1 + buttons.length) % buttons.length
+      : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : undefined;
+  if (next !== undefined) {
+    event.preventDefault();
+    buttons[next]?.focus();
+  }
+}
+
+function closeExportActionMenuOnOutsideEvent({ event }: { event: Event }): void {
+  const target = event.target;
+  if (isExportActionMenuOpen.value && target instanceof Node && !exportActionButton.value?.contains(target) && !exportActionMenu.value?.contains(target)) {
+    closeExportActionMenu({ restoreFocus: false });
+  }
+}
+
+useEventTargetListener(document, 'pointerdown', event => closeExportActionMenuOnOutsideEvent({ event }));
+useEventTargetListener(document, 'focusin', event => closeExportActionMenuOnOutsideEvent({ event }));
+watch(() => props.isOpen && mode.value === 'export' && base64Operation.value === undefined, available => {
+  if (!available) {
+    closeExportActionMenu({ restoreFocus: false });
+  }
+});
 
 async function handleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
@@ -652,15 +773,76 @@ defineExpose({
                     </p>
                   </div>
 
-                  <button
-                    data-testid="import-export-export-now-button"
-                    :disabled="base64Operation !== undefined"
-                    tw-class="w-full sm:w-auto px-10 py-4 rounded-2xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3"
-                    @click="handleExport"
-                  >
-                    <component :is="ExportIcon" tw-class="w-6 h-6" />
-                    {{ lazyStrings.ImportExportModal__export_now() }}
-                  </button>
+                  <div tw-class="inline-flex min-w-0 w-full max-w-full rounded-xl border border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800/45 dark:text-gray-200 sm:w-auto">
+                    <button
+                      type="button"
+                      data-testid="import-export-export-now-button"
+                      :disabled="base64Operation !== undefined"
+                      tw-class="flex min-h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-l-xl px-4 py-2.5 text-[13px] font-medium transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-gray-800 sm:flex-none"
+                      @click="handleExport({ action: exportAction })"
+                    >
+                      <FolderOpenIcon v-if="exportAction === 'file_explorer'" aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                      <component :is="ExportIcon" v-else aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                      <span tw-class="min-w-0 break-words">{{ exportAction === 'file_explorer'
+                        ? lazyStrings.ImportExportModal__view_in_file_explorer()
+                        : lazyStrings.ImportExportModal__download_zip() }}</span>
+                    </button>
+                    <button
+                      ref="exportActionButton"
+                      type="button"
+                      data-testid="import-export-export-action-menu-button"
+                      :disabled="base64Operation !== undefined"
+                      tw-class="flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-r-xl border-l border-gray-200 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                      :aria-expanded="isExportActionMenuOpen"
+                      :aria-controls="isExportActionMenuOpen ? exportActionMenuId : undefined"
+                      aria-haspopup="menu"
+                      :aria-label="lazyStrings.ImportExportModal__export_options()"
+                      @click="toggleExportActionMenu"
+                      @keydown.down.prevent="isExportActionMenuOpen || toggleExportActionMenu()"
+                      @keydown.up.prevent="isExportActionMenuOpen || toggleExportActionMenu()"
+                    >
+                      <ChevronDownIcon aria-hidden="true" :tw-class="['h-4 w-4 transition-transform motion-reduce:transition-none', isExportActionMenuOpen && 'rotate-180']" />
+                    </button>
+                  </div>
+                  <Teleport to="body">
+                    <div
+                      v-if="isExportActionMenuOpen"
+                      :id="exportActionMenuId"
+                      ref="exportActionMenu"
+                      data-testid="import-export-export-action-menu"
+                      role="menu"
+                      :aria-label="lazyStrings.ImportExportModal__export_options()"
+                      :style="{ ...exportActionPopup.placement.value.style, zIndex: 120 }"
+                      tw-class="overflow-y-auto overscroll-contain rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl shadow-gray-950/15 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/40"
+                      @keydown="handleExportActionMenuKeydown({ event: $event })"
+                    >
+                      <button
+                        type="button"
+                        data-testid="import-export-export-action-download"
+                        role="menuitemradio"
+                        :aria-checked="exportAction === 'download'"
+                        :tw-class="['flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', exportAction === 'download' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
+                        @click="selectExportAction({ action: 'download' })"
+                      >
+                        <component :is="ExportIcon" aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                        <span tw-class="min-w-0 flex-1 break-words">{{ lazyStrings.ImportExportModal__download_zip() }}</span>
+                        <CheckIcon v-if="exportAction === 'download'" aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="import-export-export-action-file-explorer"
+                        role="menuitemradio"
+                        :aria-checked="exportAction === 'file_explorer'"
+                        :tw-class="['flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', exportAction === 'file_explorer' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
+                        @click="selectExportAction({ action: 'file_explorer' })"
+                      >
+                        <FolderOpenIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+                        <span tw-class="min-w-0 flex-1 break-words">{{ lazyStrings.ImportExportModal__view_in_file_explorer() }}</span>
+                        <CheckIcon v-if="exportAction === 'file_explorer'" aria-hidden="true" tw-class="h-4 w-4 shrink-0" />
+                      </button>
+                    </div>
+                  </Teleport>
+
                 </div>
               </div>
             </div>
@@ -678,7 +860,7 @@ defineExpose({
             </section>
 
             <div tw-class="flex justify-start pt-4 border-t border-gray-100 dark:border-gray-800">
-              <button @click="leaveExport" tw-class="px-4 py-2 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+              <button data-testid="import-export-export-back" @click="leaveExport" tw-class="px-4 py-2 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                 {{ lazyStrings.ImportExportModal__back_to_menu() }}
               </button>
             </div>

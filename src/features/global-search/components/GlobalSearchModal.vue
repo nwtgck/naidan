@@ -26,11 +26,11 @@ const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => impor
 const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
 
 const router = useRouter();
-const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
+const { isSearchOpen, closeSearch, chatGroupIds, chatId, query, searchRequestId } = useGlobalSearch();
 const { openChat, openChatAtMessage, openChatGroup } = useChatNavigation();
 const documentMetadata = useDocumentMetadata();
 const { chatGroups, currentChat, sidebarItems } = useCurrentChatState();
-const { query, isSearching, isScanningContent, results, search, stopSearch, disposeSearch } = useChatSearch({ sidebarItems });
+const { isSearching, isScanningContent, results, search, stopSearch, disposeSearch } = useChatSearch({ sidebarItems });
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
   globalSearchScope: searchScope,
@@ -62,10 +62,50 @@ const {
   overscan: 6,
 });
 const showGroupSelector = ref(false);
-const activePane = ref<'results' | 'preview'>('results');
+const activePane = ref<'query' | 'results' | 'preview'>('query');
 const isExpandedByClick = ref(false);
 const isHoveringResults = ref(false);
+let lastPointerPosition: { x: number, y: number } | undefined;
+let lastPointerMove: PointerEvent | undefined;
+let didPointerMove = false;
 let previewHoverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// Track outside the rows too: layout changes under a stationary pointer are not selection input.
+useEventTargetListener(document, 'pointerover', event => {
+  if (event.pointerType !== 'touch' && lastPointerPosition === undefined) {
+    lastPointerPosition = { x: event.clientX, y: event.clientY };
+  }
+}, { capture: true, passive: true });
+
+useEventTargetListener(document, 'pointermove', event => {
+  lastPointerMove = event;
+  didPointerMove = event.pointerType !== 'touch'
+    && lastPointerPosition !== undefined
+    && (lastPointerPosition.x !== event.clientX || lastPointerPosition.y !== event.clientY);
+  if (event.pointerType !== 'touch') {
+    lastPointerPosition = { x: event.clientX, y: event.clientY };
+  }
+}, { capture: true, passive: true });
+
+function handleResultPointerMove({ event, index }: { event: PointerEvent, index: number }): void {
+  if (event !== lastPointerMove || !didPointerMove || results.value[index] === undefined) {
+    return;
+  }
+  selectedIndex.value = index;
+  const pane = activePane.value;
+  switch (pane) {
+  case 'preview':
+    activePane.value = 'results';
+    break;
+  case 'query':
+  case 'results':
+    break;
+  default: {
+    const exhaustive: never = pane;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
 
 const handlePreviewMouseEnter = () => {
   if (previewHoverTimeout) {
@@ -155,7 +195,12 @@ watch(results, (newResults, oldResults) => {
     selectedIndex.value = Math.min(selectedIndex.value, newResults.length - 1);
   }
 
-  activePane.value = 'results';
+  // Streaming results may move the selection, but must not change the keyboard's operation target.
+  if (newResults.length === 0) {
+    activePane.value = 'query';
+  } else if (activePane.value === 'preview' && !newResults.some(entry => getSearchResultKey({ entry }) === previousKey)) {
+    activePane.value = 'results';
+  }
 });
 
 const handleClickOutsideGroupSelector = ({ event }: { event: MouseEvent }) => {
@@ -313,6 +358,13 @@ watch(query, () => {
 // Debounce search input
 let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
+function clearSearchDebounce(): void {
+  if (debounceTimeout !== null) {
+    clearTimeout(debounceTimeout);
+    debounceTimeout = null;
+  }
+}
+
 const performSearch = ({ val }: { val: string }) => {
   search({
     searchQuery: val,
@@ -328,13 +380,12 @@ const performSearch = ({ val }: { val: string }) => {
 
 const handleInput = ({ event }: { event: Event }) => {
   const val = (event.target as HTMLInputElement).value;
+  activePane.value = 'query';
   // Performance & Stability Note: Synchronize the query state immediately to prevent
   // the input field from jumping or losing characters during rapid typing.
   query.value = val;
 
-  if (debounceTimeout) {
-    clearTimeout(debounceTimeout);
-  }
+  clearSearchDebounce();
 
   const delay = (() => {
     const scope = searchScope.value;
@@ -350,27 +401,34 @@ const handleInput = ({ event }: { event: Event }) => {
     }
   })();
 
+  const requestId = searchRequestId.value;
   debounceTimeout = setTimeout(() => {
-    performSearch({ val });
+    if (!isSearchOpen.value || searchRequestId.value !== requestId) {
+      return;
+    }
+    debounceTimeout = null;
+    performSearch({ val: query.value });
   }, delay);
 };
 
-function isEnterForImeComposition({ event }: { event: KeyboardEvent }) {
-  return event.key === 'Enter' && (
-    event.isComposing ||
+function isImeCompositionEvent({ event }: { event: KeyboardEvent }) {
+  return event.isComposing ||
     event.keyCode === 229 ||
-    event.which === 229
-  );
+    event.which === 229;
 }
 
-watch([searchScope, searchRoleFilter, chatGroupIds, chatId], () => {
-  if (isSearchOpen.value) {
-    performSearch({ val: query.value });
-  }
-}, { deep: true });
-
 const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
-  if (isEnterForImeComposition({ event })) {
+  if (isImeCompositionEvent({ event })) {
+    activePane.value = 'query';
+    return;
+  }
+
+  const isModifiedArrow = event.key.startsWith('Arrow')
+    && (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey);
+  const isEditingKey = ['Home', 'End', 'Backspace', 'Delete'].includes(event.key)
+    || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a');
+  if (isModifiedArrow || isEditingKey) {
+    activePane.value = 'query';
     return;
   }
 
@@ -383,7 +441,12 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
         groupPreviewRef.value.navigate({ direction: 'down' });
       }
       break;
+    case 'query':
     case 'results':
+      if (totalItems.value === 0) {
+        break;
+      }
+      activePane.value = 'results';
       selectedIndex.value = Math.min(selectedIndex.value + 1, totalItems.value - 1);
       scrollToSelected();
       break;
@@ -401,7 +464,12 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
         groupPreviewRef.value.navigate({ direction: 'up' });
       }
       break;
+    case 'query':
     case 'results':
+      if (totalItems.value === 0) {
+        break;
+      }
+      activePane.value = 'results';
       selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
       scrollToSelected();
       break;
@@ -412,7 +480,7 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
     }
   } else if (event.key === 'ArrowRight') {
     // If we are on a result item, focus the preview pane
-    if (activePane.value === 'results' && currentSelectedItem.value) {
+    if (activePane.value === 'results' && currentSelectedItem.value && isPreviewVisible.value && !isScanningContent.value) {
       event.preventDefault();
       activePane.value = 'preview';
     }
@@ -427,7 +495,9 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
       });
       break;
     case 'results':
-      // Do nothing
+      activePane.value = 'query';
+      break;
+    case 'query':
       break;
     default: {
       const _ex: never = pane;
@@ -464,16 +534,13 @@ function clearModalTimers(): void {
   if (highlightTimeout !== null) {
     clearTimeout(highlightTimeout);
   }
-  if (debounceTimeout !== null) {
-    clearTimeout(debounceTimeout);
-  }
+  clearSearchDebounce();
   if (previewDebounceTimeout !== null) {
     clearTimeout(previewDebounceTimeout);
   }
 
   previewHoverTimeout = null;
   highlightTimeout = null;
-  debounceTimeout = null;
   previewDebounceTimeout = null;
 }
 
@@ -498,12 +565,21 @@ async function selectItem({ index }: { index: number }) {
     return;
   }
 
+  const requestId = searchRequestId.value;
+  const isCurrent = () => isSearchOpen.value && searchRequestId.value === requestId;
   documentMetadata?.finishHomeIntroduction();
   const type = target.type;
   switch (type) {
   case 'chat': {
     const chatItem = target.item;
-    await openChat({ chatId: toChatId({ raw: chatItem.chatId }) });
+    await openChat({ chatId: toChatId({ raw: chatItem.chatId }), isCurrent }).catch((error: unknown) => {
+      if (isCurrent()) {
+        throw error;
+      }
+    });
+    if (!isCurrent()) {
+      return;
+    }
     router.push(`/chat/${chatItem.chatId}`);
     closeSearch();
     break;
@@ -513,7 +589,15 @@ async function selectItem({ index }: { index: number }) {
     await openChatAtMessage({
       chatId: toChatId({ raw: matchItem.chatId }),
       messageId: toMessageId({ raw: matchItem.messageId }),
+      isCurrent,
+    }).catch((error: unknown) => {
+      if (isCurrent()) {
+        throw error;
+      }
     });
+    if (!isCurrent()) {
+      return;
+    }
     router.push({
       path: `/chat/${matchItem.chatId}`,
       query: { 'message-id': matchItem.messageId },
@@ -547,23 +631,40 @@ function restorePreviousFocusArea(): void {
   previousFocusArea.value = undefined;
 }
 
-watch(isSearchOpen, (isOpen) => {
+watch([isSearchOpen, searchRequestId, searchScope, searchRoleFilter, chatGroupIds, chatId], ([isOpen, requestId], [wasOpen, previousRequestId]) => {
   if (isOpen) {
-    previousFocusArea.value = activeFocusArea.value;
-    setActiveFocusArea({ area: 'search' });
-    performSearch({ val: query.value });
-    nextTick(() => {
-      if (searchInput.value) {
-        searchInput.value.focus();
-        searchInput.value.select();
+    const isNewRequest = !wasOpen || requestId !== previousRequestId;
+    if (isNewRequest) {
+      if (!wasOpen) {
+        previousFocusArea.value = activeFocusArea.value;
+        setActiveFocusArea({ area: 'search' });
       }
-    });
+      clearModalTimers();
+      stopSearch();
+      showGroupSelector.value = false;
+      activePane.value = 'query';
+      isExpandedByClick.value = false;
+      updateHighlightState();
+    } else {
+      // Filter changes must not leave an older input debounce pending.
+      clearSearchDebounce();
+    }
+    performSearch({ val: query.value });
+    if (isNewRequest) {
+      deferredSelectedItem.value = currentSelectedItem.value;
+      nextTick(() => {
+        if (isSearchOpen.value && searchRequestId.value === requestId && searchInput.value) {
+          searchInput.value.focus();
+          searchInput.value.select();
+        }
+      });
+    }
   } else {
     clearModalTimers();
     stopSearch();
     restorePreviousFocusArea();
   }
-}, { immediate: true });
+}, { immediate: true, deep: true });
 
 onBeforeUnmount(() => {
   clearModalTimers();
@@ -602,6 +703,9 @@ defineExpose({
             :value="query"
             @input="handleInput({ event: $event })"
             @keydown="handleKeydown({ event: $event })"
+            @focus="activePane = 'query'"
+            @pointerdown="activePane = 'query'"
+            @compositionstart="activePane = 'query'"
             type="text"
             tw-class="flex-1 min-w-0 py-1 bg-transparent border-none outline-none text-base sm:text-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
             :placeholder="lazyStrings.GlobalSearchModal__search_chats_and_messages()"
@@ -789,7 +893,7 @@ defineExpose({
                   <div
                     :data-index="visibleResult.index"
                     :data-testid="'search-result-item-' + visibleResult.index"
-                    @mouseenter="selectedIndex = visibleResult.index"
+                    @pointermove="handleResultPointerMove({ event: $event, index: visibleResult.index })"
                     @click="selectItem({ index: visibleResult.index })"
                     :tw-class="['group flex flex-col px-3 py-3 rounded-lg cursor-pointer transition-[background-color,border-color,opacity] duration-150 border border-transparent', selectedIndex === visibleResult.index
                       ? (activePane === 'results' ? 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-600/70' : 'bg-gray-50 dark:bg-gray-800/60 border-gray-200/70 dark:border-gray-700 opacity-80')

@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { TEST_ONLY } from './q8-kernel-benchmark';
 import { createBenchmarkFixture } from './q8-kernel-benchmark.test-support';
-import { q8KernelVariants, type Q8KernelBenchmarkProgress } from '@/features/llama-cpp-browser/performance/q8-kernel-schema';
+import { createQ8KernelPairedSchedule, q8KernelVariants, type Q8KernelBenchmarkProgress } from '@/features/llama-cpp-browser/performance/q8-kernel-schema';
 
 describe('explicit Q8 kernel benchmark', () => {
   let base: Core;
@@ -35,6 +35,7 @@ describe('explicit Q8 kernel benchmark', () => {
         onProgress: ({ progress: value }) => progress.push(value),
       },
       shapes: [[64, 5], [96, 3]],
+      pairedShapes: [],
       validate: ({ result }) => result,
     });
     expect(result.status).toBe('complete');
@@ -62,15 +63,137 @@ describe('explicit Q8 kernel benchmark', () => {
   it.each(['quantized', 'unavailable'] as const)('keeps %s GPU evidence without producing a winner', async timestamps => {
     await using fixture = createBenchmarkFixture({ base });
     fixture.state.timestamps = timestamps;
-    const result = await TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[32, 3]], validate: ({ result }) => result });
+    const result = await TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[32, 3]], pairedShapes: [], validate: ({ result }) => result });
     expect(result.shapes[0]!.samples.every(sample => sample.timingStatus === timestamps && sample.gpuMsPerDispatch === (timestamps === 'quantized' ? 0 : undefined))).toBe(true);
     expect(result).not.toHaveProperty('winner');
+  });
+
+  it.each([false, true])('runs 8 adjacent ABBA/BAAB blocks after A/B re-warmups on the same allocation (same shader: %s)', async sameShader => {
+    await using fixture = createBenchmarkFixture({ base });
+    fixture.state.sameShader = sameShader;
+    const progress: Q8KernelBenchmarkProgress[] = [];
+    const result = await TEST_ONLY.runBenchmark({
+      input: {
+        core: fixture.core,
+        diagnostic: fixture.diagnostic,
+        signal: undefined,
+        onProgress: ({ progress: value }) => progress.push(value),
+      },
+      shapes: [[64, 5]],
+      pairedShapes: [[64, 5]],
+      validate: ({ result }) => result,
+    });
+    const shape = result.shapes[0]!, paired = shape.pairedComparison!;
+    expect(shape.samples).toHaveLength(24);
+    expect(paired.status).toBe('complete');
+    expect(paired.warmups.map(row => [row.variant, row.call.report.dispatches])).toEqual([['auto', 1], ['independent-wg128-r4', 1]]);
+    expect(paired.samples.map(({ variant, block, order, arm, position, sequence }) => ({ variant, block, order, arm, position, sequence }))).toEqual(createQ8KernelPairedSchedule({ blocks: 8 }));
+    expect(paired.samples.map(sample => sample.arm).join('')).toBe('ABBABAAB'.repeat(4));
+    expect(paired.samples[0]!.report.rowsPerTile === paired.samples[1]!.report.rowsPerTile).toBe(sameShader);
+    expect(paired.samples.every((sample, i) => sample.report.dispatches === 32 && sample.exact.words === 5 && sample.exact.guards
+      && sample.callEndedMs >= sample.callStartedMs && sample.wallMs === sample.callEndedMs - sample.callStartedMs
+      && (!i || sample.callStartedMs >= paired.samples[i - 1]!.callEndedMs))).toBe(true);
+    expect(fixture.state.calls).toHaveLength(70);
+    expect(fixture.state.calls.slice(36, 38).map(call => [call.variant, call.repetitions])).toEqual([['auto', 1], ['independent-wg128-r4', 1]]);
+    expect(fixture.state.calls.slice(38).map(call => call.variant)).toEqual(createQ8KernelPairedSchedule({ blocks: 8 }).map(row => row.variant));
+    expect(new Set(fixture.state.calls.map(call => `${call.backend}:${call.dst}`)).size).toBe(1);
+    expect(fixture.events.filter(event => event === 'buffer-init')).toHaveLength(1);
+    expect(progress.every(row => row.totalSamples === 256 && 'section' in row && row.completedSamples === row.baseCompletedSamples + row.pairedCompletedSamples)).toBe(true);
+    expect(progress.filter(row => 'section' in row && row.section === 'paired').every(row => 'baseCompletedSamples' in row && row.baseCompletedSamples === 24)).toBe(true);
+    expect(progress.at(-1)).toMatchObject({ completedSamples: 56, totalSamples: 256, baseCompletedSamples: 24, pairedCompletedSamples: 32 });
+    expect(shape.inputsUnchanged).toMatchObject({ weights: true, input: true, guards: true });
+    expect(fixture.allocations.size + fixture.buffers.size + fixture.contexts.size + fixture.backends.size).toBe(0);
+  });
+
+  it('does not replace an unsupported paired arm with another variant or run one-sided blocks', async () => {
+    await using fixture = createBenchmarkFixture({ base });
+    fixture.state.unsupported.add('independent-wg128-r4');
+    const result = await TEST_ONLY.runBenchmark({
+      input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} },
+      shapes: [[64, 5]],
+      pairedShapes: [[64, 5]],
+      validate: ({ result }) => result,
+    });
+    expect(result.status).toBe('partial');
+    expect(result.shapes[0]!.samples).toHaveLength(20);
+    expect(result.shapes[0]!.pairedComparison).toMatchObject({ status: 'unsupported', warmups: [], samples: [] });
+    expect(fixture.events.at(-1)).toBe('free-backend');
+  });
+
+  it('records a newly unsupported paired warmup after preserving all 24 base samples', async () => {
+    await using fixture = createBenchmarkFixture({ base });
+    fixture.state.onInvoke = () => {
+      if (fixture.state.calls.length === 38) {
+        fixture.state.unsupported.add('independent-wg128-r4');
+      }
+    };
+    const result = await TEST_ONLY.runBenchmark({
+      input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} },
+      shapes: [[64, 5]],
+      pairedShapes: [[64, 5]],
+      validate: ({ result }) => result,
+    });
+    expect(result.status).toBe('partial');
+    const shape = result.shapes[0]!, paired = shape.pairedComparison!;
+    expect(shape.samples).toHaveLength(24);
+    expect(paired.status).toBe('unsupported');
+    expect(paired.samples).toEqual([]);
+    expect(paired.warmups).toHaveLength(2);
+    expect(paired.warmups[0]!.exact?.guards).toBe(true);
+    expect(paired.warmups[1]!.call.report.status).toBe('unsupported');
+    expect(paired.warmups[1]!.exact).toBeUndefined();
+    expect(fixture.state.calls).toHaveLength(38);
+    expect(fixture.events.at(-1)).toBe('free-backend');
+  });
+
+  it('keeps a cancelled paired prefix and waits for its native call before freeing', async () => {
+    await using fixture = createBenchmarkFixture({ base });
+    const controller = new AbortController(), gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+    fixture.state.onInvoke = () => {
+      if (fixture.state.calls.length === 42) {
+        fixture.state.delay = gate.promise;
+        entered.resolve();
+      }
+    };
+    const pending = TEST_ONLY.runBenchmark({
+      input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: controller.signal, onProgress() {} },
+      shapes: [[64, 5]],
+      pairedShapes: [[64, 5]],
+      validate: ({ result }) => result,
+    });
+    await entered.promise;
+    const before = [...fixture.events];
+    controller.abort();
+    await Promise.resolve();
+    expect(fixture.events).toEqual(before);
+    gate.resolve();
+    const result = await pending;
+    expect(result.status).toBe('cancelled');
+    expect(result.shapes[0]!.pairedComparison).toMatchObject({ status: 'cancelled' });
+    expect(result.shapes[0]!.pairedComparison!.samples.map(row => row.sequence)).toEqual([0, 1, 2]);
+    expect(fixture.state.calls).toHaveLength(42);
+    expect(fixture.events.at(-1)).toBe('free-backend');
+    expect(fixture.allocations.size + fixture.buffers.size + fixture.contexts.size + fixture.backends.size).toBe(0);
+  });
+
+  it('rejects a paired-only output bit flip outside the timestamp interval and skips unsafe frees', async () => {
+    await using fixture = createBenchmarkFixture({ base });
+    fixture.state.corruptAtCall = 39;
+    await expect(TEST_ONLY.runBenchmark({
+      input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} },
+      shapes: [[64, 5]],
+      pairedShapes: [[64, 5]],
+      validate: ({ result }) => result,
+    })).rejects.toThrow('exact bytes');
+    expect(fixture.state.calls).toHaveLength(39);
+    expect(fixture.events).not.toContain('free-context');
+    expect(fixture.events).not.toContain('free-backend');
   });
 
   it('records unsupported variants without substituting another kernel or changing the remaining fair order', async () => {
     await using fixture = createBenchmarkFixture({ base });
     fixture.state.unsupported.add('independent-wg128-r4');
-    const result = await TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[64, 7]], validate: ({ result }) => result });
+    const result = await TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[64, 7]], pairedShapes: [], validate: ({ result }) => result });
     expect(result.status).toBe('partial');
     const shape = result.shapes[0]!;
     expect(shape.variants[2]).toMatchObject({ variant: 'independent-wg128-r4', prepare: { report: { status: 'unsupported', algorithm: 'none', workgroupSize: 0 } } });
@@ -84,7 +207,7 @@ describe('explicit Q8 kernel benchmark', () => {
     await using fixture = createBenchmarkFixture({ base });
     const controller = new AbortController();
     controller.abort();
-    const result = await TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: controller.signal, onProgress() {} }, shapes: [[32, 3]], validate: ({ result }) => result });
+    const result = await TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: controller.signal, onProgress() {} }, shapes: [[32, 3]], pairedShapes: [], validate: ({ result }) => result });
     expect(result.status).toBe('cancelled');
     expect(fixture.events).toEqual([]);
   });
@@ -94,7 +217,7 @@ describe('explicit Q8 kernel benchmark', () => {
     const controller = new AbortController(), gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
     fixture.state.delay = gate.promise;
     fixture.state.onInvoke = () => entered.resolve();
-    const pending = TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: controller.signal, onProgress() {} }, shapes: [[32, 3]], validate: ({ result }) => result });
+    const pending = TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: controller.signal, onProgress() {} }, shapes: [[32, 3]], pairedShapes: [], validate: ({ result }) => result });
     await entered.promise;
     const before = [...fixture.events];
     controller.abort();
@@ -114,7 +237,7 @@ describe('explicit Q8 kernel benchmark', () => {
     fixture.state.fail = failure === 'native-failure';
     fixture.state.corrupt = failure === 'exact-mismatch';
     fixture.state.cleanupTrap = failure === 'cleanup-trap';
-    await expect(TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[32, 3]], validate: ({ result }) => result })).rejects.toThrow();
+    await expect(TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[32, 3]], pairedShapes: [], validate: ({ result }) => result })).rejects.toThrow();
     expect(fixture.events).not.toContain('free-context');
     expect(fixture.events).not.toContain('free-backend');
     expect(fixture.buffers.size).toBe(1);
@@ -124,7 +247,7 @@ describe('explicit Q8 kernel benchmark', () => {
   it('rejects an output bit flip that occurs only for measured repetitions 32 after all six warmups passed', async () => {
     await using fixture = createBenchmarkFixture({ base });
     fixture.state.corruptAtRepetitions = 32;
-    await expect(TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[64, 5]], validate: ({ result }) => result })).rejects.toThrow('exact bytes');
+    await expect(TEST_ONLY.runBenchmark({ input: { core: fixture.core, diagnostic: fixture.diagnostic, signal: undefined, onProgress() {} }, shapes: [[64, 5]], pairedShapes: [], validate: ({ result }) => result })).rejects.toThrow('exact bytes');
     expect(fixture.state.calls).toHaveLength(13);
     expect(fixture.state.calls.slice(6, 12).every(call => call.repetitions === 1)).toBe(true);
     expect(fixture.state.calls[12]!.repetitions).toBe(32);
@@ -149,6 +272,7 @@ describe('explicit Q8 kernel benchmark', () => {
         },
       },
       shapes: [[2048, 33]],
+      pairedShapes: [],
       validate: ({ result }) => result,
     });
     await entered.promise;

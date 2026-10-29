@@ -47,7 +47,7 @@ describe('persisted llama.cpp browser destination preferences', () => {
     const restored = await reopenedProvider.loadSettings();
 
     expect(restored).not.toBeNull();
-    expect(restored?.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination, contextTokens: undefined });
+    expect(restored?.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination, contextTokens: undefined, visionBf16Storage: undefined });
     expect(restored?.experimental?.browserImageGeneration).toMatchObject(settings.experimental!.browserImageGeneration!);
     expect(restored?.experimental?.hostModelDirectories).toStrictEqual(settings.experimental!.hostModelDirectories);
     expect(restored?.experimental?.locale).toBe('ja');
@@ -80,7 +80,7 @@ describe('persisted experimental chat capacity', () => {
     expect(JSON.parse(raw).experimental.llamaCppBrowser).toStrictEqual({ contextTokens: 131072, modelDownloadDestination: { kind: 'opfs' } });
     const reopened = new LocalStorageProvider();
     const restored = await reopened.loadSettings();
-    expect(restored?.experimental?.llamaCppBrowser).toStrictEqual(settings.experimental!.llamaCppBrowser);
+    expect(restored?.experimental?.llamaCppBrowser).toStrictEqual({ ...settings.experimental!.llamaCppBrowser, visionBf16Storage: undefined });
     expect(restored?.experimental?.locale).toBe('ja');
     expect(restored?.experimental?.browserImageGeneration?.width).toBe(768);
     await reopened.saveSettings({ settings: restored! });

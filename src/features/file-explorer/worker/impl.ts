@@ -1,8 +1,12 @@
 import { serveByteStream, byteStreamPortSchema } from '@/utils/byte-stream-port';
 
 import type { WorkerServerApi } from '@/utils/worker-transport';
+import { createRemoteDirectoryHandle, remoteDirectoryEntrySchema } from '@/utils/remote-directory-handle';
+import type { ManagedVolumeRemoteAccess } from '@/features/wesh/worker/managed-volume-access';
+import { getEffectiveWeshMounts } from '@/features/wesh/mount-policy';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
+import { createWeshZipRandomAccessSource } from '@/features/wesh/zip-stream';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
 import {
   createOpfsNaidanSysfsStorageReader,
@@ -10,6 +14,7 @@ import {
 } from '@/features/wesh/naidan-sysfs/storage-reader';
 import { EXTENSION_LANGUAGE_MAP, MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
+import { FileExplorerNotDirectoryError } from '@/features/file-explorer/logic/errors';
 import {
   isDirectoryDownloadPathExcluded,
   isSafeDirectoryDownloadPathSegment,
@@ -27,6 +32,7 @@ import {
   parseZipUpload,
   type ParsedZipUpload,
 } from './zip-upload';
+import { ZipArchiveView } from './zip-archive-view';
 import {
   copyFileSystemFileHandle,
   isFileSystemEntryLookupMiss,
@@ -72,18 +78,30 @@ import {
   type IFileExplorerWorker,
 } from './types';
 
+interface CachedArchiveView {
+  readonly sourceIdentity: string,
+  readonly view: Promise<ZipArchiveView | undefined>,
+}
+
+interface FileExplorerSessionBase {
+  readonly rootName: string,
+  readonly archiveViews: Map<string, CachedArchiveView>,
+}
+
 type FileExplorerSession =
-  | {
+  | (FileExplorerSessionBase & {
     kind: 'native-directory',
-    rootName: string,
     rootHandle: FileSystemDirectoryHandle,
     readOnly: boolean,
-  }
-  | {
+  })
+  | (FileExplorerSessionBase & {
     kind: 'wesh-mounts',
-    rootName: string,
     vfs: WeshVFS,
-  };
+  })
+  | (FileExplorerSessionBase & {
+    kind: 'archive-root',
+    rootArchive: ZipArchiveView,
+  });
 
 type ResolvedDirectory =
   | {
@@ -92,33 +110,54 @@ type ResolvedDirectory =
     path: string,
     handle: FileSystemDirectoryHandle,
     readOnly: boolean,
+    archiveBoundaryPaths: readonly string[],
   }
   | {
     kind: 'virtual-directory',
     name: string,
     path: string,
     readOnly: boolean,
+    vfs: WeshVFS,
+    archiveBoundaryPaths: readonly string[],
+  }
+  | {
+    kind: 'zip-directory',
+    name: string,
+    path: string,
+    readOnly: true,
+    archive: ZipArchiveView,
+    archiveRelativePath: string,
+    archiveBoundaryPaths: readonly string[],
   };
 
-type ResolvedFile = {
-  kind: 'native-file',
-  name: string,
-  path: string,
-  handle: FileSystemFileHandle,
-  readOnly: boolean,
-};
-
-type ResolvedVirtualFile = {
-  kind: 'virtual-file',
-  name: string,
-  path: string,
-  readOnly: boolean,
-  vfs: WeshVFS,
-};
+type ResolvedFile =
+  | {
+    kind: 'native-file',
+    name: string,
+    path: string,
+    handle: FileSystemFileHandle,
+    readOnly: boolean,
+  }
+  | {
+    kind: 'virtual-file',
+    name: string,
+    path: string,
+    readOnly: boolean,
+    vfs: WeshVFS,
+  }
+  | {
+    kind: 'zip-file',
+    name: string,
+    path: string,
+    readOnly: true,
+    archive: ZipArchiveView,
+    archiveRelativePath: string,
+  };
 
 const sessions = new Map<string, FileExplorerSession>();
 const directoryArchiveJobs = new Map<string, AbortController>();
 const fileReadJobs = new Map<string, Set<AbortController>>();
+const NESTED_ARCHIVE_MATERIALIZE_SIZE_LIMIT = 512 * 1024 * 1024;
 const zipUploadJobs = new Map<string, AbortController>();
 const zipUploadAnalyses = new Map<string, {
   readonly targetDirectoryPath: string,
@@ -171,11 +210,10 @@ function createSessionId(): string {
 }
 
 function normalizeExplorerPath({ path }: { path: string }): string {
-  const trimmed = path.trim();
-  if (!trimmed || trimmed === '/') {
+  if (!path || path === '/') {
     return '/';
   }
-  return `/${trimmed.split('/').filter(segment => segment.length > 0).join('/')}`;
+  return `/${path.split('/').filter(segment => segment.length > 0).join('/')}`;
 }
 
 function splitExplorerPath({ path }: { path: string }): string[] {
@@ -215,11 +253,14 @@ function getSession({ sessionId }: { sessionId: string }): FileExplorerSession {
 async function createSessionFromRoot({
   root,
   naidanSysfsRemoteReader,
+  managedVolumeRemoteAccess,
 }: {
   root: FileExplorerRootDescriptor,
   naidanSysfsRemoteReader: NaidanSysfsRemoteReader | undefined,
+  managedVolumeRemoteAccess: ManagedVolumeRemoteAccess | undefined,
 }): Promise<FileExplorerSession> {
   const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
+  const archiveViews = new Map<string, CachedArchiveView>();
   switch (root.kind) {
   case 'opfs-root':
     return {
@@ -227,6 +268,7 @@ async function createSessionFromRoot({
       rootName: root.rootName,
       rootHandle: await navigator.storage.getDirectory(),
       readOnly: false,
+      archiveViews,
     };
   case 'native-directory':
     return {
@@ -234,10 +276,11 @@ async function createSessionFromRoot({
       rootName: root.rootName,
       rootHandle: await directoryHandleResolver.resolve({ reference: root.handle }),
       readOnly: root.readOnly,
+      archiveViews,
     };
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined });
-    for (const mount of root.mounts) {
+    for (const mount of getEffectiveWeshMounts({ mounts: root.mounts })) {
       switch (mount.type) {
       case 'directory':
         await vfs.mount({
@@ -246,6 +289,22 @@ async function createSessionFromRoot({
           readOnly: mount.readOnly,
         });
         break;
+      case 'managed_directory': {
+        if (managedVolumeRemoteAccess === undefined) {
+          throw new Error('Managed volume access is required for this directory');
+        }
+        const remoteAccess = managedVolumeRemoteAccess;
+        const directoryRoot = remoteDirectoryEntrySchema.parse(await remoteAccess.getRoot({ path: mount.path }));
+        await vfs.mount({
+          path: mount.path,
+          handle: createRemoteDirectoryHandle({
+            root: directoryRoot,
+            access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
+          }),
+          readOnly: mount.readOnly,
+        });
+        break;
+      }
       case 'naidan_sysfs': {
         const reader = await (() => {
           switch (mount.storageType) {
@@ -289,7 +348,36 @@ async function createSessionFromRoot({
       kind: 'wesh-mounts',
       rootName: root.rootName,
       vfs,
+      archiveViews,
     };
+  }
+  case 'archive-root': {
+    switch (root.archive.format) {
+    case 'zip': {
+      const source = root.archive.source;
+      const rootArchive = await (() => {
+        switch (source.kind) {
+        case 'blob':
+          return ZipArchiveView.open({ blob: source.blob });
+        default: {
+          const _exhaustiveCheck: never = source.kind;
+          throw new Error(`Unhandled archive root source: ${String(_exhaustiveCheck)}`);
+        }
+        }
+      })();
+      archiveViews.set('/', { sourceIdentity: 'root', view: Promise.resolve(rootArchive) });
+      return {
+        kind: 'archive-root',
+        rootName: root.rootName,
+        rootArchive,
+        archiveViews,
+      };
+    }
+    default: {
+      const _exhaustiveCheck: never = root.archive.format;
+      throw new Error(`Unhandled archive root format: ${String(_exhaustiveCheck)}`);
+    }
+    }
   }
   default: {
     const _exhaustiveCheck: never = root;
@@ -298,50 +386,16 @@ async function createSessionFromRoot({
   }
 }
 
-async function resolveNativeDirectoryHandle({
-  rootHandle,
-  path,
-}: {
-  rootHandle: FileSystemDirectoryHandle,
-  path: string,
-}): Promise<FileSystemDirectoryHandle> {
-  let current = rootHandle;
-  for (const segment of splitExplorerPath({ path })) {
-    current = await current.getDirectoryHandle(segment);
-  }
-  return current;
-}
-
-async function resolveNativeDirectory({
-  rootHandle,
-  rootName,
-  readOnly,
-  path,
-}: {
-  rootHandle: FileSystemDirectoryHandle,
-  rootName: string,
-  readOnly: boolean,
-  path: string,
-}): Promise<ResolvedDirectory> {
-  const normalizedPath = normalizeExplorerPath({ path });
-  const handle = await resolveNativeDirectoryHandle({ rootHandle, path: normalizedPath });
-  return {
-    kind: 'native-directory',
-    name: getBaseNameFromPath({ path: normalizedPath, rootName }),
-    path: normalizedPath,
-    handle,
-    readOnly,
-  };
-}
-
 async function resolveWeshDirectory({
   vfs,
   rootName,
   path,
+  archiveBoundaryPaths,
 }: {
   vfs: WeshVFS,
   rootName: string,
   path: string,
+  archiveBoundaryPaths: readonly string[],
 }): Promise<ResolvedDirectory> {
   const normalizedPath = normalizeExplorerPath({ path });
   const stat = await vfs.stat({ path: normalizedPath }).catch(() => {
@@ -362,6 +416,7 @@ async function resolveWeshDirectory({
       path: normalizedPath,
       handle: nativeHandle as FileSystemDirectoryHandle,
       readOnly: vfs.getReadOnlyForPath({ path: normalizedPath }),
+      archiveBoundaryPaths,
     };
   }
 
@@ -370,7 +425,338 @@ async function resolveWeshDirectory({
     name: getBaseNameFromPath({ path: normalizedPath, rootName }),
     path: normalizedPath,
     readOnly: true,
+    vfs,
+    archiveBoundaryPaths,
   };
+}
+
+async function getOrCreateArchiveView({
+  session,
+  path,
+  sourceIdentity,
+  createView,
+}: {
+  session: FileExplorerSession,
+  path: string,
+  sourceIdentity: string,
+  createView: () => Promise<ZipArchiveView | undefined>,
+}): Promise<ZipArchiveView | undefined> {
+  const normalizedPath = normalizeExplorerPath({ path });
+  const cached = session.archiveViews.get(normalizedPath);
+  if (cached !== undefined && cached.sourceIdentity === sourceIdentity) {
+    return cached.view;
+  }
+  if (cached !== undefined) {
+    const descendantPrefix = normalizedPath === '/' ? '/' : `${normalizedPath}/`;
+    for (const archivePath of session.archiveViews.keys()) {
+      if (archivePath.startsWith(descendantPrefix)) {
+        session.archiveViews.delete(archivePath);
+      }
+    }
+  }
+  const pending = createView();
+  session.archiveViews.set(normalizedPath, { sourceIdentity, view: pending });
+  void pending.catch(() => {
+    const current = session.archiveViews.get(normalizedPath);
+    if (current?.view === pending) {
+      session.archiveViews.delete(normalizedPath);
+    }
+  });
+  return pending;
+}
+
+async function openArchiveForBlob({
+  session,
+  path,
+  blob,
+  sourceIdentity,
+}: {
+  session: FileExplorerSession,
+  path: string,
+  blob: Blob,
+  sourceIdentity: string,
+}): Promise<ZipArchiveView | undefined> {
+  return getOrCreateArchiveView({
+    session,
+    path,
+    sourceIdentity,
+    createView: () => ZipArchiveView.openIfZip({ blob }),
+  });
+}
+
+async function openArchiveForVirtualFile({
+  session,
+  vfs,
+  path,
+  sourceStat,
+}: {
+  session: FileExplorerSession,
+  vfs: WeshVFS,
+  path: string,
+  sourceStat: { readonly size: number, readonly mtime: number },
+}): Promise<ZipArchiveView | undefined> {
+  return getOrCreateArchiveView({
+    session,
+    path,
+    sourceIdentity: `wesh:${sourceStat.size}:${sourceStat.mtime}`,
+    createView: () => ZipArchiveView.openIfZipSource({
+      createSource: async () => createWeshZipRandomAccessSource({
+        handle: await vfs.open({
+          path,
+          flags: {
+            access: 'read',
+            creation: 'never',
+            truncate: 'preserve',
+            append: 'preserve',
+          },
+          mode: undefined,
+        }),
+        expectedStat: sourceStat,
+      }),
+    }),
+  });
+}
+
+async function openNestedArchive({
+  session,
+  parentArchive,
+  path,
+  archiveRelativePath,
+}: {
+  session: FileExplorerSession,
+  parentArchive: ZipArchiveView,
+  path: string,
+  archiveRelativePath: string,
+}): Promise<ZipArchiveView | undefined> {
+  const sourceIdentity = `nested:${parentArchive.cacheIdentity}:${archiveRelativePath}`;
+  return getOrCreateArchiveView({
+    session,
+    path,
+    sourceIdentity,
+    createView: async () => {
+      if (!await parentArchive.fileHasZipMagic({ relativePath: archiveRelativePath })) {
+        return undefined;
+      }
+      const uncompressedSize = parentArchive.getFileSize({ relativePath: archiveRelativePath });
+      if (uncompressedSize > NESTED_ARCHIVE_MATERIALIZE_SIZE_LIMIT) {
+        throw new Error(`Nested ZIP is too large to browse safely: ${archiveRelativePath}`);
+      }
+      return ZipArchiveView.open({
+        blob: await parentArchive.readFileBlob({ relativePath: archiveRelativePath }),
+      });
+    },
+  });
+}
+
+async function resolveRootDirectory({
+  session,
+}: {
+  session: FileExplorerSession,
+}): Promise<ResolvedDirectory> {
+  switch (session.kind) {
+  case 'native-directory':
+    return {
+      kind: 'native-directory',
+      name: session.rootName,
+      path: '/',
+      handle: session.rootHandle,
+      readOnly: session.readOnly,
+      archiveBoundaryPaths: [],
+    };
+  case 'wesh-mounts':
+    return resolveWeshDirectory({
+      vfs: session.vfs,
+      rootName: session.rootName,
+      path: '/',
+      archiveBoundaryPaths: [],
+    });
+  case 'archive-root':
+    return {
+      kind: 'zip-directory',
+      name: session.rootName,
+      path: '/',
+      readOnly: true,
+      archive: session.rootArchive,
+      archiveRelativePath: '',
+      archiveBoundaryPaths: ['/'],
+    };
+  default: {
+    const _exhaustiveCheck: never = session;
+    throw new Error(`Unhandled file explorer session: ${String(_exhaustiveCheck)}`);
+  }
+  }
+}
+
+async function resolveWeshChildDirectory({
+  session,
+  directory,
+  path,
+}: {
+  session: Extract<FileExplorerSession, { kind: 'wesh-mounts' }>,
+  directory: ResolvedDirectory,
+  path: string,
+}): Promise<ResolvedDirectory> {
+  const stat = await session.vfs.stat({ path }).catch(() => undefined);
+  if (stat === undefined) {
+    throw new Error(`Directory not found: ${path}`);
+  }
+  switch (stat.type) {
+  case 'directory':
+    return resolveWeshDirectory({
+      vfs: session.vfs,
+      rootName: session.rootName,
+      path,
+      archiveBoundaryPaths: directory.archiveBoundaryPaths,
+    });
+  case 'file': {
+    const nativeHandle = await session.vfs.getNativeHandle({ path });
+    let archive: ZipArchiveView | undefined;
+    if (nativeHandle !== null && nativeHandle.kind === 'file') {
+      const file = await (nativeHandle as FileSystemFileHandle).getFile();
+      archive = await openArchiveForBlob({
+        session,
+        path,
+        blob: file,
+        sourceIdentity: `native:${file.size}:${file.lastModified}`,
+      });
+    } else {
+      archive = await openArchiveForVirtualFile({
+        session,
+        vfs: session.vfs,
+        path,
+        sourceStat: { size: stat.size, mtime: stat.mtime },
+      });
+    }
+    if (archive === undefined) {
+      throw new FileExplorerNotDirectoryError({ path });
+    }
+    return {
+      kind: 'zip-directory',
+      name: getBaseNameFromPath({ path, rootName: session.rootName }),
+      path,
+      readOnly: true,
+      archive,
+      archiveRelativePath: '',
+      archiveBoundaryPaths: [...directory.archiveBoundaryPaths, path],
+    };
+  }
+  case 'symlink':
+  case 'fifo':
+  case 'chardev':
+    throw new Error(`Directory not found: ${path}`);
+  default: {
+    const _exhaustiveCheck: never = stat.type;
+    throw new Error(`Unhandled VFS entry type: ${String(_exhaustiveCheck)}`);
+  }
+  }
+}
+
+async function resolveChildDirectory({
+  session,
+  directory,
+  name,
+}: {
+  session: FileExplorerSession,
+  directory: ResolvedDirectory,
+  name: string,
+}): Promise<ResolvedDirectory> {
+  const childPath = joinExplorerPath({ parentPath: directory.path, name });
+  if (session.kind === 'wesh-mounts' && directory.kind !== 'zip-directory') {
+    // Native-backed parents may contain more-specific mounts with different
+    // handles or permissions, so keep resolving through the VFS until a ZIP.
+    return resolveWeshChildDirectory({ session, directory, path: childPath });
+  }
+  switch (directory.kind) {
+  case 'native-directory': {
+    try {
+      const handle = await directory.handle.getDirectoryHandle(name);
+      return {
+        kind: 'native-directory',
+        name,
+        path: childPath,
+        handle,
+        readOnly: directory.readOnly,
+        archiveBoundaryPaths: directory.archiveBoundaryPaths,
+      };
+    } catch (error) {
+      if (!isFileSystemEntryLookupMiss({ error })) {
+        throw error;
+      }
+    }
+
+    let fileHandle: FileSystemFileHandle;
+    try {
+      fileHandle = await directory.handle.getFileHandle(name);
+    } catch (error) {
+      if (isFileSystemEntryLookupMiss({ error })) {
+        throw new Error(`Directory not found: ${childPath}`);
+      }
+      throw error;
+    }
+    const file = await fileHandle.getFile();
+    const archive = await openArchiveForBlob({
+      session,
+      path: childPath,
+      blob: file,
+      sourceIdentity: `native:${file.size}:${file.lastModified}`,
+    });
+    if (archive === undefined) {
+      throw new FileExplorerNotDirectoryError({ path: childPath });
+    }
+    return {
+      kind: 'zip-directory',
+      name,
+      path: childPath,
+      readOnly: true,
+      archive,
+      archiveRelativePath: '',
+      archiveBoundaryPaths: [...directory.archiveBoundaryPaths, childPath],
+    };
+  }
+  case 'virtual-directory':
+    throw new Error(`Virtual directory outside a Wesh session: ${directory.path}`);
+  case 'zip-directory': {
+    const archiveRelativePath = directory.archiveRelativePath === ''
+      ? name
+      : `${directory.archiveRelativePath}/${name}`;
+    if (directory.archive.hasDirectory({ relativePath: archiveRelativePath })) {
+      return {
+        kind: 'zip-directory',
+        name,
+        path: childPath,
+        readOnly: true,
+        archive: directory.archive,
+        archiveRelativePath,
+        archiveBoundaryPaths: directory.archiveBoundaryPaths,
+      };
+    }
+    if (!directory.archive.hasFile({ relativePath: archiveRelativePath })) {
+      throw new Error(`Directory not found: ${childPath}`);
+    }
+    const archive = await openNestedArchive({
+      session,
+      parentArchive: directory.archive,
+      path: childPath,
+      archiveRelativePath,
+    });
+    if (archive === undefined) {
+      throw new FileExplorerNotDirectoryError({ path: childPath });
+    }
+    return {
+      kind: 'zip-directory',
+      name,
+      path: childPath,
+      readOnly: true,
+      archive,
+      archiveRelativePath: '',
+      archiveBoundaryPaths: [...directory.archiveBoundaryPaths, childPath],
+    };
+  }
+  default: {
+    const _exhaustiveCheck: never = directory;
+    throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
+  }
+  }
 }
 
 async function resolveDirectory({
@@ -380,25 +766,12 @@ async function resolveDirectory({
   session: FileExplorerSession,
   path: string,
 }): Promise<ResolvedDirectory> {
-  switch (session.kind) {
-  case 'native-directory':
-    return resolveNativeDirectory({
-      rootHandle: session.rootHandle,
-      rootName: session.rootName,
-      readOnly: session.readOnly,
-      path,
-    });
-  case 'wesh-mounts':
-    return resolveWeshDirectory({
-      vfs: session.vfs,
-      rootName: session.rootName,
-      path,
-    });
-  default: {
-    const _exhaustiveCheck: never = session;
-    throw new Error(`Unhandled file explorer session: ${String(_exhaustiveCheck)}`);
+  const normalizedPath = normalizeExplorerPath({ path });
+  let directory = await resolveRootDirectory({ session });
+  for (const segment of splitExplorerPath({ path: normalizedPath })) {
+    directory = await resolveChildDirectory({ session, directory, name: segment });
   }
-  }
+  return directory;
 }
 
 async function resolveFile({
@@ -407,29 +780,18 @@ async function resolveFile({
 }: {
   session: FileExplorerSession,
   path: string,
-}): Promise<ResolvedFile | ResolvedVirtualFile> {
+}): Promise<ResolvedFile> {
   const normalizedPath = normalizeExplorerPath({ path });
-  const name = getBaseNameFromPath({
-    path: normalizedPath,
-    rootName: session.rootName,
+  if (normalizedPath === '/') {
+    throw new Error('Root is not a file');
+  }
+  const name = getBaseNameFromPath({ path: normalizedPath, rootName: session.rootName });
+  const parentDirectory = await resolveDirectory({
+    session,
+    path: getParentPath({ path: normalizedPath }),
   });
 
-  switch (session.kind) {
-  case 'native-directory': {
-    const parentHandle = await resolveNativeDirectoryHandle({
-      rootHandle: session.rootHandle,
-      path: getParentPath({ path: normalizedPath }),
-    });
-    const handle = await parentHandle.getFileHandle(name);
-    return {
-      kind: 'native-file',
-      name,
-      path: normalizedPath,
-      handle,
-      readOnly: session.readOnly,
-    };
-  }
-  case 'wesh-mounts': {
+  if (session.kind === 'wesh-mounts' && parentDirectory.kind !== 'zip-directory') {
     const nativeHandle = await session.vfs.getNativeHandle({ path: normalizedPath });
     if (nativeHandle !== null && nativeHandle.kind === 'file') {
       return {
@@ -440,23 +802,63 @@ async function resolveFile({
         readOnly: session.vfs.getReadOnlyForPath({ path: normalizedPath }),
       };
     }
-
-    const stat = await session.vfs.stat({ path: normalizedPath }).catch(() => null);
-    if (stat === null || stat.type !== 'file') {
+    const stat = await session.vfs.stat({ path: normalizedPath }).catch(() => undefined);
+    if (stat === undefined) {
       throw new Error(`File not found: ${normalizedPath}`);
     }
+    switch (stat.type) {
+    case 'file':
+      return {
+        kind: 'virtual-file',
+        name,
+        path: normalizedPath,
+        readOnly: session.vfs.getReadOnlyForPath({ path: normalizedPath }),
+        vfs: session.vfs,
+      };
+    case 'directory':
+    case 'symlink':
+    case 'fifo':
+    case 'chardev':
+      throw new Error(`File not found: ${normalizedPath}`);
+    default: {
+      const exhaustive: never = stat.type;
+      throw new Error(`Unhandled VFS entry type: ${String(exhaustive)}`);
+    }
+    }
+  }
 
+  switch (parentDirectory.kind) {
+  case 'native-directory': {
+    const handle = await parentDirectory.handle.getFileHandle(name);
     return {
-      kind: 'virtual-file',
+      kind: 'native-file',
       name,
       path: normalizedPath,
-      readOnly: session.vfs.getReadOnlyForPath({ path: normalizedPath }),
-      vfs: session.vfs,
+      handle,
+      readOnly: parentDirectory.readOnly,
+    };
+  }
+  case 'virtual-directory':
+    throw new Error(`Virtual directory outside a Wesh session: ${parentDirectory.path}`);
+  case 'zip-directory': {
+    const archiveRelativePath = parentDirectory.archiveRelativePath === ''
+      ? name
+      : `${parentDirectory.archiveRelativePath}/${name}`;
+    if (!parentDirectory.archive.hasFile({ relativePath: archiveRelativePath })) {
+      throw new Error(`File not found: ${normalizedPath}`);
+    }
+    return {
+      kind: 'zip-file',
+      name,
+      path: normalizedPath,
+      readOnly: true,
+      archive: parentDirectory.archive,
+      archiveRelativePath,
     };
   }
   default: {
-    const _exhaustiveCheck: never = session;
-    throw new Error(`Unhandled file explorer session: ${String(_exhaustiveCheck)}`);
+    const _exhaustiveCheck: never = parentDirectory;
+    throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
   }
   }
 }
@@ -522,6 +924,30 @@ function uint8ArrayToBlobPart({ bytes }: { bytes: Uint8Array }): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
+function isResolvedFileLookupMiss({ error }: { error: unknown }): boolean {
+  if (isFileSystemEntryLookupMiss({ error })) {
+    return true;
+  }
+  return error instanceof Error && error.message.startsWith('File not found:');
+}
+
+async function readResolvedFileBlob({ file }: { file: ResolvedFile }): Promise<Blob> {
+  switch (file.kind) {
+  case 'native-file':
+    return file.handle.getFile();
+  case 'virtual-file':
+    return new Blob([uint8ArrayToBlobPart({
+      bytes: await readVirtualFileBytes({ vfs: file.vfs, path: file.path, maximumBytes: undefined }),
+    })]);
+  case 'zip-file':
+    return file.archive.readFileBlob({ relativePath: file.archiveRelativePath });
+  default: {
+    const _exhaustiveCheck: never = file;
+    throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
+  }
+  }
+}
+
 function assertDirectoryIsWritable({ directory }: {
   directory: ResolvedDirectory,
 }): void {
@@ -538,6 +964,7 @@ function getWritableNativeDirectory({ directory }: {
   case 'native-directory':
     return directory.handle;
   case 'virtual-directory':
+  case 'zip-directory':
     throw new DOMException('Read-only file system', 'NotAllowedError');
   default: {
     const _exhaustiveCheck: never = directory;
@@ -547,7 +974,6 @@ function getWritableNativeDirectory({ directory }: {
 }
 
 async function listDirectoryEntries({
-  session,
   directory,
 }: {
   session: FileExplorerSession,
@@ -561,24 +987,58 @@ async function listDirectoryEntries({
       readOnly: directory.readOnly,
     });
   case 'virtual-directory':
-    switch (session.kind) {
-    case 'wesh-mounts':
-      return listWeshVirtualDirectoryEntries({
-        vfs: session.vfs,
-        directoryPath: directory.path,
-      });
-    case 'native-directory':
-      throw new Error(`Virtual directory not supported for native session: ${directory.path}`);
-    default: {
-      const _exhaustiveCheck: never = session;
-      throw new Error(`Unhandled file explorer session: ${String(_exhaustiveCheck)}`);
-    }
-    }
+    return listWeshVirtualDirectoryEntries({
+      vfs: directory.vfs,
+      directoryPath: directory.path,
+    });
+  case 'zip-directory':
+    return listZipDirectoryEntries({ directory });
   default: {
     const _exhaustiveCheck: never = directory;
     throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
   }
   }
+}
+
+function listZipDirectoryEntries({
+  directory,
+}: {
+  directory: Extract<ResolvedDirectory, { kind: 'zip-directory' }>,
+}): FileExplorerEntryRecord[] {
+  return directory.archive.listDirectory({ relativePath: directory.archiveRelativePath }).map(child => {
+    const common = {
+      path: joinExplorerPath({ parentPath: directory.path, name: child.name }),
+      name: child.name,
+      size: child.size,
+      lastModified: child.lastModified,
+      readOnly: true,
+      canMutate: false,
+    } as const;
+    switch (child.kind) {
+    case 'file': {
+      const extension = getFileExtension({ name: child.name });
+      return {
+        ...common,
+        kind: 'file',
+        extension,
+        mimeCategory: getMimeCategory({ extension }),
+        canNavigate: false,
+      };
+    }
+    case 'directory':
+      return {
+        ...common,
+        kind: 'directory',
+        extension: '',
+        mimeCategory: 'binary',
+        canNavigate: true,
+      };
+    default: {
+      const _exhaustiveCheck: never = child.kind;
+      throw new Error(`Unhandled ZIP entry kind: ${String(_exhaustiveCheck)}`);
+    }
+    }
+  });
 }
 
 async function listNativeDirectoryEntries({
@@ -835,12 +1295,19 @@ function createDirectoryArchiveAccess({
           return entries;
         }
         case 'native-directory':
-          throw new Error(`Virtual directory not supported for native session: ${directory.path}`);
+        case 'archive-root':
+          throw new Error(`Virtual directory not supported for ${session.kind} session: ${directory.path}`);
         default: {
           const _ex: never = session;
           throw new Error(`Unhandled file explorer session: ${String(_ex)}`);
         }
         }
+      case 'zip-directory':
+        return directory.archive.listDirectory({ relativePath: directory.archiveRelativePath }).map(entry => ({
+          name: entry.name,
+          kind: entry.kind,
+          modifiedAt: entry.lastModified === undefined ? undefined : new Date(entry.lastModified),
+        }));
       default: {
         const _ex: never = directory;
         throw new Error(`Unhandled archive directory: ${String(_ex)}`);
@@ -854,6 +1321,8 @@ function createDirectoryArchiveAccess({
         return (await file.handle.getFile()).stream() as ReadableStream<Uint8Array>;
       case 'virtual-file':
         return openFileReadStream({ files: file.vfs, path: file.path });
+      case 'zip-file':
+        return file.archive.openFileStream({ relativePath: file.archiveRelativePath });
       default: {
         const _ex: never = file;
         throw new Error(`Unhandled archive file: ${String(_ex)}`);
@@ -919,12 +1388,19 @@ async function listDirectoryArchiveSuggestionEntries({
       return entries;
     }
     case 'native-directory':
-      throw new Error(`Virtual directory not supported for native session: ${directory.path}`);
+    case 'archive-root':
+      throw new Error(`Virtual directory not supported for ${session.kind} session: ${directory.path}`);
     default: {
       const _ex: never = session;
       throw new Error(`Unhandled file explorer session: ${String(_ex)}`);
     }
     }
+  case 'zip-directory':
+    return directory.archive.listDirectory({ relativePath: directory.archiveRelativePath }).map(entry => ({
+      name: entry.name,
+      kind: entry.kind,
+      modifiedAt: entry.lastModified === undefined ? undefined : new Date(entry.lastModified),
+    }));
   default: {
     const _ex: never = directory;
     throw new Error(`Unhandled archive suggestion directory: ${String(_ex)}`);
@@ -1000,23 +1476,29 @@ function joinDirectoryRelativePath({ directoryPath, relativePath }: { directoryP
 function buildPathSegments({
   path,
   rootName,
+  archiveBoundaryPaths,
 }: {
   path: string,
   rootName: string,
+  archiveBoundaryPaths: readonly string[],
 }): FileExplorerPathSegment[] {
   const normalizedPath = normalizeExplorerPath({ path });
   const segments = splitExplorerPath({ path: normalizedPath });
+  const archiveBoundaries = new Set(archiveBoundaryPaths);
   const pathSegments: FileExplorerPathSegment[] = [
     fileExplorerPathSegmentSchema.parse({
       name: rootName,
       path: '/',
+      kind: archiveBoundaries.has('/') ? 'archive' : 'root',
     }),
   ];
 
   for (let i = 0; i < segments.length; i += 1) {
+    const segmentPath = `/${segments.slice(0, i + 1).join('/')}`;
     pathSegments.push(fileExplorerPathSegmentSchema.parse({
       name: segments[i]!,
-      path: `/${segments.slice(0, i + 1).join('/')}`,
+      path: segmentPath,
+      kind: archiveBoundaries.has(segmentPath) ? 'archive' : 'directory',
     }));
   }
 
@@ -1062,6 +1544,67 @@ async function copyDirectoryHandleToDirectory({
       break;
     default: {
       throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`);
+    }
+    }
+  }
+}
+
+
+async function copyZipFileToDirectory({
+  archive,
+  archiveRelativePath,
+  name,
+  targetDirectoryHandle,
+}: {
+  archive: ZipArchiveView,
+  archiveRelativePath: string,
+  name: string,
+  targetDirectoryHandle: FileSystemDirectoryHandle,
+}): Promise<void> {
+  const targetFileHandle = await targetDirectoryHandle.getFileHandle(name, { create: true });
+  await writeReadableStreamToFileHandle({
+    source: await archive.openFileStream({ relativePath: archiveRelativePath }),
+    targetHandle: targetFileHandle,
+    signal: undefined,
+  });
+}
+
+async function copyZipDirectoryToDirectory({
+  archive,
+  archiveRelativePath,
+  name,
+  targetDirectoryHandle,
+}: {
+  archive: ZipArchiveView,
+  archiveRelativePath: string,
+  name: string,
+  targetDirectoryHandle: FileSystemDirectoryHandle,
+}): Promise<void> {
+  const nextDirectoryHandle = await targetDirectoryHandle.getDirectoryHandle(name, { create: true });
+  for (const child of archive.listDirectory({ relativePath: archiveRelativePath })) {
+    const childRelativePath = archiveRelativePath === ''
+      ? child.name
+      : `${archiveRelativePath}/${child.name}`;
+    switch (child.kind) {
+    case 'file':
+      await copyZipFileToDirectory({
+        archive,
+        archiveRelativePath: childRelativePath,
+        name: child.name,
+        targetDirectoryHandle: nextDirectoryHandle,
+      });
+      break;
+    case 'directory':
+      await copyZipDirectoryToDirectory({
+        archive,
+        archiveRelativePath: childRelativePath,
+        name: child.name,
+        targetDirectoryHandle: nextDirectoryHandle,
+      });
+      break;
+    default: {
+      const _exhaustiveCheck: never = child.kind;
+      throw new Error(`Unhandled ZIP child kind: ${String(_exhaustiveCheck)}`);
     }
     }
   }
@@ -1154,12 +1697,13 @@ async function listZipUploadExistingEntries({
 export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker> {
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
-    async prepareSession({ request }, naidanSysfsRemoteReader) {
+    async prepareSession({ request }, naidanSysfsRemoteReader, managedVolumeRemoteAccess) {
       const validated = fileExplorerPrepareSessionRequestSchema.parse(request);
       const sessionId = createSessionId();
       sessions.set(sessionId, await createSessionFromRoot({
         root: validated.root,
         naidanSysfsRemoteReader,
+        managedVolumeRemoteAccess,
       }));
       return fileExplorerPrepareSessionResponseSchema.parse({ sessionId });
     },
@@ -1180,6 +1724,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         pathSegments: buildPathSegments({
           path: directory.path,
           rootName: session.rootName,
+          archiveBoundaryPaths: directory.archiveBoundaryPaths,
         }),
         entries,
       });
@@ -1190,16 +1735,20 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       const session = getSession({ sessionId: validated.sessionId });
       const normalizedPath = normalizeExplorerPath({ path: validated.path });
 
+      let resolvedFile: ResolvedFile;
       try {
+        if (normalizedPath === '/') {
+          return fileExplorerReadPreviewResponseSchema.parse({ kind: 'directory' });
+        }
+        resolvedFile = await resolveFile({ session, path: normalizedPath });
+      } catch (error) {
+        if (!isResolvedFileLookupMiss({ error })) {
+          throw error;
+        }
         await resolveDirectory({ session, path: normalizedPath });
-        return fileExplorerReadPreviewResponseSchema.parse({
-          kind: 'directory',
-        });
-      } catch {
-        // The path is not a directory; continue as file.
+        return fileExplorerReadPreviewResponseSchema.parse({ kind: 'directory' });
       }
 
-      const resolvedFile = await resolveFile({ session, path: normalizedPath });
       const extension = getFileExtension({ name: resolvedFile.name });
       const mimeCategory = getMimeCategory({ extension });
       // Unsupported binary previews need no payload, especially for huge VFS files.
@@ -1234,6 +1783,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         case 'native-file':
           return resolvedFile.handle.getFile();
         case 'virtual-file':
+        case 'zip-file':
           return Promise.resolve(undefined);
         default: {
           const _exhaustiveCheck: never = resolvedFile;
@@ -1244,6 +1794,7 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       const virtualBytes = await (() => {
         switch (resolvedFile.kind) {
         case 'native-file':
+        case 'zip-file':
           return Promise.resolve(undefined);
         case 'virtual-file':
           return readVirtualFileBytes({
@@ -1259,7 +1810,20 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         }
         }
       })();
-      const fileSize = nativeFile?.size ?? virtualBytes?.byteLength ?? 0;
+      const fileSize = (() => {
+        switch (resolvedFile.kind) {
+        case 'native-file':
+          return nativeFile?.size ?? 0;
+        case 'virtual-file':
+          return virtualBytes?.byteLength ?? 0;
+        case 'zip-file':
+          return resolvedFile.archive.getFileSize({ relativePath: resolvedFile.archiveRelativePath });
+        default: {
+          const exhaustive: never = resolvedFile;
+          throw new Error(`Unhandled preview file: ${String(exhaustive)}`);
+        }
+        }
+      })();
 
       switch (mimeCategory) {
       case 'text': {
@@ -1273,9 +1837,9 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           });
         }
 
-        const rawText = nativeFile !== undefined
-          ? await readBlobText({ blob: nativeFile })
-          : new TextDecoder().decode(virtualBytes ?? new Uint8Array());
+        const rawText = virtualBytes !== undefined
+          ? new TextDecoder().decode(virtualBytes)
+          : await readBlobText({ blob: nativeFile ?? await readResolvedFileBlob({ file: resolvedFile }) });
         let displayText = rawText;
         if (extension === '.json' || extension === '.jsonl') {
           try {
@@ -1294,23 +1858,27 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       }
       case 'image':
       case 'video':
-      case 'audio':
+      case 'audio': {
         if (validated.mode === 'bounded' && fileSize > MEDIA_PREVIEW_SIZE_LIMIT) {
           return fileExplorerReadPreviewResponseSchema.parse({
             kind: 'media',
             mediaKind: mimeCategory,
             blob: new Blob([]),
-            mimeType: nativeFile?.type ?? '',
+            mimeType: '',
             oversized: true,
           });
         }
+        const mediaBlob = nativeFile ?? (virtualBytes === undefined
+          ? await readResolvedFileBlob({ file: resolvedFile })
+          : new Blob([uint8ArrayToBlobPart({ bytes: virtualBytes })]));
         return fileExplorerReadPreviewResponseSchema.parse({
           kind: 'media',
           mediaKind: mimeCategory,
-          blob: nativeFile ?? new Blob(virtualBytes === undefined ? [] : [uint8ArrayToBlobPart({ bytes: virtualBytes })]),
-          mimeType: nativeFile?.type ?? '',
+          blob: mediaBlob,
+          mimeType: mediaBlob.type,
           oversized: false,
         });
+      }
       default: {
         const _exhaustiveCheck: never = mimeCategory;
         throw new Error(`Unhandled mime category: ${String(_exhaustiveCheck)}`);
@@ -1325,26 +1893,9 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         session,
         path: validated.path,
       });
-      switch (resolvedFile.kind) {
-      case 'native-file':
-        return fileExplorerReadFileResponseSchema.parse({
-          blob: await resolvedFile.handle.getFile(),
-        });
-      case 'virtual-file':
-        return fileExplorerReadFileResponseSchema.parse({
-          blob: new Blob([uint8ArrayToBlobPart({
-            bytes: await readVirtualFileBytes({
-              vfs: resolvedFile.vfs,
-              path: resolvedFile.path,
-              maximumBytes: undefined,
-            }),
-          })]),
-        });
-      default: {
-        const _exhaustiveCheck: never = resolvedFile;
-        throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
-      }
-      }
+      return fileExplorerReadFileResponseSchema.parse({
+        blob: await readResolvedFileBlob({ file: resolvedFile }),
+      });
     },
 
     async prepareFileDownload({ request }) {
@@ -1361,7 +1912,8 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
           blob: await resolvedFile.handle.getFile(),
         });
       case 'virtual-file':
-        // No eager read or Blob materialization for computed/mutable VFS files.
+      case 'zip-file':
+        // No eager read or Blob materialization for computed/mutable VFS or ZIP files.
         return fileExplorerPrepareFileDownloadResponseSchema.parse({ kind: 'stream' });
       default: {
         const exhaustive: never = resolvedFile;
@@ -1605,8 +2157,16 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
 
       for (const sourcePath of validated.sourcePaths) {
         const normalizedSourcePath = normalizeExplorerPath({ path: sourcePath });
+        let sourceFile: ResolvedFile | undefined;
         try {
-          const sourceFile = await resolveFile({ session, path: normalizedSourcePath });
+          sourceFile = await resolveFile({ session, path: normalizedSourcePath });
+        } catch (error) {
+          if (!isResolvedFileLookupMiss({ error })) {
+            throw error;
+          }
+        }
+
+        if (sourceFile !== undefined) {
           switch (sourceFile.kind) {
           case 'native-file':
             await copyFileHandleToDirectory({
@@ -1616,31 +2176,47 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
             break;
           case 'virtual-file':
             throw new Error(`Cannot copy virtual file: ${normalizedSourcePath}`);
+          case 'zip-file':
+            await copyZipFileToDirectory({
+              archive: sourceFile.archive,
+              archiveRelativePath: sourceFile.archiveRelativePath,
+              name: sourceFile.name,
+              targetDirectoryHandle: writableTargetDirectory,
+            });
+            break;
           default: {
             const _exhaustiveCheck: never = sourceFile;
             throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`);
           }
           }
           continue;
-        } catch {
-          const sourceDirectory = await resolveDirectory({
-            session,
-            path: normalizedSourcePath,
+        }
+
+        const sourceDirectory = await resolveDirectory({
+          session,
+          path: normalizedSourcePath,
+        });
+        switch (sourceDirectory.kind) {
+        case 'native-directory':
+          await copyDirectoryHandleToDirectory({
+            sourceHandle: sourceDirectory.handle,
+            targetDirectoryHandle: writableTargetDirectory,
           });
-          switch (sourceDirectory.kind) {
-          case 'native-directory':
-            await copyDirectoryHandleToDirectory({
-              sourceHandle: sourceDirectory.handle,
-              targetDirectoryHandle: writableTargetDirectory,
-            });
-            break;
-          case 'virtual-directory':
-            throw new Error(`Cannot copy virtual directory: ${normalizedSourcePath}`);
-          default: {
-            const _exhaustiveCheck: never = sourceDirectory;
-            throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
-          }
-          }
+          break;
+        case 'virtual-directory':
+          throw new Error(`Cannot copy virtual directory: ${normalizedSourcePath}`);
+        case 'zip-directory':
+          await copyZipDirectoryToDirectory({
+            archive: sourceDirectory.archive,
+            archiveRelativePath: sourceDirectory.archiveRelativePath,
+            name: sourceDirectory.name,
+            targetDirectoryHandle: writableTargetDirectory,
+          });
+          break;
+        default: {
+          const _exhaustiveCheck: never = sourceDirectory;
+          throw new Error(`Unhandled resolved directory: ${String(_exhaustiveCheck)}`);
+        }
         }
       }
     },
@@ -1648,6 +2224,14 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
     async moveEntries({ request }) {
       const validated = fileExplorerTransferEntriesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
+      for (const sourcePath of validated.sourcePaths) {
+        const normalizedSourcePath = normalizeExplorerPath({ path: sourcePath });
+        const parentDirectory = await resolveDirectory({
+          session,
+          path: getParentPath({ path: normalizedSourcePath }),
+        });
+        getWritableNativeDirectory({ directory: parentDirectory });
+      }
       await this.copyEntries({
         request: {
           sessionId: validated.sessionId,

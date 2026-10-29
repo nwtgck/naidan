@@ -1,3 +1,4 @@
+import { visionProtocol } from './vision-plan';
 import { optionsForLane, performanceLanes } from './plan';
 import { nanoid } from 'nanoid';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
@@ -35,6 +36,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       status: 'skipped',
       startedAt: date(),
       input: [],
+      vision: step.vision,
       options,
       partialText: '',
       partialReasoning: '',
@@ -123,6 +125,8 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       const activeSnapshot = snapshot;
       notify();
       try {
+        const image = plan.protocol === visionProtocol ? await (await import('./vision-fixture')).createVisionFixture() : undefined;
+        control.signal.throwIfAborted();
         for (const { modelIndex, model, lane } of plan.models.flatMap((model, modelIndex) => performanceLanes({ mode: plan.settings.mode }).map(lane => ({ modelIndex, model, lane })))) {
           if (control.signal.aborted) {
             break;
@@ -132,6 +136,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
           let runtimeSegment = 0;
           let remaining = steps;
           let resuming: PerformanceTrial | undefined;
+          let modelSkip: 'missing-projector' | 'native-no-vision' | undefined;
           // Never call generate again on a failed scope. Recovery re-enters the
           // existing service only AFTER it retires the Worker and releases its lane.
           while (remaining.length && !control.signal.aborted) {
@@ -202,6 +207,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           startedAt: date(),
                           startedMs: elapsed(),
                           input: messages,
+                          vision: step.vision,
                           options: { ...scope.options },
                           partialText: '',
                           partialReasoning: '',
@@ -237,6 +243,9 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           }
                         }, plan.settings.timeoutMs);
                         const observation = (() => {
+                          if (step.vision) {
+                            return 'vision' as const;
+                          }
                           switch (step.scenario) {
                           case 'placement': return 'placement' as const;
                           case 'initial': case 'short': case 'long': case 'continuation': return undefined;
@@ -248,7 +257,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         })();
                         const input: Omit<GenerateInput, 'options'> = {
                           modelId: model.modelId,
-                          messages,
+                          messages: step.vision && image ? [{ role: 'user', content: [{ type: 'image', blob: image }, { type: 'text', text: step.prompt }] }] : messages,
                           debug: 'off',
                           temperature: 0,
                           topP: 1,
@@ -266,6 +275,18 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                             input,
                             sequence: step.sequence,
                             observation,
+                            onVisionAdmission: ({ admission }) => {
+                              trial.visionAdmission = admission;
+                              switch (admission.status) {
+                              case 'ready': case 'failed': break;
+                              case 'skipped': modelSkip = admission.reason;
+                                break;
+                              default: {
+                                const exhaustive: never = admission;
+                                throw new Error(String(exhaustive));
+                              }
+                              }
+                            },
                             signal: local.signal,
                             onProgress: ({ progress }) => {
                               if (!accepting) {
@@ -327,8 +348,11 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           local.signal.throwIfAborted();
                           trial.status = 'succeeded';
                         } catch (error) {
-                          trial.status = control.signal.aborted ? 'cancelled' : trial.interruption ? 'interrupted' : 'failed';
-                          trial.error = timedOut ? 'trial-timeout' : errorCode({ error });
+                          trial.status = control.signal.aborted ? 'cancelled' : trial.interruption ? 'interrupted' : modelSkip ? 'skipped' : 'failed';
+                          if (modelSkip) {
+                            trial.skipReason = modelSkip;
+                          }
+                          trial.error = modelSkip ?? (timedOut ? 'trial-timeout' : errorCode({ error }));
                           if (trial.interruption) {
                             interrupted = trial;
                             trial.exclusion.push('interrupted');
@@ -350,7 +374,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           if (trial.hiddenObserved) {
                             trial.exclusion.push('page-hidden');
                           }
-                          if (observation !== undefined || lane === 'gpu-profile') {
+                          if (observation === 'placement' || lane === 'gpu-profile') {
                             trial.exclusion.push('instrumented');
                           }
                           const metrics = trial.summary?.performance;
@@ -400,7 +424,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                             }
                             break;
                           }
-                          case undefined: break;
+                          case 'vision': case undefined: break;
                           default: {
                             const exhaustive: never = observation;
                             void exhaustive;
@@ -418,6 +442,13 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                               void exhaustive;
                             }
                             }
+                          }
+                          const admissionObservation = trial.visionAdmission?.diagnostic;
+                          if (step.vision?.residency === 'warm' && (metrics?.sessionPreparation?.projector !== 'reused'
+                            || admissionObservation?.captureStatus !== 'observed'
+                            || admissionObservation.rows.some(row => row.stage === 'projector-load'))) {
+                            trial.warnings.push('vision-residency-unconfirmed');
+                            trial.exclusion.push('residency-unconfirmed');
                           }
                           if (step.sequence === 'fresh' && metrics?.reusedTokens !== undefined && metrics.reusedTokens !== 0) {
                             trial.exclusion.push('unexpected-reuse');
@@ -478,10 +509,12 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                   trial.interruption.recovery = control.signal.aborted ? 'stopped' : 'failed';
                 }
               }
-              activeSnapshot.modelErrors.push({ modelIndex, lane, error: error instanceof Error ? error.message : String(error) });
+              if (!modelSkip) {
+                activeSnapshot.modelErrors.push({ modelIndex, lane, error: error instanceof Error ? error.message : String(error) });
+              }
               for (const step of steps) {
                 if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
-                  skip({ step, options, error: control.signal.aborted ? 'cancelled' : 'model-operation-failed' });
+                  skip({ step, options, error: modelSkip ?? (control.signal.aborted ? 'cancelled' : 'model-operation-failed'), skipReason: modelSkip });
                 }
               }
               notify();
@@ -492,7 +525,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
             resuming.interruption.recovery = 'stopped';
           }
         }
-        if (runKernelDiagnostic && !control.signal.aborted && performanceLanes({ mode: plan.settings.mode }).includes('gpu-profile')) {
+        if (plan.protocol !== visionProtocol && runKernelDiagnostic && !control.signal.aborted && performanceLanes({ mode: plan.settings.mode }).includes('gpu-profile')) {
           const diagnostic: NonNullable<PerformanceSnapshot['q8KernelDiagnostic']> = { status: 'running', startedMs: elapsed(), hiddenObserved: hidden() };
           activeSnapshot.q8KernelDiagnostic = diagnostic;
           notify();

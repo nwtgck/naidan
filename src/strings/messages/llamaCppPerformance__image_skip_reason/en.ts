@@ -1,0 +1,1 @@
+export const llamaCppPerformance__image_skip_reason = ({ value }: { value: 'missing-projector' | 'native-no-vision' }): string => ({ 'missing-projector': 'Skipped: no image projector is configured.', 'native-no-vision': 'Skipped: the loaded projector does not support image input.' }[value]);

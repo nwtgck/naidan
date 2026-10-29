@@ -18,6 +18,8 @@ vi.mock('@/features/global-search/composables/useGlobalSearch', () => ({
     isSearchOpen: searchOpen,
     chatGroupIds: ref([]),
     chatId: ref(undefined),
+    query: ref(''),
+    searchRequestId: ref(0),
     closeSearch: () => {
       searchOpen.value = false;
     },
@@ -25,7 +27,6 @@ vi.mock('@/features/global-search/composables/useGlobalSearch', () => ({
 }));
 vi.mock('@/features/global-search/composables/useChatSearch', () => ({
   useChatSearch: () => ({
-    query: ref(''),
     isSearching: ref(false),
     isScanningContent: ref(false),
     results: searchResults,
@@ -113,7 +114,7 @@ describe('explicit navigation after the home introduction', () => {
     expect(document.title).toBe(APPLICATION_METADATA.title);
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
     await flushPromises();
-    expect(openChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'automatic' }) });
+    expect(openChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'automatic' }), isCurrent: expect.any(Function) });
     expect(searchOpen.value).toBe(false);
     expect(router.currentRoute.value.path).toBe('/chat/automatic');
     expect(document.title).toBe(APPLICATION_METADATA.title);

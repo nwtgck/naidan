@@ -5,6 +5,7 @@ import VolumeSettingsTab from './VolumeSettingsTab.vue';
 import { storageService } from '@/00-storage/service';
 import type { Volume, Mount } from '@/01-models/types';
 import { toVolumeId } from '@/01-models/ids';
+import { listLazyVolumeStates, publishLazyVolumeState, removeLazyVolumeState } from '@/00-storage/service/lazy-volume-state';
 
 const mockShowConfirm = vi.hoisted(() => vi.fn());
 
@@ -38,6 +39,8 @@ vi.mock('../00-storage/service', () => ({
     createVolume: vi.fn(),
     createVolumeFromFiles: vi.fn(),
     getVolumeDirectoryHandle: vi.fn(),
+    pauseLazyVolumeCopy: vi.fn(),
+    retryLazyVolumeCopy: vi.fn(),
   },
 }));
 
@@ -73,9 +76,63 @@ async function mountTab(volumes: Volume[], mounts: Mount[] = []) {
 afterEach(() => {
   mountedWrappers.forEach(w => w.unmount());
   mountedWrappers.length = 0;
+  for (const state of listLazyVolumeStates()) {
+    removeLazyVolumeState({ volumeId: state.volume.id });
+  }
 });
 
 // --- Tests ---
+
+describe('VolumeSettingsTab - Lazy copies', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('adds a newly registered usable volume without reloading the lists on every progress update', async () => {
+    const wrapper = await mountTab([], []);
+    const volume = makeVolume({ id: toVolumeId({ raw: 'new-lazy-volume' }), name: 'New Project' });
+    vi.mocked(storageService.listVolumes).mockImplementation(async function* () {
+      yield volume;
+    });
+    const callsBeforeRegistration = vi.mocked(storageService.listVolumes).mock.calls.length;
+    publishLazyVolumeState({ state: { volume, phase: 'copying', progress: { processed: 0, total: 2 }, error: undefined } });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="volume-row-new-lazy-volume"]');
+    expect(row.text()).toContain('New Project');
+    expect(row.find('[data-testid="copy-progress"]').exists()).toBe(true);
+    expect(row.text()).not.toContain('Copied Folder');
+    expect(storageService.listVolumes).toHaveBeenCalledTimes(callsBeforeRegistration + 1);
+
+    publishLazyVolumeState({ state: { volume, phase: 'copying', progress: { processed: 1, total: 2 }, error: undefined } });
+    await flushPromises();
+    expect(row.text()).toContain('1 / 2');
+    expect(storageService.listVolumes).toHaveBeenCalledTimes(callsBeforeRegistration + 1);
+  });
+
+  it('keeps a newer registration visible when an older initial list request finishes late', async () => {
+    const initial = Promise.withResolvers<void>();
+    const stale = makeVolume({ id: toVolumeId({ raw: 'stale-volume' }), name: 'Old snapshot' });
+    const current = makeVolume({ id: toVolumeId({ raw: 'current-volume' }), name: 'Current Project' });
+    setupStorageMock([], []);
+    vi.mocked(storageService.listVolumes)
+      .mockImplementationOnce(async function* () {
+        await initial.promise;
+        yield stale;
+      })
+      .mockImplementation(async function* () {
+        yield current;
+      });
+    const wrapper = mount(VolumeSettingsTab);
+    mountedWrappers.push(wrapper);
+    publishLazyVolumeState({ state: { volume: current, phase: 'copying', progress: { processed: 0, total: 2 }, error: undefined } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Current Project');
+    initial.resolve();
+    await flushPromises();
+    expect(wrapper.text()).toContain('Current Project');
+    expect(wrapper.text()).not.toContain('Old snapshot');
+  });
+});
 
 describe('VolumeSettingsTab - Rename Volume', () => {
   beforeEach(() => {

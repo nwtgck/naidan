@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Blob as NodeBlob } from 'node:buffer';
+import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
 import * as Comlink from 'comlink';
 import JSZip from 'jszip';
 import { MessageChannel } from 'node:worker_threads';
@@ -8,6 +8,8 @@ import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from '@/featu
 import { TEST_ONLY as FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY } from '@/utils/file-system-handle-transport';
 import { createFileExplorerWorker } from './impl';
 import type { FileExplorerZipUploadPlacement } from './types';
+import { storageService } from '@/00-storage/service';
+import { createLazyVolumeTestHarness } from '@/00-storage/service/lazy-volumes.test-support';
 
 type MessageListener = (event: MessageEvent) => void;
 
@@ -150,6 +152,77 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     globalThis.Worker = originalWorker;
     vi.unstubAllGlobals();
   });
+
+  it('uses top-level managed access for reads and independent writes before copying completes', async () => {
+    vi.stubGlobal('File', NodeFile);
+    vi.stubGlobal('Blob', NodeBlob);
+    const blocked = Promise.withResolvers<void>();
+    const harness = createLazyVolumeTestHarness({
+      beforeOpen: undefined,
+      beforeWrite: async ({ name }) => {
+        if (name === 'a.txt') {
+          await blocked.promise;
+        }
+      },
+    });
+    const volume = harness.manager.register({ name: 'Documents', files: [{ relativePath: 'a.txt', file: new File(['original'], 'a.txt') }], signal: undefined });
+    const releaseAccess = vi.fn();
+    using grant = vi.spyOn(storageService, 'createManagedVolumeAccess').mockImplementation(async ({ reference, readOnly }) => {
+      const connection = harness.manager.createAccess({ reference, readOnly });
+      return {
+        ...connection,
+        async dispose() {
+          releaseAccess();
+          await connection.dispose();
+        },
+      };
+    });
+    const { createFileExplorerWorkerClient } = await import('./client-hosted');
+    const client = await createFileExplorerWorkerClient({
+      root: {
+        kind: 'wesh-mounts',
+        rootName: 'Documents',
+        mounts: [{ type: 'managed_directory', path: '/documents', reference: { volumeId: volume.id }, readOnly: false }],
+      },
+    });
+    {
+      await using _cleanup = {
+        async [Symbol.asyncDispose]() {
+          blocked.resolve();
+          await client.dispose();
+          await harness.dispose();
+        },
+      };
+      expect(grant).toHaveBeenCalledWith({ reference: { volumeId: volume.id }, readOnly: false });
+      expect(await (await client.readFile({ path: '/documents/a.txt' })).blob.text()).toBe('original');
+      const download = await client.prepareFileDownload({ path: '/documents/a.txt' });
+      expect(download.kind).toBe('file');
+      if (download.kind !== 'file') {
+        throw new Error('Expected a managed File download');
+      }
+      expect(await download.blob.text()).toBe('original');
+      await client.createFolder({ parentPath: '/documents', name: 'notes' });
+      await client.uploadFiles({ targetDirectoryPath: '/documents/notes', files: [{ name: 'new.txt', blob: new Blob(['new content']) }] });
+      expect(await (await client.readFile({ path: '/documents/notes/new.txt' })).blob.text()).toBe('new content');
+      const archive = client.startDirectoryArchive({ directoryPath: '/documents', excludedRelativePaths: [] });
+      const archiveContents = await JSZip.loadAsync(await new Response(archive.stream).arrayBuffer());
+      await archive.result;
+      expect(await archiveContents.file('documents/a.txt')?.async('string')).toBe('original');
+      expect(await archiveContents.file('documents/notes/new.txt')?.async('string')).toBe('new content');
+      expect(harness.publish).not.toHaveBeenCalled();
+      blocked.resolve();
+      await harness.manager.retry({ volumeId: volume.id });
+      expect((await client.readDirectory({ path: '/documents' })).entries.map(entry => entry.name).sort()).toEqual(['a.txt', 'notes']);
+      await harness.root.handle.removeEntry('a.txt');
+      const recreated = await harness.root.handle.getFileHandle('a.txt', { create: true });
+      const nativeWriter = await recreated.createWritable();
+      await nativeWriter.write('recreated outside this session');
+      await nativeWriter.close();
+      expect(await (await client.readFile({ path: '/documents/a.txt' })).blob.text()).toBe('recreated outside this session');
+    }
+    expect(releaseAccess).toHaveBeenCalledOnce();
+    expect(createdWorkers.at(-1)?.terminated).toBe(true);
+  }, 30_000);
 
   it('runs native-directory operations through the hosted worker client facade', async () => {
     const { createFileExplorerWorkerClient } = await import('./client-hosted');

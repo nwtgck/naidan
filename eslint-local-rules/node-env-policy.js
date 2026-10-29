@@ -74,33 +74,58 @@ export const rule = {
         }
       }
     }
-    function pattern({ node, owner }) {
+    function pattern({ node, owner, emit }) {
       if (!node || !owner) {
         return;
       }
       if (node.type === 'AssignmentPattern') {
-        pattern({ node: node.left, owner });
+        pattern({ node: node.left, owner, emit });
       }
       if (node.type === 'ObjectPattern') {
         for (const property of node.properties) {
           if (property.type === 'RestElement') {
             if (owner === 'process') {
-              report({ node: property, messageId: 'processReflection' });
+              emit({ node: property, messageId: 'processReflection' });
             }
             continue;
           }
           const key = name(property);
           const value = select({ owner, key });
           if (owner === 'process' && key === undefined) {
-            report({ node: property, messageId: 'dynamicProcessKey' });
+            emit({ node: property, messageId: 'dynamicProcessKey' });
           }
           if (value === 'environment' || value === 'environment-writer') {
-            report({ node: property, messageId: 'directEnvironment' });
+            emit({ node: property, messageId: 'directEnvironment' });
           }
           if (!test && ['vi.stubEnv', 'vi.unstubAllEnvs'].includes(value)) {
-            report({ node: property, messageId: 'testStubOnly' });
+            emit({ node: property, messageId: 'testStubOnly' });
           }
-          pattern({ node: property.value, owner: value });
+          pattern({ node: property.value, owner: value, emit });
+        }
+      }
+    }
+    function checkPattern({ node, value, otherOwner }) {
+      const processReports = [];
+      const otherReports = [];
+      // Reuse the diagnostic walk rather than maintaining a second property
+      // allowlist. Skip type queries only if NEITHER possible owner can report.
+      // A typed Process takes precedence over lexical provenance, even when
+      // only that other provenance would produce a diagnostic.
+      pattern({ node, owner: 'process', emit: descriptor => processReports.push(descriptor) });
+      pattern({ node, owner: otherOwner, emit: descriptor => otherReports.push(descriptor) });
+      if (processReports.length === 0 && otherReports.length === 0) {
+        return;
+      }
+      for (const descriptor of isProcess(value) ? processReports : otherReports) {
+        report(descriptor);
+      }
+    }
+    function checkParameters(node) {
+      for (const parameter of node.params) {
+        if (parameter.type === 'ObjectPattern') {
+          checkPattern({ node: parameter, value: parameter, otherOwner: undefined });
+        } else if (parameter.type === 'AssignmentPattern') {
+          checkPattern({ node: parameter, value: parameter.right, otherOwner: undefined });
         }
       }
     }
@@ -187,38 +212,17 @@ export const rule = {
       },
       VariableDeclarator(node) {
         if (node.id.type === 'ObjectPattern') {
-          pattern({ node: node.id, owner: isProcess(node.init) ? 'process' : resolve(node.init) });
+          checkPattern({ node: node.id, value: node.init, otherOwner: resolve(node.init) });
         }
       },
       AssignmentExpression(node) {
         if (node.left.type === 'ObjectPattern') {
-          pattern({ node: node.left, owner: isProcess(node.right) ? 'process' : resolve(node.right) });
+          checkPattern({ node: node.left, value: node.right, otherOwner: resolve(node.right) });
         }
       },
-      FunctionDeclaration(node) {
-        for (const parameter of node.params) {
-          if (parameter.type === 'ObjectPattern' && isProcess(parameter)
-            || parameter.type === 'AssignmentPattern' && isProcess(parameter.right)) {
-            pattern({ node: parameter, owner: 'process' });
-          }
-        }
-      },
-      ArrowFunctionExpression(node) {
-        for (const parameter of node.params) {
-          if (parameter.type === 'ObjectPattern' && isProcess(parameter)
-            || parameter.type === 'AssignmentPattern' && isProcess(parameter.right)) {
-            pattern({ node: parameter, owner: 'process' });
-          }
-        }
-      },
-      FunctionExpression(node) {
-        for (const parameter of node.params) {
-          if (parameter.type === 'ObjectPattern' && isProcess(parameter)
-            || parameter.type === 'AssignmentPattern' && isProcess(parameter.right)) {
-            pattern({ node: parameter, owner: 'process' });
-          }
-        }
-      },
+      FunctionDeclaration: checkParameters,
+      ArrowFunctionExpression: checkParameters,
+      FunctionExpression: checkParameters,
       CallExpression(node) {
         let called = unwrap({ node: node.callee });
         let args = node.arguments;
@@ -262,9 +266,9 @@ export const rule = {
   },
 };
 
-export default {
+export default /** @satisfies {import('eslint').Linter.Config} */ ({
   name: 'naidan/node-env-policy',
   files: ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue}'],
   plugins: { 'local-rules-node-env': { rules: { 'node-env-policy': rule } } },
   rules: { 'local-rules-node-env/node-env-policy': 'error' },
-};
+});

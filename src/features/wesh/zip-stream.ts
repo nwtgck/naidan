@@ -154,8 +154,10 @@ export function createWeshZipCentralDirectoryStore({
 
 export async function createWeshZipRandomAccessSource({
   handle,
+  expectedStat,
 }: {
   handle: WeshFileHandle,
+  expectedStat?: { readonly size: number, readonly mtime: number },
 }): Promise<ZipRandomAccessSource> {
   let stat: Awaited<ReturnType<WeshFileHandle['stat']>>;
   try {
@@ -178,6 +180,18 @@ export async function createWeshZipRandomAccessSource({
       // Preserve the invalid-stat error as the primary failure.
     }
     throw new Error(`ZIP source returned an invalid size: ${stat.size}`);
+  }
+  if (expectedStat !== undefined && (stat.size !== expectedStat.size || stat.mtime !== expectedStat.mtime)) {
+    const sourceChangedError = new Error('Wesh ZIP source changed while browsing');
+    try {
+      await handle.close();
+    } catch (closeError: unknown) {
+      throw new AggregateError(
+        [sourceChangedError, closeError],
+        'Wesh ZIP source changed and could not be closed',
+      );
+    }
+    throw sourceChangedError;
   }
   return {
     size: stat.size,

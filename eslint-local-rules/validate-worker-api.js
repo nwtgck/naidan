@@ -409,6 +409,24 @@ function getPromiseResult(type, checker) {
 }
 
 function resolvedCallDeclarationName({ tsCall, checker }) {
+  // Inspect the flow-aware callable type, not the spelling of an identifier or
+  // property. Aliases of worker bridges keep the original declarations here.
+  // If every candidate is an unrelated function declaration, overload
+  // resolution (including argument/contextual typing) cannot select a bridge.
+  // Keep the original resolution path for unions, intersections, type
+  // parameters, methods, call signatures and missing/synthetic declarations.
+  const callableType = checker.getTypeAtLocation(tsCall.expression);
+  if (callableType.flags & ts.TypeFlags.Object) {
+    const signatures = checker.getSignaturesOfType(callableType, ts.SignatureKind.Call);
+    if (signatures.length > 0 && signatures.every(signature => {
+      const declaration = signature.declaration;
+      return declaration && ts.isFunctionDeclaration(declaration) && declaration.name
+        && declaration.name.text !== "wrapWorkerRemote"
+        && declaration.name.text !== "exposeWorkerRemote";
+    })) {
+      return undefined;
+    }
+  }
   const declaration = checker.getResolvedSignature(tsCall)?.declaration;
   if (!declaration || !("name" in declaration) || declaration.name === undefined) {
     return undefined;
@@ -419,6 +437,7 @@ function resolvedCallDeclarationName({ tsCall, checker }) {
   return undefined;
 }
 
+/** @type {import('eslint').Rule.RuleModule} */
 export const rule = {
   meta: {
     type: "problem",
@@ -458,6 +477,12 @@ export const rule = {
       CallExpression(node) {
         const tsCall = services.esTreeNodeToTSNodeMap.get(node);
         if (!ts.isCallExpression(tsCall)) {
+          return;
+        }
+        // Every validation path below needs an explicit contract or an exposed
+        // value. Calls with neither cannot report, regardless of alias/overload
+        // resolution. Keep semantic resolution for all remaining calls.
+        if (!tsCall.typeArguments?.[0] && !tsCall.arguments[0]) {
           return;
         }
         const resolvedCalleeName = resolvedCallDeclarationName({ tsCall, checker });

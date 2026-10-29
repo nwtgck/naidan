@@ -7,6 +7,8 @@ import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/t
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import type { ExplorerDirectory, ExplorerChild } from '@/features/file-explorer/logic/explorer-directory';
 import { LIST_ROW_HEIGHT } from '@/features/file-explorer/logic/constants';
+import { createFileExplorerWorkerClient } from '@/features/file-explorer/worker/client';
+import { FileExplorerNotDirectoryError } from '@/features/file-explorer/logic/errors';
 
 // ---- Mock ExplorerDirectory ----
 
@@ -127,6 +129,9 @@ async function resolveDirectory(path: string): Promise<MockExplorerDirectory> {
   for (const segment of splitPath(path)) {
     const next = await current.subdir({ name: segment });
     if (!(next instanceof MockExplorerDirectory)) {
+      if (await current.file({ name: segment })) {
+        throw new FileExplorerNotDirectoryError({ path });
+      }
       throw new Error(`Directory not found: ${path}`);
     }
     current = next;
@@ -138,7 +143,7 @@ async function listDirectory(path: string): Promise<{
   directoryName: string,
   directoryPath: string,
   readOnly: boolean,
-  pathSegments: Array<{ name: string, path: string }>,
+  pathSegments: Array<{ name: string, path: string, kind: 'root' | 'directory' | 'archive' }>,
   entries: FileExplorerEntry[],
 }> {
   const directory = await resolveDirectory(path);
@@ -187,9 +192,10 @@ async function listDirectory(path: string): Promise<{
     directoryName: names.at(-1) ?? directory.name,
     directoryPath: normalizePath(path),
     readOnly: directory.readOnly,
-    pathSegments: [{ name: activeRoot?.name ?? 'root', path: '/' }, ...names.map((name, index) => ({
+    pathSegments: [{ name: activeRoot?.name ?? 'root', path: '/', kind: 'root' }, ...names.map((name, index) => ({
       name,
       path: `/${names.slice(0, index + 1).join('/')}`,
+      kind: 'directory' as const,
     }))],
     entries,
   };
@@ -331,6 +337,7 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
     },
     async disposeZipUploadAnalysis() {},
     async uploadFiles({ targetDirectoryPath, files }) {
+      mockUploadFiles({ targetDirectoryPath, files });
       const targetDirectory = await resolveDirectory(targetDirectoryPath);
       for (const file of files) {
         await targetDirectory.fileCreate({ name: file.name });
@@ -345,6 +352,7 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 const mockShowPrompt = vi.fn().mockResolvedValue(undefined);
 const mockAddToast = vi.fn();
+const mockUploadFiles = vi.fn();
 
 vi.mock('@/features/file-explorer/worker/client', () => ({
   createFileExplorerWorkerClient: vi.fn(async () => createMockWorkerClient()),
@@ -447,6 +455,7 @@ describe('FileExplorer.vue', () => {
     mockShowConfirm.mockResolvedValue(true);
     mockShowPrompt.mockResolvedValue(undefined);
     mockAddToast.mockReset();
+    mockUploadFiles.mockReset();
     wrappers = [];
   });
 
@@ -462,6 +471,33 @@ describe('FileExplorer.vue', () => {
     const wrapper = tracked(mountExplorer(root));
     await flushPromises();
     expect(wrapper.find('[data-testid="file-explorer"]').exists()).toBe(true);
+  });
+
+  it('disposes a worker that finishes preparing after the explorer was closed', async () => {
+    const prepared = Promise.withResolvers<FileExplorerWorkerClient>();
+    const client = await createMockWorkerClient();
+    const dispose = vi.spyOn(client, 'dispose');
+    vi.mocked(createFileExplorerWorkerClient).mockReturnValueOnce(prepared.promise);
+    {
+      const wrapper = mountExplorer(root, {
+        root: {
+          kind: 'archive-root',
+          rootName: 'export.zip',
+          archive: { format: 'zip', source: { kind: 'blob', blob: new Blob(['zip']) } },
+        },
+      });
+      using view = {
+        [Symbol.dispose]() {
+          wrapper.unmount();
+        },
+      };
+      await flushPromises();
+      expect(wrapper.find('[data-testid="file-explorer"]').exists()).toBe(false);
+      void view;
+    }
+    prepared.resolve(client);
+    await flushPromises();
+    expect(dispose).toHaveBeenCalledOnce();
   });
 
   it('shows file and directory names after load', async () => {
@@ -514,6 +550,42 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('child.txt');
+  });
+
+  it('previews a regular file on double-click when it is not a browsable archive', async () => {
+    root.addFile('note.txt', 5, 'hello');
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-note.txt"]').trigger('dblclick');
+    await flushPromises();
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="preview-panel"]').text()).toContain('hello');
+    });
+    expect(wrapper.text()).not.toContain('Failed to load directory');
+  });
+
+  it('shows an archive error without falling back to the regular file preview', async () => {
+    root.addFile('broken.zip');
+    const client = await createMockWorkerClient();
+    const readDirectory = client.readDirectory;
+    client.readDirectory = async ({ path }) => {
+      if (path === '/broken.zip') {
+        throw new Error('ZIP entry escapes the archive root');
+      }
+      return readDirectory({ path });
+    };
+    const preview = vi.spyOn(client, 'readPreview');
+    vi.mocked(createFileExplorerWorkerClient).mockResolvedValueOnce(client);
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    await wrapper.get('[data-testid="entry-item-broken.zip"]').trigger('dblclick');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Failed to load directory: ZIP entry escapes the archive root');
+    expect(preview).not.toHaveBeenCalled();
   });
 
   it('breadcrumb shows path segments after navigation', async () => {
@@ -1024,6 +1096,16 @@ describe('FileExplorer.vue', () => {
       expect(wrapper.find('[data-testid="view-list"]').exists()).toBe(true);
     });
 
+    it('treats source read-only state as non-unlockable', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      const lockToggle = wrapper.find('[data-testid="lock-toggle"]');
+      expect(lockToggle.attributes('disabled')).toBeDefined();
+      expect(lockToggle.attributes('title')).toBe('Read Only');
+      expect(wrapper.find('[data-testid="upload-button"]').attributes('title')).toBe('Read Only');
+    });
+
     it('context menu on background shows write actions as disabled when readOnly', async () => {
       const wrapper = mountReadOnlyExplorer();
       await flushPromises();
@@ -1067,6 +1149,31 @@ describe('FileExplorer.vue', () => {
       const entries = wrapper.findAll('[data-testid^="entry-item-"]');
       const locks = wrapper.findAll('[data-testid="entry-lock-icon"]');
       expect(locks.length).toBe(entries.length);
+    });
+
+    it('ignores external file drops when the current directory is readOnly', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      const container = wrapper.get('[data-testid="list-scroll-container"]');
+      const file = new File(['content'], 'dropped.txt', { type: 'text/plain' });
+      const dataTransfer = { types: ['Files'], files: [file] };
+
+      await container.trigger('dragover', { dataTransfer });
+      expect(container.classes()).not.toContain('ring-2');
+
+      await container.trigger('drop', { dataTransfer });
+      await flushPromises();
+      expect(mockUploadFiles).not.toHaveBeenCalled();
+
+      await wrapper.get('[data-testid="view-icon"]').trigger('click');
+      await flushPromises();
+      const iconView = wrapper.get('[data-testid="icon-view"]');
+      await iconView.trigger('dragover', { dataTransfer });
+      expect(iconView.classes()).not.toContain('ring-2');
+      await iconView.trigger('drop', { dataTransfer });
+      await flushPromises();
+      expect(mockUploadFiles).not.toHaveBeenCalled();
     });
   });
 

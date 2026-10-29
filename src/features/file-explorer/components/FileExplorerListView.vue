@@ -100,19 +100,7 @@ function onEntryClick({ entry, event }: { entry: FileExplorerEntry, event: Mouse
 }
 
 async function onEntryDblClick({ entry }: { entry: FileExplorerEntry }): Promise<void> {
-  switch (entry.kind) {
-  case 'directory':
-    await ctx.navigateToDirectory({ path: entry.path });
-    ctx.applySelection({ action: { type: 'clear' } });
-    break;
-  case 'file':
-    await ctx.loadPreview({ entry });
-    break;
-  default: {
-    const _ex: never = entry.kind;
-    throw new Error(`Unhandled kind: ${_ex}`);
-  }
-  }
+  await ctx.openEntry({ entry });
 }
 
 function onContextMenu({ entry, event }: { entry: FileExplorerEntry, event: MouseEvent }): void {
@@ -152,6 +140,10 @@ function onBackgroundClick({ event }: { event: MouseEvent }): void {
 const isExternalDragOver = ref(false);
 
 function onExternalDragOver({ event }: { event: DragEvent }): void {
+  if (ctx.readOnly) {
+    isExternalDragOver.value = false;
+    return;
+  }
   if (event.dataTransfer?.types.includes('Files')) {
     isExternalDragOver.value = true;
   }
@@ -159,6 +151,9 @@ function onExternalDragOver({ event }: { event: DragEvent }): void {
 
 async function onExternalDrop({ event }: { event: DragEvent }): Promise<void> {
   isExternalDragOver.value = false;
+  if (ctx.readOnly) {
+    return;
+  }
   const files = event.dataTransfer?.files;
   if (files && files.length > 0) {
     await ctx.uploadFiles({ files });

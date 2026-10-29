@@ -4,8 +4,8 @@ updates:
     directory: /
     rebase-strategy: disabled
     schedule:
-      interval: daily
-      time: "09:00"
+      interval: cron
+      cronjob: "0 6 * * *"
       timezone: Asia/Tokyo
     # This delay applies only to version updates; security updates are immediate.
     cooldown:
@@ -44,8 +44,8 @@ updates:
     directory: /
     rebase-strategy: disabled
     schedule:
-      interval: daily
-      time: "09:00"
+      interval: cron
+      cronjob: "0 6 * * *"
       timezone: Asia/Tokyo
     # This delay applies only to version updates; security updates are immediate.
     cooldown:

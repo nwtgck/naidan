@@ -1,3 +1,4 @@
+import { visionFixture, visionPrompt, visionProtocol } from './vision-plan';
 import { gpuProfilingProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { measurementLanes, performanceProtocol, planSchema, type MeasurementLane, type MeasurementMode, type PerformancePlan, type PerformanceStep } from './types';
 
@@ -57,6 +58,43 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
     throw new Error('Duplicate modelId');
   }
   return plan;
+}
+
+/** The first image request owns loading; subsequent fresh requests reuse its resident projector. */
+export function createVisionPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
+  const steps: PerformanceStep[] = [];
+  for (const { modelIndex, lane } of models.flatMap((_, modelIndex) => performanceLanes({ mode: settings.mode }).map(lane => ({ modelIndex, lane })))) {
+    for (let repetition = 0; repetition <= settings.repeats; repetition++) {
+      steps.push({
+        id: `m${modelIndex}-${steps.length}`,
+        modelIndex,
+        lane,
+        scenario: repetition === 0 ? 'initial' : 'short',
+        position: repetition === 0 ? 'initial' : 'workload',
+        role: 'measurement',
+        repetition,
+        sequence: 'fresh',
+        prompt: visionPrompt,
+        maxTokens: Math.min(32, settings.maxTokens),
+        vision: { fixtureId: visionFixture.id, residency: repetition === 0 ? 'cold' : 'warm' },
+      });
+    }
+  }
+  if (new Set(models.map(model => model.modelId)).size !== models.length) {
+    throw new Error('Duplicate modelId');
+  }
+  return planSchema.parse({
+    version: 1,
+    protocol: visionProtocol,
+    visionFixture,
+    id,
+    createdAt,
+    models,
+    settings: { ...settings, diagnostics: 'none' },
+    options: settings.mode === 'both' || settings.mode === 'gpu-profile' ? { ...options, profile: 'webgpu-wasm64-jspi' } : options,
+    notes,
+    steps,
+  });
 }
 
 export function performanceLanes({ mode }: { mode: MeasurementMode | undefined }): MeasurementLane[] {

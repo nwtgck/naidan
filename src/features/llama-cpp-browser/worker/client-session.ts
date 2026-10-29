@@ -280,7 +280,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         acceptingEvents = false;
       }
     },
-    generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }) => {
+    generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics, onVisionAdmission }) => {
       const accepted = workerGenerateCallSchema.parse({
         ...request,
         generationId: ++nextGenerationId,
@@ -289,63 +289,112 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       let acceptingEvents = true;
       const started = accepted.measurement ? performance.now() : undefined;
       const memory = started === undefined ? undefined : observeMeasurementMemory({ worker, now: () => performance.now() - started });
+      let admissionFailure: ReturnType<typeof errorCode> | undefined;
       try {
         const result = await invoke({
-          call: () => remote.generate(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
-            workerProxy({
-              value: async ({ event }) => {
-                if (acceptingEvents && !disposed) {
-                  await onEvent({ event: generationEventSchema.parse(event) });
-                }
-              },
-            }),
-            workerProxy({
-              value: ({ ...event }) => {
-                if (acceptingEvents && !disposed && !signal?.aborted) {
-                  onProgress({ progress: progressSchema.parse(event) });
-                }
-              },
-            }),
-            workerProxy({
-              value: ({ diagnostic }: { diagnostic: unknown }) => {
-                if (!acceptingEvents || disposed) {
-                  return;
-                }
-                // Measurement history is collected only from the ordered Worker
-                // notification endpoint, never twice through this proxy callback.
-                if (signal?.aborted) {
-                  return;
-                }
-                debugEnabled = accepted.debug === 'on';
-                const checkpoint = diagnosticSchema.parse(diagnostic);
-                if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') {
-                  recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-                }
-                if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) {
-                  lastOperation = { ...lastOperation, ...checkpoint };
-                }
-                if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') {
-                  lastOperation = checkpoint;
-                }
-                if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) {
-                  lastNativeFailure = checkpoint;
-                }
-              },
-            }),
-            workerProxy({
-              value: ({ diagnostic }: { diagnostic: unknown }) => {
+          call: async () => {
+            const imageObservation = accepted.measurement?.observation;
+            switch (imageObservation) {
+            case 'vision': {
+              const { visionAdmissionSchema } = await import('@/features/llama-cpp-browser/performance/vision-admission-schema');
+              signal?.throwIfAborted();
+              const admission = visionAdmissionSchema.parse(await remote.prepareVision(workerCapability({
+                value: {
+                  modelId: accepted.modelId,
+                  resolvedModel: accepted.resolvedModel,
+                  options: accepted.options,
+                  debug: accepted.debug,
+                  assetBaseURL: accepted.assetBaseURL,
+                  generationId: accepted.generationId,
+                },
+                capability: 'file-system-handle-clone',
+              }), workerProxy({
+                // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink progress proxy.
+                value: (progress: Progress) => {
+                  if (acceptingEvents && !disposed && !signal?.aborted) {
+                    onProgress({ progress: progressSchema.parse(progress) });
+                  }
+                },
+              })));
+              onVisionAdmission?.({ admission });
+              signal?.throwIfAborted();
+              switch (admission.status) {
+              case 'ready': break;
+              case 'skipped': throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+              case 'failed':
+                admissionFailure = admission.error;
+                // Even a native trap must retire the Worker before the next model.
+                void dispose();
+                throw new LlamaCppBrowserError({ code: admission.error });
+              default: {
+                const exhaustive: never = admission;
+                throw new Error(String(exhaustive));
+              }
+              }
+              break;
+            }
+            case 'placement': case undefined: break;
+            default: {
+              const exhaustive: never = imageObservation;
+              throw new Error(String(exhaustive));
+            }
+            }
+            return remote.generate(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
+              workerProxy({
+                value: async ({ event }) => {
+                  if (acceptingEvents && !disposed) {
+                    await onEvent({ event: generationEventSchema.parse(event) });
+                  }
+                },
+              }),
+              workerProxy({
+                value: ({ ...event }) => {
+                  if (acceptingEvents && !disposed && !signal?.aborted) {
+                    onProgress({ progress: progressSchema.parse(event) });
+                  }
+                },
+              }),
+              workerProxy({
+                value: ({ diagnostic }: { diagnostic: unknown }) => {
+                  if (!acceptingEvents || disposed) {
+                    return;
+                  }
+                  // Measurement history is collected only from the ordered Worker
+                  // notification endpoint, never twice through this proxy callback.
+                  if (signal?.aborted) {
+                    return;
+                  }
+                  debugEnabled = accepted.debug === 'on';
+                  const checkpoint = diagnosticSchema.parse(diagnostic);
+                  if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') {
+                    recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+                  }
+                  if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) {
+                    lastOperation = { ...lastOperation, ...checkpoint };
+                  }
+                  if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') {
+                    lastOperation = checkpoint;
+                  }
+                  if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) {
+                    lastNativeFailure = checkpoint;
+                  }
+                },
+              }),
+              workerProxy({
+                value: ({ diagnostic }: { diagnostic: unknown }) => {
                 // A cooperative Stop still owns its terminal summary. Late callbacks
                 // after this call has settled must never reach the next trial.
-                if (!acceptingEvents || disposed || !accepted.measurement) {
-                  return;
-                }
-                const summary = diagnosticSchema.parse(diagnostic);
-                if (summary.event !== 'generation-performance' || !summary.performance) {
-                  throw new Error('Invalid generation summary');
-                }
-                onSummary?.({ diagnostic: summary });
-              },
-            })),
+                  if (!acceptingEvents || disposed || !accepted.measurement) {
+                    return;
+                  }
+                  const summary = diagnosticSchema.parse(diagnostic);
+                  if (summary.event !== 'generation-performance' || !summary.performance) {
+                    throw new Error('Invalid generation summary');
+                  }
+                  onSummary?.({ diagnostic: summary });
+                },
+              }));
+          },
           signal,
           onAbort: () => {
             void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
@@ -353,6 +402,12 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
           abortTimeoutMs: 5000,
         });
         return generationResultSchema.parse(result);
+      } catch (error) {
+        // dispose rejects the active transport with worker-failed; retain this owner's native cause.
+        if (admissionFailure !== undefined && !signal?.aborted) {
+          throw new LlamaCppBrowserError({ code: admissionFailure });
+        }
+        throw error;
       } finally {
         acceptingEvents = false;
         const observed = memory?.finish();

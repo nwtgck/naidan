@@ -1,3 +1,4 @@
+import { captureVisionStorageObservation } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage-schema';
 import { createGenerationSpeedTracker } from './generation-speed';
 import { gpuProfilingProfile } from '@/features/llama-cpp-browser/types';
 import type { GpuProfileMeasurement } from '@/features/llama-cpp-browser/runtime/gpu-profiler';
@@ -188,6 +189,9 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
   const measuredMemory = request.measurement ? { wasmHeapBeforeBytes: core.module.HEAPU8.byteLength } : undefined;
   measurements.counters.memoryObservation = measuredMemory;
   measurements.counters.sessionPreparation = session.preparation;
+  if (measurementsEnabled && session.projectorStorage) {
+    measurements.counters.visionStorage = captureVisionStorageObservation({ value: session.projectorStorage, preference: request.options.visionBf16Storage });
+  }
   measurements.counters.prefillBatchTokens = session.prefillBatchTokens;
   const api = core.api;
   // Consume before template/media preparation, cancellation or any native

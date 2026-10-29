@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onUnmounted, provide } from 'vue';
-import { Loader2Icon } from 'lucide-vue-next';
+import { computed, onUnmounted, provide } from 'vue';
+import { FileArchiveIcon, Loader2Icon } from 'lucide-vue-next';
 import FileExplorerToolbar from './FileExplorerToolbar.vue';
 import FileExplorerListView from './FileExplorerListView.vue';
 import FileExplorerIconView from './FileExplorerIconView.vue';
@@ -14,6 +14,7 @@ import { useFileExplorer, FILE_EXPLORER_INJECTION_KEY } from '@/features/file-ex
 import { useFileExplorerKeyboard } from '@/features/file-explorer/composables/useFileExplorerKeyboard';
 import type { ViewMode, PreviewVisibility } from '@/features/file-explorer/logic/types';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
+import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   root: FileExplorerRootDescriptor,
@@ -23,6 +24,13 @@ const props = defineProps<{
   /** When true, the explorer starts in locked mode (write operations disabled). */
   initialLocked: boolean,
 }>();
+
+let unmounted = false;
+let disposeResources: (() => void) | undefined;
+onUnmounted(() => {
+  unmounted = true;
+  disposeResources?.();
+});
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
@@ -38,6 +46,16 @@ const { context, client, _viewMode, _preview } = await useFileExplorer({
   initialLocked: props.initialLocked,
 });
 
+disposeResources = () => {
+  _preview.dispose();
+  context.directoryDownload.dispose();
+  context.upload.dispose();
+  void client.dispose();
+};
+if (unmounted) {
+  disposeResources();
+}
+
 // Apply initial values
 _viewMode.value = props.initialViewMode;
 _preview.previewState.value = { ..._preview.previewState.value, visibility: props.initialPreviewVisibility };
@@ -45,15 +63,11 @@ _preview.previewState.value = { ..._preview.previewState.value, visibility: prop
 // Provide context for child components
 provide(FILE_EXPLORER_INJECTION_KEY, context);
 
+const isInsideArchive = computed(() => context.pathSegments.some(segment => segment.kind === 'archive'));
+
 // Keyboard handler
 const { handleKeyDown } = useFileExplorerKeyboard({ ctx: context });
 
-onUnmounted(() => {
-  _preview.dispose();
-  context.directoryDownload.dispose();
-  context.upload.dispose();
-  void client.dispose();
-});
 </script>
 
 <template>
@@ -65,6 +79,17 @@ onUnmounted(() => {
   >
     <!-- Toolbar -->
     <FileExplorerToolbar />
+
+    <div
+      v-if="isInsideArchive"
+      data-testid="file-explorer-archive-location"
+      tw-class="flex items-center gap-2 border-b border-gray-200/60 bg-gray-50/70 px-3 py-2 text-xs font-medium text-gray-500 dark:border-gray-700/50 dark:bg-gray-800/30 dark:text-gray-400"
+    >
+      <FileArchiveIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
+      <span>{{ lazyStrings.fileExplorer__zip_archive() }}</span>
+      <span aria-hidden="true" tw-class="text-gray-300 dark:text-gray-600">·</span>
+      <span>{{ lazyStrings.fileExplorer__read_only() }}</span>
+    </div>
 
     <!-- Main content area -->
     <div tw-class="flex flex-1 overflow-hidden">

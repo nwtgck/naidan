@@ -56,7 +56,20 @@ function resolveMenuItems({ items }: { items: MenuItemDraft[] }): MenuItem[] {
 
 const menuItems = computed<MenuItem[]>(() => {
   const readOnly = ctx.readOnly;
-  const lockedReason = readOnly ? lazyStrings.fileExplorer__unlock_to_enable() : undefined;
+  const disabledReason = (() => {
+    switch (ctx.readOnlyReason) {
+    case 'lock':
+      return lazyStrings.fileExplorer__unlock_to_enable();
+    case 'source':
+      return lazyStrings.fileExplorer__read_only();
+    case undefined:
+      return undefined;
+    default: {
+      const _exhaustiveCheck: never = ctx.readOnlyReason;
+      throw new Error(`Unhandled read-only reason: ${_exhaustiveCheck}`);
+    }
+    }
+  })();
 
   switch (target.value.kind) {
   case 'entry': {
@@ -67,15 +80,15 @@ const menuItems = computed<MenuItem[]>(() => {
 
     const items: MenuItemDraft[] = [
       { type: 'action', action: 'open', label: lazyStrings.fileExplorer__open(), icon: FolderOpenIcon },
-      { type: 'action', action: 'rename', label: lazyStrings.fileExplorer__rename(), icon: PencilIcon, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'rename', label: lazyStrings.fileExplorer__rename(), icon: PencilIcon, disabled: readOnly, disabledReason },
     ];
 
     items.push({ type: 'divider' });
     items.push({ type: 'action', action: 'copy', label: lazyStrings.fileExplorer__copy(), icon: CopyIcon });
-    items.push({ type: 'action', action: 'cut', label: lazyStrings.fileExplorer__cut(), icon: ScissorsIcon, disabled: readOnly, disabledReason: lockedReason });
+    items.push({ type: 'action', action: 'cut', label: lazyStrings.fileExplorer__cut(), icon: ScissorsIcon, disabled: readOnly, disabledReason });
 
     if (hasClipboard.value) {
-      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
+      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: readOnly, disabledReason });
     }
 
     items.push({ type: 'divider' });
@@ -86,19 +99,19 @@ const menuItems = computed<MenuItem[]>(() => {
 
     items.push({ type: 'action', action: 'getInfo', label: lazyStrings.fileExplorer__get_info(), icon: InfoIcon });
     items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'delete', label: lazyStrings.fileExplorer__delete(), icon: Trash2Icon, danger: true, disabled: readOnly, disabledReason: lockedReason });
+    items.push({ type: 'action', action: 'delete', label: lazyStrings.fileExplorer__delete(), icon: Trash2Icon, danger: true, disabled: readOnly, disabledReason });
 
     return resolveMenuItems({ items });
   }
   case 'background': {
     const items: MenuItemDraft[] = [
-      { type: 'action', action: 'newFile', label: lazyStrings.fileExplorer__new_file(), icon: FilePlusIcon, disabled: readOnly, disabledReason: lockedReason },
-      { type: 'action', action: 'newFolder', label: lazyStrings.fileExplorer__new_folder(), icon: FolderPlusIcon, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'newFile', label: lazyStrings.fileExplorer__new_file(), icon: FilePlusIcon, disabled: readOnly, disabledReason },
+      { type: 'action', action: 'newFolder', label: lazyStrings.fileExplorer__new_folder(), icon: FolderPlusIcon, disabled: readOnly, disabledReason },
     ];
 
     if (hasClipboard.value) {
       items.push({ type: 'divider' });
-      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
+      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: readOnly, disabledReason });
     }
 
     items.push({ type: 'divider' });

@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 import type { WorkerCapability, WorkerProxy } from '@/utils/worker-transport';
 import { idToRaw } from '@/01-models/ids';
+import { managedVolumeReferenceSchema } from '@/01-models/volume-access';
+import type { ManagedVolumeRemoteAccess } from './managed-volume-access';
+import { getEffectiveWeshMounts } from '@/features/wesh/mount-policy';
 import {
   createOpfsDirectoryHandleLocator,
   fileSystemDirectoryHandleReferenceSchema,
@@ -18,6 +21,13 @@ export const weshWorkerDirectoryMountSchema = z.object({
   type: z.literal('directory'),
   path: z.string().min(1),
   handle: fileSystemDirectoryHandleReferenceSchema,
+  readOnly: z.boolean(),
+});
+
+export const weshWorkerManagedDirectoryMountSchema = z.object({
+  type: z.literal('managed_directory'),
+  path: z.string().min(1),
+  reference: managedVolumeReferenceSchema,
   readOnly: z.boolean(),
 });
 
@@ -42,6 +52,7 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
 
 export const weshWorkerMountSchema = resolveMissingAsUndefined(z.discriminatedUnion('type', [
   weshWorkerDirectoryMountSchema,
+  weshWorkerManagedDirectoryMountSchema,
   weshWorkerNaidanSysfsMountSchema,
 ]));
 
@@ -143,6 +154,7 @@ export interface IWeshWorker {
   init(
     request: WorkerCapability<WeshWorkerInitRequest, 'file-system-handle-clone'>,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
+    managedVolumeRemoteAccess?: WorkerProxy<ManagedVolumeRemoteAccess>,
   ): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   startExecution(
@@ -182,13 +194,20 @@ export interface WeshWorkerClient {
 export function mapWeshMountsToWorkerMounts({ mounts }: {
   mounts: WeshMount[],
 }): WeshWorkerMount[] {
-  return mounts.map(mount => {
+  return getEffectiveWeshMounts({ mounts }).map(mount => {
     switch (mount.type) {
     case 'directory':
       return {
         type: 'directory',
         path: mount.path,
         handle: mount.handle,
+        readOnly: mount.readOnly,
+      };
+    case 'managed_directory':
+      return {
+        type: 'managed_directory',
+        path: mount.path,
+        reference: mount.reference,
         readOnly: mount.readOnly,
       };
     case 'naidan_sysfs':
@@ -218,7 +237,7 @@ export async function mapWeshMountsToOpfsWorkerMounts({
   opfsRoot: FileSystemDirectoryHandle,
 }): Promise<WeshWorkerMount[]> {
   const result: WeshWorkerMount[] = [];
-  for (const mount of mounts) {
+  for (const mount of getEffectiveWeshMounts({ mounts })) {
     switch (mount.type) {
     case 'directory':
       result.push({
@@ -228,6 +247,14 @@ export async function mapWeshMountsToOpfsWorkerMounts({
           opfsRoot,
           handle: mount.handle,
         }),
+        readOnly: mount.readOnly,
+      });
+      break;
+    case 'managed_directory':
+      result.push({
+        type: 'managed_directory',
+        path: mount.path,
+        reference: mount.reference,
         readOnly: mount.readOnly,
       });
       break;

@@ -26,6 +26,7 @@ import {
   type WeshFileSystemHandleTransport,
 } from './init-request';
 import type { WeshMount } from '@/features/wesh/types';
+import { createManagedVolumeRemoteAccess, observeManagedVolumeWorker } from './managed-volume-access';
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
   rootHandle,
@@ -52,41 +53,57 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       initialCwd,
       transport,
     });
-    const worker = new Worker(
-      new URL('./entry.ts', import.meta.url),
-      {
-        type: 'module',
-        name: FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME,
-      },
-    );
-    const remote = wrapWorkerRemote<IWeshWorker>({ endpoint: worker });
+    const managedVolumes = await createManagedVolumeRemoteAccess({ mounts });
     try {
-      // Keep the proxied reader as a separate top-level argument.
-      // Putting it inside the init request object can fail structured clone in browsers.
-      await remote.init(
-        workerCapability({
-          value: initRequest,
-          capability: 'file-system-handle-clone',
-        }),
-        naidanSysfsRemoteReader
-          ? workerProxy({ value: naidanSysfsRemoteReader })
-          : undefined,
+      const worker = new Worker(
+        new URL('./entry.ts', import.meta.url),
+        {
+          type: 'module',
+          name: FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME,
+        },
       );
-      return { worker, remote };
+      const stopObserving = observeManagedVolumeWorker({ worker, connection: managedVolumes });
+      try {
+        const remote = wrapWorkerRemote<IWeshWorker>({ endpoint: worker });
+        // Keep the proxied reader as a separate top-level argument.
+        // Putting it inside the init request object can fail structured clone in browsers.
+        await remote.init(
+          workerCapability({
+            value: initRequest,
+            capability: 'file-system-handle-clone',
+          }),
+          naidanSysfsRemoteReader
+            ? workerProxy({ value: naidanSysfsRemoteReader })
+            : undefined,
+          ...(managedVolumes.remote ? [workerProxy({ value: managedVolumes.remote })] as const : []),
+        );
+        return { worker, remote, managedVolumes, stopObserving };
+      } catch (error) {
+        stopObserving();
+        worker.terminate();
+        throw error;
+      }
     } catch (error) {
-      worker.terminate();
+      await managedVolumes.dispose().catch(() => undefined);
       throw error;
     }
   };
 
-  const destroyRuntime = async ({ worker, remote }: {
+  const destroyRuntime = async ({ worker, remote, managedVolumes, stopObserving }: {
     worker: Worker,
     remote: WorkerRemote<IWeshWorker>,
+    managedVolumes: Awaited<ReturnType<typeof createManagedVolumeRemoteAccess>>,
+    stopObserving(): void,
   }) => {
     try {
-      await releaseWorkerRemote({ remote });
+      await managedVolumes.dispose();
     } finally {
-      worker.terminate();
+      try {
+        await releaseWorkerRemote({ remote });
+      } finally {
+        stopObserving();
+        worker.terminate();
+      }
     }
   };
 
@@ -220,6 +237,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         return true;
       }
 
+      await activeRuntime.managedVolumes.dispose();
       runtime = await createCompatibleRuntime();
       releaseAllForegroundExecutionLeases();
       refreshBackgroundPreloadRegistration();
@@ -271,6 +289,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       releaseAllForegroundExecutionLeases();
       const activeRuntime = runtime;
       try {
+        await activeRuntime.managedVolumes.dispose();
         await activeRuntime.remote.dispose();
       } finally {
         await destroyRuntime(activeRuntime);

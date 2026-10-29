@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import type { SidebarItem } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+import { promiseAllKeyed } from '@/utils/promise';
 
 const {
   mockCreateGlobalSearchWorkerClient,
@@ -140,6 +141,43 @@ describe('useChatSearch Composable', () => {
 
     expect(mockCreateGlobalSearchWorkerClient).toHaveBeenCalledTimes(2);
     consoleWarn.mockRestore();
+  });
+
+  it('does not let a stale worker failure dispose the replacement search or clear its key', async () => {
+    const oldResponse = Promise.withResolvers<{ matches: never[] }>();
+    const newResponse = Promise.withResolvers<{ matches: never[] }>();
+    const oldSearch = vi.fn(() => oldResponse.promise);
+    const newSearch = vi.fn(() => newResponse.promise);
+    const newDispose = vi.fn().mockResolvedValue(undefined);
+    mockCreateGlobalSearchWorkerClient
+      .mockResolvedValueOnce({ searchChatContent: oldSearch, dispose: vi.fn().mockResolvedValue(undefined) })
+      .mockResolvedValueOnce({ searchChatContent: newSearch, dispose: newDispose });
+    const composable = await createComposable();
+    sidebarItems.value = [{ id: 'chat1', type: 'chat', chat: { id: toChatId({ raw: 'chat1' }), title: 'Chat', updatedAt: 1, groupId: undefined } }];
+    const oldRun = composable.search({ searchQuery: 'old', options: { scope: 'all' } });
+    let newRun = Promise.resolve();
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        oldResponse.resolve({ matches: [] });
+        newResponse.resolve({ matches: [] });
+        await promiseAllKeyed({ oldRun, newRun });
+        composable.disposeSearch();
+      },
+    };
+    await vi.waitFor(() => expect(oldSearch).toHaveBeenCalledOnce());
+    newRun = composable.search({ searchQuery: 'new', options: { scope: 'all' } });
+    await vi.waitFor(() => expect(newSearch).toHaveBeenCalledOnce());
+
+    oldResponse.reject(new Error('old worker failed'));
+    await oldRun;
+    expect(newDispose).not.toHaveBeenCalled();
+    expect(composable.isSearching.value).toBe(true);
+    expect(composable.isScanningContent.value).toBe(true);
+    newResponse.resolve({ matches: [] });
+    await newRun;
+    await composable.search({ searchQuery: 'new', options: { scope: 'all' } });
+    expect(mockCreateGlobalSearchWorkerClient).toHaveBeenCalledTimes(2);
+    expect(newSearch).toHaveBeenCalledOnce();
   });
 
   it('should settle searching state when worker creation fails', async () => {

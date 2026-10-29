@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
 
 const mockCreateClient = vi.fn();
-const mockGetVolumeDirectoryHandle = vi.fn();
+const mockResolveVolumeAccess = vi.fn();
 const mockAbortOngoingScans = vi.fn();
 const mockGetVolumeExtensions = vi.fn();
 const mockIsVolumeScanned = vi.fn();
-const mockStartVolumeExtensionScan = vi.fn();
+const mockStartVolumeAccessExtensionScan = vi.fn();
 
 vi.mock('@/features/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
@@ -14,7 +14,7 @@ vi.mock('@/features/wesh/worker/client', () => ({
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
+    resolveVolumeAccess: mockResolveVolumeAccess,
   },
 }));
 
@@ -22,15 +22,23 @@ vi.mock('./wesh/volume-extension-cache', () => ({
   abortOngoingScans: mockAbortOngoingScans,
   getVolumeExtensions: mockGetVolumeExtensions,
   isVolumeScanned: mockIsVolumeScanned,
-  startVolumeExtensionScan: mockStartVolumeExtensionScan,
+  startVolumeAccessExtensionScan: mockStartVolumeAccessExtensionScan,
 }));
+
+function queueNativeVolumeAccess({ handle }: { handle: FileSystemDirectoryHandle }): void {
+  mockResolveVolumeAccess.mockImplementationOnce(async ({ volumeId }: { volumeId: import('@/01-models/ids').VolumeId }) => ({
+    kind: 'native',
+    volume: { id: volumeId, name: handle.name, type: 'opfs', createdAt: 0 },
+    handle,
+  }));
+}
 
 function setupStandardMocks({
   volumeHandle,
 }: {
   volumeHandle: FileSystemDirectoryHandle,
 }) {
-  mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle);
+  queueNativeVolumeAccess({ handle: volumeHandle });
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
     awaitExecution: vi.fn(),
@@ -46,8 +54,31 @@ function setupStandardMocks({
 describe('getEnabledTools shell_execute', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockResolveVolumeAccess.mockReset();
     mockGetVolumeExtensions.mockReturnValue(new Set<string>());
     mockIsVolumeScanned.mockReturnValue(false);
+    mockStartVolumeAccessExtensionScan.mockResolvedValue(undefined);
+  });
+
+  it('passes a managed directory to the shell worker without requiring an OPFS handle', async () => {
+    const volumeId = toVolumeId({ raw: 'pending' });
+    mockResolveVolumeAccess.mockResolvedValueOnce({ kind: 'managed', volume: { id: volumeId, name: 'Documents', type: 'opfs', createdAt: 0 }, reference: { volumeId } });
+    mockCreateClient.mockResolvedValue({ dispose: vi.fn() });
+    const { getEnabledTools } = await import('./factory');
+    const tools = await getEnabledTools({
+      enabledNames: ['shell_execute'],
+      tmpHandle: undefined,
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat' }),
+      chatGroupId: undefined,
+      naidanSysfsAccessScope: 'none',
+      settings: { storageType: 'local', mounts: [{ type: 'volume', volumeId, mountPath: '/home/user/documents', readOnly: false }] } as never,
+    });
+    expect(tools.map(tool => tool.name)).toEqual(['shell_execute']);
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [{ type: 'managed_directory', path: '/home/user/documents', reference: { volumeId }, readOnly: false }],
+      initialCwd: '/home/user',
+    }));
   });
 
   it('creates a fresh Wesh worker client with resolved mounts and a per-session /tmp', async () => {
@@ -56,9 +87,8 @@ describe('getEnabledTools shell_execute', () => {
     const volumeHandleA = { kind: 'directory', name: 'vol-a' } as FileSystemDirectoryHandle;
     const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle;
 
-    mockGetVolumeDirectoryHandle
-      .mockResolvedValueOnce(volumeHandleA)
-      .mockResolvedValueOnce(volumeHandleB);
+    queueNativeVolumeAccess({ handle: volumeHandleA });
+    queueNativeVolumeAccess({ handle: volumeHandleB });
     mockCreateClient.mockResolvedValue({
       startExecution: vi.fn(),
       awaitExecution: vi.fn(),
@@ -396,9 +426,9 @@ Mounted directories:
       } as never,
     });
 
-    expect(mockStartVolumeExtensionScan).toHaveBeenCalledWith({
+    expect(mockStartVolumeAccessExtensionScan).toHaveBeenCalledWith({
       volumeId: 'vol-s',
-      handle: volumeHandle,
+      access: expect.objectContaining({ kind: 'native', handle: volumeHandle }),
     });
   });
 
@@ -424,7 +454,7 @@ Mounted directories:
       } as never,
     });
 
-    expect(mockStartVolumeExtensionScan).not.toHaveBeenCalled();
+    expect(mockStartVolumeAccessExtensionScan).not.toHaveBeenCalled();
   });
 
   it('includes file type hints in the description for detected extensions', async () => {

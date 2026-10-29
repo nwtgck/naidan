@@ -15,8 +15,8 @@ export function applicableModelLaunchTarget({ chat, endpoint, modelId }: {
   return launch?.phase === 'active' && endpoint?.type === 'llama_cpp_browser' && modelId === launch.effectiveModelId ? launch.target : undefined;
 }
 
-export async function isModelLaunchTargetReady({ target, destination, effectiveModelId }: { target: ModelLaunchTarget, destination?: DownloadDestination, effectiveModelId?: string }): Promise<boolean> {
-  const model = await installedSelection({ selection: target.selection, destination });
+export async function isModelLaunchTargetReady({ target, destination, effectiveModelId, expectedRoot }: { target: ModelLaunchTarget, destination?: DownloadDestination, effectiveModelId?: string, expectedRoot?: FileSystemDirectoryHandle }): Promise<boolean> {
+  const model = await installedSelection({ selection: target.selection, destination, ...(expectedRoot === undefined ? {} : { expectedRoot }) });
   return model?.modelId === (effectiveModelId ?? target.modelId);
 }
 

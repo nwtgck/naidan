@@ -175,10 +175,11 @@ async function readDirectory({ path }: { path: string }): Promise<{
     directoryPath: normalizedPath,
     readOnly: false,
     pathSegments: [
-      { name: activeRoot.name, path: '/' },
+      { name: activeRoot.name, path: '/', kind: 'root' },
       ...segments.map((name, index) => ({
         name,
         path: `/${segments.slice(0, index + 1).join('/')}`,
+        kind: 'directory' as const,
       })),
     ],
     entries,
@@ -385,6 +386,82 @@ describe('useFileExplorerNavigation', () => {
     expect(entries.value.some(e => e.name === 'new.txt')).toBe(true);
   });
 
+  it('recognizes a non-archive file after worker error serialization without changing the load error', async () => {
+    const client = makeClient();
+    const readDirectory = client.readDirectory;
+    client.readDirectory = vi.fn(async ({ path }) => {
+      if (path === '/missing') {
+        throw new Error('not a directory');
+      }
+      if (path === '/plain.txt') {
+        throw Object.assign(new Error('File is not a browsable archive'), { name: 'FileExplorerNotDirectoryError' });
+      }
+      return readDirectory({ path });
+    });
+    activeRoot = root;
+    const nav = useFileExplorerNavigation({
+      client,
+      sortConfig: defaultSort,
+      filterQuery: defaultFilter,
+      initialPath: '/',
+    });
+    await flushPromises();
+
+    await nav.TEST_ONLY.loadDirectory({ path: '/missing', errorMode: 'report' });
+    const previousLoadError = nav.loadError.value;
+    expect(previousLoadError).toBeDefined();
+
+    expect(await nav.tryNavigateToDirectory({ path: '/plain.txt' })).toBe('not-directory');
+    expect(nav.loadError.value).toBe(previousLoadError);
+  });
+
+  it('reports archive failures instead of treating them as regular files', async () => {
+    const client = makeClient();
+    const readDirectory = client.readDirectory;
+    client.readDirectory = vi.fn(async ({ path }) => {
+      if (path === '/broken.zip') {
+        throw new Error('ZIP entry escapes the archive root');
+      }
+      return readDirectory({ path });
+    });
+    const nav = useFileExplorerNavigation({
+      client,
+      sortConfig: defaultSort,
+      filterQuery: defaultFilter,
+      initialPath: '/',
+    });
+    await flushPromises();
+
+    expect(await nav.tryNavigateToDirectory({ path: '/broken.zip' })).toBe('failed');
+    expect(nav.loadError.value).toBe('Failed to load directory: ZIP entry escapes the archive root');
+    expect(nav.currentDirectoryPath.value).toBe('/');
+    expect(nav.isLoading.value).toBe(false);
+  });
+
+  it('returns a successful probe result after navigating', async () => {
+    root.addDir('archive.zip').addFile('inside.txt');
+    const nav = makeNav(root);
+    await flushPromises();
+
+    expect(await nav.tryNavigateToDirectory({ path: '/archive.zip' })).toBe('navigated');
+    expect(nav.currentDirectoryPath.value).toBe('/archive.zip');
+    expect(nav.entries.value.map(entry => entry.name)).toEqual(['inside.txt']);
+  });
+
+  it('preserves trailing whitespace in directory paths', async () => {
+    root.addDir('docs ').addFile('inside.txt');
+    const nav = makeNav(root);
+    await flushPromises();
+
+    await nav.navigateToDirectory({ path: '/docs ' });
+    expect(nav.currentDirectoryPath.value).toBe('/docs ');
+    expect(nav.pathSegments.value.at(-1)?.name).toBe('docs ');
+    expect(nav.entries.value.map(entry => entry.name)).toEqual(['inside.txt']);
+
+    await nav.navigateUp();
+    expect(nav.currentDirectoryPath.value).toBe('/');
+  });
+
   it('shows a clearer message when the directory is no longer accessible', async () => {
     const client = makeClient();
     client.readDirectory = vi.fn(async () => {
@@ -400,7 +477,7 @@ describe('useFileExplorerNavigation', () => {
       filterQuery: defaultFilter,
       initialPath: '/missing',
     });
-    await nav.TEST_ONLY.loadDirectory({ path: '/missing' });
+    await nav.TEST_ONLY.loadDirectory({ path: '/missing', errorMode: 'report' });
     expect(nav.loadError.value).toBe(
       'Failed to load directory: This folder is no longer available. It may have been moved, deleted, or its access was revoked in the browser.',
     );

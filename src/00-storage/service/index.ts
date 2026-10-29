@@ -40,6 +40,9 @@ import type { ImageGenerationRecord } from '@/01-models/image-generation-history
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import { readNaidanRpcRegistry, writeNaidanRpcRegistry, sameNaidanRpcRegistry } from './naidan-rpc-registry';
 import type { NaidanRpcRegistryAccess, NaidanRpcRegistrySnapshot } from './naidan-rpc-registry';
+import type { LazyVolumeState, ManagedVolumeReference, VolumeAccess } from '@/01-models/volume-access';
+import type { LazyVolumeManager, ManagedVolumeConnection } from './lazy-volumes';
+import { readLazyVolumeState, subscribeLazyVolumeState } from './lazy-volume-state';
 
 
 // Match Wesh VFS lexical mount normalization without introducing a storage -> feature dependency.
@@ -74,6 +77,77 @@ function mountPathsAreEquivalent({ left, right }: { left: string, right: string 
  * Use `updateHierarchy` for structural changes.
  */
 export class StorageService {
+  private readonly lazyVolumeManagers = new WeakMap<IStorageProvider, LazyVolumeManager>();
+  private readonly loadingLazyVolumeManagers = new WeakMap<IStorageProvider, Promise<LazyVolumeManager>>();
+  private lazyVolumeResetDepth = 0;
+  private lazyVolumeGeneration = 0;
+
+  /** Drain outside metadata locks: filesystem callbacks may themselves finish
+   * index publication. Provider replacement owns the later physical mutation. */
+  private async beginLazyVolumeReset({ pending }: { pending: 'discard' | 'reject' }): Promise<() => void> {
+    this.lazyVolumeResetDepth++;
+    this.lazyVolumeGeneration++;
+    try {
+      const provider = this.provider;
+      if (provider !== null) {
+        const manager = this.lazyVolumeManagers.get(provider) ?? await this.loadingLazyVolumeManagers.get(provider);
+        if (manager !== undefined) {
+          switch (pending) {
+          case 'reject':
+            if (manager.hasUnpublished()) {
+              throw new Error('Finish saving attached folders before switching storage');
+            }
+            break;
+          case 'discard': break;
+          default: {
+            const exhaustive: never = pending;
+            throw new Error(String(exhaustive));
+          }
+          }
+          await manager.dispose();
+          this.lazyVolumeManagers.delete(provider);
+          this.loadingLazyVolumeManagers.delete(provider);
+        }
+      }
+      return () => {
+        this.lazyVolumeResetDepth--;
+      };
+    } catch (error) {
+      this.lazyVolumeResetDepth--;
+      throw error;
+    }
+  }
+
+  private async getLazyVolumeManager(): Promise<LazyVolumeManager> {
+    if (this.lazyVolumeResetDepth > 0) {
+      throw new DOMException('Storage is being reset', 'InvalidStateError');
+    }
+    const provider = this.getProvider();
+    const generation = this.lazyVolumeGeneration;
+    const current = this.lazyVolumeManagers.get(provider);
+    if (current !== undefined) {
+      return current;
+    }
+    let pending = this.loadingLazyVolumeManagers.get(provider);
+    if (pending === undefined) {
+      pending = import('./lazy-volumes').then(({ createLazyVolumeManager }) => {
+        const manager = createLazyVolumeManager({ provider });
+        this.lazyVolumeManagers.set(provider, manager);
+        return manager;
+      });
+      this.loadingLazyVolumeManagers.set(provider, pending);
+    }
+    try {
+      const manager = await pending;
+      if (this.lazyVolumeResetDepth > 0 || this.provider !== provider || this.lazyVolumeGeneration !== generation) {
+        throw new DOMException('Storage changed while preparing folder access', 'InvalidStateError');
+      }
+      return manager;
+    } finally {
+      this.loadingLazyVolumeManagers.delete(provider);
+    }
+  }
+
   private localModelPromotionListeners = new Set<({ promotion }: { promotion: LocalModelPromotion }) => void>();
 
   subscribeLocalModelPromotions({ listener }: { listener({ promotion }: { promotion: LocalModelPromotion }): void }): () => void {
@@ -99,6 +173,12 @@ export class StorageService {
         switch (event.type) {
         case 'migration':
           this.providerGeneration++;
+          if (event.volumeFilesRemoved === true) {
+            void this.beginLazyVolumeReset({ pending: 'discard' }).then(release => release()).catch(error => {
+              const { addErrorEvent } = useGlobalEvents();
+              addErrorEvent({ source: 'StorageService:volume-reset', message: 'Could not close folder access after a storage change.', details: error });
+            });
+          }
           if (this.provider !== null) {
             forgetModelLaunches({ provider: this.provider });
           }
@@ -308,44 +388,49 @@ export class StorageService {
   }
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
-    await this.synchronizer.withLock({
-      fn: async () => {
-        this.providerGeneration++;
-        if (this.provider !== null) {
-          forgetModelLaunches({ provider: this.provider });
-        }
-        if (this.provider) {
-          this.emitRpcRegistryChange();
-        }
-        const isOPFSSupported = await checkOPFSSupport();
-        let targetType: 'local' | 'opfs' | 'memory' = type;
+    const releaseVolumes = await this.beginLazyVolumeReset({ pending: 'discard' });
+    try {
+      await this.synchronizer.withLock({
+        fn: async () => {
+          this.providerGeneration++;
+          if (this.provider !== null) {
+            forgetModelLaunches({ provider: this.provider });
+          }
+          if (this.provider) {
+            this.emitRpcRegistryChange();
+          }
+          const isOPFSSupported = await checkOPFSSupport();
+          let targetType: 'local' | 'opfs' | 'memory' = type;
 
-        if (targetType === 'opfs' && !isOPFSSupported) {
-          targetType = 'local';
-        }
+          if (targetType === 'opfs' && !isOPFSSupported) {
+            targetType = 'local';
+          }
 
-        this.currentType = targetType;
+          this.currentType = targetType;
 
-        switch (this.currentType) {
-        case 'opfs':
-          this.provider = new OPFSStorageProvider();
-          break;
-        case 'local':
-          this.provider = new LocalStorageProvider();
-          break;
-        case 'memory':
-          this.provider = new MemoryStorageProvider();
-          break;
-        default: {
-          const _exhaustiveCheck: never = this.currentType;
-          throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
-        }
-        }
-        await this.provider.init();
-      },
-      lockKey: SYNC_LOCK_KEY,
-      ...this.getLockOptions({ source: 'init' }),
-    });
+          switch (this.currentType) {
+          case 'opfs':
+            this.provider = new OPFSStorageProvider();
+            break;
+          case 'local':
+            this.provider = new LocalStorageProvider();
+            break;
+          case 'memory':
+            this.provider = new MemoryStorageProvider();
+            break;
+          default: {
+            const _exhaustiveCheck: never = this.currentType;
+            throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
+          }
+          }
+          await this.provider.init();
+        },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'init' }),
+      });
+    } finally {
+      releaseVolumes();
+    }
   }
 
   getCurrentType(): 'local' | 'opfs' | 'memory' {
@@ -1149,7 +1234,10 @@ export class StorageService {
   }
 
   async clearAll(): Promise<void> {
+    let releaseVolumes: (() => void) | undefined;
+    let volumeFilesRemoved: true | undefined;
     try {
+      releaseVolumes = await this.beginLazyVolumeReset({ pending: 'discard' });
       await this.synchronizer.withLock({
         fn: async () => {
           this.providerGeneration++;
@@ -1158,14 +1246,26 @@ export class StorageService {
           }
           this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
           await this.getProvider().clearAll();
+          const storageType = this.getCurrentType();
+          switch (storageType) {
+          case 'opfs': volumeFilesRemoved = true;
+            break;
+          case 'local': case 'memory': break;
+          default: {
+            const exhaustive: never = storageType;
+            throw new Error(String(exhaustive));
+          }
+          }
         },
         lockKey: SYNC_LOCK_KEY,
         ...this.getLockOptions({ source: 'clearAll' }),
       });
-      this.notify({ event: { type: 'migration', timestamp: Date.now() } });
+      this.notify({ event: { type: 'migration', timestamp: Date.now(), ...(volumeFilesRemoved === undefined ? {} : { volumeFilesRemoved }) } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'clearAll' });
       throw e;
+    } finally {
+      releaseVolumes?.();
     }
   }
 
@@ -1461,8 +1561,77 @@ export class StorageService {
     return deleteImageGenerationRecord({ storageType: this.getCurrentType(), id });
   }
 
-  listVolumes(): AsyncIterable<Volume> {
-    return this.getProvider().listVolumes();
+  async *listVolumes(): AsyncIterable<Volume> {
+    const provider = this.getProvider();
+    const emitted = new Set<VolumeId>();
+    for await (const volume of provider.listVolumes()) {
+      emitted.add(volume.id);
+      yield volume;
+    }
+    for (const volume of this.lazyVolumeManagers.get(provider)?.listUnpublished() ?? []) {
+      if (!emitted.has(volume.id)) {
+        yield volume;
+      }
+    }
+  }
+
+  async registerLazyVolume({ name, entries, signal }: {
+    name: string, entries: readonly { file: File, relativePath: string }[], signal: AbortSignal | undefined,
+  }): Promise<Volume> {
+    const storageType = this.getCurrentType();
+    switch (storageType) {
+    case 'opfs': break;
+    case 'local': case 'memory': throw new Error('Folder volumes require browser filesystem storage');
+    default: {
+      const exhaustive: never = storageType;
+      throw new Error(String(exhaustive));
+    }
+    }
+    const manager = await this.getLazyVolumeManager();
+    return manager.register({ name, files: entries, signal });
+  }
+
+  async resolveVolumeAccess({ volumeId }: { volumeId: VolumeId }): Promise<VolumeAccess> {
+    const provider = this.getProvider();
+    const managed = await this.lazyVolumeManagers.get(provider)?.resolveAccess({ volumeId });
+    if (managed !== undefined) {
+      return managed;
+    }
+    return provider.probeVolumeAccess({ volumeId });
+  }
+
+  async createManagedVolumeAccess({ reference, readOnly }: { reference: ManagedVolumeReference, readOnly: boolean }): Promise<ManagedVolumeConnection> {
+    const manager = await this.getLazyVolumeManager();
+    const access = await manager.resolveAccess({ volumeId: reference.volumeId });
+    if (access === undefined) {
+      throw new DOMException('The managed volume no longer exists', 'NotFoundError');
+    }
+    switch (access.kind) {
+    case 'managed': return manager.createAccess({ reference, readOnly });
+    case 'native': case 'incomplete': case 'missing':
+      throw new DOMException('The managed volume no longer exists', 'NotFoundError');
+    default: {
+      const exhaustive: never = access;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+
+  getLazyVolumeState({ volumeId }: { volumeId: VolumeId }): LazyVolumeState | undefined {
+    return readLazyVolumeState({ volumeId });
+  }
+
+  subscribeLazyVolumeChanges({ listener }: { listener({ volumeId }: { volumeId: VolumeId }): void }): () => void {
+    return subscribeLazyVolumeState({ listener });
+  }
+
+  pauseLazyVolumeCopy({ volumeId }: { volumeId: VolumeId }): void {
+    this.lazyVolumeManagers.get(this.getProvider())?.pause({ volumeId });
+  }
+
+  async retryLazyVolumeCopy({ volumeId }: { volumeId: VolumeId }): Promise<void> {
+    const manager = await this.getLazyVolumeManager();
+    await manager.retry({ volumeId });
   }
 
   async createVolume({ name, type, sourceHandle }: {
@@ -1487,10 +1656,19 @@ export class StorageService {
   }
 
   async deleteVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-    return this.getProvider().deleteVolume({ volumeId });
+    const provider = this.getProvider();
+    const manager = this.lazyVolumeManagers.get(provider);
+    if (manager?.has({ volumeId })) {
+      await manager.remove({ volumeId });
+      return;
+    }
+    return provider.deleteVolume({ volumeId });
   }
 
   async deleteVolumeIfEmptyAndUnreferenced({ volumeId }: { volumeId: VolumeId }): Promise<'deleted' | 'kept'> {
+    if (this.lazyVolumeManagers.get(this.getProvider())?.has({ volumeId })) {
+      return 'kept';
+    }
     const isDirectoryEmpty = async ({ handle }: { handle: FileSystemDirectoryHandle }): Promise<boolean> => {
       for await (const _entry of handle.values()) {
         return false;
@@ -1532,7 +1710,13 @@ export class StorageService {
   }
 
   async renameVolume({ volumeId, name }: { volumeId: VolumeId, name: string }): Promise<void> {
-    return this.getProvider().renameVolume({ volumeId, name });
+    const provider = this.getProvider();
+    const manager = this.lazyVolumeManagers.get(provider);
+    if (manager?.has({ volumeId })) {
+      await manager.rename({ volumeId, name });
+      return;
+    }
+    return provider.renameVolume({ volumeId, name });
   }
 
   async mountVolume({ volumeId, mountPath, readOnly }: {
@@ -1719,7 +1903,11 @@ export class StorageService {
   }
 
   async switchProvider({ type }: { type: 'local' | 'opfs' | 'memory' }) {
+    let releaseVolumes: (() => void) | undefined;
     try {
+      if (this.currentType !== type) {
+        releaseVolumes = await this.beginLazyVolumeReset({ pending: 'reject' });
+      }
       await this.synchronizer.withLock({
         fn: async () => {
           const activeProvider = this.getProvider();
@@ -1838,6 +2026,8 @@ export class StorageService {
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'switchProvider' });
       throw e;
+    } finally {
+      releaseVolumes?.();
     }
   }
 

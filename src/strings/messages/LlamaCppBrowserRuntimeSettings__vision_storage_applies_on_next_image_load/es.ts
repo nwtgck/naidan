@@ -1,0 +1,1 @@
+export const LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load = (): string => 'Applies when the image projector next loads. Text-only requests keep their existing model and context. A failed retained load is not retried in legacy or CPU mode. An explicitly selected CPU runtime keeps its existing behavior.';

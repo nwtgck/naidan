@@ -20,6 +20,8 @@ import ActionButton from './ActionButton.vue';
 import MountAccessModeSelector from './MountAccessModeSelector.vue';
 import SettingsCollapse from './SettingsCollapse.vue';
 import VolumeListItem from './VolumeListItem.vue';
+import VolumeCopyProgress from './VolumeCopyProgress.vue';
+import { useLazyVolumeCopies } from '@/composables/useLazyVolumeCopies';
 
 const { addToast } = useToast();
 
@@ -53,6 +55,24 @@ const mountedVolumes = computed(() =>
 const unmountedVolumes = computed(() =>
   props.volumes.filter(vol => !props.mounts.some(m => m.type === 'volume' && m.volumeId === vol.id)),
 );
+const { pendingStates } = useLazyVolumeCopies({
+  volumeIds: computed(() => props.volumes.map(volume => volume.id)),
+});
+const pendingCopies = computed(() => new Map(pendingStates.value.map(state => [state.volume.id, state])));
+
+async function resumeCopy({ volumeId }: { volumeId: VolumeId }): Promise<void> {
+  try {
+    const { storageService } = await import('@/00-storage/service');
+    await storageService.retryLazyVolumeCopy({ volumeId });
+  } catch (error) {
+    console.error('Failed to resume folder copy:', error);
+  }
+}
+
+async function pauseCopy({ volumeId }: { volumeId: VolumeId }): Promise<void> {
+  const { storageService } = await import('@/00-storage/service');
+  storageService.pauseLazyVolumeCopy({ volumeId });
+}
 
 const groups = computed(() => [
   { id: 'mounted' as const, label: props.inUseSectionLabel ?? lazyStrings.volumes__in_use(), volumes: mountedVolumes.value },
@@ -179,7 +199,7 @@ defineExpose({
                 <UnlockIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0" />
                 {{ getMount({ volId: volume.id })?.readOnly ? lazyStrings.volumes__read_only() : lazyStrings.volumes__read_write() }}
               </span>
-              <span>{{ volume.type === 'host' ? lazyStrings.volumes__linked_folder() : lazyStrings.volumes__copied_folder() }}</span>
+              <span v-if="!pendingCopies.has(volume.id)">{{ volume.type === 'host' ? lazyStrings.volumes__linked_folder() : lazyStrings.volumes__copied_folder() }}</span>
               <span v-if="group.id === 'available'">{{ formatDate({ timestamp: volume.createdAt }) }}</span>
             </span>
           </template>
@@ -191,8 +211,15 @@ defineExpose({
             <ActionButton v-else appearance="primary" :disabled="false" :icon-tone="undefined" :data-testid="'volume-add-btn-' + idToRaw({ id: volume.id })" tw-class="text-sm!" @click="emit('add', { volumeId: volume.id, mountPath: generateDefaultPath({ baseName: volume.name }), readOnly: true })"><EyeIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />{{ addButtonLabel ?? lazyStrings.volumes__use() }}</ActionButton>
             <button v-if="showVolumeManagement" type="button" data-testid="volume-delete-btn" :disabled="deletionPending" @click="emit('delete-volume', { volumeId: volume.id })" :title="volume.type === 'host' ? lazyStrings.volumes__remove() : lazyStrings.volumes__delete()" :aria-label="volume.type === 'host' ? lazyStrings.volumes__remove() : lazyStrings.volumes__delete()" tw-class="grid h-10 w-10 place-items-center rounded-lg text-gray-400 hover:text-red-500 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"><XIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
           </template>
-          <template v-if="group.id === 'mounted'" #editor>
-            <SettingsCollapse :id="listId + '-edit-' + idToRaw({ id: volume.id })" :open="editingMountId === volume.id" :return-focus="editingMountTrigger">
+          <template #editor>
+            <div v-if="pendingCopies.has(volume.id)" tw-class="px-3 pb-3">
+              <VolumeCopyProgress
+                :state="pendingCopies.get(volume.id)!"
+                @pause="pauseCopy({ volumeId: volume.id })"
+                @resume="resumeCopy({ volumeId: volume.id })"
+              />
+            </div>
+            <SettingsCollapse v-if="group.id === 'mounted'" :id="listId + '-edit-' + idToRaw({ id: volume.id })" :open="editingMountId === volume.id" :return-focus="editingMountTrigger">
               <div v-if="editingMountId === volume.id" tw-class="space-y-4 border-t border-gray-200/60 p-3 dark:border-gray-700/40" @keydown.esc.stop.prevent="cancelMountEditing">
                 <div tw-class="grid min-w-0 grid-cols-1 gap-4 @lg:grid-cols-2">
                   <div tw-class="min-w-0 space-y-2">

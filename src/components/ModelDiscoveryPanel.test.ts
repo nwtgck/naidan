@@ -1,3 +1,4 @@
+import { previewTest, resetRepositoryPreviewTest } from '@/features/llama-cpp-browser/components/repository-preview.test-support';
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
@@ -59,6 +60,7 @@ vi.mock('./BrowserModelLibrary.vue', () => ({
 
 beforeEach(async () => {
   launchTest.reset();
+  resetRepositoryPreviewTest();
   tabPreference.current = ref('candidates');
   tabPreference.save.mockClear();
   inventory.models = [];
@@ -223,7 +225,7 @@ describe('browser model discovery', () => {
     expect(wrapper.find('[data-testid="model-candidate-saved"]').exists()).toBe(false);
   });
 
-  it('keeps repository preview offline and retires a pending explicit Start on close', async () => {
+  it('reads repository metadata only after selection and retires a pending explicit Start on close', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch');
     const wrapper = mount(ModelDiscoveryPanel, { attachTo: document.body, global: { stubs: { Teleport: true } }, props: { visibility: 'open', tab: 'hugging-face' } });
     using _cleanup = {
@@ -233,22 +235,50 @@ describe('browser model discovery', () => {
       },
     };
     await flushPromises();
+    expect(previewTest.inspect).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/unknown:Q8_0');
+    expect(previewTest.inspect).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     expect(wrapper.get('[data-testid="discovery-detail"]').text()).toContain('unknown');
-    expect(wrapper.get('[data-testid="discovery-detail"]').text()).toContain('Size not checked');
+    expect(wrapper.get('[data-testid="discovery-detail"]').text()).toContain('512 B');
+    expect(previewTest.inspect).toHaveBeenCalledOnce();
     expect(wrapper.get('[data-testid="discovery-detail"]').element.closest('[inert]')).toBeNull();
     expect(wrapper.get('[data-testid="discovery-list-viewport"]').element.closest('[inert]')).not.toBeNull();
     await wrapper.get('[data-testid="discovery-back"]').trigger('click');
     expect(wrapper.get('[data-testid="hugging-face-repository"]').element.closest('[inert]')).toBeNull();
     await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
-    expect(fetch).not.toHaveBeenCalled();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    expect(fetch.mock.calls.filter(([url]) => new URL(String(url), window.location.href).origin !== window.location.origin)).toHaveLength(0);
     expect(modelLaunchEntryState.value.status).toBe('idle');
     await wrapper.get('[data-testid="discovery-start"]').trigger('click');
     expect(modelLaunchEntryState.value.status).toBe('checking');
     await wrapper.get('[data-testid="model-discovery-close"]').trigger('click');
     expect(wrapper.emitted('close')).toHaveLength(1);
     expect(modelLaunchEntryState.value.status).toBe('idle');
+  });
+
+  it('opens a searched repository with metadata and shows the download destination only in its detail', async () => {
+    const wrapper = mount(ModelDiscoveryPanel, { props: { visibility: 'open', tab: 'hugging-face' }, global: { stubs: { Teleport: true } } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    expect(previewTest.inspect).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="llama-host-model-directories"]').exists()).toBe(false);
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('select', 'owner/Model-GGUF');
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    expect(previewTest.inspect).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="discovery-detail"]').find('[data-testid="llama-host-model-directories"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="discovery-list-viewport"]').find('[data-testid="llama-host-model-directories"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="discovery-back"]').trigger('click');
+    expect(wrapper.find('[data-testid="llama-host-model-directories"]').exists()).toBe(false);
   });
 
   it('keeps expandable guidance in the detail viewport and leaves the action footer stable', async () => {
@@ -264,6 +294,8 @@ describe('browser model discovery', () => {
     await flushPromises();
     await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/model:Q8_0');
     await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     const guidance = wrapper.get('[data-testid="discovery-guidance"]');
     const viewport = wrapper.get('[data-testid="discovery-detail-viewport"]');
     const start = wrapper.get('[data-testid="discovery-start"]');
@@ -290,6 +322,8 @@ describe('browser model discovery', () => {
     await flushPromises();
     await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/model:Q8_0');
     await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     const start = wrapper.get('[data-testid="discovery-start"]');
     await start.trigger('click');
     const request = modelLaunchEntryState.value;

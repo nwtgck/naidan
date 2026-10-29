@@ -13,6 +13,7 @@ import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import type { WeshMount } from '@/features/wesh/types';
+import { volumeAccessToWeshMount } from '@/features/wesh/volume-mount';
 import { settingsSourcePresentation, type SettingsSource } from '@/logic/settings-labels';
 import { ensureStrings, lazyStrings } from '@/strings';
 import SettingsSourceBadge from './SettingsSourceBadge.vue';
@@ -275,11 +276,12 @@ async function openExplorer({ mount }: { mount: Mount }) {
     action: async () => {
       const workerMounts = new Map<string, WeshMount>();
       for (const entry of entries) {
-        const handle = await storageService.getVolumeDirectoryHandle({ volumeId: entry.volumeId });
+        const access = await storageService.resolveVolumeAccess({ volumeId: entry.volumeId });
+        const resolvedMount = volumeAccessToWeshMount({ mount: entry, access });
         // As in runtime mount resolution, an unavailable child must not hide a
         // usable upstream entry. The clicked row retains its own access mode.
-        if (handle) {
-          workerMounts.set(entry.mountPath, { type: 'directory', path: entry.mountPath, handle, readOnly: entry.readOnly });
+        if (resolvedMount) {
+          workerMounts.set(entry.mountPath, resolvedMount);
         }
       }
       const title = await ensureStrings.ScopedMountSettings__folders();

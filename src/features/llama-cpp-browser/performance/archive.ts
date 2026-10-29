@@ -1,14 +1,16 @@
 import { isGpuProfileTrial, summarizeGpuProfiles } from './gpu-profile-summary';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
-import { performanceProtocol, snapshotSchema, type PerformanceSnapshot } from './types';
+import { snapshotSchema, type PerformanceSnapshot } from './types';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 
-const readme = `# Naidan llama.cpp browser performance / ${performanceProtocol}
+function archiveReadme({ protocol }: { protocol: PerformanceSnapshot['plan']['protocol'] }): string {
+  return `# Naidan llama.cpp browser performance / ${protocol}
 
 ## Start here
 - manifest.json: collection status, export time, and model-level errors; completed
   means collection ended, not that every model or attempt succeeded.
+- vision-fixture.json, when present: fixed authored image identity and generator conditions; no image bytes.
 - environment.json: browser/build environment and available runtime asset provenance.
 - execution.json: runner wall time and orchestration intervals; null means unavailable.
 - plan.json: exact models, order, settings, per-call output limits, and fixtures.
@@ -51,6 +53,35 @@ terminal performance summary for effective conditions when available. An absent
 terminal summary leaves final effective conditions unknown.
 This ZIP is a self-describing investigation handoff, not a stable API. Layout and
 fields may change on every commit; use this README and this run's actual plan.
+
+Optional earlyGenerationTiming reuses existing Worker clocks for the first 16
+sampler-stage intervals, first 16 combined serial/overlap decode-stage intervals,
+and first 16 sample timestamps, including stop/EOG samples. The two interval
+series have separate ordinals; sampleCountAtStart is a count, never a token ID.
+These are stage residence times: generation-overlap includes delivery and decode
+as joint wall time, not decode-only or GPU time. Neither closure boundary proves a
+completed native call: failed/aborted cleanup can also cause stage-transition. Truncated
+flags mark the capture limits. Nonzero clockAnomalies invalidates timing precision;
+exceptional, non-finite or backward clock reads retain the last valid timestamp.
+
+For an image workload, visionAdmission precedes the image RPC and records native
+vision support or a reason for skipping. Missing projectors are skipped before
+loading. Initialization/encoding failures remain failures. Cold host elapsed and
+first-content clocks include admission; the generation Worker's first-sample
+clock starts later. Admission and generation vision rows have separate origins.
+media-encode/decode nativeElapsedMs are integer native-helper wall times, not GPU
+kernel time; image-evaluate includes vision and LM work. Pure LM prefill and
+physical memory peak are unavailable. vision.storage separates the saved/default
+preference, selected mode and the native context's requested policy. Its getter
+is not proof of GPU BF16 residency. New compatible runtimes default to
+retain-checked; older runtimes without the API use legacy-expand only for an
+unset or explicit legacy preference, with the reason recorded. Mode comparison
+is not performed in this workload. wasmCapacityMaxObservedBytes is observed
+linear-memory capacity. captureStatus=unavailable means its empty counters do not
+prove zero work. A requested resident run is excluded when preflight reload or
+missing reuse evidence prevents confirming it. expectedRgbSha256 describes the
+fixture's source pixels; browser-decoded RGB bytes were not hashed. No PNG, RGB,
+base64 or user-selected images are included in this ZIP.
 
 Raw memory histories appear only in the referenced memory/<attemptId>.json file,
 not a second copy in trials.jsonl. If memoryDiagnosticsFile is absent, that attempt
@@ -423,6 +454,7 @@ modelReads uses existing byte/read counters, without extra per-read clock calls.
 lastProgress survives forced termination when its notification was received.
 The archive does not include model weights, account credentials, or saved chats.
 `;
+}
 
 function csvCell({ value }: { value: string | number | undefined }): string {
   let text = value === undefined ? '' : String(value);
@@ -455,7 +487,7 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
   const json = ({ value }: { value: unknown }) => JSON.stringify(value, undefined, 2) + '\n';
   const completed = (async () => {
     try {
-      await add({ name: 'README.md', text: readme });
+      await add({ name: 'README.md', text: archiveReadme({ protocol: snapshot.plan.protocol }) });
       await add({
         name: 'manifest.json',
         text: json({
@@ -520,6 +552,9 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
         }).join('\n') + '\n',
       });
       const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason']];
+      if (snapshot.plan.visionFixture) {
+        await add({ name: 'vision-fixture.json', text: json({ value: { ...snapshot.plan.visionFixture, imageBytesIncluded: false, decodedRgbIdentity: 'not-observed', storagePolicy: 'see-trial-vision-storage', storageComparison: 'unavailable', pureLmPrefill: 'unavailable', physicalMemoryPeak: 'unavailable' } }) });
+      }
       for (const trial of snapshot.trials) {
         if (trial.memoryDiagnostics) {
           await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, ...trial.memoryDiagnostics } }) });
@@ -544,7 +579,7 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,
           step?.dependsOn === undefined ? undefined : snapshot.trials.find(parent => parent.stepId === step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
           instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason]);
-        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
+        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, vision: trial.vision, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
       await add({ name: 'summary.csv', text: rows.map(row => row.map(value => csvCell({ value })).join(',')).join('\r\n') + '\r\n' });
       await writer.finalize();

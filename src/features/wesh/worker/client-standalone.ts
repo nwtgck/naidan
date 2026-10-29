@@ -8,7 +8,6 @@ import {
   createStandaloneWorkerSession,
   disposeStandaloneWorkerSession,
   STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-  type StandaloneWorkerSession,
 } from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
@@ -32,6 +31,7 @@ import {
   type WeshFileSystemHandleTransport,
 } from './init-request';
 import type { WeshMount } from '@/features/wesh/types';
+import { createManagedVolumeRemoteAccess, observeManagedVolumeWorker } from './managed-volume-access';
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
   rootHandle,
@@ -49,7 +49,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
   const createRuntime = async ({ transport }: {
     transport: WeshFileSystemHandleTransport,
-  }): Promise<StandaloneWorkerSession<IWeshWorker>> => {
+  }) => {
     const initRequest = await createWeshWorkerInitRequest({
       rootHandle,
       mounts,
@@ -58,32 +58,41 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       initialCwd,
       transport,
     });
-    const session = await createStandaloneWorkerSession<IWeshWorker>({ createWorker: createStandaloneWorker });
-    const { remote } = session;
+    const managedVolumes = await createManagedVolumeRemoteAccess({ mounts });
     try {
+      const session = await createStandaloneWorkerSession<IWeshWorker>({ createWorker: createStandaloneWorker });
+      const { remote } = session;
+      const stopObserving = observeManagedVolumeWorker({ worker: session.worker, connection: managedVolumes });
+      try {
       // Keep the proxied reader as a separate top-level argument.
       // Putting it inside the init request object can fail structured clone in browsers.
-      await remote.init(
-        workerCapability({
-          value: initRequest,
-          capability: 'file-system-handle-clone',
-        }),
-        naidanSysfsRemoteReader
-          ? workerProxy({ value: naidanSysfsRemoteReader })
-          : undefined,
-      );
-      return session;
+        await remote.init(
+          workerCapability({
+            value: initRequest,
+            capability: 'file-system-handle-clone',
+          }),
+          naidanSysfsRemoteReader
+            ? workerProxy({ value: naidanSysfsRemoteReader })
+            : undefined,
+          ...(managedVolumes.remote ? [workerProxy({ value: managedVolumes.remote })] as const : []),
+        );
+        return { ...session, managedVolumes, stopObserving };
+      } catch (error) {
+        stopObserving();
+        await disposeStandaloneWorkerSession({
+          session,
+          beforeRelease: undefined,
+          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+        }).catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
-      await disposeStandaloneWorkerSession({
-        session,
-        beforeRelease: undefined,
-        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      }).catch(() => undefined);
+      await managedVolumes.dispose().catch(() => undefined);
       throw error;
     }
   };
 
-  const createCompatibleRuntime = async (): Promise<StandaloneWorkerSession<IWeshWorker>> => {
+  const createCompatibleRuntime = async () => {
     if (!hasWeshFileSystemHandles({ rootHandle, mounts })) {
       return createRuntime({ transport: 'direct' });
     }
@@ -94,13 +103,18 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   };
 
   const destroyRuntime = async ({ runtime }: {
-    runtime: StandaloneWorkerSession<IWeshWorker>,
+    runtime: Awaited<ReturnType<typeof createRuntime>>,
   }) => {
-    await disposeStandaloneWorkerSession({
-      session: runtime,
-      beforeRelease: undefined,
-      cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-    });
+    try {
+      await runtime.managedVolumes.dispose();
+    } finally {
+      runtime.stopObserving();
+      await disposeStandaloneWorkerSession({
+        session: runtime,
+        beforeRelease: undefined,
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+      });
+    }
   };
 
   let runtime = await createCompatibleRuntime();
@@ -224,6 +238,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       }
 
       try {
+        await activeRuntime.managedVolumes.dispose();
         runtime = await createCompatibleRuntime();
       } catch (error) {
         await destroyRuntime({ runtime: activeRuntime }).catch(cleanupError => {
@@ -279,11 +294,16 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       backgroundPreloadRegistration.dispose();
       releaseAllForegroundExecutionLeases();
       const activeRuntime = runtime;
-      await disposeStandaloneWorkerSession({
-        session: activeRuntime,
-        beforeRelease: () => activeRuntime.remote.dispose(),
-        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      });
+      try {
+        await activeRuntime.managedVolumes.dispose();
+      } finally {
+        activeRuntime.stopObserving();
+        await disposeStandaloneWorkerSession({
+          session: activeRuntime,
+          beforeRelease: () => activeRuntime.remote.dispose(),
+          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+        });
+      }
     },
   };
 }

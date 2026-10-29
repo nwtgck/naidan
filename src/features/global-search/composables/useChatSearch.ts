@@ -252,6 +252,9 @@ export function useChatSearch({ sidebarItems }: {
           });
           scheduleResultsPublish();
         } catch (error) {
+          if (runId !== activeRunId) {
+            return;
+          }
           console.warn(`Failed to search content for chat ${chat.id}`, error);
           lastSearchKey = undefined;
           disposeSearchClient();

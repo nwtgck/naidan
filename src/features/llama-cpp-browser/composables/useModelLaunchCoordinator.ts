@@ -7,6 +7,7 @@ import { loadData, registerLiveInstance } from '@/composables/chat/global/chat-c
 import type { Chat } from '@/01-models/types';
 import { idToRaw, toChatId } from '@/01-models/ids';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
+import { modelLaunchTargetSchema } from '@/01-models/llama-cpp-browser-model-launch';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/repository-input';
 import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
@@ -14,7 +15,7 @@ import { getDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/down
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import { destinationKey, hostModelRoot } from '@/features/llama-cpp-browser/runtime/model-destination';
 import { formatHostModelId } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
-import { modelLaunchChatGroupName, modelLaunchChoices, ModelLaunchTargetError, rememberLaunchCatalog, resolveModelLaunchConfiguration, confirmModelLaunchConfiguration, sameLaunchTarget } from '@/features/llama-cpp-browser/model-launch/target';
+import { modelLaunchChatGroupName, modelLaunchChoices, ModelLaunchTargetError, rememberLaunchCatalog, resolveModelLaunchConfiguration, confirmModelLaunchConfiguration, sameLaunchTarget, targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
 import { readModelLaunchHistoryReservation, reserveModelLaunchHistory, modelLaunchHistoryKey } from '@/features/llama-cpp-browser/model-launch/history';
 import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import { consumeModelLaunchSession, findModelLaunchSession, rememberModelLaunchSession, type ModelLaunchSession } from '@/features/llama-cpp-browser/model-launch/session';
@@ -64,6 +65,26 @@ export function useModelLaunchCoordinator(): void {
     }
     operation.expectedRoot = result.expectedRoot;
   }
+  async function assertDestinationRoot({ operation }: { operation: LaunchOperation }): Promise<void> {
+    if (operation.expectedRoot === undefined) {
+      return;
+    }
+    const destination = operation.request.destination;
+    switch (destination.kind) {
+    case 'opfs': throw new Error('Unexpected linked model root');
+    case 'host': {
+      const root = await hostModelRoot({ destination, mode: 'read' });
+      if (!await root.isSameEntry(operation.expectedRoot)) {
+        throw new Error('The model destination changed');
+      }
+      return;
+    }
+    default: {
+      const exhaustive: never = destination;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
   async function reusableChat({ session }: { session: ModelLaunchSession }): Promise<Chat | undefined> {
     const chat = await storageService.loadChat({ id: session.chatId });
     const launch = storageService.getModelLaunch({ chatId: session.chatId });
@@ -79,11 +100,13 @@ export function useModelLaunchCoordinator(): void {
     return chat;
   }
   async function openChat({ operation, chat, session }: { operation: LaunchOperation, chat: Chat, session: ModelLaunchSession }): Promise<void> {
+    await assertDestinationRoot({ operation });
     if (!isCurrent({ operation })) {
       return;
     }
     registerLiveInstance({ chat });
     await loadData();
+    await assertDestinationRoot({ operation });
     if (!isCurrent({ operation })) {
       return;
     }
@@ -118,7 +141,8 @@ export function useModelLaunchCoordinator(): void {
       throw new Error('Could not open the model chat');
     }
     setModelLaunchEntryState({ state: { status: 'idle' } });
-    const ready = await isModelLaunchTargetReady({ target: session.target, destination: session.destination, effectiveModelId: session.effectiveModelId });
+    const ready = await isModelLaunchTargetReady({ target: session.target, destination: session.destination, effectiveModelId: session.effectiveModelId, expectedRoot: session.expectedRoot });
+    await assertDestinationRoot({ operation });
     if (!isCurrent({ operation }) || ready) {
       return;
     }
@@ -132,6 +156,7 @@ export function useModelLaunchCoordinator(): void {
     });
   }
   async function saveAndOpen({ operation }: { operation: LaunchOperation }): Promise<void> {
+    await assertDestinationRoot({ operation });
     const target = operation.target;
     if (target === undefined || !isCurrent({ operation })) {
       return;
@@ -140,7 +165,7 @@ export function useModelLaunchCoordinator(): void {
       // Existing-chat selection consumes the resolved files without reserving
       // a new chat/group, navigating, or initializing global defaults.
       setModelLaunchEntryState({ state: { status: 'idle' } });
-      operation.applyTarget({ target });
+      operation.applyTarget({ target, destination: operation.request.destination, authorizeDestination: async () => ({ destination: operation.request.destination, expectedRoot: operation.expectedRoot }) });
       return;
     }
     setModelLaunchEntryState({ state: { status: 'checking', operation: operation.id, input: operation.request.input, phase: 'opening-chat' } });
@@ -355,7 +380,16 @@ export function useModelLaunchCoordinator(): void {
         const repository = parseRepository({ input: request.input }).repository;
         const requestedVariant = request.requestedVariant?.trim() || undefined;
         operation.request = { ...request, requestedVariant };
-        operation.requestKey = JSON.stringify([repository, requestedVariant, request.multimodal, destinationKey({ destination: request.destination })]);
+        if (command.target !== undefined) {
+          const target = modelLaunchTargetSchema.parse(command.target);
+          if (repository.toLowerCase() !== target.selection.repository.toLowerCase()
+            || requestedVariant !== target.mainFilePath
+            || !sameLaunchTarget({ left: target, right: targetForSelection({ selection: target.selection }) })) {
+            throw new ModelLaunchTargetError({ problem: 'invalid-input' });
+          }
+          operation.target = target;
+        }
+        operation.requestKey = JSON.stringify([repository, requestedVariant, request.multimodal, destinationKey({ destination: request.destination }), ...(operation.target === undefined ? [] : [selectionKey({ selection: operation.target.selection }), operation.target.mainFilePath])]);
         void resolveAndStart({ operation });
       } catch (error) {
         fail({ operation, error });

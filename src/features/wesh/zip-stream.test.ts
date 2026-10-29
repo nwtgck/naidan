@@ -97,6 +97,20 @@ describe('Wesh ZIP adapters', () => {
     }
   });
 
+  it('rejects a source snapshot that changed since archive indexing', async () => {
+    const handle = createBaseHandle({
+      size: 10,
+      read: vi.fn(async () => ({ bytesRead: 0 })),
+      write: vi.fn(async () => ({ bytesWritten: 0 })),
+    });
+
+    await expect(createWeshZipRandomAccessSource({
+      handle,
+      expectedStat: { size: 10, mtime: 123 },
+    })).rejects.toThrow('Wesh ZIP source changed while browsing');
+    expect(handle.close).toHaveBeenCalledOnce();
+  });
+
   it('closes the handle when source metadata cannot be read', async () => {
     const handle = createBaseHandle({
       size: 0,

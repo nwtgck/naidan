@@ -1,3 +1,4 @@
+import type { VisionAdmission } from '@/features/llama-cpp-browser/performance/vision-admission-schema';
 import { resolvedModelSchema } from '@/features/llama-cpp-browser/runtime/resolved-model-schema';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { MemoryDiagnostics } from '@/features/llama-cpp-browser/performance/memory-schema';
@@ -11,7 +12,7 @@ import { generateInputSchema, profileSchema, runtimeOptionsSchema } from '@/feat
 import type { WorkerProxy, WorkerCapability } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, GenerationCallback, GenerationEvent, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.literal('placement').optional() }).strict().optional(), assetBaseURL: z.url().optional(), resolvedModel: resolvedModelSchema }).strict();
+const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.enum(['placement', 'vision']).optional() }).strict().optional(), assetBaseURL: z.url().optional(), resolvedModel: resolvedModelSchema }).strict();
 export const workerGenerateInputSchema = workerGenerateBaseSchema.refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
@@ -34,6 +35,8 @@ export type AcceptedGenerateInput = GenerateInput & { resolvedModel: ResolvedMod
 export type AcceptedAudioInput = AudioGenerationInput & { resolvedModel: ResolvedModel };
 
 export interface LlamaCppWorkerApi {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
+  prepareVision(request: WorkerCapability<WorkerPrepareCall, 'file-system-handle-clone'>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<VisionAdmission>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
   prepareModel(request: WorkerCapability<WorkerPrepareCall, 'file-system-handle-clone'>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<void>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
@@ -65,7 +68,7 @@ export interface LlamaCppWorkerClient {
   importModel({ file, onProgress, signal }: { file: File, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
   importDirectory({ directory, onProgress, signal }: { directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LocalModel>;
   removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
-  generate({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }: { request: AcceptedGenerateInput & Pick<WorkerGenerateInput, 'measurement'>, onEvent: GenerationCallback, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, onSummary?: ({ diagnostic }: { diagnostic: Diagnostic }) => void, onMemoryDiagnostics?: ({ memory }: { memory: MemoryDiagnostics }) => void }): Promise<GenerationResult>;
+  generate({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics, onVisionAdmission }: { request: AcceptedGenerateInput & Pick<WorkerGenerateInput, 'measurement'>, onEvent: GenerationCallback, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined, onSummary?: ({ diagnostic }: { diagnostic: Diagnostic }) => void, onMemoryDiagnostics?: ({ memory }: { memory: MemoryDiagnostics }) => void, onVisionAdmission?: ({ admission }: { admission: VisionAdmission }) => void }): Promise<GenerationResult>;
   dispose(): void | Promise<void>;
 }
 export const TEST_ONLY = {

@@ -296,7 +296,6 @@ import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSetti
 import { ChatGroupSettingsPanel__working } from '@/strings/messages/ChatGroupSettingsPanel__working/en';
 import { ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings } from '@/strings/messages/ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings/en';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/en';
-import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_name/en';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/en';
 import { ChatInput__failed_to_copy } from '@/strings/messages/ChatInput__failed_to_copy/en';
 import { ChatInput__failed_to_link_folder } from '@/strings/messages/ChatInput__failed_to_link_folder/en';
@@ -1219,6 +1218,7 @@ import { ImportExportModal__custom_click_to_reset } from '@/strings/messages/Imp
 import { ImportExportModal__default_marker } from '@/strings/messages/ImportExportModal__default_marker/en';
 import { ImportExportModal__default_model } from '@/strings/messages/ImportExportModal__default_model/en';
 import { ImportExportModal__download_full_backup } from '@/strings/messages/ImportExportModal__download_full_backup/en';
+import { ImportExportModal__download_zip } from '@/strings/messages/ImportExportModal__download_zip/en';
 import { ImportExportModal__error } from '@/strings/messages/ImportExportModal__error/en';
 import { ImportExportModal__exclude_attachments } from '@/strings/messages/ImportExportModal__exclude_attachments/en';
 import { ImportExportModal__exclude_chat_history } from '@/strings/messages/ImportExportModal__exclude_chat_history/en';
@@ -1227,6 +1227,7 @@ import { ImportExportModal__experimental } from '@/strings/messages/ImportExport
 import { ImportExportModal__export } from '@/strings/messages/ImportExportModal__export/en';
 import { ImportExportModal__export_failed } from '@/strings/messages/ImportExportModal__export_failed/en';
 import { ImportExportModal__export_now } from '@/strings/messages/ImportExportModal__export_now/en';
+import { ImportExportModal__export_options } from '@/strings/messages/ImportExportModal__export_options/en';
 import { ImportExportModal__export_successful } from '@/strings/messages/ImportExportModal__export_successful/en';
 import { ImportExportModal__failed_to_analyze_file } from '@/strings/messages/ImportExportModal__failed_to_analyze_file/en';
 import { ImportExportModal__filename_tag_example } from '@/strings/messages/ImportExportModal__filename_tag_example/en';
@@ -1266,6 +1267,7 @@ import { ImportExportModal__untitled_chat } from '@/strings/messages/ImportExpor
 import { ImportExportModal__upload_backup_to_restore_or_merge } from '@/strings/messages/ImportExportModal__upload_backup_to_restore_or_merge/en';
 import { ImportExportModal__url_and_http_headers } from '@/strings/messages/ImportExportModal__url_and_http_headers/en';
 import { ImportExportModal__verifying_integrity } from '@/strings/messages/ImportExportModal__verifying_integrity/en';
+import { ImportExportModal__view_in_file_explorer } from '@/strings/messages/ImportExportModal__view_in_file_explorer/en';
 import { ImportExportModal__zip_contains_all_data_by_default } from '@/strings/messages/ImportExportModal__zip_contains_all_data_by_default/en';
 import { ImportExportService__export_dump_failed } from '@/strings/messages/ImportExportService__export_dump_failed/en';
 import { ImportExportService__invalid_zip_file } from '@/strings/messages/ImportExportService__invalid_zip_file/en';
@@ -1429,12 +1431,19 @@ import { LlamaCppBrowserRepositoryPicker__could_not_check_repository } from '@/s
 import { LlamaCppBrowserRepositoryPicker__saved } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__saved/en';
 import { LlamaCppBrowserRepositoryPicker__specify_a_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__specify_a_repository/en';
 import { LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser/en';
+import { LlamaCppBrowserRepositoryPreview__not_estimated } from '@/strings/messages/LlamaCppBrowserRepositoryPreview__not_estimated/en';
 import { LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats/en';
 import { LlamaCppBrowserRuntimeSettings__context_size_tokens } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__context_size_tokens/en';
 import { LlamaCppBrowserRuntimeSettings__could_not_save_context_size } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__could_not_save_context_size/en';
+import { LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage/en';
 import { LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum/en';
+import { LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage/en';
+import { LlamaCppBrowserRuntimeSettings__legacy_expand } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__legacy_expand/en';
 import { LlamaCppBrowserRuntimeSettings__reset_to_default } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__reset_to_default/en';
+import { LlamaCppBrowserRuntimeSettings__retain_checked } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__retain_checked/en';
 import { LlamaCppBrowserRuntimeSettings__save } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__save/en';
+import { LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load/en';
+import { LlamaCppBrowserRuntimeSettings__vision_storage_status } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__vision_storage_status/en';
 import { LlamaCppBrowserSavedModelPicker__available_models } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__available_models/en';
 import { LlamaCppBrowserSavedModelPicker__could_not_read_models } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__could_not_read_models/en';
 import { LlamaCppBrowserSavedModelPicker__filter_models } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__filter_models/en';
@@ -2249,6 +2258,14 @@ import { TransformersJsUpsell__add_manage_models } from '@/strings/messages/Tran
 import { TransformersJsUpsell__local_browser_models } from '@/strings/messages/TransformersJsUpsell__local_browser_models/en';
 import { TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser } from '@/strings/messages/TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser/en';
 import { UnselectedChatPane__select_or_create_a_chat_to_start } from '@/strings/messages/UnselectedChatPane__select_or_create_a_chat_to_start/en';
+import { VolumeCopyProgress__copy_paused_name } from '@/strings/messages/VolumeCopyProgress__copy_paused_name/en';
+import { VolumeCopyProgress__copying_name_to_browser } from '@/strings/messages/VolumeCopyProgress__copying_name_to_browser/en';
+import { VolumeCopyProgress__could_not_copy_name } from '@/strings/messages/VolumeCopyProgress__could_not_copy_name/en';
+import { VolumeCopyProgress__current_file_finishes_before_pausing } from '@/strings/messages/VolumeCopyProgress__current_file_finishes_before_pausing/en';
+import { VolumeCopyProgress__pause } from '@/strings/messages/VolumeCopyProgress__pause/en';
+import { VolumeCopyProgress__resume } from '@/strings/messages/VolumeCopyProgress__resume/en';
+import { VolumeCopyProgress__retry } from '@/strings/messages/VolumeCopyProgress__retry/en';
+import { VolumeCopyProgress__use_now_copy_is_not_finished } from '@/strings/messages/VolumeCopyProgress__use_now_copy_is_not_finished/en';
 import { WelcomeScreen__all_conversations_are_stored_locally } from '@/strings/messages/WelcomeScreen__all_conversations_are_stored_locally/en';
 import { WelcomeScreen__brainstorm } from '@/strings/messages/WelcomeScreen__brainstorm/en';
 import { WelcomeScreen__code_help } from '@/strings/messages/WelcomeScreen__code_help/en';
@@ -2603,6 +2620,7 @@ import { fileExplorer__planned_addition } from '@/strings/messages/fileExplorer_
 import { fileExplorer__planned_merge } from '@/strings/messages/fileExplorer__planned_merge/en';
 import { fileExplorer__planned_overwrite } from '@/strings/messages/fileExplorer__planned_overwrite/en';
 import { fileExplorer__preview } from '@/strings/messages/fileExplorer__preview/en';
+import { fileExplorer__read_only } from '@/strings/messages/fileExplorer__read_only/en';
 import { fileExplorer__refresh } from '@/strings/messages/fileExplorer__refresh/en';
 import { fileExplorer__relative_path } from '@/strings/messages/fileExplorer__relative_path/en';
 import { fileExplorer__rename } from '@/strings/messages/fileExplorer__rename/en';
@@ -2942,10 +2960,14 @@ import { llamaCppPerformance__download_requested } from '@/strings/messages/llam
 import { llamaCppPerformance__elapsed_ms } from '@/strings/messages/llamaCppPerformance__elapsed_ms/en';
 import { llamaCppPerformance__environment_notes } from '@/strings/messages/llamaCppPerformance__environment_notes/en';
 import { llamaCppPerformance__first_received_ms } from '@/strings/messages/llamaCppPerformance__first_received_ms/en';
+import { llamaCppPerformance__fixed_image_measurement_help } from '@/strings/messages/llamaCppPerformance__fixed_image_measurement_help/en';
 import { llamaCppPerformance__generation_tokens_per_second } from '@/strings/messages/llamaCppPerformance__generation_tokens_per_second/en';
 import { llamaCppPerformance__gpu_pass_time_ms } from '@/strings/messages/llamaCppPerformance__gpu_pass_time_ms/en';
 import { llamaCppPerformance__gpu_profiling } from '@/strings/messages/llamaCppPerformance__gpu_profiling/en';
 import { llamaCppPerformance__gpu_profiling_help } from '@/strings/messages/llamaCppPerformance__gpu_profiling_help/en';
+import { llamaCppPerformance__image_input } from '@/strings/messages/llamaCppPerformance__image_input/en';
+import { llamaCppPerformance__image_residency } from '@/strings/messages/llamaCppPerformance__image_residency/en';
+import { llamaCppPerformance__image_skip_reason } from '@/strings/messages/llamaCppPerformance__image_skip_reason/en';
 import { llamaCppPerformance__initial_short_long_or_continuation } from '@/strings/messages/llamaCppPerformance__initial_short_long_or_continuation/en';
 import { llamaCppPerformance__interrupt_current_and_continue } from '@/strings/messages/llamaCppPerformance__interrupt_current_and_continue/en';
 import { llamaCppPerformance__interrupt_current_help } from '@/strings/messages/llamaCppPerformance__interrupt_current_help/en';
@@ -2990,9 +3012,11 @@ import { llamaCppPerformance__start_measurement } from '@/strings/messages/llama
 import { llamaCppPerformance__stop_and_return_to_settings } from '@/strings/messages/llamaCppPerformance__stop_and_return_to_settings/en';
 import { llamaCppPerformance__stop_measurement } from '@/strings/messages/llamaCppPerformance__stop_measurement/en';
 import { llamaCppPerformance__stopping } from '@/strings/messages/llamaCppPerformance__stopping/en';
+import { llamaCppPerformance__text } from '@/strings/messages/llamaCppPerformance__text/en';
 import { llamaCppPerformance__trial_status } from '@/strings/messages/llamaCppPerformance__trial_status/en';
 import { llamaCppPerformance__wait_for_other_work } from '@/strings/messages/llamaCppPerformance__wait_for_other_work/en';
 import { llamaCppPerformance__waiting_for_visible_page } from '@/strings/messages/llamaCppPerformance__waiting_for_visible_page/en';
+import { llamaCppPerformance__workload } from '@/strings/messages/llamaCppPerformance__workload/en';
 import { naidanRpc__add_header } from '@/strings/messages/naidanRpc__add_header/en';
 import { naidanRpc__apply_methods } from '@/strings/messages/naidanRpc__apply_methods/en';
 import { naidanRpc__chat } from '@/strings/messages/naidanRpc__chat/en';
@@ -3627,7 +3651,6 @@ export const catalog = {
   ChatGroupSettingsPanel__working,
   ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings,
   ChatInput__cancel,
-  ChatInput__copying_name,
   ChatInput__edit_image,
   ChatInput__failed_to_copy,
   ChatInput__failed_to_link_folder,
@@ -4550,6 +4573,7 @@ export const catalog = {
   ImportExportModal__default_marker,
   ImportExportModal__default_model,
   ImportExportModal__download_full_backup,
+  ImportExportModal__download_zip,
   ImportExportModal__error,
   ImportExportModal__exclude_attachments,
   ImportExportModal__exclude_chat_history,
@@ -4558,6 +4582,7 @@ export const catalog = {
   ImportExportModal__export,
   ImportExportModal__export_failed,
   ImportExportModal__export_now,
+  ImportExportModal__export_options,
   ImportExportModal__export_successful,
   ImportExportModal__failed_to_analyze_file,
   ImportExportModal__filename_tag_example,
@@ -4597,6 +4622,7 @@ export const catalog = {
   ImportExportModal__upload_backup_to_restore_or_merge,
   ImportExportModal__url_and_http_headers,
   ImportExportModal__verifying_integrity,
+  ImportExportModal__view_in_file_explorer,
   ImportExportModal__zip_contains_all_data_by_default,
   ImportExportService__export_dump_failed,
   ImportExportService__invalid_zip_file,
@@ -4760,12 +4786,19 @@ export const catalog = {
   LlamaCppBrowserRepositoryPicker__saved,
   LlamaCppBrowserRepositoryPicker__specify_a_repository,
   LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser,
+  LlamaCppBrowserRepositoryPreview__not_estimated,
   LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats,
   LlamaCppBrowserRuntimeSettings__context_size_tokens,
   LlamaCppBrowserRuntimeSettings__could_not_save_context_size,
+  LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage,
   LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum,
+  LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage,
+  LlamaCppBrowserRuntimeSettings__legacy_expand,
   LlamaCppBrowserRuntimeSettings__reset_to_default,
+  LlamaCppBrowserRuntimeSettings__retain_checked,
   LlamaCppBrowserRuntimeSettings__save,
+  LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load,
+  LlamaCppBrowserRuntimeSettings__vision_storage_status,
   LlamaCppBrowserSavedModelPicker__available_models,
   LlamaCppBrowserSavedModelPicker__could_not_read_models,
   LlamaCppBrowserSavedModelPicker__filter_models,
@@ -5580,6 +5613,14 @@ export const catalog = {
   TransformersJsUpsell__local_browser_models,
   TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser,
   UnselectedChatPane__select_or_create_a_chat_to_start,
+  VolumeCopyProgress__copy_paused_name,
+  VolumeCopyProgress__copying_name_to_browser,
+  VolumeCopyProgress__could_not_copy_name,
+  VolumeCopyProgress__current_file_finishes_before_pausing,
+  VolumeCopyProgress__pause,
+  VolumeCopyProgress__resume,
+  VolumeCopyProgress__retry,
+  VolumeCopyProgress__use_now_copy_is_not_finished,
   WelcomeScreen__all_conversations_are_stored_locally,
   WelcomeScreen__brainstorm,
   WelcomeScreen__code_help,
@@ -5934,6 +5975,7 @@ export const catalog = {
   fileExplorer__planned_merge,
   fileExplorer__planned_overwrite,
   fileExplorer__preview,
+  fileExplorer__read_only,
   fileExplorer__refresh,
   fileExplorer__relative_path,
   fileExplorer__rename,
@@ -6273,10 +6315,14 @@ export const catalog = {
   llamaCppPerformance__elapsed_ms,
   llamaCppPerformance__environment_notes,
   llamaCppPerformance__first_received_ms,
+  llamaCppPerformance__fixed_image_measurement_help,
   llamaCppPerformance__generation_tokens_per_second,
   llamaCppPerformance__gpu_pass_time_ms,
   llamaCppPerformance__gpu_profiling,
   llamaCppPerformance__gpu_profiling_help,
+  llamaCppPerformance__image_input,
+  llamaCppPerformance__image_residency,
+  llamaCppPerformance__image_skip_reason,
   llamaCppPerformance__initial_short_long_or_continuation,
   llamaCppPerformance__interrupt_current_and_continue,
   llamaCppPerformance__interrupt_current_help,
@@ -6321,9 +6367,11 @@ export const catalog = {
   llamaCppPerformance__stop_and_return_to_settings,
   llamaCppPerformance__stop_measurement,
   llamaCppPerformance__stopping,
+  llamaCppPerformance__text,
   llamaCppPerformance__trial_status,
   llamaCppPerformance__wait_for_other_work,
   llamaCppPerformance__waiting_for_visible_page,
+  llamaCppPerformance__workload,
   naidanRpc__add_header,
   naidanRpc__apply_methods,
   naidanRpc__chat,

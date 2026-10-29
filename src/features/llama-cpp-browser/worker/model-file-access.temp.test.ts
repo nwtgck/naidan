@@ -39,6 +39,11 @@ describe('temporary File readers', () => {
     expect(access.read(destination.subarray(0, 7), { at: bytes.length - 3 })).toBe(3);
     expect(destination.subarray(0, 3)).toEqual(bytes.subarray(-3));
     expect(access.read(destination, { at: bytes.length })).toBe(0);
+    const tail = new Uint8Array(1024);
+    expect(access.readWithTail!({ destination: destination.subarray(0, 65536), offset: 13, tail })).toBe(65536 + 1024);
+    expect(slice).toHaveBeenLastCalledWith(13, 13 + 65536 + 1024);
+    expect(destination.subarray(0, 65536)).toEqual(bytes.subarray(13, 65549));
+    expect(tail).toEqual(bytes.subarray(65549, 66573));
     expect(() => access.read(destination, { at: -1 })).toThrow('storage-error');
     access.close();
     expect(() => access.read(destination, { at: 0 })).toThrow('storage-error');

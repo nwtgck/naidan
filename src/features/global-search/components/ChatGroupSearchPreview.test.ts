@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSearchPreview from './ChatGroupSearchPreview.vue';
 import { nextTick, ref } from 'vue';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -24,9 +24,13 @@ vi.mock('vue-router', () => ({
 }));
 
 const mockCloseSearch = vi.fn();
+const mockIsSearchOpen = ref(true);
+const mockSearchRequestId = ref(0);
 vi.mock('../composables/useGlobalSearch', () => ({
   useGlobalSearch: () => ({
     closeSearch: mockCloseSearch,
+    isSearchOpen: mockIsSearchOpen,
+    searchRequestId: mockSearchRequestId,
   }),
 }));
 
@@ -56,6 +60,8 @@ describe('ChatGroupSearchPreview Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsSearchOpen.value = true;
+    mockSearchRequestId.value = 0;
     vi.mocked(useChatNavigation).mockReturnValue({
       openChat: vi.fn().mockImplementation(async ({ chatId }) => {
         await mockOpenChat({ id: chatId });
@@ -124,5 +130,41 @@ describe('ChatGroupSearchPreview Component', () => {
     expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c2' });
     expect(mockPush).toHaveBeenCalledWith('/chat/c2');
     expect(mockCloseSearch).toHaveBeenCalled();
+  });
+
+  it.each(['replaced', 'closed'] as const)('ignores a delayed selection when the search was %s', async action => {
+    const navigation = useChatNavigation();
+    const gate = Promise.withResolvers<void>();
+    const delayedOpen = vi.fn<typeof navigation.openChat>(async request => {
+      await gate.promise;
+      return navigation.openChat(request);
+    });
+    vi.mocked(useChatNavigation).mockReturnValue({ ...navigation, openChat: delayedOpen });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        gate.resolve();
+        await flushPromises();
+      },
+    };
+    const wrapper = mount(ChatGroupSearchPreview, { props: { groupId: mockGroupId, groupName: mockGroupName } });
+    using _unmount = { [Symbol.dispose]: () => wrapper.unmount() };
+    await wrapper.get('button[title="Open Chat"]').trigger('click');
+    const isCurrent = delayedOpen.mock.calls[0]?.[0].isCurrent;
+    expect(isCurrent?.()).toBe(true);
+    switch (action) {
+    case 'replaced': mockSearchRequestId.value++;
+      break;
+    case 'closed': mockIsSearchOpen.value = false;
+      break;
+    default: {
+      const exhaustive: never = action;
+      throw new Error(String(exhaustive));
+    }
+    }
+    expect(isCurrent?.()).toBe(false);
+    gate.reject(new DOMException('Superseded', 'AbortError'));
+    await flushPromises();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockCloseSearch).not.toHaveBeenCalled();
   });
 });

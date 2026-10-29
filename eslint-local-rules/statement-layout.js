@@ -25,7 +25,9 @@ function safeWhitespaceRule({ base }) {
     meta: { ...base.meta, deprecated: undefined },
     create(context) {
       const sourceCode = context.sourceCode;
-      const tokens = tokensAndComments({ sourceCode });
+      // Clean files never need the protected-token index. Build it only when
+      // the delegated rule reports, and only once for this SourceCode/pass.
+      let tokens;
       const scriptRanges = sourceCode.parserServices.getDocumentFragment?.()?.children
         .filter(node => node.type === 'VElement' && node.name === 'script' && node.endTag)
         .map(node => [node.startTag.range[1], node.endTag.range[0]]);
@@ -34,6 +36,7 @@ function safeWhitespaceRule({ base }) {
         if (scriptRanges && !scriptRanges.some(([start, end]) => start <= range[0] && range[1] <= end)) {
           return false;
         }
+        tokens ??= tokensAndComments({ sourceCode });
         let low = 0;
         let high = tokens.length;
         while (low < high) {
@@ -311,7 +314,7 @@ export const rule = {
   },
 };
 
-export default {
+export default /** @satisfies {import('eslint').Linter.Config} */ ({
   name: 'naidan/statement-layout',
   files: ['**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,vue}'],
   plugins: {
@@ -331,4 +334,4 @@ export default {
     'local-rules-statement-layout/no-trailing-spaces': 'error',
     [ruleId]: 'error',
   },
-};
+});

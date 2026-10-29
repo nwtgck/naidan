@@ -263,11 +263,14 @@ export function getInheritedToolConfigsForChat({
 }: {
   chatId: ChatId,
 }): ToolConfig[] {
+  return getInheritedToolConfigsForTarget({ chat: getLiveChatById({ chatId }) });
+}
+
+function getInheritedToolConfigsForTarget({ chat }: { chat: Pick<Chat, 'groupId'> | null }): ToolConfig[] {
   const { settings } = useSettings();
-  const liveChat = getLiveChatById({ chatId });
   return resolveToolConfigsForChat({
     globalToolConfigs: settings.value.experimental?.toolConfigs,
-    chatGroupToolConfigs: getChatGroupToolConfigsForChat({ chat: liveChat }),
+    chatGroupToolConfigs: getChatGroupToolConfigsForChat({ chat }),
     chatToolConfigs: undefined,
   });
 }
@@ -438,11 +441,19 @@ export async function updateToolConfigsForChat({
   chatId: ChatId,
   updater: ToolConfigsUpdater,
 }): Promise<void> {
+  await updateToolConfigsForTarget({ chatId, updater, capturedChat: undefined });
+}
+
+async function updateToolConfigsForTarget({ chatId, updater, capturedChat }: {
+  chatId: ChatId,
+  updater: ToolConfigsUpdater,
+  capturedChat: Pick<Chat, 'toolConfigs'> | undefined,
+}): Promise<void> {
   ensureToolConfigPersistenceWatcher();
 
   if (!isToolConfigPersistenceEnabled()) {
-    const liveChat = getLiveChatById({ chatId });
-    const persistedToolConfigs = liveChat?.toolConfigs;
+    const targetChat = getLiveChatById({ chatId }) ?? capturedChat;
+    const persistedToolConfigs = targetChat?.toolConfigs;
     const currentToolConfigs = getActiveChatToolConfigs({
       chatId,
       persistedToolConfigs,
@@ -461,6 +472,66 @@ export async function updateToolConfigsForChat({
   }
 
   await persistToolConfigUpdate({ chatId, updater });
+}
+
+async function provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled, chatId, capturedChat }: {
+  name: LmToolName,
+  wasEnabled: boolean,
+  chatId: ChatId,
+  capturedChat: Pick<Chat, 'id' | 'groupId' | 'toolConfigs'> | undefined,
+}): Promise<void> {
+  if (name !== 'shell_execute' || wasEnabled) {
+    return;
+  }
+  const chat = getLiveChatById({ chatId })
+    ?? (capturedChat === undefined ? null : await storageService.loadChatMeta({ id: chatId }));
+  if (chat === null || !isLmToolEnabledInToolConfigs({ toolConfigs: getEffectiveToolConfigsForChat({ chat }), name })) {
+    return;
+  }
+
+  try {
+    await ensureChatWorkspaceMounted({ chat });
+  } catch (error) {
+    console.error('[ChatWorkspace] Failed to provision workspace:', error);
+  }
+}
+
+async function setToolStatusForChat({ chatId, name, status, capturedChat }: {
+  chatId: ChatId,
+  name: LmToolName,
+  status: ToolConfigStatus,
+  capturedChat: Pick<Chat, 'id' | 'groupId' | 'toolConfigs'> | undefined,
+}): Promise<void> {
+  const chat = getLiveChatById({ chatId }) ?? capturedChat ?? { id: chatId, groupId: undefined, toolConfigs: undefined };
+  const wasEnabled = isLmToolEnabledInToolConfigs({ toolConfigs: getEffectiveToolConfigsForChat({ chat }), name });
+  const key = builtinToolKeyForLmToolName({ name });
+  await updateToolConfigsForTarget({
+    chatId,
+    capturedChat: chat,
+    updater: ({ toolConfigs }) => setToolStatusWithDependenciesInToolConfigs({
+      toolConfigs,
+      key,
+      status,
+      inheritedToolConfigs: getInheritedToolConfigsForTarget({ chat: getLiveChatById({ chatId }) ?? chat }),
+    }),
+  });
+  await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled, chatId, capturedChat });
+}
+
+/** Async attachment work keeps its target even when the displayed chat changes. */
+export async function setToolEnabledForChat({ chatId, name, enabled }: {
+  chatId: ChatId,
+  name: string,
+  enabled: boolean,
+}): Promise<void> {
+  if (!isLmToolName(name)) {
+    return;
+  }
+  const capturedChat = getLiveChatById({ chatId }) ?? await storageService.loadChatMeta({ id: chatId });
+  if (capturedChat === null) {
+    throw new Error('Cannot update tools for missing chat: ' + idToRaw({ id: chatId }));
+  }
+  await setToolStatusForChat({ chatId, name, status: enabled ? 'enabled' : 'disabled', capturedChat });
 }
 
 export function useChatTools(): ChatToolsApi {
@@ -500,30 +571,6 @@ export function useChatTools(): ChatToolsApi {
     await updateToolConfigsForChat({ chatId: activeChatId.value, updater });
   };
 
-  const provisionWorkspaceIfShellBecameEnabled = async ({
-    name,
-    wasEnabled,
-    chatId,
-  }: {
-    name: LmToolName,
-    wasEnabled: boolean,
-    chatId: ChatId,
-  }): Promise<void> => {
-    if (name !== 'shell_execute' || wasEnabled) {
-      return;
-    }
-    const chat = getLiveChatById({ chatId });
-    if (chat === null || !isLmToolEnabledInToolConfigs({ toolConfigs: getEffectiveToolConfigsForChat({ chat }), name })) {
-      return;
-    }
-
-    try {
-      await ensureChatWorkspaceMounted({ chat });
-    } catch (error) {
-      console.error('[ChatWorkspace] Failed to provision workspace:', error);
-    }
-  };
-
   const setToolStatus = async ({
     name,
     status,
@@ -535,19 +582,7 @@ export function useChatTools(): ChatToolsApi {
       return;
     }
     const chatId = activeChatId.value;
-    const key = builtinToolKeyForLmToolName({ name });
-    const wasEnabled = isToolEnabled({ name });
-
-    await updateToolConfigsForCurrentChat({
-      updater: ({ toolConfigs }) => setToolStatusWithDependenciesInToolConfigs({
-        toolConfigs,
-        key,
-        status,
-        inheritedToolConfigs: getInheritedToolConfigsForChat({ chatId }),
-      }),
-    });
-
-    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled, chatId });
+    await setToolStatusForChat({ chatId, name, status, capturedChat: undefined });
   };
 
   const setToolEnabled = async ({
@@ -582,7 +617,7 @@ export function useChatTools(): ChatToolsApi {
         key: builtinToolKeyForLmToolName({ name }),
       }),
     });
-    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled, chatId });
+    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled, chatId, capturedChat: undefined });
   };
 
 

@@ -1,5 +1,6 @@
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { NaidanSysfsVisibility } from '@/01-models/naidan-sysfs';
+import type { ManagedVolumeReference } from '@/01-models/volume-access';
 export type { NaidanSysfsAccessScope, NaidanSysfsVisibility } from '@/01-models/naidan-sysfs';
 
 // --- Kernel & Process Types ---
@@ -312,6 +313,13 @@ export interface WeshDirectoryMount {
   readOnly: boolean,
 }
 
+export interface WeshManagedDirectoryMount {
+  type: 'managed_directory',
+  path: string,
+  reference: ManagedVolumeReference,
+  readOnly: boolean,
+}
+
 export interface WeshNaidanSysfsMount {
   type: 'naidan_sysfs',
   path: typeof NAIDAN_SYSFS_MOUNT_PATH,
@@ -323,7 +331,7 @@ export interface WeshNaidanSysfsMount {
   currentChatGroupId: ChatGroupId | undefined,
 }
 
-export type WeshMount = WeshDirectoryMount | WeshNaidanSysfsMount;
+export type WeshMount = WeshDirectoryMount | WeshManagedDirectoryMount | WeshNaidanSysfsMount;
 
 export type WeshVirtualEntryRef =
   | {
