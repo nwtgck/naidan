@@ -89,3 +89,27 @@ it('opens the independent image workspace from Quick Access and closes the menu'
   expect(router.currentRoute.value.path).toBe('/image-generation');
   expect(wrapper.find('[data-testid="sidebar-image-generation-link"]').exists()).toBe(false);
 });
+
+it('adds a separate live conversation route without replacing the existing destinations', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/audio-generation', component: { template: '<div />' } },
+      { path: '/image-generation', component: { template: '<div />' } },
+      { path: '/live-conversation', component: { template: '<div />' } },
+    ],
+  });
+  await router.push('/');
+  await router.isReady();
+  wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
+  await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
+  expect(wrapper.get('[data-testid="sidebar-audio-generation-link"]').attributes('href')).toBe('/audio-generation');
+  expect(wrapper.get('[data-testid="sidebar-image-generation-link"]').attributes('href')).toBe('/image-generation');
+  const link = wrapper.get('[data-testid="sidebar-live-conversation-link"]');
+  expect(link.attributes('href')).toBe('/live-conversation');
+  await link.trigger('click');
+  await flushPromises();
+  expect(router.currentRoute.value.path).toBe('/live-conversation');
+  expect(wrapper.find('[data-testid="sidebar-live-conversation-link"]').exists()).toBe(false);
+});

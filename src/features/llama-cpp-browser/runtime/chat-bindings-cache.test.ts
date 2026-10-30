@@ -16,7 +16,7 @@ function fixture() {
   const deletedTemplates = vi.fn();
   const templateConstructed = vi.fn();
   class Inputs {
-    messages: unknown; tools: unknown; use_jinja = false; parallel_tool_calls = false; enable_thinking = true;
+    messages: unknown; tools: unknown; add_generation_prompt = true; use_jinja = false; parallel_tool_calls = false; enable_thinking = true;
     reasoning_format = 0; chat_template_kwargs: unknown; delete = vi.fn();
   }
   const deleteParams = vi.fn();
@@ -120,6 +120,17 @@ function fixture() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('native chat template lifetime', () => {
+  it('explicit live generation boundaries do not change ordinary chat defaults', () => {
+    using f = fixture();
+    f.chat.prepareWithGenerationPrompt({ assertIdle: f.assertIdle, model: 7n, request: f.request, generationPrompt: 'omit' }).dispose();
+    expect(f.apply.mock.calls[0]?.[0].add_generation_prompt).toBe(false);
+    f.chat.prepareWithGenerationPrompt({ assertIdle: f.assertIdle, model: 7n, request: f.request, generationPrompt: 'include' }).dispose();
+    expect(f.apply.mock.calls[1]?.[0].add_generation_prompt).toBe(true);
+    f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request }).dispose();
+    expect(f.apply.mock.calls[2]?.[0].add_generation_prompt).toBe(true);
+    expect(f.templateConstructed).toHaveBeenCalledOnce();
+  });
+
   it('reuses a template for one resident model and drops it before pointer reuse', () => {
     const { chat, assertIdle, request, templateConstructed, deletedTemplates } = fixture();
     chat.prepare({ assertIdle, model: 7n, request }).dispose();

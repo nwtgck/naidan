@@ -139,7 +139,7 @@ async function sameModelFile({ previous, next }: { previous: ModelFile, next: Mo
 
 type SessionRequest = Pick<WorkerGenerateInput, 'modelId' | 'options' | 'assetBaseURL' | 'debug' | 'measurement' | 'resolvedModel'>;
 type ProjectorPolicy = 'load-if-present' | 'defer';
-type SessionPurpose = { kind: 'chat', projector: ProjectorPolicy } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend };
+type SessionPurpose = { kind: 'chat', projector: ProjectorPolicy } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend } | { kind: 'live', contextTokens: number };
 type SessionPreparation = {
   projector: 'absent' | 'deferred' | 'retained' | 'loaded' | 'reused',
   releasedTextContext: boolean,
@@ -223,6 +223,18 @@ export async function prepareAudioSession({ request, contextTokens, audioBackend
   return prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'audio', contextTokens, audioBackend } });
 }
 
+/** A live owner keeps this resident until explicit close. Unlike audio synthesis,
+ * vision settings still apply to the Omni projector. No chat prefix is reused. */
+export async function prepareLiveSession({ request, onProgress, signal }: {
+  request: SessionRequest, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
+}) {
+  signal?.throwIfAborted();
+  await releaseSession({ releaseRuntime: false });
+  // TODO(live-conversation): Only the three WebGPU JSPI artifacts export the
+  // required mtmd APIs. CPU and Asyncify profiles are not supported here.
+  return prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'live', contextTokens: request.options.contextTokens ?? 8192 } });
+}
+
 async function prepareResidentSession({ request, purpose, onProgress, signal }: {
   request: SessionRequest, purpose: SessionPurpose,
   onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
@@ -250,7 +262,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   const requestedChatContext = (() => {
     switch (purpose.kind) {
     case 'chat': return chatContextTokensSchema.parse(request.options.contextTokens ?? defaultChatContextTokens);
-    case 'audio': return undefined;
+    case 'audio': case 'live': return undefined;
     default: {
       const exhaustive: never = purpose;
       throw new Error(String(exhaustive));
@@ -270,7 +282,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   const core = runtime.core;
   const api = core.api;
   const directory = request.resolvedModel.directory;
-  if (purpose.kind === 'audio' && !directory.projectorFile) {
+  if (purpose.kind !== 'chat' && !directory.projectorFile) {
     throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
   }
   const sourceId = (() => {
@@ -532,7 +544,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     checkCancelled();
   }
   const debug = request.debug ?? 'off';
-  const useProjector = purpose.kind === 'audio' || purpose.projector === 'load-if-present';
+  const useProjector = purpose.kind !== 'chat' || purpose.projector === 'load-if-present';
   const preparation: SessionPreparation = {
     projector: directory.projectorFile ? (useProjector ? 'reused' : current.projector ? 'retained' : 'deferred') : 'absent',
     releasedTextContext: false,
@@ -543,7 +555,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     }
     switch (purpose.kind) {
     case 'audio': return current.projector.purpose !== 'audio';
-    case 'chat': {
+    case 'chat': case 'live': {
       if (current.projector.purpose !== 'chat' || !current.projector.visionStorage) {
         return true;
       }
@@ -573,7 +585,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     checkCancelled();
     const file = directory.projectorFile;
     switch (purpose.kind) {
-    case 'chat': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal, visionBf16Storage: request.options.visionBf16Storage, observation: request.measurement !== undefined || debug === 'on' ? 'enabled' : 'disabled' });
+    case 'chat': case 'live': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal, visionBf16Storage: request.options.visionBf16Storage, observation: request.measurement !== undefined || debug === 'on' ? 'enabled' : 'disabled' });
       break;
     case 'audio': current.projector = await loadProjectorForBackend({ core, model: current.model, file, profile, debug, signal, backend: purpose.audioBackend, purpose: 'audio', visionBf16Storage: undefined, observation: 'disabled' });
       break;
@@ -620,7 +632,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       switch (purpose.kind) {
       case 'chat': contextTarget = requestedChatContext!;
         break;
-      case 'audio':
+      case 'audio': case 'live':
         contextTarget = purpose.contextTokens;
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'embeddings', value: 1 });
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'pooling_type', value: core.constant({ name: 'LLAMA_POOLING_TYPE_NONE' }) });
@@ -639,7 +651,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       switch (purpose.kind) {
       case 'chat': configuredPrefillBatchTokens = prefillBatchTokens;
         break;
-      case 'audio': configuredPrefillBatchTokens = prefillMicroBatchTokens;
+      case 'audio': case 'live': configuredPrefillBatchTokens = prefillMicroBatchTokens;
         break;
       default: {
         const exhaustive: never = purpose;
@@ -674,7 +686,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         switch (purpose.kind) {
         case 'chat': current.sequenceRemoval = await probeNewContextSequenceRemoval({ core, context: current.context });
           break;
-        case 'audio': break;
+        case 'audio': case 'live': break;
         default: {
           const exhaustive: never = purpose;
           throw new Error(String(exhaustive));
@@ -707,7 +719,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         current.cache.initialMemoryState = memory === 0n ? 'unknown' : 'probe-cleared';
         break;
       }
-      case 'audio': current.chatMetadata = undefined;
+      case 'audio': case 'live': current.chatMetadata = undefined;
         break;
       default: {
         const exhaustive: never = purpose;

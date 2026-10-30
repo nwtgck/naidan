@@ -1,3 +1,6 @@
+import { liveControlSchema, liveEventSchema, liveResultSchema } from '@/features/llama-cpp-browser/live-types';
+import { liveRequestSchema } from './live-protocol';
+import { createLiveSessionController } from './live-session';
 import type { VisionDiagnostic } from '@/features/llama-cpp-browser/performance/vision-diagnostic-schema';
 import { beginGpuMeasurement } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { createProgressQueue } from './progress-queue';
@@ -61,6 +64,7 @@ function eventQueue() {
 }
 
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
+  const live = createLiveSessionController();
   let active: { generationId: number, controller: AbortController, finishAudio?: () => void, previewAudio?: ({ requestVersion }: { requestVersion: number }) => void } | undefined;
   // Single-file and folder imports must share this lifetime: cancellation is
   // acknowledged only after the importer has closed its streams and rolled back.
@@ -69,7 +73,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     report: ({ progress }: { progress: Progress }) => void | Promise<void>,
     operation: ({ signal, onProgress }: { signal: AbortSignal, onProgress: ({ progress }: { progress: Progress }) => void }) => Promise<LocalModel>,
   }): Promise<LocalModel> {
-    if (active) {
+    if (active || live.ownsSession()) {
       throw new LlamaCppBrowserError({ code: 'busy' });
     }
     const controller = new AbortController();
@@ -99,10 +103,51 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     }
   }
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink boundary with top-level event proxies.
+    async live(call, onEvent, onProgress) {
+      const { request, generationId } = z.object({ request: liveRequestSchema, generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().parse(call);
+      if (active) {
+        throw new LlamaCppBrowserError({ code: 'busy' });
+      }
+      const controller = new AbortController();
+      active = { generationId, controller };
+      const events = eventQueue();
+      try {
+        return liveResultSchema.parse(await guarded({
+          operation: () => live.execute({
+            request,
+            signal: controller.signal,
+            onProgress: ({ progress }) => events.send({ operation: () => onProgress(progressSchema.parse(progress)) }),
+            onEvent: async ({ event }) => {
+              const accepted = liveEventSchema.parse(event);
+              switch (accepted.type) {
+              case 'audio': await onEvent(workerTransfer({ value: accepted, transferables: [accepted.pcm.buffer as ArrayBuffer] }));
+                break;
+              case 'text': await onEvent(workerTransfer({ value: accepted, transferables: [] }));
+                break;
+              default: {
+                const exhaustive: never = accepted;
+                throw new Error(String(exhaustive));
+              }
+              }
+            },
+          }),
+        }));
+      } finally {
+        try {
+          await events.finish();
+        } finally {
+          active = undefined;
+        }
+      }
+    },
+    async interruptLive({ sessionId, turnId }) {
+      live.interrupt(liveControlSchema.parse({ sessionId, turnId }));
+    },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
     async prepareVision(request, onProgress) {
       const { generationId, ...accepted } = workerPrepareCallSchema.parse(request);
-      if (active) {
+      if (active || live.ownsSession()) {
         throw new LlamaCppBrowserError({ code: 'busy' });
       }
       const controller = new AbortController();
@@ -133,7 +178,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with a top-level callback.
     async prepareModel(request, onProgress) {
       const { generationId, ...accepted } = workerPrepareCallSchema.parse(request);
-      if (active) {
+      if (active || live.ownsSession()) {
         throw new LlamaCppBrowserError({ code: 'busy' });
       }
       const controller = new AbortController();
@@ -168,7 +213,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature with top-level proxy callbacks.
     async generateAudio(request, onProgress, onDiagnostic, onPreview) {
       const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
-      if (active) {
+      if (active || live.ownsSession()) {
         throw new LlamaCppBrowserError({ code: 'busy' });
       }
       const controller = new AbortController();
@@ -239,13 +284,13 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     },
     verifyStorage,
     async probeProfiles() {
-      if (active) {
+      if (active || live.ownsSession()) {
         throw new LlamaCppBrowserError({ code: 'busy' });
       }
       return profileCapabilitiesSchema.parse(await probeRuntimeProfiles());
     },
     async release() {
-      if (active) {
+      if (active || live.ownsSession()) {
         throw new LlamaCppBrowserError({ code: 'busy' });
       }
       await releaseSession({ releaseRuntime: true });
@@ -265,6 +310,9 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     removeModel: (request) => guarded({
       operation: () => withModelMutationLock({
         operation: async () => {
+          if (active || live.ownsSession()) {
+            throw new LlamaCppBrowserError({ code: 'busy' });
+          }
           const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
           switch (plan.target.kind) {
           case 'model': await invalidateStoredModel({ modelId: plan.target.modelId });
@@ -313,7 +361,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const measuredAt = accepted.measurement ? performance.now() : undefined;
       const preparationEvents: NonNullable<NonNullable<Diagnostic['performance']>['preparationEvents']> = [];
       let vision: ReturnType<typeof import('./vision-measurement')['createVisionMeasurement']> | undefined;
-      if (active) {
+      if (active || live.ownsSession()) {
         throw new LlamaCppBrowserError({ code: "busy" });
       }
       const controller = new AbortController();
