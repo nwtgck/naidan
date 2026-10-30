@@ -2311,6 +2311,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
+      liveConversationModelId,
       llamaCppBrowser,
       browserImageGeneration,
       unreadable,
@@ -2360,6 +2361,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       })(),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
+      liveConversationModelId,
       llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
       // A structurally unreadable saved image block is not an absent location.
       // Preserve only the non-executable state, never its unknown raw fields.
@@ -2448,6 +2450,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
+      liveConversationModelId,
       llamaCppBrowser,
       browserImageGeneration,
       unreadable: _unreadable,
@@ -2526,6 +2529,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         }
       })(),
       globalSearch: globalSearchDto,
+      liveConversationModelId,
       llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
       unreadable: undefined,

@@ -33,6 +33,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       globalSearch: undefined,
       llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
+      liveConversationModelId: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       markdownRendering: 'future_renderer',
@@ -55,6 +56,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       globalSearch: undefined,
       llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
+      liveConversationModelId: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       fakeLm: 'disabled',
@@ -76,6 +78,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       globalSearch: undefined,
       llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
+      liveConversationModelId: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       futureFeature: { enabled: true },
@@ -94,6 +97,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       globalSearch: undefined,
       llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
+      liveConversationModelId: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       _root: 'future-experimental-shape',
@@ -228,5 +232,21 @@ describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
       throw new Error('Unexpected endpoint type');
     }
     expect(parsed.experimental?.unreadable).toEqual({ endpoint: { type: 'future_browser_ai' } });
+  });
+});
+
+describe('ephemeral live conversation selection', () => {
+  it('accepts a model id and keeps old settings readable when it is absent', () => {
+    expect(OptionalExperimentalSettingsSchemaDto.parse({})?.liveConversationModelId).toBeUndefined();
+    const parsed = OptionalExperimentalSettingsSchemaDto.parse({ liveConversationModelId: 'host/LiquidAI/LFM3-Audio-2B:Q4_K_M' });
+    expect(parsed?.liveConversationModelId).toBe('host/LiquidAI/LFM3-Audio-2B:Q4_K_M');
+    expect(JSON.parse(JSON.stringify(parsed))).toEqual({ liveConversationModelId: 'host/LiquidAI/LFM3-Audio-2B:Q4_K_M' });
+  });
+
+  it('quarantines an unreadable selection without discarding other experimental fields', () => {
+    const parsed = OptionalExperimentalSettingsSchemaDto.parse({ liveConversationModelId: { future: 'format' }, fakeLm: 'enabled' });
+    expect(parsed?.liveConversationModelId).toBeUndefined();
+    expect(parsed?.fakeLm).toBe('enabled');
+    expect(parsed?.unreadable?.liveConversationModelId).toEqual({ future: 'format' });
   });
 });

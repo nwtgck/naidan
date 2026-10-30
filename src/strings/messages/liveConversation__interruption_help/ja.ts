@@ -1,1 +1,1 @@
-export const liveConversation__interruption_help = (): string => '割り込みは再生を即座に止め、このターン全体をモデルの記憶から除きます。Weshによるファイル変更は元に戻りません。';
+export const liveConversation__interruption_help = (): string => '再生を止め、あなたの入力を含む現在のターンをモデルの記憶から除きます。ブラウザ内シェルによるファイル変更は元に戻しません。';

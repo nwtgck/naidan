@@ -1,0 +1,1 @@
+export const liveConversation__new_conversation_confirmation = (): string => 'Start a new conversation? The current conversation, draft, queued messages and retained audio will be cleared. The loaded model stays in memory unless you selected a different model. Files written by the browser shell are not deleted.';

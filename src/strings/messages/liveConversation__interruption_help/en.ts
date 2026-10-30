@@ -1,1 +1,1 @@
-export const liveConversation__interruption_help = (): string => 'Interruption stops playback immediately and removes this whole turn from model memory. Wesh file changes cannot be undone this way.';
+export const liveConversation__interruption_help = (): string => 'Stop playback and discard the current turn from the model context, including your input. Browser shell file changes are not undone.';

@@ -3,13 +3,15 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { createLiveController, type LiveViewState } from '@/features/live-conversation/logic/controller';
 import { openLiveCapture } from '@/features/live-conversation/logic/audio-capture';
 import { createLivePlayback } from '@/features/live-conversation/logic/audio-playback';
+import { decodeLiveAudioFile } from '@/features/live-conversation/logic/audio-file';
 import { openLiveWesh } from '@/features/live-conversation/logic/wesh';
 
 export function useLiveConversation() {
-  const state = shallowRef<LiveViewState>({ phase: 'idle', info: undefined, entries: [], pendingTools: [], failure: undefined, playing: false });
+  const state = shallowRef<LiveViewState>({ phase: 'idle', info: undefined, entries: [], pendingTools: [], failure: undefined, playing: false, audioWarning: undefined });
   const controller = createLiveController({
     engine: llamaCppBrowserService,
     capture: openLiveCapture,
+    decodeFile: decodeLiveAudioFile,
     playback: createLivePlayback,
     wesh: openLiveWesh,
     onChange: ({ state: next }) => {

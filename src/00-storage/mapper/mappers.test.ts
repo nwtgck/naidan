@@ -804,6 +804,7 @@ describe('Settings Mapping', () => {
         },
         unreadable: undefined,
         hostModelDirectories: undefined,
+        liveConversationModelId: undefined,
         llamaCppBrowser: undefined,
         browserImageGeneration: undefined,
         naidanRpc: undefined,
@@ -875,5 +876,17 @@ describe('model discovery tab preference mapping', () => {
     const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain }), experimental: { ...settingsToDto({ domain }).experimental, modelDiscoveryTab: 'future-tab' } });
     const experimental = settingsToDomain({ dto }).experimental;
     expect(experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: undefined, unreadable: { modelDiscoveryTab: 'future-tab' } });
+  });
+});
+
+describe('live conversation model preference mapping', () => {
+  it('round-trips the live model independently from the existing chat default', () => {
+    const domain: Settings = { endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'chat-model', storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', liveConversationModelId: 'live-model' } };
+    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    const restored = settingsToDomain({ dto });
+    expect(restored.experimental?.liveConversationModelId).toBe('live-model');
+    expect(restored.defaultModelId).toBe('chat-model');
+    expect(restored.experimental?.locale).toBe('ja');
+    expect(settingsToDto({ domain: restored })).toEqual(dto);
   });
 });

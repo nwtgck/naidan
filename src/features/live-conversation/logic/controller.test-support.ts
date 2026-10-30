@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import { liveCommandSchema, type LiveScope, type LiveResult, type LiveAnswer } from '@/features/llama-cpp-browser/live-types';
 import { createLiveController } from './controller';
+import type { decodeLiveAudioFile } from './audio-file';
 import type { openLiveCapture } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
 import type { openLiveWesh } from './wesh';
@@ -40,10 +41,12 @@ export function createLiveControllerFixture() {
   const playback = vi.fn<typeof createLivePlayback>(() => player);
   const tools = { tools: [{ type: 'function' as const, function: { name: 'shell_execute', description: 'test shell', parameters: { type: 'object' } } }], execute: vi.fn(async () => 'result'), close: vi.fn(async () => {}) };
   const wesh = vi.fn<typeof openLiveWesh>(async () => tools);
+  const decodeFile = vi.fn<typeof decodeLiveAudioFile>(async () => new Float32Array([0.1, 0.2]));
   const onChange = vi.fn();
-  const controller = createLiveController({ engine: { runLiveSession }, capture, playback, wesh, onChange });
+  const controller = createLiveController({ engine: { runLiveSession }, capture, playback, wesh, decodeFile, onChange });
   return {
     controller,
+    decodeFile,
     runLiveSession,
     scope,
     request,

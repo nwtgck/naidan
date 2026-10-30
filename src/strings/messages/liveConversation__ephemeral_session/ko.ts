@@ -1,1 +1,1 @@
-export const liveConversation__ephemeral_session = (): string => 'Conversations and audio disappear on reload. Files written to a Wesh folder remain.';
+export const liveConversation__ephemeral_session = (): string => 'Conversation and audio disappear on reload. Files written by the browser shell remain.';

@@ -1,0 +1,1 @@
+export const liveConversation__audio_statistics = ({ seconds, sampleRate, peak, rms, clipped }: { seconds: string, sampleRate: number, peak: string, rms: string, clipped: number }): string => `${seconds}秒 · ${sampleRate} Hz · 最大振幅 ${peak} · RMS ${rms} · クリップ ${clipped}サンプル`;

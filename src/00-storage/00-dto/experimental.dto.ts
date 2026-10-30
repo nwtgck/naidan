@@ -285,6 +285,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
       dtozod.literal('full'),
     ])),
   }))),
+  liveConversationModelId: missingAsUndefined(dtozod.string()),
   llamaCppBrowser: missingAsUndefined(ExperimentalLlamaCppBrowserSettingsSchemaDto),
   browserImageGeneration: missingAsUndefined(ExperimentalBrowserImageGenerationSettingsSchemaDto),
   hostModelDirectories: missingAsUndefined(dtozod.array(dtozod.object({
