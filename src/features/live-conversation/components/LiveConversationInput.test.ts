@@ -18,6 +18,20 @@ function fixture() {
 }
 
 describe('dedicated live composer controls', () => {
+  it('does not prevent plain Enter, and never bypasses a disabled submit via keyboard or form', async () => {
+    using f = fixture();
+    const text = f.wrapper.get('[data-testid="live-text"]');
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    text.element.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(false);
+    await f.wrapper.setProps({ canSubmit: false });
+    const shortcut = new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true });
+    text.element.dispatchEvent(shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    await f.wrapper.get('form').trigger('submit');
+    expect(f.wrapper.emitted('send')).toBeUndefined();
+  });
+
   it('keeps editing enabled while the model responds and distinguishes queued send from interrupting talk', () => {
     using f = fixture();
     expect(f.wrapper.get('[data-testid="live-text"]').attributes('disabled')).toBeUndefined();
@@ -25,7 +39,7 @@ describe('dedicated live composer controls', () => {
     expect(f.wrapper.get('[data-testid="live-record"]').attributes('title')).toBe('Interrupt and talk');
   });
 
-  it('does not send Enter during composition or Shift+Enter', async () => {
+  it('uses Enter for newlines and Ctrl/Cmd+Enter for sending, except during composition', async () => {
     using f = fixture();
     const text = f.wrapper.get('[data-testid="live-text"]');
     await text.trigger('keydown', { key: 'Enter', isComposing: true });
@@ -33,7 +47,13 @@ describe('dedicated live composer controls', () => {
     await text.trigger('keydown', { key: 'Enter', shiftKey: true });
     expect(f.wrapper.emitted('send')).toBeUndefined();
     await text.trigger('keydown', { key: 'Enter' });
-    expect(f.wrapper.emitted('send')).toHaveLength(1);
+    expect(f.wrapper.emitted('send')).toBeUndefined();
+    await text.trigger('keydown', { key: 'Enter', ctrlKey: true, isComposing: true });
+    await text.trigger('keydown', { key: 'Enter', metaKey: true, keyCode: 229 });
+    expect(f.wrapper.emitted('send')).toBeUndefined();
+    await text.trigger('keydown', { key: 'Enter', ctrlKey: true });
+    await text.trigger('keydown', { key: 'Enter', metaKey: true });
+    expect(f.wrapper.emitted('send')).toHaveLength(2);
   });
 
   it('adds pasted images without swallowing accompanying plain text', () => {

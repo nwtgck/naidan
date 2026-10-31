@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, onMounted, shallowRef, computed } from 'vue';
-import { mount, flushPromises } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useLiveConversation } from '@/features/live-conversation/composables/useLiveConversation';
 import { createLiveControllerFixture } from '@/features/live-conversation/logic/controller.test-support';
@@ -67,14 +67,19 @@ async function fixture() {
   const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:attachment');
   const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
-  const wrapper = mount(LiveConversationView);
+  const host = document.createElement('div');
+  document.body.append(host);
+  const wrapper = mount(LiveConversationView, { attachTo: host });
+  const page = new DOMWrapper(document.body);
   await flushPromises();
   return {
     ...f,
     state,
     wrapper,
+    page,
     async [Symbol.asyncDispose]() {
       wrapper.unmount();
+      host.remove();
       await f.controller.dispose();
       pause.mockRestore();
       createUrl.mockRestore();
@@ -84,6 +89,80 @@ async function fixture() {
 }
 
 describe('independent live conversation workspace', () => {
+  it('does not announce readiness before model loading completes', async () => {
+    await using f = await fixture();
+    f.state.value = { ...f.state.value, phase: 'loading' };
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-empty"]').text()).toBe(f.wrapper.get('[data-testid="live-status"]').text());
+    expect(f.wrapper.get('[data-testid="live-record"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-open-settings"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('keeps header and composer outside the message scroller and opens settings without replacing the catalog', async () => {
+    await using f = await fixture();
+    const scroller = f.wrapper.get('[data-testid="live-message-scroll"]').element;
+    const header = f.wrapper.get('[data-testid="live-header"]').element;
+    const footer = f.wrapper.get('[data-testid="live-composer-footer"]').element;
+    expect(scroller.contains(header)).toBe(false);
+    expect(scroller.contains(footer)).toBe(false);
+    expect(header.parentElement).toBe(scroller.parentElement);
+    expect(footer.parentElement).toBe(scroller.parentElement);
+    const catalog = f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm;
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-text"]').setValue('unfinished draft');
+    scroller.scrollTop = 120;
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    expect(f.page.find('[role="dialog"]').exists()).toBe(true);
+    expect(f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm).toBe(catalog);
+    expect(f.wrapper.get('[data-testid="live-conversation-page"]').attributes('inert')).toBeDefined();
+    await f.page.get('[data-testid="live-settings-close"]').trigger('click');
+    await flushPromises();
+    expect(scroller.scrollTop).toBe(120);
+    expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="live-text"]').element.value).toBe('unfinished draft');
+    expect(f.runLiveSession).toHaveBeenCalledOnce();
+    expect(f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm).toBe(catalog);
+  });
+
+  it('shows the resident model in the header when a different next model is selected', async () => {
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    expect(f.wrapper.get('[data-testid="live-header-model"]').text()).toBe('live');
+    await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('next/model');
+  });
+
+  it('keeps submitted images in history after composer URLs are released and clears them with a new conversation', async () => {
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    const file = new File(['original'], 'attached.png', { type: 'image/png' });
+    const picker = f.wrapper.get<HTMLInputElement>('[data-testid="live-images"]');
+    Object.defineProperty(picker.element, 'files', { configurable: true, value: [file] });
+    await picker.trigger('change');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-draft-images"]').exists()).toBe(false);
+    expect(f.state.value.entries[0]!.images[0]!.blob).toBe(file);
+    expect(f.wrapper.get('[data-testid="live-message-images"]').text()).toContain(file.name);
+    await f.wrapper.get('[data-testid="live-image-preview"]').trigger('click');
+    await flushPromises();
+    expect(f.page.find('[data-testid="preview-image"]').exists()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-message-images"]').exists()).toBe(false);
+    expect(f.state.value.entries).toEqual([]);
+    expect(f.runLiveSession).toHaveBeenCalledOnce();
+  });
+
   it('starts only explicitly and keeps the resident model while allowing the next model selection', async () => {
     await using f = await fixture();
     expect(f.runLiveSession).not.toHaveBeenCalled();
@@ -91,9 +170,9 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     expect(f.runLiveSession).toHaveBeenCalledOnce();
-    expect(f.wrapper.get('[data-testid="live-model"]').attributes('disabled')).toBeUndefined();
+    expect(f.page.get('[data-testid="live-model"]').attributes('disabled')).toBeUndefined();
     expect(f.capture).not.toHaveBeenCalled();
-    await f.wrapper.get('[data-testid="live-release"]').trigger('click');
+    await f.page.get('[data-testid="live-release"]').trigger('click');
     await flushPromises();
     expect(f.wrapper.find('[data-testid="live-start"]').exists()).toBe(true);
   });
@@ -102,21 +181,21 @@ describe('independent live conversation workspace', () => {
     await using f = await fixture();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
-    await f.wrapper.get('[data-testid="live-output-voice"]').setValue(false);
+    await f.page.get('[data-testid="live-output-voice"]').setValue(false);
     await f.wrapper.get('[data-testid="live-text"]').setValue('Hello');
     await f.wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(f.request.mock.calls.find(([args]) => args.command.type === 'respond')?.[0].command).toMatchObject({ output: 'text' });
     expect(f.runLiveSession).toHaveBeenCalledOnce();
     expect(f.wrapper.get('[data-testid="live-history"]').text()).toContain('Answer');
-    await f.wrapper.get('[data-testid="live-output-text"]').setValue(false);
+    await f.page.get('[data-testid="live-output-text"]').setValue(false);
     expect(f.wrapper.get('[data-testid="live-record"]').attributes('disabled')).toBeDefined();
     expect(f.wrapper.get('[data-testid="live-send"]').attributes('disabled')).toBeDefined();
   });
 
   it('uses a plain text transcript rather than interpreting model HTML', async () => {
     await using f = await fixture();
-    f.state.value = { ...f.state.value, entries: [{ id: 'turn', modelId: 'LiquidAI/LFM3-Omni-2B', audioSource: { kind: 'microphone' }, inputAudio: undefined, outputAudio: undefined, inputStatistics: undefined, inputText: '<script>bad()</script>', imageNames: [], hasAudio: true, transcript: '', answer: '<img src=x onerror=bad()>', output: 'mixed', status: 'complete', toolResults: [] }] };
+    f.state.value = { ...f.state.value, entries: [{ id: 'turn', modelId: 'LiquidAI/LFM3-Omni-2B', audioSource: { kind: 'microphone' }, inputAudio: undefined, outputAudio: undefined, inputStatistics: undefined, inputText: '<script>bad()</script>', images: [], hasAudio: true, transcript: '', answer: '<img src=x onerror=bad()>', output: 'mixed', status: 'complete', toolResults: [] }] };
     await flushPromises();
     expect(f.wrapper.get('[data-testid="live-history"]').text()).toContain('<img src=x onerror=bad()>');
     expect(f.wrapper.find('[data-testid="live-history"] img').exists()).toBe(false);
@@ -227,7 +306,7 @@ describe('independent live conversation workspace', () => {
     await flushPromises();
     expect(f.runLiveSession).toHaveBeenCalledOnce();
     expect(f.player.close).not.toHaveBeenCalled();
-    expect(f.wrapper.get<HTMLInputElement>('[data-testid="live-model"]').element.value).toBe('user/LFM3-Omni-2B');
+    expect(f.page.get<HTMLInputElement>('[data-testid="live-model"]').element.value).toBe('user/LFM3-Omni-2B');
     await f.wrapper.get('[data-testid="live-text"]').setValue('keep this until confirmed');
     confirm.mockResolvedValueOnce(false);
     await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
@@ -271,7 +350,7 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-text"]').setValue('draft with image');
     const event = new Event('drop', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'dataTransfer', { value: { types: ['Files'], files: [new File(['image'], 'picture.png', { type: 'image/png' })] } });
-    f.wrapper.element.dispatchEvent(event);
+    f.wrapper.get('[data-testid="live-conversation-page"]').element.dispatchEvent(event);
     await flushPromises();
     expect(event.defaultPrevented).toBe(true);
     expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="live-text"]').element.value).toBe('draft with image');

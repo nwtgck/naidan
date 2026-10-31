@@ -40,8 +40,9 @@ attention and sliding-window state. A manual interrupt stops playback immediatel
 then cooperatively stops generation and restores the pre-turn checkpoint. The
 **entire interrupted turn** is marked discarded, including its user input. Already
 heard partial audio is not falsely treated as a completed native conversation.
-New input is disabled while a completed native answer still has queued speech;
-finish playback or explicitly interrupt first. A failed restore closes the session;
+Draft editing and attachment changes remain available during inference/playback.
+Submitting then queues a turn; delivery waits until playback finishes. Explicitly
+starting to speak interrupts the current turn. A failed restore closes the session;
 it never resumes from an uncertain state.
 
 There are explicit bounds: 64 visible turns, 180 seconds per input/output, 8 seconds
@@ -73,7 +74,38 @@ WebGPU operation. Web Audio tests use local fakes, not hardware permissions.
 Actual LFM3-Audio/Omni weights, browsers, microphones, WebGPU device behavior and
 hosted/file-protocol playback still need device-level verification. This initial
 implementation has manual recording/interrupt, not automatic voice activity
-selection, full-duplex inference, video, camera capture or audio-file import.
+selection, video or camera capture. Audio files are decoded locally and use the same
+input path without microphone permission.
 
 Run targeted tests with the repository's `npm run test:only-failed -- <paths>`
 runner. Do not substitute a whole-application run for affected-scope verification.
+
+## Layout and previews
+
+The workspace has three sibling regions: a compact header, a flexing message
+viewport and a composer. Only the message viewport scrolls. New output follows
+the bottom only while the user is near it; reading earlier messages does not
+scroll the document or move the composer. Enter inserts a newline; Ctrl/Cmd+Enter
+submits (except while composing text with an input method), matching ChatInput.
+The existing ChatInput and sidebar are not changed.
+
+Settings use the existing ChatSettingsPanel visual patterns and SettingsDisclosure.
+A single settings subtree moves with Teleport between first-use setup and an
+internally scrolling modal. The real model suggestions/catalog and manager are
+reused; opening/closing settings does not remount them or discard downloads. The
+resident model remains visible in the header even when a different next model is
+selected. Focus is contained while settings are open and returned on close.
+
+Every accepted user message retains its original image Blobs with unique local
+identities (including repeated filenames). They are independent of optional audio
+retention and never written to storage/DTOs. Thumbnails open the existing
+BinaryObjectPreviewModal using memoryBlob; full-size navigation, zoom and download
+reuse that component. The viewer's persistent-storage delete is unavailable for
+these memory-only items. Composer, thumbnail and viewer URLs have separate owners
+and are revoked when their respective UI is cleared/unmounted.
+
+New conversation/page disposal drops image references; merely releasing model
+weights does not delete displayed history. Discarded turns retain their previews
+with the existing discarded marker. The conversation image budget is 128 MiB on
+top of the per-turn/file limits; exceeding it fails before native input begins,
+never silently evicting old pictures or rolling back a preceding turn.

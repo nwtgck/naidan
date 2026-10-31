@@ -2887,13 +2887,16 @@ import { liveConversation__audio_retention_limit } from '@/strings/messages/live
 import { liveConversation__audio_sent_to_model } from '@/strings/messages/liveConversation__audio_sent_to_model/ko';
 import { liveConversation__audio_statistics } from '@/strings/messages/liveConversation__audio_statistics/ko';
 import { liveConversation__cancel_pending } from '@/strings/messages/liveConversation__cancel_pending/ko';
+import { liveConversation__channels_and_playback } from '@/strings/messages/liveConversation__channels_and_playback/ko';
 import { liveConversation__channels_help } from '@/strings/messages/liveConversation__channels_help/ko';
 import { liveConversation__choose_model } from '@/strings/messages/liveConversation__choose_model/ko';
 import { liveConversation__choose_output_channel } from '@/strings/messages/liveConversation__choose_output_channel/ko';
 import { liveConversation__clear_conversation } from '@/strings/messages/liveConversation__clear_conversation/ko';
+import { liveConversation__close_settings } from '@/strings/messages/liveConversation__close_settings/ko';
 import { liveConversation__closing } from '@/strings/messages/liveConversation__closing/ko';
 import { liveConversation__conversation } from '@/strings/messages/liveConversation__conversation/ko';
 import { liveConversation__conversation_settings } from '@/strings/messages/liveConversation__conversation_settings/ko';
+import { liveConversation__ctrl_or_cmd_enter_to_send } from '@/strings/messages/liveConversation__ctrl_or_cmd_enter_to_send/ko';
 import { liveConversation__deny_commands } from '@/strings/messages/liveConversation__deny_commands/ko';
 import { liveConversation__discarded } from '@/strings/messages/liveConversation__discarded/ko';
 import { liveConversation__download_then_start } from '@/strings/messages/liveConversation__download_then_start/ko';
@@ -2920,6 +2923,7 @@ import { liveConversation__interruption_help } from '@/strings/messages/liveConv
 import { liveConversation__introduction } from '@/strings/messages/liveConversation__introduction/ko';
 import { liveConversation__keep_audio_help } from '@/strings/messages/liveConversation__keep_audio_help/ko';
 import { liveConversation__keep_audio_in_memory } from '@/strings/messages/liveConversation__keep_audio_in_memory/ko';
+import { liveConversation__latest_messages } from '@/strings/messages/liveConversation__latest_messages/ko';
 import { liveConversation__limit } from '@/strings/messages/liveConversation__limit/ko';
 import { liveConversation__listening } from '@/strings/messages/liveConversation__listening/ko';
 import { liveConversation__live_conversation } from '@/strings/messages/liveConversation__live_conversation/ko';
@@ -2945,6 +2949,7 @@ import { liveConversation__pending_messages } from '@/strings/messages/liveConve
 import { liveConversation__playing } from '@/strings/messages/liveConversation__playing/ko';
 import { liveConversation__prepare_next_message } from '@/strings/messages/liveConversation__prepare_next_message/ko';
 import { liveConversation__preparing_audio } from '@/strings/messages/liveConversation__preparing_audio/ko';
+import { liveConversation__preview_image } from '@/strings/messages/liveConversation__preview_image/ko';
 import { liveConversation__ready } from '@/strings/messages/liveConversation__ready/ko';
 import { liveConversation__ready_to_talk } from '@/strings/messages/liveConversation__ready_to_talk/ko';
 import { liveConversation__recorded_audio } from '@/strings/messages/liveConversation__recorded_audio/ko';
@@ -6350,13 +6355,16 @@ export const catalog = {
   liveConversation__audio_sent_to_model,
   liveConversation__audio_statistics,
   liveConversation__cancel_pending,
+  liveConversation__channels_and_playback,
   liveConversation__channels_help,
   liveConversation__choose_model,
   liveConversation__choose_output_channel,
   liveConversation__clear_conversation,
+  liveConversation__close_settings,
   liveConversation__closing,
   liveConversation__conversation,
   liveConversation__conversation_settings,
+  liveConversation__ctrl_or_cmd_enter_to_send,
   liveConversation__deny_commands,
   liveConversation__discarded,
   liveConversation__download_then_start,
@@ -6383,6 +6391,7 @@ export const catalog = {
   liveConversation__introduction,
   liveConversation__keep_audio_help,
   liveConversation__keep_audio_in_memory,
+  liveConversation__latest_messages,
   liveConversation__limit,
   liveConversation__listening,
   liveConversation__live_conversation,
@@ -6408,6 +6417,7 @@ export const catalog = {
   liveConversation__playing,
   liveConversation__prepare_next_message,
   liveConversation__preparing_audio,
+  liveConversation__preview_image,
   liveConversation__ready,
   liveConversation__ready_to_talk,
   liveConversation__recorded_audio,

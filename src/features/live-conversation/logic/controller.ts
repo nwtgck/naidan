@@ -1,7 +1,8 @@
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import type { LiveAnswer, LiveCommand, LiveEventHandler, LiveInfo, LiveScope } from '@/features/llama-cpp-browser/live-types';
-import type { VolumeId } from '@/01-models/ids';
+import { toBinaryObjectId, type BinaryObjectId, type VolumeId } from '@/01-models/ids';
 import { promiseAllKeyed } from '@/utils/promise';
+import { exactObject } from '@/utils/exact-object';
 import { createLiveAudioQueue } from './audio-queue';
 import type { openLiveCapture, LiveCapture } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
@@ -11,8 +12,11 @@ import { createLiveAudioMeter, liveAudioSecondsLimit, type decodeLiveAudioFile, 
 import { createLiveAudioRetention, type LiveAudioClip } from './audio-retention';
 
 export type LiveTurnSettings = { output: 'text' | 'audio' | 'mixed', transcription: 'on' | 'off' };
+// Original image bytes live only with this conversation, never in storage or a DTO.
+export type LiveTurnImage = { id: BinaryObjectId, name: string, blob: Blob, createdAt: number };
+export const liveImageMemoryLimit = 128 * 1024 * 1024;
 export type LiveTurnView = {
-  id: string, modelId: string, inputText: string, imageNames: string[], hasAudio: boolean,
+  id: string, modelId: string, inputText: string, images: LiveTurnImage[], hasAudio: boolean,
   audioSource: { kind: 'microphone' } | { kind: 'file', name: string } | undefined,
   inputAudio: LiveAudioClip | undefined, outputAudio: LiveAudioClip | undefined, inputStatistics: LiveAudioStatistics | undefined,
   transcript: string, answer: string, output: LiveTurnSettings['output'],
@@ -278,9 +282,25 @@ export function createLiveController({ engine, capture, playback, wesh, decodeFi
   const begin = async ({ session, scope, turn, text, images, audioSource }: {
     session: Owned, scope: LiveScope, turn: Turn, text: string, images: LiveAttachments, audioSource: LiveTurnView['audioSource'],
   }): Promise<void> => {
+    // The composer releases its object URLs after submission. Own the immutable
+    // Blobs separately so history previews survive submission and model release.
+    // Reject before touching native state rather than silently evicting old images.
+    const retainedBytes = state.entries.reduce((total, item) => total + item.images.reduce((sum, image) => sum + image.blob.size, 0), 0);
+    if (retainedBytes + images.reduce((total, image) => total + image.blob.size, 0) > liveImageMemoryLimit) {
+      throw new Error('Conversation images exceed 128 MiB. Start a new conversation before adding more images.');
+    }
+    const createdAt = Date.now();
+    const retainedImages = images.map(({ blob, name, ...unhandled }) => {
+      unhandled satisfies Record<PropertyKey, never>;
+      return exactObject<LiveTurnImage>()({ id: toBinaryObjectId({ raw: crypto.randomUUID() }), blob, name, createdAt });
+    });
     await request({ scope, command: { type: 'begin', turnId: turn.id, text, images: images.map(image => image.blob), transcription: audioSource ? turn.settings.transcription : 'off' } });
     turn.nativeStarted = true;
-    publish({ change: { failure: undefined, pendingTools: [], entries: [...state.entries, { id: turn.id, modelId: session.modelId, inputText: text, imageNames: images.map(image => image.name), hasAudio: audioSource !== undefined, audioSource, inputAudio: undefined, outputAudio: undefined, inputStatistics: undefined, transcript: '', answer: '', output: turn.settings.output, status: 'pending', toolResults: [] }] } });
+    // Closing/unmounting while begin is pending must not resurrect media history.
+    if (disposed || session.closing || owned !== session) {
+      return;
+    }
+    publish({ change: { failure: undefined, pendingTools: [], entries: [...state.entries, { id: turn.id, modelId: session.modelId, inputText: text, images: retainedImages, hasAudio: audioSource !== undefined, audioSource, inputAudio: undefined, outputAudio: undefined, inputStatistics: undefined, transcript: '', answer: '', output: turn.settings.output, status: 'pending', toolResults: [] }] } });
     if (turn.interrupted && !session.closing) {
       await discard({ session, turn });
     }
@@ -712,8 +732,12 @@ export function createLiveController({ engine, capture, playback, wesh, decodeFi
     close,
     async dispose(): Promise<void> {
       disposed = true;
-      await close();
-      retained.clear();
+      try {
+        await close();
+      } finally {
+        retained.clear();
+        publish({ change: { entries: [], pendingTools: [] } });
+      }
     },
   };
 }
