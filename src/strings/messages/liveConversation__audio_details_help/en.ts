@@ -1,0 +1,1 @@
+export const liveConversation__audio_details_help = (): string => 'Measured from the samples sent to the model. Replay uses those same samples, after conversion to mono and the model sample rate. No loudness normalization is applied.';

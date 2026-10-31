@@ -535,6 +535,8 @@ export interface Settings {
       previewMode?: 'always' | 'peek' | 'disabled',
       previewContextSize?: number | 'full',
     },
+    /** Only the selected model is persisted; live conversation/media stay in memory. */
+    liveConversationModelId?: string,
     llamaCppBrowser?: LlamaCppBrowserSettings,
     browserImageGeneration?: BrowserImageGenerationSettings,
     readonly unreadable?: {

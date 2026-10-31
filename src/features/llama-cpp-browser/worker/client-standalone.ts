@@ -98,6 +98,8 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     }
   };
   return {
+    live: async ({ request, onEvent, onProgress, signal }) => (await getClient({ signal })).live({ request, onEvent, onProgress, signal }),
+    interruptLive: async ({ sessionId, turnId }) => (await getClient({ signal: undefined })).interruptLive({ sessionId, turnId }),
     subscribeDisposed({ listener }) {
       if (disposed) {
         listener();

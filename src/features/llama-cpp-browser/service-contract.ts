@@ -1,3 +1,4 @@
+import type { LiveOperation } from './live-types';
 import type { VisionAdmission } from './performance/vision-admission-schema';
 import type { MemoryDiagnostics } from './performance/memory-schema';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
@@ -9,6 +10,10 @@ import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult,
 import type { ModelImportReceipt } from './model-files';
 
 export interface LlamaCppBrowserService {
+  runLiveSession({ modelId, instructions, tools, signal, onProgress, operation }: {
+    modelId: LiveOperation['modelId'], instructions: LiveOperation['instructions'], tools: LiveOperation['tools'],
+    signal: LiveOperation['signal'], onProgress: LiveOperation['onProgress'], operation: LiveOperation['operation'],
+  }): Promise<void>;
   /** Best-effort preparation: never queues behind an existing operation. */
   prepareModel({ modelId, signal, onProgress }: { modelId: string, signal: AbortSignal | undefined, onProgress?: ({ progress }: { progress: Progress }) => void }): Promise<'ready' | 'skipped-busy'>;
   generateAudio({ input, cancellationSignal, completionSignal, preview }: { input: Omit<AudioGenerationInput, 'options'>, cancellationSignal: AbortSignal | undefined, completionSignal?: AbortSignal, preview?: AudioPreviewDelivery }): Promise<AudioGenerationResult>;
