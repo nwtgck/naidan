@@ -403,6 +403,21 @@ export function subscribeDiagnostics({ listener, debug }: { listener: ({ diagnos
   };
 }
 
+/** Request-scoped diagnostic preference; never controls inference behavior. */
+export function isDebugDiagnosticsEnabled(): boolean {
+  for (const subscription of listeners) {
+    switch (subscription.debug) {
+    case 'on': return true;
+    case 'off': break;
+    default: {
+      const _ex: never = subscription.debug;
+      throw new Error(`Unhandled debug preference: ${_ex}`);
+    }
+    }
+  }
+  return false;
+}
+
 /** Allowlisted fields only: never forward native logs, errors, names or chat data. */
 export function logDiagnostic({ diagnostic }: { diagnostic: Diagnostic }): void {
   publishDiagnostic({ diagnostic, writeToConsole: true });

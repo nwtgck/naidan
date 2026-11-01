@@ -275,6 +275,35 @@ it('exports partial memory evidence with model attribution even without a termin
   expect(await zip.file('README.md')!.async('string')).toContain('not live GPU allocation');
 });
 
+it('retains empty vendor and false WGSL membership in the exported memory evidence', async () => {
+  const source = snapshot(), trial = source.trials[0]!;
+  const capabilitySnapshot = {
+    capture: 'device-created',
+    adapterVendor: { status: 'available', value: '', length: 0, truncated: false },
+    wgslLanguageFeatures: { status: 'available', packed_4x8_integer_dot_product: false },
+  } as const;
+  trial.memoryDiagnostics = {
+    samples: [{
+      kind: 'naidan-llama-cpp-memory',
+      instanceId: 'core-one',
+      profile: 'webgpu-wasm64-jspi',
+      checkpoint: 'runtime-ready',
+      capacityBytes: 65536,
+      timestamp: 10,
+      gpuRequests: { bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0, metadata: { capabilitySnapshot } },
+    }],
+    droppedSamples: 0,
+    nativeAllocations: [],
+    droppedNativeAllocations: 0,
+    nativeSettings: [],
+    droppedNativeSettings: 0,
+  };
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  const observations = JSON.parse(await zip.file(`memory/${trial.id}.json`)!.async('string'));
+  expect(observations.samples[0].gpuRequests.metadata.capabilitySnapshot).toEqual(capabilitySnapshot);
+  expect(await zip.file('README.md')!.async('string')).toContain('Unavailable membership is unknown, never false');
+});
+
 it.each([
   ['-formula_safe', "'-formula_safe"],
   ['_ordinary_id', '_ordinary_id'],

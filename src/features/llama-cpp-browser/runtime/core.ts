@@ -618,7 +618,7 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
     wasmBinary,
     hostNavigator: createCoreWebGpuNavigator({
       navigator: globalThis.navigator,
-      observeDevice: profiler ? ({ device, adapter }) => gpuRequests.wrapDevice({ device: profiler.wrapDevice({ device }), adapter }) : gpuRequests.wrapDevice,
+      observeDevice: profiler ? ({ device, adapter, gpu }) => gpuRequests.wrapDevice({ device: profiler.wrapDevice({ device }), adapter, gpu }) : gpuRequests.wrapDevice,
       report({ axis, count, limit, chunks }) {
         logDiagnostic({
           diagnostic: {
