@@ -8,6 +8,16 @@ import { attachCore, createCore, type Core } from './core';
 import { createDiagnosticNativeFixture, diagnosticPrefix, schemaBytes } from './q8-kernel-diagnostic.test-support';
 import { Q8KernelDiagnosticFatalError, type Q8KernelDiagnosticPhase, type Q8KernelDiagnosticVariant } from './q8-kernel-diagnostic';
 
+const revision2Auto = {
+  codegen_revision: 2,
+  actual_algorithm: 2,
+  workgroup_size: 128,
+  logical_subgroup_size: 16,
+  rows_per_tile: 4,
+  outputs_per_workgroup: 32,
+  cooperative_subgroup_reduction: 0,
+};
+
 describe('optional Q8 native diagnostic adapter', () => {
   let base: Core;
 
@@ -233,6 +243,69 @@ describe('optional Q8 native diagnostic adapter', () => {
     expect(result.shaderSha256).toBeUndefined();
     expect(result.dispatches).toBe(0);
     expect(() => fixture.core.assertIdle()).not.toThrow();
+  });
+
+  it.each([4, 8, 16, 32, 64])('keeps revision 1 fixed-width independent SG%s reports unchanged', async subgroup => {
+    using fixture = createDiagnosticNativeFixture({ base });
+    fixture.state.report = { logical_subgroup_size: subgroup, real_min_subgroup_size: subgroup, real_max_subgroup_size: subgroup, outputs_per_workgroup: 2 * 128 / subgroup };
+    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const result = await adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'execute', repetitions: 1 });
+    expect(result.codegenRevision).toBe(1);
+    expect(result.logicalSubgroupSize).toBe(subgroup);
+    expect(fixture.freed).toHaveLength(2);
+  });
+
+  it.each([4, 8, 16].flatMap(minimum => [16, 32, 64, 128].map(maximum => ({ minimum, maximum }))))('accepts revision 2 AUTO with advertised range $minimum..$maximum for both phases and not-prepared', async ({ minimum, maximum }) => {
+    for (const operation of [{ status: 0, phase: 'prepare', repetitions: 0 }, { status: 0, phase: 'execute', repetitions: 3 }, { status: 4, phase: 'execute', repetitions: 1 }] as const) {
+      using fixture = createDiagnosticNativeFixture({ base });
+      fixture.state.status = operation.status;
+      fixture.state.report = { ...revision2Auto, real_min_subgroup_size: minimum, real_max_subgroup_size: maximum };
+      const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+      const result = await adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: operation.phase, repetitions: operation.repetitions });
+      expect(result).toMatchObject({ codegenRevision: 2, variant: 'auto', algorithm: 'independent', workgroupSize: 128, logicalSubgroupSize: 16, realMinSubgroupSize: minimum, realMaxSubgroupSize: maximum, rowsPerTile: 4, outputsPerWorkgroup: 32, cooperativeSubgroupReduction: false });
+      expect(result.status).toBe(operation.status === 0 ? 'ok' : 'not-prepared');
+      expect(result.dispatches).toBe(operation.status === 0 ? operation.repetitions : 0);
+      expect(result.shaderSha256).toBe(operation.status === 0 ? 'ab'.repeat(32) : undefined);
+      expect(fixture.freed).toHaveLength(2);
+      expect(() => fixture.core.assertIdle()).not.toThrow();
+    }
+  });
+
+  it.each([
+    { field: 'codegen_revision', value: 0 }, { field: 'codegen_revision', value: 3 }, { field: 'codegen_revision', value: 0xffffffff },
+    { field: 'actual_algorithm', value: 0 }, { field: 'actual_algorithm', value: 1 },
+    { field: 'workgroup_size', value: 64 }, { field: 'workgroup_size', value: 256 },
+    { field: 'logical_subgroup_size', value: 8 }, { field: 'logical_subgroup_size', value: 32 },
+    { field: 'rows_per_tile', value: 2 }, { field: 'outputs_per_workgroup', value: 64 }, { field: 'cooperative_subgroup_reduction', value: 1 },
+    { field: 'real_min_subgroup_size', value: 0 }, { field: 'real_min_subgroup_size', value: 1 }, { field: 'real_min_subgroup_size', value: 2 },
+    { field: 'real_min_subgroup_size', value: 3 }, { field: 'real_min_subgroup_size', value: 12 }, { field: 'real_min_subgroup_size', value: 32 },
+    { field: 'real_max_subgroup_size', value: 8 }, { field: 'real_max_subgroup_size', value: 24 }, { field: 'real_max_subgroup_size', value: 256 },
+  ])('rejects malformed revision 2 $field=$value for both shaped statuses without freeing records', async ({ field, value }) => {
+    for (const status of [0, 4]) {
+      using fixture = createDiagnosticNativeFixture({ base });
+      fixture.state.status = status;
+      fixture.state.report = { ...revision2Auto, real_min_subgroup_size: 4, real_max_subgroup_size: 128, [field]: value };
+      const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+      await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'execute', repetitions: 1 })).rejects.toBeInstanceOf(Q8KernelDiagnosticFatalError);
+      expect(fixture.freed).toEqual([]);
+      expect(() => fixture.core.assertIdle()).toThrow('Serialize access');
+    }
+  });
+
+  it.each(['cooperative-wg256-r4', 'independent-wg128-r4', 'independent-wg128-r1', 'independent-wg128-r2', 'cooperative-wg128-r2'] as const)('rejects revision 2 for forced %s even with the AUTO tuple', async variant => {
+    using fixture = createDiagnosticNativeFixture({ base });
+    fixture.state.report = { ...revision2Auto, real_min_subgroup_size: 16, real_max_subgroup_size: 16 };
+    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    await expect(adapter!.run({ backend: 1n, dst: 2n, variant, phase: 'execute', repetitions: 1 })).rejects.toBeInstanceOf(Q8KernelDiagnosticFatalError);
+    expect(fixture.freed).toEqual([]);
+  });
+
+  it('continues rejecting revision 1 independent reports on a variable advertised range', async () => {
+    using fixture = createDiagnosticNativeFixture({ base });
+    fixture.state.report = { real_min_subgroup_size: 4, real_max_subgroup_size: 128 };
+    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'execute', repetitions: 1 })).rejects.toBeInstanceOf(Q8KernelDiagnosticFatalError);
+    expect(fixture.freed).toEqual([]);
   });
 
   it.each([1, 2])('cleans up safe allocation failure number %s and releases the gate', async oomAt => {

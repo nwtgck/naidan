@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isQ8Revision2AutoReport } from './q8-kernel-codegen';
 
 type Scalar = number | bigint;
 /** Internal capability, passed only by attachCore's private ownership lease. */
@@ -300,15 +301,28 @@ export async function createQ8KernelDiagnosticAdapter({ schemaBytes, access }: {
                 if (shaped) {
                   const wg = read({ name: 'workgroup_size' }), sg = read({ name: 'logical_subgroup_size' }), rows = read({ name: 'rows_per_tile' });
                   const minimum = read({ name: 'real_min_subgroup_size' }), maximum = read({ name: 'real_max_subgroup_size' });
+                  const revision = read({ name: 'codegen_revision' });
+                  const revision2Auto = isQ8Revision2AutoReport({
+                    codegenRevision: revision,
+                    variant: variantName,
+                    algorithm,
+                    workgroupSize: wg,
+                    logicalSubgroupSize: sg,
+                    realMinSubgroupSize: minimum,
+                    realMaxSubgroupSize: maximum,
+                    rowsPerTile: rows,
+                    outputsPerWorkgroup: read({ name: 'outputs_per_workgroup' }),
+                    cooperativeSubgroupReduction: read({ name: 'cooperative_subgroup_reduction' }) !== 0,
+                  });
                   if (wg < 32 || wg > 256 || (wg & (wg - 1)) || ![1, 2, 4].includes(rows) || minimum > maximum
-                    || !read({ name: 'grid_x' }) || !read({ name: 'grid_y' }) || read({ name: 'grid_z' }) !== 1 || read({ name: 'codegen_revision' }) !== 1
+                    || !read({ name: 'grid_x' }) || !read({ name: 'grid_y' }) || read({ name: 'grid_z' }) !== 1 || revision !== 1 && !revision2Auto
                     || read({ name: 'cooperative_subgroup_reduction' }) > 1) {
                     throw new Error('Invalid Q8 diagnostic launch report');
                   }
                   switch (algorithm) {
                   case 'none': throw new Error('Missing Q8 diagnostic algorithm');
                   case 'independent':
-                    if (wg !== 128 || sg < 4 || sg > 64 || (sg & (sg - 1)) || sg !== minimum || sg !== maximum
+                    if (wg !== 128 || sg < 4 || sg > 64 || (sg & (sg - 1)) || revision === 1 && (sg !== minimum || sg !== maximum)
                     || read({ name: 'cooperative_subgroup_reduction' }) !== 0 || read({ name: 'outputs_per_workgroup' }) !== rows * wg / sg) {
                       throw new Error('Invalid Q8 diagnostic independent launch');
                     }
