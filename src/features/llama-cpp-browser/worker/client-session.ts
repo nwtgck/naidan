@@ -1,3 +1,5 @@
+import { liveControlSchema, liveEventSchema, liveResultSchema, type LiveRequest, type LiveResult } from '@/features/llama-cpp-browser/live-types';
+import { liveRequestSchema } from './live-protocol';
 import { observeMeasurementMemory } from './memory-observation';
 import { observeWorkerMemory } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
@@ -216,6 +218,54 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     }
   }
   return {
+    async live({ request, onEvent, onProgress, signal }) {
+      let accepted: LiveRequest;
+      switch (request.type) {
+      case 'open': accepted = liveRequestSchema.parse({ ...request, prepare: { ...request.prepare, assetBaseURL: getAssetBaseURL() } });
+        break;
+      case 'command': accepted = liveRequestSchema.parse(request);
+        break;
+      default: {
+        const exhaustive: never = request;
+        throw new Error(String(exhaustive));
+      }
+      }
+      const generationId = ++nextGenerationId;
+      let accepting = true;
+      try {
+        return liveResultSchema.parse(await invoke<LiveResult>({
+          call: () => remote.live(workerCapability({ value: { request: accepted, generationId }, capability: 'file-system-handle-clone' }), workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink event proxy.
+            value: async (event: unknown) => {
+              if (accepting && !disposed && !signal?.aborted) {
+                await onEvent({ event: liveEventSchema.parse(event) });
+              }
+            },
+          }), workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink progress proxy.
+            value: (progress: unknown) => {
+              if (accepting && !disposed && !signal?.aborted) {
+                onProgress({ progress: progressSchema.parse(progress) });
+              }
+            },
+          })),
+          signal,
+          onAbort: () => {
+            void remote.cancelGeneration({ generationId }).catch(dispose);
+          },
+          abortTimeoutMs: 5000,
+        }));
+      } finally {
+        accepting = false;
+      }
+    },
+    async interruptLive({ sessionId, turnId }) {
+      if (disposed) {
+        throw new LlamaCppBrowserError({ code: 'worker-failed' });
+      }
+      // Bypass invoke: the response owns its admission gate until it stops.
+      await remote.interruptLive(liveControlSchema.parse({ sessionId, turnId }));
+    },
     subscribeDisposed({ listener }) {
       if (disposed) {
         listener();

@@ -1,3 +1,4 @@
+import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import { isGpuProfileTrial, summarizeGpuProfiles } from './gpu-profile-summary';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
@@ -89,7 +90,8 @@ has no captured raw memory history; inspect summary.performance.memoryObservatio
 separately for any terminal heap/checkpoint measurements. Missing evidence is not
 zero memory use. Coverage
 counts describe retained and discarded records, not uninterrupted sampling.
-The 128 MiB archive-output limit is not a cap on live export memory: validation,
+Archive output is streamed where supported; the buffered fallback can still use
+substantial memory. There is no fixed archive-output byte ceiling. Validation,
 JSON strings, ZIP output chunks and final Blob can coexist while exporting.
 
 ## Measurement modes and GPU timestamp boundaries
@@ -295,7 +297,19 @@ not live heap usage or resident RAM. gpuRequests are cumulative buffer-creation
 and queue-write API requests for that runtime instance, not live GPU allocation,
 physical VRAM, transfer completion or execution time. Never sum these snapshots.
 gpuRequests.metadata is metadata exposed by the actual selected adapter/device,
-not a second diagnostic GPU probe. Missing or browser-redacted fields remain absent.
+not a second diagnostic GPU probe. Legacy adapterInfo string fields omit missing,
+empty, invalid or unreadable values.
+During debug or investigation requests, metadata.capabilitySnapshot distinguishes
+an exposed adapter vendor (including an empty string) from a missing/invalid or
+throwing API. Vendor value is capped at 256 code units; length and truncated retain
+that boundary. wgslLanguageFeatures records the actual GPU object's
+packed_4x8_integer_dot_product membership, separately from adapter/device features.
+Unavailable membership is unknown, never false. The snapshot is read once per
+selected device during its first enabled observation. capture distinguishes a
+device created inside that scope from a retained device first observed later;
+it is not a native-backend eligibility result or a new adapter/device request.
+It is omitted outside diagnostic scopes, even after an earlier observed request.
+Older archives, disabled observation, or an unobserved device can have no snapshot.
 gpuRequests.queue differs from lifetime buffer/write totals: submit and completion
 wait counters belong to this measured request only. They observe existing submit()
 and onSubmittedWorkDone() calls; no extra submit, fence, wait or timestamp query is
@@ -417,7 +431,9 @@ runtime-restarted. It includes model reload cost in its ordinary timings. Succes
 aggregates partition by segment and findings reject a before/after pair crossing a
 segment. Older records without a segment are treated as segment zero. Acquisition,
 visibility, inventory and release intervals identify their segment; interrupted is
-also an orchestration outcome. The interval cap allows up to 1024 planned trials each
+also an orchestration outcome. The recorder retains at most 8192 intervals and reports additional records in
+execution.droppedIntervals. A missing counter means coverage is unknown. Planned
+trial count is not capped; interruption recovery can add intervals for each trial
 requiring a separate scope. Completion order and actual request counts remain visible.
 
 ## Provenance and failure handling
@@ -469,7 +485,8 @@ function csvCell({ value }: { value: string | number | undefined }): string {
 // not a stable API or persisted application state. Its shape may change each
 // commit: keep the README/field semantics current instead of adding migrations
 // or old-format readers that obscure the evidence from the measured build.
-export async function performanceArchive({ snapshot: input }: { snapshot: PerformanceSnapshot }): Promise<Blob> {
+export function createPerformanceArchiveStream({ snapshot: input, signal }: { snapshot: PerformanceSnapshot, signal: AbortSignal }): ReadableStream<Uint8Array> {
+  signal.throwIfAborted();
   const snapshot = snapshotSchema.parse(input);
   switch (snapshot.status) {
   case 'running': throw new Error('Stop measurement before exporting');
@@ -479,11 +496,36 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
     throw new Error(String(exhaustive));
   }
   }
+  const stepsById = new Map(snapshot.plan.steps.map(step => [step.id, step]));
+  const trialsByStep = new Map(snapshot.trials.toReversed().map(trial => [trial.stepId, trial]));
   const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
   const directory = createMemoryZipCentralDirectoryStore();
   const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
   const modifiedAt = new Date();
   const add = async ({ name, text }: { name: string, text: string }) => writer.addFile({ name, modifiedAt, compression: 'store', stream: new Blob([text]).stream() });
+  const addLines = async <T>({ name, values, format }: { name: string, values: T[], format: ({ value }: { value: T }) => string }) => {
+    let index = 0;
+    const encoder = new TextEncoder();
+    await writer.addFile({
+      name,
+      modifiedAt,
+      compression: 'store',
+      stream: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          signal.throwIfAborted();
+          const value = values[index++];
+          if (value === undefined) {
+            if (!values.length) {
+              controller.enqueue(encoder.encode('\n'));
+            }
+            controller.close();
+          } else {
+            controller.enqueue(encoder.encode(format({ value }) + '\n'));
+          }
+        },
+      }, { highWaterMark: 0 }),
+    });
+  };
   const json = ({ value }: { value: unknown }) => JSON.stringify(value, undefined, 2) + '\n';
   const completed = (async () => {
     try {
@@ -510,10 +552,11 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
       await add({ name: 'summary.json', text: json({ value: summarizePerformance({ snapshot }) }) });
       await add({ name: 'findings.json', text: json({ value: performanceFindings({ snapshot }) }) });
       await add({ name: 'gpu-profile-summary.json', text: json({ value: summarizeGpuProfiles({ snapshot }) }) });
-      await add({
+      await addLines({
         name: 'gpu-profile.jsonl',
-        text: snapshot.trials.filter(trial => isGpuProfileTrial({ trial, snapshot })).map(trial => {
-          const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
+        values: snapshot.trials.filter(trial => isGpuProfileTrial({ trial, snapshot, stepsById })),
+        format: ({ value: trial }) => {
+          const step = stepsById.get(trial.stepId);
           return JSON.stringify({
             attemptId: trial.id,
             stepId: trial.stepId,
@@ -531,12 +574,13 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
             warnings: trial.warnings,
             error: trial.error,
           });
-        }).join('\n') + '\n',
+        },
       });
-      await add({ name: 'backend-placement.json', text: json({ value: snapshot.trials.filter(trial => snapshot.plan.steps.find(step => step.id === trial.stepId)?.scenario === 'placement').map(trial => ({ attemptId: trial.id, modelIndex: trial.modelIndex, lane: trial.lane, profile: trial.options.profile, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, warnings: trial.warnings, diagnostic: trial.summary?.performance?.backendCensus, failureKind: trial.summary?.failureKind, stage: trial.summary?.stage, error: trial.error })) }) });
-      await add({
+      await add({ name: 'backend-placement.json', text: json({ value: snapshot.trials.filter(trial => stepsById.get(trial.stepId)?.scenario === 'placement').map(trial => ({ attemptId: trial.id, modelIndex: trial.modelIndex, lane: trial.lane, profile: trial.options.profile, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, warnings: trial.warnings, diagnostic: trial.summary?.performance?.backendCensus, failureKind: trial.summary?.failureKind, stage: trial.summary?.stage, error: trial.error })) }) });
+      await addLines({
         name: 'trials.jsonl',
-        text: snapshot.trials.map(({ input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record }) => {
+        values: snapshot.trials,
+        format: ({ value: { input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record } }) => {
           const coverage = (() => {
             if (!memoryDiagnostics) {
               return undefined;
@@ -549,7 +593,7 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           const { rows: _gpuRows, ...gpuCoverage } = gpuProfile ?? {};
           const summary = record.summary?.performance && gpuProfile ? { ...record.summary, performance: { ...record.summary.performance, gpuProfile: undefined } } : record.summary;
           return JSON.stringify({ ...record, summary, gpuProfileFile: gpuProfile ? 'gpu-profile.jsonl' : undefined, gpuProfileCoverage: gpuProfile ? gpuCoverage : undefined, memoryDiagnosticsFile: memoryDiagnostics ? `memory/${record.id}.json` : undefined, memoryDiagnosticsCoverage: coverage });
-        }).join('\n') + '\n',
+        },
       });
       const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason']];
       if (snapshot.plan.visionFixture) {
@@ -559,9 +603,9 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
         if (trial.memoryDiagnostics) {
           await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, ...trial.memoryDiagnostics } }) });
         }
-        const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
+        const step = stepsById.get(trial.stepId);
         const metrics = trial.summary?.performance, rates = trialRates({ trial });
-        const instrumented = trial.exclusion.includes('instrumented') || isGpuProfileTrial({ trial, snapshot });
+        const instrumented = trial.exclusion.includes('instrumented') || isGpuProfileTrial({ trial, snapshot, stepsById });
         let gpuTotalMs: number | undefined;
         const gpuStatus = metrics?.gpuProfile?.status;
         switch (gpuStatus) {
@@ -577,11 +621,11 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           trial.warnings.join(';'), trial.exclusion.join(';'), trial.elapsedMs, trial.firstReceivedMs, trial.firstTextMs, trial.firstReasoningMs,
           instrumented ? undefined : rates.prefillTokensPerSecond, instrumented ? undefined : rates.generationTokensPerSecond, metrics?.promptTokens, metrics?.reusedTokens,
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,
-          step?.dependsOn === undefined ? undefined : snapshot.trials.find(parent => parent.stepId === step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
+          step?.dependsOn === undefined ? undefined : trialsByStep.get(step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
           instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason]);
         await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, vision: trial.vision, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
-      await add({ name: 'summary.csv', text: rows.map(row => row.map(value => csvCell({ value })).join(',')).join('\r\n') + '\r\n' });
+      await addLines({ name: 'summary.csv', values: rows, format: ({ value: row }) => row.map(value => csvCell({ value })).join(',') + '\r' });
       await writer.finalize();
       await output.close();
     } catch (error) {
@@ -592,22 +636,22 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
     }
   })();
   void completed.catch(() => {});
-  const reader = output.stream.getReader();
+  return createAbortableByteStream({ stream: output.stream, signal, onCancel: undefined });
+}
+
+/** Buffered convenience for callers that explicitly need a Blob. The page uses
+ * the stream API, so model count is not limited by an archive byte ceiling. */
+export async function performanceArchive({ snapshot }: { snapshot: PerformanceSnapshot }): Promise<Blob> {
+  const reader = createPerformanceArchiveStream({ snapshot, signal: new AbortController().signal }).getReader();
   const parts: Uint8Array<ArrayBuffer>[] = [];
-  let bytes = 0;
   try {
     while (true) {
       const part = await reader.read();
       if (part.done) {
         break;
       }
-      bytes += part.value.byteLength;
-      if (bytes > 128 * 1024 ** 2) {
-        throw new Error('Measurement archive exceeds 128 MiB');
-      }
       parts.push(Uint8Array.from(part.value));
     }
-    await completed;
     return new Blob(parts, { type: 'application/zip' });
   } finally {
     await reader.cancel().catch(() => {});

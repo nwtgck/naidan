@@ -1,3 +1,4 @@
+import { liveCommandSchema, liveInfoSchema, liveToolsSchema, type LiveResult, type LiveScope } from './live-types';
 import { llamaCppBrowserModelFiles } from './model-files';
 import { captureProjectorOptions, captureChatInputOptions, createOperationOptionsCapture } from './runtime/chat-options';
 import { promiseAllKeyed } from '@/utils/promise';
@@ -144,6 +145,7 @@ let laneReservations = 0;
 // Scoped read-only callers share the lane, not the local UI's unscoped controls.
 // Reserve before the first await, including while the Worker is being acquired.
 let readOnlyReservations = 0;
+let liveReservations = 0;
 const listeners = new Set<({ state }: { state: EngineState }) => void>();
 
 function publish({ next }: { next: EngineState }): void {
@@ -164,7 +166,7 @@ function progress({ progress }: { progress: Progress }): void {
 async function run<T>({ signal, operation, kind, owner, ready }: {
   owner: ReadOnlyOwner | undefined,
   ready: Promise<unknown> | undefined,
-  kind: 'operation' | 'probe' | 'read-only' | 'measurement',
+  kind: 'operation' | 'probe' | 'read-only' | 'measurement' | 'live',
   signal: AbortSignal | undefined,
   operation: ({ worker, signal }: { worker: LlamaCppWorkerClient, signal: AbortSignal }) => Promise<T>,
 }): Promise<T> {
@@ -173,12 +175,24 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
   if (signal?.aborted) {
     throw new LlamaCppBrowserError({ code: 'aborted' });
   }
+  if (liveReservations > 0) {
+    throw new LlamaCppBrowserError({ code: 'busy' });
+  }
+  switch (kind) {
+  case 'live': liveReservations++;
+    break;
+  case 'operation': case 'probe': case 'read-only': case 'measurement': break;
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
+  }
   const epoch = profileEpoch;
   laneReservations++;
   switch (kind) {
   case 'read-only': readOnlyReservations++;
     break;
-  case 'measurement': case 'operation': case 'probe': break;
+  case 'measurement': case 'live': case 'operation': case 'probe': break;
   default: {
     const exhaustive: never = kind;
     throw new Error(String(exhaustive));
@@ -200,7 +214,7 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
       throw new LlamaCppBrowserError({ code: 'aborted' });
     }
       break;
-    case 'measurement': case 'operation': case 'read-only': break;
+    case 'measurement': case 'live': case 'operation': case 'read-only': break;
     default: {
       const exhaustive: never = kind;
       throw new Error(String(exhaustive));
@@ -223,7 +237,7 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
         await workerRetirement;
         controller.signal.throwIfAborted();
         break;
-      case 'operation': case 'probe': case 'read-only': break;
+      case 'live': case 'operation': case 'probe': case 'read-only': break;
       default: {
         const exhaustive: never = kind;
         throw new Error(String(exhaustive));
@@ -260,7 +274,7 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
       case 'measurement': measuredWorker = client;
         cacheOwner = undefined;
         break;
-      case 'operation': cacheOwner = undefined;
+      case 'live': case 'operation': cacheOwner = undefined;
         break;
       case 'read-only':
         cacheOwner = owner;
@@ -276,7 +290,7 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
       }
       const result = await operation({ worker: client, signal: controller.signal });
       switch (kind) {
-      case 'measurement': case 'operation': case 'read-only': publish({ next: { status: 'idle' } });
+      case 'measurement': case 'live': case 'operation': case 'read-only': publish({ next: { status: 'idle' } });
         break;
       case 'probe': break;
       default: {
@@ -298,7 +312,7 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
           publishProfiles({ next: { status: 'error', code: failure } });
         }
         throw new LlamaCppBrowserError({ code: failure });
-      case 'measurement': case 'operation': case 'read-only': break;
+      case 'measurement': case 'live': case 'operation': case 'read-only': break;
       default: {
         const exhaustive: never = kind;
         throw new Error(`Unhandled operation kind: ${exhaustive}`);
@@ -347,9 +361,18 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
   } finally {
     laneReservations--;
     switch (kind) {
+    case 'live': liveReservations--;
+      break;
+    case 'operation': case 'probe': case 'read-only': case 'measurement': break;
+    default: {
+      const exhaustive: never = kind;
+      void exhaustive;
+    }
+    }
+    switch (kind) {
     case 'read-only': readOnlyReservations--;
       break;
-    case 'measurement': case 'operation': case 'probe': break;
+    case 'measurement': case 'live': case 'operation': case 'probe': break;
     default: {
       const exhaustive: never = kind;
       void exhaustive;
@@ -360,6 +383,96 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
 }
 
 export const llamaCppBrowserService: LlamaCppBrowserService = {
+  async runLiveSession({ modelId, instructions, tools, signal, onProgress, operation }) {
+    if (laneReservations > 0) {
+      throw new LlamaCppBrowserError({ code: 'busy' });
+    }
+    signal.throwIfAborted();
+    const sessionId = crypto.randomUUID();
+    const accepted = acceptModelRequest({ request: { modelId: generateInputSchema.shape.modelId.parse(modelId) }, signal });
+    const acceptedOptions = captureProjectorOptions({ options: { ...options } });
+    const acceptedTools = liveToolsSchema.parse(tools);
+    await run({
+      ready: promiseAllKeyed({ model: accepted, options: acceptedOptions }),
+      kind: 'live',
+      owner: undefined,
+      signal,
+      operation: async ({ worker, signal }) => {
+        const concrete = await resolveGenerationOptions({ worker, options: await acceptedOptions, signal });
+        let open = true;
+        let pending: Promise<LiveResult> | undefined;
+        const report: typeof progress = ({ progress: value }) => {
+          progress({ progress: value });
+          onProgress({ progress: value });
+        };
+        let onAbort = () => {};
+        try {
+          const info = liveInfoSchema.parse(await worker.live({
+            request: { type: 'open', sessionId, prepare: { ...await accepted, options: concrete, debug: 'off' }, instructions, tools: acceptedTools },
+            onEvent: async () => {},
+            onProgress: report,
+            signal,
+          }));
+          const scope: LiveScope = {
+            info,
+            request({ command, onEvent }) {
+              if (!open || signal.aborted) {
+                return Promise.reject(new LlamaCppBrowserError({ code: 'aborted' }));
+              }
+              if (pending) {
+                return Promise.reject(new LlamaCppBrowserError({ code: 'busy' }));
+              }
+              const accepted = liveCommandSchema.parse(command);
+              switch (accepted.type) {
+              case 'close': throw new Error('The live operation owns session close');
+              case 'begin': case 'audio': case 'respond': case 'tool-results': case 'transcribe': case 'rollback': case 'reset': break;
+              default: {
+                const exhaustive: never = accepted;
+                throw new Error(String(exhaustive));
+              }
+              }
+              pending = worker.live({ request: { type: 'command', sessionId, command: accepted }, onEvent, onProgress: report, signal }).finally(() => {
+                pending = undefined;
+              });
+              return pending;
+            },
+            interrupt({ turnId }) {
+              if (!open || signal.aborted) {
+                return Promise.reject(new LlamaCppBrowserError({ code: 'aborted' }));
+              }
+              return worker.interruptLive({ sessionId, turnId });
+            },
+          };
+          const aborted = new Promise<never>((_resolve, reject) => {
+            onAbort = () => reject(new LlamaCppBrowserError({ code: 'aborted' }));
+            signal.addEventListener('abort', onAbort, { once: true });
+            if (signal.aborted) {
+              onAbort();
+            }
+          });
+          await Promise.race([operation({ scope }), aborted]);
+          if (pending) {
+            throw new Error('The live operation ended with a pending command');
+          }
+        } finally {
+          open = false;
+          signal.removeEventListener('abort', onAbort);
+          await pending?.catch(() => {});
+          if (worker.canReuse()) {
+            const cleanup = new AbortController();
+            const timer = setTimeout(() => cleanup.abort(), 10000);
+            try {
+              await worker.live({ request: { type: 'command', sessionId, command: { type: 'close' } }, onEvent: async () => {}, onProgress: () => {}, signal: cleanup.signal });
+            } catch {
+              await retireWorker({ worker }).completed;
+            } finally {
+              clearTimeout(timer);
+            }
+          }
+        }
+      },
+    });
+  },
   async prepareModel({ modelId, signal, onProgress }) {
     if (signal?.aborted) {
       throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -755,13 +868,13 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     return llamaCppBrowserService.probeProfiles({ signal });
   },
   cancel() {
-    if (readOnlyReservations > 0) {
+    if (readOnlyReservations > 0 || liveReservations > 0) {
       return;
     }
     activeController?.abort();
   },
   release() {
-    if (readOnlyReservations > 0) {
+    if (readOnlyReservations > 0 || liveReservations > 0) {
       return;
     }
     activeController?.abort();

@@ -1,0 +1,1 @@
+export const liveConversation__keep_audio_help = (): string => 'Off by default. Keep your input and model speech only in memory for replay. Turning this off erases all retained audio. A new conversation or reload also clears it.';

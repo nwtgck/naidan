@@ -1,0 +1,1 @@
+export const liveConversation__release_model_confirmation = (): string => 'Release the model from memory? Any active response and queued messages will stop. Starting again will reload the model. Downloaded model files and browser shell files will remain.';

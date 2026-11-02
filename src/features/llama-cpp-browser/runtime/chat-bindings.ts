@@ -11,7 +11,7 @@ export type ChatParams = Pick<common_chat_params,
   | 'supports_thinking' | 'thinking_start_tag' | 'thinking_end_tags'
   | 'grammar_triggers' | 'preserved_tokens' | 'additional_stops'>;
 type ChatInputValues = Pick<common_chat_templates_inputs,
-  'delete' | 'tools' | 'use_jinja' | 'parallel_tool_calls' | 'enable_thinking' | 'reasoning_format' | 'chat_template_kwargs'>;
+  'delete' | 'tools' | 'add_generation_prompt' | 'use_jinja' | 'parallel_tool_calls' | 'enable_thinking' | 'reasoning_format' | 'chat_template_kwargs'>;
 export type ChatPromptPart = { text: string, isInput: boolean };
 type ParsedMessage = Pick<common_chat_msg, 'delete' | 'tool_calls' | 'content' | 'reasoning_content'>;
 
@@ -52,7 +52,7 @@ export function bindNativeChat<
     templatesByModel.set(model, created);
     return created;
   };
-  return {
+  const binding = {
     releaseModel({ assertIdle, model }: { assertIdle: () => void, model: bigint }): void {
       assertIdle();
       const templates = templatesByModel.get(model);
@@ -62,7 +62,7 @@ export function bindNativeChat<
       templatesByModel.delete(model);
       templates.delete();
     },
-    prepare({ assertIdle, model, request }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) {
+    prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'>, generationPrompt: 'include' | 'omit' | undefined }) {
       assertIdle();
       let params: Params | undefined;
       let parser: Parser | undefined;
@@ -123,6 +123,19 @@ export function bindNativeChat<
             }
           } finally {
             toolsJson.delete();
+          }
+          // Live sessions derive turn boundaries from the same upstream template.
+          // Ordinary chat retains the native default when this option is absent.
+          switch (generationPrompt) {
+          case 'include': inputs.add_generation_prompt = true;
+            break;
+          case 'omit': inputs.add_generation_prompt = false;
+            break;
+          case undefined: break;
+          default: {
+            const exhaustive: never = generationPrompt;
+            throw new Error(String(exhaustive));
+          }
           }
           inputs.use_jinja = true;
           inputs.parallel_tool_calls = true;
@@ -247,6 +260,14 @@ export function bindNativeChat<
         throw new LlamaCppBrowserError({ code: isUnsupportedReasoningError({ error }) ? 'reasoning-unsupported' : 'template-unsupported' });
       }
     },
+  };
+  return {
+    releaseModel: binding.releaseModel,
+    prepare({ assertIdle, model, request }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) {
+      // Preserve the ordinary Chat contract and its upstream template defaults.
+      return binding.prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt: undefined });
+    },
+    prepareWithGenerationPrompt: binding.prepareWithGenerationPrompt,
   };
 }
 

@@ -15,7 +15,7 @@ import { DEFAULT_SETTINGS } from '@/01-models/types';
 import type { storageService } from '@/00-storage/service';
 import type { ProfileCapabilities } from './runtime/profile-capabilities';
 import type { DeletionPlan } from './runtime/deletion-plan';
-const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModelEntries: vi.fn<LlamaCppWorkerClient['listModelEntries']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
+const worker = vi.hoisted(() => ({ live: vi.fn<LlamaCppWorkerClient['live']>(), interruptLive: vi.fn<LlamaCppWorkerClient['interruptLive']>(), releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModelEntries: vi.fn<LlamaCppWorkerClient['listModelEntries']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 const mutationLock = vi.hoisted(() => vi.fn());
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
@@ -45,6 +45,17 @@ beforeEach(async () => {
   worker.canReuse.mockReturnValue(true);
   vi.mocked(listStoredModels).mockResolvedValue([]);
   vi.mocked(removeStoredModel).mockResolvedValue('deleted');
+  worker.live.mockImplementation(async ({ request }) => {
+    switch (request.type) {
+    case 'open': return { type: 'opened', sessionId: request.sessionId, inputSampleRate: 16000, outputSampleRate: 24000, vision: 'available', contextTokens: 8192 };
+    case 'command': return { type: 'accepted' };
+    default: {
+      const exhaustive: never = request;
+      throw new Error(String(exhaustive));
+    }
+    }
+  });
+  worker.interruptLive.mockResolvedValue(undefined);
   worker.releaseRuntime.mockResolvedValue(undefined);
   worker.prepareModel.mockResolvedValue(undefined);
   worker.generateAudio.mockResolvedValue(audioResult());
@@ -1196,4 +1207,112 @@ it('registers and removes temporary files without acquiring a Worker or copying 
   expect(await service.listModelEntries({ signal: undefined })).toEqual([]);
   expect(removeStoredModel).not.toHaveBeenCalled();
   expect(factory).not.toHaveBeenCalled();
+});
+
+function liveLeaseFixture() {
+  const release = Promise.withResolvers<void>();
+  const ready = Promise.withResolvers<import('./live-types').LiveScope>();
+  const controller = new AbortController();
+  const pending = service.runLiveSession({
+    modelId: 'user/local',
+    instructions: '',
+    tools: [],
+    signal: controller.signal,
+    onProgress: () => {},
+    operation: async ({ scope }) => {
+      ready.resolve(scope);
+      await release.promise;
+    },
+  });
+  void pending.catch(ready.reject);
+  return {
+    ready: ready.promise,
+    pending,
+    release,
+    controller,
+    async [Symbol.asyncDispose]() {
+      release.resolve();
+      controller.abort();
+      await pending.catch(() => {});
+    },
+  };
+}
+
+describe('live conversation shared lane ownership', () => {
+  it('reserves the lane immediately and rejects competing chats and sessions', async () => {
+    await using lease = liveLeaseFixture();
+    await expect(service.generate({ input: input(), onEvent: async () => {}, signal: undefined })).rejects.toThrow('busy');
+    await expect(service.runLiveSession({ modelId: 'user/local', instructions: '', tools: [], signal: new AbortController().signal, onProgress: () => {}, operation: async () => {} })).rejects.toThrow('busy');
+    await lease.ready;
+    expect(worker.generate).not.toHaveBeenCalled();
+    lease.release.resolve();
+    await lease.pending;
+    await service.generate({ input: input(), onEvent: async () => {}, signal: undefined });
+    expect(worker.generate).toHaveBeenCalledOnce();
+  });
+
+  it('ignores unrelated cancel/release while a live session owns the worker', async () => {
+    await using lease = liveLeaseFixture();
+    const scope = await lease.ready;
+    service.cancel();
+    service.release();
+    await scope.request({ command: { type: 'reset' }, onEvent: async () => {} });
+    expect(worker.dispose).not.toHaveBeenCalled();
+    lease.release.resolve();
+    await lease.pending;
+    expect(worker.live.mock.calls.at(-1)?.[0].request).toMatchObject({ type: 'command', command: { type: 'close' } });
+    await expect(scope.request({ command: { type: 'reset' }, onEvent: async () => {} })).rejects.toThrow('aborted');
+  });
+
+  it('accepts interruption out of band while a native command is pending', async () => {
+    await using lease = liveLeaseFixture();
+    const scope = await lease.ready;
+    const gate = Promise.withResolvers<import('./live-types').LiveResult>();
+    using unblock = {
+      [Symbol.dispose]() {
+        gate.resolve({ type: 'answer', turnId: 'turn', text: '', toolCalls: [], finishReason: 'interrupted' });
+      },
+    };
+    void unblock;
+    worker.live.mockReturnValueOnce(gate.promise);
+    const command = scope.request({ command: { type: 'respond', turnId: 'turn', output: 'mixed', maxSteps: 20 }, onEvent: async () => {} });
+    await expect(scope.request({ command: { type: 'reset' }, onEvent: async () => {} })).rejects.toThrow('busy');
+    await scope.interrupt({ turnId: 'turn' });
+    expect(worker.interruptLive).toHaveBeenCalledWith({ sessionId: scope.info.sessionId, turnId: 'turn' });
+    expect(worker.dispose).not.toHaveBeenCalled();
+    gate.resolve({ type: 'answer', turnId: 'turn', text: '', toolCalls: [], finishReason: 'interrupted' });
+    await command;
+  });
+
+  it('closes an idle native session when its owner aborts', async () => {
+    await using lease = liveLeaseFixture();
+    await lease.ready;
+    lease.controller.abort();
+    await expect(lease.pending).rejects.toThrow('aborted');
+    expect(worker.live.mock.calls.at(-1)?.[0].request).toMatchObject({ command: { type: 'close' } });
+    await service.generate({ input: input(), onEvent: async () => {}, signal: undefined });
+    expect(worker.generate).toHaveBeenCalledOnce();
+  });
+
+  it('closes after operation failure without leaking the lease', async () => {
+    await expect(service.runLiveSession({
+      modelId: 'user/local',
+      instructions: '',
+      tools: [],
+      signal: new AbortController().signal,
+      onProgress: () => {},
+      operation: async () => {
+        throw new Error('operation failed');
+      },
+    })).rejects.toThrow();
+    expect(worker.live.mock.calls.at(-1)?.[0].request).toMatchObject({ command: { type: 'close' } });
+    await service.generate({ input: input(), onEvent: async () => {}, signal: undefined });
+    expect(worker.generate).toHaveBeenCalledOnce();
+  });
+
+  it('keeps close owned by the service instead of accepting a client command', async () => {
+    await using lease = liveLeaseFixture();
+    const scope = await lease.ready;
+    expect(() => scope.request({ command: { type: 'close' }, onEvent: async () => {} })).toThrow('owns session close');
+  });
 });

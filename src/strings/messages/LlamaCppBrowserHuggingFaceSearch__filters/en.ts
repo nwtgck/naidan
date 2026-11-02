@@ -1,1 +1,1 @@
-export const LlamaCppBrowserHuggingFaceSearch__filters = (): string => "Filters";
+export const LlamaCppBrowserHuggingFaceSearch__filters = (): string => "Search filters";

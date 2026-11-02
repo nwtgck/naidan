@@ -9,7 +9,7 @@ import type { HostModelDirectoryChoice } from '@/composables/useHostModelDirecto
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { TEST_ONLY as destinationTest } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
+import { searchModels, type RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import LlamaCppBrowserRepositoryPicker from './LlamaCppBrowserRepositoryPicker.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
@@ -51,7 +51,7 @@ vi.mock('@/composables/useHostModelDirectories', () => ({
 }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: mocks.inspect }) }));
 vi.mock('../hugging-face/storage', () => ({ installedSelection: mocks.installed }));
-vi.mock('./LlamaCppBrowserHuggingFaceSearch.vue', () => ({ default: { template: '<div />', props: ['disabled', 'repositoryInput'] } }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async original => ({ ...await original<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
 vi.mock('@/components/csp/CspMessageHint.vue', () => ({ default: { props: ['target', 'presentation'], template: '<aside data-testid="repository-csp-message" :data-presentation="presentation" />' } }));
 const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), projectors: [], models: ['Q4_K_M', 'Q8_0'].map(label => ({ label, files: [{ path: `Model-${label}.gguf`, size: 256 }], size: 256 })) };
 
@@ -63,6 +63,7 @@ beforeEach(async () => {
   supported = ref(true);
   folderBusy = ref(false);
   mocks.permission.mockImplementation(async ({ id }: { id: string }) => ({ kind: 'host', directoryId: id }));
+  vi.mocked(searchModels).mockResolvedValue({ results: [], nextCursor: undefined });
   mocks.inspect.mockResolvedValue(catalog);
   mocks.installed.mockResolvedValue(undefined);
   await ensureAllStringsForTest({ locale: 'en' });
@@ -77,9 +78,9 @@ it('does not contact HF while mounted or typing, then exposes actual quantizatio
   };
   await flushPromises();
   expect(mocks.inspect).not.toHaveBeenCalled();
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
   expect(mocks.inspect).not.toHaveBeenCalled();
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
   expect(mocks.inspect).toHaveBeenCalledOnce();
   const quantization = modelConfigurationControl({ view: wrapper, field: 'quantization' });
@@ -99,8 +100,8 @@ it('shows saved state for the exact local selection without enqueueing a downloa
       wrapper.unmount();
     },
   };
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
   expect(wrapper.text()).toContain('Saved');
   expect(wrapper.emitted('select')).toBeUndefined();
@@ -117,16 +118,16 @@ it('supplements a metadata failure without treating invalid input as a connectio
       wrapper.unmount();
     },
   };
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
-  expect(wrapper.get('[data-testid="repository-csp-message"]').attributes('data-presentation')).toBe('error');
-  expect(wrapper.get<HTMLButtonElement>('[data-testid="chat-model-repository-check"]').element.disabled).toBe(false);
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue('not a repository');
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  expect(wrapper.get('[data-testid="repository-csp-message"][data-presentation="error"]').attributes('data-presentation')).toBe('error');
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-hf-search-submit"]').element.disabled).toBe(false);
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('https://huggingface.co/not-a-repository');
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
   expect(mocks.inspect).toHaveBeenCalledOnce();
-  expect(wrapper.find('[data-testid="repository-csp-message"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="repository-csp-message"][data-presentation="error"]').exists()).toBe(false);
   expect(wrapper.find('[role="alert"]').exists()).toBe(true);
 });
 
@@ -139,8 +140,8 @@ it('abandons late metadata when the source tab is left', async () => {
       wrapper.unmount();
     },
   };
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   const signal: AbortSignal = mocks.inspect.mock.calls[0]![0].signal;
   await wrapper.setProps({ disabled: true });
   expect(signal.aborted).toBe(true);
@@ -157,16 +158,16 @@ it('returns to the mounted search and repository input without another metadata 
       wrapper.unmount();
     },
   };
-  const search = wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch).vm;
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  const search = wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch).element;
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
-  expect(wrapper.find('[data-testid="chat-model-repository"]').exists()).toBe(false);
+  expect(wrapper.get('[data-testid="llama-hf-search-query"]').isVisible()).toBe(false);
   expect(wrapper.get('[data-testid="chat-model-repository-name"]').text()).toBe(catalog.repository);
   expect(wrapper.get('[data-testid="chat-model-back-to-search"]').find('svg').exists()).toBe(true);
   await wrapper.get('[data-testid="chat-model-back-to-search"]').trigger('click');
-  expect(wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch).vm).toBe(search);
-  expect(wrapper.get<HTMLInputElement>('[data-testid="chat-model-repository"]').element.value).toBe(catalog.repository);
+  expect(wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch).element).toBe(search);
+  expect(wrapper.get<HTMLInputElement>('[data-testid="llama-hf-search-query"]').element.value).toBe(`https://huggingface.co/${catalog.repository}`);
   expect(wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch).props('disabled')).toBe(false);
   expect(mocks.inspect).toHaveBeenCalledOnce();
 });
@@ -179,8 +180,8 @@ it('uses the shared multimodal choices and applies only the selected files', asy
       wrapper.unmount();
     },
   };
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
   expect(wrapper.get('[data-testid="llama-model-multimodal"]').attributes('aria-checked')).toBe('true');
   expect(modelConfigurationControl({ view: wrapper, field: 'companion' }).props('modelValue')).toBe('mmproj-Q8_0.gguf');
@@ -205,8 +206,8 @@ it('requires a companion choice for different families unless multimodal support
       wrapper.unmount();
     },
   };
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
   expect(modelConfigurationControl({ view: wrapper, field: 'companion' }).props('modelValue')).toBe('');
   expect(wrapper.get('[data-testid="chat-use-repository-model"]').attributes('disabled')).toBeDefined();
@@ -216,8 +217,8 @@ it('requires a companion choice for different families unless multimodal support
 });
 
 async function inspectRepository({ wrapper }: { wrapper: VueWrapper }): Promise<void> {
-  await wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
 }
 
@@ -367,4 +368,52 @@ it('offers reconnection instead of a download when a folder cannot be read', asy
   await wrapper.get('[data-testid="linked-reconnect-model-directory-root-a"]').trigger('click');
   expect(mocks.reconnect).toHaveBeenCalledWith({ id: 'root-a' });
   expect(wrapper.emitted('select')).toBeUndefined();
+});
+
+it('searches a partial repository name rather than inspecting it and keeps the same query on return', async () => {
+  vi.mocked(searchModels).mockResolvedValue({ results: [{ id: catalog.repository }], nextCursor: undefined });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false } });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  await flushPromises();
+  expect(wrapper.findAll('input')).toHaveLength(1);
+  const query = wrapper.get<HTMLInputElement>('[data-testid="llama-hf-search-query"]');
+  await query.setValue('owner/Model');
+  await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+  await flushPromises();
+  expect(searchModels).toHaveBeenCalledExactlyOnceWith({ query: 'owner/Model', cursor: undefined, numParameters: undefined, signal: expect.any(AbortSignal) });
+  expect(mocks.inspect).not.toHaveBeenCalled();
+  await wrapper.get('[data-testid="llama-hf-search-result"]').trigger('click');
+  await flushPromises();
+  expect(mocks.inspect).toHaveBeenCalledExactlyOnceWith({ input: catalog.repository, signal: expect.any(AbortSignal), freshness: 'reuse' });
+  await wrapper.get('[data-testid="chat-model-back-to-search"]').trigger('click');
+  expect(query.element.value).toBe('owner/Model');
+  expect(wrapper.find('[data-testid="llama-hf-search-result"]').exists()).toBe(true);
+  expect(searchModels).toHaveBeenCalledOnce();
+});
+
+it('blocks duplicate URL confirmations and ignores late metadata after unmounting', async () => {
+  const pending = Promise.withResolvers<RepositoryCatalog>();
+  mocks.inspect.mockReturnValue(pending.promise);
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false } });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('https://hf.co/owner/Model-GGUF');
+  await wrapper.get('[data-testid="llama-hf-search-query"]').trigger('keydown', { key: 'Enter' });
+  await wrapper.get('[data-testid="llama-hf-search-query"]').trigger('keydown', { key: 'Enter' });
+  expect(mocks.inspect).toHaveBeenCalledOnce();
+  expect(wrapper.get('[data-testid="llama-hf-search"]').attributes('aria-busy')).toBe('true');
+  const signal: AbortSignal = mocks.inspect.mock.calls[0]![0].signal;
+  wrapper.unmount();
+  expect(signal.aborted).toBe(true);
+  pending.resolve(catalog);
+  await flushPromises();
+  expect(wrapper.emitted('select')).toBeUndefined();
+  expect(searchModels).not.toHaveBeenCalled();
 });

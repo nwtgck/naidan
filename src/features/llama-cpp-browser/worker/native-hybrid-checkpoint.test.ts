@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
+import { captureLiveCheckpoint, restoreLiveCheckpoint, freeLiveCheckpoint } from './live-memory';
 import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
 
 type Snapshot = { pointer: bigint, size: bigint, flags: number };
@@ -136,6 +137,28 @@ afterAll(async () => {
 });
 
 describe('native hybrid checkpoints with a synthetic LFM2 GGUF', () => {
+  it('restores a live full snapshot after side inference using real Wasm and matches a cold continuation', async () => {
+    const prefix = [68, 68, 69];
+    const suffix = [69, 68];
+    await core.api.llama_memory_clear(memory, 1);
+    const expected = await decode({ tokens: [...prefix, ...suffix] });
+    await core.api.llama_memory_clear(memory, 1);
+    await decode({ tokens: prefix });
+    const native = { core, context, memory, position: prefix.length };
+    const checkpoint = await captureLiveCheckpoint({ native });
+    using cleanup = {
+      [Symbol.dispose]() {
+        freeLiveCheckpoint({ native, checkpoint });
+      },
+    };
+    await core.api.llama_memory_clear(memory, 1);
+    await decode({ tokens: [69, 69, 69, 69, 68, 68] });
+    await restoreLiveCheckpoint({ native, checkpoint });
+    expect(await position()).toBe(prefix.length - 1);
+    expectSameLogits({ actual: await decode({ tokens: suffix }), expected });
+    void cleanup;
+  }, 30000);
+
   it('restores a recurrent boundary while retaining attention and matches cold suffix decoding', async () => {
     expect(await core.api.llama_model_is_hybrid(model)).toBe(1);
     expect(await core.api.llama_n_rs_seq(context)).toBe(0);

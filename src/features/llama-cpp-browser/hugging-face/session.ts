@@ -5,7 +5,8 @@ function createSession() {
   // Keep only preparation state across tabs; operations and local-file checks belong to each mount.
   return {
     input: ref(''),
-    checkedInput: ref(''),
+    // Draft used to prepare catalog; undefined while a replacement is unchecked.
+    checkedInput: ref<string>(),
     catalog: shallowRef<RepositoryCatalog>(),
     requestedVariantUnresolved: ref(false),
     quantization: ref(''),

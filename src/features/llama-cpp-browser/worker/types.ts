@@ -1,3 +1,4 @@
+import type { LiveRequest, LiveResult, LiveEvent, LiveEventHandler } from '@/features/llama-cpp-browser/live-types';
 import type { VisionAdmission } from '@/features/llama-cpp-browser/performance/vision-admission-schema';
 import { resolvedModelSchema } from '@/features/llama-cpp-browser/runtime/resolved-model-schema';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
@@ -35,6 +36,9 @@ export type AcceptedGenerateInput = GenerateInput & { resolvedModel: ResolvedMod
 export type AcceptedAudioInput = AudioGenerationInput & { resolvedModel: ResolvedModel };
 
 export interface LlamaCppWorkerApi {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink boundary with top-level event proxies.
+  live(call: WorkerCapability<{ request: LiveRequest, generationId: number }, 'file-system-handle-clone'>, onEvent: WorkerProxy<(event: LiveEvent) => Promise<void>>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<LiveResult>;
+  interruptLive({ sessionId, turnId }: { sessionId: string, turnId: string }): Promise<void>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
   prepareVision(request: WorkerCapability<WorkerPrepareCall, 'file-system-handle-clone'>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<VisionAdmission>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
@@ -58,6 +62,8 @@ export interface LlamaCppWorkerApi {
   generate(request: WorkerCapability<WorkerGenerateCall, 'file-system-handle-clone'>, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<(progress: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onSummary?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
+  live({ request, onEvent, onProgress, signal }: { request: LiveRequest, onEvent: LiveEventHandler, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LiveResult>;
+  interruptLive({ sessionId, turnId }: { sessionId: string, turnId: string }): Promise<void>;
   prepareModel({ request, onProgress, signal }: { request: WorkerPrepareInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<void>;
   generateAudio({ request, onProgress, cancellationSignal, completionSignal, preview }: { request: AcceptedAudioInput, onProgress: ({ progress }: { progress: Progress }) => void, cancellationSignal: AbortSignal | undefined, completionSignal?: AbortSignal, preview?: AudioPreviewDelivery }): Promise<AudioGenerationResult>;
   subscribeDisposed({ listener }: { listener: () => void }): () => void;

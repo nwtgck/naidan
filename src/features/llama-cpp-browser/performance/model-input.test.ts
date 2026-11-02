@@ -26,9 +26,9 @@ file.gguf`,
     expect(resolvePerformanceModelInput({ text: models[1]!.modelId, models: candidates, selected: [] }).selected).toEqual([models[1]!.modelId]);
   });
 
-  it('enforces list and input-size limits without modifying the old selection', () => {
+  it('accepts more than sixteen models while retaining the draft input-size limit', () => {
     const many = Array.from({ length: 17 }, (_, i) => ({ modelId: String(i) }));
-    expect(resolvePerformanceModelInput({ text: many.map(m => m.modelId).join('\n'), models: many, selected: ['0'] })).toMatchObject({ selected: ['0'], errors: ['Select at most 16 models.'] });
+    expect(resolvePerformanceModelInput({ text: many.map(m => m.modelId).join('\n'), models: many, selected: ['0'] })).toEqual({ selected: many.map(model => model.modelId), errors: [] });
     expect(resolvePerformanceModelInput({ text: 'a'.repeat(32769), models, selected: [] }).errors).toHaveLength(1);
   });
 });

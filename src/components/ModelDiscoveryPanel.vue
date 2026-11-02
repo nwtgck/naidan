@@ -18,7 +18,6 @@ import { confirmModelLaunchSelection, modelLaunchEntryState, retireModelLaunch, 
 import type { ModelDiscoveryTab } from './browser-model-presentation';
 import BrowserModelPreparation from './BrowserModelPreparation.vue';
 import SettingsSelect from './SettingsSelect.vue';
-import LlamaCppBrowserModelActionButton from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelActionButton.vue';
 
 type ModelPreview = { input?: string, suggestionId: string | undefined, repository: string, variant: string, name: string, developer: string };
 const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab | undefined, interaction?: 'blocked' | 'ready', currentModelId?: string, selectionTarget?: 'chat' }>();
@@ -330,6 +329,9 @@ function chooseCandidate({ id }: { id: string }): void {
 }
 
 function chooseRepository({ input }: { input: string }): void {
+  if (!open.value || activeTab.value !== 'hugging-face' || preview.value !== undefined) {
+    return;
+  }
   try {
     const { repository, requestedVariant } = parseRepository({ input });
     const suggestion = modelSuggestions.find(candidate => candidate.quantizationHints.some(hint => hint.hfRepository.toLowerCase() === repository.toLowerCase()));
@@ -402,14 +404,6 @@ function startPreview(): void {
   }
   }
   operation.value = startModelLaunch({ request: { input: preview.value.repository, requestedVariant: preview.value.variant.trim() || undefined, multimodal: 'auto', destination: { kind: 'opfs' }, source } });
-}
-
-function submitRepositoryFromKeyboard({ event }: { event: KeyboardEvent }): void {
-  if (event.isComposing || event.keyCode === 229) {
-    return;
-  }
-  event.preventDefault();
-  chooseRepository({ input: repositoryInput.value });
 }
 
 async function prepareTab({ tab, session }: { tab: ModelDiscoveryTab, session: object }): Promise<void> {
@@ -692,18 +686,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   </div>
                 </div>
                 <div v-show="activeTab === 'hugging-face'" id="hugging-face-panel" :inert="activeTab !== 'hugging-face' || undefined" role="tabpanel" aria-labelledby="hugging-face-tab" tw-class="space-y-6">
-                  <section tw-class="space-y-2.5">
-                    <label for="hugging-face-repository" tw-class="block text-xs font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.ModelDiscoveryPanel__specify_a_repository() }}</label>
-                    <div tw-class="flex flex-col gap-2 sm:flex-row">
-                      <input id="hugging-face-repository" v-model="repositoryInput" type="text" :aria-invalid="repositoryError" :aria-describedby="repositoryError ? 'repository-error' : 'repository-help'" placeholder="owner/model" data-testid="hugging-face-repository" tw-class="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition-all placeholder:text-gray-400 focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" @keydown.enter="submitRepositoryFromKeyboard({ event: $event })" />
-                      <LlamaCppBrowserModelActionButton :disabled="!repositoryInput.trim()" data-testid="hugging-face-repository-select" size="regular" tw-class="shrink-0" @click="chooseRepository({ input: repositoryInput })"><ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.ModelDiscoveryPanel__choose() }}</LlamaCppBrowserModelActionButton>
-                    </div>
-                    <p v-if="repositoryError" id="repository-error" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ lazyStrings.ModelDiscoveryPanel__enter_a_repository_or_model_page_url() }}</p>
-                    <p v-else id="repository-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelDiscoveryPanel__paste_the_model_page_url() }}</p>
-                  </section>
-                  <div tw-class="border-t border-gray-100 pt-5 dark:border-gray-800">
-                    <component :is="HuggingFaceSearch" v-if="HuggingFaceSearch" :disabled="!open || activeTab !== 'hugging-face' || preview !== undefined" :repository-input="repositoryInput" scroll-owner="parent" @select="chooseRepository({ input: $event })" />
-                  </div>
+                  <component :is="HuggingFaceSearch" v-if="HuggingFaceSearch" v-model:input="repositoryInput" :disabled="!open || activeTab !== 'hugging-face' || preview !== undefined" selection-status="idle" direct-action="choose" :input-error="repositoryError ? lazyStrings.ModelDiscoveryPanel__enter_a_model_page_url() : undefined" scroll-owner="parent" @select="chooseRepository({ input: $event })" />
                 </div>
                 <div v-show="activeTab === 'local-files'" id="local-files-panel" :inert="activeTab !== 'local-files' || undefined" role="tabpanel" aria-labelledby="local-files-tab">
 

@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
-import { performanceArchive } from './archive';
+import { createPerformanceArchiveStream, performanceArchive } from './archive';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 import { runtimeBuildEvidence } from './runtime-evidence';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
@@ -275,6 +275,35 @@ it('exports partial memory evidence with model attribution even without a termin
   expect(await zip.file('README.md')!.async('string')).toContain('not live GPU allocation');
 });
 
+it('retains empty vendor and false WGSL membership in the exported memory evidence', async () => {
+  const source = snapshot(), trial = source.trials[0]!;
+  const capabilitySnapshot = {
+    capture: 'device-created',
+    adapterVendor: { status: 'available', value: '', length: 0, truncated: false },
+    wgslLanguageFeatures: { status: 'available', packed_4x8_integer_dot_product: false },
+  } as const;
+  trial.memoryDiagnostics = {
+    samples: [{
+      kind: 'naidan-llama-cpp-memory',
+      instanceId: 'core-one',
+      profile: 'webgpu-wasm64-jspi',
+      checkpoint: 'runtime-ready',
+      capacityBytes: 65536,
+      timestamp: 10,
+      gpuRequests: { bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0, metadata: { capabilitySnapshot } },
+    }],
+    droppedSamples: 0,
+    nativeAllocations: [],
+    droppedNativeAllocations: 0,
+    nativeSettings: [],
+    droppedNativeSettings: 0,
+  };
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  const observations = JSON.parse(await zip.file(`memory/${trial.id}.json`)!.async('string'));
+  expect(observations.samples[0].gpuRequests.metadata.capabilitySnapshot).toEqual(capabilitySnapshot);
+  expect(await zip.file('README.md')!.async('string')).toContain('Unavailable membership is unknown, never false');
+});
+
 it.each([
   ['-formula_safe', "'-formula_safe"],
   ['_ordinary_id', '_ordinary_id'],
@@ -500,5 +529,58 @@ describe('interrupted observations in the actual ZIP', () => {
     expect(gpu.observation).toBeUndefined();
     expect(gpu.status).toBe('interrupted');
     expect(JSON.parse(await zip.file('outputs/attempt_one.json')!.async('string')).partialText).toBe('answer');
+  });
+});
+
+describe('Diagnostics streaming archive', () => {
+  it('validates before exposing a stream and does not mutate or reread the live snapshot', async () => {
+    const source = snapshot();
+    using cleanup = {
+      control: new AbortController(),
+      [Symbol.dispose]() {
+        this.control.abort();
+      },
+    };
+    const stream = createPerformanceArchiveStream({ snapshot: source, signal: cleanup.control.signal });
+    source.trials[0]!.partialText = 'later modification';
+    source.trials[0]!.output!.content = 'later output';
+    const zip = await JSZip.loadAsync(await new Response(stream).arrayBuffer());
+    expect(JSON.parse(await zip.file('outputs/attempt_one.json')!.async('string')).output.content).toBe('answer');
+  });
+
+  it('rejects an already-aborted export without creating a reader', () => {
+    const control = new AbortController();
+    control.abort(new DOMException('Stopped export', 'AbortError'));
+    expect(() => createPerformanceArchiveStream({ snapshot: snapshot(), signal: control.signal })).toThrow('Stopped export');
+  });
+
+  it('cancels a backpressured producer before consuming its ZIP', async () => {
+    const stream = createPerformanceArchiveStream({ snapshot: snapshot(), signal: new AbortController().signal });
+    await expect(stream.cancel('download cancelled')).resolves.toBeUndefined();
+    expect((await stream.getReader().read()).done).toBe(true);
+  });
+
+  it('propagates abort to a partially consumed archive rather than returning a truncated successful ZIP', async () => {
+    const control = new AbortController();
+    const reader = createPerformanceArchiveStream({ snapshot: snapshot(), signal: control.signal }).getReader();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        control.abort();
+        reader.releaseLock();
+      },
+    };
+    expect((await reader.read()).done).toBe(false);
+    control.abort(new DOMException('Stopped export', 'AbortError'));
+    await expect(reader.read()).rejects.toThrow('Stopped export');
+  });
+
+  it('retains interval coverage loss separately from complete trial records', async () => {
+    const source = snapshot();
+    source.execution = { startedAt: source.plan.createdAt, intervals: [], droppedIntervals: 123, visibility: [], droppedVisibilityEvents: 0 };
+    const stream = createPerformanceArchiveStream({ snapshot: source, signal: new AbortController().signal });
+    const zip = await JSZip.loadAsync(await new Response(stream).arrayBuffer());
+    expect(JSON.parse(await zip.file('execution.json')!.async('string')).droppedIntervals).toBe(123);
+    expect(JSON.parse(await zip.file('trials.jsonl')!.async('string')).id).toBe('attempt_one');
+    expect(await zip.file('README.md')!.async('string')).toContain('droppedIntervals');
   });
 });

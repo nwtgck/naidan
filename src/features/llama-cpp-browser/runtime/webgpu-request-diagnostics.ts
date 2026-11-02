@@ -1,4 +1,5 @@
-import type { GpuRequests, GpuMetadata, GpuQueueObservation } from '@/features/llama-cpp-browser/memory-diagnostics';
+import type { GpuRequests, GpuMetadata, GpuQueueObservation, GpuCapabilitySnapshot } from '@/features/llama-cpp-browser/memory-diagnostics';
+import { isDebugDiagnosticsEnabled } from '@/features/llama-cpp-browser/debug-log';
 
 const readers = new WeakMap<object, () => GpuRequests | undefined>();
 
@@ -38,6 +39,61 @@ function safelyRead<T>({ read }: { read: () => T }): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+function readAdapterVendor({ adapter }: { adapter: GPUAdapter | undefined }): GpuCapabilitySnapshot['adapterVendor'] {
+  if (!adapter) {
+    return { status: 'unavailable', reason: 'adapter-unavailable' };
+  }
+  try {
+    const info: unknown = adapter.info;
+    if (info === undefined) {
+      return { status: 'unavailable', reason: 'info-unavailable' };
+    }
+    if (typeof info !== 'object' || info === null) {
+      return { status: 'unavailable', reason: 'invalid-type' };
+    }
+    if (!('vendor' in info)) {
+      return { status: 'unavailable', reason: 'vendor-unavailable' };
+    }
+    const value: unknown = Reflect.get(info, 'vendor', info);
+    if (typeof value !== 'string') {
+      return { status: 'unavailable', reason: 'invalid-type' };
+    }
+    return { status: 'available', value: value.slice(0, 256), length: value.length, truncated: value.length > 256 };
+  } catch {
+    return { status: 'unavailable', reason: 'read-failed' };
+  }
+}
+
+function readWgslLanguageFeatures({ gpu }: { gpu: GPU | undefined }): GpuCapabilitySnapshot['wgslLanguageFeatures'] {
+  if (!gpu) {
+    return { status: 'unavailable', reason: 'gpu-unavailable' };
+  }
+  try {
+    if (!('wgslLanguageFeatures' in gpu)) {
+      return { status: 'unavailable', reason: 'property-unavailable' };
+    }
+    const features: unknown = Reflect.get(gpu, 'wgslLanguageFeatures', gpu);
+    if (typeof features !== 'object' || features === null) {
+      return { status: 'unavailable', reason: 'invalid-value' };
+    }
+    const has: unknown = Reflect.get(features, 'has', features);
+    if (typeof has !== 'function') {
+      return { status: 'unavailable', reason: 'invalid-value' };
+    }
+    const supported: unknown = Reflect.apply(has, features, ['packed_4x8_integer_dot_product']);
+    if (typeof supported !== 'boolean') {
+      return { status: 'unavailable', reason: 'invalid-value' };
+    }
+    return { status: 'available', packed_4x8_integer_dot_product: supported };
+  } catch {
+    return { status: 'unavailable', reason: 'read-failed' };
+  }
+}
+
+function readCapabilitySnapshot({ adapter, gpu, capture }: { adapter: GPUAdapter | undefined, gpu: GPU | undefined, capture: GpuCapabilitySnapshot['capture'] }): GpuCapabilitySnapshot {
+  return { capture, adapterVendor: readAdapterVendor({ adapter }), wgslLanguageFeatures: readWgslLanguageFeatures({ gpu }) };
 }
 
 function readMetadata({ device, adapter }: { device: GPUDevice, adapter: GPUAdapter | undefined }): GpuMetadata {
@@ -121,6 +177,9 @@ function facade<T extends object>({ target, overrides }: { target: T, overrides:
 export function createGpuRequestObserver() {
   let available = true;
   let metadata: GpuMetadata | undefined;
+  let capabilitySource: { adapter: GPUAdapter | undefined, gpu: GPU | undefined } | undefined;
+  let capabilitySnapshot: GpuCapabilitySnapshot | undefined;
+  const capabilityObservationEnabled = (): boolean => measurement?.open === true || isDebugDiagnosticsEnabled();
   const queues = new WeakMap<Measurement, GpuQueueObservation>();
   // Promise reactions cannot be detached. Bound outstanding observers across
   // request windows, including closed windows whose native waits never settle.
@@ -157,10 +216,19 @@ export function createGpuRequestObserver() {
         return undefined;
       }
       const queue = measurement?.open ? { ...queueState({ current: measurement }) } : undefined;
-      return { ...totals, ...(metadata ? { metadata: structuredClone(metadata) } : {}), ...(queue ? { queue } : {}) };
+      const includeCapabilities = capabilityObservationEnabled();
+      if (includeCapabilities && capabilitySource && !capabilitySnapshot) {
+        // A retained Worker can enter its first diagnostic request after normal
+        // initialization. Use the same selected objects, without another probe.
+        capabilitySnapshot = readCapabilitySnapshot({ ...capabilitySource, capture: 'retained-device' });
+      }
+      const observedMetadata = metadata && includeCapabilities && capabilitySnapshot ? { ...metadata, capabilitySnapshot } : metadata;
+      return { ...totals, ...(observedMetadata ? { metadata: structuredClone(observedMetadata) } : {}), ...(queue ? { queue } : {}) };
     },
-    wrapDevice({ device, adapter }: { device: GPUDevice, adapter?: GPUAdapter }): GPUDevice {
+    wrapDevice({ device, adapter, gpu }: { device: GPUDevice, adapter?: GPUAdapter, gpu?: GPU }): GPUDevice {
       metadata = safelyRead({ read: () => readMetadata({ device, adapter }) });
+      capabilitySource = { adapter, gpu };
+      capabilitySnapshot = capabilityObservationEnabled() ? readCapabilitySnapshot({ adapter, gpu, capture: 'device-created' }) : undefined;
       const queue = device.queue;
       return facade({
         target: device,

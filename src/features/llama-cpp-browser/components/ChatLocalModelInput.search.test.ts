@@ -222,8 +222,8 @@ it.each(['welcome', 'embedded'] as const)('uses the shared saved-model action fr
   metadata.installed.mockResolvedValue(model);
   using view = renderPicker({ layout });
   await openSearch({ wrapper: view.wrapper });
-  await view.wrapper.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-  await view.wrapper.get('[data-testid="chat-model-repository-check"]').trigger('click');
+  await view.wrapper.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+  await view.wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
   await flushPromises();
   await view.wrapper.get('[data-testid="chat-use-repository-model"]').trigger('click');
   expect(view.state.useModel).toHaveBeenCalledExactlyOnceWith({ model });

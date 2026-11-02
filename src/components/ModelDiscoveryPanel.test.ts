@@ -40,7 +40,8 @@ const mounts = vi.hoisted(() => ({ search: 0, files: 0 }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserHuggingFaceSearch.vue', () => ({
   default: {
     name: 'LlamaCppBrowserHuggingFaceSearch',
-    props: ['disabled', 'repositoryInput', 'scrollOwner'],
+    props: ['disabled', 'input', 'scrollOwner', 'directAction', 'selectionStatus'],
+    emits: ['select', 'update:input'],
     setup() {
       mounts.search++;
     },
@@ -236,9 +237,10 @@ describe('browser model discovery', () => {
     };
     await flushPromises();
     expect(previewTest.inspect).not.toHaveBeenCalled();
-    await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/unknown:Q8_0');
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('update:input', 'https://huggingface.co/owner/unknown:Q8_0');
+    await flushPromises();
     expect(previewTest.inspect).not.toHaveBeenCalled();
-    await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('select', wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).props('input'));
     await vi.dynamicImportSettled();
     await flushPromises();
     expect(wrapper.get('[data-testid="discovery-detail"]').text()).toContain('unknown');
@@ -247,8 +249,8 @@ describe('browser model discovery', () => {
     expect(wrapper.get('[data-testid="discovery-detail"]').element.closest('[inert]')).toBeNull();
     expect(wrapper.get('[data-testid="discovery-list-viewport"]').element.closest('[inert]')).not.toBeNull();
     await wrapper.get('[data-testid="discovery-back"]').trigger('click');
-    expect(wrapper.get('[data-testid="hugging-face-repository"]').element.closest('[inert]')).toBeNull();
-    await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    expect(wrapper.get('[data-testid="search-tools"]').element.closest('[inert]')).toBeNull();
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('select', wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).props('input'));
     await vi.dynamicImportSettled();
     await flushPromises();
     expect(fetch.mock.calls.filter(([url]) => new URL(String(url), window.location.href).origin !== window.location.origin)).toHaveLength(0);
@@ -292,8 +294,9 @@ describe('browser model discovery', () => {
       },
     };
     await flushPromises();
-    await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/model:Q8_0');
-    await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('update:input', 'https://huggingface.co/owner/model:Q8_0');
+    await flushPromises();
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('select', wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).props('input'));
     await vi.dynamicImportSettled();
     await flushPromises();
     const guidance = wrapper.get('[data-testid="discovery-guidance"]');
@@ -320,8 +323,9 @@ describe('browser model discovery', () => {
       },
     };
     await flushPromises();
-    await wrapper.get('[data-testid="hugging-face-repository"]').setValue('owner/model:Q8_0');
-    await wrapper.get('[data-testid="hugging-face-repository-select"]').trigger('click');
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('update:input', 'https://huggingface.co/owner/model:Q8_0');
+    await flushPromises();
+    wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).vm.$emit('select', wrapper.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).props('input'));
     await vi.dynamicImportSettled();
     await flushPromises();
     const start = wrapper.get('[data-testid="discovery-start"]');

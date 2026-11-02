@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
 import { generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
 
+export const maximumExecutionIntervals = 8192;
+
 export const performanceProtocol = 'targeted-text-en-v4' as const;
 export const measurementModeSchema = z.enum(['gpu-profile', 'standard', 'both']);
 export const measurementLaneSchema = z.enum(['standard', 'gpu-profile']);
@@ -59,11 +61,11 @@ export const planSchema = z.object({
   visionFixture: visionFixtureSchema.optional(),
   id: idSchema,
   createdAt: z.string(),
-  models: z.array(modelSchema).min(1).max(16),
+  models: z.array(modelSchema).min(1),
   settings: protocolSchema,
   options: runtimeOptionsSchema,
   notes: z.string().max(10000),
-  steps: z.array(stepSchema).min(1).max(1024),
+  steps: z.array(stepSchema).min(1),
 }).strict().superRefine((plan, context) => {
   if (plan.options.profile === gpuProfilingProfile) {
     context.addIssue({ code: 'custom', message: 'Select the profiling measurement mode, not a diagnostic chat profile' });
@@ -186,8 +188,10 @@ export const snapshotSchema = z.object({
     startedAt: z.string(),
     finishedAt: z.string().optional(),
     elapsedMs: milliseconds.optional(),
-    // At most five orchestration intervals per planned step after repeated skips.
-    intervals: z.array(intervalSchema).max(8192),
+    // Evidence remains bounded independently of model/step count. Missing means
+    // the older recorder did not report coverage, not proof of zero loss.
+    intervals: z.array(intervalSchema).max(maximumExecutionIntervals),
+    droppedIntervals: z.number().int().nonnegative().optional(),
     visibility: z.array(z.object({ atMs: milliseconds, hidden: z.boolean() }).strict()).max(256),
     droppedVisibilityEvents: z.number().int().nonnegative(),
   }).strict().optional(),

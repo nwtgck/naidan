@@ -1326,8 +1326,6 @@ import { LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found } from
 import { LlamaCppBrowserHuggingFaceManager__pause } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__pause/de';
 import { LlamaCppBrowserHuggingFaceManager__performing_final_checks } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__performing_final_checks/de';
 import { LlamaCppBrowserHuggingFaceManager__quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__quantization/de';
-import { LlamaCppBrowserHuggingFaceManager__repository } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository/de';
-import { LlamaCppBrowserHuggingFaceManager__repository_url_or_id } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository_url_or_id/de';
 import { LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection/de';
 import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__resume/de';
 import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/de';
@@ -1335,12 +1333,14 @@ import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/string
 import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/de';
 import { LlamaCppBrowserHuggingFaceManager__url_copied } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__url_copied/de';
 import { LlamaCppBrowserHuggingFaceSearch__architecture } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__architecture/de';
+import { LlamaCppBrowserHuggingFaceSearch__check_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__check_model/de';
+import { LlamaCppBrowserHuggingFaceSearch__choose } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__choose/de';
 import { LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again/de';
 import { LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again/de';
 import { LlamaCppBrowserHuggingFaceSearch__downloads } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__downloads/de';
 import { LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range/de';
 import { LlamaCppBrowserHuggingFaceSearch__filters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__filters/de';
-import { LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face/de';
+import { LlamaCppBrowserHuggingFaceSearch__find_or_open_models_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__find_or_open_models_on_hugging_face/de';
 import { LlamaCppBrowserHuggingFaceSearch__likes } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__likes/de';
 import { LlamaCppBrowserHuggingFaceSearch__loading_more_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__loading_more_models/de';
 import { LlamaCppBrowserHuggingFaceSearch__new_results_start_here } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__new_results_start_here/de';
@@ -1349,7 +1349,7 @@ import { LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face } fro
 import { LlamaCppBrowserHuggingFaceSearch__parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameters/de';
 import { LlamaCppBrowserHuggingFaceSearch__results_for } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__results_for/de';
 import { LlamaCppBrowserHuggingFaceSearch__search } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search/de';
-import { LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends/de';
+import { LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_paste_a_url } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_paste_a_url/de';
 import { LlamaCppBrowserHuggingFaceSearch__searching_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__searching_models/de';
 import { LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_files } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_files/de';
 import { LlamaCppBrowserHuggingFaceSearch__show_more } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__show_more/de';
@@ -1426,10 +1426,8 @@ import { LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository
 import { LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders/de';
 import { LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository/de';
 import { LlamaCppBrowserRepositoryPicker__back_to_search } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__back_to_search/de';
-import { LlamaCppBrowserRepositoryPicker__check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__check_repository/de';
 import { LlamaCppBrowserRepositoryPicker__could_not_check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__could_not_check_repository/de';
 import { LlamaCppBrowserRepositoryPicker__saved } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__saved/de';
-import { LlamaCppBrowserRepositoryPicker__specify_a_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__specify_a_repository/de';
 import { LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser/de';
 import { LlamaCppBrowserRepositoryPreview__not_estimated } from '@/strings/messages/LlamaCppBrowserRepositoryPreview__not_estimated/de';
 import { LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats/de';
@@ -1544,10 +1542,9 @@ import { MessageThinking__thinking } from '@/strings/messages/MessageThinking__t
 import { MessageThinking__thought_process } from '@/strings/messages/MessageThinking__thought_process/de';
 import { ModelDiscoveryPanel__back_to_model_list } from '@/strings/messages/ModelDiscoveryPanel__back_to_model_list/de';
 import { ModelDiscoveryPanel__candidate_models } from '@/strings/messages/ModelDiscoveryPanel__candidate_models/de';
-import { ModelDiscoveryPanel__choose } from '@/strings/messages/ModelDiscoveryPanel__choose/de';
 import { ModelDiscoveryPanel__close } from '@/strings/messages/ModelDiscoveryPanel__close/de';
 import { ModelDiscoveryPanel__could_not_load_models } from '@/strings/messages/ModelDiscoveryPanel__could_not_load_models/de';
-import { ModelDiscoveryPanel__enter_a_repository_or_model_page_url } from '@/strings/messages/ModelDiscoveryPanel__enter_a_repository_or_model_page_url/de';
+import { ModelDiscoveryPanel__enter_a_model_page_url } from '@/strings/messages/ModelDiscoveryPanel__enter_a_model_page_url/de';
 import { ModelDiscoveryPanel__filter_by_model_or_developer } from '@/strings/messages/ModelDiscoveryPanel__filter_by_model_or_developer/de';
 import { ModelDiscoveryPanel__filter_candidate_models } from '@/strings/messages/ModelDiscoveryPanel__filter_candidate_models/de';
 import { ModelDiscoveryPanel__find_models } from '@/strings/messages/ModelDiscoveryPanel__find_models/de';
@@ -1559,10 +1556,8 @@ import { ModelDiscoveryPanel__memory_hint } from '@/strings/messages/ModelDiscov
 import { ModelDiscoveryPanel__model_size } from '@/strings/messages/ModelDiscoveryPanel__model_size/de';
 import { ModelDiscoveryPanel__models_on_your_device } from '@/strings/messages/ModelDiscoveryPanel__models_on_your_device/de';
 import { ModelDiscoveryPanel__no_matching_candidates } from '@/strings/messages/ModelDiscoveryPanel__no_matching_candidates/de';
-import { ModelDiscoveryPanel__paste_the_model_page_url } from '@/strings/messages/ModelDiscoveryPanel__paste_the_model_page_url/de';
 import { ModelDiscoveryPanel__prepare_this_model_in_a_new_chat } from '@/strings/messages/ModelDiscoveryPanel__prepare_this_model_in_a_new_chat/de';
 import { ModelDiscoveryPanel__saved } from '@/strings/messages/ModelDiscoveryPanel__saved/de';
-import { ModelDiscoveryPanel__specify_a_repository } from '@/strings/messages/ModelDiscoveryPanel__specify_a_repository/de';
 import { ModelDiscoveryPanel__start_a_new_chat_with_the_saved_model } from '@/strings/messages/ModelDiscoveryPanel__start_a_new_chat_with_the_saved_model/de';
 import { ModelDiscoveryPanel__ways_to_find_models } from '@/strings/messages/ModelDiscoveryPanel__ways_to_find_models/de';
 import { ModelDownloads__activity } from '@/strings/messages/ModelDownloads__activity/de';
@@ -2869,6 +2864,122 @@ import { imageGeneration__unfavorite } from '@/strings/messages/imageGeneration_
 import { imageGeneration__view_translation } from '@/strings/messages/imageGeneration__view_translation/de';
 import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/de';
 import { imageGeneration__visual_progress } from '@/strings/messages/imageGeneration__visual_progress/de';
+import { liveConversation__add_attachment } from '@/strings/messages/liveConversation__add_attachment/de';
+import { liveConversation__allow_shell_tools } from '@/strings/messages/liveConversation__allow_shell_tools/de';
+import { liveConversation__allow_writes } from '@/strings/messages/liveConversation__allow_writes/de';
+import { liveConversation__answer_text } from '@/strings/messages/liveConversation__answer_text/de';
+import { liveConversation__approval } from '@/strings/messages/liveConversation__approval/de';
+import { liveConversation__approval_required } from '@/strings/messages/liveConversation__approval_required/de';
+import { liveConversation__approve_commands } from '@/strings/messages/liveConversation__approve_commands/de';
+import { liveConversation__assistant } from '@/strings/messages/liveConversation__assistant/de';
+import { liveConversation__attach_images } from '@/strings/messages/liveConversation__attach_images/de';
+import { liveConversation__attachment_limits } from '@/strings/messages/liveConversation__attachment_limits/de';
+import { liveConversation__audio_details } from '@/strings/messages/liveConversation__audio_details/de';
+import { liveConversation__audio_details_help } from '@/strings/messages/liveConversation__audio_details_help/de';
+import { liveConversation__audio_file } from '@/strings/messages/liveConversation__audio_file/de';
+import { liveConversation__audio_retention_failed } from '@/strings/messages/liveConversation__audio_retention_failed/de';
+import { liveConversation__audio_retention_limit } from '@/strings/messages/liveConversation__audio_retention_limit/de';
+import { liveConversation__audio_sent_to_model } from '@/strings/messages/liveConversation__audio_sent_to_model/de';
+import { liveConversation__audio_statistics } from '@/strings/messages/liveConversation__audio_statistics/de';
+import { liveConversation__cancel_pending } from '@/strings/messages/liveConversation__cancel_pending/de';
+import { liveConversation__channels_and_playback } from '@/strings/messages/liveConversation__channels_and_playback/de';
+import { liveConversation__channels_help } from '@/strings/messages/liveConversation__channels_help/de';
+import { liveConversation__choose_model } from '@/strings/messages/liveConversation__choose_model/de';
+import { liveConversation__choose_output_channel } from '@/strings/messages/liveConversation__choose_output_channel/de';
+import { liveConversation__clear_conversation } from '@/strings/messages/liveConversation__clear_conversation/de';
+import { liveConversation__close_settings } from '@/strings/messages/liveConversation__close_settings/de';
+import { liveConversation__closing } from '@/strings/messages/liveConversation__closing/de';
+import { liveConversation__conversation } from '@/strings/messages/liveConversation__conversation/de';
+import { liveConversation__conversation_settings } from '@/strings/messages/liveConversation__conversation_settings/de';
+import { liveConversation__ctrl_or_cmd_enter_to_send } from '@/strings/messages/liveConversation__ctrl_or_cmd_enter_to_send/de';
+import { liveConversation__deny_commands } from '@/strings/messages/liveConversation__deny_commands/de';
+import { liveConversation__discarded } from '@/strings/messages/liveConversation__discarded/de';
+import { liveConversation__download_then_start } from '@/strings/messages/liveConversation__download_then_start/de';
+import { liveConversation__draft_channel_disabled } from '@/strings/messages/liveConversation__draft_channel_disabled/de';
+import { liveConversation__drop_attachments } from '@/strings/messages/liveConversation__drop_attachments/de';
+import { liveConversation__edit_pending_message } from '@/strings/messages/liveConversation__edit_pending_message/de';
+import { liveConversation__empty_conversation } from '@/strings/messages/liveConversation__empty_conversation/de';
+import { liveConversation__end_session } from '@/strings/messages/liveConversation__end_session/de';
+import { liveConversation__enter_to_send } from '@/strings/messages/liveConversation__enter_to_send/de';
+import { liveConversation__ephemeral_session } from '@/strings/messages/liveConversation__ephemeral_session/de';
+import { liveConversation__failed } from '@/strings/messages/liveConversation__failed/de';
+import { liveConversation__folder } from '@/strings/messages/liveConversation__folder/de';
+import { liveConversation__hide_answer_text } from '@/strings/messages/liveConversation__hide_answer_text/de';
+import { liveConversation__idle } from '@/strings/messages/liveConversation__idle/de';
+import { liveConversation__image_limit } from '@/strings/messages/liveConversation__image_limit/de';
+import { liveConversation__images } from '@/strings/messages/liveConversation__images/de';
+import { liveConversation__images_require_omni } from '@/strings/messages/liveConversation__images_require_omni/de';
+import { liveConversation__input_channels } from '@/strings/messages/liveConversation__input_channels/de';
+import { liveConversation__input_text } from '@/strings/messages/liveConversation__input_text/de';
+import { liveConversation__instructions } from '@/strings/messages/liveConversation__instructions/de';
+import { liveConversation__interrupt } from '@/strings/messages/liveConversation__interrupt/de';
+import { liveConversation__interrupt_and_talk } from '@/strings/messages/liveConversation__interrupt_and_talk/de';
+import { liveConversation__interruption_help } from '@/strings/messages/liveConversation__interruption_help/de';
+import { liveConversation__introduction } from '@/strings/messages/liveConversation__introduction/de';
+import { liveConversation__keep_audio_help } from '@/strings/messages/liveConversation__keep_audio_help/de';
+import { liveConversation__keep_audio_in_memory } from '@/strings/messages/liveConversation__keep_audio_in_memory/de';
+import { liveConversation__latest_messages } from '@/strings/messages/liveConversation__latest_messages/de';
+import { liveConversation__limit } from '@/strings/messages/liveConversation__limit/de';
+import { liveConversation__listening } from '@/strings/messages/liveConversation__listening/de';
+import { liveConversation__live_conversation } from '@/strings/messages/liveConversation__live_conversation/de';
+import { liveConversation__loading } from '@/strings/messages/liveConversation__loading/de';
+import { liveConversation__manage_models_and_runtime } from '@/strings/messages/liveConversation__manage_models_and_runtime/de';
+import { liveConversation__message_placeholder } from '@/strings/messages/liveConversation__message_placeholder/de';
+import { liveConversation__microphone } from '@/strings/messages/liveConversation__microphone/de';
+import { liveConversation__model } from '@/strings/messages/liveConversation__model/de';
+import { liveConversation__model_changes_next_conversation } from '@/strings/messages/liveConversation__model_changes_next_conversation/de';
+import { liveConversation__model_inventory_failed } from '@/strings/messages/liveConversation__model_inventory_failed/de';
+import { liveConversation__model_loaded } from '@/strings/messages/liveConversation__model_loaded/de';
+import { liveConversation__model_preference_failed } from '@/strings/messages/liveConversation__model_preference_failed/de';
+import { liveConversation__model_setup } from '@/strings/messages/liveConversation__model_setup/de';
+import { liveConversation__mute_playback } from '@/strings/messages/liveConversation__mute_playback/de';
+import { liveConversation__new_conversation } from '@/strings/messages/liveConversation__new_conversation/de';
+import { liveConversation__new_conversation_confirmation } from '@/strings/messages/liveConversation__new_conversation_confirmation/de';
+import { liveConversation__no_folder } from '@/strings/messages/liveConversation__no_folder/de';
+import { liveConversation__output_channels } from '@/strings/messages/liveConversation__output_channels/de';
+import { liveConversation__partial_audio } from '@/strings/messages/liveConversation__partial_audio/de';
+import { liveConversation__pending_failed } from '@/strings/messages/liveConversation__pending_failed/de';
+import { liveConversation__pending_limit } from '@/strings/messages/liveConversation__pending_limit/de';
+import { liveConversation__pending_messages } from '@/strings/messages/liveConversation__pending_messages/de';
+import { liveConversation__playing } from '@/strings/messages/liveConversation__playing/de';
+import { liveConversation__prepare_next_message } from '@/strings/messages/liveConversation__prepare_next_message/de';
+import { liveConversation__preparing_audio } from '@/strings/messages/liveConversation__preparing_audio/de';
+import { liveConversation__preview_image } from '@/strings/messages/liveConversation__preview_image/de';
+import { liveConversation__ready } from '@/strings/messages/liveConversation__ready/de';
+import { liveConversation__ready_to_talk } from '@/strings/messages/liveConversation__ready_to_talk/de';
+import { liveConversation__recorded_audio } from '@/strings/messages/liveConversation__recorded_audio/de';
+import { liveConversation__recording } from '@/strings/messages/liveConversation__recording/de';
+import { liveConversation__refresh_folders } from '@/strings/messages/liveConversation__refresh_folders/de';
+import { liveConversation__release_model } from '@/strings/messages/liveConversation__release_model/de';
+import { liveConversation__release_model_confirmation } from '@/strings/messages/liveConversation__release_model_confirmation/de';
+import { liveConversation__release_to_change_session_setup } from '@/strings/messages/liveConversation__release_to_change_session_setup/de';
+import { liveConversation__releasing_model } from '@/strings/messages/liveConversation__releasing_model/de';
+import { liveConversation__remove } from '@/strings/messages/liveConversation__remove/de';
+import { liveConversation__remove_audio_to_talk } from '@/strings/messages/liveConversation__remove_audio_to_talk/de';
+import { liveConversation__responding } from '@/strings/messages/liveConversation__responding/de';
+import { liveConversation__retry_pending } from '@/strings/messages/liveConversation__retry_pending/de';
+import { liveConversation__send } from '@/strings/messages/liveConversation__send/de';
+import { liveConversation__send_after_response } from '@/strings/messages/liveConversation__send_after_response/de';
+import { liveConversation__session_setup } from '@/strings/messages/liveConversation__session_setup/de';
+import { liveConversation__shell_in_browser } from '@/strings/messages/liveConversation__shell_in_browser/de';
+import { liveConversation__start_recording } from '@/strings/messages/liveConversation__start_recording/de';
+import { liveConversation__start_session } from '@/strings/messages/liveConversation__start_session/de';
+import { liveConversation__stop_and_send } from '@/strings/messages/liveConversation__stop_and_send/de';
+import { liveConversation__stop_response } from '@/strings/messages/liveConversation__stop_response/de';
+import { liveConversation__stopping } from '@/strings/messages/liveConversation__stopping/de';
+import { liveConversation__talk } from '@/strings/messages/liveConversation__talk/de';
+import { liveConversation__text_input } from '@/strings/messages/liveConversation__text_input/de';
+import { liveConversation__transcribe_my_audio } from '@/strings/messages/liveConversation__transcribe_my_audio/de';
+import { liveConversation__transcribing } from '@/strings/messages/liveConversation__transcribing/de';
+import { liveConversation__transcript } from '@/strings/messages/liveConversation__transcript/de';
+import { liveConversation__transcription_cost } from '@/strings/messages/liveConversation__transcription_cost/de';
+import { liveConversation__voice } from '@/strings/messages/liveConversation__voice/de';
+import { liveConversation__voice_message } from '@/strings/messages/liveConversation__voice_message/de';
+import { liveConversation__voice_response } from '@/strings/messages/liveConversation__voice_response/de';
+import { liveConversation__wesh_help } from '@/strings/messages/liveConversation__wesh_help/de';
+import { liveConversation__wesh_tools } from '@/strings/messages/liveConversation__wesh_tools/de';
+import { liveConversation__working } from '@/strings/messages/liveConversation__working/de';
+import { liveConversation__you } from '@/strings/messages/liveConversation__you/de';
 import { llamaCppBrowserDownloads__active_downloads } from '@/strings/messages/llamaCppBrowserDownloads__active_downloads/de';
 import { llamaCppBrowserDownloads__all } from '@/strings/messages/llamaCppBrowserDownloads__all/de';
 import { llamaCppBrowserDownloads__approximately_size } from '@/strings/messages/llamaCppBrowserDownloads__approximately_size/de';
@@ -2948,6 +3059,22 @@ import { llamaCppBrowser__runs_llama_cpp_in_the_browser_and_supports_many_gguf_m
 import { llamaCppBrowser__size_not_checked } from '@/strings/messages/llamaCppBrowser__size_not_checked/de';
 import { llamaCppBrowser__unavailable_feature } from '@/strings/messages/llamaCppBrowser__unavailable_feature/de';
 import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/de';
+import { llamaCppDiagnostics__context_tokens } from '@/strings/messages/llamaCppDiagnostics__context_tokens/de';
+import { llamaCppDiagnostics__go_back } from '@/strings/messages/llamaCppDiagnostics__go_back/de';
+import { llamaCppDiagnostics__image_bf16_storage } from '@/strings/messages/llamaCppDiagnostics__image_bf16_storage/de';
+import { llamaCppDiagnostics__inference_diagnostics } from '@/strings/messages/llamaCppDiagnostics__inference_diagnostics/de';
+import { llamaCppDiagnostics__open_diagnostics } from '@/strings/messages/llamaCppDiagnostics__open_diagnostics/de';
+import { llamaCppDiagnostics__profiling_requires_wasm64_profile } from '@/strings/messages/llamaCppDiagnostics__profiling_requires_wasm64_profile/de';
+import { llamaCppDiagnostics__reset_settings } from '@/strings/messages/llamaCppDiagnostics__reset_settings/de';
+import { llamaCppDiagnostics__retry_url_update } from '@/strings/messages/llamaCppDiagnostics__retry_url_update/de';
+import { llamaCppDiagnostics__runtime_default } from '@/strings/messages/llamaCppDiagnostics__runtime_default/de';
+import { llamaCppDiagnostics__runtime_options } from '@/strings/messages/llamaCppDiagnostics__runtime_options/de';
+import { llamaCppDiagnostics__select_all_saved_models } from '@/strings/messages/llamaCppDiagnostics__select_all_saved_models/de';
+import { llamaCppDiagnostics__select_search_results } from '@/strings/messages/llamaCppDiagnostics__select_search_results/de';
+import { llamaCppDiagnostics__settings_are_in_the_url } from '@/strings/messages/llamaCppDiagnostics__settings_are_in_the_url/de';
+import { llamaCppDiagnostics__show_more_results } from '@/strings/messages/llamaCppDiagnostics__show_more_results/de';
+import { llamaCppDiagnostics__stop_and_go_back } from '@/strings/messages/llamaCppDiagnostics__stop_and_go_back/de';
+import { llamaCppDiagnostics__url_update_failed } from '@/strings/messages/llamaCppDiagnostics__url_update_failed/de';
 import { llamaCppPerformance__add_models } from '@/strings/messages/llamaCppPerformance__add_models/de';
 import { llamaCppPerformance__advanced_conditions } from '@/strings/messages/llamaCppPerformance__advanced_conditions/de';
 import { llamaCppPerformance__back_to_settings } from '@/strings/messages/llamaCppPerformance__back_to_settings/de';
@@ -4678,8 +4805,6 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__pause,
   LlamaCppBrowserHuggingFaceManager__performing_final_checks,
   LlamaCppBrowserHuggingFaceManager__quantization,
-  LlamaCppBrowserHuggingFaceManager__repository,
-  LlamaCppBrowserHuggingFaceManager__repository_url_or_id,
   LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection,
   LlamaCppBrowserHuggingFaceManager__resume,
   LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
@@ -4687,12 +4812,14 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
   LlamaCppBrowserHuggingFaceManager__url_copied,
   LlamaCppBrowserHuggingFaceSearch__architecture,
+  LlamaCppBrowserHuggingFaceSearch__check_model,
+  LlamaCppBrowserHuggingFaceSearch__choose,
   LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again,
   LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again,
   LlamaCppBrowserHuggingFaceSearch__downloads,
   LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range,
   LlamaCppBrowserHuggingFaceSearch__filters,
-  LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face,
+  LlamaCppBrowserHuggingFaceSearch__find_or_open_models_on_hugging_face,
   LlamaCppBrowserHuggingFaceSearch__likes,
   LlamaCppBrowserHuggingFaceSearch__loading_more_models,
   LlamaCppBrowserHuggingFaceSearch__new_results_start_here,
@@ -4701,7 +4828,7 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceSearch__parameters,
   LlamaCppBrowserHuggingFaceSearch__results_for,
   LlamaCppBrowserHuggingFaceSearch__search,
-  LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends,
+  LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_paste_a_url,
   LlamaCppBrowserHuggingFaceSearch__searching_models,
   LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_files,
   LlamaCppBrowserHuggingFaceSearch__show_more,
@@ -4778,10 +4905,8 @@ export const catalog = {
   LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders,
   LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository,
   LlamaCppBrowserRepositoryPicker__back_to_search,
-  LlamaCppBrowserRepositoryPicker__check_repository,
   LlamaCppBrowserRepositoryPicker__could_not_check_repository,
   LlamaCppBrowserRepositoryPicker__saved,
-  LlamaCppBrowserRepositoryPicker__specify_a_repository,
   LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser,
   LlamaCppBrowserRepositoryPreview__not_estimated,
   LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats,
@@ -4896,10 +5021,9 @@ export const catalog = {
   MessageThinking__thought_process,
   ModelDiscoveryPanel__back_to_model_list,
   ModelDiscoveryPanel__candidate_models,
-  ModelDiscoveryPanel__choose,
   ModelDiscoveryPanel__close,
   ModelDiscoveryPanel__could_not_load_models,
-  ModelDiscoveryPanel__enter_a_repository_or_model_page_url,
+  ModelDiscoveryPanel__enter_a_model_page_url,
   ModelDiscoveryPanel__filter_by_model_or_developer,
   ModelDiscoveryPanel__filter_candidate_models,
   ModelDiscoveryPanel__find_models,
@@ -4911,10 +5035,8 @@ export const catalog = {
   ModelDiscoveryPanel__model_size,
   ModelDiscoveryPanel__models_on_your_device,
   ModelDiscoveryPanel__no_matching_candidates,
-  ModelDiscoveryPanel__paste_the_model_page_url,
   ModelDiscoveryPanel__prepare_this_model_in_a_new_chat,
   ModelDiscoveryPanel__saved,
-  ModelDiscoveryPanel__specify_a_repository,
   ModelDiscoveryPanel__start_a_new_chat_with_the_saved_model,
   ModelDiscoveryPanel__ways_to_find_models,
   ModelDownloads__activity,
@@ -6221,6 +6343,122 @@ export const catalog = {
   imageGeneration__view_translation,
   imageGeneration__viewing_other,
   imageGeneration__visual_progress,
+  liveConversation__add_attachment,
+  liveConversation__allow_shell_tools,
+  liveConversation__allow_writes,
+  liveConversation__answer_text,
+  liveConversation__approval,
+  liveConversation__approval_required,
+  liveConversation__approve_commands,
+  liveConversation__assistant,
+  liveConversation__attach_images,
+  liveConversation__attachment_limits,
+  liveConversation__audio_details,
+  liveConversation__audio_details_help,
+  liveConversation__audio_file,
+  liveConversation__audio_retention_failed,
+  liveConversation__audio_retention_limit,
+  liveConversation__audio_sent_to_model,
+  liveConversation__audio_statistics,
+  liveConversation__cancel_pending,
+  liveConversation__channels_and_playback,
+  liveConversation__channels_help,
+  liveConversation__choose_model,
+  liveConversation__choose_output_channel,
+  liveConversation__clear_conversation,
+  liveConversation__close_settings,
+  liveConversation__closing,
+  liveConversation__conversation,
+  liveConversation__conversation_settings,
+  liveConversation__ctrl_or_cmd_enter_to_send,
+  liveConversation__deny_commands,
+  liveConversation__discarded,
+  liveConversation__download_then_start,
+  liveConversation__draft_channel_disabled,
+  liveConversation__drop_attachments,
+  liveConversation__edit_pending_message,
+  liveConversation__empty_conversation,
+  liveConversation__end_session,
+  liveConversation__enter_to_send,
+  liveConversation__ephemeral_session,
+  liveConversation__failed,
+  liveConversation__folder,
+  liveConversation__hide_answer_text,
+  liveConversation__idle,
+  liveConversation__image_limit,
+  liveConversation__images,
+  liveConversation__images_require_omni,
+  liveConversation__input_channels,
+  liveConversation__input_text,
+  liveConversation__instructions,
+  liveConversation__interrupt,
+  liveConversation__interrupt_and_talk,
+  liveConversation__interruption_help,
+  liveConversation__introduction,
+  liveConversation__keep_audio_help,
+  liveConversation__keep_audio_in_memory,
+  liveConversation__latest_messages,
+  liveConversation__limit,
+  liveConversation__listening,
+  liveConversation__live_conversation,
+  liveConversation__loading,
+  liveConversation__manage_models_and_runtime,
+  liveConversation__message_placeholder,
+  liveConversation__microphone,
+  liveConversation__model,
+  liveConversation__model_changes_next_conversation,
+  liveConversation__model_inventory_failed,
+  liveConversation__model_loaded,
+  liveConversation__model_preference_failed,
+  liveConversation__model_setup,
+  liveConversation__mute_playback,
+  liveConversation__new_conversation,
+  liveConversation__new_conversation_confirmation,
+  liveConversation__no_folder,
+  liveConversation__output_channels,
+  liveConversation__partial_audio,
+  liveConversation__pending_failed,
+  liveConversation__pending_limit,
+  liveConversation__pending_messages,
+  liveConversation__playing,
+  liveConversation__prepare_next_message,
+  liveConversation__preparing_audio,
+  liveConversation__preview_image,
+  liveConversation__ready,
+  liveConversation__ready_to_talk,
+  liveConversation__recorded_audio,
+  liveConversation__recording,
+  liveConversation__refresh_folders,
+  liveConversation__release_model,
+  liveConversation__release_model_confirmation,
+  liveConversation__release_to_change_session_setup,
+  liveConversation__releasing_model,
+  liveConversation__remove,
+  liveConversation__remove_audio_to_talk,
+  liveConversation__responding,
+  liveConversation__retry_pending,
+  liveConversation__send,
+  liveConversation__send_after_response,
+  liveConversation__session_setup,
+  liveConversation__shell_in_browser,
+  liveConversation__start_recording,
+  liveConversation__start_session,
+  liveConversation__stop_and_send,
+  liveConversation__stop_response,
+  liveConversation__stopping,
+  liveConversation__talk,
+  liveConversation__text_input,
+  liveConversation__transcribe_my_audio,
+  liveConversation__transcribing,
+  liveConversation__transcript,
+  liveConversation__transcription_cost,
+  liveConversation__voice,
+  liveConversation__voice_message,
+  liveConversation__voice_response,
+  liveConversation__wesh_help,
+  liveConversation__wesh_tools,
+  liveConversation__working,
+  liveConversation__you,
   llamaCppBrowserDownloads__active_downloads,
   llamaCppBrowserDownloads__all,
   llamaCppBrowserDownloads__approximately_size,
@@ -6300,6 +6538,22 @@ export const catalog = {
   llamaCppBrowser__size_not_checked,
   llamaCppBrowser__unavailable_feature,
   llamaCppBrowser__unavailable_in_standalone,
+  llamaCppDiagnostics__context_tokens,
+  llamaCppDiagnostics__go_back,
+  llamaCppDiagnostics__image_bf16_storage,
+  llamaCppDiagnostics__inference_diagnostics,
+  llamaCppDiagnostics__open_diagnostics,
+  llamaCppDiagnostics__profiling_requires_wasm64_profile,
+  llamaCppDiagnostics__reset_settings,
+  llamaCppDiagnostics__retry_url_update,
+  llamaCppDiagnostics__runtime_default,
+  llamaCppDiagnostics__runtime_options,
+  llamaCppDiagnostics__select_all_saved_models,
+  llamaCppDiagnostics__select_search_results,
+  llamaCppDiagnostics__settings_are_in_the_url,
+  llamaCppDiagnostics__show_more_results,
+  llamaCppDiagnostics__stop_and_go_back,
+  llamaCppDiagnostics__url_update_failed,
   llamaCppPerformance__add_models,
   llamaCppPerformance__advanced_conditions,
   llamaCppPerformance__back_to_settings,
