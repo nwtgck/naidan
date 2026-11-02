@@ -322,7 +322,87 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     wrapper.unmount();
   });
 
-  it('suspends only the retained model manager while the performance screen is open', async () => {
+  it('opens Diagnostics as a page instead of emitting a performance-modal request', async () => {
+    useRoute().query.settings = 'llama-cpp-browser';
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ...globalStubs, LlamaCppBrowserUpsell: true, LlamaCppBrowserManager: true } } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    await wrapper.get('[data-testid="open-llama-cpp-diagnostics"]').trigger('click');
+    await flushPromises();
+    expect(useRouter().push).toHaveBeenCalledExactlyOnceWith('/llama-cpp-browser/diagnostics');
+    expect(mockShowConfirm).not.toHaveBeenCalled();
+    expect(wrapper.emitted('openLlamaCppPerformance')).toBeUndefined();
+  });
+
+  it('confirms dirty connection settings before navigating to Diagnostics', async () => {
+    useRoute().query.settings = 'connection';
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ...globalStubs, LlamaCppBrowserUpsell: true, LlamaCppBrowserManager: true } } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    const connection = wrapper.getComponent(ConnectionTab);
+    connection.vm.$emit('update:modelValue', { ...connection.props('modelValue'), systemPrompt: 'Unsaved prompt' });
+    useRoute().query.settings = 'llama-cpp-browser';
+    await flushPromises();
+    mockShowConfirm.mockResolvedValueOnce(false);
+    await wrapper.get('[data-testid="open-llama-cpp-diagnostics"]').trigger('click');
+    await flushPromises();
+    expect(mockShowConfirm).toHaveBeenCalledOnce();
+    expect(useRouter().push).not.toHaveBeenCalled();
+    mockShowConfirm.mockResolvedValueOnce(true);
+    await wrapper.get('[data-testid="open-llama-cpp-diagnostics"]').trigger('click');
+    await flushPromises();
+    expect(useRouter().push).toHaveBeenCalledExactlyOnceWith('/llama-cpp-browser/diagnostics');
+  });
+
+  it('does not navigate after a delayed discard confirmation for a closed settings screen', async () => {
+    useRoute().query.settings = 'connection';
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ...globalStubs, LlamaCppBrowserUpsell: true, LlamaCppBrowserManager: true } } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    const connection = wrapper.getComponent(ConnectionTab);
+    connection.vm.$emit('update:modelValue', { ...connection.props('modelValue'), systemPrompt: 'Unsaved prompt' });
+    useRoute().query.settings = 'llama-cpp-browser';
+    await flushPromises();
+    const confirmation = Promise.withResolvers<boolean>();
+    mockShowConfirm.mockReturnValueOnce(confirmation.promise);
+    await wrapper.get('[data-testid="open-llama-cpp-diagnostics"]').trigger('click');
+    await flushPromises();
+    await wrapper.setProps({ isOpen: false });
+    confirmation.resolve(true);
+    await flushPromises();
+    expect(useRouter().push).not.toHaveBeenCalled();
+  });
+
+  it('shows navigation errors and enables retry without discarding the settings screen', async () => {
+    useRoute().query.settings = 'llama-cpp-browser';
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ...globalStubs, LlamaCppBrowserUpsell: true, LlamaCppBrowserManager: true } } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    vi.mocked(useRouter().push).mockRejectedValueOnce(new Error('navigation unavailable'));
+    await wrapper.get('[data-testid="open-llama-cpp-diagnostics"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('navigation unavailable');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="open-llama-cpp-diagnostics"]').element.disabled).toBe(false);
+    expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
+  });
+
+  it('suspends only the retained model manager while another settings investigation is open', async () => {
     const route = useRoute();
     route.query.settings = 'llama-cpp-browser';
     const wrapper = mount(SettingsModal, {

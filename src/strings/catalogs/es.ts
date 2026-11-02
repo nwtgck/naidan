@@ -3064,6 +3064,22 @@ import { llamaCppBrowser__runs_llama_cpp_in_the_browser_and_supports_many_gguf_m
 import { llamaCppBrowser__size_not_checked } from '@/strings/messages/llamaCppBrowser__size_not_checked/es';
 import { llamaCppBrowser__unavailable_feature } from '@/strings/messages/llamaCppBrowser__unavailable_feature/es';
 import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/es';
+import { llamaCppDiagnostics__context_tokens } from '@/strings/messages/llamaCppDiagnostics__context_tokens/es';
+import { llamaCppDiagnostics__go_back } from '@/strings/messages/llamaCppDiagnostics__go_back/es';
+import { llamaCppDiagnostics__image_bf16_storage } from '@/strings/messages/llamaCppDiagnostics__image_bf16_storage/es';
+import { llamaCppDiagnostics__inference_diagnostics } from '@/strings/messages/llamaCppDiagnostics__inference_diagnostics/es';
+import { llamaCppDiagnostics__open_diagnostics } from '@/strings/messages/llamaCppDiagnostics__open_diagnostics/es';
+import { llamaCppDiagnostics__profiling_requires_wasm64_profile } from '@/strings/messages/llamaCppDiagnostics__profiling_requires_wasm64_profile/es';
+import { llamaCppDiagnostics__reset_settings } from '@/strings/messages/llamaCppDiagnostics__reset_settings/es';
+import { llamaCppDiagnostics__retry_url_update } from '@/strings/messages/llamaCppDiagnostics__retry_url_update/es';
+import { llamaCppDiagnostics__runtime_default } from '@/strings/messages/llamaCppDiagnostics__runtime_default/es';
+import { llamaCppDiagnostics__runtime_options } from '@/strings/messages/llamaCppDiagnostics__runtime_options/es';
+import { llamaCppDiagnostics__select_all_saved_models } from '@/strings/messages/llamaCppDiagnostics__select_all_saved_models/es';
+import { llamaCppDiagnostics__select_search_results } from '@/strings/messages/llamaCppDiagnostics__select_search_results/es';
+import { llamaCppDiagnostics__settings_are_in_the_url } from '@/strings/messages/llamaCppDiagnostics__settings_are_in_the_url/es';
+import { llamaCppDiagnostics__show_more_results } from '@/strings/messages/llamaCppDiagnostics__show_more_results/es';
+import { llamaCppDiagnostics__stop_and_go_back } from '@/strings/messages/llamaCppDiagnostics__stop_and_go_back/es';
+import { llamaCppDiagnostics__url_update_failed } from '@/strings/messages/llamaCppDiagnostics__url_update_failed/es';
 import { llamaCppPerformance__add_models } from '@/strings/messages/llamaCppPerformance__add_models/es';
 import { llamaCppPerformance__advanced_conditions } from '@/strings/messages/llamaCppPerformance__advanced_conditions/es';
 import { llamaCppPerformance__back_to_settings } from '@/strings/messages/llamaCppPerformance__back_to_settings/es';
@@ -6532,6 +6548,22 @@ export const catalog = {
   llamaCppBrowser__size_not_checked,
   llamaCppBrowser__unavailable_feature,
   llamaCppBrowser__unavailable_in_standalone,
+  llamaCppDiagnostics__context_tokens,
+  llamaCppDiagnostics__go_back,
+  llamaCppDiagnostics__image_bf16_storage,
+  llamaCppDiagnostics__inference_diagnostics,
+  llamaCppDiagnostics__open_diagnostics,
+  llamaCppDiagnostics__profiling_requires_wasm64_profile,
+  llamaCppDiagnostics__reset_settings,
+  llamaCppDiagnostics__retry_url_update,
+  llamaCppDiagnostics__runtime_default,
+  llamaCppDiagnostics__runtime_options,
+  llamaCppDiagnostics__select_all_saved_models,
+  llamaCppDiagnostics__select_search_results,
+  llamaCppDiagnostics__settings_are_in_the_url,
+  llamaCppDiagnostics__show_more_results,
+  llamaCppDiagnostics__stop_and_go_back,
+  llamaCppDiagnostics__url_update_failed,
   llamaCppPerformance__add_models,
   llamaCppPerformance__advanced_conditions,
   llamaCppPerformance__back_to_settings,

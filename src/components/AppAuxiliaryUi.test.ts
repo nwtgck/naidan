@@ -123,15 +123,6 @@ vi.mock('@/features/transformers-js/model-support-investigation', () => ({
   }),
 }));
 
-vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceModal.vue', () => ({
-  default: {
-    name: 'LlamaCppBrowserPerformanceModal',
-    props: ['isOpen', 'defaultModel'],
-    emits: ['close'],
-    template: '<div data-testid="llama-performance-stub" :data-open="isOpen"><button @click="$emit(\'close\')">close</button></div>',
-  },
-}));
-
 vi.mock('@/components/SettingsModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
@@ -223,27 +214,18 @@ describe('AppAuxiliaryUi', () => {
     expect(mounted.wrapper.findComponent({ name: 'ImportExportModalHost' }).exists()).toBe(true);
   });
 
-  it('opens performance inside Settings, restores the origin and retains the mounted results host', async () => {
+  it('does not retain a diagnostics modal host inside Settings', async () => {
     route.query = { settings: 'llama-cpp-browser' };
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' }, attachTo: document.body });
-    await flushPromises();
-    const button = wrapper.get<HTMLButtonElement>('[data-testid="settings-open-model-support-investigation-stub"]');
-    button.element.focus();
-    await wrapper.vm.TEST_ONLY.openLlamaCppPerformance({ defaultModel: 'local.gguf' });
-    await flushPromises();
-    expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(false);
-    expect(wrapper.get('[data-testid="settings-modal"]').attributes('data-suspended')).toBe('true');
-    expect(wrapper.get('[data-testid="llama-performance-stub"]').attributes('data-open')).toBe('true');
-    wrapper.vm.TEST_ONLY.closeLlamaCppPerformance();
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
     await flushPromises();
     expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(true);
     expect(wrapper.get('[data-testid="settings-modal"]').attributes('data-suspended')).toBe('false');
-    expect(document.activeElement).toBe(button.element);
-    delete route.query.settings;
-    await flushPromises();
-    expect(wrapper.find('[data-testid="llama-performance-stub"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="llama-performance-stub"]').attributes('data-open')).toBe('false');
-    wrapper.unmount();
+    expect(wrapper.findComponent({ name: 'LlamaCppBrowserDiagnosticsPage' }).exists()).toBe(false);
   });
 
   it.each(['/', '/chat/chat-1', '/settings/connection'])('keeps model previews at %s free of URL-driven settings and navigation', async path => {

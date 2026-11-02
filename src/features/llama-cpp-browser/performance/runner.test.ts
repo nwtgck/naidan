@@ -4,7 +4,7 @@ import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from '@/feature
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { createPerformanceRunner } from './runner';
-import { planSchema, snapshotSchema, type MeasurementMode } from './types';
+import { maximumExecutionIntervals, planSchema, snapshotSchema, type MeasurementMode } from './types';
 import { summarizePerformance, performanceFindings } from './summary';
 import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 
@@ -893,3 +893,22 @@ describe('interrupt only the current performance trial', () => {
     expect(result.execution!.intervals.length).toBeLessThan(8192);
   });
 });
+
+it('runs large plans beyond the old model/step limits and bounds only orchestration evidence', async () => {
+  const test = setup({ models: 160, repeats: 5, mode: 'both', diagnostics: 'placement' });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      test.runner.stop();
+    },
+  };
+  expect(test.plan.steps.length).toBeGreaterThan(1024);
+  await test.start();
+  const result = snapshotSchema.parse(test.runner.snapshot());
+  expect(result.status).toBe('completed');
+  expect(result.plan.models).toHaveLength(160);
+  expect(result.trials).toHaveLength(test.plan.steps.length);
+  expect(result.trials.every(trial => trial.status === 'succeeded')).toBe(true);
+  expect(result.execution?.intervals).toHaveLength(maximumExecutionIntervals);
+  expect(result.execution?.droppedIntervals).toBeGreaterThan(0);
+  expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(320);
+}, 30000);

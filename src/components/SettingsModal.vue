@@ -20,7 +20,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeImportTab.vue') });
 const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
 const LlamaCppBrowserManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue') });
-const LlamaCppBrowserPerformanceEntry = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceEntry.vue'));
+const LlamaCppBrowserDiagnosticsEntry = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserDiagnosticsEntry.vue'));
 const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsManager.vue') });
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
@@ -44,8 +44,6 @@ import { lazyStrings, ensureStrings } from '@/strings';
 const props = defineProps<{
   isOpen: boolean,
   suspended?: boolean,
-  performanceLoading?: boolean,
-  performanceError?: string,
   navigation?: 'route' | 'local',
   requestedTab?: string,
 }>();
@@ -63,7 +61,6 @@ const usesLocalNavigation = computed(() => {
 
 const emit = defineEmits<{
   (e: 'close'): void,
-  (e: 'openLlamaCppPerformance', defaultModel: string | undefined): void,
   (e: 'openModelSupportInvestigation', modelId: string): void,
 }>();
 
@@ -293,6 +290,30 @@ async function confirmDiscardConnectionChanges({ isCurrent }: { isCurrent: () =>
   return true;
 }
 
+const diagnosticsLoading = ref(false), diagnosticsError = ref('');
+
+async function openDiagnostics(): Promise<void> {
+  if (diagnosticsLoading.value) {
+    return;
+  }
+  diagnosticsLoading.value = true;
+  diagnosticsError.value = '';
+  const version = modalRequestVersion;
+  const isCurrent = () => props.isOpen && !props.suspended && version === modalRequestVersion;
+  try {
+    if (await confirmDiscardConnectionChanges({ isCurrent }) && isCurrent()) {
+      const failure = await router.push('/llama-cpp-browser/diagnostics');
+      if (failure) {
+        diagnosticsError.value = failure.message;
+      }
+    }
+  } catch (cause) {
+    diagnosticsError.value = cause instanceof Error ? cause.message : String(cause);
+  } finally {
+    diagnosticsLoading.value = false;
+  }
+}
+
 async function handleCancel() {
   const version = modalRequestVersion;
   const isCurrent = () => props.isOpen && version === modalRequestVersion;
@@ -385,7 +406,7 @@ defineExpose({
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
                 <LlamaCppBrowserManager presentation="settings" :suspended="props.suspended" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
-                <LlamaCppBrowserPerformanceEntry :loading="props.performanceLoading === true" :error="props.performanceError" tw-class="mt-5" @open="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)" />
+                <LlamaCppBrowserDiagnosticsEntry :loading="diagnosticsLoading" :error="diagnosticsError" tw-class="mt-5" @open="openDiagnostics" />
               </div>
 
               <!-- Recipes Tab -->

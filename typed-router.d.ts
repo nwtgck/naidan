@@ -117,6 +117,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/llama-cpp-browser/diagnostics': RouteRecordInfo<
+      '/llama-cpp-browser/diagnostics',
+      '/llama-cpp-browser/diagnostics',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings/': RouteRecordInfo<
       '/settings/',
       '/settings',
@@ -238,6 +245,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/live-conversation.vue': {
       routes:
         | '/live-conversation'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/llama-cpp-browser/diagnostics.vue': {
+      routes:
+        | '/llama-cpp-browser/diagnostics'
       views:
         | never
       pathParamNames:
