@@ -531,7 +531,8 @@ describe('local GGUF manager', () => {
     const wrapper = render();
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-cpp-browser-unavailable"]').text()).toContain('failed');
-    expect(wrapper.get('fieldset').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid=llama-hf-search-query]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid=llama-hf-search-submit]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="llama-cpp-browser-file"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="llama-cpp-browser-profile"]').exists()).toBe(true);
     const file = new File(['fixture'], 'local.gguf');

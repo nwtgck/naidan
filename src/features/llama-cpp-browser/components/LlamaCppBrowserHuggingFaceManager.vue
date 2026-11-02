@@ -3,7 +3,6 @@ import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-brows
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
-import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { destinationKey, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
@@ -15,7 +14,7 @@ import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { AlertCircleIcon, CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
+import { AlertCircleIcon, CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
 import LlamaCppBrowserModelConfiguration from './LlamaCppBrowserModelConfiguration.vue';
 import { matchesQuantizationChoice, quantizationChoices, preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
@@ -193,11 +192,16 @@ async function refresh(): Promise<void> {
   }
 }
 
-async function inspect(): Promise<void> {
+async function inspect({ input: requestedInput }: { input: string }): Promise<void> {
   if (active.value || props.disabled || deleting.value) {
     return;
   }
   repositorySearch.value?.cancelPending();
+  // The draft is not the selected repository: a search result may have a
+  // different ID. Invalidate the previous selection even for an unchanged
+  // query so a failed replacement cannot enable downloading the old model.
+  const submittedQuery = input.value.trim();
+  checkedInput.value = undefined;
   inspecting = true;
   const controller = new AbortController();
   active.value = controller;
@@ -205,7 +209,7 @@ async function inspect(): Promise<void> {
   failureContext.value = undefined;
   let readingMetadata = false;
   try {
-    const submittedInput = input.value.trim();
+    const submittedInput = requestedInput.trim();
     const { requestedVariant } = parseRepository({ input: submittedInput });
     const previousCandidate = selected.value?.label;
     const previousProjector = selectedProjector.value?.path ?? projector.value;
@@ -242,7 +246,7 @@ async function inspect(): Promise<void> {
       multimodal.value = 'off';
     }
     catalog.value = next;
-    checkedInput.value = submittedInput;
+    checkedInput.value = submittedQuery;
   } catch {
     if (!controller.signal.aborted) {
       error.value = 'failed';
@@ -405,7 +409,7 @@ watch([() => props.modelPreset, () => props.disabled, active], ([preset, disable
   // Privacy exception: an explicit llama-cpp-browser-model URL requests this
   // repository's metadata. An ordinary mount must not inspect or prefetch it,
   // and even a model URL never authorizes starting a payload download.
-  void inspect();
+  void inspect({ input: preset.input });
 }, { immediate: true, flush: 'post' });
 watch(queue.changed, () => {
   recheckLocalFiles();
@@ -431,7 +435,7 @@ async function inspectRepository({ input: requestedInput }: { input: string }): 
     return;
   }
   input.value = requestedInput;
-  await inspect();
+  await inspect({ input: requestedInput });
 }
 
 const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
@@ -443,22 +447,13 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
     <div tw-class="grid grid-cols-1 items-center gap-x-3 sm:grid-cols-[minmax(0,1fr)_auto]">
       <div tw-class="flex min-h-8 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <h3 :tw-class="['flex items-center gap-2 text-sm text-gray-800', isSettingsTypography ? 'font-semibold dark:text-gray-300' : 'font-bold dark:text-white']"><DownloadIcon tw-class="w-4 h-4 text-blue-500" />Hugging Face</h3>
-        <span tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository() }}</span>
       </div>
       <LlamaCppBrowserDownloadDestination :view="downloadDestination.view" :disabled="disabled || deleting" :layout-file="catalog && selectedFiles[0] ? { repository: catalog.repository, path: selectedFiles[0].path } : undefined" />
     </div>
     <p v-if="destinationFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
-    <fieldset :disabled="disabled || active !== undefined || deleting || searching" tw-class="space-y-3 disabled:opacity-50">
-      <div tw-class="space-y-2">
-        <label :for="`${id}-repository`" :tw-class="['block font-semibold text-gray-600 dark:text-gray-300', isSettingsTypography ? 'text-sm' : 'text-xs']">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository_url_or_id() }}</label>
-        <div tw-class="flex flex-col sm:flex-row gap-2">
-          <input :id="`${id}-repository`" v-model="input" data-testid="llama-hf-repository" placeholder="owner/repository" :tw-class="['min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all', isSettingsTypography ? 'dark:text-gray-300' : 'dark:text-gray-100']" @keydown.enter.prevent="inspect" />
-          <LlamaCppBrowserModelActionButton data-testid="llama-hf-inspect" size="regular" :disabled="!input.trim()" tw-class="shrink-0" @click="inspect"><FolderSearchIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</LlamaCppBrowserModelActionButton>
-        </div>
-      </div>
-    </fieldset>
-    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" :disabled="disabled || active !== undefined || deleting" :repository-input="input" scroll-owner="results" @busy="searching = $event" @select="inspectRepository({ input: $event })" />
+    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" v-model:input="input" :disabled="disabled || deleting" :selection-status="active !== undefined ? 'loading' : 'idle'" direct-action="inspect" :input-error="undefined" scroll-owner="results" @busy="searching = $event" @select="inspect({ input: $event })" />
     <fieldset v-if="catalog" :disabled="disabled || active !== undefined || deleting || searching" tw-class="space-y-3 disabled:opacity-50">
+      <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: catalog.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-repository-link" tw-class="inline-flex items-center gap-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 break-all"><span>Hugging Face · {{ catalog.repository }}</span><ExternalLinkIcon tw-class="w-3 h-3 shrink-0" /></a>
       <div tw-class="flex flex-wrap items-center gap-x-4 gap-y-3" data-testid="llama-hf-options">
         <LlamaCppBrowserModelConfiguration v-model:quantization="quantization" v-model:multimodal="multimodal" :projector="selectedProjector?.path ?? ''" :choices="choices" :projectors="catalog.projectors" :disabled="disabled || active !== undefined || deleting || searching" :multimodal-description-id="`${id}-multimodal-help`" @update:projector="projector = $event" />
         <p v-if="catalog.models.length === 0" tw-class="w-full text-xs text-gray-500">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found() }}</p>
@@ -489,7 +484,6 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
     <details v-if="catalog" ref="details" data-testid="llama-hf-details" tw-class="text-xs text-gray-500 dark:text-gray-400">
       <summary tw-class="cursor-pointer font-semibold py-1 hover:text-blue-600 dark:hover:text-blue-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_details() }}</summary>
       <div tw-class="mt-3 space-y-4">
-        <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: catalog.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-repository-link" tw-class="inline-flex items-center gap-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 break-all"><span>Hugging Face · {{ catalog.repository }}</span><ExternalLinkIcon tw-class="w-3 h-3 shrink-0" /></a>
         <div v-if="modelLaunchUrl" tw-class="min-w-0 space-y-1">
           <p :id="`${id}-model-launch-link`" tw-class="font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__link_to_open_in_naidan() }}</p>
           <div tw-class="flex items-start gap-2">

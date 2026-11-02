@@ -167,8 +167,8 @@ describe('destination-bound model downloads', () => {
     const catalogView = mount(LlamaCppBrowserModelSuggestions, { props: { models: [], disabled: false, defaultModel: undefined, defaultActionDisabled: false, suggestions: [suggestion] } });
     const chatPicker = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false } });
     wrappers.push(repository, catalogView, chatPicker);
-    await chatPicker.get('[data-testid="chat-model-repository"]').setValue(catalog.repository);
-    await chatPicker.get('[data-testid="chat-model-repository-check"]').trigger('click');
+    await chatPicker.get('[data-testid="llama-hf-search-query"]').setValue(`https://huggingface.co/${catalog.repository}`);
+    await chatPicker.get('[data-testid="llama-hf-search-submit"]').trigger('click');
     await flushPromises();
     expect(repository.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
     expect(catalogView.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');

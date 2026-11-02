@@ -7,7 +7,7 @@ import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
 
 function render() {
-  const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: false, repositoryInput: '', scrollOwner: 'results' } });
+  const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: false, input: '', directAction: 'inspect', selectionStatus: 'idle', inputError: undefined, scrollOwner: 'results' } });
   return {
     wrapper,
     [Symbol.dispose]() {
@@ -30,7 +30,7 @@ beforeEach(async () => {
 
 describe('explicit Hugging Face model search', () => {
   it('prepares a disabled search view without searching when mounted, revealed, or focused', async () => {
-    const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: true, repositoryInput: '', scrollOwner: 'results' } });
+    const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: true, input: '', directAction: 'inspect', selectionStatus: 'idle', inputError: undefined, scrollOwner: 'results' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -95,7 +95,7 @@ describe('explicit Hugging Face model search', () => {
 
   it('keeps expandable guidance outside the sticky controls without replacing the search input', async () => {
     const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, {
-      props: { disabled: false, repositoryInput: '', scrollOwner: 'parent' },
+      props: { disabled: false, input: '', directAction: 'inspect', selectionStatus: 'idle', inputError: undefined, scrollOwner: 'parent' },
       global: { stubs: { CspMessageHint: { template: '<details data-testid="search-guidance"><summary>Connection guidance</summary><button>Export data</button></details>' } } },
     });
     using _cleanup = {
@@ -213,26 +213,26 @@ describe('explicit Hugging Face model search', () => {
     expect(view.wrapper.attributes('aria-busy')).toBe('false');
   });
 
-  it('retains a successful list when the query is cleared or the direct repository input changes', async () => {
+  it('retains a successful list when the query is cleared or the input changes externally', async () => {
     vi.mocked(searchModels).mockResolvedValue({ results: [{ id: 'owner/model' }], nextCursor: undefined });
     using view = render();
     await submit({ wrapper: view.wrapper, query: 'model' });
     await view.wrapper.get('[data-testid="llama-hf-search-query"]').setValue('');
     expect(view.wrapper.get('[data-testid="llama-hf-search-result"]').text()).toContain('owner/model');
     expect(view.wrapper.get('[data-testid="llama-hf-search-result-query"]').text()).toBe('Results for “model”');
-    await view.wrapper.setProps({ repositoryInput: 'other/repository' });
+    await view.wrapper.setProps({ input: 'other/repository' });
     expect(view.wrapper.get('[data-testid="llama-hf-search-result"]').text()).toContain('owner/model');
     expect(searchModels).toHaveBeenCalledOnce();
   });
 
-  it.each(['repository', 'disabled', 'unmount'] as const)('aborts pending results on %s and ignores completion', async change => {
+  it.each(['input', 'disabled', 'unmount'] as const)('aborts pending results on %s and ignores completion', async change => {
     const pending = Promise.withResolvers<Awaited<ReturnType<typeof searchModels>>>();
     vi.mocked(searchModels).mockReturnValue(pending.promise);
     using view = render();
     await submit({ wrapper: view.wrapper, query: 'model' });
     const signal = vi.mocked(searchModels).mock.calls[0]![0].signal;
     switch (change) {
-    case 'repository': await view.wrapper.setProps({ repositoryInput: 'other/repo' });
+    case 'input': await view.wrapper.setProps({ input: 'other/repo' });
       break;
     case 'disabled': await view.wrapper.setProps({ disabled: true });
       break;
@@ -514,7 +514,7 @@ describe('explicit Hugging Face model search', () => {
     await view.wrapper.get('[data-testid="llama-hf-search-more"]').trigger('click');
     await flushPromises();
     await view.wrapper.findAll('[data-testid="llama-hf-search-result"]')[0]!.trigger('click');
-    await view.wrapper.setProps({ repositoryInput: 'owner/first', disabled: true });
+    await view.wrapper.setProps({ input: 'owner/first', disabled: true });
     expect(view.wrapper.findAll('[data-testid="llama-hf-search-result"]')).toHaveLength(2);
     expect(view.wrapper.find('[data-testid="llama-hf-search-new-results"]').exists()).toBe(true);
     await view.wrapper.setProps({ disabled: false });
@@ -604,4 +604,146 @@ describe('explicit Hugging Face model search', () => {
     await flushPromises();
     expect(vi.mocked(searchModels).mock.calls[1]?.[0].numParameters).toBeUndefined();
   });
+});
+
+describe('one input for model search and explicit repository URLs', () => {
+  it('uses one labelled input and switches the action without sending any request', async () => {
+    using view = render();
+    const query = view.wrapper.get<HTMLInputElement>('[data-testid="llama-hf-search-query"]');
+    expect(view.wrapper.findAll('input')).toHaveLength(1);
+    expect(view.wrapper.get(`label[for="${query.attributes('id')}"]`).text()).toBe('Find or open models on Hugging Face');
+    expect(query.attributes('placeholder')).toBe('Search by model name or paste a URL');
+    expect(query.attributes('maxlength')).toBeUndefined();
+    await query.setValue('owner/repo');
+    expect(view.wrapper.get('[data-testid="llama-hf-search-submit"]').text()).toBe('Search');
+    await query.setValue('https://huggingface.co/owner/repo');
+    expect(view.wrapper.get('[data-testid="llama-hf-search-submit"]').text()).toBe('Check model');
+    await view.wrapper.setProps({ directAction: 'choose' });
+    expect(view.wrapper.get('[data-testid="llama-hf-search-submit"]').text()).toBe('Choose');
+    expect(searchModels).not.toHaveBeenCalled();
+    expect(view.wrapper.emitted('select')).toBeUndefined();
+  });
+
+  it.each(['owner/repository', 'Qwen/Qwen3', 'owner/repository:Q4_K_M', 'foo/bar/baz', 'hf.co/owner/repository'])('always searches the literal %s without fallback or automatic selection', async query => {
+    using view = render();
+    await submit({ wrapper: view.wrapper, query });
+    expect(searchModels).toHaveBeenCalledExactlyOnceWith({ query, cursor: undefined, numParameters: undefined, signal: expect.any(AbortSignal) });
+    expect(view.wrapper.emitted('select')).toBeUndefined();
+    expect(view.wrapper.find('[data-testid="llama-hf-search-empty"]').exists()).toBe(true);
+    vi.mocked(searchModels).mockResolvedValue({ results: [{ id: 'owner/repository' }], nextCursor: undefined });
+    await submit({ wrapper: view.wrapper, query });
+    expect(view.wrapper.emitted('select')).toBeUndefined();
+    await view.wrapper.get('[data-testid="llama-hf-search-result"]').trigger('click');
+    expect(view.wrapper.emitted('select')).toEqual([['owner/repository']]);
+    expect(view.wrapper.get<HTMLInputElement>('[data-testid="llama-hf-search-query"]').element.value).toBe(query);
+  });
+
+  it.each(['https://huggingface.co/owner/repo', 'https://hf.co/owner/repo:Q4_K_M', 'https://huggingface.co/'])('delegates %s directly without searching', async query => {
+    using view = render();
+    await submit({ wrapper: view.wrapper, query });
+    expect(searchModels).not.toHaveBeenCalled();
+    expect(view.wrapper.emitted('select')).toEqual([[query]]);
+    expect(view.wrapper.find('[data-testid="llama-hf-search-empty"]').exists()).toBe(false);
+  });
+
+  it('preserves long URLs and ignores an invalid search filter for direct inspection', async () => {
+    using view = render();
+    await view.wrapper.get('[data-testid="llama-hf-search-filter-toggle"]').trigger('click');
+    await view.wrapper.get('[data-testid="llama-hf-search-minimum"]').setValue('8');
+    await view.wrapper.get('[data-testid="llama-hf-search-maximum"]').setValue('4');
+    await submit({ wrapper: view.wrapper, query: 'model' });
+    expect(view.wrapper.find('[data-testid="llama-hf-search-filter-error"]').exists()).toBe(true);
+    const url = `https://huggingface.co/owner/repo/blob/main/${'model-'.repeat(40)}Q4_K_M.gguf`;
+    await submit({ wrapper: view.wrapper, query: url });
+    expect(view.wrapper.emitted('select')).toEqual([[url]]);
+    expect(searchModels).not.toHaveBeenCalled();
+    expect(view.wrapper.find('[data-testid="llama-hf-search-filter-error"]').exists()).toBe(false);
+    expect(view.wrapper.get('[data-testid="llama-hf-search-filter-toggle"]').attributes('disabled')).toBeDefined();
+    expect(view.wrapper.get('[data-testid="llama-hf-search-minimum"]').attributes('disabled')).toBeDefined();
+    await submit({ wrapper: view.wrapper, query: 'owner/repo' });
+    expect(view.wrapper.get('[data-testid="llama-hf-search-filter-toggle"]').attributes('disabled')).toBeUndefined();
+    expect(view.wrapper.find('[data-testid="llama-hf-search-filter-error"]').exists()).toBe(true);
+    expect(searchModels).not.toHaveBeenCalled();
+  });
+
+  it.each(['isComposing', 'keyCode', 'which'] as const)('does not inspect a URL on an IME confirmation (%s)', async property => {
+    using view = render();
+    const query = view.wrapper.get('[data-testid="llama-hf-search-query"]');
+    await query.setValue('https://hf.co/owner/repo');
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    Object.defineProperty(event, property, { value: property === 'isComposing' ? true : 229 });
+    query.element.dispatchEvent(event);
+    await flushPromises();
+    expect(view.wrapper.emitted('select')).toBeUndefined();
+    expect(event.defaultPrevented).toBe(false);
+    await query.trigger('keydown', { key: 'Enter' });
+    expect(view.wrapper.emitted('select')).toEqual([['https://hf.co/owner/repo']]);
+    expect(searchModels).not.toHaveBeenCalled();
+  });
+
+  it.each(['success', 'failure'] as const)('ignores a late search %s after switching the same input to a URL', async outcome => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof searchModels>>>();
+    vi.mocked(searchModels).mockReturnValue(pending.promise);
+    using view = render();
+    await submit({ wrapper: view.wrapper, query: 'qwen' });
+    const signal = vi.mocked(searchModels).mock.calls[0]![0].signal;
+    await submit({ wrapper: view.wrapper, query: 'https://hf.co/owner/repo' });
+    expect(signal.aborted).toBe(true);
+    expect(view.wrapper.emitted('select')).toEqual([['https://hf.co/owner/repo']]);
+    if (outcome === 'success') {
+      pending.resolve({ results: [{ id: 'stale/model' }], nextCursor: 'stale' });
+    } else {
+      pending.reject(new Error('late error'));
+    }
+    await flushPromises();
+    expect(view.wrapper.find('[data-testid="llama-hf-search-results"]').exists()).toBe(false);
+    expect(view.wrapper.find('[data-testid="llama-hf-search-error"]').exists()).toBe(false);
+    expect(view.wrapper.emitted('busy')?.at(-1)).toEqual([false]);
+  });
+
+  it('cancels an in-flight page before opening a URL and never attaches the stale page', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof searchModels>>>();
+    vi.mocked(searchModels).mockResolvedValueOnce({ results: [{ id: 'owner/model' }], nextCursor: 'page-2' }).mockReturnValueOnce(pending.promise);
+    using view = render();
+    await submit({ wrapper: view.wrapper, query: 'model' });
+    await view.wrapper.get('[data-testid="llama-hf-search-more"]').trigger('click');
+    const signal = vi.mocked(searchModels).mock.calls[1]![0].signal;
+    await submit({ wrapper: view.wrapper, query: 'https://hf.co/owner/repo' });
+    expect(signal.aborted).toBe(true);
+    pending.resolve({ results: [{ id: 'old/page' }], nextCursor: 'page-3' });
+    await flushPromises();
+    expect(view.wrapper.find('[data-testid="llama-hf-search-results"]').exists()).toBe(false);
+    expect(view.wrapper.find('[data-testid="llama-hf-search-more"]').exists()).toBe(false);
+    expect(view.wrapper.emitted('select')).toEqual([['https://hf.co/owner/repo']]);
+  });
+
+  it('blocks input and duplicate actions while the parent checks metadata without restarting on completion', async () => {
+    using view = render();
+    await submit({ wrapper: view.wrapper, query: 'https://hf.co/owner/repo' });
+    await view.wrapper.setProps({ selectionStatus: 'loading' });
+    expect(view.wrapper.attributes('aria-busy')).toBe('true');
+    expect(view.wrapper.get('[data-testid="llama-hf-search-query"]').attributes('disabled')).toBeDefined();
+    await view.wrapper.get('[data-testid="llama-hf-search-query"]').trigger('keydown', { key: 'Enter' });
+    await view.wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+    expect(view.wrapper.emitted('select')).toHaveLength(1);
+    await view.wrapper.setProps({ selectionStatus: 'idle' });
+    expect(view.wrapper.attributes('aria-busy')).toBe('false');
+    expect(view.wrapper.get('[data-testid="llama-hf-search-submit"]').attributes('disabled')).toBeUndefined();
+    expect(view.wrapper.emitted('select')).toHaveLength(1);
+    expect(searchModels).not.toHaveBeenCalled();
+  });
+});
+
+it('associates the direct-input error with the unified input and clears the invalid state reactively', async () => {
+  using view = render();
+  await view.wrapper.setProps({ inputError: 'Enter a model page URL.' });
+  const query = view.wrapper.get('[data-testid="llama-hf-search-query"]');
+  const error = view.wrapper.get('[role="alert"]');
+  expect(query.attributes('aria-invalid')).toBe('true');
+  expect(query.attributes('aria-describedby')).toBe(error.attributes('id'));
+  expect(error.text()).toBe('Enter a model page URL.');
+  await view.wrapper.setProps({ inputError: undefined });
+  expect(query.attributes('aria-invalid')).toBeUndefined();
+  expect(query.attributes('aria-describedby')).toBeUndefined();
+  expect(view.wrapper.find('[role="alert"]').exists()).toBe(false);
 });

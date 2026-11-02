@@ -100,7 +100,7 @@ describe('reusable repository catalog and shared model manager', () => {
     await view.findAll('[data-testid="llama-repository-catalog-inspect"]')[index]!.trigger('click');
     await flushPromises();
     expect(discoverRepository).toHaveBeenCalledWith(expect.objectContaining({ input: repositoryCatalog[index]!.input }));
-    expect(view.get<HTMLInputElement>('[data-testid="llama-hf-repository"]').element.value).toBe(repositoryCatalog[index]!.input);
+    expect(view.get<HTMLInputElement>('[data-testid="llama-hf-search-query"]').element.value).toBe(repositoryCatalog[index]!.input);
     expect(modelConfigurationControl({ view: view, field: 'quantization' }).props('modelValue')).toContain('Q4_K_M');
     expect(modelConfigurationControl({ view: view, field: 'companion' }).props('modelValue')).toBe(families[index]!.projector);
     expect(downloadRepository).not.toHaveBeenCalled();

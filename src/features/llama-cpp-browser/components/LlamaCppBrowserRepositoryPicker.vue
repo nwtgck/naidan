@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon } from 'lucide-vue-next';
+import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, HardDriveIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
@@ -26,7 +26,6 @@ const emit = defineEmits<{
   'select-model': [model: LocalModel],
   'view-change': [view: 'search' | 'configuration'],
 }>();
-const id = useId();
 const input = ref('');
 const catalog = shallowRef<RepositoryCatalog>();
 // Report the view before its DOM changes so the owning panel can retain the
@@ -132,10 +131,9 @@ watch(() => props.disabled, disabled => {
 onUnmounted(reset);
 
 async function checkRepository({ value }: { value: string }): Promise<void> {
-  if (props.disabled) {
+  if (props.disabled || active.value) {
     return;
   }
-  input.value = value;
   reset();
   const controller = new AbortController();
   active.value = controller;
@@ -167,24 +165,12 @@ async function checkRepository({ value }: { value: string }): Promise<void> {
   }
 }
 
-function submit({ event }: { event: KeyboardEvent }): void {
-  if (!event.isComposing && event.keyCode !== 229) {
-    void checkRepository({ value: input.value });
-  }
-}
-
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
   <div data-testid="chat-repository-picker" tw-class="space-y-5 text-left">
-    <div v-if="catalog === undefined" tw-class="space-y-2">
-      <label :for="`${id}-repository`" tw-class="text-xs font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__specify_a_repository() }}</label>
-      <div tw-class="flex gap-2">
-        <input :id="`${id}-repository`" v-model="input" data-testid="chat-model-repository" placeholder="owner/model" :disabled="disabled" tw-class="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" @keydown.enter="submit({ event: $event })" />
-        <LlamaCppBrowserModelActionButton data-testid="chat-model-repository-check" size="regular" :disabled="disabled || !input.trim() || active !== undefined" tw-class="shrink-0" @click="checkRepository({ value: input })"><Loader2Icon v-if="active" aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500 dark:text-blue-400 motion-reduce:animate-none" /><FolderSearchIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserRepositoryPicker__check_repository() }}</LlamaCppBrowserModelActionButton>
-      </div>
-    </div>
+    <LlamaCppBrowserHuggingFaceSearch v-show="catalog === undefined" v-model:input="input" :disabled="disabled || catalog !== undefined" :selection-status="active !== undefined ? 'loading' : 'idle'" direct-action="inspect" :input-error="undefined" scroll-owner="parent" @select="checkRepository({ value: $event })" />
     <p v-if="error" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__could_not_check_repository() }}</p>
     <CspMessageHint v-if="error && failureContext === 'metadata'" :target="{ kind: 'huggingface-metadata' }" activity-for-display-only="model-information" presentation="error" />
     <section v-if="catalog" data-testid="chat-model-configuration" tw-class="space-y-4">
@@ -207,6 +193,5 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <CspMessageHint v-if="saved.status === 'missing'" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
       </div>
     </section>
-    <LlamaCppBrowserHuggingFaceSearch v-show="catalog === undefined" :disabled="disabled || active !== undefined || catalog !== undefined" :repository-input="input" scroll-owner="parent" @select="checkRepository({ value: $event })" />
   </div>
 </template>
