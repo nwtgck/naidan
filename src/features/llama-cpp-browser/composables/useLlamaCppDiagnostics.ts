@@ -1,4 +1,4 @@
-import type { DiagnosticsQueryConfig } from '@/features/llama-cpp-browser/diagnostics/query-parameters';
+import { isDiagnosticsEditValid, type DiagnosticsQueryConfig } from '@/features/llama-cpp-browser/diagnostics/query-parameters';
 import { diagnosticsModelSelection, resolveDiagnosticsModels, type DiagnosticsModelSelection } from '@/features/llama-cpp-browser/diagnostics/model-selection';
 import { buildAllowsGpuProfiling, gpuProfilingUnavailableReason } from '@/features/llama-cpp-browser/performance/profiling-mode';
 import { resolvePerformanceModelInput } from '@/features/llama-cpp-browser/performance/model-input';
@@ -107,6 +107,9 @@ export function useLlamaCppDiagnostics() {
   const valid = computed(() => !draftResolution.value.errors.length && selectedModels.value.length > 0 && selectedModels.value.length === draftResolution.value.selected.length
     && notes.value.length <= 10000 && new Set(selectedModels.value.map(model => model.modelId)).size === selectedModels.value.length
     && !profileConflict.value && runtimeOptionsSchema.safeParse({ profile: profile.value, contextTokens: contextTokens.value, visionBf16Storage: visionBf16Storage.value }).success
+    // The runner accepts millisecond precision; the page/URL accepts whole
+    // minutes. Do not run a fractional draft that the URL codec rejected.
+    && isDiagnosticsEditValid({ patch: { timeoutMinutes: timeoutMinutes.value } })
     && protocolSchema.safeParse({ mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
   const canStart = computed(() => inventoryReady.value && !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value && (mode.value === 'standard' || profilingSupported.value));
   const callCount = computed(() => {

@@ -834,3 +834,133 @@ describe('Diagnostics page URL contract', () => {
     expect(signal?.aborted).toBe(true);
   });
 });
+
+describe('Diagnostics page layout and start transaction', () => {
+  it('bounds one scrollable body between fixed header and actions when details expand', async () => {
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
+    await flushPromises();
+    const page = wrapper.get('[data-testid="llama-diagnostics-page"]');
+    const frame = wrapper.get('[data-testid="llama-diagnostics-frame"]');
+    const body = wrapper.get('[data-testid="llama-diagnostics-scroll"]');
+    const header = wrapper.get('[data-testid="llama-diagnostics-header"]');
+    const actions = wrapper.get('[data-testid="llama-diagnostics-actions"]');
+    // jsdom cannot measure layout. Assert the sizing/scroll ownership contract;
+    // wheel/touch reachability is also checked in an isolated browser fixture.
+    expect(page.classes()).toEqual(expect.arrayContaining(['h-full', 'min-h-0', 'overflow-hidden']));
+    expect(page.classes()).not.toContain('overflow-y-auto');
+    expect(frame.classes()).toEqual(expect.arrayContaining(['h-full', 'min-h-0', 'flex', 'flex-col']));
+    expect(frame.classes()).not.toContain('min-h-full');
+    expect(body.classes()).toEqual(expect.arrayContaining(['flex-1', 'min-h-0', 'overflow-y-auto']));
+    expect(header.classes()).toContain('shrink-0');
+    expect(actions.classes()).toContain('shrink-0');
+    expect(wrapper.get('[data-testid="llama-diagnostics-runtime"]').classes()).toContain('min-w-0');
+    expect(header.element.parentElement).toBe(frame.element);
+    expect(actions.element.parentElement).toBe(frame.element);
+    for (const id of ['llama-performance-saved-models', 'llama-diagnostics-conditions']) {
+      const details = wrapper.get<HTMLDetailsElement>(`[data-testid="${id}"]`);
+      details.element.open = true;
+      await details.trigger('toggle');
+      expect(body.element.contains(details.element)).toBe(true);
+    }
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await saveManually();
+    const results = wrapper.get<HTMLDetailsElement>('[data-testid="llama-diagnostics-results"]');
+    expect(results.element.open).toBe(true);
+    expect(body.element.contains(results.element)).toBe(true);
+    expect(body.element.contains(actions.element)).toBe(false);
+  });
+
+  it.each(['0.5', '1.5', '0', '61'])('does not run an invalid timeout draft absent from the URL: %s minutes', async value => {
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: 'user/m0' } });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-diagnostics-timeout"]').setValue(value);
+    await flushPromises();
+    expect(router.currentRoute.value.query.timeoutMinutes).toBeUndefined();
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-start"]').element.disabled).toBe(true);
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="llama-diagnostics-timeout"]').setValue('2');
+    await flushPromises();
+    expect(router.currentRoute.value.query.timeoutMinutes).toBe('2');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-start"]').element.disabled).toBe(false);
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await saveManually();
+    expect(mocks.archive.mock.calls[0]![0].snapshot.plan.settings.timeoutMs).toBe(120000);
+  });
+
+  it('locks model drafts and settings while Start waits for its URL commit', async () => {
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: undefined } });
+    await flushPromises();
+    const pending = Promise.withResolvers<void>();
+    using guard = {
+      remove: router.beforeResolve(() => pending.promise),
+      [Symbol.dispose]() {
+        this.remove();
+        pending.resolve();
+      },
+    };
+    await wrapper.get('[data-testid="llama-performance-model-input"]').setValue('user/m0');
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query.model).toBeUndefined();
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="llama-performance-model-input"]').element.matches(':disabled')).toBe(true);
+    expect(wrapper.get('[data-testid="llama-diagnostics-timeout"]').element.matches(':disabled')).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-start"]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-back"]').element.disabled).toBe(false);
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    guard.remove();
+    pending.resolve();
+    await saveManually();
+    expect(router.currentRoute.value.query.model).toEqual(['user/m0']);
+    expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce();
+    expect(mocks.archive.mock.calls[0]![0].snapshot.plan.models.map((model: { modelId: string }) => model.modelId)).toEqual(['user/m0']);
+    expect(wrapper.get('[data-testid="llama-performance-model-input"]').element.matches(':disabled')).toBe(false);
+  });
+
+  it('unlocks the form after the Start URL commit is rejected', async () => {
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: undefined } });
+    await flushPromises();
+    using guard = {
+      remove: router.beforeResolve(() => false),
+      [Symbol.dispose]() {
+        this.remove();
+      },
+    };
+    await wrapper.get('[data-testid="llama-performance-model-input"]').setValue('user/m0');
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-diagnostics-query-error"]').exists()).toBe(true);
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="llama-performance-model-input"]').element.matches(':disabled')).toBe(false);
+    expect(wrapper.get('[data-testid="llama-diagnostics-timeout"]').element.matches(':disabled')).toBe(false);
+    guard.remove();
+    await wrapper.get('[data-testid="llama-diagnostics-reset"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-diagnostics-query-error"]').exists()).toBe(false);
+  });
+
+  it('allows Back to cancel a pending Start URL commit without launching a run', async () => {
+    wrapper = mount(LlamaCppBrowserDiagnosticsPage, { global: { plugins: [router] }, props: { defaultModel: undefined } });
+    await flushPromises();
+    const pending = Promise.withResolvers<void>();
+    using guard = {
+      remove: router.beforeResolve(to => to.path === '/llama-cpp-browser/diagnostics' ? pending.promise : undefined),
+      [Symbol.dispose]() {
+        this.remove();
+        pending.resolve();
+      },
+    };
+    await wrapper.get('[data-testid="llama-performance-model-input"]').setValue('user/m0');
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-performance-model-input"]').element.matches(':disabled')).toBe(true);
+    await wrapper.get('[data-testid="llama-performance-back"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/');
+    guard.remove();
+    pending.resolve();
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/');
+    expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
+  });
+});
