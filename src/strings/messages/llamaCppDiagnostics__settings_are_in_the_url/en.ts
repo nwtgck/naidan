@@ -1,0 +1,1 @@
+export const llamaCppDiagnostics__settings_are_in_the_url = (): string => "Edited settings, including notes and model names, are included in the URL. Review them before sharing. Results are not included.";

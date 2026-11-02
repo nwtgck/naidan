@@ -1,0 +1,1 @@
+export const llamaCppDiagnostics__profiling_requires_wasm64_profile = (): string => "GPU-Profiling erfordert das wasm64/JSPI-Referenzprofil. Im Standardmodus auto oder webgpu-wasm64-jspi wählen oder die Einstellungen zurücksetzen.";

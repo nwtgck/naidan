@@ -1,18 +1,19 @@
 import { gpuProfilingProfile } from '@/features/llama-cpp-browser/types';
 import { gpuProfilePhaseSchema } from './gpu-profile-schema';
-import type { PerformanceSnapshot, PerformanceTrial } from './types';
+import type { PerformanceSnapshot, PerformanceTrial, PerformanceStep } from './types';
 
-export function isGpuProfileTrial({ trial, snapshot }: { trial: PerformanceTrial, snapshot: PerformanceSnapshot }): boolean {
+export function isGpuProfileTrial({ trial, snapshot, stepsById }: { trial: PerformanceTrial, snapshot: PerformanceSnapshot, stepsById?: ReadonlyMap<string, PerformanceStep> }): boolean {
   return trial.lane === 'gpu-profile' || trial.options.profile === gpuProfilingProfile
-    || snapshot.plan.steps.find(step => step.id === trial.stepId)?.lane === 'gpu-profile'
+    || (stepsById ? stepsById.get(trial.stepId) : snapshot.plan.steps.find(step => step.id === trial.stepId))?.lane === 'gpu-profile'
     || trial.summary?.performance?.gpuProfile !== undefined;
 }
 
 /** Rankings are request- and phase-local. Never merge warm-up, placement,
  * different tensor grids or another model into an apparently precise average. */
 export function summarizeGpuProfiles({ snapshot }: { snapshot: PerformanceSnapshot }) {
-  return snapshot.trials.filter(trial => isGpuProfileTrial({ trial, snapshot })).map(trial => {
-    const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
+  const stepsById = new Map(snapshot.plan.steps.map(step => [step.id, step]));
+  return snapshot.trials.filter(trial => isGpuProfileTrial({ trial, snapshot, stepsById })).map(trial => {
+    const step = stepsById.get(trial.stepId);
     const profile = trial.summary?.performance?.gpuProfile;
     return {
       attemptId: trial.id,

@@ -3,7 +3,7 @@ import { optionsForLane, performanceLanes } from './plan';
 import { nanoid } from 'nanoid';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import { type GenerateInput, type RuntimeOptions, errorCode } from '@/features/llama-cpp-browser/types';
-import { planSchema, type PerformanceSnapshot, type PerformanceStep, type PerformanceTrial } from './types';
+import { maximumExecutionIntervals, planSchema, type PerformanceSnapshot, type PerformanceStep, type PerformanceTrial } from './types';
 import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 import { q8DiagnosticWorkerResultSchema } from './q8-diagnostic-worker-types';
 import { q8KernelBenchmarkProgressSchema } from './q8-kernel-schema';
@@ -19,6 +19,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
   let controller: AbortController | undefined;
   let snapshot: PerformanceSnapshot | undefined;
   let current: PerformanceTrial | undefined;
+  const trialsByStep = new Map<string, PerformanceTrial>();
   let runStarted: number | undefined;
   // A stale click is bound to an attempt ID, never to whichever request is next.
   let activeAttempt: { trialId: string, started: number, control: AbortController } | undefined;
@@ -28,7 +29,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
     }
   };
   const skip = ({ step, options, error, skipReason }: { step: PerformanceStep, options: RuntimeOptions, error: string, skipReason?: PerformanceTrial['skipReason'] }): void => {
-    snapshot?.trials.push({
+    const trial: PerformanceTrial = {
       id: nanoid(),
       stepId: step.id,
       modelIndex: step.modelIndex,
@@ -46,7 +47,9 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       skipReason,
       warnings: [],
       exclusion: [skipReason ? 'dependency-unavailable' : 'failed'],
-    });
+    };
+    snapshot?.trials.push(trial);
+    trialsByStep.set(step.id, trial);
   };
   return {
     snapshot: () => snapshot,
@@ -97,6 +100,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       const execution: NonNullable<PerformanceSnapshot['execution']> = {
         startedAt: date(),
         intervals: [],
+        droppedIntervals: 0,
         visibility: [{ atMs: 0, hidden: hidden() }],
         droppedVisibilityEvents: 0,
       };
@@ -106,7 +110,11 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       const interval = ({ kind, modelIndex, stepId, lane, runtimeSegment }: { kind: typeof execution.intervals[number]['kind'], modelIndex: number, stepId?: string, lane?: PerformanceStep['lane'], runtimeSegment?: number }) => {
         const start = elapsed(), hiddenAtStart = hidden();
         return ({ outcome }: { outcome: typeof execution.intervals[number]['outcome'] }) => {
-          execution.intervals.push({ kind, modelIndex, stepId, lane, runtimeSegment, startedMs: start, elapsedMs: Math.max(0, elapsed() - start), hiddenAtStart, outcome });
+          if (execution.intervals.length < maximumExecutionIntervals) {
+            execution.intervals.push({ kind, modelIndex, stepId, lane, runtimeSegment, startedMs: start, elapsedMs: Math.max(0, elapsed() - start), hiddenAtStart, outcome });
+          } else {
+            execution.droppedIntervals = (execution.droppedIntervals ?? 0) + 1;
+          }
         };
       };
       const visible = async ({ modelIndex, stepId, lane, runtimeSegment }: { modelIndex: number, stepId?: string, lane?: PerformanceStep['lane'], runtimeSegment?: number }) => {
@@ -123,6 +131,14 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       };
       snapshot = { plan, environment, status: 'running', trials: [], modelErrors: [], execution };
       const activeSnapshot = snapshot;
+      trialsByStep.clear();
+      const stepsByLane = new Map<string, PerformanceStep[]>();
+      for (const step of plan.steps) {
+        const key = `${step.modelIndex}/${step.lane ?? 'standard'}`;
+        const steps = stepsByLane.get(key) ?? [];
+        steps.push(step);
+        stepsByLane.set(key, steps);
+      }
       notify();
       try {
         const image = plan.protocol === visionProtocol ? await (await import('./vision-fixture')).createVisionFixture() : undefined;
@@ -131,7 +147,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
           if (control.signal.aborted) {
             break;
           }
-          const steps = plan.steps.filter(step => step.modelIndex === modelIndex && (step.lane ?? 'standard') === lane);
+          const steps = stepsByLane.get(`${modelIndex}/${lane}`) ?? [];
           const options = optionsForLane({ plan, lane });
           let runtimeSegment = 0;
           let remaining = steps;
@@ -188,7 +204,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         }
                         await visible({ modelIndex, stepId: step.id, lane, runtimeSegment });
                         control.signal.throwIfAborted();
-                        const parent = step.dependsOn === undefined ? undefined : activeSnapshot.trials.find(trial => trial.stepId === step.dependsOn);
+                        const parent = step.dependsOn === undefined ? undefined : trialsByStep.get(step.dependsOn);
                         if (step.dependsOn !== undefined && (parent?.status !== 'succeeded' || (parent.runtimeSegment ?? 0) !== runtimeSegment || !parent.output || parent.output.toolCalls.length || (!parent.output.content && !parent.output.reasoningContent))) {
                           skip({ step, options: scope.options, error: 'Continuation preparation did not produce a usable response in this runtime segment', skipReason: parent?.status === 'succeeded' && (parent.runtimeSegment ?? 0) !== runtimeSegment ? 'dependency-runtime-reset' : undefined });
                           notify();
@@ -221,6 +237,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         }
                         firstInScope = false;
                         activeSnapshot.trials.push(trial);
+                        trialsByStep.set(step.id, trial);
                         current = trial;
                         const started = now();
                         let lastDelivery: number | undefined;
@@ -485,15 +502,15 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                 // errors, so do not rely on object identity or swallow other errors.
                 // Retain dependency skips even if no further scope is necessary.
                 for (const step of steps) {
-                  if (activeSnapshot.trials.some(trial => trial.stepId === step.id) || !step.dependsOn) {
+                  if (trialsByStep.has(step.id) || !step.dependsOn) {
                     continue;
                   }
-                  const parent = activeSnapshot.trials.find(trial => trial.stepId === step.dependsOn);
+                  const parent = trialsByStep.get(step.dependsOn);
                   if (parent?.status === 'interrupted' || parent?.skipReason === 'dependency-interrupted') {
                     skip({ step, options, error: 'Dependency was interrupted by the user', skipReason: 'dependency-interrupted' });
                   }
                 }
-                remaining = steps.filter(step => !activeSnapshot.trials.some(trial => trial.stepId === step.id));
+                remaining = steps.filter(step => !trialsByStep.has(step.id));
                 if (remaining.length) {
                   resuming = interrupted;
                   runtimeSegment++;
@@ -513,7 +530,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                 activeSnapshot.modelErrors.push({ modelIndex, lane, error: error instanceof Error ? error.message : String(error) });
               }
               for (const step of steps) {
-                if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
+                if (!trialsByStep.has(step.id)) {
                   skip({ step, options, error: modelSkip ?? (control.signal.aborted ? 'cancelled' : 'model-operation-failed'), skipReason: modelSkip });
                 }
               }
@@ -593,7 +610,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       } finally {
         activeSnapshot.status = control.signal.aborted ? 'cancelled' : 'completed';
         for (const step of plan.steps) {
-          if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
+          if (!trialsByStep.has(step.id)) {
             skip({ step, options: optionsForLane({ plan, lane: step.lane ?? 'standard' }), error: 'cancelled' });
           }
         }

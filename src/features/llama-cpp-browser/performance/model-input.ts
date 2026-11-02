@@ -8,21 +8,29 @@ export function resolvePerformanceModelInput({ text, models, selected }: {
   if (text.length > 32768) {
     return { selected, errors: ['Model input exceeds 32,768 characters.'] };
   }
-  const result = [...selected], errors: string[] = [];
+  const result = [...new Set(selected)], errors: string[] = [];
+  const known = new Map<string, number>();
+  for (const model of models) {
+    known.set(model.modelId, (known.get(model.modelId) ?? 0) + 1);
+  }
+  for (const id of result) {
+    if (known.get(id) !== 1) {
+      errors.push(`${known.has(id) ? 'Ambiguous modelId' : 'Model is not stored here; import it first'}: ${id.slice(0, 200)}`);
+    }
+  }
+  const included = new Set(result);
   for (const [index, raw] of text.split(/\r?\n/).entries()) {
     const line = raw.trim();
     if (!line) {
       continue;
     }
-    const matches = models.filter(model => model.modelId === line);
-    if (matches.length !== 1) {
-      errors.push(`Line ${index + 1}: ${matches.length ? 'Ambiguous modelId' : 'Model is not stored here; import it first'}: ${line.slice(0, 200)}`);
-    } else if (!result.includes(matches[0]!.modelId)) {
-      result.push(matches[0]!.modelId);
+    const matches = known.get(line) ?? 0;
+    if (matches !== 1) {
+      errors.push(`Line ${index + 1}: ${matches ? 'Ambiguous modelId' : 'Model is not stored here; import it first'}: ${line.slice(0, 200)}`);
+    } else if (!included.has(line)) {
+      result.push(line);
+      included.add(line);
     }
-  }
-  if (result.length > 16) {
-    errors.push('Select at most 16 models.');
   }
   return errors.length ? { selected, errors } : { selected: result, errors: [] };
 }

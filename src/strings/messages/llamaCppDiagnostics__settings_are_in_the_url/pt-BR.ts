@@ -1,0 +1,1 @@
+export const llamaCppDiagnostics__settings_are_in_the_url = (): string => "As configurações alteradas, incluindo notas e nomes de modelos, ficam na URL. Revise antes de compartilhar. Os resultados não são incluídos.";
