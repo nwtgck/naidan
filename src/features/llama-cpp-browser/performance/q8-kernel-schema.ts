@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { gpuProfileSchema, type GpuProfile } from './gpu-profile-schema';
+import { isQ8Revision2AutoReport } from '@/features/llama-cpp-browser/runtime/q8-kernel-codegen';
 
 export const q8KernelVariants = ['auto', 'cooperative-wg256-r4', 'independent-wg128-r4', 'independent-wg128-r1', 'independent-wg128-r2', 'cooperative-wg128-r2'] as const;
 export const q8KernelShapes = [[2560, 10240], [2560, 6144], [6144, 2560], [10240, 320], [2560, 640], [2560, 512], [320, 10240], [640, 2560]] as const;
@@ -46,7 +47,7 @@ export const q8KernelNativeReportSchema = z.strictObject({
   case 'ok':
     if (!report.shaderSha256 || report.shaderSha256 === '0'.repeat(64) || report.algorithm === 'none' || ![32, 64, 128, 256].includes(report.workgroupSize)
       || ![1, 2, 4].includes(report.rowsPerTile) || !report.outputsPerWorkgroup || !report.grid.x || !report.grid.y || report.grid.z !== 1
-      || report.codegenRevision !== 1 || report.phase === 'prepare' && report.dispatches !== 0) {
+      || report.codegenRevision !== 1 && !isQ8Revision2AutoReport(report) || report.phase === 'prepare' && report.dispatches !== 0) {
       context.addIssue({ code: 'custom', message: 'Invalid successful Q8 native report' });
     }
     break;

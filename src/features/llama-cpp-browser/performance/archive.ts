@@ -295,7 +295,19 @@ not live heap usage or resident RAM. gpuRequests are cumulative buffer-creation
 and queue-write API requests for that runtime instance, not live GPU allocation,
 physical VRAM, transfer completion or execution time. Never sum these snapshots.
 gpuRequests.metadata is metadata exposed by the actual selected adapter/device,
-not a second diagnostic GPU probe. Missing or browser-redacted fields remain absent.
+not a second diagnostic GPU probe. Legacy adapterInfo string fields omit missing,
+empty, invalid or unreadable values.
+During debug or investigation requests, metadata.capabilitySnapshot distinguishes
+an exposed adapter vendor (including an empty string) from a missing/invalid or
+throwing API. Vendor value is capped at 256 code units; length and truncated retain
+that boundary. wgslLanguageFeatures records the actual GPU object's
+packed_4x8_integer_dot_product membership, separately from adapter/device features.
+Unavailable membership is unknown, never false. The snapshot is read once per
+selected device during its first enabled observation. capture distinguishes a
+device created inside that scope from a retained device first observed later;
+it is not a native-backend eligibility result or a new adapter/device request.
+It is omitted outside diagnostic scopes, even after an earlier observed request.
+Older archives, disabled observation, or an unobserved device can have no snapshot.
 gpuRequests.queue differs from lifetime buffer/write totals: submit and completion
 wait counters belong to this measured request only. They observe existing submit()
 and onSubmittedWorkDone() calls; no extra submit, fence, wait or timestamp query is

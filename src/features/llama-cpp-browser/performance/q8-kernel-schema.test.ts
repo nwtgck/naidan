@@ -1,11 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { q8KernelBenchmarkSchema, q8KernelBenchmarkProgressSchema } from './q8-kernel-schema';
+import { q8KernelBenchmarkSchema, q8KernelBenchmarkProgressSchema, q8KernelNativeReportSchema } from './q8-kernel-schema';
 import { createQ8BenchmarkWireFixture, createQ8PairedBenchmarkWireFixture } from './q8-kernel-schema.test-support';
+
+const revision2Auto = {
+  codegenRevision: 2,
+  variant: 'auto',
+  algorithm: 'independent',
+  workgroupSize: 128,
+  logicalSubgroupSize: 16,
+  rowsPerTile: 4,
+  outputsPerWorkgroup: 32,
+  cooperativeSubgroupReduction: false,
+} as const;
 
 describe('bounded Q8 benchmark wire contract', () => {
   it('accepts the exact eight-shape, six-variant, 192-sample schedule after JSON serialization', () => {
     const value = createQ8BenchmarkWireFixture();
     expect(q8KernelBenchmarkSchema.parse(JSON.parse(JSON.stringify(value)))).toEqual(value);
+  });
+
+  it.each([4, 8, 16].flatMap(minimum => [16, 32, 64, 128].map(maximum => ({ minimum, maximum }))))('roundtrips revision 2 AUTO benchmark evidence with advertised range $minimum..$maximum', ({ minimum, maximum }) => {
+    const value = createQ8BenchmarkWireFixture();
+    for (const shape of value.shapes) {
+      const reports = [...shape.variants.flatMap(row => [row.prepare.report, ...(row.warmup ? [row.warmup.call.report] : [])]), ...shape.samples.map(row => row.report)];
+      for (const report of reports) {
+        if (report.variant === 'auto') {
+          Object.assign(report, revision2Auto, { realMinSubgroupSize: minimum, realMaxSubgroupSize: maximum });
+        }
+      }
+    }
+    expect(q8KernelBenchmarkSchema.parse(JSON.parse(JSON.stringify(value)))).toEqual(value);
+  });
+
+  it.each([
+    { codegenRevision: 0 }, { codegenRevision: 3 }, { codegenRevision: 0xffffffff },
+    ...(['cooperative-wg256-r4', 'independent-wg128-r4', 'independent-wg128-r1', 'independent-wg128-r2', 'cooperative-wg128-r2'] as const).map(variant => ({ variant })),
+    { algorithm: 'none' }, { algorithm: 'cooperative' }, { workgroupSize: 64 }, { workgroupSize: 256 },
+    { logicalSubgroupSize: 8 }, { logicalSubgroupSize: 32 }, { rowsPerTile: 2 }, { outputsPerWorkgroup: 64 }, { cooperativeSubgroupReduction: true },
+    { realMinSubgroupSize: 0 }, { realMinSubgroupSize: 1 }, { realMinSubgroupSize: 2 }, { realMinSubgroupSize: 3 }, { realMinSubgroupSize: 12 }, { realMinSubgroupSize: 32 },
+    { realMaxSubgroupSize: 8 }, { realMaxSubgroupSize: 24 }, { realMaxSubgroupSize: 256 },
+  ])('rejects a noncontract revision 2 benchmark report: %j', change => {
+    const base = createQ8BenchmarkWireFixture().shapes[0]!.variants[0]!.prepare.report;
+    const report = { ...base, ...revision2Auto, realMinSubgroupSize: 4, realMaxSubgroupSize: 128, ...change };
+    expect(q8KernelNativeReportSchema.safeParse(report).success).toBe(false);
+  });
+
+  it('keeps not-prepared excluded from benchmark evidence even when its revision 2 launch is shaped', () => {
+    const base = createQ8BenchmarkWireFixture().shapes[0]!.variants[0]!.prepare.report;
+    const report = { ...base, ...revision2Auto, realMinSubgroupSize: 16, realMaxSubgroupSize: 16, status: 'not-prepared', phase: 'execute', dispatches: 0, shaderSha256: undefined };
+    expect(q8KernelNativeReportSchema.safeParse(report).success).toBe(false);
   });
 
   it.each(['variant-duplicate', 'shape-order', 'sample-order', 'tuple-change', 'hash-change', 'output-hash', 'input-hash', 'quantized', 'timing-status', 'sample-count', 'status', 'bytes', 'extra'] as const)('rejects inconsistent %s evidence', failure => {
