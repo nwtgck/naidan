@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue';
+import { useRoute } from 'vue-router';
 import HomeWelcome from '@/components/HomeWelcome.vue';
 import Sidebar from '@/components/Sidebar.vue';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
@@ -14,6 +15,9 @@ const props = defineProps<{
 }>();
 
 const { active: generationNavigation } = useImageGenerationWorkspaceNavigation();
+const route = useRoute();
+const isWorkflowRoute = computed(() => route.path.replace(/\/+$/, '') === '/workflows');
+const WorkflowSidebar = defineAsyncComponent(() => import('@/features/workflow/components/WorkflowSidebar.vue'));
 const ImageGenerationSidebar = defineAsyncComponent(() => import('@/features/image-generation/components/ImageGenerationSidebar.vue'));
 const DebugPanel = defineAsyncComponent(() => import('@/components/DebugPanel.vue'));
 const AppEntrySurface = defineAsyncComponent(() => import('@/components/AppEntrySurface.vue'));
@@ -65,7 +69,8 @@ defineExpose({
 <template>
   <MainLayoutFrame :sidebar-width="sidebarWidth">
     <template #sidebar>
-      <ImageGenerationSidebar v-if="generationNavigation && !renderEntry" :navigation="generationNavigation" />
+      <WorkflowSidebar v-if="isWorkflowRoute && !renderEntry" />
+      <ImageGenerationSidebar v-else-if="generationNavigation && !renderEntry" :navigation="generationNavigation" />
       <Sidebar v-else />
     </template>
 

@@ -8,6 +8,9 @@ vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ isDebugOpen: ref
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ errorCount: ref(0) }) }));
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({ useFileExplorerModal: () => ({ openFileExplorer: vi.fn() }) }));
 vi.mock('@/composables/useRecentChats', () => ({ useRecentChats: () => ({ openRecent: vi.fn() }) }));
+// File recovery dialogs are outside these navigation and control-layout tests.
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue', () => ({ default: { template: '<div />' } }));
+vi.mock('@/features/stable-diffusion-cpp-browser/components/ImageModelLocalFileRecovery.vue', () => ({ default: { template: '<div />' } }));
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
@@ -112,4 +115,25 @@ it('adds a separate live conversation route without replacing the existing desti
   await flushPromises();
   expect(router.currentRoute.value.path).toBe('/live-conversation');
   expect(wrapper.find('[data-testid="sidebar-live-conversation-link"]').exists()).toBe(false);
+});
+
+it('opens Workflow from Quick Access without replacing other destinations', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/workflows', component: { template: '<div />' } },
+    ],
+  });
+  await router.push('/');
+  await router.isReady();
+  wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
+  await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
+  const link = wrapper.get('[data-testid="sidebar-workflow-link"]');
+  expect(link.attributes('href')).toBe('/workflows');
+  expect(wrapper.find('[data-testid="sidebar-audio-generation-link"]').exists()).toBe(true);
+  await link.trigger('click');
+  await flushPromises();
+  expect(router.currentRoute.value.path).toBe('/workflows');
+  expect(wrapper.find('[data-testid="sidebar-workflow-link"]').exists()).toBe(false);
 });

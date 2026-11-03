@@ -3482,6 +3482,126 @@ import { weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell } fr
 import { weshTerminal__session } from '@/strings/messages/weshTerminal__session/ko';
 import { weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue } from '@/strings/messages/weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue/ko';
 import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__wesh_terminal/ko';
+import { workflow__add_message } from '@/strings/messages/workflow__add_message/ko';
+import { workflow__add_step } from '@/strings/messages/workflow__add_step/ko';
+import { workflow__allow } from '@/strings/messages/workflow__allow/ko';
+import { workflow__append_messages } from '@/strings/messages/workflow__append_messages/ko';
+import { workflow__apply } from '@/strings/messages/workflow__apply/ko';
+import { workflow__back_to_chats } from '@/strings/messages/workflow__back_to_chats/ko';
+import { workflow__body } from '@/strings/messages/workflow__body/ko';
+import { workflow__cancel } from '@/strings/messages/workflow__cancel/ko';
+import { workflow__cancelled } from '@/strings/messages/workflow__cancelled/ko';
+import { workflow__clear_results } from '@/strings/messages/workflow__clear_results/ko';
+import { workflow__completed } from '@/strings/messages/workflow__completed/ko';
+import { workflow__condition } from '@/strings/messages/workflow__condition/ko';
+import { workflow__confirm_clear } from '@/strings/messages/workflow__confirm_clear/ko';
+import { workflow__confirm_delete } from '@/strings/messages/workflow__confirm_delete/ko';
+import { workflow__confirm_discard } from '@/strings/messages/workflow__confirm_discard/ko';
+import { workflow__connection_permission } from '@/strings/messages/workflow__connection_permission/ko';
+import { workflow__connections_notice } from '@/strings/messages/workflow__connections_notice/ko';
+import { workflow__content } from '@/strings/messages/workflow__content/ko';
+import { workflow__continue } from '@/strings/messages/workflow__continue/ko';
+import { workflow__conversation } from '@/strings/messages/workflow__conversation/ko';
+import { workflow__count } from '@/strings/messages/workflow__count/ko';
+import { workflow__definition_name } from '@/strings/messages/workflow__definition_name/ko';
+import { workflow__delete } from '@/strings/messages/workflow__delete/ko';
+import { workflow__deny } from '@/strings/messages/workflow__deny/ko';
+import { workflow__discard } from '@/strings/messages/workflow__discard/ko';
+import { workflow__download_zip } from '@/strings/messages/workflow__download_zip/ko';
+import { workflow__drag_step } from '@/strings/messages/workflow__drag_step/ko';
+import { workflow__drop_here } from '@/strings/messages/workflow__drop_here/ko';
+import { workflow__duplicate } from '@/strings/messages/workflow__duplicate/ko';
+import { workflow__else } from '@/strings/messages/workflow__else/ko';
+import { workflow__empty_steps } from '@/strings/messages/workflow__empty_steps/ko';
+import { workflow__endpoint } from '@/strings/messages/workflow__endpoint/ko';
+import { workflow__error } from '@/strings/messages/workflow__error/ko';
+import { workflow__experimental_notice } from '@/strings/messages/workflow__experimental_notice/ko';
+import { workflow__export_definition } from '@/strings/messages/workflow__export_definition/ko';
+import { workflow__export_secret_warning } from '@/strings/messages/workflow__export_secret_warning/ko';
+import { workflow__failed } from '@/strings/messages/workflow__failed/ko';
+import { workflow__folder } from '@/strings/messages/workflow__folder/ko';
+import { workflow__folder_permission } from '@/strings/messages/workflow__folder_permission/ko';
+import { workflow__for_each } from '@/strings/messages/workflow__for_each/ko';
+import { workflow__format } from '@/strings/messages/workflow__format/ko';
+import { workflow__graph } from '@/strings/messages/workflow__graph/ko';
+import { workflow__graph_notice } from '@/strings/messages/workflow__graph_notice/ko';
+import { workflow__if } from '@/strings/messages/workflow__if/ko';
+import { workflow__input } from '@/strings/messages/workflow__input/ko';
+import { workflow__input_response } from '@/strings/messages/workflow__input_response/ko';
+import { workflow__insert_part } from '@/strings/messages/workflow__insert_part/ko';
+import { workflow__json } from '@/strings/messages/workflow__json/ko';
+import { workflow__json_notice } from '@/strings/messages/workflow__json_notice/ko';
+import { workflow__key } from '@/strings/messages/workflow__key/ko';
+import { workflow__literal_json } from '@/strings/messages/workflow__literal_json/ko';
+import { workflow__literal_text } from '@/strings/messages/workflow__literal_text/ko';
+import { workflow__loop_index } from '@/strings/messages/workflow__loop_index/ko';
+import { workflow__loop_item } from '@/strings/messages/workflow__loop_item/ko';
+import { workflow__loop_state } from '@/strings/messages/workflow__loop_state/ko';
+import { workflow__max_tokens } from '@/strings/messages/workflow__max_tokens/ko';
+import { workflow__model } from '@/strings/messages/workflow__model/ko';
+import { workflow__model_id } from '@/strings/messages/workflow__model_id/ko';
+import { workflow__move_down } from '@/strings/messages/workflow__move_down/ko';
+import { workflow__move_up } from '@/strings/messages/workflow__move_up/ko';
+import { workflow__name } from '@/strings/messages/workflow__name/ko';
+import { workflow__new_part } from '@/strings/messages/workflow__new_part/ko';
+import { workflow__new_sample } from '@/strings/messages/workflow__new_sample/ko';
+import { workflow__new_workflow } from '@/strings/messages/workflow__new_workflow/ko';
+import { workflow__no_documents } from '@/strings/messages/workflow__no_documents/ko';
+import { workflow__no_results } from '@/strings/messages/workflow__no_results/ko';
+import { workflow__not_selected } from '@/strings/messages/workflow__not_selected/ko';
+import { workflow__on_conflict } from '@/strings/messages/workflow__on_conflict/ko';
+import { workflow__open_folder } from '@/strings/messages/workflow__open_folder/ko';
+import { workflow__open_results } from '@/strings/messages/workflow__open_results/ko';
+import { workflow__output } from '@/strings/messages/workflow__output/ko';
+import { workflow__overwrite } from '@/strings/messages/workflow__overwrite/ko';
+import { workflow__parse_json } from '@/strings/messages/workflow__parse_json/ko';
+import { workflow__part_copy_notice } from '@/strings/messages/workflow__part_copy_notice/ko';
+import { workflow__partial_json } from '@/strings/messages/workflow__partial_json/ko';
+import { workflow__partial_notice } from '@/strings/messages/workflow__partial_notice/ko';
+import { workflow__parts } from '@/strings/messages/workflow__parts/ko';
+import { workflow__path } from '@/strings/messages/workflow__path/ko';
+import { workflow__preview_limit } from '@/strings/messages/workflow__preview_limit/ko';
+import { workflow__read_file } from '@/strings/messages/workflow__read_file/ko';
+import { workflow__redo } from '@/strings/messages/workflow__redo/ko';
+import { workflow__refresh } from '@/strings/messages/workflow__refresh/ko';
+import { workflow__repeat } from '@/strings/messages/workflow__repeat/ko';
+import { workflow__request_input } from '@/strings/messages/workflow__request_input/ko';
+import { workflow__results } from '@/strings/messages/workflow__results/ko';
+import { workflow__role } from '@/strings/messages/workflow__role/ko';
+import { workflow__run } from '@/strings/messages/workflow__run/ko';
+import { workflow__run_notice } from '@/strings/messages/workflow__run_notice/ko';
+import { workflow__run_part_notice } from '@/strings/messages/workflow__run_part_notice/ko';
+import { workflow__running } from '@/strings/messages/workflow__running/ko';
+import { workflow__save } from '@/strings/messages/workflow__save/ko';
+import { workflow__save_as_part } from '@/strings/messages/workflow__save_as_part/ko';
+import { workflow__save_copy } from '@/strings/messages/workflow__save_copy/ko';
+import { workflow__save_error } from '@/strings/messages/workflow__save_error/ko';
+import { workflow__saved } from '@/strings/messages/workflow__saved/ko';
+import { workflow__saving_unavailable } from '@/strings/messages/workflow__saving_unavailable/ko';
+import { workflow__select_step } from '@/strings/messages/workflow__select_step/ko';
+import { workflow__selected } from '@/strings/messages/workflow__selected/ko';
+import { workflow__settings } from '@/strings/messages/workflow__settings/ko';
+import { workflow__source } from '@/strings/messages/workflow__source/ko';
+import { workflow__state_notice } from '@/strings/messages/workflow__state_notice/ko';
+import { workflow__step_reference } from '@/strings/messages/workflow__step_reference/ko';
+import { workflow__steps } from '@/strings/messages/workflow__steps/ko';
+import { workflow__stop } from '@/strings/messages/workflow__stop/ko';
+import { workflow__structured_input } from '@/strings/messages/workflow__structured_input/ko';
+import { workflow__system_prompt } from '@/strings/messages/workflow__system_prompt/ko';
+import { workflow__temperature } from '@/strings/messages/workflow__temperature/ko';
+import { workflow__text_generation } from '@/strings/messages/workflow__text_generation/ko';
+import { workflow__then } from '@/strings/messages/workflow__then/ko';
+import { workflow__tools_notice } from '@/strings/messages/workflow__tools_notice/ko';
+import { workflow__undo } from '@/strings/messages/workflow__undo/ko';
+import { workflow__unsaved } from '@/strings/messages/workflow__unsaved/ko';
+import { workflow__untitled } from '@/strings/messages/workflow__untitled/ko';
+import { workflow__use_current_model } from '@/strings/messages/workflow__use_current_model/ko';
+import { workflow__validation } from '@/strings/messages/workflow__validation/ko';
+import { workflow__value } from '@/strings/messages/workflow__value/ko';
+import { workflow__waiting } from '@/strings/messages/workflow__waiting/ko';
+import { workflow__workflows } from '@/strings/messages/workflow__workflows/ko';
+import { workflow__write_file } from '@/strings/messages/workflow__write_file/ko';
+import { workflow__written_files } from '@/strings/messages/workflow__written_files/ko';
 
 import type { Strings } from './en';
 
@@ -6966,4 +7086,124 @@ export const catalog = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
+  workflow__add_message,
+  workflow__add_step,
+  workflow__allow,
+  workflow__append_messages,
+  workflow__apply,
+  workflow__back_to_chats,
+  workflow__body,
+  workflow__cancel,
+  workflow__cancelled,
+  workflow__clear_results,
+  workflow__completed,
+  workflow__condition,
+  workflow__confirm_clear,
+  workflow__confirm_delete,
+  workflow__confirm_discard,
+  workflow__connection_permission,
+  workflow__connections_notice,
+  workflow__content,
+  workflow__continue,
+  workflow__conversation,
+  workflow__count,
+  workflow__definition_name,
+  workflow__delete,
+  workflow__deny,
+  workflow__discard,
+  workflow__download_zip,
+  workflow__drag_step,
+  workflow__drop_here,
+  workflow__duplicate,
+  workflow__else,
+  workflow__empty_steps,
+  workflow__endpoint,
+  workflow__error,
+  workflow__experimental_notice,
+  workflow__export_definition,
+  workflow__export_secret_warning,
+  workflow__failed,
+  workflow__folder,
+  workflow__folder_permission,
+  workflow__for_each,
+  workflow__format,
+  workflow__graph,
+  workflow__graph_notice,
+  workflow__if,
+  workflow__input,
+  workflow__input_response,
+  workflow__insert_part,
+  workflow__json,
+  workflow__json_notice,
+  workflow__key,
+  workflow__literal_json,
+  workflow__literal_text,
+  workflow__loop_index,
+  workflow__loop_item,
+  workflow__loop_state,
+  workflow__max_tokens,
+  workflow__model,
+  workflow__model_id,
+  workflow__move_down,
+  workflow__move_up,
+  workflow__name,
+  workflow__new_part,
+  workflow__new_sample,
+  workflow__new_workflow,
+  workflow__no_documents,
+  workflow__no_results,
+  workflow__not_selected,
+  workflow__on_conflict,
+  workflow__open_folder,
+  workflow__open_results,
+  workflow__output,
+  workflow__overwrite,
+  workflow__parse_json,
+  workflow__part_copy_notice,
+  workflow__partial_json,
+  workflow__partial_notice,
+  workflow__parts,
+  workflow__path,
+  workflow__preview_limit,
+  workflow__read_file,
+  workflow__redo,
+  workflow__refresh,
+  workflow__repeat,
+  workflow__request_input,
+  workflow__results,
+  workflow__role,
+  workflow__run,
+  workflow__run_notice,
+  workflow__run_part_notice,
+  workflow__running,
+  workflow__save,
+  workflow__save_as_part,
+  workflow__save_copy,
+  workflow__save_error,
+  workflow__saved,
+  workflow__saving_unavailable,
+  workflow__select_step,
+  workflow__selected,
+  workflow__settings,
+  workflow__source,
+  workflow__state_notice,
+  workflow__step_reference,
+  workflow__steps,
+  workflow__stop,
+  workflow__structured_input,
+  workflow__system_prompt,
+  workflow__temperature,
+  workflow__text_generation,
+  workflow__then,
+  workflow__tools_notice,
+  workflow__undo,
+  workflow__unsaved,
+  workflow__untitled,
+  workflow__use_current_model,
+  workflow__validation,
+  workflow__value,
+  workflow__waiting,
+  workflow__workflows,
+  workflow__write_file,
+  workflow__written_files,
 } satisfies Strings;

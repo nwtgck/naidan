@@ -363,7 +363,7 @@ const fakeLmToExperimentalDto = ({
   }
 };
 
-const toolConfigToDomain = ({
+export const toolConfigToDomain = ({
   dto,
 }: {
   dto: ExperimentalToolConfigDto,
@@ -391,7 +391,7 @@ const toolConfigToDomain = ({
   }
 };
 
-const toolConfigToDto = ({
+export const toolConfigToDto = ({
   domain,
 }: {
   domain: ToolConfig,

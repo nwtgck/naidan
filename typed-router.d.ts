@@ -138,6 +138,13 @@ declare module 'vue-router/auto-routes' {
       { tab: ParamValue<false> },
       | never
     >,
+    '/workflows': RouteRecordInfo<
+      '/workflows',
+      '/workflows',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -273,6 +280,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'tab'
+    }
+    'src/pages/workflows.vue': {
+      routes:
+        | '/workflows'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
   }
 
