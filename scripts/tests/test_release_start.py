@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -20,21 +21,21 @@ assert SPEC is not None and SPEC.loader is not None
 release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
 
-HISTORY = '''## [v0.62.0] - 2026-11-03
+HISTORY = '''## [0.62.0] - 2026-11-03
 
 ### Fixed
 
 - Preserve historical text, including **formatting** and Unicode: café.
 
-## [v0.61.0] - 2026-10-30
+## [0.61.0] - 2026-10-29
 
 ### Added
 
 - An older feature.
 '''
 LINKS = '''[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.62.0...develop
-[v0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0
-[v0.61.0]: https://github.com/nwtgck/naidan/releases/tag/v0.61.0
+[0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0
+[0.61.0]: https://github.com/nwtgck/naidan/releases/tag/v0.61.0
 '''
 PREAMBLE = '''# Changelog
 
@@ -61,21 +62,21 @@ class ChangelogTests(unittest.TestCase):
 
     def test_moves_notes_and_preserves_history(self) -> None:
         actual = self.render(content=CHANGELOG)
-        self.assertIn('## [Unreleased]\n\n## [v0.62.1] - 2026-11-04\n' + NOTES, actual)
+        self.assertIn('## [Unreleased]\n\n## [0.62.1] - 2026-11-04\n' + NOTES, actual)
         self.assertEqual(actual.count('A reviewed feature'), 1)
         self.assertIn(HISTORY, actual)
         self.assertIn('[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.62.1...develop\n', actual)
-        self.assertIn('[v0.62.1]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.62.1\n', actual)
+        self.assertIn('[0.62.1]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.62.1\n', actual)
         self.assertTrue(actual.endswith(LINKS.split('\n', 1)[1]))
 
     def test_supports_changelog_without_reference_links(self) -> None:
         actual = self.render(content=PREAMBLE + NOTES + HISTORY)
         self.assertTrue(actual.endswith(HISTORY))
-        self.assertNotIn('[v0.62.1]:', actual)
+        self.assertNotIn('[0.62.1]:', actual)
 
     def test_supports_first_release(self) -> None:
         actual = release.prepare_changelog(content=PREAMBLE + NOTES, next_version='0.1.0', release_date=date(2026, 1, 27), allow_empty=False)
-        self.assertIn('## [v0.1.0] - 2026-01-27', actual)
+        self.assertIn('## [0.1.0] - 2026-01-27', actual)
         self.assertEqual(actual.count('## [Unreleased]'), 1)
 
     def test_preserves_crlf_and_no_final_newline(self) -> None:
@@ -92,7 +93,7 @@ class ChangelogTests(unittest.TestCase):
 
 ````markdown
 ## [Unreleased]
-## [v99.0.0] - 2099-01-01
+## [99.0.0] - 2099-01-01
 ```
 <!-- a literal comment inside the example
 ````
@@ -103,7 +104,7 @@ class ChangelogTests(unittest.TestCase):
 
 <!--
 ## [Unreleased]
-## [v98.0.0] - 2098-01-01
+## [98.0.0] - 2098-01-01
 -->
 
 '''
@@ -136,11 +137,11 @@ class ChangelogTests(unittest.TestCase):
     def test_rejects_malformed_duplicate_and_out_of_order_releases(self) -> None:
         for history in (
             HISTORY + '\n' + HISTORY,
-            HISTORY.replace('v0.61.0', 'v0.63.0'),
-            HISTORY.replace('v0.61.0', 'v0.061.0'),
+            HISTORY.replace('0.61.0', '0.63.0'),
+            HISTORY.replace('0.61.0', '0.061.0'),
             HISTORY.replace('2026-11-03', '2026-02-30'),
-            HISTORY.replace('## [v0.61.0] - 2026-10-30', '## Notes'),
-            HISTORY.replace('## [v0.61.0]', '## [0.61.0]'),
+            HISTORY.replace('## [0.61.0] - 2026-10-29', '## Notes'),
+            HISTORY.replace('## [0.61.0]', '## [v0.61.0]'),
         ):
             with self.subTest(history=history):
                 with self.assertRaises(SystemExit):
@@ -163,7 +164,7 @@ class ChangelogTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, 'no release notes'):
                     self.render(content=content)
                 actual = self.render(content=content, allow_empty=True)
-                self.assertIn('## [v0.62.1] - 2026-11-04', actual)
+                self.assertIn('## [0.62.1] - 2026-11-04', actual)
                 self.assertTrue(actual.endswith(HISTORY))
                 self.assertNotIn('No notable changes', actual)
 
@@ -183,12 +184,36 @@ class ChangelogTests(unittest.TestCase):
         for links in (
             LINKS.replace('v0.62.0...develop', 'v0.61.0...develop'),
             LINKS + '[unreleased]: https://example.test/compare/v0.62.0...develop\n',
-            LINKS + '[V0.62.1]: https://example.test/compare/v0.62.0...v0.62.1\n',
+            LINKS + '[0.62.1]: https://example.test/compare/v0.62.0...v0.62.1\n',
             LINKS.replace('https://github.com/nwtgck/naidan/compare/v0.62.0...develop', 'https://example.test/not-a-compare-link'),
         ):
             with self.subTest(links=links):
                 with self.assertRaises(SystemExit):
                     self.render(content=PREAMBLE + NOTES + HISTORY + '\n' + links)
+
+    def test_rejects_v_prefixed_version_link_labels(self) -> None:
+        for label in ('v0.62.0', 'V0.62.0', '  v0.62.0  '):
+            with self.subTest(label=label):
+                content = CHANGELOG.replace('[0.62.0]:', f'[{label}]:')
+                with self.assertRaisesRegex(SystemExit, 'omit the v prefix'):
+                    self.render(content=content)
+
+    def test_rejects_normalized_existing_target_link(self) -> None:
+        with self.assertRaisesRegex(SystemExit, 'already exists'):
+            self.render(content=CHANGELOG + '[  0.62.1  ]: https://example.test/release\n')
+
+    def test_rejects_unprefixed_git_tag_in_unreleased_link(self) -> None:
+        with self.assertRaisesRegex(SystemExit, 'latest changelog tag'):
+            self.render(content=CHANGELOG.replace('v0.62.0...develop', '0.62.0...develop'))
+
+    def test_compares_unprefixed_versions_numerically(self) -> None:
+        for older, newer in (('0.9.0', '0.10.0'), ('9.0.0', '10.0.0'), ('10.0.0', '10.0.1')):
+            with self.subTest(older=older, newer=newer):
+                content = PREAMBLE + NOTES + f'## [{older}] - 2026-11-03\n'
+                actual = release.prepare_changelog(content=content, next_version=newer, release_date=date(2026, 11, 4), allow_empty=False)
+                self.assertIn(f'## [{newer}] - 2026-11-04', actual)
+                with self.assertRaisesRegex(SystemExit, 'newer'):
+                    release.prepare_changelog(content=actual, next_version=older, release_date=date(2026, 11, 5), allow_empty=True)
 
     def test_preserves_comparison_target(self) -> None:
         actual = self.render(content=CHANGELOG.replace('...develop', '...HEAD'))
@@ -200,7 +225,7 @@ class ChangelogTests(unittest.TestCase):
             release.prepare_changelog(content=once, next_version='0.63.0', release_date=date(2026, 11, 5), allow_empty=False)
         twice = release.prepare_changelog(content=once, next_version='0.63.0', release_date=date(2026, 11, 5), allow_empty=True)
         self.assertEqual(twice.count('A reviewed feature'), 1)
-        self.assertEqual(twice.count('## [v0.62.1]'), 1)
+        self.assertEqual(twice.count('## [0.62.1]'), 1)
 
     def test_rejects_repeat_of_same_release(self) -> None:
         with self.assertRaisesRegex(SystemExit, 'newer'):
@@ -245,7 +270,7 @@ class ChangelogTests(unittest.TestCase):
                     links = LINKS.replace(url, destination + title)
                     actual = self.render(content=PREAMBLE + NOTES + HISTORY + '\n' + links)
                     self.assertIn(destination.replace('v0.62.0', 'v0.62.1') + title, actual)
-                    self.assertEqual(actual.count('[v0.62.1]:'), 1)
+                    self.assertEqual(actual.count('[0.62.1]:'), 1)
                     self.assertTrue(actual.endswith(LINKS.split('\n', 1)[1]))
 
     def test_normalizes_comparison_reference_label_whitespace_and_case(self) -> None:
@@ -258,7 +283,7 @@ class ChangelogTests(unittest.TestCase):
         for links in (
             LINKS.replace('[Unreleased]: https://', '[Unreleased]:\n  https://'),
             LINKS.replace('...develop\n', '...develop invalid-title\n'),
-            LINKS.replace('[v0.61.0]: https://', '[v0.61.0]:\n  https://'),
+            LINKS.replace('[0.61.0]: https://', '[0.61.0]:\n  https://'),
         ):
             with self.subTest(links=links):
                 with self.assertRaisesRegex(SystemExit, 'single-line'):
@@ -271,7 +296,7 @@ class ChangelogTests(unittest.TestCase):
                     self.render(content=PREAMBLE + notes + HISTORY)
 
     def test_rejects_unreleased_link_between_history_sections(self) -> None:
-        history = HISTORY.replace('## [v0.61.0]', LINKS.split('\n')[0] + '\n\n## [v0.61.0]')
+        history = HISTORY.replace('## [0.61.0]', LINKS.split('\n')[0] + '\n\n## [0.61.0]')
         with self.assertRaisesRegex(SystemExit, 'after the release sections'):
             self.render(content=PREAMBLE + NOTES + history)
 
@@ -284,7 +309,7 @@ class ChangelogTests(unittest.TestCase):
         versions = [match for match in tags if match is not None]
         self.assertGreater(len(versions), 0)
         latest = versions[0]
-        target = release.bump_version(current_version=latest.group(1)[1:], bump_kind='patch')
+        target = release.bump_version(current_version=latest.group(1), bump_kind='patch')
         history = content[content.index(latest.group(0)):content.index('[Unreleased]:')]
         actual = release.prepare_changelog(content=content, next_version=target, release_date=date.fromisoformat(latest.group(2)), allow_empty=True)
         self.assertIn(history, actual)
@@ -355,6 +380,45 @@ class ReleaseIntegrationTests(unittest.TestCase):
         # Also prove invocation does not depend on the shell's working directory.
         return subprocess.run([sys.executable, str(self.root / 'scripts/release_start.py'), *args], cwd=self.root / 'scripts', env=self.env, capture_output=True, text=True, check=False)
 
+    def invoke_at_time(self, *, args: list[str], instant: str, local_timezone: str) -> subprocess.CompletedProcess[str]:
+        # Freeze time only in the test subprocess. No production clock override
+        # or environment flag is added to the release script.
+        wrapper = '''
+from datetime import date, datetime
+import importlib.util
+import sys
+import time
+
+if hasattr(time, 'tzset'):
+    time.tzset()
+script, instant, *arguments = sys.argv[1:]
+fixed = datetime.fromisoformat(instant)
+assert fixed.tzinfo is not None
+
+class FrozenDate(date):
+    @classmethod
+    def today(cls):
+        if arguments[0] == 'dev' or '--date' in arguments:
+            raise AssertionError('An explicit date or dev bump must not read the release clock.')
+        return fixed.astimezone().date()
+
+class FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        if arguments[0] == 'dev' or '--date' in arguments:
+            raise AssertionError('An explicit date or dev bump must not read the release clock.')
+        return fixed.astimezone(tz)
+
+spec = importlib.util.spec_from_file_location('release_start', script)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.date = FrozenDate
+module.datetime = FrozenDatetime
+sys.argv = [script, *arguments]
+sys.exit(module.main())
+'''
+        return subprocess.run([sys.executable, '-c', wrapper, str(self.root / 'scripts/release_start.py'), instant, *args], cwd=self.root / 'scripts', env={**self.env, 'TZ': local_timezone}, capture_output=True, text=True, check=False)
+
     def write_json(self, *, name: str, value: object) -> None:
         (self.root / name).write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
 
@@ -382,7 +446,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
         self.assertEqual(self.git(args=['status', '--porcelain']), '')
         self.assertEqual(self.git(args=['tag', '--list']), '')
         changelog = (self.root / 'CHANGELOG.md').read_text(encoding='utf-8')
-        self.assertIn('## [Unreleased]\n\n## [v0.62.1] - 2026-11-04', changelog)
+        self.assertIn('## [Unreleased]\n\n## [0.62.1] - 2026-11-04', changelog)
         self.assertIn(HISTORY, changelog)
         package = json.loads((self.root / 'package.json').read_text())
         lock = json.loads((self.root / 'package-lock.json').read_text())
@@ -391,16 +455,68 @@ class ReleaseIntegrationTests(unittest.TestCase):
         self.assertEqual(lock['packages']['']['version'], '0.62.1')
         self.assertEqual(lock['packages']['node_modules/example']['version'], '9.8.7')
 
+    @unittest.skipUnless(hasattr(time, 'tzset'), 'Testing local time zones requires time.tzset().')
+    def test_default_date_is_utc_across_calendar_boundaries_and_timezones(self) -> None:
+        before = self.snapshot()
+        for instant, expected in (
+            ('2026-11-04T00:00:00+00:00', '2026-11-04'),
+            ('2026-11-04T23:59:59+00:00', '2026-11-04'),
+            ('2026-12-31T23:59:59+00:00', '2026-12-31'),
+            ('2027-01-01T00:00:00+00:00', '2027-01-01'),
+            ('2028-02-29T23:59:59+00:00', '2028-02-29'),
+            ('2028-03-01T00:00:00+00:00', '2028-03-01'),
+        ):
+            for zone in ('UTC0', 'JST-9', 'EST5', 'LINT-14', 'IDLW12'):
+                with self.subTest(instant=instant, zone=zone):
+                    result = self.invoke_at_time(args=['patch', '--dry-run'], instant=instant, local_timezone=zone)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(f'Changelog release: 0.62.1 - {expected} (UTC)', result.stdout)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_default_date_written_to_changelog_is_utc(self) -> None:
+        result = self.invoke_at_time(args=['patch'], instant='2026-11-04T23:30:00+00:00', local_timezone='JST-9')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        actual = (self.root / 'CHANGELOG.md').read_text()
+        self.assertIn('## [0.62.1] - 2026-11-04', actual)
+        self.assertIn('[0.62.1]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.62.1', actual)
+        self.assertEqual(self.git(args=['status', '--porcelain']), '')
+
+    def test_explicit_utc_date_is_not_shifted_or_replaced_by_clock(self) -> None:
+        before = self.snapshot()
+        for zone in ('UTC0', 'JST-9', 'EST5'):
+            with self.subTest(zone=zone):
+                result = self.invoke_at_time(args=['patch', '--date', '2026-11-10', '--dry-run'], instant='2026-11-04T23:30:00+00:00', local_timezone=zone)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('Changelog release: 0.62.1 - 2026-11-10 (UTC)', result.stdout)
+        self.assertEqual(self.snapshot(), before)
+        result = self.invoke_at_time(args=['patch', '--date', '2026-11-10'], instant='2026-11-04T23:30:00+00:00', local_timezone='JST-9')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('## [0.62.1] - 2026-11-10', (self.root / 'CHANGELOG.md').read_text())
+
+    def test_dev_does_not_read_changelog_or_release_clock(self) -> None:
+        (self.root / 'CHANGELOG.md').unlink()
+        self.commit_fixture()
+        result = self.invoke_at_time(args=['dev'], instant='2026-11-04T23:30:00+00:00', local_timezone='JST-9')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.root / 'CHANGELOG.md').exists())
+        self.assertEqual(self.git(args=['branch', '--show-current']).strip(), 'develop')
+        self.assertEqual(set(self.git(args=['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']).splitlines()), {'package.json', 'package-lock.json'})
+
+    def test_help_documents_utc_date(self) -> None:
+        result = self.invoke(args=['--help'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('UTC calendar date in YYYY-MM-DD (default: today in UTC)', ' '.join(result.stdout.split()))
+
     def test_minor_release(self) -> None:
         result = self.invoke(args=['minor', '--date', '2026-11-04'])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('## [v0.63.0] - 2026-11-04', (self.root / 'CHANGELOG.md').read_text())
+        self.assertIn('## [0.63.0] - 2026-11-04', (self.root / 'CHANGELOG.md').read_text())
         self.assertEqual(self.git(args=['branch', '--show-current']).strip(), 'release/0.63.0')
 
     def test_major_release(self) -> None:
         result = self.invoke(args=['major', '--date', '2026-11-04'])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('## [v1.0.0] - 2026-11-04', (self.root / 'CHANGELOG.md').read_text())
+        self.assertIn('## [1.0.0] - 2026-11-04', (self.root / 'CHANGELOG.md').read_text())
 
     def test_dev_leaves_even_unparseable_changelog_untouched(self) -> None:
         content = b'# Changelog\r\n\r\nUnfinished notes\r\n'
@@ -453,7 +569,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
         self.assert_unchanged_failure(args=['patch'], message='no release notes')
         result = self.invoke(args=['patch', '--allow-empty-changelog', '--date', '2026-11-04'])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('## [v0.62.1] - 2026-11-04\n\n## [v0.62.0]', (self.root / 'CHANGELOG.md').read_text())
+        self.assertIn('## [0.62.1] - 2026-11-04\n\n## [0.62.0]', (self.root / 'CHANGELOG.md').read_text())
 
     def test_missing_changelog_fails_before_branch_or_files_change(self) -> None:
         (self.root / 'CHANGELOG.md').unlink()

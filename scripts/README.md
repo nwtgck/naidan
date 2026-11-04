@@ -73,7 +73,7 @@ working tree. The script creates `release/<version>`, updates `package.json`,
 Write and review English notes under `## [Unreleased]` **before** starting a
 release, then commit those edits. Review the actual source differences; commit
 messages are supplementary context, not evidence that a feature was released.
-The script moves those notes into `## [vX.Y.Z] - YYYY-MM-DD`, creates an empty
+The script moves those notes into `## [X.Y.Z] - YYYY-MM-DD`, creates an empty
 `Unreleased` section above it, and updates the optional Markdown comparison links.
 It never writes or summarizes release-note prose.
 
@@ -81,7 +81,7 @@ It never writes or summarizes release-note prose.
 # Inspect a plan, including validation of the notes, without writing anything.
 ./scripts/release_start.py minor --dry-run
 
-# Use the local calendar date, or supply the intended date explicitly.
+# Use today's UTC calendar date, or supply the intended UTC date explicitly.
 ./scripts/release_start.py minor
 ./scripts/release_start.py patch --date 2026-11-04
 
@@ -96,12 +96,20 @@ It never writes or summarizes release-note prose.
 removes a final `-dev` suffix without incrementing the patch number; otherwise it
 increments the patch number. `dev` increments the patch number and appends
 `-dev`, stays on `develop`, and does not read or modify `CHANGELOG.md`.
-`--date` and `--allow-empty-changelog` are release-only options.
+`--date` and `--allow-empty-changelog` are release-only options. Release dates
+use UTC (Coordinated Universal Time), independent of the machine's local time
+zone. `--date YYYY-MM-DD` supplies a UTC calendar date verbatim, not a local
+midnight to convert. The default is the date when release preparation runs, not
+the eventual tag or publication date; neither is created by this script. No
+custom environment variable changes this behavior.
 
 ### Changelog format and validation
 
 Use ordinary Markdown with one unindented `## [Unreleased]` heading first,
-followed by unique `## [vX.Y.Z] - YYYY-MM-DD` headings in descending version order.
+followed by unique `## [X.Y.Z] - YYYY-MM-DD` headings in descending version order.
+Version headings and reference labels omit `v`; Git tag names keep it. Historical
+dates in the initial changelog were derived from Git tag timestamps converted to
+UTC, not independently verified GitHub publication dates.
 The optional categories are `### Added`, `### Changed`, `### Deprecated`,
 `### Removed`, `### Fixed`, and `### Security`. Do not duplicate a category in
 `Unreleased`. Comments and fenced examples are not release boundaries; original
@@ -113,7 +121,12 @@ the document. Ordinary reference titles and angle-bracket destinations are
 supported. The `Unreleased` comparison must begin at the newest recorded tag;
 its comparison target (for example, `develop`) is preserved. Unsupported managed
 link syntax fails validation instead of silently leaving stale links. A changelog
-without reference links is also supported.
+without reference links is also supported. For example:
+
+```markdown
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.62.0...develop
+[0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0
+```
 
 Missing files, malformed headings/dates, duplicate versions, conflicting release
 branches/tags, and empty notes fail before branch creation or file writes. Empty

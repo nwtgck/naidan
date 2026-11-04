@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, datetime, timezone
 import json
 import os
 import re
@@ -22,7 +22,7 @@ PACKAGE_LOCK_JSON_PATH = REPO_ROOT / 'package-lock.json'
 CHANGELOG_PATH = REPO_ROOT / 'CHANGELOG.md'
 VERSION_CORE = r'(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)'
 VERSION_PATTERN = re.compile(r'^(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$')
-RELEASE_HEADING_PATTERN = re.compile(rf'## \[(v{VERSION_CORE})\] - ([0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}})')
+RELEASE_HEADING_PATTERN = re.compile(rf'## \[({VERSION_CORE})\] - ([0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}})')
 CHANGE_CATEGORIES = {'Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security'}
 
 
@@ -47,14 +47,14 @@ def main() -> int:
         (PACKAGE_LOCK_JSON_PATH, serialize_json(content=package_lock_json)),
     ]
     if release_branch_name is not None:
-        release_date = args.release_date if args.release_date is not None else date.today()
+        release_date = args.release_date if args.release_date is not None else datetime.now(timezone.utc).date()
         updates.append((CHANGELOG_PATH, prepare_changelog(
             content=read_text_file(path=CHANGELOG_PATH),
             next_version=next_version,
             release_date=release_date,
             allow_empty=args.allow_empty_changelog,
         )))
-        print(f'Changelog release: v{next_version} - {release_date.isoformat()}')
+        print(f'Changelog release: {next_version} - {release_date.isoformat()} (UTC)')
 
     print(f'Current version: {current_version}')
     print(f'Next version: {next_version}')
@@ -95,7 +95,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Start a release branch from develop without git-flow.')
     parser.add_argument('bump_kind', choices=['major', 'minor', 'patch', 'dev'], help='Release bump kind or the next development bump.')
     parser.add_argument('--dry-run', action='store_true', help='Validate and print the plan without changing files or git state.')
-    parser.add_argument('--date', dest='release_date', type=parse_release_date, help='Release date as YYYY-MM-DD (default: the local calendar date).')
+    parser.add_argument('--date', dest='release_date', type=parse_release_date, help='Release date as a UTC calendar date in YYYY-MM-DD (default: today in UTC).')
     parser.add_argument('--allow-empty-changelog', action='store_true', help='Explicitly allow a release with no notable changes in Unreleased.')
     args = parser.parse_args()
     if args.bump_kind == 'dev' and (args.release_date is not None or args.allow_empty_changelog):
@@ -195,20 +195,20 @@ def prepare_changelog(*, content: str, next_version: str, release_date: date, al
         match = RELEASE_HEADING_PATTERN.fullmatch(text.rstrip())
         if match is None:
             raise SystemExit(f'Invalid or duplicate changelog heading on line {index + 1}: {text}')
-        tag, date_text = match.groups()
+        version_text, date_text = match.groups()
         try:
-            tagged_date = date.fromisoformat(date_text)
+            released_date = date.fromisoformat(date_text)
         except ValueError as exc:
             raise SystemExit(f'Invalid changelog date on line {index + 1}: {date_text}') from exc
-        version = tuple(int(part) for part in tag[1:].split('.'))
+        version = tuple(int(part) for part in version_text.split('.'))
         if previous_version is not None and version >= previous_version:
             raise SystemExit('Changelog releases must be unique and ordered newest first.')
         previous_version = version
-        releases.append((index, tag, tagged_date))
+        releases.append((index, version_text, released_date))
     if releases:
-        latest_version = tuple(int(part) for part in releases[0][1][1:].split('.'))
+        latest_version = tuple(int(part) for part in releases[0][1].split('.'))
         if tuple(int(part) for part in next_version.split('.')) <= latest_version:
-            raise SystemExit(f'v{next_version} must be newer than the latest changelog release, {releases[0][1]}.')
+            raise SystemExit(f'{next_version} must be newer than the latest changelog release, {releases[0][1]}.')
         if release_date < releases[0][2]:
             raise SystemExit('The release date must not precede the latest changelog release date.')
 
@@ -228,19 +228,21 @@ def prepare_changelog(*, content: str, next_version: str, release_date: date, al
         if match is None:
             # Do not silently leave a managed comparison link stale if a future
             # edit uses a multiline or otherwise unsupported definition.
-            if re.match(r' {0,3}\[[ \t]*(?:Unreleased|v' + VERSION_CORE + r')[ \t]*\]:', text, re.IGNORECASE):
+            if re.match(r' {0,3}\[[ \t]*(?:Unreleased|v?' + VERSION_CORE + r')[ \t]*\]:', text, re.IGNORECASE):
                 raise SystemExit('Changelog comparison links must use single-line Markdown definitions.')
             continue
         label = match.group(1)
         group = 'angle' if match.group('angle') is not None else 'bare'
         url = match.group(group)
         key = ' '.join(label.split()).casefold()
+        if re.fullmatch('v' + VERSION_CORE, key):
+            raise SystemExit(f'Changelog version link labels must omit the v prefix: [{label}]')
         if key in references:
             raise SystemExit(f'Duplicate changelog link definition: [{label}]')
         references[key] = (index, url, *match.span(group))
 
-    if f'v{next_version}' in references:
-        raise SystemExit(f'A changelog link for v{next_version} already exists.')
+    if next_version in references:
+        raise SystemExit(f'A changelog link for {next_version} already exists.')
 
     start = headings[0][0] + 1
     end = releases[0][0] if releases else len(lines)
@@ -273,16 +275,16 @@ def prepare_changelog(*, content: str, next_version: str, release_date: date, al
         if index < end or (releases and index < releases[-1][0]):
             raise SystemExit('Place changelog comparison link definitions after the release sections.')
         match = re.fullmatch(r'(.+/compare/)([^\s]+)\.\.\.([^\s]+)', url)
-        if match is None or not releases or match.group(2) != releases[0][1]:
+        if match is None or not releases or match.group(2) != f'v{releases[0][1]}':
             raise SystemExit('The Unreleased comparison link must start at the latest changelog tag.')
         prefix, previous_tag, target = match.groups()
         lines[index] = (
             lines[index][:url_start] + f'{prefix}v{next_version}...{target}' + lines[index][url_end:].rstrip('\r\n') + newline
-            + f'[v{next_version}]: {prefix}{previous_tag}...v{next_version}{newline}'
+            + f'[{next_version}]: {prefix}{previous_tag}...v{next_version}{newline}'
         )
     notes = ''.join(lines[start:end]).strip('\r\n')
     prefix = ''.join(lines[:start]).rstrip('\r\n') + newline + newline
-    section = f'## [v{next_version}] - {release_date.isoformat()}{newline}{newline}'
+    section = f'## [{next_version}] - {release_date.isoformat()}{newline}{newline}'
     if notes:
         section += notes + newline + newline
     return prefix + section + ''.join(lines[end:])
