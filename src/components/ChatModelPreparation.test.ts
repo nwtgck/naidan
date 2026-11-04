@@ -111,6 +111,7 @@ it('reuses local loading progress and retry without the page-sized preparation p
     model: computed(() => ({ modelId: 'user/Model-9B', size: 128, importedAt: 1 })),
     status: computed(() => status.value),
     error: computed(() => status.value === 'error' ? 'runtime-error' as const : undefined),
+    errorDetails: computed(() => undefined),
     progress: computed(() => undefined),
     homeOriginId: computed(() => undefined),
     maySend: computed(() => false),

@@ -8,6 +8,7 @@ import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
 import { backendCensusSchema } from './performance/backend-census-schema';
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
+import { errorDetails, maximumErrorDetailsLength, recordNativeErrorContext } from './error-details';
 
 const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'audio-prompt', 'audio-frame', 'audio-output', 'media-encode', 'media-decode', 'model-resolve', 'model-load', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-prepare', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
@@ -229,6 +230,7 @@ export const diagnosticSchema = z.object({
   lastEvent: eventSchema.optional(),
   stage: stageSchema.optional(),
   failureKind: failureKindSchema.optional(),
+  details: z.string().max(maximumErrorDetailsLength).optional(),
   code: errorCodeSchema.optional(),
   reason: z.enum(['model-directory-layout', 'non-monotonic-content', 'non-monotonic-reasoning', 'decode-status', 'invalid-token-piece', 'missing-native-binding', 'context-allocation', 'prefix-match', 'prefix-partial-match', 'prefix-mismatch', 'cache-invalid', 'cache-position', 'cache-window', 'cache-rollback-failed', 'checkpoint-match', 'checkpoint-invalid', 'checkpoint-size', 'checkpoint-allocation']).optional(),
   grammar: z.boolean().optional(),
@@ -418,7 +420,7 @@ export function isDebugDiagnosticsEnabled(): boolean {
   return false;
 }
 
-/** Allowlisted fields only: never forward native logs, errors, names or chat data. */
+/** Structured observations and operation-local error text, without object dumps. */
 export function logDiagnostic({ diagnostic }: { diagnostic: Diagnostic }): void {
   publishDiagnostic({ diagnostic, writeToConsole: true });
 }
@@ -552,9 +554,9 @@ export function classifyFailure({ error }: { error: unknown }): z.infer<typeof f
   return 'unknown-exception';
 }
 
-/** Classify locally without serializing exception values, messages or stacks. */
+/** Preserve the exception's message, stack and causes alongside its classification. */
 export function logFailure({ stage, error }: { stage: DiagnosticStage, error: unknown }): void {
-  logDiagnostic({ diagnostic: { event: 'failed', stage, failureKind: classifyFailure({ error }), code: errorCode({ error }) } });
+  logDiagnostic({ diagnostic: { event: 'failed', stage, failureKind: classifyFailure({ error }), code: errorCode({ error }), details: errorDetails({ error }) } });
 }
 
 /** Upstream mtmd-helper emits these exact lines with a fixed image/audio label. */
@@ -824,8 +826,9 @@ function nativeModelLoadDiagnostic({ message }: { message: unknown }): Diagnosti
   return undefined;
 }
 
-/** Keep structured progress/metrics and known failures; never forward raw stderr. */
+/** Keep structured metrics and make native failure text visible for diagnosis. */
 export function logNativeDiagnostic({ message }: { message: unknown }): void {
+  recordNativeErrorContext({ message });
   const modelLoad = nativeModelLoadDiagnostic({ message });
   if (modelLoad) {
     logDiagnostic({ diagnostic: modelLoad });
@@ -857,8 +860,10 @@ export function logNativeDiagnostic({ message }: { message: unknown }): void {
     return;
   }
   const failureKind = knownNativeFailure({ message });
-  if (failureKind) {
-    logDiagnostic({ diagnostic: { event: 'native-error', failureKind, ...dispatchLimitDetails({ message }) } });
+  // Recognized informational fallbacks returned above. Preserve remaining
+  // failure text even when it is not in a fixed upstream-format dictionary.
+  if (typeof message === 'string' && (failureKind !== undefined || /\b(?:error|failed|failure|fatal|exception|unsupported|unknown model|unable to|cannot|could not|assertion)\b/i.test(message))) {
+    logDiagnostic({ diagnostic: { event: 'native-error', failureKind, details: message.slice(0, maximumErrorDetailsLength), ...dispatchLimitDetails({ message }) } });
   }
 }
 

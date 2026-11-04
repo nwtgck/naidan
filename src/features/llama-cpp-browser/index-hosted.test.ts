@@ -303,12 +303,16 @@ describe('serialized hosted model service', () => {
     expect(await service.listModelEntries({ signal: undefined })).toEqual([]);
   });
 
-  it('terminates failed runtime ownership and exposes only a safe error code', async () => {
+  it('terminates failed runtime ownership and preserves the error details alongside its code', async () => {
     worker.generate.mockRejectedValueOnce(new Error('private prompt, private file and native details'));
-    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('llama.cpp browser: runtime-error');
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toMatchObject({
+      message: expect.stringContaining(`\
+llama.cpp browser: runtime-error
+Error: private prompt, private file and native details`),
+    });
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
     expect(worker.dispose).toHaveBeenCalledOnce();
-    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private');
+    expect(JSON.stringify(vi.mocked(console.log).mock.calls)).toContain('private prompt, private file and native details');
     await service.listModelEntries({ signal: undefined });
     expect(factory).toHaveBeenCalledOnce();
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });

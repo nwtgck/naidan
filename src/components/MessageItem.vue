@@ -22,6 +22,8 @@ import MessageThinking from './MessageThinking.vue';
 import { getMessageText } from '@/01-models/message-text';
 import { getAssistantDisplayParts, getDisplayedMessageText } from '@/logic/message-display';
 import { useChatMessageError } from '@/composables/chat/useChatMessageError';
+import { parseLlamaCppBrowserErrorMessage } from '@/features/llama-cpp-browser/types';
+import LlamaCppBrowserErrorDetails from '@/features/llama-cpp-browser/components/LlamaCppBrowserErrorDetails.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
 import GenerationSpeed from './GenerationSpeed.vue';
@@ -111,6 +113,7 @@ const attachments = computed<Attachment[]>(() => props.message.parts.flatMap(par
   }
 }));
 const messageError = useChatMessageError({ chatId: computed(() => props.chatId), message: computed(() => props.message) });
+const llamaError = computed(() => messageError.value === undefined ? undefined : parseLlamaCppBrowserErrorMessage({ message: messageError.value }));
 const editContent = ref(rawContent.value);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -835,7 +838,8 @@ defineExpose({
             <AlertTriangleIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.MessageItem__generation_failed() }}</span>
           </div>
-          <div tw-class="opacity-90">{{ messageError }}</div>
+          <LlamaCppBrowserErrorDetails v-if="llamaError" :summary="llamaError.summary" :details="llamaError.details" tw-class="w-full" />
+          <div v-else tw-class="opacity-90">{{ messageError }}</div>
           <CspLmEndpointHint :activity-for-display-only="undefined" :fake-lm-debug-mode-status="undefined" :endpoint="endpoint" :operation="isImageRequestMsg ? 'image' : 'chat'" presentation="error" />
           <button
             @click="emit('regenerate', message.id)"

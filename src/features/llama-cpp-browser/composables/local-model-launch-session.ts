@@ -14,6 +14,7 @@ export type LocalModelLaunchSession = {
   status: 'loading' | 'ready' | 'error',
   progress: Progress | undefined,
   error: ErrorCode | undefined,
+  errorDetails?: string,
   controller: AbortController | undefined,
   isCurrent(): boolean,
   readBinding(): LocalModelLaunchBinding,

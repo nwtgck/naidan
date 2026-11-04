@@ -12,6 +12,7 @@ import LlamaCppBrowserDownloadSources from './LlamaCppBrowserDownloadSources.vue
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 import LlamaCppBrowserModelLoadProgress from './LlamaCppBrowserModelLoadProgress.vue';
 import LlamaCppBrowserDownloadProgress from './LlamaCppBrowserDownloadProgress.vue';
+import LlamaCppBrowserErrorDetails from './LlamaCppBrowserErrorDetails.vue';
 
 const props = defineProps<{ state: ModelLaunchChatUi, routePath: string }>();
 const target = computed(() => props.state.selectedTarget.value ?? props.state.launch.value?.target);
@@ -95,6 +96,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-else role="status" data-testid="model-launch-checking" tw-class="min-h-14 flex items-center text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.BrowserModelPreparation__checking_model() }}</p>
         <button v-if="state.warmup.value === 'deferred'" type="button" tw-class="min-h-11 w-full rounded-xl px-4 text-sm text-blue-600 dark:text-blue-400" @click="state.retryWarmup()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
       </template>
+      <template #error="{ message }"><LlamaCppBrowserErrorDetails :summary="message" :details="state.errorDetails.value" /></template>
       <template #details>
         <!-- Download jobs own their transport errors. Generic preparation errors may be local. -->
         <CspMessageHint v-if="displayedJob === undefined && (state.readiness.value === 'missing' || state.observedDownload.value !== undefined || state.launch.value !== undefined)" :target="{ kind: state.readiness.value === 'missing' || state.observedDownload.value !== undefined ? 'huggingface-download' : 'huggingface-metadata' }" :activity-for-display-only="state.readiness.value === 'missing' || state.observedDownload.value !== undefined ? 'download' : 'model-information'" presentation="compact" />

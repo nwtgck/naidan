@@ -13,6 +13,7 @@ import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-stora
 import { deletionPlanSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { logDiagnostic, logFailure, subscribeDiagnostics, diagnosticSchema, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
+import { captureNativeErrorContext } from '@/features/llama-cpp-browser/error-details';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
 import { errorCode, progressSchema, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
@@ -24,16 +25,27 @@ import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchem
 
 async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   try {
-    return await withModelStoreLock({ operation });
+    return await withModelStoreLock({
+      operation: async () => {
+        const capture = captureNativeErrorContext();
+        try {
+          return await operation();
+        } catch (error) {
+          throw new LlamaCppBrowserError({ code: errorCode({ error }), cause: error, details: capture.describe({ error }) });
+        } finally {
+          capture.stop();
+        }
+      },
+    });
   } catch (error) {
     logFailure({ stage: 'worker-operation', error });
-    throw new LlamaCppBrowserError({ code: errorCode({ error }) });
+    throw new LlamaCppBrowserError({ code: errorCode({ error }), cause: error });
   }
 }
 
 function eventQueue() {
   const pending = new Set<Promise<void>>();
-  let failed = false;
+  let failed: { error: unknown } | undefined;
   return {
     send({ operation }: { operation: () => void | Promise<void> }): void {
       if (failed) {
@@ -45,19 +57,19 @@ function eventQueue() {
       try {
         const event = Promise.resolve(operation()).then(() => {}, error => {
           logFailure({ stage: 'worker-callback', error });
-          failed = true;
+          failed ??= { error };
         });
         pending.add(event);
         void event.then(() => pending.delete(event));
       } catch (error) {
         logFailure({ stage: 'worker-callback', error });
-        failed = true;
+        failed ??= { error };
       }
     },
     async finish(): Promise<void> {
       await Promise.all(pending);
       if (failed) {
-        throw new LlamaCppBrowserError({ code: "worker-failed" });
+        throw new LlamaCppBrowserError({ code: "worker-failed", cause: failed.error });
       }
     },
   };
@@ -433,8 +445,8 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
               const acceptedEvent = generationEventSchema.parse(event);
               try {
                 await onEvent({ event: acceptedEvent });
-              } catch {
-                throw new LlamaCppBrowserError({ code: 'worker-failed' });
+              } catch (error) {
+                throw new LlamaCppBrowserError({ code: 'worker-failed', cause: error });
               }
             },
             onProgress: ({ progress }) => {

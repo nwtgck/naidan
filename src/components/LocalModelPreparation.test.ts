@@ -29,6 +29,7 @@ function localState() {
       status: computed(() => status.value),
       progress: computed(() => progress.value),
       error: computed(() => error.value),
+      errorDetails: computed(() => undefined),
       maySend: computed(() => status.value === 'ready'),
       retry: vi.fn(async () => {}),
       back: vi.fn(async () => {}),

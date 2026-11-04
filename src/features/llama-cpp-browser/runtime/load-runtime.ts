@@ -34,8 +34,11 @@ export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCpp
     baseURL: assetBaseURL,
     moduleOptions: {
       wasmBinary,
-      // Native messages can contain prompts, paths and arbitrary GGUF metadata.
-      print() {},
+      // Keep only this operation's bounded context for a subsequent failure.
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
+      print(message) {
+        logNativeDiagnostic({ message });
+      },
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten logging callback ABI.
       printErr(message) {
         logNativeDiagnostic({ message });
