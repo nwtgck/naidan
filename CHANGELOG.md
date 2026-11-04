@@ -20,6 +20,8 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-11-04
+
 ### Changed
 
 - Updated the bundled llama.cpp browser runtime to llama.cpp 0.9.0.
@@ -1048,7 +1050,8 @@ All notable changes to Naidan are documented in this file.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.62.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.63.0...develop
+[0.63.0]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/nwtgck/naidan/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/nwtgck/naidan/compare/v0.59.0...v0.60.0
