@@ -65,33 +65,95 @@ only selects the mode, resolves the repository root, and reports results.
 
 ## Release Start (`release_start.py`)
 
-Starts a release branch without requiring `git flow`. The script requires the current branch to be `develop`, updates `package.json` and `package-lock.json`, and commits the version bump. For `major`, `minor`, and `patch`, it creates `release/<version>`. For `dev`, it stays on `develop` and bumps to the next `-dev` version.
+Prepare a release locally without `git flow`. Run from `develop` with a clean
+working tree. The script creates `release/<version>`, updates `package.json`,
+`package-lock.json`, and `CHANGELOG.md`, and commits all three together as
+`bump: <version>`. It does not create a tag, push, publish, or update GitHub Releases.
 
-`patch` follows the repository's release flow: if the current version ends with `-dev`, it removes the suffix without incrementing the patch number. Otherwise, it increments the patch number.
-
-### Usage
-
-```bash
-./scripts/release_start.py <major|minor|patch|dev>
-```
-
-```bash
-./scripts/release_start.py --dry-run <major|minor|patch|dev>
-```
-
-### Example
+Write and review English notes under `## [Unreleased]` **before** starting a
+release, then commit those edits. Review the actual source differences; commit
+messages are supplementary context, not evidence that a feature was released.
+The script moves those notes into `## [X.Y.Z] - YYYY-MM-DD`, creates an empty
+`Unreleased` section above it, and updates the optional Markdown comparison links.
+It never writes or summarizes release-note prose.
 
 ```bash
+# Inspect a plan, including validation of the notes, without writing anything.
+./scripts/release_start.py minor --dry-run
+
+# Use today's UTC calendar date, or supply the intended UTC date explicitly.
 ./scripts/release_start.py minor
-```
+./scripts/release_start.py patch --date 2026-11-04
 
-```bash
-./scripts/release_start.py --dry-run minor
-```
+# Only for a deliberately empty release; this does not fabricate a change entry.
+./scripts/release_start.py patch --allow-empty-changelog
 
-```bash
+# The existing development bump changes only the two package files.
 ./scripts/release_start.py dev
 ```
+
+`major` and `minor` increment their respective version components. `patch`
+removes a final `-dev` suffix without incrementing the patch number; otherwise it
+increments the patch number. `dev` increments the patch number and appends
+`-dev`, stays on `develop`, and does not read or modify `CHANGELOG.md`.
+`--date` and `--allow-empty-changelog` are release-only options. Release dates
+use UTC (Coordinated Universal Time), independent of the machine's local time
+zone. `--date YYYY-MM-DD` supplies a UTC calendar date verbatim, not a local
+midnight to convert. The default is the date when release preparation runs, not
+the eventual tag or publication date; neither is created by this script. No
+custom environment variable changes this behavior.
+
+### Changelog format and validation
+
+Use ordinary Markdown with one unindented `## [Unreleased]` heading first,
+followed by unique `## [X.Y.Z] - YYYY-MM-DD` headings in descending version order.
+Version headings and reference labels omit `v`; Git tag names keep it. Historical
+dates in the initial changelog were derived from Git tag timestamps converted to
+UTC, not independently verified GitHub publication dates.
+The optional categories are `### Added`, `### Changed`, `### Deprecated`,
+`### Removed`, `### Fixed`, and `### Security`. Do not duplicate a category in
+`Unreleased`. Comments and fenced examples are not release boundaries; original
+note text, historical sections, and line endings are preserved rather than
+regenerated. No custom markers or generated commit lists are required.
+
+Keep managed comparison links as single-line Markdown definitions at the end of
+the document. Ordinary reference titles and angle-bracket destinations are
+supported. The `Unreleased` comparison must begin at the newest recorded tag;
+its comparison target (for example, `develop`) is preserved. Unsupported managed
+link syntax fails validation instead of silently leaving stale links. A changelog
+without reference links is also supported. For example:
+
+```markdown
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.62.0...develop
+[0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0
+```
+
+Missing files, malformed headings/dates, duplicate versions, conflicting release
+branches/tags, and empty notes fail before branch creation or file writes. Empty
+bullets, comments, and headings do not count as notes. The target version must be
+newer than the latest section, and its date must not precede that section's date.
+English prose quality and historical accuracy still require review; these are
+not inferred from syntax. `--dry-run` performs content validation and can inspect
+uncommitted draft notes, but a real run requires a clean working tree.
+
+### Failure handling and targeted tests
+
+Release files must be regular files, not symlinks. Each file is staged beside its
+destination and replaced by rename, preserving its permissions; a write failure
+does not truncate that destination. The whole operation is **not** a transaction
+across files, branch creation, and Git hooks. Do not run concurrent release
+preparations. If writing or committing fails, inspect `git status`, the index,
+and the current branch. Prepared work is left available for recovery; the script
+does not reset or discard it automatically.
+
+Run the release-script tests without building or testing the application:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_release_start.py'
+```
+
+The integration tests use isolated temporary Git repositories and do not publish
+anything or contact the network.
 
 ## Refactor Named Arguments (`refactor-named-args.ts`)
 
