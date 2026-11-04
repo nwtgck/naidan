@@ -663,57 +663,44 @@ jobs:
               target_url: "${{ steps.cloudflare_pages_deploy_curated.outputs.deployment-url }}",
             });
 
-  release_to_github:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+  test_release_tooling:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
-
-      - name: Download full dist build artifact
-        uses: actions/download-artifact@v8.0.2
         with:
-          name: full-dist-build
-          path: dist
+          persist-credentials: false
 
-      - name: Get tag name
-        id: get_tag
-        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Rename zips with tag for release
+      - name: Pull test runtimes (explicit network access)
         run: |
-          TAG=${{ steps.get_tag.outputs.TAG_NAME }}
-          for ZIP_PATH in dist/naidan-standalone-*.zip; do
-            [ -f "$ZIP_PATH" ] || continue
-            ZIP_STEM=${ZIP_PATH%.zip}
-            mv "$ZIP_PATH" "${ZIP_STEM}-${TAG}.zip"
-          done
-          mv dist/naidan-standalone.zip dist/naidan-standalone-${TAG}.zip
-          mv dist/naidan-hosted.zip dist/naidan-hosted-${TAG}.zip
+          # The full image includes Git for release_start integration tests.
+          docker pull python:3.13-bookworm
+          docker pull node:22-bookworm
 
-      - name: Upload extra assets to GitHub Release
-        uses: softprops/action-gh-release@v3.0.3
-        with:
-          files: |
-            dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
-            dist/naidan-standalone-*-${{ steps.get_tag.outputs.TAG_NAME }}.zip
-            dist/naidan-hosted-${{ steps.get_tag.outputs.TAG_NAME }}.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Test release tooling offline
+        run: |
+          docker run --rm --pull=never --network none --read-only \
+            --cap-drop=ALL --security-opt=no-new-privileges:true \
+            --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
+            python:3.13-bookworm \
+            python -m unittest discover -s scripts/tests -p 'test_*.py'
+          docker run --rm --pull=never --network none --read-only \
+            --cap-drop=ALL --security-opt=no-new-privileges:true \
+            --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev \
+            --mount "type=bind,source=$PWD,target=/work,readonly" -w /work \
+            node:22-bookworm node --test scripts/tests/release-notes-workflow.test.mjs
 
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version-file: naidan-server/go.mod
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7.3.0
-        with:
-          distribution: goreleaser
-          version: v2.7.0
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  release_to_github:
+    needs: [build, test_release_tooling]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    # A single reusable job serializes note synchronization AND asset publishing.
+    uses: $/.github/workflows/sync-release-notes.yml
+    with:
+      publish-tag: ${{ github.ref_name }}

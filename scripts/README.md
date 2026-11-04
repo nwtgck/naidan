@@ -155,6 +155,154 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test
 The integration tests use isolated temporary Git repositories and do not publish
 anything or contact the network.
 
+## GitHub Release Notes (`plan_release_notes.py`)
+
+`CHANGELOG.md` on **develop** is the canonical source of release-note prose.
+The workflow `.github/workflows/sync-release-notes.yml` is both a lightweight
+synchronizer and the reusable, serialized publication job called by `main.yml`.
+No AI, commit-log summaries, new npm packages, or synchronization database are used.
+
+### Audit and execution boundary
+
+All release-note GitHub API (Application Programming Interface) calls are inline
+JavaScript in that workflow, using `actions/github-script` pinned by
+`.github/workflows/actions.lock`. When adding or changing `uses:` references,
+run `gh actions-lock` to regenerate the lockfile and check it with
+`gh actions-lock --verify` (also enforced by `verify-lockfile.yml`). The Python
+planner only reads files and prints a complete JSON (JavaScript Object Notation)
+plan. It reuses `release_start.py`'s Markdown scanner, without running release
+preparation or Git commands. It runs in a read-only Docker container with
+`--network none`, no credentials or Docker socket, read-only script/input mounts,
+and no writable host mount. Stdout is redirected to the plan by the host shell.
+The planner's Python image is digest-pinned and pulled explicitly before running
+with `--pull=never`. Update the pin deliberately when updating that runtime.
+
+Checkout, image pulls, artifact transfers, and the existing asset publishers are
+also network operations and remain visible in YAML. This boundary does **not**
+sandbox the host runner or restrict github-script to a network allowlist. The
+workflow JavaScript and action dependencies remain trusted code. Do not import
+repository JavaScript into the credentialed steps or add networking to the planner.
+
+### Triggers and ordering
+
+- A relevant push to `develop` compares **all** published releases, including old
+  versions. Tooling/workflow changes also trigger comparison. `Unreleased` never
+  becomes release notes. Unrelated pushes do not run this synchronizer.
+- A tag push first builds and tests the release tooling in `main.yml`, then calls
+  this reusable job. It validates the entire plan before creating the requested
+  release with reviewed notes, updates differing historical bodies, and finally
+  uploads the existing distributions and runs GoReleaser. Only an explicit
+  `vX.Y.Z` tag-push publication can create a release; a changelog-only sync cannot.
+- Manual `workflow_dispatch` on `develop` defaults to **dry-run**. Inspect the
+  `release-note-plan-<run>-<attempt>` artifact, then run again with dry-run disabled
+  to apply. Inputs, source identity, and the plan are retained for seven days,
+  including after a failed planning/application step when the fetch succeeded.
+  Draft metadata is removed before writing this snapshot to avoid exposing
+  unpublished draft tags or notes through artifacts.
+
+The first push of this implementation to `develop` automatically synchronizes
+existing releases; it is not a preview. Prepare/review an offline plan first when
+an initial all-history update needs review. The synchronizer itself does not build
+the application, but the pre-existing all-push `main.yml` build/test triggers are
+not suppressed by this change.
+
+All paths use the same job-level concurrency group, with `cancel-in-progress:
+false` and `queue: max`. Up to 100 pending jobs are retained instead of replacing
+pending tag publications. The lock spans fetching, planning, mutations, AND asset
+publishing: GoReleaser 2.7.0's `keep-existing` still resends a fetched existing body.
+Without this shared lock, it could undo a newer synchronization. GoReleaser's
+changelog generator is disabled; it does not author release notes.
+
+The canonical changelog is fetched from current `develop` **after acquiring the
+lock**, not from the triggering commit. For a new tag, the tagged changelog must
+also contain that version. The canonical section wins when present. Otherwise,
+only the requested version may fall back to the tagged notes, and only for a new
+release or an existing empty body. Tag fallback never replaces nonempty existing
+notes or imports historical descriptions. Merge the new section back to `develop`
+so subsequent ordinary synchronizations can manage it.
+
+### Rendering and update rules
+
+The planner accepts the same canonical stable-version headings, date syntax, and
+newest-first ordering as release preparation. It masks comments and code examples
+when recognizing structure. It does not interpret arbitrary Markdown extensions,
+write prose, or migrate formats. Prerelease version headings are not supported by
+the existing release-preparation contract and are not introduced here.
+
+Each release body contains its section's original Markdown (without the version
+heading), then its optional `Full Changelog` reference link. Dates remain in the
+canonical document rather than being repeated in the body. Outer blank lines and
+CRLF (carriage return + line feed) endings are normalized; hard line breaks and
+other formatting are preserved. Notes may be deliberately empty, as supported by
+`release_start.py --allow-empty-changelog`; no synthetic change entry is invented.
+
+Keep reference definitions on single lines at the document end. Used definitions
+are copied into each body, including normal full/collapsed/shortcut/image
+references; irrelevant version definitions are not copied. Defined bracket labels
+are conservatively retained, not rewritten with a general Markdown renderer.
+Use absolute link destinations for links that must also work outside the source
+file. Malformed or duplicate headings/definitions, invalid dates, non-footer text
+after the reference block, and oversized bodies fail before any mutation.
+
+Releases are listed with pagination at 100 per page. For R existing releases and
+U differing bodies, synchronization uses max(1, ceil(R / 100)) list requests and
+U body-only PATCH requests, plus one canonical-content read. A tag publication
+adds one tagged-content read and, only when absent, one creation request. These
+counts exclude retries, action setup, checkout, and asset upload traffic. No
+per-version GET is used. Repeating a successful synchronization makes zero writes.
+
+Before writing, the inline JavaScript independently validates **every** update's
+shape, unique positive safe-integer identifier, tag, size, and match to the fetched
+snapshot. It never spreads plan fields into an API request. Existing-release
+writes contain only `body`, not name, tag, assets, draft/prerelease/latest flags.
+Drafts, prereleases, and releases missing from the canonical changelog are skipped,
+not cleared or deleted. Missing GitHub releases are not created during ordinary
+syncs. Writes are sequential with a one-second interval between content mutations.
+
+### Failures, recovery, and limitations
+
+A planning/validation failure makes zero writes. A network failure can leave a
+partially applied plan: the job fails, earlier successes remain, and the next full
+comparison recovers the rest. There is no cross-release transaction or automatic
+rollback. New publication stops before asset uploads if synchronization fails.
+After an asset-publishing failure, rerun the failed publication job; the planner
+recognizes existing notes and does not create duplicate releases.
+
+The default `GITHUB_TOKEN` needs `contents: write`; no personal token is required
+by this workflow. Creation deliberately omits `target_commitish`: the tag already
+exists, so that field is unnecessary, and freezing it to a historical workflow
+commit could cause later body updates to require workflow-write permissions. GitHub can still reject a release update with 403/404 when its
+resolved target modifies workflows relative to the default branch and the token
+cannot modify workflows. Do not interpret those errors as "missing, skip" or
+silently broaden permissions. Review the target/default-branch state and GitHub's
+release API permission rules before retrying.
+
+The concurrency group coordinates these workflows, not manual GitHub edits,
+external publishers, or old workflow definitions from tags predating this change.
+Do not manually edit derived release bodies. A canonical edit arriving during a
+run is picked up by the next queued synchronization; no instantaneous consistency
+is promised. A canceled job or a full queue requires a later sync/manual rerun.
+No scheduled job or alternate credential is configured automatically.
+
+### Local planning and targeted tests
+
+With a previously fetched JSON array containing each release's `id`, `tag_name`,
+`body`, `draft`, and `prerelease`, planning performs no network access or writes:
+
+```bash
+python3 scripts/plan_release_notes.py \
+  --changelog CHANGELOG.md --releases /path/to/releases.json > /tmp/updates.json
+
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+node --test scripts/tests/release-notes-workflow.test.mjs
+```
+
+The JavaScript tests execute the **actual inline scripts extracted from YAML**
+with mocked GitHub endpoints; they do not maintain a second implementation.
+Python integration tests require Git. The tooling check uses the full Python
+image (which includes Git), while production planning uses the smaller, pinned
+image. Both test processes run with networking disabled in Actions.
+
 ## Refactor Named Arguments (`refactor-named-args.ts`)
 
 A powerful codemod tool to convert positional function arguments into named arguments (object destructuring). It automatically updates the function definition and all its call sites across `.ts` and `.vue` files.

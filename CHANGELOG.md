@@ -20,6 +20,10 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- GitHub Release descriptions now use the curated `CHANGELOG.md` notes, including corrections to previously published releases.
+
 ## [0.63.0] - 2026-11-04
 
 ### Changed

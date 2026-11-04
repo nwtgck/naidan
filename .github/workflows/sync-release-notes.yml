@@ -1,0 +1,290 @@
+name: Sync release notes
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - CHANGELOG.md
+      - scripts/plan_release_notes.py
+      - scripts/release_start.py
+      - .github/workflows/sync-release-notes.yml
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Preview all changes without updating GitHub Releases'
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      publish-tag:
+        description: 'Existing vX.Y.Z tag to publish; only accepted from its tag-push workflow'
+        type: string
+        default: ''
+      dry-run:
+        type: boolean
+        default: false
+
+# Audit boundary: keep all release-note GitHub API reads/writes in this YAML.
+# Do not move network operations into the Python planner or import repository
+# JavaScript into github-script. The planner receives read-only data, no tokens,
+# no Docker socket, and no network (--network none); stdout is its only output.
+# Checkout, image pulls, artifact transfer, and asset publishing are explicit
+# network operations too. This is not a network allowlist for the host runner.
+# Action dependencies are pinned by .github/workflows/actions.lock; run
+# `gh actions-lock` whenever a `uses:` reference changes. Same-repo jobs
+# should use $/ paths to retain the running-commit pin.
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: ${{ github.repository == 'nwtgck/naidan' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/develop') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    # Include asset publishing in the same lock: GoReleaser keep-existing still
+    # sends back the body it read. Overlapping synchronizers could be rolled back.
+    # Keep queued tag publications; the default single pending slot drops jobs.
+    concurrency:
+      group: naidan-release-notes-and-publication
+      cancel-in-progress: false
+      queue: max
+    env:
+      NOTES_DIR: ${{ runner.temp }}/release-notes
+      PUBLISH_TAG: ${{ inputs.publish-tag }}
+      # Official Python image index, pinned for reproducible offline planning.
+      PLANNER_IMAGE: python:3.13-slim-bookworm@sha256:281d39ff02e3b389401586134ff9e6572954687822a58055ec07a60ded4e0b7f
+      DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
+    steps:
+      - name: Checkout tooling (and tagged source for asset publication)
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.publish-tag != '' && github.ref || 'refs/heads/develop' }}
+          persist-credentials: false
+
+      - name: Fetch canonical changelog and all releases
+        id: fetch_notes
+        uses: actions/github-script@v9.0.0
+        with:
+          retries: 2
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const publishTag = process.env.PUBLISH_TAG || '';
+            if (publishTag && (
+              !/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(publishTag) ||
+              context.eventName !== 'push' || context.ref !== `refs/tags/${publishTag}`
+            )) {
+              throw new Error('Publication is only allowed for the current vX.Y.Z tag push.');
+            }
+            const directory = path.join(process.env.NOTES_DIR, 'input');
+            await fs.mkdir(directory, {recursive: true});
+            const fetchChangelog = async (ref, filename) => {
+              // Network read: repository content, never an arbitrary download URL.
+              const {data} = await github.rest.repos.getContent({
+                ...context.repo, path: 'CHANGELOG.md', ref,
+              });
+              if (data.type !== 'file' || data.encoding !== 'base64' || typeof data.content !== 'string') {
+                throw new Error(`Expected a base64-encoded CHANGELOG.md at ${ref}`);
+              }
+              await fs.writeFile(path.join(directory, filename), Buffer.from(data.content, 'base64'));
+              return data.sha;
+            };
+            // Read AFTER taking the lock; a queued/retried old run must not use
+            // its event's stale changelog. A missing canonical file is an error.
+            const canonicalSha = await fetchChangelog('refs/heads/develop', 'CHANGELOG.md');
+            if (publishTag) {
+              await fetchChangelog(context.sha, 'tag-CHANGELOG.md');
+            }
+            // One request per page, not per tag. Fetch every page before planning.
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              ...context.repo, per_page: 100,
+            }, response => response.data.map(({id, tag_name, body, draft, prerelease}) => ({
+              id, tag_name, body, draft, prerelease,
+            })));
+            if (publishTag && releases.some(release => release.tag_name === publishTag &&
+              (release.draft || release.prerelease))) {
+              throw new Error('Refusing to republish a draft or prerelease as a stable release.');
+            }
+            // Authenticated listing includes drafts. Do not leak unpublished draft
+            // tags/bodies into logs or downloadable input/plan artifacts.
+            const published = releases.filter(release => !release.draft);
+            await fs.writeFile(path.join(directory, 'releases.json'), JSON.stringify(published));
+            await fs.writeFile(path.join(directory, 'source.json'), JSON.stringify({
+              repository: `${context.repo.owner}/${context.repo.repo}`,
+              changelog_blob: canonicalSha, publish_tag: publishTag,
+            }));
+            core.info(`Fetched ${published.length} published releases; canonical changelog blob ${canonicalSha}`);
+
+      - name: Pull offline planner image (explicit network access)
+        shell: bash
+        run: docker pull "$PLANNER_IMAGE"
+
+      - name: Plan all release-note changes offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "$PUBLISH_TAG" ]; then
+            args+=(--publish-tag "$PUBLISH_TAG" --tag-changelog /input/tag-CHANGELOG.md)
+          fi
+          docker run --rm --pull=never \
+            --network none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            --user "$(id -u):$(id -g)" \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            --mount "type=bind,source=$PWD/scripts,target=/scripts,readonly" \
+            --mount "type=bind,source=$NOTES_DIR/input,target=/input,readonly" \
+            "$PLANNER_IMAGE" python /scripts/plan_release_notes.py \
+            --changelog /input/CHANGELOG.md --releases /input/releases.json \
+            "${args[@]}" > "$NOTES_DIR/updates.json"
+
+      - name: Validate the complete plan and update only changed release bodies
+        id: apply_notes
+        uses: actions/github-script@v9.0.0
+        with:
+          retries: 2
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const readJson = async name => JSON.parse(await fs.readFile(path.join(process.env.NOTES_DIR, name), 'utf8'));
+            const plan = await readJson('updates.json');
+            const releases = await readJson('input/releases.json');
+            const source = await readJson('input/source.json');
+            const publishTag = process.env.PUBLISH_TAG || '';
+            const assert = (condition, message) => { if (!condition) throw new Error(message); };
+            const keysAre = (value, keys) => value !== null && typeof value === 'object' &&
+              !Array.isArray(value) && Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+            const validBody = body => typeof body === 'string' && Buffer.byteLength(body, 'utf8') <= 125000;
+            const validTag = tag => typeof tag === 'string' && /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(tag);
+            assert(['true', 'false'].includes(process.env.DRY_RUN), 'Invalid dry-run mode');
+            assert(source.repository === `${context.repo.owner}/${context.repo.repo}` &&
+              source.publish_tag === publishTag, 'Snapshot belongs to a different repository or publication');
+            assert(!publishTag || (validTag(publishTag) && context.eventName === 'push' &&
+              context.ref === `refs/tags/${publishTag}`), 'Invalid publication context');
+            assert(Array.isArray(releases), 'Invalid release snapshot');
+            const byId = new Map();
+            const tags = new Set();
+            for (const release of releases) {
+              assert(release && Number.isSafeInteger(release.id) && release.id > 0 &&
+                typeof release.tag_name === 'string' && release.tag_name.length > 0 &&
+                typeof release.draft === 'boolean' && typeof release.prerelease === 'boolean' &&
+                (release.body === null || typeof release.body === 'string') &&
+                !byId.has(release.id) && !tags.has(release.tag_name), 'Invalid or duplicate release snapshot entry');
+              byId.set(release.id, release);
+              tags.add(release.tag_name);
+            }
+            assert(keysAre(plan, ['updates', 'create', 'skipped']) && Array.isArray(plan.updates) &&
+              Array.isArray(plan.skipped), 'Invalid plan');
+            const seen = new Set();
+            // Validate ALL destinations and payloads before the first write.
+            for (const update of plan.updates) {
+              assert(keysAre(update, ['id', 'tag_name', 'body']) &&
+                Number.isSafeInteger(update.id) && validTag(update.tag_name) && validBody(update.body) &&
+                !seen.has(update.id), 'Invalid or duplicate planned update');
+              const release = byId.get(update.id);
+              assert(release && release.tag_name === update.tag_name &&
+                !release.draft && !release.prerelease, 'Update destination not authorized by snapshot');
+              seen.add(update.id);
+            }
+            if (plan.create !== null) {
+              assert(keysAre(plan.create, ['tag_name', 'body']) && publishTag &&
+                plan.create.tag_name === publishTag && validBody(plan.create.body) &&
+                !tags.has(publishTag), 'Only the requested new publication may be created');
+            }
+            if (publishTag && plan.create === null) {
+              const existing = releases.find(release => release.tag_name === publishTag);
+              assert(existing && !existing.draft && !existing.prerelease, 'Requested publication is missing or not stable');
+            }
+            const updates = plan.updates.filter(update => (byId.get(update.id).body ?? '') !== update.body);
+            core.info(`Plan: ${updates.length} body updates, ${plan.create ? 1 : 0} creation, ${plan.skipped.length} skipped`);
+            for (const update of updates) core.info(`Body update: ${JSON.stringify(update.tag_name)}`);
+            if (process.env.DRY_RUN === 'true') {
+              core.info('Dry run: no release mutations. Inspect the release-note-plan artifact.');
+              return;
+            }
+            let writes = 0;
+            const pace = async () => {
+              // Serialize writes and leave one second between content mutations.
+              if (writes > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+              writes += 1;
+            };
+            if (plan.create !== null) {
+              await pace();
+              // Network write: ONLY a tag-push publication creates a release.
+              // The tag already exists; do not synthesize tags for changelog entries.
+              // Omit target_commitish: it is unused for an existing tag, and a
+              // pinned historical target can later require workflow-write scope.
+              await github.rest.repos.createRelease({
+                ...context.repo, tag_name: publishTag, name: publishTag,
+                body: plan.create.body,
+                draft: false, prerelease: false, generate_release_notes: false,
+              });
+            }
+            for (const update of updates) {
+              await pace();
+              // Network write: explicit allowlist, never spread the plan object.
+              // Do not modify tags, names, assets, draft/prerelease/latest flags.
+              await github.rest.repos.updateRelease({
+                ...context.repo, release_id: update.id, body: update.body,
+              });
+              core.info(`Updated ${JSON.stringify(update.tag_name)}`);
+            }
+
+      - name: Save the auditable input snapshot and plan
+        if: ${{ !cancelled() && steps.fetch_notes.outcome == 'success' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: release-note-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-notes/
+          retention-days: 7
+
+      # Asset publication stays in the same job/lock as note synchronization.
+      # This path is never enabled for changelog-only pushes or manual previews.
+      - name: Download full dist build artifact
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: full-dist-build
+          path: dist
+
+      - name: Rename zips with tag for release
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for zip_path in dist/naidan-standalone-*.zip; do
+            [ -f "$zip_path" ] || continue
+            mv "$zip_path" "${zip_path%.zip}-${PUBLISH_TAG}.zip"
+          done
+          mv dist/naidan-standalone.zip "dist/naidan-standalone-${PUBLISH_TAG}.zip"
+          mv dist/naidan-hosted.zip "dist/naidan-hosted-${PUBLISH_TAG}.zip"
+
+      - name: Upload extra assets to the existing GitHub Release
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
+        uses: softprops/action-gh-release@v3.0.3
+        with:
+          # No body, body_path, or generated notes: keep the synchronized text.
+          files: |
+            dist/naidan-standalone-${{ inputs.publish-tag }}.zip
+            dist/naidan-standalone-*-${{ inputs.publish-tag }}.zip
+            dist/naidan-hosted-${{ inputs.publish-tag }}.zip
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Set up Go
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: naidan-server/go.mod
+
+      - name: Run GoReleaser (assets only; preserve synchronized release notes)
+        if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
+        uses: goreleaser/goreleaser-action@v7.3.0
+        with:
+          distribution: goreleaser
+          version: v2.7.0
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
