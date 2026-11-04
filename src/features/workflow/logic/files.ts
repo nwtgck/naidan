@@ -52,7 +52,7 @@ export async function* workflowFileChunks({ source, format, signal }: { source: 
     switch (source.type) {
     case 'binary': yield* readOutput({ output: source.output, signal });
       return;
-    case 'text': case 'json': case 'model': case 'sequence': case 'array': case 'object': case 'conversation': throw new Error('Binary output requires a binary value.');
+    case 'range': case 'text': case 'json': case 'model': case 'sequence': case 'array': case 'object': case 'conversation': throw new Error('Binary output requires a binary value.');
     default: {
       const exhaustive: never = source;
       throw new Error(`Unknown value: ${exhaustive}`);
@@ -81,7 +81,7 @@ export async function* workflowFileChunks({ source, format, signal }: { source: 
         yield encoder.encode('\n');
       }
       return;
-    case 'text': case 'binary': case 'model': case 'object': case 'conversation': throw new Error('JSON Lines output requires an array or sequence.');
+    case 'range': case 'text': case 'binary': case 'model': case 'object': case 'conversation': throw new Error('JSON Lines output requires an array or sequence.');
     default: {
       const exhaustive: never = source;
       throw new Error(`Unknown value: ${exhaustive}`);
@@ -233,7 +233,7 @@ export function createWorkflowFileServices({ authorize, onWritten }: {
  */
 function exportable({ value }: { value: RuntimeValue }): boolean {
   switch (value.type) {
-  case 'model': return false;
+  case 'range': case 'model': return false;
   case 'json': case 'text': case 'binary': case 'sequence': return true;
   case 'array': return value.items.every(value => exportable({ value }));
   case 'object': return Object.values(value.properties).every(value => exportable({ value }));
@@ -251,6 +251,7 @@ function exportFormat({ value }: { value: RuntimeValue }): { format: 'text' | 'j
   case 'text': return { format: 'text', extension: 'txt' };
   case 'sequence': return { format: 'jsonl', extension: 'jsonl' };
   case 'json': case 'array': case 'object': case 'conversation': return { format: 'json', extension: 'json' };
+  case 'range': throw new Error('Iterate ranges before exporting them.');
   case 'model': throw new Error('Model connections cannot be exported as result data.');
   default: {
     const exhaustive: never = value;
@@ -329,7 +330,25 @@ export async function zipWorkflowFolder({ directory, zipDirectory, signal }: { d
       },
       async openFileStream({ path }) {
         const parts = path.split('/').filter(Boolean), name = parts.pop()!;
-        return (await (await (await locate({ path: parts.join('/') })).getFileHandle(name)).getFile()).stream();
+        const file = await (await (await locate({ path: parts.join('/') })).getFileHandle(name)).getFile();
+        const chunks = fileChunks({ file, signal });
+        return new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const next = await chunks.next();
+              if (next.done) {
+                controller.close();
+              } else {
+                controller.enqueue(next.value);
+              }
+            } catch (error) {
+              controller.error(error);
+            }
+          },
+          async cancel() {
+            await chunks.return(undefined);
+          },
+        });
       },
     },
   });

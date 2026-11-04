@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { GripVerticalIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon } from 'lucide-vue-next';
 import type { WorkflowStep } from '@/01-models/workflow';
 import { idToRaw, toWorkflowStepId, toWorkflowId, type WorkflowStepId, type WorkflowId } from '@/01-models/ids';
 import type { WorkflowDropTarget } from '@/features/workflow/logic/editor';
-import { workflowStepLabel, workflowStepTypes, workflowInputText } from '@/features/workflow/logic/forms';
+import { workflowStepLabel, workflowStepTypes } from '@/features/workflow/logic/forms';
+import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
+import SettingsCollapse from '@/components/SettingsCollapse.vue';
 import { lazyStrings } from '@/strings';
 
 defineOptions({ name: 'WorkflowStepList' });
@@ -15,7 +17,8 @@ const emit = defineEmits<{
   add: [payload: { type: WorkflowStep['type'], target: WorkflowDropTarget }],
   insertPart: [payload: { id: WorkflowId, target: WorkflowDropTarget }],
 }>();
-const addType = ref<WorkflowStep['type']>('value');
+const adding = ref(false);
+const addOptions = computed(() => [{ value: '', label: lazyStrings.workflow__add_step(), disabled: true }, ...workflowStepTypes.map(type => ({ value: type, label: workflowStepLabel({ type }) }))]);
 const dragTarget = ref<number>();
 
 function target({ index }: { index: number }): WorkflowDropTarget {
@@ -45,11 +48,11 @@ function drop({ event, index }: { event: DragEvent, index: number }): void {
   }
 }
 
-function selectType({ event }: { event: Event }): void {
-  const value = workflowInputText({ event });
+function selectType({ value }: { value: string }): void {
   const type = workflowStepTypes.find(type => type === value);
-  if (type) {
-    addType.value = type;
+  if (type && !props.disabled) {
+    emit('add', { type, target: target({ index: props.steps.length }) });
+    adding.value = false;
   }
 }
 
@@ -58,8 +61,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div tw-class="min-w-0" data-testid="workflow-step-list">
     <template v-for="(step, index) in steps" :key="idToRaw({ id: step.id })">
-      <div @dragover.prevent.stop="dragTarget = index" @dragleave="dragTarget = undefined" @drop.prevent.stop="drop({ event: $event, index })" :tw-class="['h-3 rounded transition-colors', dragTarget === index ? 'bg-blue-400/40' : 'bg-transparent']" :aria-label="lazyStrings.workflow__drop_here()" />
-      <section :tw-class="['rounded-xl border bg-white dark:bg-gray-900 shadow-sm transition-colors', selected.has(step.id) ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-gray-200 dark:border-gray-700']">
+      <div @dragover.prevent.stop="dragTarget = index" @dragleave="dragTarget = undefined" @drop.prevent.stop="drop({ event: $event, index })" :tw-class="['h-3 rounded transition-colors motion-reduce:transition-none', dragTarget === index ? 'bg-blue-400/40' : 'bg-transparent']" :aria-label="lazyStrings.workflow__drop_here()" />
+      <section :tw-class="['rounded-xl border bg-white dark:bg-gray-900 shadow-sm transition-colors motion-reduce:transition-none', selected.has(step.id) ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-gray-200 dark:border-gray-700']">
         <div tw-class="flex items-center gap-1 p-2">
           <button type="button" :draggable="!disabled" :disabled="disabled" @dragstart.stop="drag({ event: $event, id: step.id })" :title="lazyStrings.workflow__drag_step()" :aria-label="lazyStrings.workflow__drag_step()" tw-class="p-1 text-gray-400 cursor-grab rounded focus-visible:ring-2 focus-visible:ring-blue-500"><GripVerticalIcon tw-class="h-4 w-4" /></button>
           <input type="checkbox" :checked="selected.has(step.id)" :disabled="disabled" @change="emit('select', { id: step.id, multiple: true })" :aria-label="lazyStrings.workflow__selected()" tw-class="rounded border-gray-300 text-blue-600" />
@@ -83,11 +86,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </section>
     </template>
     <div @dragover.prevent.stop="dragTarget = steps.length" @dragleave="dragTarget = undefined" @drop.prevent.stop="drop({ event: $event, index: steps.length })" :tw-class="['my-2 min-h-9 flex items-center justify-center rounded-lg border border-dashed text-xs', dragTarget === steps.length ? 'border-blue-400 bg-blue-50 text-blue-600 dark:bg-blue-900/20' : 'border-gray-200 text-gray-400 dark:border-gray-700']">{{ lazyStrings.workflow__drop_here() }}</div>
-    <div tw-class="flex gap-1 items-center">
-      <select :value="addType" @change="selectType({ event: $event })" :disabled="disabled" :aria-label="lazyStrings.workflow__add_step()" tw-class="min-w-0 flex-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-2 text-gray-700 dark:text-gray-300">
-        <option v-for="type in workflowStepTypes" :key="type" :value="type">{{ workflowStepLabel({ type }) }}</option>
-      </select>
-      <button type="button" :disabled="disabled" @click="emit('add', { type: addType, target: target({ index: steps.length }) })" :aria-label="lazyStrings.workflow__add_step()" tw-class="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"><PlusIcon tw-class="w-4 h-4" /></button>
-    </div>
+    <button type="button" :disabled="disabled" @click="adding = !adding" :aria-expanded="adding" tw-class="w-full flex items-center justify-center gap-2 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 px-3 py-2.5 text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 transition-colors motion-reduce:transition-none"><PlusIcon tw-class="w-4 h-4" />{{ lazyStrings.workflow__add_step() }}</button>
+    <SettingsCollapse :open="adding"><div tw-class="pt-3"><SettingsFormSelect :model-value="''" :options="addOptions" :disabled="disabled" :label="lazyStrings.workflow__add_step()" @update:model-value="selectType({ value: $event })" /></div></SettingsCollapse>
   </div>
 </template>

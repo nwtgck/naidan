@@ -1,4 +1,6 @@
 import type { WorkflowDefinition, WorkflowStep, WorkflowValue, WorkflowMessage } from '@/01-models/workflow';
+import { analyzeWorkflowTypes } from './value-types';
+import { validateJsonAssignments } from './json-composition';
 import { generateId } from '@/01-models/id';
 import { idToRaw, type WorkflowStepId } from '@/01-models/ids';
 
@@ -20,6 +22,8 @@ export function mapWorkflowValue({ value, transform }: { value: WorkflowValue, t
   case 'concat':
   case 'path': return transform({ value: { ...value, items: value.items.map(value => map({ value })) } });
   case 'object': return transform({ value: { ...value, properties: Object.fromEntries(Object.entries(value.properties).map(([key, child]) => [key, map({ value: child })])) } });
+  case 'json_compose': return transform({ value: { ...value, assignments: value.assignments.map(item => ({ ...item, value: map({ value: item.value }) })) } });
+  case 'range': return transform({ value: { ...value, start: map({ value: value.start }), step: map({ value: value.step }), end: value.end === undefined ? undefined : map({ value: value.end }) } });
   case 'get':
   case 'filename':
   case 'format_number':
@@ -55,6 +59,7 @@ export function childWorkflowSteps({ step }: { step: WorkflowStep }): WorkflowSt
   case 'for_each': return [step.body.steps];
   case 'if': return [step.then.steps, step.else.steps];
   case 'value':
+  case 'model_selection':
   case 'parse_json':
   case 'text_generation':
   case 'request_input':
@@ -70,6 +75,7 @@ export function childWorkflowSteps({ step }: { step: WorkflowStep }): WorkflowSt
 export function workflowOutputNames({ step }: { step: WorkflowStep }): string[] {
   switch (step.type) {
   case 'value':
+  case 'model_selection':
   case 'parse_json':
   case 'request_input': return ['value'];
   case 'text_generation': return ['text', 'reasoning', 'conversation', 'metrics'];
@@ -95,6 +101,7 @@ export function mapWorkflowSteps({ steps, transform, stepId }: {
     const id = stepId({ id: step.id });
     switch (step.type) {
     case 'value': return { ...step, id, value: map({ value: step.value }) };
+    case 'model_selection': return { ...step, id };
     case 'parse_json': return { ...step, id, source: map({ value: step.source }) };
     case 'text_generation': return { ...step, id, target: map({ value: step.target }), conversation: map({ value: step.conversation }), appendMessages: mapWorkflowMessages({ messages: step.appendMessages, transform }) };
     case 'request_input': return { ...step, id, prompt: map({ value: step.prompt }) };
@@ -143,7 +150,7 @@ export function copyWorkflowSteps({ steps }: { steps: WorkflowStep[] }): Workflo
       case 'loop_item':
       case 'loop_index':
       case 'loop_state': return { ...value, stepId: ids.get(value.stepId) ?? value.stepId };
-      case 'literal': case 'model': case 'array': case 'concat': case 'path': case 'object': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': return value;
+      case 'literal': case 'json_compose': case 'range': case 'model': case 'array': case 'concat': case 'path': case 'object': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': return value;
       default: {
         const exhaustive: never = value;
         throw new Error(`Unknown expression: ${exhaustive}`);
@@ -196,6 +203,20 @@ export function validateWorkflow({ definition }: { definition: WorkflowDefinitio
           add({ step, path, message: 'Select a model before running.' });
         }
           break;
+        case 'json_compose':
+          try {
+            validateJsonAssignments({ base: value.base, paths: value.assignments.map(item => item.path) });
+          } catch (error) {
+            add({ step, path, message: error instanceof Error ? error.message : String(error) });
+          }
+          break;
+        case 'range':
+          for (const [field, expression] of [['start', value.start], ['step', value.step], ['end', value.end]] as const) {
+            if (expression?.type === 'literal' && typeof expression.value === 'number' && (!Number.isSafeInteger(expression.value) || (field === 'step' && expression.value === 0))) {
+              add({ step, path: `${path}.${field}`, message: 'A number range requires safe integers and a nonzero increment.' });
+            }
+          }
+          break;
         case 'literal': case 'array': case 'concat': case 'path': case 'object': case 'filename': case 'equals': case 'not_empty': case 'conversation': break;
         default: {
           const exhaustive: never = value;
@@ -220,6 +241,11 @@ export function validateWorkflow({ definition }: { definition: WorkflowDefinitio
       const input = ({ value, path }: { value: WorkflowValue, path: string }): void => check({ value, path, visible, loops, step });
       switch (step.type) {
       case 'value': input({ value: step.value, path: 'value' });
+        break;
+      case 'model_selection':
+        if (step.targets.some(target => !target.modelId.trim())) {
+          add({ step, path: 'targets', message: 'Select a model for each configured connection.' });
+        }
         break;
       case 'parse_json': input({ value: step.source, path: 'source' });
         break;
@@ -294,7 +320,7 @@ export function validateWorkflow({ definition }: { definition: WorkflowDefinitio
     return visible;
   };
   visit({ steps: definition.steps, parent: new Map(), loops: new Map(), depth: 0 });
-  return issues;
+  return [...issues, ...analyzeWorkflowTypes({ definition }).problems];
 }
 
 export const TEST_ONLY = {

@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createWorkflowInputDrafts, workflowInputDraftsKey } from '@/features/workflow/composables/input-drafts';
 import WorkflowValueEditor from './WorkflowValueEditor.vue';
+
+vi.mock('./WorkflowModelEditor.vue', () => ({ default: { template: '<div />' } }));
 
 const wrappers: VueWrapper[] = [];
 
@@ -27,7 +29,7 @@ describe('Workflow structured value editor', () => {
     expect(first.get('[role="alert"]').text()).not.toBe('');
     expect((first.get('[data-testid="workflow-value-draft"]').element as HTMLTextAreaElement).value).toBe('{');
     expect(drafts.dirty.value).toBe(true);
-    expect(sibling.get('select').attributes('disabled')).toBeDefined();
+    expect(sibling.get('[data-testid="workflow-value-mode"]').attributes('disabled')).toBeDefined();
     expect(first.get('[data-testid="workflow-value-apply"]').attributes('disabled')).toBeUndefined();
     drafts.discardAll();
     await first.vm.$nextTick();

@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { WorkflowValue, WorkflowMessage, WorkflowStep, WorkflowDefinition, WorkflowDocument, WorkflowLoopState, WorkflowBranch } from '@/01-models/workflow';
+import type { WorkflowValue, WorkflowMessage, WorkflowStep, WorkflowDefinition, WorkflowDocument, WorkflowLoopState, WorkflowBranch, WorkflowModelConfiguration } from '@/01-models/workflow';
 import { idToRaw, toWorkflowId, toWorkflowStepId, toVolumeId } from '@/01-models/ids';
-import type { ExperimentalWorkflowValueDto, ExperimentalWorkflowMessageDto, ExperimentalWorkflowStepDto, ExperimentalWorkflowDefinitionDto, ExperimentalWorkflowDto } from '@/00-storage/00-dto/experimental-workflow.dto';
+import type { ExperimentalWorkflowValueDto, ExperimentalWorkflowMessageDto, ExperimentalWorkflowStepDto, ExperimentalWorkflowDefinitionDto, ExperimentalWorkflowDto, ExperimentalWorkflowModelConfigurationDto } from '@/00-storage/00-dto/experimental-workflow.dto';
 import type { SystemPrompt } from '@/01-models/types';
 import type { SystemPromptDto } from '@/00-storage/00-dto/dto';
 import { endpointToDomain, endpointToDto, lmParametersToDomain, lmParametersToDto, toolConfigToDomain, toolConfigToDto } from './mappers';
@@ -59,6 +59,24 @@ export function workflowValueToDomain({ dto }: { dto: ExperimentalWorkflowValueD
     const { type, properties, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<WorkflowValue, { type: typeof type }>>()({ type, properties: Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, workflowValueToDomain({ dto: value })])) });
+  }
+  case 'json_compose': {
+    const { type, base, assignments, ...unhandled } = dto;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<WorkflowValue, { type: typeof type }>>()({
+      type,
+      base: z.json().parse(base),
+      assignments: assignments.map(assignment => {
+        const { path, value, ...unhandled } = assignment;
+      unhandled satisfies Record<PropertyKey, never>;
+      return { path: [...path], value: workflowValueToDomain({ dto: value }) };
+      }),
+    });
+  }
+  case 'range': {
+    const { type, start, end, step, ...unhandled } = dto;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<WorkflowValue, { type: typeof type }>>()({ type, start: workflowValueToDomain({ dto: start }), end: end === undefined ? undefined : workflowValueToDomain({ dto: end }), step: workflowValueToDomain({ dto: step }) });
   }
   case 'get': {
     const { type, value, path, ...unhandled } = dto;
@@ -143,6 +161,11 @@ export function workflowStepToDomain({ dto }: { dto: ExperimentalWorkflowStepDto
     const { type, value, ...unhandled } = body;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<WorkflowStep, { type: typeof type }>>()({ ...base, type, value: workflowValueToDomain({ dto: value }) });
+  }
+  case 'model_selection': {
+    const { type, targets, ...unhandled } = body;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<WorkflowStep, { type: typeof type }>>()({ ...base, type, targets: targets.map(target => workflowModelConfigurationToDomain({ dto: target })) });
   }
   case 'parse_json': {
     const { type, source, ...unhandled } = body;
@@ -255,6 +278,24 @@ export function workflowValueToDto({ domain }: { domain: WorkflowValue }): Exper
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<ExperimentalWorkflowValueDto, { type: typeof type }>>()({ type, properties: Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, workflowValueToDto({ domain: value })])) });
   }
+  case 'json_compose': {
+    const { type, base, assignments, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<ExperimentalWorkflowValueDto, { type: typeof type }>>()({
+      type,
+      base: z.json().parse(base),
+      assignments: assignments.map(assignment => {
+        const { path, value, ...unhandled } = assignment;
+      unhandled satisfies Record<PropertyKey, never>;
+      return { path: [...path], value: workflowValueToDto({ domain: value }) };
+      }),
+    });
+  }
+  case 'range': {
+    const { type, start, end, step, ...unhandled } = domain;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<ExperimentalWorkflowValueDto, { type: typeof type }>>()({ type, start: workflowValueToDto({ domain: start }), end: end === undefined ? undefined : workflowValueToDto({ domain: end }), step: workflowValueToDto({ domain: step }) });
+  }
   case 'get': {
     const { type, value, path, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
@@ -339,6 +380,11 @@ export function workflowStepToDto({ domain }: { domain: WorkflowStep }): Experim
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<ExperimentalWorkflowStepDto, { type: typeof type }>>()({ ...base, type, value: workflowValueToDto({ domain: value }) });
   }
+  case 'model_selection': {
+    const { type, targets, ...unhandled } = body;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<ExperimentalWorkflowStepDto, { type: typeof type }>>()({ ...base, type, targets: targets.map(target => workflowModelConfigurationToDto({ domain: target })) });
+  }
   case 'parse_json': {
     const { type, source, ...unhandled } = body;
     unhandled satisfies Record<PropertyKey, never>;
@@ -411,6 +457,18 @@ export function workflowDocumentToDto({ domain }: { domain: WorkflowDocument }):
     updatedAt,
     definition: workflowDefinitionToDto({ domain: definition }),
   });
+}
+
+export function workflowModelConfigurationToDomain({ dto }: { dto: ExperimentalWorkflowModelConfigurationDto }): WorkflowModelConfiguration {
+  const { endpoint, modelId, lmParameters, ...unhandled } = dto;
+  unhandled satisfies Record<PropertyKey, never>;
+  return exactObject<WorkflowModelConfiguration>()({ endpoint: endpointToDomain({ dto: endpoint }), modelId, lmParameters: lmParametersToDomain({ dto: lmParameters }) });
+}
+
+export function workflowModelConfigurationToDto({ domain }: { domain: WorkflowModelConfiguration }): ExperimentalWorkflowModelConfigurationDto {
+  const { endpoint, modelId, lmParameters, ...unhandled } = domain;
+  unhandled satisfies Record<PropertyKey, never>;
+  return exactObject<ExperimentalWorkflowModelConfigurationDto>()({ endpoint: endpointToDto({ endpoint }), modelId, lmParameters: lmParametersToDto({ domain: lmParameters }) });
 }
 
 export const TEST_ONLY = {

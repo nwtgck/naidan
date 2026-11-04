@@ -9,6 +9,7 @@ import { useWorkflowWorkspace } from './composables/use-workflow-workspace';
 import { flatWorkflowSteps, type WorkflowDropTarget } from './logic/editor';
 import { ensureWorkflowStepLabel, workflowInputText } from './logic/forms';
 import type { WorkflowStep } from '@/01-models/workflow';
+import WorkflowDisclosure from './components/WorkflowDisclosure.vue';
 import WorkflowStepList from './components/WorkflowStepList.vue';
 import WorkflowStepEditor from './components/WorkflowStepEditor.vue';
 import WorkflowGraph from './components/WorkflowGraph.vue';
@@ -53,7 +54,7 @@ function currentModel(): void {
     workspace.updateStep({ step: { ...step, target: { type: 'model', endpoint: defaults.endpoint, modelId: defaults.modelId }, lmParameters: defaults.lmParameters } });
     break;
   }
-  case 'value': case 'parse_json': case 'request_input': case 'repeat': case 'for_each': case 'if': case 'read_file': case 'write_file': break;
+  case 'value': case 'model_selection': case 'parse_json': case 'request_input': case 'repeat': case 'for_each': case 'if': case 'read_file': case 'write_file': break;
   default: {
     const exhaustive: never = step;
     throw new Error(`Unknown step: ${exhaustive}`);
@@ -115,7 +116,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { workspace } }) || {
           <p v-if="!workspace.definition.value.steps.length" tw-class="text-sm text-gray-500 py-6">{{ lazyStrings.workflow__empty_steps() }}</p>
           <WorkflowStepList :steps="workspace.definition.value.steps" :selected="workspace.selectedIds.value" :parent-id="undefined" branch="root" :disabled="workspace.navigationLocked.value" @select="workspace.select" @move="workspace.move" @add="add" @insert-part="workspace.insertPart" />
           <p v-if="workspace.kind.value === 'part'" tw-class="mt-4 text-xs text-gray-500">{{ lazyStrings.workflow__run_part_notice() }}</p>
-          <details v-if="workspace.issues.value.length" open tw-class="mt-4 text-xs text-amber-700 dark:text-amber-400"><summary>{{ lazyStrings.workflow__validation() }} · {{ workspace.issues.value.length }}</summary><ul tw-class="space-y-2 mt-2"><li v-for="(issue, index) in workspace.issues.value.slice(0, 50)" :key="index"><code>{{ issue.stepId ? idToRaw({ id: issue.stepId }).slice(0, 6) : '' }} · {{ issue.path }}</code><p>{{ issue.message }}</p></li></ul></details>
+          <WorkflowDisclosure v-if="workspace.issues.value.length" :title="lazyStrings.workflow__validation()" :initially-open="true"><template #summary><span tw-class="text-xs text-amber-600">{{ workspace.issues.value.length }}</span></template><ul tw-class="space-y-2 text-xs text-amber-700 dark:text-amber-400"><li v-for="(issue, index) in workspace.issues.value.slice(0, 50)" :key="index"><code>{{ issue.stepId ? idToRaw({ id: issue.stepId }).slice(0, 6) : '' }} · {{ issue.path }}</code><p>{{ issue.message }}</p></li></ul></WorkflowDisclosure>
         </section>
         <aside tw-class="min-h-0 flex-1 overflow-auto p-4 lg:p-5 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-gray-800">
           <template v-if="workspace.partialOpen.value">
@@ -123,7 +124,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { workspace } }) || {
             <textarea v-model="workspace.partialDraft.value" :disabled="workspace.busy.value" rows="18" spellcheck="false" tw-class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-950 p-3 text-xs font-mono focus:ring-2 focus:ring-blue-500" :aria-label="lazyStrings.workflow__partial_json()" />
             <div tw-class="flex gap-2 mt-3"><button type="button" @click="workspace.applyPartial" :disabled="workspace.busy.value" tw-class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40">{{ lazyStrings.workflow__apply() }}</button><button type="button" @click="workspace.closePartial" tw-class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40">{{ lazyStrings.workflow__discard() }}</button></div>
           </template>
-          <WorkflowStepEditor v-else-if="workspace.selected.value" :key="idToRaw({ id: workspace.selected.value.id })" :step="workspace.selected.value" :steps="steps" :volumes="workspace.volumes.value" :disabled="workspace.editingLocked.value" @change="workspace.updateStep({ step: $event })" @current-model="currentModel" @partial="workspace.openPartial" />
+          <WorkflowStepEditor v-else-if="workspace.selected.value" :key="idToRaw({ id: workspace.selected.value.id })" :step="workspace.selected.value" :definition="workspace.definition.value" :steps="steps" :volumes="workspace.volumes.value" :disabled="workspace.editingLocked.value" @change="workspace.updateStep({ step: $event })" @current-model="currentModel" @partial="workspace.openPartial" />
           <p v-else tw-class="text-sm text-gray-500 py-8 text-center">{{ lazyStrings.workflow__select_step() }}</p>
         </aside>
       </div>
@@ -150,7 +151,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { workspace } }) || {
         </div>
       </div>
       <p tw-class="text-[10px] text-gray-400">{{ lazyStrings.workflow__preview_limit() }}</p>
-      <article v-for="entry in workspace.log.value" :key="entry.number" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2"><header tw-class="flex gap-2 text-xs"><span tw-class="text-gray-400 tabular-nums">{{ entry.number }}</span><strong tw-class="flex-1">{{ entry.name }}</strong><span tw-class="text-gray-400">{{ entry.trace.join(' / ') }}</span><span :tw-class="entry.phase === 'completed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-500'">{{ entry.phase === 'completed' ? lazyStrings.workflow__completed() : lazyStrings.workflow__running() }}</span></header><pre v-if="entry.preview" tw-class="text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{{ entry.preview }}</pre></article>
+      <article v-for="entry in workspace.log.value" :key="entry.number" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+        <header tw-class="flex gap-2 text-xs"><span tw-class="text-gray-400 tabular-nums">{{ entry.number }}</span><strong tw-class="flex-1">{{ entry.name }}</strong><span tw-class="text-gray-400">{{ entry.trace.join(' / ') }}</span><span :tw-class="entry.phase === 'completed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-500 motion-safe:animate-pulse'">{{ entry.phase === 'completed' ? lazyStrings.workflow__completed() : lazyStrings.workflow__running() }}</span></header>
+        <WorkflowDisclosure v-if="entry.inputPreview" :title="lazyStrings.workflow__input_preview()"><pre tw-class="max-h-64 overflow-auto text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{{ entry.inputPreview }}</pre></WorkflowDisclosure>
+        <div v-if="entry.preview" tw-class="space-y-1"><p tw-class="text-xs font-medium text-gray-500">{{ lazyStrings.workflow__output_preview() }}</p><pre data-testid="workflow-live-output" tw-class="max-h-64 overflow-auto text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-700 dark:text-gray-200">{{ entry.preview }}</pre></div>
+      </article>
     </section>
   </main>
 </template>

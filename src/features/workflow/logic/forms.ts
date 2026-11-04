@@ -4,6 +4,7 @@ import type { WorkflowStep } from '@/01-models/workflow';
 export function workflowStepLabel({ type }: { type: WorkflowStep['type'] }): string | undefined {
   switch (type) {
   case 'value': return lazyStrings.workflow__value();
+  case 'model_selection': return lazyStrings.workflow__select_models();
   case 'parse_json': return lazyStrings.workflow__parse_json();
   case 'text_generation': return lazyStrings.workflow__text_generation();
   case 'request_input': return lazyStrings.workflow__request_input();
@@ -22,6 +23,7 @@ export function workflowStepLabel({ type }: { type: WorkflowStep['type'] }): str
 export async function ensureWorkflowStepLabel({ type }: { type: WorkflowStep['type'] }): Promise<string> {
   switch (type) {
   case 'value': return ensureStrings.workflow__value();
+  case 'model_selection': return ensureStrings.workflow__select_models();
   case 'parse_json': return ensureStrings.workflow__parse_json();
   case 'text_generation': return ensureStrings.workflow__text_generation();
   case 'request_input': return ensureStrings.workflow__request_input();
@@ -45,6 +47,6 @@ export function workflowInputText({ event }: { event: Event }): string {
   throw new Error('Expected a form input.');
 }
 
-export const workflowStepTypes: WorkflowStep['type'][] = ['value', 'text_generation', 'parse_json', 'request_input', 'repeat', 'for_each', 'if', 'read_file', 'write_file'];
+export const workflowStepTypes: WorkflowStep['type'][] = ['value', 'model_selection', 'text_generation', 'parse_json', 'request_input', 'repeat', 'for_each', 'if', 'read_file', 'write_file'];
 export const TEST_ONLY = {
 };

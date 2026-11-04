@@ -26,7 +26,7 @@ import { ensureStrings } from '@/strings';
 
 type RunState = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
 type PendingInput = { token: number, title: string, prompt: string, kind: 'text' | 'json' | 'approval' };
-type LogEntry = { number: number, name: string, stepId: WorkflowStepId, trace: number[], phase: 'running' | 'completed', preview: string };
+type LogEntry = { number: number, name: string, stepId: WorkflowStepId, trace: number[], phase: 'running' | 'completed', preview: string, inputPreview: string };
 let singleton: ReturnType<typeof createWorkspace> | undefined;
 
 function createWorkspace() {
@@ -477,6 +477,8 @@ function createWorkspace() {
         break;
       case 'conversation': lines.push(`${key}: ${value.messages.length} messages`);
         break;
+      case 'range': lines.push(`${key}: ${value.start}, ${value.step}, ${value.end ?? '…'}`);
+        break;
       case 'array': case 'object': lines.push(`${key}: ${value.type}`);
         break;
       default: {
@@ -588,13 +590,63 @@ function createWorkspace() {
               grantedModels.add(key);
             }
             const provider = await loadLmProvider({ endpoint: input.target.endpoint, fakeLmDebugModeStatus: fakeLm });
-            return generateWorkflowText({ input, provider });
+            const parts = new Map<string, { index: number, text: string }>();
+            let request = '', lastPublish = 0;
+            let pendingPublish: ReturnType<typeof setTimeout> | undefined;
+            const publish = ({ force }: { force: boolean }): void => {
+              const now = Date.now();
+              if (!force && now - lastPublish < 80) {
+                // A chunk can be followed by a long provider pause. Schedule a
+                // trailing update instead of waiting for another chunk to arrive.
+                pendingPublish ??= setTimeout(() => publish({ force: true }), Math.max(0, 80 - (now - lastPublish)));
+                return;
+              }
+              if (pendingPublish !== undefined) {
+                clearTimeout(pendingPublish);
+                pendingPublish = undefined;
+              }
+              lastPublish = now;
+              const entries = [...log.value];
+              const index = entries.findLastIndex(entry => entry.stepId === input.step.id && entry.phase === 'running');
+              if (index < 0) {
+                return;
+              }
+              const preview = [...parts.values()].sort((a, b) => a.index - b.index).map(part => part.text).join('\n').slice(-4096);
+              entries[index] = { ...entries[index]!, preview, inputPreview: request };
+              log.value = entries;
+            };
+            try {
+              return await generateWorkflowText({
+                input,
+                provider,
+                onProgress({ event }) {
+                  switch (event.type) {
+                  case 'input': request = event.text;
+                    publish({ force: true });
+                    break;
+                  case 'chunk': {
+                    const previous = parts.get(event.partId)?.text ?? '';
+                    parts.set(event.partId, { index: event.index, text: (previous + event.text).slice(-4096) });
+                    publish({ force: false });
+                    break;
+                  }
+                  default: {
+                    const exhaustive: never = event;
+                    throw new Error(String(exhaustive));
+                  }
+                  }
+                },
+              });
+            } finally {
+              publish({ force: true });
+            }
+
           },
           requestInput: async ({ step, prompt, signal }) => ask({ title: step.name, prompt, inputKind: step.responseType, signal }),
           async onStep({ step, phase, trace, outputs }) {
             switch (phase) {
             case 'running': {
-              log.value = [...log.value.slice(-199), { number: ++logNumber, name: step.name, stepId: step.id, trace, phase, preview: '' }];
+              log.value = [...log.value.slice(-199), { number: ++logNumber, name: step.name, stepId: step.id, trace, phase, preview: '', inputPreview: '' }];
               break;
             }
             case 'completed': {

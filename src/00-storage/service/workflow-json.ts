@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { JsonValue } from '@/01-models/lm';
-import type { WorkflowDefinition, WorkflowStep, WorkflowValue, WorkflowMessage } from '@/01-models/workflow';
-import { ExperimentalWorkflowDefinitionSchemaDto, ExperimentalWorkflowStepSchemaDto, ExperimentalWorkflowValueSchemaDto } from '@/00-storage/00-dto/experimental-workflow.dto';
-import { workflowDefinitionToDomain, workflowDefinitionToDto, workflowStepToDomain, workflowStepToDto, workflowValueToDomain, workflowValueToDto } from '@/00-storage/mapper/workflow';
+import type { WorkflowDefinition, WorkflowStep, WorkflowValue, WorkflowMessage, WorkflowModelConfiguration } from '@/01-models/workflow';
+import { ExperimentalWorkflowDefinitionSchemaDto, ExperimentalWorkflowStepSchemaDto, ExperimentalWorkflowValueSchemaDto, ExperimentalWorkflowModelConfigurationSchemaDto } from '@/00-storage/00-dto/experimental-workflow.dto';
+import { workflowDefinitionToDomain, workflowDefinitionToDto, workflowStepToDomain, workflowStepToDto, workflowValueToDomain, workflowValueToDto, workflowModelConfigurationToDomain } from '@/00-storage/mapper/workflow';
 
 export const WORKFLOW_DOCUMENT_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -138,6 +138,16 @@ function stepTags({ step }: { step: WorkflowStep }): Map<string, string> {
       return;
     case 'object': Object.entries(input.properties).forEach(([key, item]) => value({ input: item, path: [...path, 'properties', key] }));
       return;
+    case 'json_compose':
+      input.assignments.forEach((item, index) => value({ input: item.value, path: [...path, 'assignments', String(index), 'value'] }));
+      return;
+    case 'range':
+      value({ input: input.start, path: [...path, 'start'] });
+      value({ input: input.step, path: [...path, 'step'] });
+      if (input.end !== undefined) {
+        value({ input: input.end, path: [...path, 'end'] });
+      }
+      return;
     case 'get': case 'filename': case 'not_empty': case 'format_number': value({ input: input.value, path: [...path, 'value'] });
       return;
     case 'equals': value({ input: input.left, path: [...path, 'left'] });
@@ -171,6 +181,7 @@ function stepTags({ step }: { step: WorkflowStep }): Map<string, string> {
   switch (step.type) {
   case 'value': field({ key: 'value', input: step.value });
     break;
+  case 'model_selection': break;
   case 'parse_json': field({ key: 'source', input: step.source });
     break;
   case 'text_generation':
@@ -258,6 +269,17 @@ export function parseWorkflowValue({ text }: { text: string }): WorkflowValue {
 
 export function formatWorkflowValue({ value }: { value: WorkflowValue }): string {
   return JSON.stringify(workflowValueToDto({ domain: value }), null, 2);
+}
+
+/** A generic JSON value becomes a model configuration only at this checked boundary. */
+export function parseWorkflowModelConfiguration({ value }: { value: JsonValue }): WorkflowModelConfiguration {
+  const dto = ExperimentalWorkflowModelConfigurationSchemaDto.parse(value);
+  assertNoRemovedFields({ input: value, parsed: dto, path: '$' });
+  const model = workflowModelConfigurationToDomain({ dto });
+  if (!model.modelId.trim() || model.endpoint.type === 'unsupported_experimental_endpoint') {
+    throw new Error('Select a supported model connection before running.');
+  }
+  return model;
 }
 
 export const TEST_ONLY = {

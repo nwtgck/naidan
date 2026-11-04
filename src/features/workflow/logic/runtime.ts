@@ -2,6 +2,8 @@ import type { WorkflowDefinition, WorkflowStep, WorkflowValue, WorkflowMessage }
 import type { WorkflowStepId, VolumeId } from '@/01-models/ids';
 import type { WorkflowOutputStore } from './output-store';
 import { parseWorkflowJson } from '@/00-storage/service/workflow-json';
+import { validateWorkflowRange, workflowRangeItems } from './range';
+import { validateJsonAssignments, replaceJsonValue } from './json-composition';
 import { validateWorkflow } from './definition';
 import { freezeWorkflowData, freezeRuntimeValue, requireModelValue, requireConversationValue, textChunks, retainValue, releaseValue, releaseValues, readText, spoolText, materializeJson, serializeValue, writeText, sequenceValues, safeRelativePath, WORKFLOW_INPUT_LIMIT, type RuntimeValue, type RuntimeMessage } from './values';
 
@@ -122,6 +124,37 @@ export async function executeWorkflow({ definition, store, signal, services }: {
       }
       return retainValue({ value: loop.state[value.key]! });
     }
+    case 'json_compose': {
+      validateJsonAssignments({ base: value.base, paths: value.assignments.map(item => item.path) });
+      let json = value.base;
+      for (const assignment of value.assignments) {
+        const replacement = await evaluate({ value: assignment.value, scope });
+        try {
+          json = replaceJsonValue({ base: json, path: assignment.path, value: await materializeJson({ value: replacement, signal }) });
+          // Limit total size as well as each substituted value.
+          json = parseWorkflowJson({ text: JSON.stringify(json) });
+        } finally {
+          await releaseValue({ value: replacement });
+        }
+      }
+      return { type: 'json', value: json };
+    }
+    case 'range': {
+      const number = async ({ expression }: { expression: WorkflowValue }): Promise<number> => {
+        const result = await evaluate({ value: expression, scope });
+        try {
+          if (result.type !== 'json' || typeof result.value !== 'number') {
+            throw new Error('A number range requires numeric inputs.');
+          }
+          return result.value;
+        } finally {
+          await releaseValue({ value: result });
+        }
+      };
+      const range = { start: await number({ expression: value.start }), end: value.end === undefined ? undefined : await number({ expression: value.end }), step: await number({ expression: value.step }) };
+      validateWorkflowRange({ range });
+      return { type: 'range', ...range };
+    }
     case 'object': return { type: 'object', properties: await record({ properties: value.properties, scope }) };
     case 'conversation': return { type: 'conversation', messages: await messages({ input: value.messages, scope }) };
     case 'array': {
@@ -192,7 +225,11 @@ export async function executeWorkflow({ definition, store, signal, services }: {
       try {
         for (const key of value.path) {
           let next: RuntimeValue;
-          if (current.type === 'object' && typeof key === 'string' && Object.hasOwn(current.properties, key)) {
+          if (current.type === 'model' && key === 'modelId') {
+            // Comparison labels may use the public ID without exporting endpoint
+            // headers or turning the whole model capability into ordinary JSON.
+            next = { type: 'json', value: current.modelId };
+          } else if (current.type === 'object' && typeof key === 'string' && Object.hasOwn(current.properties, key)) {
             next = retainValue({ value: current.properties[key]! });
           } else if (current.type === 'array' && typeof key === 'number' && current.items[key]) {
             next = retainValue({ value: current.items[key]! });
@@ -236,6 +273,7 @@ export async function executeWorkflow({ definition, store, signal, services }: {
           case 'array': return { type: 'json', value: item.items.length > 0 };
           case 'object': return { type: 'json', value: Object.keys(item.properties).length > 0 };
           case 'conversation': return { type: 'json', value: item.messages.length > 0 };
+          case 'range': return { type: 'json', value: !workflowRangeItems({ range: item }).next().done };
           case 'model': throw new Error('A model is not a collection.');
           case 'json': {
             const json = item.value;
@@ -276,6 +314,12 @@ export async function executeWorkflow({ definition, store, signal, services }: {
         yield { type: 'json', value };
       }
       return;
+    case 'range':
+      for (const value of workflowRangeItems({ range: source })) {
+        signal.throwIfAborted();
+        yield { type: 'json', value };
+      }
+      return;
     case 'sequence': break;
     case 'text': case 'binary': case 'model': case 'object': case 'conversation': throw new Error('ForEach expects an array or a sequence.');
     default: {
@@ -291,6 +335,7 @@ export async function executeWorkflow({ definition, store, signal, services }: {
     guard();
     switch (step.type) {
     case 'value': return { value: await evaluate({ value: step.value, scope }) };
+    case 'model_selection': return { value: { type: 'array', items: step.targets.map(target => ({ type: 'model', ...target })) } };
     case 'parse_json': {
       const source = await evaluate({ value: step.source, scope });
       try {
@@ -322,7 +367,7 @@ export async function executeWorkflow({ definition, store, signal, services }: {
     case 'text_generation': {
       const target = await evaluate({ value: step.target, scope });
       try {
-        const model = requireModelValue({ value: target });
+        const model = await requireModelValue({ value: target, signal });
         const conversation = await evaluate({ value: step.conversation, scope });
         try {
           const history = requireConversationValue({ value: conversation });

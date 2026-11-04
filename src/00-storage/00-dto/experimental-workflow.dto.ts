@@ -14,6 +14,8 @@ type WorkflowValueShapeDto<E> =
   | { type: 'loop_state', stepId: string, key: string }
   | { type: 'array' | 'concat' | 'path', items: WorkflowValueShapeDto<E>[] }
   | { type: 'object', properties: Record<string, WorkflowValueShapeDto<E>> }
+  | { type: 'json_compose', base: unknown, assignments: { path: (string | number)[], value: WorkflowValueShapeDto<E> }[] }
+  | { type: 'range', start: WorkflowValueShapeDto<E>, end?: WorkflowValueShapeDto<E> | undefined, step: WorkflowValueShapeDto<E> }
   | { type: 'get', value: WorkflowValueShapeDto<E>, path: (string | number)[] }
   | { type: 'filename' | 'not_empty', value: WorkflowValueShapeDto<E> }
   | { type: 'format_number', value: WorkflowValueShapeDto<E>, minDigits: number }
@@ -93,6 +95,28 @@ export const ExperimentalWorkflowValueSchemaDto: ExperimentalWorkflowValueSchema
       return ExperimentalWorkflowValueSchemaDto;
     },
   }),
+  dtozod.object({
+    type: dtozod.literal('json_compose'),
+    base: dtozod.unknown(),
+    assignments: dtozod.array(dtozod.object({
+      path: dtozod.array(dtozod.union([dtozod.string(), dtozod.number()])),
+      get value(): ExperimentalWorkflowValueSchemaTypeDto {
+        return ExperimentalWorkflowValueSchemaDto;
+      },
+    })),
+  }),
+  resolveMissingAsUndefined(dtozod.object({
+    type: dtozod.literal('range'),
+    get start(): ExperimentalWorkflowValueSchemaTypeDto {
+      return ExperimentalWorkflowValueSchemaDto;
+    },
+    get end() {
+      return missingAsUndefined(ExperimentalWorkflowValueSchemaDto);
+    },
+    get step(): ExperimentalWorkflowValueSchemaTypeDto {
+      return ExperimentalWorkflowValueSchemaDto;
+    },
+  })),
   dtozod.object({ type: dtozod.literal('conversation'), messages: dtozod.array(ExperimentalWorkflowMessageSchemaDto) }),
 ]);
 export type ExperimentalWorkflowValueDto = dtozod.infer<typeof ExperimentalWorkflowValueSchemaDto>;
@@ -118,8 +142,17 @@ const WorkflowBranchSchemaDto: WorkflowBranchSchemaTypeDto = dtozod.object({
 const WorkflowLoopStateSchemaDto = dtozod.record(dtozod.string(), dtozod.object({ initial: ExperimentalWorkflowValueSchemaDto, next: ExperimentalWorkflowValueSchemaDto }));
 const WorkflowStepBaseSchemaDto = dtozod.object({ id: dtozod.string(), name: dtozod.string() });
 
+export const ExperimentalWorkflowModelConfigurationSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  endpoint: EndpointSchemaDto,
+  modelId: dtozod.string(),
+  lmParameters: missingAsUndefined(LmParametersSchemaDto),
+}));
+export type ExperimentalWorkflowModelConfigurationDto = dtozod.infer<typeof ExperimentalWorkflowModelConfigurationSchemaDto>;
+
+
 export const ExperimentalWorkflowStepSchemaDto = resolveMissingAsUndefined(dtozod.discriminatedUnion('type', [
   WorkflowStepBaseSchemaDto.extend({ type: dtozod.literal('value'), value: ExperimentalWorkflowValueSchemaDto }),
+  WorkflowStepBaseSchemaDto.extend({ type: dtozod.literal('model_selection'), targets: dtozod.array(ExperimentalWorkflowModelConfigurationSchemaDto) }),
   WorkflowStepBaseSchemaDto.extend({ type: dtozod.literal('parse_json'), source: ExperimentalWorkflowValueSchemaDto }),
   WorkflowStepBaseSchemaDto.extend({
     type: dtozod.literal('text_generation'),

@@ -17,6 +17,7 @@ export function newWorkflowStep({ type, name, endpoint, modelId, lmParameters }:
   const id = generateId<WorkflowStepId>();
   switch (type) {
   case 'value': return { id, name, type, value: literalValue({ value: '' }) };
+  case 'model_selection': return { id, name, type, targets: [{ endpoint, modelId, lmParameters }] };
   case 'parse_json': return { id, name, type, source: literalValue({ value: '[]' }) };
   case 'text_generation': return {
     id,

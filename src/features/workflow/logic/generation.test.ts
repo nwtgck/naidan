@@ -4,6 +4,7 @@ import type { WorkflowGenerationInput } from './runtime';
 import { generateWorkflowText } from './generation';
 import { createOutputStoreFixture } from './output-store.test-support';
 import { baseStep } from './workflow.test-support';
+import { parseWorkflowModelConfiguration } from '@/00-storage/service/workflow-json';
 import { readText, releaseValues, WORKFLOW_INPUT_LIMIT } from './values';
 
 function fixture() {
@@ -49,6 +50,65 @@ function provider({ items }: { items: ChatGenerationItem[] }): LmProvider {
 }
 
 describe('Workflow model adapter', () => {
+  it('previews the resolved prompt and chunks before completion without truncating saved output', async () => {
+    await using test = fixture();
+    const gate = Promise.withResolvers<void>();
+    using gateOwner = {
+      gate,
+      [Symbol.dispose]() {
+        gate.resolve();
+      },
+    };
+    const progress: import('./generation').WorkflowGenerationProgress[] = [];
+    const lm = provider({
+      items: [{
+        type: 'text',
+        partId: 'answer',
+        index: 0,
+        chunks: (async function* () {
+          yield 'A'.repeat(5000);
+          await gateOwner.gate.promise;
+          yield 'B';
+        })(),
+        completeness: Promise.resolve('complete'),
+      }, { type: 'result', result: { type: 'finished', next: 'user' } }],
+    });
+    test.input.step.systemPrompt = { behavior: 'override', content: 'new system' };
+    const pending = generateWorkflowText({
+      input: test.input,
+      provider: lm,
+      onProgress: ({ event }) => {
+        progress.push(event);
+      },
+    });
+    await vi.waitFor(() => expect(progress.some(event => event.type === 'chunk')).toBe(true));
+    expect(progress.find(event => event.type === 'input')).toMatchObject({
+      text: `\
+system:
+new system
+
+user:
+question
+
+`,
+    });
+    expect(progress.every(event => event.text.length <= 4096)).toBe(true);
+    gateOwner.gate.resolve();
+    const outputs = await pending;
+    expect(await readText({ value: outputs.text!, maxBytes: 6000, signal: undefined })).toBe('A'.repeat(5000) + 'B');
+    await releaseValues({ values: Object.values(outputs) });
+  });
+
+  it('uses model-selection defaults and lets the generation step override individual parameters', async () => {
+    await using test = fixture();
+    test.input.target = { type: 'model', ...parseWorkflowModelConfiguration({ value: { endpoint: { type: 'ollama', url: 'http://localhost' }, modelId: 'test', lmParameters: { temperature: 0.25, topP: 0.8 } } }) };
+    test.input.step.lmParameters = parseWorkflowModelConfiguration({ value: { endpoint: { type: 'ollama', url: 'http://localhost' }, modelId: 'test', lmParameters: { temperature: 0 } } }).lmParameters;
+    const lm = provider({ items: [{ type: 'result', result: { type: 'finished', next: 'user' } }] });
+    const outputs = await generateWorkflowText({ input: test.input, provider: lm });
+    expect(lm.chat).toHaveBeenCalledWith(expect.objectContaining({ parameters: expect.objectContaining({ temperature: 0, topP: 0.8 }) }));
+    await releaseValues({ values: Object.values(outputs) });
+  });
+
   it('spools interleaved parts and preserves their logical order and independent conversation lease', async () => {
     await using test = fixture();
     const lm = provider({ items: [part({ type: 'text', index: 2, chunks: ['B'], completeness: Promise.resolve('complete') }), part({ type: 'reasoning', index: 1, chunks: ['think'], completeness: Promise.resolve('complete') }), part({ type: 'text', index: 0, chunks: ['A'], completeness: Promise.resolve('complete') }), { type: 'result', result: { type: 'finished', next: 'user' } }] });

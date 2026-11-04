@@ -12,6 +12,8 @@ export type WorkflowValue =
   | { type: 'loop_state', stepId: WorkflowStepId, key: string }
   | { type: 'array' | 'concat' | 'path', items: WorkflowValue[] }
   | { type: 'object', properties: Record<string, WorkflowValue> }
+  | { type: 'json_compose', base: JsonValue, assignments: { path: (string | number)[], value: WorkflowValue }[] }
+  | { type: 'range', start: WorkflowValue, end: WorkflowValue | undefined, step: WorkflowValue }
   | { type: 'get', value: WorkflowValue, path: (string | number)[] }
   | { type: 'filename', value: WorkflowValue }
   | { type: 'format_number', value: WorkflowValue, minDigits: number }
@@ -28,9 +30,12 @@ export type WorkflowBlock = { steps: WorkflowStep[] };
 export type WorkflowBranch = WorkflowBlock & { outputs: Record<string, WorkflowValue> };
 export type WorkflowLoopState = Record<string, { initial: WorkflowValue, next: WorkflowValue }>;
 
+export type WorkflowModelConfiguration = { endpoint: Endpoint, modelId: string, lmParameters: LmParameters | undefined };
+
 type WorkflowStepBase = { id: WorkflowStepId, name: string };
 export type WorkflowStep = WorkflowStepBase & (
   | { type: 'value', value: WorkflowValue }
+  | { type: 'model_selection', targets: WorkflowModelConfiguration[] }
   | { type: 'parse_json', source: WorkflowValue }
   | {
       type: 'text_generation',

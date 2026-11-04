@@ -1,12 +1,14 @@
-import { parseWorkflowJson } from '@/00-storage/service/workflow-json';
+import { parseWorkflowJson, parseWorkflowModelConfiguration } from '@/00-storage/service/workflow-json';
 import type { JsonValue } from '@/01-models/lm';
-import type { Endpoint } from '@/01-models/types';
+import type { WorkflowNumberRange } from './range';
+import type { Endpoint, LmParameters } from '@/01-models/types';
 import type { WorkflowOutput, WorkflowOutputStore, WorkflowOutputWriter } from './output-store';
 
 export type RuntimeMessage = { role: 'system' | 'user' | 'assistant', parts: RuntimeValue[] };
 export type RuntimeValue =
   | { type: 'json', value: JsonValue }
-  | { type: 'model', endpoint: Endpoint, modelId: string }
+  | { type: 'model', endpoint: Endpoint, modelId: string, lmParameters?: LmParameters | undefined }
+  | ({ type: 'range' } & WorkflowNumberRange)
   | { type: 'text', output: WorkflowOutput }
   | { type: 'binary', output: WorkflowOutput }
   | { type: 'sequence', output: WorkflowOutput }
@@ -14,10 +16,11 @@ export type RuntimeValue =
   | { type: 'object', properties: Record<string, RuntimeValue> }
   | { type: 'conversation', messages: RuntimeMessage[] };
 
-export function requireModelValue({ value }: { value: RuntimeValue }): Extract<RuntimeValue, { type: 'model' }> {
+export async function requireModelValue({ value, signal }: { value: RuntimeValue, signal: AbortSignal }): Promise<Extract<RuntimeValue, { type: 'model' }>> {
   switch (value.type) {
   case 'model': return value;
-  case 'json': case 'text': case 'binary': case 'sequence': case 'array': case 'object': case 'conversation': throw new Error('Expected a model connection.');
+  case 'json': case 'object': return { type: 'model', ...parseWorkflowModelConfiguration({ value: await materializeJson({ value, signal }) }) };
+  case 'text': case 'binary': case 'sequence': case 'range': case 'array': case 'conversation': throw new Error('Expected a model connection or its JSON configuration.');
   default: {
     const exhaustive: never = value;
     throw new Error(`Unknown value: ${exhaustive}`);
@@ -28,7 +31,7 @@ export function requireModelValue({ value }: { value: RuntimeValue }): Extract<R
 export function requireConversationValue({ value }: { value: RuntimeValue }): Extract<RuntimeValue, { type: 'conversation' }> {
   switch (value.type) {
   case 'conversation': return value;
-  case 'json': case 'text': case 'binary': case 'sequence': case 'array': case 'object': case 'model': throw new Error('Expected a conversation value.');
+  case 'json': case 'range': case 'text': case 'binary': case 'sequence': case 'array': case 'object': case 'model': throw new Error('Expected a conversation value.');
   default: {
     const exhaustive: never = value;
     throw new Error(`Unknown value: ${exhaustive}`);
@@ -56,9 +59,11 @@ export function freezeWorkflowData({ value }: { value: unknown }): void {
 
 export function freezeRuntimeValue({ value }: { value: RuntimeValue }): void {
   switch (value.type) {
+  case 'range': break;
   case 'json': freezeWorkflowData({ value: value.value });
     break;
   case 'model': freezeWorkflowData({ value: value.endpoint });
+    freezeWorkflowData({ value: value.lmParameters });
     break;
   case 'text': case 'binary': case 'sequence': break;
   case 'array':
@@ -90,7 +95,7 @@ export const WORKFLOW_CHUNK_BYTES = 32 * 1024;
 
 export function retainValue({ value }: { value: RuntimeValue }): RuntimeValue {
   switch (value.type) {
-  case 'json': case 'model': return value;
+  case 'json': case 'range': case 'model': return value;
   case 'text': case 'binary': case 'sequence': return { ...value, output: value.output.retain() };
   case 'array': return { ...value, items: value.items.map(value => retainValue({ value })) };
   case 'object': return { ...value, properties: Object.fromEntries(Object.entries(value.properties).map(([key, value]) => [key, retainValue({ value })])) };
@@ -104,7 +109,7 @@ export function retainValue({ value }: { value: RuntimeValue }): RuntimeValue {
 
 export async function releaseValue({ value }: { value: RuntimeValue }): Promise<void> {
   switch (value.type) {
-  case 'json': case 'model': return;
+  case 'json': case 'range': case 'model': return;
   case 'text': case 'binary': case 'sequence': await value.output.release();
     return;
   case 'array': await releaseValues({ values: value.items });
@@ -161,7 +166,7 @@ export async function* textChunks({ value, signal }: { value: RuntimeValue, sign
     yield decoder.decode();
     return;
   }
-  case 'model': case 'binary': case 'sequence': case 'array': case 'object': case 'conversation':
+  case 'range': case 'model': case 'binary': case 'sequence': case 'array': case 'object': case 'conversation':
     throw new Error('Expected text, not an implicit conversion from another value.');
   default: {
     const exhaustive: never = value;
@@ -304,6 +309,7 @@ export async function* serializeValue({ value, signal }: { value: RuntimeValue, 
     yield ']';
     return;
   }
+  case 'range': throw new Error('Iterate a number range before exporting it.');
   case 'model': throw new Error('Model connections are not exported as result data because they may contain credentials.');
   case 'binary': throw new Error('Binary output must be saved as binary, not embedded into JSON.');
   default: {

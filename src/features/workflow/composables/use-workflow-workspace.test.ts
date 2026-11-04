@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createWorkflowTestFileSystem } from '@/00-storage/service/workflow-files.test-support';
 import { TEST_ONLY, type WorkflowWorkspace } from './use-workflow-workspace';
-import { stepId } from '@/features/workflow/logic/workflow.test-support';
+import { stepId, baseStep } from '@/features/workflow/logic/workflow.test-support';
+import type { LmProvider } from '@/01-models/lm';
 import { toWorkflowId } from '@/01-models/ids';
 import type { WorkflowDefinition } from '@/01-models/workflow';
 
@@ -216,6 +217,60 @@ describe('Workflow workspace', () => {
     await run;
     expect(state.runState.value).toBe('failed');
     expect(mocks.loadLmProvider).not.toHaveBeenCalled();
+  });
+
+  it('renders an early generation chunk even when the next chunk is delayed', async () => {
+    using fs = createWorkflowTestFileSystem();
+    mocks.createTmpDirectory.mockResolvedValue(fs.root);
+    const gate = Promise.withResolvers<void>();
+    const provider: LmProvider = {
+      listModels: async () => [],
+      async *chat() {
+        yield {
+          type: 'text',
+          partId: 'answer',
+          index: 0,
+          completeness: Promise.resolve('complete'),
+          chunks: (async function* () {
+            yield 'streamed before completion';
+            await gate.promise;
+            yield ' and finished';
+          })(),
+        };
+        yield { type: 'result', result: { type: 'finished', next: 'user' } };
+      },
+    };
+    mocks.loadLmProvider.mockResolvedValue(provider);
+    const step = baseStep({ type: 'text_generation', id: 'stream' });
+    if (step.type !== 'text_generation') {
+      throw new Error('fixture');
+    }
+    step.appendMessages = [{ role: 'user', parts: [{ type: 'text', text: 'actual request' }] }];
+    const state = workspace();
+    await adopt({ workspace: state, definition: { name: 'Streaming', steps: [step] } });
+    vi.spyOn(workspaceModule, 'useWorkflowWorkspace').mockReturnValue(state);
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/workflows', component: WorkflowView }] });
+    await router.push('/workflows');
+    await router.isReady();
+    const wrapper = mount({ template: '<router-view />' }, { global: { plugins: [router] } });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const run = state.start();
+    await using pending = {
+      run,
+      async [Symbol.asyncDispose]() {
+        gate.resolve();
+        await run;
+      },
+    };
+    await vi.waitFor(() => expect(state.pending.value?.kind).toBe('approval'));
+    state.respond({ token: state.pending.value!.token, text: 'allow' });
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="workflow-live-output"]').text()).toContain('streamed before completion'));
+    expect(state.runState.value).toBe('running');
+    expect(state.log.value[0]?.inputPreview).toContain('actual request');
+    gate.resolve();
+    await pending.run;
+    expect(state.runState.value).toBe('completed');
   });
 
   it('renders the real editor and executes its run button, with route protection for inline drafts', async () => {

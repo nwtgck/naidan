@@ -3482,17 +3482,25 @@ import { weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell } fr
 import { weshTerminal__session } from '@/strings/messages/weshTerminal__session/ko';
 import { weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue } from '@/strings/messages/weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue/ko';
 import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__wesh_terminal/ko';
+import { workflow__add_field } from '@/strings/messages/workflow__add_field/ko';
+import { workflow__add_item } from '@/strings/messages/workflow__add_item/ko';
 import { workflow__add_message } from '@/strings/messages/workflow__add_message/ko';
 import { workflow__add_step } from '@/strings/messages/workflow__add_step/ko';
+import { workflow__add_text_part } from '@/strings/messages/workflow__add_text_part/ko';
 import { workflow__allow } from '@/strings/messages/workflow__allow/ko';
 import { workflow__append_messages } from '@/strings/messages/workflow__append_messages/ko';
 import { workflow__apply } from '@/strings/messages/workflow__apply/ko';
+import { workflow__array } from '@/strings/messages/workflow__array/ko';
 import { workflow__back_to_chats } from '@/strings/messages/workflow__back_to_chats/ko';
 import { workflow__body } from '@/strings/messages/workflow__body/ko';
+import { workflow__boolean } from '@/strings/messages/workflow__boolean/ko';
 import { workflow__cancel } from '@/strings/messages/workflow__cancel/ko';
 import { workflow__cancelled } from '@/strings/messages/workflow__cancelled/ko';
+import { workflow__choose_value } from '@/strings/messages/workflow__choose_value/ko';
 import { workflow__clear_results } from '@/strings/messages/workflow__clear_results/ko';
+import { workflow__collect_results } from '@/strings/messages/workflow__collect_results/ko';
 import { workflow__completed } from '@/strings/messages/workflow__completed/ko';
+import { workflow__compose_json } from '@/strings/messages/workflow__compose_json/ko';
 import { workflow__condition } from '@/strings/messages/workflow__condition/ko';
 import { workflow__confirm_clear } from '@/strings/messages/workflow__confirm_clear/ko';
 import { workflow__confirm_delete } from '@/strings/messages/workflow__confirm_delete/ko';
@@ -3511,24 +3519,38 @@ import { workflow__download_zip } from '@/strings/messages/workflow__download_zi
 import { workflow__drag_step } from '@/strings/messages/workflow__drag_step/ko';
 import { workflow__drop_here } from '@/strings/messages/workflow__drop_here/ko';
 import { workflow__duplicate } from '@/strings/messages/workflow__duplicate/ko';
+import { workflow__edit_base_json } from '@/strings/messages/workflow__edit_base_json/ko';
+import { workflow__edit_reference } from '@/strings/messages/workflow__edit_reference/ko';
 import { workflow__else } from '@/strings/messages/workflow__else/ko';
 import { workflow__empty_steps } from '@/strings/messages/workflow__empty_steps/ko';
+import { workflow__end_exclusive } from '@/strings/messages/workflow__end_exclusive/ko';
 import { workflow__endpoint } from '@/strings/messages/workflow__endpoint/ko';
+import { workflow__equals } from '@/strings/messages/workflow__equals/ko';
 import { workflow__error } from '@/strings/messages/workflow__error/ko';
 import { workflow__experimental_notice } from '@/strings/messages/workflow__experimental_notice/ko';
 import { workflow__export_definition } from '@/strings/messages/workflow__export_definition/ko';
 import { workflow__export_secret_warning } from '@/strings/messages/workflow__export_secret_warning/ko';
 import { workflow__failed } from '@/strings/messages/workflow__failed/ko';
+import { workflow__file_name } from '@/strings/messages/workflow__file_name/ko';
+import { workflow__fixed_value } from '@/strings/messages/workflow__fixed_value/ko';
 import { workflow__folder } from '@/strings/messages/workflow__folder/ko';
 import { workflow__folder_permission } from '@/strings/messages/workflow__folder_permission/ko';
 import { workflow__for_each } from '@/strings/messages/workflow__for_each/ko';
 import { workflow__format } from '@/strings/messages/workflow__format/ko';
+import { workflow__format_number } from '@/strings/messages/workflow__format_number/ko';
+import { workflow__get_field } from '@/strings/messages/workflow__get_field/ko';
 import { workflow__graph } from '@/strings/messages/workflow__graph/ko';
 import { workflow__graph_notice } from '@/strings/messages/workflow__graph_notice/ko';
 import { workflow__if } from '@/strings/messages/workflow__if/ko';
+import { workflow__incompatible_value } from '@/strings/messages/workflow__incompatible_value/ko';
+import { workflow__increment } from '@/strings/messages/workflow__increment/ko';
+import { workflow__initial_value } from '@/strings/messages/workflow__initial_value/ko';
 import { workflow__input } from '@/strings/messages/workflow__input/ko';
+import { workflow__input_preview } from '@/strings/messages/workflow__input_preview/ko';
 import { workflow__input_response } from '@/strings/messages/workflow__input_response/ko';
 import { workflow__insert_part } from '@/strings/messages/workflow__insert_part/ko';
+import { workflow__iterable_hint } from '@/strings/messages/workflow__iterable_hint/ko';
+import { workflow__join_text } from '@/strings/messages/workflow__join_text/ko';
 import { workflow__json } from '@/strings/messages/workflow__json/ko';
 import { workflow__json_notice } from '@/strings/messages/workflow__json_notice/ko';
 import { workflow__key } from '@/strings/messages/workflow__key/ko';
@@ -3539,6 +3561,7 @@ import { workflow__loop_item } from '@/strings/messages/workflow__loop_item/ko';
 import { workflow__loop_state } from '@/strings/messages/workflow__loop_state/ko';
 import { workflow__max_tokens } from '@/strings/messages/workflow__max_tokens/ko';
 import { workflow__model } from '@/strings/messages/workflow__model/ko';
+import { workflow__model_candidates_failed } from '@/strings/messages/workflow__model_candidates_failed/ko';
 import { workflow__model_id } from '@/strings/messages/workflow__model_id/ko';
 import { workflow__move_down } from '@/strings/messages/workflow__move_down/ko';
 import { workflow__move_up } from '@/strings/messages/workflow__move_up/ko';
@@ -3546,14 +3569,22 @@ import { workflow__name } from '@/strings/messages/workflow__name/ko';
 import { workflow__new_part } from '@/strings/messages/workflow__new_part/ko';
 import { workflow__new_sample } from '@/strings/messages/workflow__new_sample/ko';
 import { workflow__new_workflow } from '@/strings/messages/workflow__new_workflow/ko';
+import { workflow__next_value } from '@/strings/messages/workflow__next_value/ko';
 import { workflow__no_documents } from '@/strings/messages/workflow__no_documents/ko';
+import { workflow__no_end } from '@/strings/messages/workflow__no_end/ko';
 import { workflow__no_results } from '@/strings/messages/workflow__no_results/ko';
+import { workflow__not_empty } from '@/strings/messages/workflow__not_empty/ko';
 import { workflow__not_selected } from '@/strings/messages/workflow__not_selected/ko';
+import { workflow__number } from '@/strings/messages/workflow__number/ko';
+import { workflow__number_range } from '@/strings/messages/workflow__number_range/ko';
+import { workflow__object } from '@/strings/messages/workflow__object/ko';
 import { workflow__on_conflict } from '@/strings/messages/workflow__on_conflict/ko';
 import { workflow__open_folder } from '@/strings/messages/workflow__open_folder/ko';
 import { workflow__open_results } from '@/strings/messages/workflow__open_results/ko';
 import { workflow__output } from '@/strings/messages/workflow__output/ko';
+import { workflow__output_preview } from '@/strings/messages/workflow__output_preview/ko';
 import { workflow__overwrite } from '@/strings/messages/workflow__overwrite/ko';
+import { workflow__parameters } from '@/strings/messages/workflow__parameters/ko';
 import { workflow__parse_json } from '@/strings/messages/workflow__parse_json/ko';
 import { workflow__part_copy_notice } from '@/strings/messages/workflow__part_copy_notice/ko';
 import { workflow__partial_json } from '@/strings/messages/workflow__partial_json/ko';
@@ -3561,9 +3592,11 @@ import { workflow__partial_notice } from '@/strings/messages/workflow__partial_n
 import { workflow__parts } from '@/strings/messages/workflow__parts/ko';
 import { workflow__path } from '@/strings/messages/workflow__path/ko';
 import { workflow__preview_limit } from '@/strings/messages/workflow__preview_limit/ko';
+import { workflow__range_limits_hint } from '@/strings/messages/workflow__range_limits_hint/ko';
 import { workflow__read_file } from '@/strings/messages/workflow__read_file/ko';
 import { workflow__redo } from '@/strings/messages/workflow__redo/ko';
 import { workflow__refresh } from '@/strings/messages/workflow__refresh/ko';
+import { workflow__remove_reference } from '@/strings/messages/workflow__remove_reference/ko';
 import { workflow__repeat } from '@/strings/messages/workflow__repeat/ko';
 import { workflow__request_input } from '@/strings/messages/workflow__request_input/ko';
 import { workflow__results } from '@/strings/messages/workflow__results/ko';
@@ -3572,16 +3605,19 @@ import { workflow__run } from '@/strings/messages/workflow__run/ko';
 import { workflow__run_notice } from '@/strings/messages/workflow__run_notice/ko';
 import { workflow__run_part_notice } from '@/strings/messages/workflow__run_part_notice/ko';
 import { workflow__running } from '@/strings/messages/workflow__running/ko';
+import { workflow__runtime_type_check } from '@/strings/messages/workflow__runtime_type_check/ko';
 import { workflow__save } from '@/strings/messages/workflow__save/ko';
 import { workflow__save_as_part } from '@/strings/messages/workflow__save_as_part/ko';
 import { workflow__save_copy } from '@/strings/messages/workflow__save_copy/ko';
 import { workflow__save_error } from '@/strings/messages/workflow__save_error/ko';
 import { workflow__saved } from '@/strings/messages/workflow__saved/ko';
 import { workflow__saving_unavailable } from '@/strings/messages/workflow__saving_unavailable/ko';
+import { workflow__select_models } from '@/strings/messages/workflow__select_models/ko';
 import { workflow__select_step } from '@/strings/messages/workflow__select_step/ko';
 import { workflow__selected } from '@/strings/messages/workflow__selected/ko';
 import { workflow__settings } from '@/strings/messages/workflow__settings/ko';
 import { workflow__source } from '@/strings/messages/workflow__source/ko';
+import { workflow__start_value } from '@/strings/messages/workflow__start_value/ko';
 import { workflow__state_notice } from '@/strings/messages/workflow__state_notice/ko';
 import { workflow__step_reference } from '@/strings/messages/workflow__step_reference/ko';
 import { workflow__steps } from '@/strings/messages/workflow__steps/ko';
@@ -7086,17 +7122,25 @@ export const catalog = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
+  workflow__add_field,
+  workflow__add_item,
   workflow__add_message,
   workflow__add_step,
+  workflow__add_text_part,
   workflow__allow,
   workflow__append_messages,
   workflow__apply,
+  workflow__array,
   workflow__back_to_chats,
   workflow__body,
+  workflow__boolean,
   workflow__cancel,
   workflow__cancelled,
+  workflow__choose_value,
   workflow__clear_results,
+  workflow__collect_results,
   workflow__completed,
+  workflow__compose_json,
   workflow__condition,
   workflow__confirm_clear,
   workflow__confirm_delete,
@@ -7115,24 +7159,38 @@ export const catalog = {
   workflow__drag_step,
   workflow__drop_here,
   workflow__duplicate,
+  workflow__edit_base_json,
+  workflow__edit_reference,
   workflow__else,
   workflow__empty_steps,
+  workflow__end_exclusive,
   workflow__endpoint,
+  workflow__equals,
   workflow__error,
   workflow__experimental_notice,
   workflow__export_definition,
   workflow__export_secret_warning,
   workflow__failed,
+  workflow__file_name,
+  workflow__fixed_value,
   workflow__folder,
   workflow__folder_permission,
   workflow__for_each,
   workflow__format,
+  workflow__format_number,
+  workflow__get_field,
   workflow__graph,
   workflow__graph_notice,
   workflow__if,
+  workflow__incompatible_value,
+  workflow__increment,
+  workflow__initial_value,
   workflow__input,
+  workflow__input_preview,
   workflow__input_response,
   workflow__insert_part,
+  workflow__iterable_hint,
+  workflow__join_text,
   workflow__json,
   workflow__json_notice,
   workflow__key,
@@ -7143,6 +7201,7 @@ export const catalog = {
   workflow__loop_state,
   workflow__max_tokens,
   workflow__model,
+  workflow__model_candidates_failed,
   workflow__model_id,
   workflow__move_down,
   workflow__move_up,
@@ -7150,14 +7209,22 @@ export const catalog = {
   workflow__new_part,
   workflow__new_sample,
   workflow__new_workflow,
+  workflow__next_value,
   workflow__no_documents,
+  workflow__no_end,
   workflow__no_results,
+  workflow__not_empty,
   workflow__not_selected,
+  workflow__number,
+  workflow__number_range,
+  workflow__object,
   workflow__on_conflict,
   workflow__open_folder,
   workflow__open_results,
   workflow__output,
+  workflow__output_preview,
   workflow__overwrite,
+  workflow__parameters,
   workflow__parse_json,
   workflow__part_copy_notice,
   workflow__partial_json,
@@ -7165,9 +7232,11 @@ export const catalog = {
   workflow__parts,
   workflow__path,
   workflow__preview_limit,
+  workflow__range_limits_hint,
   workflow__read_file,
   workflow__redo,
   workflow__refresh,
+  workflow__remove_reference,
   workflow__repeat,
   workflow__request_input,
   workflow__results,
@@ -7176,16 +7245,19 @@ export const catalog = {
   workflow__run_notice,
   workflow__run_part_notice,
   workflow__running,
+  workflow__runtime_type_check,
   workflow__save,
   workflow__save_as_part,
   workflow__save_copy,
   workflow__save_error,
   workflow__saved,
   workflow__saving_unavailable,
+  workflow__select_models,
   workflow__select_step,
   workflow__selected,
   workflow__settings,
   workflow__source,
+  workflow__start_value,
   workflow__state_notice,
   workflow__step_reference,
   workflow__steps,

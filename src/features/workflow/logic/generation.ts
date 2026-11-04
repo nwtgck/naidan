@@ -1,3 +1,4 @@
+import { resolveLmParameterLayers } from '@/logic/chat-settings-resolver';
 import type { LmProvider, ChatGenerationResult } from '@/01-models/lm';
 import type { ChatMessage } from '@/01-models/types';
 import type { MessageId } from '@/01-models/ids';
@@ -5,8 +6,12 @@ import { generateId } from '@/01-models/id';
 import type { WorkflowGenerationInput, WorkflowOutputs } from './runtime';
 import { retainValue, releaseValues, readText, textChunks, spoolText, WORKFLOW_INPUT_LIMIT, type RuntimeValue } from './values';
 
+export type WorkflowGenerationProgress =
+  | { type: 'input', text: string }
+  | { type: 'chunk', partId: string, index: number, channel: 'text' | 'reasoning', text: string };
+
 /** Uses the provider's operation owner; it deliberately does not duplicate the chat tool/approval loop. */
-export async function generateWorkflowText({ input, provider }: { input: WorkflowGenerationInput, provider: LmProvider }): Promise<WorkflowOutputs> {
+export async function generateWorkflowText({ input, provider, onProgress }: { input: WorkflowGenerationInput, provider: LmProvider, onProgress?: ({ event }: { event: WorkflowGenerationProgress }) => void }): Promise<WorkflowOutputs> {
   const { step, target, conversation, signal, store, ...unhandled } = input;
   unhandled satisfies Record<PropertyKey, never>;
   if (step.toolConfigs.some(config => config.status === 'enabled')) {
@@ -72,6 +77,30 @@ export async function generateWorkflowText({ input, provider }: { input: Workflo
       history.unshift({ id: generateId<MessageId>(), role: 'system', parts: [{ type: 'text', text: system.content, completeness: 'complete' }] });
     }
   }
+  if (onProgress) {
+    // Preview the actual resolved request, after system-prompt replacement. The
+    // UI sees a bounded excerpt; the provider still receives the complete input.
+    let preview = '';
+    for (const message of history) {
+      if (preview.length >= 4096) {
+        break;
+      }
+      preview += `${message.role}:\n`;
+      for (const part of message.parts) {
+        switch (part.type) {
+        case 'text': preview += part.text.slice(0, Math.max(0, 4096 - preview.length));
+          break;
+        case 'reasoning': case 'attachment': case 'tool_call': case 'tool_result': break;
+        default: {
+          const exhaustive: never = part;
+          throw new Error(String(exhaustive));
+        }
+        }
+      }
+      preview += '\n\n';
+    }
+    onProgress({ event: { type: 'input', text: preview.slice(0, 4096) } });
+  }
   const controller = new AbortController();
   const abort = (): void => controller.abort(signal.reason);
   signal.addEventListener('abort', abort, { once: true });
@@ -85,7 +114,7 @@ export async function generateWorkflowText({ input, provider }: { input: Workflo
   let result: ChatGenerationResult | undefined;
   const owned: RuntimeValue[] = [];
   const run = async ({ chat, signal: operationSignal }: { chat: LmProvider['chat'], signal: AbortSignal }): Promise<void> => {
-    for await (const item of chat({ messages: history, model: target.modelId, parameters: step.lmParameters, tools: undefined, readBinaryObject: undefined, debug: 'off', signal: operationSignal })) {
+    for await (const item of chat({ messages: history, model: target.modelId, parameters: resolveLmParameterLayers({ layers: [target.lmParameters, step.lmParameters] }), tools: undefined, readBinaryObject: undefined, debug: 'off', signal: operationSignal })) {
       controller.signal.throwIfAborted();
       switch (item.type) {
       case 'text': case 'reasoning': {
@@ -103,8 +132,15 @@ export async function generateWorkflowText({ input, provider }: { input: Workflo
           controller.abort(error);
           return { type: 'error' as const, error };
         });
+        const textItem = item;
         const task = (async () => {
-          const value = await spoolText({ store, signal: operationSignal, chunks: item.chunks });
+          async function* observedChunks(): AsyncGenerator<string> {
+            for await (const chunk of textItem.chunks) {
+              onProgress?.({ event: { type: 'chunk', partId: textItem.partId, index: textItem.index, channel: textItem.type, text: chunk.slice(-4096) } });
+              yield chunk;
+            }
+          }
+          const value = await spoolText({ store, signal: operationSignal, chunks: observedChunks() });
           owned.push(value);
           const completionResult = await completion;
           switch (completionResult.type) {

@@ -30,7 +30,10 @@ describe('Sequential Workflow execution', () => {
       throw new Error('fixture');
     }
     branch.condition = literal({ value: 'false' });
-    await using run = await runtimeFixture({ definition: { name: '', steps: [branch] }, overrides: {} });
+    await expect(runtimeFixture({ definition: { name: '', steps: [branch] }, overrides: {} })).rejects.toThrow('boolean');
+    const parsed = { ...baseStep({ type: 'parse_json', id: 'parsed' }), type: 'parse_json' as const, source: literal({ value: '"false"' }) };
+    branch.condition = reference({ id: 'parsed', output: 'value' });
+    await using run = await runtimeFixture({ definition: { name: '', steps: [parsed, branch] }, overrides: {} });
     expect(run.result.status).toBe('failed');
     expect(String(run.result.error)).toContain('boolean');
   });
