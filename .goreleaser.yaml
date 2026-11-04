@@ -54,11 +54,8 @@ checksum:
   name_template: 'checksums.txt'
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
+  # CHANGELOG.md is authoritative; the workflow owns release-note generation.
+  disable: true
 
 release:
   github:
@@ -66,5 +63,5 @@ release:
     name: naidan
   disable: false
   prerelease: auto
-  mode: replace
+  mode: keep-existing
   name_template: "v{{.Version}}"
