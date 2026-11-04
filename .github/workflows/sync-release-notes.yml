@@ -51,7 +51,6 @@ jobs:
       cancel-in-progress: false
       queue: max
     env:
-      NOTES_DIR: ${{ runner.temp }}/release-notes
       PUBLISH_TAG: ${{ inputs.publish-tag }}
       # Official Python image index, pinned for reproducible offline planning.
       PLANNER_IMAGE: python:3.13-slim-bookworm@sha256:281d39ff02e3b389401586134ff9e6572954687822a58055ec07a60ded4e0b7f
@@ -62,6 +61,12 @@ jobs:
         with:
           ref: ${{ inputs.publish-tag != '' && github.ref || 'refs/heads/develop' }}
           persist-credentials: false
+
+      - name: Set release-note temporary directory
+        # The runner context is unavailable at jobs.<job_id>.env. Use the
+        # runtime-provided RUNNER_TEMP to set NOTES_DIR for later steps.
+        shell: bash
+        run: printf 'NOTES_DIR=%s/release-notes\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Fetch canonical changelog and all releases
         id: fetch_notes
