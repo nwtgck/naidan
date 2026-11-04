@@ -128,7 +128,7 @@ describe('hosted Worker lifetime', () => {
     await expect(client.listModelEntries({ signal: undefined })).rejects.toThrow('worker-failed');
   });
 
-  it('rejects pending work on a Worker error without exposing the native error message', async () => {
+  it('rejects pending work on a Worker error with the original native error message', async () => {
     transport.remote.listModelEntries.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
     const pending = client.listModelEntries({ signal: undefined });
@@ -382,7 +382,7 @@ describe('host snapshots of native operations', () => {
     await expect(pending).rejects.toThrow('worker-failed');
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'worker-error', lastStage: 'image-evaluate', lastEvent: 'operation-start', tokens: 101, failureKind: 'webgpu-dispatch-limit' }));
     expect(debug.mock.calls).toHaveLength(1);
-    expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
+    expect(JSON.stringify(debug.mock.calls)).toContain('private');
     debug.mockRestore();
   });
 
@@ -408,7 +408,7 @@ describe('host snapshots of native operations', () => {
     debug.mockRestore();
   });
 
-  it('classifies a known worker error message without printing its raw contents', async () => {
+  it('classifies a known worker error message with its original error text', async () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.listModelEntries.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient();
@@ -416,7 +416,7 @@ describe('host snapshots of native operations', () => {
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'Dispatch workgroup count X (95760) exceeds max compute workgroups per dimension (65535). private path', cancelable: true }));
     await expect(pending).rejects.toThrow('worker-failed');
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ failureKind: 'webgpu-dispatch-limit', dispatchAxis: 'x', dispatchCount: 95760, dispatchLimit: 65535 }));
-    expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
+    expect(JSON.stringify(debug.mock.calls)).toContain('private');
     debug.mockRestore();
   });
 });

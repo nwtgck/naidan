@@ -14,7 +14,7 @@ export function createProgressQueue({ deliver, signal }: {
   const active = new Map<NumericProgress['phase'], Promise<void>>();
   let pending: NumericProgress | undefined;
   let accepting = true;
-  let failed = false;
+  let failed: { error: unknown } | undefined;
   const counters = {
     received: 0,
     sent: 0,
@@ -33,7 +33,7 @@ export function createProgressQueue({ deliver, signal }: {
   };
   const fail = ({ error }: { error: unknown }): void => {
     counters.callbackFailures++;
-    failed = true;
+    failed ??= { error };
     discardPending();
     try {
       logFailure({ stage: 'worker-callback', error });
@@ -120,7 +120,7 @@ export function createProgressQueue({ deliver, signal }: {
         await Promise.all(active.values());
       }
       if (failed) {
-        throw new LlamaCppBrowserError({ code: 'worker-failed' });
+        throw new LlamaCppBrowserError({ code: 'worker-failed', cause: failed.error });
       }
     },
   };

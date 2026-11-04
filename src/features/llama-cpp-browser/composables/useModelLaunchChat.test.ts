@@ -754,6 +754,9 @@ describe('stable file verification and focused setup', () => {
     await state.refresh();
     await flushPromises();
     expect(state.readiness.value).toBe('failed');
+    expect(state.errorDetails.value).toContain('Error: storage unavailable');
+    await wrapper.get('[data-testid="llama-error-details-toggle"]').trigger('click');
+    expect(wrapper.get('[data-testid="llama-error-details-text"]').text()).toContain('Error: storage unavailable');
     expect(state.maySend.value).toBe(false);
     expect(state.composerVisibility.value).toBe('visible');
     expect(wrapper.find('[data-testid="start-preview-model"]').exists()).toBe(false);

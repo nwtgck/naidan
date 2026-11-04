@@ -311,7 +311,7 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
           invalidateProfiles();
           publishProfiles({ next: { status: 'error', code: failure } });
         }
-        throw new LlamaCppBrowserError({ code: failure });
+        throw new LlamaCppBrowserError({ code: failure, cause: error });
       case 'measurement': case 'live': case 'operation': case 'read-only': break;
       default: {
         const exhaustive: never = kind;
@@ -337,14 +337,14 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
       case 'unsupported-input': case 'busy': case 'worker-failed':
       case 'audio-model-unsupported': case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty':
         publish({ next: { status: 'error', code } });
-        logDiagnostic({ diagnostic: { event: 'failed' } });
+        logFailure({ stage: 'session', error });
         break;
       default: {
         const exhaustive: never = code;
         throw new Error(`Unhandled error code: ${exhaustive}`);
       }
       }
-      throw new LlamaCppBrowserError({ code });
+      throw new LlamaCppBrowserError({ code, cause: error });
     } finally {
       if (measuredWorker) {
         if (client === measuredWorker) {

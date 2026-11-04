@@ -1,6 +1,7 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Vite configuration imports these schemas before application aliases are available.
 import { parseGenerationMetrics } from '../../01-models/generation-metrics';
 import { z } from 'zod';
+import { errorDetails, maximumErrorDetailsLength } from './error-details';
 
 export const chatProfileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm32']);
 // Diagnostic artifacts are deliberately not part of ordinary chat selection.
@@ -54,8 +55,9 @@ export const errorCodeSchema = z.enum([
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 export class LlamaCppBrowserError extends Error {
-  constructor({ code }: { code: ErrorCode }) {
-    super(`llama.cpp browser: ${code}`);
+  constructor({ code, cause, details }: { code: ErrorCode, cause?: unknown, details?: string }) {
+    const detail = (details ?? errorDetails({ error: cause }))?.slice(0, maximumErrorDetailsLength);
+    super(`llama.cpp browser: ${code}${detail ? `\n${detail}` : ''}`, { cause });
     this.name = 'LlamaCppBrowserError';
   }
 }
@@ -65,15 +67,24 @@ export function errorCode({ error }: { error: unknown }): ErrorCode {
     return 'aborted';
   }
   if (error instanceof Error) {
-    const parsed = errorCodeSchema.safeParse(error.message.startsWith('llama.cpp browser: ') ? error.message.slice('llama.cpp browser: '.length) : undefined);
-    if (parsed.success) {
-      return parsed.data;
+    const parsed = parseLlamaCppBrowserErrorMessage({ message: error.message });
+    if (parsed) {
+      return parsed.code;
     }
     if (error.name === 'AbortError') {
       return 'aborted';
     }
   }
   return 'runtime-error';
+}
+
+/** Recognize only our own error envelope; other providers keep their full text. */
+export function parseLlamaCppBrowserErrorMessage({ message }: { message: string }): { code: ErrorCode, summary: string, details: string | undefined } | undefined {
+  const newline = message.indexOf('\n');
+  const summary = newline < 0 ? message : message.slice(0, newline);
+  const prefix = 'llama.cpp browser: ';
+  const parsed = errorCodeSchema.safeParse(summary.startsWith(prefix) ? summary.slice(prefix.length) : undefined);
+  return parsed.success ? { code: parsed.data, summary, details: newline < 0 ? undefined : message.slice(newline + 1, newline + 1 + maximumErrorDetailsLength) } : undefined;
 }
 
 export const progressSchema = z.object({

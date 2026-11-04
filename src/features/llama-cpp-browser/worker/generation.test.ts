@@ -545,12 +545,13 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(req).toEqual(original);
   }, 30000);
 
-  it('diagnoses a sampling failure without logging the exception and releases the sampler for retry', async () => {
+  it('diagnoses a sampling failure with its original error details and releases the sampler for retry', async () => {
     const core = host.core;
     if (!core) {
       throw new Error('Expected resident native runtime');
     }
-    const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(new TypeError('private tool schema and prompt'));
+    const error = Object.assign(new TypeError('private tool schema and prompt'), { models: ['unrelated-model.gguf'], unrelated: 'unrelated object field' });
+    const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(error);
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const req = request({ messages: [{ role: 'user', content: 'private prompt' }] });
     using _cleanupResource = {
@@ -560,8 +561,9 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       },
     };
     await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private tool');
-    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
-    expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error', details: expect.stringContaining('TypeError: private tool schema and prompt') }));
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('unrelated-model.gguf');
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('unrelated object field');
     const chunks: string[] = [];
     await generate({
       request: req,

@@ -3,6 +3,7 @@ import { computed, onScopeDispose, watch, type ComputedRef } from 'vue';
 import type { Chat, Endpoint } from '@/01-models/types';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { errorCode, type ErrorCode, type Progress } from '@/features/llama-cpp-browser/types';
+import { errorDetails } from '@/features/llama-cpp-browser/error-details';
 import { attachLocalModelLaunchView, localModelLaunchSession, retireLocalModelLaunchSession, updateLocalModelLaunchSession, type LocalModelLaunchSession } from './local-model-launch-session';
 import { hasChatLocalModelPreparation } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
 
@@ -30,6 +31,7 @@ async function runSessionPreparation({ session }: { session: LocalModelLaunchSes
   session.status = 'loading';
   session.progress = undefined;
   session.error = undefined;
+  session.errorDetails = undefined;
   updateLocalModelLaunchSession({ session });
   const current = () => !controller.signal.aborted && session.controller === controller && session.isCurrent() && localModelLaunchSession({ chatId: session.chatId }) === session;
   try {
@@ -70,6 +72,7 @@ async function runSessionPreparation({ session }: { session: LocalModelLaunchSes
     }
     session.status = 'error';
     session.error = errorCode({ error });
+    session.errorDetails = errorDetails({ error });
     updateLocalModelLaunchSession({ session });
   }
 }
@@ -160,6 +163,7 @@ export function useLocalModelLaunchChat({ chat, resolved }: {
     status: computed<'loading' | 'ready' | 'error'>(() => session.value?.status ?? 'loading'),
     progress: computed<Progress | undefined>(() => session.value?.progress),
     error: computed<ErrorCode | undefined>(() => session.value?.error),
+    errorDetails: computed(() => visible.value ? session.value?.errorDetails : undefined),
     maySend: computed(() => !visible.value || session.value?.status === 'ready'),
     retry,
     back,

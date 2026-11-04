@@ -6,6 +6,7 @@ import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreview
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
+import { errorDetails } from '@/features/llama-cpp-browser/error-details';
 import { workerCapability, workerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
@@ -71,6 +72,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   };
   let nextGenerationId = 0;
   let rejectActive: (() => void) | undefined;
+  let workerFailure: unknown;
   let disposal: Promise<void> | undefined;
   const dispose = (): Promise<void> => {
     if (disposal) {
@@ -107,6 +109,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   };
   // eslint-disable-next-line local-rules-named-args/require-named-args -- DOM Worker error listener signature.
   const onError = (event: ErrorEvent): void => {
+    workerFailure = event.error ?? new Error(event.message);
     const failureKind = lastNativeFailure?.failureKind ?? classifyFailure({ error: event.error instanceof Error ? event.error : event.message });
     logDiagnostic({
       diagnostic: {
@@ -116,6 +119,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         event: 'failed',
         stage: 'worker-error',
         failureKind,
+        details: errorDetails({ error: workerFailure }) ?? lastNativeFailure?.details,
         lastStage: lastOperation?.stage,
         lastEvent: lastOperation?.event,
       },
@@ -143,6 +147,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     pendingOperations.clear();
     lastOperation = undefined;
     lastNativeFailure = undefined;
+    workerFailure = undefined;
     let abortTimer: ReturnType<typeof setTimeout> | undefined;
     const abort = (): void => {
       if (!onAbort) {
@@ -160,7 +165,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     signal?.addEventListener('abort', abort, { once: true });
     try {
       const result = await new Promise<T>((resolve, reject) => {
-        rejectActive = () => reject(new LlamaCppBrowserError({ code: signal?.aborted ? 'aborted' : 'worker-failed' }));
+        rejectActive = () => reject(new LlamaCppBrowserError({ code: signal?.aborted ? 'aborted' : 'worker-failed', cause: workerFailure }));
         void call().then(resolve, reject);
       });
       if (signal?.aborted) {
@@ -175,7 +180,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       if (signal?.aborted && (code === 'runtime-error' || code === 'worker-failed')) {
         dispose();
       }
-      throw new LlamaCppBrowserError({ code: signal?.aborted ? 'aborted' : errorCode({ error }) });
+      throw new LlamaCppBrowserError({ code: signal?.aborted ? 'aborted' : errorCode({ error }), cause: error });
     } finally {
       stopWaiting();
       debugEnabled = false;

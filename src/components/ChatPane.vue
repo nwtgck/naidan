@@ -219,6 +219,7 @@ const localModelPreparation: LocalModelLaunchChatUi = {
     }
   }),
   progress: computed(() => undefined),
+  errorDetails: computed(() => undefined),
   error: computed(() => {
     const error = chatLocalModel.operation.value?.error;
     switch (error) {

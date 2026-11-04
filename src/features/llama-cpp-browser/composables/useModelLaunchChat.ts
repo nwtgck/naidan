@@ -16,6 +16,7 @@ import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-lau
 import { registerModelLaunchPreparation } from '@/features/llama-cpp-browser/model-launch/preparation';
 import type { ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
 import type { Progress } from '@/features/llama-cpp-browser/types';
+import { errorDetails } from '@/features/llama-cpp-browser/error-details';
 import { modelLaunchPresentation } from '@/features/llama-cpp-browser/model-launch/presentation';
 import { isMissing, readJournal, repositoryFolder } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { destinationKey } from '@/features/llama-cpp-browser/runtime/model-destination-types';
@@ -82,6 +83,7 @@ export function useModelLaunchChat({ chat, resolved }: {
   let readinessStorageCurrent: (() => boolean) | undefined;
   const warmup = ref<'idle' | 'loading' | 'ready' | 'deferred' | 'failed'>('idle');
   const warmupProgress = shallowRef<Progress>();
+  const failureDetails = ref<string>();
   let warmupController: AbortController | undefined;
   let warmupKey: string | undefined;
   const operation = ref<'idle' | 'adopting' | 'checking'>('idle');
@@ -154,6 +156,7 @@ export function useModelLaunchChat({ chat, resolved }: {
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     warmup.value = 'loading';
     warmupProgress.value = undefined;
+    failureDetails.value = undefined;
     void llamaCppBrowserService.prepareModel({
       modelId: launch.value!.effectiveModelId,
       signal: controller.signal,
@@ -178,9 +181,10 @@ export function useModelLaunchChat({ chat, resolved }: {
         throw new Error(String(exhaustive));
       }
       }
-    }).catch(() => {
+    }).catch(cause => {
       if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key) {
         warmup.value = 'failed';
+        failureDetails.value = errorDetails({ error: cause });
       }
     });
   }
@@ -190,6 +194,9 @@ export function useModelLaunchChat({ chat, resolved }: {
     warmupKey = undefined;
     warmup.value = 'idle';
     warmupProgress.value = undefined;
+  });
+  watch([() => chat.value?.id, () => effectiveTarget.value?.modelId, () => settingsApi.settings.value.storageType, isCurrentRoute, selectionChanged], () => {
+    failureDetails.value = undefined;
   });
   watch([readiness, verification, busy, selectionChanged, effectiveTarget, isCurrentRoute], prepareWhenIdle);
 
@@ -251,8 +258,9 @@ export function useModelLaunchChat({ chat, resolved }: {
       if (ready && launch.value === undefined) {
         retryRestoration();
       }
-    } catch {
+    } catch (cause) {
       if (isCurrent()) {
+        failureDetails.value = errorDetails({ error: cause });
         readiness.value = 'failed';
       }
       return;
@@ -304,6 +312,7 @@ export function useModelLaunchChat({ chat, resolved }: {
       controller.abort();
     }
     error.value = false;
+    failureDetails.value = undefined;
     operation.value = 'idle';
     const candidate = chat.value === null ? undefined : readModelLaunchSession({ chatId: chat.value.id });
     const session = candidate !== undefined && launch.value !== undefined && sameLaunchTarget({ left: candidate.target, right: launch.value.target }) ? candidate : undefined;
@@ -339,6 +348,7 @@ export function useModelLaunchChat({ chat, resolved }: {
     controllers.add(controller);
     operation.value = 'checking';
     error.value = false;
+    failureDetails.value = undefined;
     try {
       const result = await getMetadataSession().inspect({ input: saved.target.selection.repository, signal: controller.signal, freshness: 'refresh' });
       if (disposed || chat.value?.id !== chatId) {
@@ -347,9 +357,10 @@ export function useModelLaunchChat({ chat, resolved }: {
       rememberLaunchCatalog({ catalog: result });
       catalog.value = result;
       // Refreshing choices is not permission to replace the pinned saved plan.
-    } catch {
+    } catch (cause) {
       if (!controller.signal.aborted && chat.value?.id === chatId) {
         error.value = true;
+        failureDetails.value = errorDetails({ error: cause });
       }
     } finally {
       controllers.delete(controller);
@@ -368,6 +379,7 @@ export function useModelLaunchChat({ chat, resolved }: {
     controllers.add(controller);
     operation.value = 'adopting';
     error.value = false;
+    failureDetails.value = undefined;
     try {
       const updated = await storageService.prepareModelLaunchChat({
         signal: controller.signal,
@@ -392,9 +404,10 @@ export function useModelLaunchChat({ chat, resolved }: {
       synchronize();
       await loadData();
       await refresh();
-    } catch {
+    } catch (cause) {
       if (!controller.signal.aborted) {
         error.value = true;
+        failureDetails.value = errorDetails({ error: cause });
       }
     } finally {
       controllers.delete(controller);
@@ -417,6 +430,7 @@ export function useModelLaunchChat({ chat, resolved }: {
       && resolved.value?.endpoint.type === 'llama_cpp_browser' && resolved.value.modelId === observed.effectiveModelId;
     operation.value = 'adopting';
     error.value = false;
+    failureDetails.value = undefined;
     try {
       // Ask only in the explicit Resume gesture, using the root already shown.
       // A reload never recovers the physical root authorized by the old Start.
@@ -464,9 +478,10 @@ export function useModelLaunchChat({ chat, resolved }: {
           retryRestoration();
         }
       });
-    } catch {
+    } catch (cause) {
       if (!disposed && !controller.signal.aborted && isStorageCurrent() && chat.value?.id === current.id) {
         error.value = true;
+        failureDetails.value = errorDetails({ error: cause });
         // A changed journal is a new observation, not permission to substitute
         // its files into this click. A subsequent explicit retry may accept it.
         retryRestoration();
@@ -494,6 +509,7 @@ export function useModelLaunchChat({ chat, resolved }: {
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     operation.value = 'adopting';
     error.value = false;
+    failureDetails.value = undefined;
     try {
       if (selectionChanged.value) {
         const destination = saved.destination;
@@ -565,9 +581,10 @@ export function useModelLaunchChat({ chat, resolved }: {
         });
       }
       await refresh();
-    } catch {
+    } catch (cause) {
       if (!controller.signal.aborted) {
         error.value = true;
+        failureDetails.value = errorDetails({ error: cause });
         // A failed adoption may already have written its reservation. Reflect
         // that state so sending stays blocked and the same plan can be repaired.
         try {
@@ -588,6 +605,7 @@ export function useModelLaunchChat({ chat, resolved }: {
     if (launch.value !== undefined && !busy.value) {
       selectedPath.value = path;
       error.value = false;
+      failureDetails.value = undefined;
     }
   }
   function retryWarmup(): void {
@@ -662,6 +680,7 @@ export function useModelLaunchChat({ chat, resolved }: {
     presentation,
     warmup,
     warmupProgress,
+    errorDetails: failureDetails,
     restoration,
     retryRestoration,
     selectedTarget,
