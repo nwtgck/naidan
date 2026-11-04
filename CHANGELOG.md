@@ -20,6 +20,14 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the bundled llama.cpp browser runtime to llama.cpp 0.9.0.
+
+### Fixed
+
+- Preserved native runtime output and JavaScript error details across llama.cpp browser worker boundaries, with expandable, copyable details for model-loading and chat failures.
+
 ## [0.62.0] - 2026-11-02
 
 ### Added
