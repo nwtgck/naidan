@@ -128,10 +128,14 @@ it.each(['busy', 'runtime'])('keeps failed preparation blocked until an explicit
   const { state } = render();
   await flushPromises();
   expect(state.status.value).toBe('error');
+  if (reason === 'runtime') {
+    expect(state.errorDetails.value).toContain('Error: runtime failure');
+  }
   expect(state.maySend.value).toBe(false);
   expect(mocks.prepare).toHaveBeenCalledOnce();
   await state.retry();
   expect(state.status.value).toBe('ready');
+  expect(state.errorDetails.value).toBeUndefined();
   expect(mocks.prepare).toHaveBeenCalledTimes(2);
 });
 

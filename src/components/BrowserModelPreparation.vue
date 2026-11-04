@@ -38,7 +38,7 @@ const emit = defineEmits<{
   'select-quantization': [value: string],
   'confirm-selection': [selection: { operation: symbol, mainFilePath: string, companionFilePath: string | undefined, multimodal: 'on' | 'off' }],
 }>();
-defineSlots<{ progress(): unknown, details(): unknown, quantization({ disabled }: { disabled: boolean }): unknown, 'quantization-actions'(): unknown }>();
+defineSlots<{ progress(): unknown, details(): unknown, error({ message }: { message: string }): unknown, quantization({ disabled }: { disabled: boolean }): unknown, 'quantization-actions'(): unknown }>();
 const disabled = computed(() => props.interaction !== 'ready' || props.startStatus === 'starting');
 const quantizationDisabled = computed(() => {
   if (disabled.value) {
@@ -150,7 +150,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div v-else :key="'progress-' + stage" :tw-class="['min-h-[6.5rem]', stage === 'loading' ? 'pt-2' : '']"><slot name="progress" /></div>
         </Transition>
       </div>
-      <p v-if="error" role="alert" :tw-class="['text-xs leading-relaxed text-red-600 dark:text-red-400', presentation === 'preparation' ? 'text-left' : 'text-center']">{{ error }}</p>
+      <slot v-if="error" name="error" :message="error"><p role="alert" :tw-class="['text-xs leading-relaxed text-red-600 dark:text-red-400', presentation === 'preparation' ? 'text-left' : 'text-center']">{{ error }}</p></slot>
       <div tw-class="min-h-11"><slot name="details" /></div>
     </div>
   </section>

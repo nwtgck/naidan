@@ -166,14 +166,20 @@ describe('private browser diagnostics', () => {
     { error: new TypeError('private prompt'), kind: 'type-error' },
     { error: new WebAssembly.RuntimeError('private native path'), kind: 'wasm-trap' },
     { error: 123456n, kind: 'native-exception' },
-    { error: { name: 'private tool', stack: 'private result', message: 'private schema' }, kind: 'unknown-exception' },
-  ])('classifies $kind without serializing exception contents', ({ error, kind }) => {
+    { error: { name: 'private tool', stack: 'private result', message: 'private schema', models: ['unrelated-model.gguf'] }, kind: 'unknown-exception' },
+  ])('classifies $kind and preserves operation error text without dumping unrelated fields', ({ error, kind }) => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logFailure({ stage: 'partial-parse', error });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'partial-parse', failureKind: kind, code: 'runtime-error', message: expect.stringContaining('Failed while parsing partial generated output with the native chat parser.') }));
     const output = JSON.stringify(debug.mock.calls);
-    expect(output).not.toContain('private');
-    expect(output).not.toContain('123456');
+    if (error instanceof Error) {
+      expect(output).toContain(error.message);
+    } else if (typeof error === 'bigint') {
+      expect(output).toContain('123456');
+    } else {
+      expect(output).toContain('private schema');
+      expect(output).not.toContain('unrelated-model.gguf');
+    }
   });
 
   it('explains stream failures using fixed text instead of caller messages', () => {
@@ -354,19 +360,18 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     await expect(logOperation({ diagnostic: { event: 'operation-start', stage: 'image-tokenize' } })).resolves.toBeUndefined();
   });
 
-  it('keeps only known native failure categories and discards all stderr text', () => {
+  it('keeps native failure categories and their original error text', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logNativeDiagnostic({ message: 'private prompt, model.gguf, image bytes' });
     expect(debug).not.toHaveBeenCalled();
     logNativeDiagnostic({ message: 'Workgroup count exceeds maxComputeWorkgroupsPerDimension limit; private path /private.gguf' });
-    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'native-error', failureKind: 'webgpu-dispatch-limit' });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'native-error', failureKind: 'webgpu-dispatch-limit', details: 'Workgroup count exceeds maxComputeWorkgroupsPerDimension limit; private path /private.gguf' }));
     logNativeDiagnostic({ message: 'Dispatch workgroup count X (95760) exceeds max compute workgroups per dimension (65535). private path' });
-    expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toEqual({ event: 'native-error', failureKind: 'webgpu-dispatch-limit', dispatchAxis: 'x', dispatchCount: 95760, dispatchLimit: 65535 });
+    expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toMatchObject({ event: 'native-error', failureKind: 'webgpu-dispatch-limit', dispatchAxis: 'x', dispatchCount: 95760, dispatchLimit: 65535 });
     logNativeDiagnostic({ message: 'WebGPU device lost: private metadata' });
-    expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toEqual({ event: 'native-error', failureKind: 'webgpu-device-lost' });
+    expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toMatchObject({ event: 'native-error', failureKind: 'webgpu-device-lost', details: 'WebGPU device lost: private metadata' });
     logNativeDiagnostic({ message: 'ggml_webgpu: Device lost! Reason: 1, Message: private metadata' });
-    expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toEqual({ event: 'native-error', failureKind: 'webgpu-device-lost' });
-    expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
+    expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toMatchObject({ event: 'native-error', failureKind: 'webgpu-device-lost', details: 'ggml_webgpu: Device lost! Reason: 1, Message: private metadata' });
   });
 });
 
@@ -539,10 +544,10 @@ describe('sanitized model-load and file-backed read failures', () => {
     'qwen4exp_file_rows: gather failed /private/model.gguf',
     'qwen4exp_file_rows: gather failed' + '\n\n',
     'qwen4exp_file_rows: gather failed' + '\u2028',
-  ])('drops malformed or extended native details', message => {
+  ])('preserves unknown native failure text without inventing parsed numeric fields', message => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logNativeDiagnostic({ message });
-    expect(debug).not.toHaveBeenCalled();
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'native-error', details: message });
   });
 });
 

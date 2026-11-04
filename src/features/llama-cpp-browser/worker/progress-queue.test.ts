@@ -182,12 +182,12 @@ describe('bounded text progress delivery', () => {
     expect(queue.counters).toMatchObject({ received: 1, sent: 0, discarded: 1 });
   });
 
-  it.each(['sync', 'async', 'thenable'] as const)('sanitizes %s callback failure and consumes all rejection paths', async kind => {
+  it.each(['sync', 'async', 'thenable'] as const)('retains %s callback failure and consumes all rejection paths', async kind => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = new Error('private callback payload');
     const queue = createProgressQueue({
       signal: new AbortController().signal,
       deliver: () => {
-        const error = new Error('private callback payload');
         switch (kind) {
         case 'sync': throw error;
         case 'async': return Promise.reject(error);
@@ -205,9 +205,14 @@ describe('bounded text progress delivery', () => {
     });
     queue.send({ progress: update({ phase: 'prefill', completed: 1 }) });
     queue.send({ progress: update({ phase: 'prefill', completed: 2 }) });
-    await expect(queue.finish()).rejects.toThrow('worker-failed');
+    await expect(queue.finish()).rejects.toMatchObject({
+      message: expect.stringContaining(`\
+llama.cpp browser: worker-failed
+Error: private callback payload`),
+      cause: error,
+    });
     expect(queue.counters).toMatchObject({ received: 2, sent: 1, settled: 1, discarded: 1, callbackFailures: 1 });
-    expect(JSON.stringify(log.mock.calls)).not.toContain('private callback payload');
+    expect(JSON.stringify(log.mock.calls)).toContain('private callback payload');
   });
 
   it('drains the other phase before reporting a rejected callback', async () => {
@@ -229,7 +234,12 @@ describe('bounded text progress delivery', () => {
     expect(done).toBe(false);
     expect(deliver).toHaveBeenCalledTimes(2);
     generating.resolve();
-    expect(await finishing).toMatchObject({ message: 'llama.cpp browser: worker-failed' });
+    expect(await finishing).toMatchObject({
+      message: expect.stringContaining(`\
+llama.cpp browser: worker-failed
+Error: private rejected progress`),
+      cause: expect.objectContaining({ message: 'private rejected progress' }),
+    });
     expect(queue.counters).toMatchObject({ sent: 2, settled: 2, discarded: 1 });
   });
 

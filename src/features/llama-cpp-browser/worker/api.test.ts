@@ -194,7 +194,7 @@ describe("generation RPC lifecycle", () => {
     expect(chunk).toHaveBeenCalledWith({ event: { type: "text", text: "accepted before cancellation" } });
   });
 
-  it("sanitizes proxy failures and can accept a later generation instead of keeping a stuck active owner", async () => {
+  it("preserves proxy failure details and can accept a later generation instead of keeping a stuck active owner", async () => {
     calls.generate.mockImplementation(async ({ onEvent }) => {
       await onEvent({ event: { type: "text", text: "not logged" } });
       return completed();
@@ -202,7 +202,7 @@ describe("generation RPC lifecycle", () => {
     const api = createWorkerApi();
     await expect(api.generate(request({ generationId: 1 }), async () => {
       throw new Error("private callback detail");
-    }, () => {})).rejects.toThrow("llama.cpp browser: worker-failed");
+    }, () => {})).rejects.toThrow(/llama.cpp browser: worker-failed[\s\S]*private callback detail/);
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
   });
 
@@ -540,6 +540,36 @@ function preparation({ generationId }: { generationId: number }): WorkerPrepareC
 }
 
 describe('preparation RPC ownership', () => {
+  it.each(['loading', 'generating'] as const)('keeps the original %s callback error in the returned failure', async phase => {
+    calls.generate.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase, completed: 1, total: 2 } });
+      return completed();
+    });
+    const api = createWorkerApi();
+    await expect(api.generate(request({ generationId: 801 }), async () => {}, () => {
+      throw new DOMException('The callback object can not be cloned.', 'DataCloneError');
+    })).rejects.toThrow(/worker-failed[\s\S]*DataCloneError: The callback object can not be cloned\./);
+    calls.generate.mockResolvedValueOnce(completed());
+    await expect(api.generate(request({ generationId: 802 }), async () => {}, () => {})).resolves.toEqual(completed());
+  });
+
+  it('returns native failure text from only the failing preparation request', async () => {
+    calls.generate.mockImplementationOnce(async () => {
+      logNativeDiagnostic({ message: 'metadata for a successful earlier request' });
+      return completed();
+    });
+    const api = createWorkerApi();
+    await api.generate(request({ generationId: 701 }), async () => {}, () => {});
+    calls.prepare.mockImplementationOnce(async () => {
+      logNativeDiagnostic({ message: 'llama_model_load: error loading model: key not found in model: selected.expert_shared_count' });
+      throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    });
+    const error: unknown = await api.prepareModel(preparation({ generationId: 702 }), () => {}).catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain('key not found in model: selected.expert_shared_count');
+    expect(String(error)).not.toContain('successful earlier request');
+  });
+
   it('prepares the session with no messages or generation and drains progress before releasing the lane', async () => {
     const gate = deferred();
     calls.prepare.mockImplementationOnce(async ({ onProgress }) => {
@@ -720,7 +750,7 @@ describe('generation progress mailbox integration', () => {
     })).rejects.toThrow('worker-failed');
     calls.generate.mockResolvedValueOnce(completed());
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
-    expect(JSON.stringify(log.mock.calls)).not.toContain('private transport detail');
+    expect(JSON.stringify(log.mock.calls)).toContain('private transport detail');
   });
 
   it('drains numeric callbacks even when the original loading callback queue has failed', async () => {
@@ -755,7 +785,12 @@ describe('generation progress mailbox integration', () => {
     expect(done).toBe(false);
     await expect(api.release()).rejects.toThrow('busy');
     gate.resolve();
-    expect(await pending).toMatchObject({ message: 'llama.cpp browser: worker-failed' });
+    expect(await pending).toMatchObject({
+      message: expect.stringContaining(`\
+llama.cpp browser: worker-failed
+Error: private loading detail`),
+      cause: expect.objectContaining({ message: 'private loading detail' }),
+    });
   });
 
   it.each(['on', 'off'] as const)('reports only aggregate delivery counts when debug is %s', async debug => {

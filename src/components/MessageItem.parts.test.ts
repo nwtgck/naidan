@@ -51,6 +51,40 @@ describe('message parts UI boundaries', () => {
     wrapper.unmount();
   });
 
+  it('keeps saved browser runtime details collapsed without changing the recorded error', async () => {
+    const recorded = `\
+llama.cpp browser: runtime-error
+Native runtime output:
+error loading model: key not found`;
+    const message = assistant({ parts: [], interruption: { type: 'error', message: recorded } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, chatId: toChatId({ raw: 'c' }), message } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(wrapper.get('[data-testid="llama-error-summary-row"]').text()).toContain('llama.cpp browser: runtime-error');
+    expect(wrapper.find('[data-testid="llama-error-details-text"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="llama-error-details-toggle"]').trigger('click');
+    expect(wrapper.get('[data-testid="llama-error-details-text"]').text()).toContain('error loading model: key not found');
+    expect(message.interruption).toEqual({ type: 'error', message: recorded });
+  });
+
+  it('does not split another provider multiline error into a browser runtime detail', () => {
+    const recorded = `\
+Other provider failed
+Keep this second line`;
+    const message = assistant({ parts: [], interruption: { type: 'error', message: recorded } });
+    const wrapper = mount(MessageItem, { props: { endpoint: undefined, chatId: toChatId({ raw: 'c' }), message } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(wrapper.get('[data-testid="error-message"]').text()).toContain(recorded);
+    expect(wrapper.find('[data-testid="llama-error-details-toggle"]').exists()).toBe(false);
+  });
+
   it('a cancelled native partial is displayed without a running border or a fabricated tag', () => {
     const message = assistant({ parts: [{ type: 'reasoning', text: '  途中の理由', completeness: 'partial' }], interruption: { type: 'cancelled' } });
     const wrapper = mount(MessageItem, { props: { endpoint: undefined, chatId: toChatId({ raw: 'c' }), message, mode: 'thinking' } });

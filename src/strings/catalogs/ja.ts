@@ -1286,6 +1286,11 @@ import { LlamaCppBrowserDownloadSources__files_and_sources } from '@/strings/mes
 import { LlamaCppBrowserDownloadSources__request_urls_help } from '@/strings/messages/LlamaCppBrowserDownloadSources__request_urls_help/ja';
 import { LlamaCppBrowserDownloadSources__revision } from '@/strings/messages/LlamaCppBrowserDownloadSources__revision/ja';
 import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/ja';
+import { LlamaCppBrowserErrorDetails__copied } from '@/strings/messages/LlamaCppBrowserErrorDetails__copied/ja';
+import { LlamaCppBrowserErrorDetails__copy_details } from '@/strings/messages/LlamaCppBrowserErrorDetails__copy_details/ja';
+import { LlamaCppBrowserErrorDetails__copy_failed_select_the_text } from '@/strings/messages/LlamaCppBrowserErrorDetails__copy_failed_select_the_text/ja';
+import { LlamaCppBrowserErrorDetails__details } from '@/strings/messages/LlamaCppBrowserErrorDetails__details/ja';
+import { LlamaCppBrowserErrorDetails__error_details } from '@/strings/messages/LlamaCppBrowserErrorDetails__error_details/ja';
 import { LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution/ja';
 import { LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling/ja';
 import { LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report/ja';
@@ -4765,6 +4770,11 @@ export const catalog = {
   LlamaCppBrowserDownloadSources__request_urls_help,
   LlamaCppBrowserDownloadSources__revision,
   LlamaCppBrowserDownloadSources__url_copied,
+  LlamaCppBrowserErrorDetails__copied,
+  LlamaCppBrowserErrorDetails__copy_details,
+  LlamaCppBrowserErrorDetails__copy_failed_select_the_text,
+  LlamaCppBrowserErrorDetails__details,
+  LlamaCppBrowserErrorDetails__error_details,
   LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution,
   LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling,
   LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report,
