@@ -248,6 +248,13 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
   bf16WeightType: missingAsUndefined(dtozod.enum(['f32', 'f16'])),
 }));
 
+export const ExperimentalTranslationSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  modelId: missingAsUndefined(dtozod.string()),
+  sourceLang: missingAsUndefined(dtozod.string()),
+  targetLang: missingAsUndefined(dtozod.string()),
+}));
+export type ExperimentalTranslationSettingsDto = dtozod.infer<typeof ExperimentalTranslationSettingsSchemaDto>;
+
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
   locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
   /**
@@ -286,6 +293,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
     ])),
   }))),
   liveConversationModelId: missingAsUndefined(dtozod.string()),
+  translation: missingAsUndefined(ExperimentalTranslationSettingsSchemaDto),
   llamaCppBrowser: missingAsUndefined(ExperimentalLlamaCppBrowserSettingsSchemaDto),
   browserImageGeneration: missingAsUndefined(ExperimentalBrowserImageGenerationSettingsSchemaDto),
   hostModelDirectories: missingAsUndefined(dtozod.array(dtozod.object({

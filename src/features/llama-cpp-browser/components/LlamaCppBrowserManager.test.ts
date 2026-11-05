@@ -6,6 +6,7 @@ import type { ProfileCapabilities, ProfileState } from '@/features/llama-cpp-bro
 import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { h } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import LlamaCppBrowserManager from './LlamaCppBrowserManager.vue';
@@ -156,6 +157,29 @@ afterEach(async () => {
 });
 
 describe('local GGUF manager', () => {
+  it('supports feature-owned selection actions without exposing chat selection or changing defaults', async () => {
+    vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([storedModel]);
+    const select = vi.fn();
+    const wrapper = mount(LlamaCppBrowserManager, {
+      props: { presentation: 'settings', suggestions: 'none' },
+      slots: {
+        'selection-hint': () => h('p', { 'data-testid': 'feature-selection-hint' }, 'Translation selection'),
+        'model-actions': ({ model, disabled }: { model: LocalModel, disabled: boolean }) => h('button', { 'data-testid': 'feature-model-select', disabled, onClick: () => select(model.modelId) }, 'Use for translation'),
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="feature-selection-hint"]').text()).toBe('Translation selection');
+    expect(wrapper.text()).not.toContain('Use in chat');
+    await wrapper.get('[data-testid="feature-model-select"]').trigger('click');
+    expect(select).toHaveBeenCalledExactlyOnceWith(storedModel.modelId);
+    expect(wrapper.emitted('modelSelected')).toBeUndefined();
+    await wrapper.setProps({ disabled: true });
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="feature-model-select"]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-hf-search-query"]').element.disabled).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
+  });
+
   it('keeps search active without a busy feedback loop and aborts it when suspended', async () => {
     const pending = Promise.withResolvers<Awaited<ReturnType<typeof searchModels>>>();
     vi.mocked(searchModels).mockReturnValueOnce(pending.promise);

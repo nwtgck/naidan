@@ -20,6 +20,11 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a dedicated translation workspace and model-management page in Quick Access, initially supporting PLaMo 3 Translate GGUF models with language selection, streamed output, cancellation, Japanese style, reference context, and terminology controls.
+- Translation remembers only the selected model and language preferences in experimental settings; source text, output, context, and terminology are not persisted, and the default chat model is unchanged.
+
 ### Changed
 
 - GitHub Release descriptions now use the curated `CHANGELOG.md` notes, including corrections to previously published releases.

@@ -62,7 +62,7 @@ export function bindNativeChat<
       templatesByModel.delete(model);
       templates.delete();
     },
-    prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'>, generationPrompt: 'include' | 'omit' | undefined }) {
+    prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'>, generationPrompt: 'include' | 'omit' | undefined }) {
       assertIdle();
       let params: Params | undefined;
       let parser: Parser | undefined;
@@ -140,26 +140,36 @@ export function bindNativeChat<
           inputs.use_jinja = true;
           inputs.parallel_tool_calls = true;
           const effort = request.reasoningEffort;
+          const templateKwargs = { ...request.chatTemplateKwargs };
           switch (effort) {
           case 'none':
             // This requests upstream's thinking toggle; templates may not support it.
             inputs.enable_thinking = false;
-            break;
-          case 'low': case 'medium': case 'high': {
-            const kwargs = new native.string_map();
-            try {
-              kwargs.set('reasoning_effort', JSON.stringify(effort));
-              inputs.chat_template_kwargs = kwargs;
-            } finally {
-              kwargs.delete();
+            // The dedicated control wins over a conflicting generic argument.
+            if (Object.hasOwn(templateKwargs, 'enable_thinking')) {
+              templateKwargs.enable_thinking = false;
             }
+            delete templateKwargs.reasoning_effort;
             break;
-          }
+          case 'low': case 'medium': case 'high':
+            templateKwargs.reasoning_effort = effort;
+            break;
           case undefined: break;
           default: {
             const exhaustive: never = effort;
             throw new Error(`Unknown reasoning effort: ${exhaustive}`);
           }
+          }
+          if (Object.keys(templateKwargs).length > 0) {
+            const kwargs = new native.string_map();
+            try {
+              for (const [key, value] of Object.entries(templateKwargs)) {
+                kwargs.set(key, JSON.stringify(value));
+              }
+              inputs.chat_template_kwargs = kwargs;
+            } finally {
+              kwargs.delete();
+            }
           }
           inputs.reasoning_format = native.common_reasoning_format.COMMON_REASONING_FORMAT_DEEPSEEK;
           params = renderThinkingTemplate({ offRequested: effort === 'none', render: () => templates.apply(inputs) });
@@ -263,7 +273,7 @@ export function bindNativeChat<
   };
   return {
     releaseModel: binding.releaseModel,
-    prepare({ assertIdle, model, request }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) {
+    prepare({ assertIdle, model, request }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'> }) {
       // Preserve the ordinary Chat contract and its upstream template defaults.
       return binding.prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt: undefined });
     },
