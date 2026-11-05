@@ -540,8 +540,7 @@ export interface Settings {
     /** Translation preferences only; source text, output and terminology remain in memory. */
     translation?: {
       modelId?: string,
-      sourceLang?: string,
-      targetLang?: string,
+      autoTranslate?: boolean,
     },
     llamaCppBrowser?: LlamaCppBrowserSettings,
     browserImageGeneration?: BrowserImageGenerationSettings,

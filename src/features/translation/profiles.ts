@@ -104,11 +104,5 @@ export function translationProfile({ id }: { id: TranslationProfileId }): Transl
   }
 }
 
-export const translationModelRepositories = [
-  'pfnet/plamo-3-translate-0.8b-GGUF',
-  'pfnet/plamo-3-translate-2b-GGUF',
-  'pfnet/plamo-3-translate-8b-GGUF',
-  'pfnet/plamo-3-translate-31b-GGUF',
-] as const;
 export const TEST_ONLY = {
 };

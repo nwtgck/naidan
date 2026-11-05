@@ -2364,9 +2364,9 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       globalSearch: globalSearchDomain,
       liveConversationModelId,
       translation: translation === undefined ? undefined : (() => {
-        const { modelId, sourceLang, targetLang, ...unhandledTranslation } = translation;
+        const { modelId, autoTranslate, ...unhandledTranslation } = translation;
         unhandledTranslation satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<Settings['experimental']>['translation']>>()({ modelId, sourceLang, targetLang });
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['translation']>>()({ modelId, autoTranslate });
       })(),
       llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
       // A structurally unreadable saved image block is not an absent location.
@@ -2538,9 +2538,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       globalSearch: globalSearchDto,
       liveConversationModelId,
       translation: translation === undefined ? undefined : (() => {
-        const { modelId, sourceLang, targetLang, ...unhandledTranslation } = translation;
+        const { modelId, autoTranslate, ...unhandledTranslation } = translation;
         unhandledTranslation satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['translation']>>()({ modelId, sourceLang, targetLang });
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['translation']>>()({ modelId, autoTranslate });
       })(),
       llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),

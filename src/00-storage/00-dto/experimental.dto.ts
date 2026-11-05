@@ -250,8 +250,7 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
 
 export const ExperimentalTranslationSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
   modelId: missingAsUndefined(dtozod.string()),
-  sourceLang: missingAsUndefined(dtozod.string()),
-  targetLang: missingAsUndefined(dtozod.string()),
+  autoTranslate: missingAsUndefined(dtozod.boolean()),
 }));
 export type ExperimentalTranslationSettingsDto = dtozod.infer<typeof ExperimentalTranslationSettingsSchemaDto>;
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { useSettings } from '@/composables/useSettings';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
@@ -50,7 +51,7 @@ beforeEach(async () => {
 });
 
 async function fixture() {
-  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', defaultModelId: 'chat-default', experimental: { locale: 'en', translation: { modelId: 'first.gguf', sourceLang: 'ja', targetLang: 'en' } } });
+  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', defaultModelId: 'chat-default', experimental: { locale: 'en', translation: { modelId: 'first.gguf', autoTranslate: false } } });
   let storageGeneration = 0;
   const save = vi.fn<ReturnType<typeof useSettings>['updateExperimentalForStorage']>().mockImplementation(async ({ isCurrent, updater }) => {
     if (!isCurrent()) {
@@ -68,10 +69,14 @@ async function fixture() {
       return () => accepted === storageGeneration;
     },
   };
-  const wrapper = mount(TranslationWorkspace, { props: { tab: 'workspace' } });
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/translation', component: { template: '<div />' } }] });
+  await router.push('/translation?from=ja&to=en');
+  await router.isReady();
+  const wrapper = mount(TranslationWorkspace, { props: { tab: 'workspace' }, global: { plugins: [router], stubs: { Teleport: true } } });
   await flushPromises();
   return {
     wrapper,
+    router,
     settings,
     save,
     switchStorage() {
@@ -114,7 +119,7 @@ describe('translation workspace workflow', () => {
     await f.wrapper.get('[data-testid="translation-source"]').setValue('draft');
     await f.wrapper.setProps({ tab: 'models' });
     await flushPromises();
-    expect(f.wrapper.get('form').isVisible()).toBe(false);
+    expect(f.wrapper.get('form').attributes()).toHaveProperty('inert');
     await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
     await flushPromises();
     expect(f.wrapper.emitted('openWorkspace')).toHaveLength(1);
@@ -136,12 +141,14 @@ describe('translation workspace workflow', () => {
     expect(f.wrapper.text()).toContain('supported translation template');
   });
 
-  it('saves language preferences without saving transient options and disables swap for automatic detection', async () => {
+  it('replaces URL language preferences without saving settings and disables swap for automatic detection', async () => {
     using f = await fixture();
     const source = f.wrapper.findAllComponents({ name: 'SettingsFormSelect' }).find(component => component.props('label') === 'Source language')!;
     source.vm.$emit('update:modelValue', '');
     await flushPromises();
-    expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', sourceLang: undefined, targetLang: 'en' });
+    expect(f.router.currentRoute.value.query).toEqual({ to: 'en' });
+    expect(f.save).not.toHaveBeenCalled();
+    expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', autoTranslate: false });
     expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-swap"]').element.disabled).toBe(true);
     expect(f.settings.value.defaultModelId).toBe('chat-default');
   });
@@ -185,6 +192,58 @@ describe('translation workspace workflow', () => {
     expect(f.wrapper.get('[data-testid="translation-status"]').text()).toContain('Stopped');
   });
 
+  it('does not overwrite newer source input while a language swap navigation is pending', async () => {
+    using f = await fixture();
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('old source');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const navigation = Promise.withResolvers<void>();
+    f.router.beforeEach(() => navigation.promise);
+    await f.wrapper.get('[data-testid="translation-swap"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('new source during navigation');
+    navigation.resolve();
+    await flushPromises();
+    expect(f.router.currentRoute.value.query).toEqual({ from: 'en' });
+    expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="translation-source"]').element.value).toBe('new source during navigation');
+  });
+
+  it('copies a complete translation into the source when swapping without an intervening edit', async () => {
+    using f = await fixture();
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('old source');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="translation-swap"]').trigger('click');
+    await flushPromises();
+    expect(f.router.currentRoute.value.query).toEqual({ from: 'en' });
+    expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="translation-source"]').element.value).toBe('Hello');
+    expect(f.save).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed clipboard failure belonging to an obsolete result', async () => {
+    using f = await fixture();
+    const pending = Promise.withResolvers<void>();
+    using _clipboard = {
+      original: Object.getOwnPropertyDescriptor(navigator, 'clipboard'),
+      [Symbol.dispose]() {
+        if (this.original) {
+          Object.defineProperty(navigator, 'clipboard', this.original);
+        } else {
+          Reflect.deleteProperty(navigator, 'clipboard');
+        }
+      },
+    };
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => pending.promise } });
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('old source');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="translation-copy"]').trigger('click');
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('new source');
+    pending.reject(new Error('clipboard denied'));
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="translation-status"]').text()).toBe('');
+  });
+
   it('does not enable Japanese style controls for a non-Japanese target', async () => {
     using f = await fixture();
     const control = f.wrapper.findAllComponents({ name: 'SettingsFormSelect' }).find(component => component.props('label') === 'Japanese style')!;
@@ -193,5 +252,167 @@ describe('translation workspace workflow', () => {
     target.vm.$emit('update:modelValue', 'ja');
     await flushPromises();
     expect(control.props('disabled')).toBe(false);
+  });
+});
+
+function fakeClock() {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  return {
+    [Symbol.dispose]() {
+      vi.useRealTimers();
+    },
+  };
+}
+
+describe('translation automatic workflow', () => {
+  it('defaults to automatic translation without persisting drafts or requiring a submit', async () => {
+    using f = await fixture();
+    using _clock = fakeClock();
+    f.settings.value.experimental!.translation = { modelId: 'first.gguf' };
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('こんにちは');
+    await vi.advanceTimersByTimeAsync(599);
+    expect(mocks.generate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="translation-output"]').text()).toBe('Hello');
+    expect(f.save).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="translation-run"]').isVisible()).toBe(false);
+    expect(f.wrapper.get('[data-testid="translation-status"]').text()).toBe('');
+  });
+
+  it('keeps editing available, cancels obsolete output and waits before starting the newest request', async () => {
+    using f = await fixture();
+    using _clock = fakeClock();
+    f.settings.value.experimental!.translation!.autoTranslate = true;
+    const old = Promise.withResolvers<GenerationResult>();
+    mocks.generate.mockImplementationOnce(async ({ onEvent }) => {
+      await onEvent({ event: { type: 'text', text: 'obsolete' } });
+      return old.promise;
+    });
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('first');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="translation-source"]').element.disabled).toBe(false);
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('newest');
+    expect(mocks.generate.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    expect(f.wrapper.get('[data-testid="translation-output"]').text()).not.toContain('obsolete');
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    old.resolve({ content: 'old completion', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledTimes(2);
+    expect(mocks.generate.mock.calls[1]?.[0].input.messages).toEqual([{ role: 'user', content: 'newest' }]);
+    expect(f.wrapper.get('[data-testid="translation-output"]').text()).toBe('Hello');
+  });
+
+  it('does not translate IME preedit text, including a submit during composition', async () => {
+    using f = await fixture();
+    using _clock = fakeClock();
+    f.settings.value.experimental!.translation!.autoTranslate = true;
+    const source = f.wrapper.get('[data-testid="translation-source"]');
+    await source.trigger('compositionstart');
+    await source.setValue('preedit');
+    await f.wrapper.get('form').trigger('submit');
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(mocks.generate).not.toHaveBeenCalled();
+    await source.trigger('compositionend');
+    await source.setValue('confirmed');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+  });
+
+  it('persists only the automatic preference and retains the old value after save failure', async () => {
+    using f = await fixture();
+    f.settings.value.experimental!.translation!.autoTranslate = true;
+    await flushPromises();
+    f.save.mockRejectedValueOnce(new Error('full'));
+    await f.wrapper.get('[data-testid="translation-automatic"]').setValue(false);
+    await flushPromises();
+    expect(f.wrapper.get<HTMLInputElement>('[data-testid="translation-automatic"]').element.checked).toBe(true);
+    expect(f.settings.value.experimental?.translation?.autoTranslate).toBe(true);
+    await f.wrapper.get('[data-testid="translation-automatic"]').setValue(false);
+    await flushPromises();
+    expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', autoTranslate: false });
+    expect(f.wrapper.get('[data-testid="translation-run"]').isVisible()).toBe(true);
+  });
+
+  it('keeps automatic translation stopped until edit or explicit retry', async () => {
+    using f = await fixture();
+    using _clock = fakeClock();
+    f.settings.value.experimental!.translation!.autoTranslate = true;
+    const pending = Promise.withResolvers<GenerationResult>();
+    mocks.generate.mockReturnValueOnce(pending.promise);
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('text');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    await f.wrapper.get('[data-testid="translation-stop"]').trigger('click');
+    pending.resolve({ content: 'ignored', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="translation-run"]').isVisible()).toBe(true);
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the catalog above real editors without losing text on model selection', async () => {
+    using f = await fixture();
+    f.settings.value.experimental!.translation = { autoTranslate: false };
+    await flushPromises();
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('draft before model');
+    const modelPanel = f.wrapper.get('[data-testid="translation-model-panel"]').element;
+    const editors = f.wrapper.get('[data-testid="translation-editors"]').element;
+    expect(modelPanel.compareDocumentPosition(editors) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(f.wrapper.get('[data-testid="translation-source"]').isVisible()).toBe(true);
+    expect(f.wrapper.get('[data-testid="translation-output"]').isVisible()).toBe(true);
+    await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
+    await flushPromises();
+    expect(f.settings.value.experimental?.translation?.modelId).toBe('second.gguf');
+    expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="translation-source"]').element.value).toBe('draft before model');
+  });
+
+  it('does not select a model whose inspection resolves after the drawer is closed', async () => {
+    using f = await fixture();
+    await f.wrapper.setProps({ tab: 'models' });
+    await flushPromises();
+    const pending = Promise.withResolvers<Awaited<ReturnType<InspectTranslationModel>>>();
+    mocks.inspect.mockReturnValueOnce(pending.promise);
+    await f.wrapper.get('[data-testid="test-select-model"]').trigger('click');
+    await f.wrapper.setProps({ tab: 'workspace' });
+    pending.resolve({ status: 'supported', profileId: 'plamo3-translate' });
+    await flushPromises();
+    expect(f.save).not.toHaveBeenCalled();
+    expect(f.settings.value.experimental?.translation?.modelId).toBe('first.gguf');
+  });
+
+  it('blocks malformed URL parameters instead of silently translating to the default', async () => {
+    using f = await fixture();
+    await f.router.replace('/translation?to=en&to=ko');
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('text');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-run"]').element.disabled).toBe(true);
+  });
+
+  it('uses the shared loading presentation with real progress', async () => {
+    using f = await fixture();
+    const pending = Promise.withResolvers<GenerationResult>();
+    mocks.generate.mockReturnValueOnce(pending.promise);
+    mocks.run.mockImplementationOnce(async ({ onProgress, operation, signal }) => {
+      onProgress?.({ progress: { phase: 'loading', completed: 1, total: 4 } });
+      await operation({ scope: { signal: signal!, generate: mocks.generate } });
+    });
+    await f.wrapper.get('[data-testid="translation-source"]').setValue('text');
+    await f.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="model-load-percentage"]').text()).toBe('25%');
+    pending.resolve({ content: 'done', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await flushPromises();
   });
 });

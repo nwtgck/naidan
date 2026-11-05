@@ -128,9 +128,14 @@ export function useTranslationSession({ service, inspectModel }: {
         }
       }
     } finally {
-      if (current()) {
+      // Cancellation invalidates output immediately, but must not release the
+      // generation lane until the old operation actually settles.
+      if (active.value === controller) {
         active.value = undefined;
         progress.value = undefined;
+        if (requestRevision !== revision) {
+          phase.value = 'idle';
+        }
       }
     }
   }
@@ -145,12 +150,11 @@ export function useTranslationSession({ service, inspectModel }: {
   function reset(): void {
     revision++;
     active.value?.abort();
-    active.value = undefined;
     output.value = '';
     progress.value = undefined;
     issue.value = undefined;
     failure.value = undefined;
-    phase.value = 'idle';
+    phase.value = active.value ? 'stopping' : 'idle';
   }
 
   onScopeDispose(() => {

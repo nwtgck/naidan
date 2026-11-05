@@ -15,8 +15,8 @@ describe('experimental translation settings persistence', () => {
     }
   });
 
-  it('round trips exactly the three approved settings without changing chat configuration', () => {
-    const translation = { modelId: 'renamed-model.gguf', sourceLang: 'en', targetLang: 'ja(easy)' };
+  it('round trips exactly the two approved settings without changing chat configuration', () => {
+    const translation = { modelId: 'renamed-model.gguf', autoTranslate: false };
     const initial: Settings = { ...base, defaultModelId: 'chat-model', experimental: { locale: 'ja', translation } };
     const dto = SettingsSchemaDto.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: initial }))));
     const domain = settingsToDomain({ dto });
@@ -24,22 +24,22 @@ describe('experimental translation settings persistence', () => {
     expect(domain.defaultModelId).toBe('chat-model');
     expect(domain.endpoint).toEqual(base.endpoint);
     expect(domain.experimental?.locale).toBe('ja');
-    expect(Object.keys(dto.experimental?.translation ?? {})).toEqual(['modelId', 'sourceLang', 'targetLang']);
+    expect(Object.keys(dto.experimental?.translation ?? {})).toEqual(['modelId', 'autoTranslate']);
   });
 
   it('normalizes missing preference fields to undefined without imposing model-specific validation', () => {
-    expect(ExperimentalTranslationSettingsSchemaDto.parse({})).toStrictEqual({ modelId: undefined, sourceLang: undefined, targetLang: undefined });
-    expect(ExperimentalTranslationSettingsSchemaDto.parse({ targetLang: 'future-code' }).targetLang).toBe('future-code');
+    expect(ExperimentalTranslationSettingsSchemaDto.parse({})).toStrictEqual({ modelId: undefined, autoTranslate: undefined });
+    expect(ExperimentalTranslationSettingsSchemaDto.parse({ targetLang: 'future-code', sourceLang: 'en' })).toEqual({ modelId: undefined, autoTranslate: undefined });
   });
 
-  it('removes the automatic source language from serialized JSON', () => {
-    const dto = settingsToDto({ domain: { ...base, experimental: { translation: { modelId: 'model', sourceLang: undefined, targetLang: 'en' } } } });
-    expect(JSON.parse(JSON.stringify(dto)).experimental.translation).toEqual({ modelId: 'model', targetLang: 'en' });
+  it('omits an unset automatic-translation preference from serialized JSON', () => {
+    const dto = settingsToDto({ domain: { ...base, experimental: { translation: { modelId: 'model', autoTranslate: undefined } } } });
+    expect(JSON.parse(JSON.stringify(dto)).experimental.translation).toEqual({ modelId: 'model' });
   });
 
   it('does not store transient translation data through the DTO', () => {
     const parsed = ExperimentalTranslationSettingsSchemaDto.parse({ modelId: 'model', sourceLang: 'en', targetLang: 'ja', text: 'private', context: 'private', glossary: [{ source: 'a', target: 'b' }], output: 'private' });
-    expect(Object.keys(parsed)).toEqual(['modelId', 'sourceLang', 'targetLang']);
+    expect(Object.keys(parsed)).toEqual(['modelId', 'autoTranslate']);
     expect(JSON.stringify(parsed)).not.toContain('private');
   });
 
@@ -50,4 +50,14 @@ describe('experimental translation settings persistence', () => {
     expect(parsed?.locale).toBe('ja');
     expect(parsed?.unreadable).toHaveProperty('translation');
   });
+});
+
+it('discards legacy language fields on a settings round trip, including malformed old values', () => {
+  const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { locale: 'ja', translation: { modelId: 'model', sourceLang: { old: true }, targetLang: 123 } } });
+  const domain = settingsToDomain({ dto });
+  expect(domain.experimental?.translation).toEqual({ modelId: 'model', autoTranslate: undefined });
+  const serialized = JSON.stringify(settingsToDto({ domain }));
+  expect(serialized).not.toContain('sourceLang');
+  expect(serialized).not.toContain('targetLang');
+  expect(domain.experimental?.locale).toBe('ja');
 });

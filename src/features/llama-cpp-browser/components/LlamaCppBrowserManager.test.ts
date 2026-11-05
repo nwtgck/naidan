@@ -10,6 +10,8 @@ import { h } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import LlamaCppBrowserManager from './LlamaCppBrowserManager.vue';
+import LlamaCppBrowserModelSuggestions from './LlamaCppBrowserModelSuggestions.vue';
+import { translationModelSuggestions } from '@/features/translation/model-catalog';
 import { LlamaCppBrowserError, type EngineState, type LocalModel, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import { runtimeProfileControl } from './model-configuration.test-support';
@@ -178,6 +180,45 @@ describe('local GGUF manager', () => {
     expect(wrapper.get<HTMLButtonElement>('[data-testid="feature-model-select"]').element.disabled).toBe(true);
     expect(wrapper.get<HTMLInputElement>('[data-testid="llama-hf-search-query"]').element.disabled).toBe(true);
     expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
+  });
+
+  it('renders the translation catalog first and selects a saved model without a chat default action', async () => {
+    const model: LocalModel = { modelId: 'hf.co/pfnet/plamo-3-translate-0.8b-GGUF:Q4_K_M', size: 573_000_000, importedAt: 1 };
+    vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([model]);
+    vi.mocked(repositoryDirectories).mockResolvedValue([localModelDirectory({ primaryRelativePath: 'plamo-3-translate-0.8b-Q4_K_M.gguf', projectorRelativePath: undefined })]);
+    using network = vi.spyOn(globalThis, 'fetch');
+    const wrapper = mount(LlamaCppBrowserManager, { props: { presentation: 'settings', catalogFirst: true, selectionAction: 'select', modelSuggestions: translationModelSuggestions } });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const catalog = wrapper.get('[data-testid="llama-model-suggestions"]').element;
+    const search = wrapper.get('[data-testid="llama-hf-search-query"]').element;
+    expect(catalog.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(wrapper.findAll('[data-testid^="llama-suggestion-plamo-3-translate-"]')).toHaveLength(4);
+    expect(wrapper.findComponent(LlamaCppBrowserModelSuggestions).props('defaultActionDisabled')).toBe(false);
+    expect(wrapper.get('[data-testid="llama-suggestion-use"]').element.matches(':disabled')).toBe(false);
+    await wrapper.get('[data-testid="llama-suggestion-use"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.emitted('modelSelected')).toEqual([[model.modelId]]);
+    expect(wrapper.find('[data-testid="llama-default-model-dialog"]').exists()).toBe(false);
+    expect(network).not.toHaveBeenCalled();
+    expect(searchModels).not.toHaveBeenCalled();
+    await wrapper.setProps({ disabled: true });
+    expect(wrapper.get('[data-testid="llama-suggestion-use"]').element.matches(':disabled')).toBe(true);
+  });
+
+  it('discards a catalog selection if its refresh finishes after the feature is hidden', async () => {
+    vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([storedModel]);
+    const wrapper = mount(LlamaCppBrowserManager, { props: { presentation: 'settings', catalogFirst: true, selectionAction: 'select', modelSuggestions: translationModelSuggestions } });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const pending = Promise.withResolvers<LocalModel[]>();
+    vi.mocked(llamaCppBrowserService.listModelEntries).mockReturnValueOnce(pending.promise);
+    wrapper.findComponent(LlamaCppBrowserModelSuggestions).vm.$emit('select', storedModel);
+    await flushPromises();
+    await wrapper.setProps({ suspended: true });
+    pending.resolve([storedModel]);
+    await flushPromises();
+    expect(wrapper.emitted('modelSelected')).toBeUndefined();
   });
 
   it('keeps search active without a busy feedback loop and aborts it when suspended', async () => {

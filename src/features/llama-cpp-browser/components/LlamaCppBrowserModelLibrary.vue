@@ -17,7 +17,7 @@ import { useRecentModelImports } from '@/features/llama-cpp-browser/composables/
 
 // Suspension is opt-in: an omitted Boolean prop is false in Vue. It must not
 // disable model management in onboarding or other callers without this prop.
-const props = defineProps<{ suspended?: boolean, inventory?: ModelInventorySource, externalBusy?: boolean, runtimeStatus?: 'idle' | 'working' | 'unavailable', defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
+const props = defineProps<{ suspended?: boolean, catalogFirst?: boolean, inventory?: ModelInventorySource, externalBusy?: boolean, runtimeStatus?: 'idle' | 'working' | 'unavailable', defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [modelId: string] }>();
 const slots = useSlots();
 defineSlots<{
@@ -213,6 +213,7 @@ defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD
       <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
       <p>{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     </div>
+    <slot v-if="props.catalogFirst" name="suggestions" :models="models" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
     <slot name="header" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :busy="busy" :refresh="refresh" :select-ready-model="selectReadyModel" :invalidate-model-selection="invalidateModelSelection" />
     <LlamaCppBrowserModelImport :disabled="props.suspended || unavailable || busy" @busy="importing = $event" @changed="refresh" />
     <p v-if="removalChanged" role="alert" data-testid="llama-removal-changed" tw-class="text-xs text-red-500">{{ lazyStrings.llamaCppBrowser__files_changed_review_before_deleting() }}</p>
@@ -220,7 +221,7 @@ defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD
       <AlertCircleIcon tw-class="w-4 h-4 shrink-0 mt-0.5" /><div tw-class="text-xs space-y-1"><p>{{ displayedError === 'invalid-gguf' ? lazyStrings.llamaCppBrowser__gguf_files_only() : lazyStrings.llamaCppBrowser__operation_failed() }}</p><code tw-class="font-mono">{{ displayedError }}</code></div>
     </div>
     <p v-if="chatGroupCreationFailed" role="alert" data-testid="llama-cpp-browser-create-chat-group-error" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group() }}</p>
-    <slot name="suggestions" :models="models" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
+    <slot v-if="!props.catalogFirst" name="suggestions" :models="models" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
     <section v-if="recentModels.length" data-testid="llama-recent-imports" tw-class="space-y-2 rounded-2xl border border-blue-100 bg-blue-50/30 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
       <div tw-class="flex items-center justify-between gap-3">
         <h3 :tw-class="['inline-flex items-center gap-2 text-sm font-semibold text-gray-800', isSettingsTypography ? 'dark:text-gray-300' : 'dark:text-gray-100']"><CheckIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserModelLibrary__just_added_models() }}<span tw-class="text-xs font-normal tabular-nums text-gray-400">{{ recentModels.length }}</span></h3>

@@ -6,6 +6,7 @@ import { provideLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-b
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import type { EngineState, LocalModel } from '@/features/llama-cpp-browser/types';
 import type { ApplyDefaultModel, DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
+import type { ModelSuggestion } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import LlamaCppBrowserModelLibrary from './LlamaCppBrowserModelLibrary.vue';
@@ -14,7 +15,7 @@ import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManag
 import LlamaCppBrowserRuntimeSettings from './LlamaCppBrowserRuntimeSettings.vue';
 
 // Settings keeps its catalog and runtime controls around the shared file library.
-const props = defineProps<{ presentation: 'settings' | 'embedded', suspended?: boolean, disabled?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
+const props = defineProps<{ presentation: 'settings' | 'embedded', suspended?: boolean, disabled?: boolean, suggestions?: 'chat' | 'none', modelSuggestions?: readonly ModelSuggestion[], catalogFirst?: boolean, selectionAction?: 'default' | 'select', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
 provideLlamaCppBrowserSettingsTypography({ presentation: () => props.presentation });
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [modelId: string], runtimeReady: [ready: boolean] }>();
 const slots = useSlots();
@@ -74,7 +75,7 @@ defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
 </script>
 <template>
   <section data-testid="llama-cpp-browser-manager">
-    <LlamaCppBrowserModelLibrary ref="library" :suspended="props.suspended" :external-busy="externalBusy" :runtime-status="runtimeStatus" :default-model="defaultModel" :apply-default-model="applyDefaultModel" :create-chat-group="props.createChatGroup" @models-changed="emit('modelsChanged', $event)" @model-selected="emit('modelSelected', $event)">
+    <LlamaCppBrowserModelLibrary ref="library" :suspended="props.suspended" :catalog-first="props.catalogFirst" :external-busy="externalBusy" :runtime-status="runtimeStatus" :default-model="defaultModel" :apply-default-model="applyDefaultModel" :create-chat-group="props.createChatGroup" @models-changed="emit('modelsChanged', $event)" @model-selected="emit('modelSelected', $event)">
       <template v-if="slots['model-actions']" #model-actions="{ model, disabled }"><slot name="model-actions" :model="model" :disabled="disabled || props.disabled === true" /></template>
       <template v-if="slots['selection-hint']" #selection-hint><slot name="selection-hint" /></template>
       <template #header="{ disabled, refresh: refreshModels, selectReadyModel, invalidateModelSelection }">
@@ -83,7 +84,7 @@ defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
       </template>
       <template #suggestions="{ models, disabled, createChatGroup, creatingChatGroupModelId, selectDefault, refresh: refreshModels }">
         <!-- Bundled suggestions require no network request until an explicit action. -->
-        <LlamaCppBrowserModelSuggestions v-if="props.suggestions !== 'none'" :models="models" :disabled="disabled" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" :create-chat-group="createChatGroup" :creating-chat-group-model-id="creatingChatGroupModelId" @select-default="selectDefault({ model: $event })" @changed="refreshModels" />
+        <LlamaCppBrowserModelSuggestions v-if="props.suggestions !== 'none'" :suggestions="props.modelSuggestions" :selection-action="props.selectionAction" :models="models" :disabled="disabled || props.disabled === true" :default-model="defaultModel" :default-action-disabled="props.selectionAction === 'select' ? props.disabled === true : defaultActionDisabled" :create-chat-group="createChatGroup" :creating-chat-group-model-id="creatingChatGroupModelId" @select="library?.selectReadyModel({ model: $event })" @select-default="selectDefault({ model: $event })" @changed="refreshModels" />
       </template>
       <template #footer="{ disabled, releaseDisabled }">
         <LlamaCppBrowserRuntimeSettings :disabled="disabled" :release-disabled="releaseDisabled || props.disabled === true" @runtime-ready="emit('runtimeReady', $event)" />

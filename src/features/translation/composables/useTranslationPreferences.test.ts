@@ -6,7 +6,7 @@ import { useTranslationPreferences } from './useTranslationPreferences';
 
 function fixture() {
   const scope = effectScope();
-  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', experimental: { locale: 'ja', translation: { modelId: 'original', sourceLang: 'en', targetLang: 'ja' } } });
+  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', experimental: { locale: 'ja', translation: { modelId: 'original', autoTranslate: true } } });
   let generation = 0;
   const captureExperimentalStorage = () => {
     const accepted = generation;
@@ -39,16 +39,16 @@ describe('translation preferences', () => {
   it('saves only requested preferences and preserves unrelated settings and the chat default', async () => {
     using f = fixture();
     const chatModel = f.store.settings.value.defaultModelId;
-    expect(await f.state.save({ patch: { targetLang: 'ko' } })).toBe(true);
-    expect(f.store.settings.value.experimental).toEqual({ locale: 'ja', translation: { modelId: 'original', sourceLang: 'en', targetLang: 'ko' } });
+    expect(await f.state.save({ patch: { autoTranslate: false } })).toBe(true);
+    expect(f.store.settings.value.experimental).toEqual({ locale: 'ja', translation: { modelId: 'original', autoTranslate: false } });
     expect(f.store.settings.value.defaultModelId).toBe(chatModel);
   });
 
-  it('uses undefined for automatic source detection and never writes an auto language code', async () => {
+  it('allows the automatic translation preference to return to its default', async () => {
     using f = fixture();
-    await f.state.save({ patch: { sourceLang: undefined } });
-    expect(f.state.preferences.value?.sourceLang).toBeUndefined();
-    expect(JSON.stringify(f.state.preferences.value)).not.toContain('sourceLang');
+    await f.state.save({ patch: { autoTranslate: undefined } });
+    expect(f.state.preferences.value?.autoTranslate).toBeUndefined();
+    expect(JSON.stringify(f.state.preferences.value)).not.toContain('autoTranslate');
   });
 
   it('does not race optimistic selections or admit a second write while saving', async () => {
@@ -62,13 +62,13 @@ describe('translation preferences', () => {
       f.store.settings.value.experimental = updater({ experimental: f.store.settings.value.experimental });
       return 'saved';
     });
-    const first = f.state.save({ patch: { targetLang: 'en' } });
+    const first = f.state.save({ patch: { autoTranslate: false } });
     expect(f.state.saving.value).toBe(true);
-    expect(f.state.preferences.value?.targetLang).toBe('ja');
-    expect(await f.state.save({ patch: { targetLang: 'ko' } })).toBe(false);
+    expect(f.state.preferences.value?.autoTranslate).toBe(true);
+    expect(await f.state.save({ patch: { autoTranslate: false } })).toBe(false);
     pending.resolve();
     expect(await first).toBe(true);
-    expect(f.state.preferences.value?.targetLang).toBe('en');
+    expect(f.state.preferences.value?.autoTranslate).toBe(false);
   });
 
   it('does not apply a delayed update to a replacement storage', async () => {
@@ -93,17 +93,17 @@ describe('translation preferences', () => {
   it('retains the previous selection after a failed save and permits retry', async () => {
     using f = fixture();
     f.store.updateExperimentalForStorage.mockRejectedValueOnce(new Error('full'));
-    expect(await f.state.save({ patch: { targetLang: 'en' } })).toBe(false);
+    expect(await f.state.save({ patch: { autoTranslate: false } })).toBe(false);
     expect(f.state.failed.value).toBe(true);
-    expect(f.state.preferences.value?.targetLang).toBe('ja');
-    expect(await f.state.save({ patch: { targetLang: 'en' } })).toBe(true);
+    expect(f.state.preferences.value?.autoTranslate).toBe(true);
+    expect(await f.state.save({ patch: { autoTranslate: false } })).toBe(true);
     expect(f.state.failed.value).toBe(false);
   });
 
   it('does not save after scope disposal', async () => {
     using f = fixture();
     f.scope.stop();
-    expect(await f.state.save({ patch: { targetLang: 'en' } })).toBe(false);
+    expect(await f.state.save({ patch: { autoTranslate: false } })).toBe(false);
     expect(f.store.updateExperimentalForStorage).not.toHaveBeenCalled();
   });
 });

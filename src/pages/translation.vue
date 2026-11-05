@@ -7,7 +7,7 @@ const tab = computed(() => route.path.replace(/\/+$/, '') === '/translation/mode
 
 function open({ path }: { path: '/translation' | '/translation/models' }): void {
   if (route.path.replace(/\/+$/, '') !== path) {
-    void router.push({ path, query: route.query });
+    void router.push({ path, query: route.query, hash: route.hash });
   }
 }
 

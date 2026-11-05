@@ -3377,6 +3377,7 @@ import { toolCall__result } from '@/strings/messages/toolCall__result/pt-BR';
 import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_tools_count/pt-BR';
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/pt-BR';
 import { translation__add_term } from '@/strings/messages/translation__add_term/pt-BR';
+import { translation__automatic_translation } from '@/strings/messages/translation__automatic_translation/pt-BR';
 import { translation__back_to_chats } from '@/strings/messages/translation__back_to_chats/pt-BR';
 import { translation__back_to_translation } from '@/strings/messages/translation__back_to_translation/pt-BR';
 import { translation__check_again } from '@/strings/messages/translation__check_again/pt-BR';
@@ -6919,6 +6920,7 @@ export const catalog = {
   toolCall__show_tools_count,
   toolCall__tool_executions,
   translation__add_term,
+  translation__automatic_translation,
   translation__back_to_chats,
   translation__back_to_translation,
   translation__check_again,

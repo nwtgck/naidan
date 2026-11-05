@@ -111,8 +111,12 @@ describe('translation operation ownership', () => {
     await flushPromises();
     f.session.reset();
     await f.session.translate({ draft: { ...f.draft, targetLang: 'ko' } });
+    expect(f.generate).toHaveBeenCalledOnce();
+    expect(f.session.busy.value).toBe(true);
     pending.resolve({ ...f.result, content: 'old' });
     await old;
+    expect(f.session.output.value).toBe('');
+    await f.session.translate({ draft: { ...f.draft, targetLang: 'ko' } });
     expect(f.session.output.value).toBe('Hello');
     expect(f.session.phase.value).toBe('complete');
   });
