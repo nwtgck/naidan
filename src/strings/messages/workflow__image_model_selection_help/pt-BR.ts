@@ -1,0 +1,1 @@
+export const workflow__image_model_selection_help = (): string => "Atualizar apenas lista os arquivos locais. Aplique a seleção para fixar o modelo principal, os componentes e os adaptadores. A execução não substitui arquivos ausentes nem baixa modelos.";

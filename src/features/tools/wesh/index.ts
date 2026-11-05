@@ -11,6 +11,7 @@ export interface WeshToolOptions {
   description: string | undefined,
   defaultStdoutLimit: number,
   defaultStderrLimit: number,
+  onOutputLimit?: ({ stream }: { stream: 'stdout' | 'stderr' }) => void,
 }
 
 /**
@@ -24,7 +25,8 @@ export function createWeshTool({
   description,
   defaultStdoutLimit,
   defaultStderrLimit,
-}: { client: WeshToolOptions['client'], mounts: WeshToolOptions['mounts'], name: WeshToolOptions['name'], description: WeshToolOptions['description'], defaultStdoutLimit: WeshToolOptions['defaultStdoutLimit'], defaultStderrLimit: WeshToolOptions['defaultStderrLimit'] }): Tool {
+  onOutputLimit,
+}: { client: WeshToolOptions['client'], mounts: WeshToolOptions['mounts'], name: WeshToolOptions['name'], description: WeshToolOptions['description'], defaultStdoutLimit: WeshToolOptions['defaultStdoutLimit'], defaultStderrLimit: WeshToolOptions['defaultStderrLimit'], onOutputLimit?: WeshToolOptions['onOutputLimit'] }): Tool {
   const createGenerationAbortedError = () => {
     const error = new Error('Generation aborted');
     error.name = 'AbortError';
@@ -79,9 +81,11 @@ export function createWeshTool({
       let abortPromiseCleanup: (() => void) | undefined;
       let executionId: string | undefined;
       let cancellationPromise: Promise<void> | undefined;
+      let completion: ReturnType<WeshWorkerClient['awaitExecution']> | undefined;
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
       try {
         if (signal?.aborted) {
-          throw new Error('Generation aborted');
+          throw createGenerationAbortedError();
         }
         const validated = WeshArgsSchema.parse(args);
 
@@ -131,6 +135,9 @@ export function createWeshTool({
           }
           cancellationRequested = true;
           cancellationPromise = client.cancelExecution({ request: { executionId } }).then(() => {});
+          // Observe early failures while a streaming callback is still active.
+          // The original rejection is propagated after execution retirement.
+          void cancellationPromise.catch(() => undefined);
         };
 
         const requestCancellation = () => {
@@ -167,6 +174,7 @@ export function createWeshTool({
 
           if (acceptedLength < chunk.byteLength) {
             state.truncated = true;
+            onOutputLimit?.({ stream });
             requestCancellation();
           }
         };
@@ -183,13 +191,7 @@ export function createWeshTool({
         };
 
         if (signal) {
-          abortHandler = () => {
-            if (executionId) {
-              void client.cancelExecution({ request: { executionId } });
-            } else {
-              void client.interrupt();
-            }
-          };
+          abortHandler = requestCancellation;
           signal.addEventListener('abort', abortHandler, { once: true });
         }
 
@@ -228,13 +230,11 @@ export function createWeshTool({
           throw new Error('Wesh execution did not return an execution id');
         }
         const activeExecutionId = executionId;
-
+        completion = client.awaitExecution({ request: { executionId: activeExecutionId } });
+        // Its rejection may arrive while cancellation is still in flight.
+        void completion.catch(() => undefined);
         if (signal?.aborted) {
-          await client.cancelExecution({
-            request: {
-              executionId: activeExecutionId,
-            },
-          });
+          requestCancellation();
           throw createGenerationAbortedError();
         }
 
@@ -253,13 +253,8 @@ export function createWeshTool({
         }) : undefined;
 
         let timedOut = false;
-        const completion = client.awaitExecution({
-          request: {
-            executionId: activeExecutionId,
-          },
-        });
         const timeout = new Promise<'timeout'>(resolve => {
-          setTimeout(() => resolve('timeout'), validated.timeout_ms);
+          timeoutHandle = setTimeout(() => resolve('timeout'), validated.timeout_ms);
         });
         const raceParticipants: Array<Promise<unknown>> = [completion, timeout];
         if (abortPromise) {
@@ -269,11 +264,8 @@ export function createWeshTool({
 
         if (outcome === 'timeout') {
           timedOut = true;
-          await client.cancelExecution({
-            request: {
-              executionId: activeExecutionId,
-            },
-          });
+          requestCancellation();
+          await cancellationPromise;
         }
 
         const result = await completion;
@@ -311,17 +303,23 @@ export function createWeshTool({
           message: `Shell execution error: ${error instanceof Error ? error.message : String(error)}`,
         };
       } finally {
-        if (executionId) {
-          await cancellationPromise;
-          await client.disposeExecution({
-            request: {
-              executionId,
-            },
-          });
+        if (timeoutHandle !== undefined) {
+          clearTimeout(timeoutHandle);
         }
         abortPromiseCleanup?.();
         if (signal && abortHandler) {
           signal.removeEventListener('abort', abortHandler);
+        }
+        try {
+          await cancellationPromise;
+        } finally {
+          // A disposed execution record is not proof that the running command
+          // has stopped. Drain the original completion, including after a
+          // worker-client cancellation switches to a replacement runtime.
+          await completion?.catch(() => undefined);
+          if (executionId) {
+            await client.disposeExecution({ request: { executionId } });
+          }
         }
       }
     },

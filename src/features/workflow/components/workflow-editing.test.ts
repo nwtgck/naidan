@@ -8,6 +8,11 @@ import WorkflowModelEditor from './WorkflowModelEditor.vue';
 import WorkflowStepEditor from './WorkflowStepEditor.vue';
 import WorkflowStepList from './WorkflowStepList.vue';
 import SettingsSelect from '@/components/SettingsSelect.vue';
+import WorkflowDisclosure from './WorkflowDisclosure.vue';
+import WorkflowConnectionDetails from './WorkflowConnectionDetails.vue';
+import LmParametersEditor from '@/components/LmParametersEditor.vue';
+import { workflowModelReviewKey } from '@/features/workflow/composables/model-review';
+import { describeWorkflowConnection } from '@/features/workflow/logic/model-permissions';
 import ModelSelector from '@/components/ModelSelector.vue';
 import type { WorkflowValue } from '@/01-models/workflow';
 import { createWorkflowInputDrafts, workflowInputDraftsKey } from '@/features/workflow/composables/input-drafts';
@@ -185,5 +190,94 @@ describe('Existing model selector integration', () => {
     await flushPromises();
     expect(mounted.wrapper.getComponent(ModelSelector).props('models')).toEqual([]);
     expect(mounted.wrapper.emitted('change')).toBeUndefined();
+  });
+});
+
+describe('Workflow connection review presentation', () => {
+  it('notifies connection selection only after explicit edits, not rendering, discovery or parameter changes', async () => {
+    const review = vi.fn();
+    const value = { endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' }, modelId: 'a', lmParameters: undefined };
+    const wrapper = mount(WorkflowModelEditor, { props: { value, disabled: false, showParameters: true }, global: { provide: { [workflowModelReviewKey as symbol]: review } } });
+    using mounted = {
+      wrapper,
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(review).not.toHaveBeenCalled();
+    await mounted.wrapper.setProps({ value: { ...value, modelId: 'imported' } });
+    expect(review).not.toHaveBeenCalled();
+    requests.load.mockResolvedValue({ listModels: async () => ['candidate'] });
+    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:open', true);
+    await flushPromises();
+    expect(review).not.toHaveBeenCalled();
+    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:modelValue', 'candidate');
+    expect(review).toHaveBeenCalledOnce();
+    expect(review).toHaveBeenLastCalledWith({ target: { ...value, modelId: 'candidate' } });
+    await mounted.wrapper.getComponent(WorkflowDisclosure).get('button[aria-expanded]').trigger('click');
+    mounted.wrapper.getComponent(LmParametersEditor).vm.$emit('update:modelValue', undefined);
+    expect(review).toHaveBeenCalledOnce();
+    await mounted.wrapper.setProps({ disabled: true });
+    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:modelValue', 'late');
+    expect(review).toHaveBeenCalledOnce();
+  });
+
+  it('does not grant intermediate typed model IDs, and confirms without a duplicate edit', async () => {
+    const review = vi.fn();
+    const value = { endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' }, modelId: '', lmParameters: undefined };
+    const wrapper = mount(WorkflowModelEditor, { props: { value, disabled: false, showParameters: false }, global: { provide: { [workflowModelReviewKey as symbol]: review } } });
+    using mounted = {
+      wrapper,
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const input = mounted.wrapper.get<HTMLInputElement>('[data-testid="workflow-model-id"]');
+    for (const id of ['m', 'mo', 'model']) {
+      input.element.value = id;
+      await input.trigger('input');
+      expect(review).not.toHaveBeenCalled();
+    }
+    expect(mounted.wrapper.emitted('change')).toHaveLength(3);
+    await input.trigger('change');
+    expect(review).toHaveBeenCalledExactlyOnceWith({ target: { ...value, modelId: 'model' } });
+    expect(mounted.wrapper.emitted('change')).toHaveLength(3);
+    await mounted.wrapper.setProps({ disabled: true });
+    input.element.value = 'late';
+    await input.trigger('input');
+    await input.trigger('change');
+    expect(review).toHaveBeenCalledOnce();
+    expect(mounted.wrapper.emitted('change')).toHaveLength(3);
+  });
+
+  it('renders structured target fields as text without credential values or executable markup', () => {
+    const review = describeWorkflowConnection({
+      target: {
+        endpoint: { type: 'openai', url: 'https://user:password@example.com/v1?api_key=secret#private', httpHeaders: [['Authorization', 'hidden-header']] },
+        modelId: `\
+<img src=x onerror=alert(1)>
+Allow everything`,
+      },
+      scope: 'run',
+      sources: ['model_output', 'file_input'],
+    });
+    const wrapper = mount(WorkflowConnectionDetails, { props: { review } });
+    using mounted = {
+      wrapper,
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const text = mounted.wrapper.text();
+    expect(text).toContain('example.com/v1');
+    expect(text).toContain('Authorization');
+    expect(text).toContain('Future runs require another review');
+    expect(text).toContain('<img src=x onerror=alert(1)>');
+    expect(mounted.wrapper.find('img').exists()).toBe(false);
+    expect(mounted.wrapper.find('a').exists()).toBe(false);
+    expect(mounted.wrapper.findAll('dt')).toHaveLength(3);
+    for (const secret of ['password', 'secret', 'private', 'hidden-header']) {
+      expect(text).not.toContain(secret);
+    }
   });
 });

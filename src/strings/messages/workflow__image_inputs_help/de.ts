@@ -1,0 +1,1 @@
+export const workflow__image_inputs_help = (): string => "Verbinden Sie binäre PNG-, JPEG- oder WebP-Ausgaben. Bis zu acht Referenzbilder; 16 MiB je Datei, 64 MiB insgesamt, 8.192 Pixel pro Seite und 16.777.216 Pixel insgesamt. Animierte Bilder werden abgelehnt. Das Modell muss Bildeingaben unterstützen.";

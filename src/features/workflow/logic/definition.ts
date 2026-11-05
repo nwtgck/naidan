@@ -1,4 +1,10 @@
+import { workflowToolConfigurationIssues } from './tool-policy';
+import { workflowChoicesSchema } from './input-choices';
+import { workflowToolLiteralIssues } from './tool-input';
 import type { WorkflowDefinition, WorkflowStep, WorkflowValue, WorkflowMessage } from '@/01-models/workflow';
+import { workflowAudioLiteralIssues } from './audio-input';
+import { workflowImageLiteralIssues } from './image-input';
+import { workflowExecutionLimitIssues } from './execution-control';
 import { analyzeWorkflowTypes } from './value-types';
 import { validateJsonAssignments } from './json-composition';
 import { generateId } from '@/01-models/id';
@@ -20,6 +26,8 @@ export function mapWorkflowValue({ value, transform }: { value: WorkflowValue, t
   case 'loop_state': return transform({ value });
   case 'array':
   case 'concat':
+  case 'all':
+  case 'any':
   case 'path': return transform({ value: { ...value, items: value.items.map(value => map({ value })) } });
   case 'object': return transform({ value: { ...value, properties: Object.fromEntries(Object.entries(value.properties).map(([key, child]) => [key, map({ value: child })])) } });
   case 'json_compose': return transform({ value: { ...value, assignments: value.assignments.map(item => ({ ...item, value: map({ value: item.value }) })) } });
@@ -27,7 +35,10 @@ export function mapWorkflowValue({ value, transform }: { value: WorkflowValue, t
   case 'get':
   case 'filename':
   case 'format_number':
+  case 'not':
   case 'not_empty': return transform({ value: { ...value, value: map({ value: value.value }) } });
+  case 'arithmetic':
+  case 'compare':
   case 'equals': return transform({ value: { ...value, left: map({ value: value.left }), right: map({ value: value.right }) } });
   case 'conversation': return transform({ value: { ...value, messages: mapWorkflowMessages({ messages: value.messages, transform }) } });
   default: {
@@ -42,7 +53,9 @@ export function mapWorkflowMessages({ messages, transform }: { messages: Workflo
     ...message,
     parts: message.parts.map(part => {
       switch (part.type) {
-      case 'text': return part;
+      case 'text': case 'reasoning':
+      case 'tool_call': return part;
+      case 'tool_result': return { ...part, content: mapWorkflowValue({ value: part.content, transform }) };
       case 'value': return { ...part, value: mapWorkflowValue({ value: part.value, transform }) };
       default: {
         const exhaustive: never = part;
@@ -62,6 +75,9 @@ export function childWorkflowSteps({ step }: { step: WorkflowStep }): WorkflowSt
   case 'model_selection':
   case 'parse_json':
   case 'text_generation':
+  case 'audio_generation':
+  case 'image_generation':
+  case 'tool_call':
   case 'request_input':
   case 'read_file':
   case 'write_file': return [];
@@ -79,10 +95,13 @@ export function workflowOutputNames({ step }: { step: WorkflowStep }): string[] 
   case 'parse_json':
   case 'request_input': return ['value'];
   case 'text_generation': return ['text', 'reasoning', 'conversation', 'metrics'];
+  case 'audio_generation': return ['audio', 'metadata', 'complete'];
+  case 'image_generation': return ['image', 'metadata'];
+  case 'tool_call': return ['text', 'ok', 'metadata'];
   case 'read_file': return ['content', 'text', 'metadata'];
   case 'write_file': return ['file'];
   case 'repeat':
-  case 'for_each': return step.emit === undefined ? ['state'] : ['state', 'items'];
+  case 'for_each': return step.emit === undefined ? ['state', 'iterations', 'stoppedBy'] : ['state', 'iterations', 'stoppedBy', 'items'];
   case 'if': return Object.keys(step.then.outputs);
   default: {
     const exhaustive: never = step;
@@ -104,7 +123,57 @@ export function mapWorkflowSteps({ steps, transform, stepId }: {
     case 'model_selection': return { ...step, id };
     case 'parse_json': return { ...step, id, source: map({ value: step.source }) };
     case 'text_generation': return { ...step, id, target: map({ value: step.target }), conversation: map({ value: step.conversation }), appendMessages: mapWorkflowMessages({ messages: step.appendMessages, transform }) };
-    case 'request_input': return { ...step, id, prompt: map({ value: step.prompt }) };
+    case 'audio_generation': return {
+      ...step,
+      id,
+      modelId: map({ value: step.modelId }),
+      text: map({ value: step.text }),
+      reference: step.reference === undefined ? undefined : map({ value: step.reference }),
+      parameters: {
+        language: map({ value: step.parameters.language }),
+        audioBackend: map({ value: step.parameters.audioBackend }),
+        contextTokens: map({ value: step.parameters.contextTokens }),
+        maxFrames: map({ value: step.parameters.maxFrames }),
+        temperature: map({ value: step.parameters.temperature }),
+        topK: map({ value: step.parameters.topK }),
+        topP: map({ value: step.parameters.topP }),
+        seed: map({ value: step.parameters.seed }),
+      },
+    };
+    case 'image_generation': return {
+      ...step,
+      id,
+      model: map({ value: step.model }),
+      prompt: map({ value: step.prompt }),
+      imageInputs: step.imageInputs === undefined ? undefined : {
+        initImage: step.imageInputs.initImage === undefined ? undefined : map({ value: step.imageInputs.initImage }),
+        referenceImages: step.imageInputs.referenceImages.map(value => map({ value })),
+        strength: map({ value: step.imageInputs.strength }),
+      },
+      gpuBudgetMiB: step.gpuBudgetMiB === undefined ? undefined : map({ value: step.gpuBudgetMiB }),
+      parameters: {
+        negativePrompt: map({ value: step.parameters.negativePrompt }),
+        width: map({ value: step.parameters.width }),
+        height: map({ value: step.parameters.height }),
+        steps: map({ value: step.parameters.steps }),
+        guidance: map({ value: step.parameters.guidance }),
+        seed: map({ value: step.parameters.seed }),
+        sampler: map({ value: step.parameters.sampler }),
+        scheduler: map({ value: step.parameters.scheduler }),
+        distilledGuidance: map({ value: step.parameters.distilledGuidance }),
+        vaeTiling: map({ value: step.parameters.vaeTiling }),
+        vaeTileSize: map({ value: step.parameters.vaeTileSize }),
+        flashAttention: map({ value: step.parameters.flashAttention }),
+        bf16WeightType: map({ value: step.parameters.bf16WeightType }),
+        qwenVaePolicy: map({ value: step.parameters.qwenVaePolicy }),
+        conditioningCacheSize: map({ value: step.parameters.conditioningCacheSize }),
+        modelArguments: map({ value: step.parameters.modelArguments }),
+        profile: map({ value: step.parameters.profile }),
+        weightResidency: map({ value: step.parameters.weightResidency }),
+      },
+    };
+    case 'tool_call': return { ...step, id, arguments: map({ value: step.arguments }) };
+    case 'request_input': return { ...step, id, prompt: map({ value: step.prompt }), choices: step.choices === undefined ? undefined : map({ value: step.choices }) };
     case 'read_file': return { ...step, id, relativePath: map({ value: step.relativePath }) };
     case 'write_file': return { ...step, id, relativePath: map({ value: step.relativePath }), source: map({ value: step.source }) };
     case 'repeat':
@@ -112,9 +181,10 @@ export function mapWorkflowSteps({ steps, transform, stepId }: {
       const state = Object.fromEntries(Object.entries(step.state).map(([key, value]) => [key, { initial: map({ value: value.initial }), next: map({ value: value.next }) }]));
       const body = { steps: children({ steps: step.body.steps }) };
       const emit = step.emit === undefined ? undefined : map({ value: step.emit });
+      const stopWhen = step.stopWhen === undefined ? undefined : map({ value: step.stopWhen });
       switch (step.type) {
-      case 'repeat': return { ...step, id, count: map({ value: step.count }), state, body, emit };
-      case 'for_each': return { ...step, id, source: map({ value: step.source }), state, body, emit };
+      case 'repeat': return { ...step, id, count: map({ value: step.count }), state, body, emit, stopWhen };
+      case 'for_each': return { ...step, id, source: map({ value: step.source }), state, body, emit, stopWhen };
       default: {
         const exhaustive: never = step;
         throw new Error(`Unknown loop: ${exhaustive}`);
@@ -150,7 +220,7 @@ export function copyWorkflowSteps({ steps }: { steps: WorkflowStep[] }): Workflo
       case 'loop_item':
       case 'loop_index':
       case 'loop_state': return { ...value, stepId: ids.get(value.stepId) ?? value.stepId };
-      case 'literal': case 'json_compose': case 'range': case 'model': case 'array': case 'concat': case 'path': case 'object': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': return value;
+      case 'arithmetic': case 'compare': case 'all': case 'any': case 'not': case 'literal': case 'json_compose': case 'range': case 'model': case 'array': case 'concat': case 'path': case 'object': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': return value;
       default: {
         const exhaustive: never = value;
         throw new Error(`Unknown expression: ${exhaustive}`);
@@ -162,7 +232,7 @@ export function copyWorkflowSteps({ steps }: { steps: WorkflowStep[] }): Workflo
 
 /** Lexical visibility, not opportunistic scheduling, determines whether an output can be used. */
 export function validateWorkflow({ definition }: { definition: WorkflowDefinition }): WorkflowIssue[] {
-  const issues: WorkflowIssue[] = [];
+  const issues: WorkflowIssue[] = workflowExecutionLimitIssues({ limits: definition.executionLimits }).map(message => ({ stepId: undefined, path: 'executionLimits', message }));
   const ids = new Set<WorkflowStepId>();
   let count = 0;
   type Visible = Map<WorkflowStepId, string[]>;
@@ -217,7 +287,7 @@ export function validateWorkflow({ definition }: { definition: WorkflowDefinitio
             }
           }
           break;
-        case 'literal': case 'array': case 'concat': case 'path': case 'object': case 'filename': case 'equals': case 'not_empty': case 'conversation': break;
+        case 'arithmetic': case 'compare': case 'all': case 'any': case 'not': case 'literal': case 'array': case 'concat': case 'path': case 'object': case 'filename': case 'equals': case 'not_empty': case 'conversation': break;
         default: {
           const exhaustive: never = value;
           throw new Error(`Unknown expression: ${exhaustive}`);
@@ -253,11 +323,72 @@ export function validateWorkflow({ definition }: { definition: WorkflowDefinitio
         input({ value: step.target, path: 'target' });
         input({ value: step.conversation, path: 'conversation' });
         input({ value: { type: 'conversation', messages: step.appendMessages }, path: 'appendMessages' });
-        if (step.toolConfigs.some(tool => tool.status === 'enabled')) {
-          add({ step, path: 'toolConfigs', message: 'Workflow tool approvals are not integrated yet. Disable tools before running.' });
+        for (const issue of workflowToolConfigurationIssues({ step })) {
+          add({ step, ...issue });
         }
         break;
-      case 'request_input': input({ value: step.prompt, path: 'prompt' });
+      case 'audio_generation':
+        input({ value: step.modelId, path: 'modelId' });
+        input({ value: step.text, path: 'text' });
+        if (step.reference !== undefined) {
+          input({ value: step.reference, path: 'reference' });
+        }
+        for (const [key, value] of Object.entries(step.parameters)) {
+          input({ value, path: `parameters.${key}` });
+        }
+        for (const issue of workflowAudioLiteralIssues({ step })) {
+          add({ step, ...issue });
+        }
+        break;
+      case 'image_generation':
+        input({ value: step.model, path: 'model' });
+        input({ value: step.prompt, path: 'prompt' });
+        if (step.imageInputs !== undefined) {
+          if (step.imageInputs.initImage !== undefined) {
+            input({ value: step.imageInputs.initImage, path: 'imageInputs.initImage' });
+          }
+          input({ value: step.imageInputs.strength, path: 'imageInputs.strength' });
+          step.imageInputs.referenceImages.forEach((value, index) => input({ value, path: `imageInputs.referenceImages[${index}]` }));
+          if (step.imageInputs.referenceImages.length > 8) {
+            add({ step, path: 'imageInputs.referenceImages', message: 'At most eight reference images can be used per generation.' });
+          }
+        }
+        if (step.gpuBudgetMiB !== undefined) {
+          input({ value: step.gpuBudgetMiB, path: 'gpuBudgetMiB' });
+        }
+        for (const [key, value] of Object.entries(step.parameters)) {
+          input({ value, path: `parameters.${key}` });
+        }
+        for (const issue of workflowImageLiteralIssues({ step })) {
+          add({ step, ...issue });
+        }
+        break;
+      case 'tool_call':
+        input({ value: step.arguments, path: 'arguments' });
+        for (const issue of workflowToolLiteralIssues({ step })) {
+          add({ step, ...issue });
+        }
+        if (step.tool.name === 'shell_execute' && !idToRaw({ id: step.tool.volumeId })) {
+          add({ step, path: 'tool.volumeId', message: 'Select a folder before running.' });
+        }
+        break;
+      case 'request_input':
+        input({ value: step.prompt, path: 'prompt' });
+        if (step.choices !== undefined) {
+          input({ value: step.choices, path: 'choices' });
+          switch (step.responseType) {
+          case 'text': break;
+          case 'json': add({ step, path: 'responseType', message: 'Fixed choices require a text response.' });
+            break;
+          default: {
+            const exhaustive: never = step.responseType;
+            throw new Error(String(exhaustive));
+          }
+          }
+          if (step.choices.type === 'literal' && !workflowChoicesSchema.safeParse(step.choices.value).success) {
+            add({ step, path: 'choices', message: 'Provide 2–10 distinct nonblank single-line choices, at most 200 characters each.' });
+          }
+        }
         break;
       case 'read_file': if (!idToRaw({ id: step.volumeId })) {
         add({ step, path: 'volumeId', message: 'Select a folder before running.' });
@@ -293,6 +424,9 @@ export function validateWorkflow({ definition }: { definition: WorkflowDefinitio
         }
         if (step.emit !== undefined) {
           check({ value: step.emit, visible: nested, loops: nestedLoops, step, path: 'emit' });
+        }
+        if (step.stopWhen !== undefined) {
+          check({ value: step.stopWhen, visible: nested, loops: nestedLoops, step, path: 'stopWhen' });
         }
         break;
       }

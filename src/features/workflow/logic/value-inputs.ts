@@ -14,7 +14,7 @@ export function workflowValueMode({ value }: { value: WorkflowValue }): Workflow
     case 'boolean': return 'boolean';
     default: return 'json';
     }
-  case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return value.type;
+  case 'arithmetic': case 'compare': case 'all': case 'any': case 'not': case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return value.type;
   default: {
     const exhaustive: never = value;
     throw new Error(String(exhaustive));
@@ -44,6 +44,11 @@ export function workflowValueModeLabel({ mode }: { mode: WorkflowValueInputMode 
   case 'filename': return lazyStrings.workflow__file_name();
   case 'format_number': return lazyStrings.workflow__format_number();
   case 'equals': return lazyStrings.workflow__equals();
+  case 'arithmetic': return lazyStrings.workflow__arithmetic();
+  case 'compare': return lazyStrings.workflow__compare_numbers();
+  case 'all': return lazyStrings.workflow__all_conditions();
+  case 'any': return lazyStrings.workflow__any_condition();
+  case 'not': return lazyStrings.workflow__negate_condition();
   case 'not_empty': return lazyStrings.workflow__not_empty();
   default: {
     const exhaustive: never = mode;
@@ -93,7 +98,7 @@ export function newWorkflowValueInput({ mode, scope, expected }: { mode: Workflo
     }
     }
   case 'model': return { type: 'model', endpoint: { type: 'openai', url: '' }, modelId: '' };
-  case 'array': case 'concat': case 'path': return { type: mode, items: [] };
+  case 'array': case 'concat': case 'path': case 'all': case 'any': return { type: mode, items: [] };
   case 'object': return { type: mode, properties: {} };
   case 'json_compose': return { type: mode, base: {}, assignments: [] };
   case 'range': return { type: mode, start: { type: 'literal', value: 0 }, end: { type: 'literal', value: 10 }, step: { type: 'literal', value: 1 } };
@@ -101,6 +106,9 @@ export function newWorkflowValueInput({ mode, scope, expected }: { mode: Workflo
   case 'get': return { type: mode, value: { type: 'literal', value: {} }, path: [] };
   case 'filename': case 'not_empty': return { type: mode, value: { type: 'literal', value: '' } };
   case 'format_number': return { type: mode, value: { type: 'literal', value: 0 }, minDigits: 3 };
+  case 'arithmetic': return { type: mode, operator: 'add', left: { type: 'literal', value: 0 }, right: { type: 'literal', value: 1 } };
+  case 'compare': return { type: mode, operator: 'greater_or_equal', left: { type: 'literal', value: 0 }, right: { type: 'literal', value: 1 } };
+  case 'not': return { type: mode, value: { type: 'literal', value: true } };
   case 'equals': return { type: mode, left: { type: 'literal', value: '' }, right: { type: 'literal', value: '' } };
   case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': return workflowReferenceChoices({ scope, expected }).find(choice => choice.value.type === mode)?.value;
   default: {
@@ -111,7 +119,7 @@ export function newWorkflowValueInput({ mode, scope, expected }: { mode: Workflo
 }
 
 export function workflowValueInputOptions({ scope, expected, current }: { scope: WorkflowTypeScope, expected: WorkflowExpectedType, current: WorkflowValue }): { value: WorkflowValueInputMode, label: string | undefined, disabled: boolean }[] {
-  const modes: WorkflowValueInputMode[] = ['text', 'number', 'boolean', 'json', 'step_output', 'loop_item', 'loop_index', 'loop_state', 'array', 'range', 'object', 'json_compose', 'get', 'concat', 'path', 'filename', 'format_number', 'equals', 'not_empty', 'model', 'conversation'];
+  const modes: WorkflowValueInputMode[] = ['text', 'number', 'boolean', 'json', 'step_output', 'loop_item', 'loop_index', 'loop_state', 'array', 'range', 'object', 'json_compose', 'get', 'concat', 'path', 'filename', 'format_number', 'equals', 'compare', 'arithmetic', 'all', 'any', 'not', 'not_empty', 'model', 'conversation'];
   const options = modes.flatMap(mode => {
     const value = newWorkflowValueInput({ mode, scope, expected });
     // JSON and field projection are general constructors: their final shape is
@@ -139,7 +147,7 @@ export function workflowValueSummary({ value, scope }: { value: WorkflowValue, s
     const parent = workflowValueSummary({ value: value.value, scope });
     return parent === undefined ? undefined : `${parent} → ${value.path.join(' · ')}`;
   }
-  case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return workflowValueModeLabel({ mode: workflowValueMode({ value }) });
+  case 'arithmetic': case 'compare': case 'all': case 'any': case 'not': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return workflowValueModeLabel({ mode: workflowValueMode({ value }) });
   default: {
     const exhaustive: never = value;
     throw new Error(String(exhaustive));

@@ -134,7 +134,7 @@ function stepTags({ step }: { step: WorkflowStep }): Map<string, string> {
       tags.set(JSON.stringify([...path, 'endpoint']), 'type');
       tags.set(JSON.stringify([...path, 'endpoint', 'experimental', 'endpoint']), 'type');
       return;
-    case 'array': case 'concat': case 'path': input.items.forEach((item, index) => value({ input: item, path: [...path, 'items', String(index)] }));
+    case 'array': case 'concat': case 'path': case 'all': case 'any': input.items.forEach((item, index) => value({ input: item, path: [...path, 'items', String(index)] }));
       return;
     case 'object': Object.entries(input.properties).forEach(([key, item]) => value({ input: item, path: [...path, 'properties', key] }));
       return;
@@ -148,9 +148,9 @@ function stepTags({ step }: { step: WorkflowStep }): Map<string, string> {
         value({ input: input.end, path: [...path, 'end'] });
       }
       return;
-    case 'get': case 'filename': case 'not_empty': case 'format_number': value({ input: input.value, path: [...path, 'value'] });
+    case 'get': case 'filename': case 'not_empty': case 'format_number': case 'not': value({ input: input.value, path: [...path, 'value'] });
       return;
-    case 'equals': value({ input: input.left, path: [...path, 'left'] });
+    case 'arithmetic': case 'compare': case 'equals': value({ input: input.left, path: [...path, 'left'] });
       value({ input: input.right, path: [...path, 'right'] });
       return;
     case 'conversation': messages({ items: input.messages, path: [...path, 'messages'] });
@@ -164,7 +164,10 @@ function stepTags({ step }: { step: WorkflowStep }): Map<string, string> {
   function messages({ items, path }: { items: WorkflowMessage[], path: string[] }): void {
     items.forEach((item, i) => item.parts.forEach((part, j) => {
       switch (part.type) {
-      case 'text': break;
+      case 'text': case 'reasoning':
+      case 'tool_call': break;
+      case 'tool_result': value({ input: part.content, path: [...path, String(i), 'parts', String(j), 'content'] });
+        break;
       case 'value': value({ input: part.value, path: [...path, String(i), 'parts', String(j), 'value'] });
         break;
       default: {
@@ -189,7 +192,40 @@ function stepTags({ step }: { step: WorkflowStep }): Map<string, string> {
     field({ key: 'conversation', input: step.conversation });
     tags.set(JSON.stringify(['systemPrompt']), 'behavior');
     break;
+  case 'audio_generation':
+    field({ key: 'modelId', input: step.modelId });
+    field({ key: 'text', input: step.text });
+    if (step.reference !== undefined) {
+      field({ key: 'reference', input: step.reference });
+    }
+    for (const [key, input] of Object.entries(step.parameters)) {
+      value({ input, path: ['parameters', key] });
+    }
+    break;
+  case 'image_generation':
+    field({ key: 'model', input: step.model });
+    field({ key: 'prompt', input: step.prompt });
+    if (step.imageInputs !== undefined) {
+      if (step.imageInputs.initImage !== undefined) {
+        value({ input: step.imageInputs.initImage, path: ['imageInputs', 'initImage'] });
+      }
+      value({ input: step.imageInputs.strength, path: ['imageInputs', 'strength'] });
+      step.imageInputs.referenceImages.forEach((input, index) => value({ input, path: ['imageInputs', 'referenceImages', String(index)] }));
+    }
+    if (step.gpuBudgetMiB !== undefined) {
+      field({ key: 'gpuBudgetMiB', input: step.gpuBudgetMiB });
+    }
+    for (const [key, input] of Object.entries(step.parameters)) {
+      value({ input, path: ['parameters', key] });
+    }
+    break;
+  case 'tool_call': field({ key: 'arguments', input: step.arguments });
+    tags.set(JSON.stringify(['tool']), 'name');
+    break;
   case 'request_input': field({ key: 'prompt', input: step.prompt });
+    if (step.choices !== undefined) {
+      field({ key: 'choices', input: step.choices });
+    }
     break;
   case 'if':
     field({ key: 'condition', input: step.condition });
@@ -216,6 +252,9 @@ function stepTags({ step }: { step: WorkflowStep }): Map<string, string> {
     }
     if (step.emit) {
       field({ key: 'emit', input: step.emit });
+    }
+    if (step.stopWhen) {
+      field({ key: 'stopWhen', input: step.stopWhen });
     }
     break;
   case 'read_file': field({ key: 'relativePath', input: step.relativePath });

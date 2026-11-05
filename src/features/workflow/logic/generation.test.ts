@@ -5,7 +5,7 @@ import { generateWorkflowText } from './generation';
 import { createOutputStoreFixture } from './output-store.test-support';
 import { baseStep } from './workflow.test-support';
 import { parseWorkflowModelConfiguration } from '@/00-storage/service/workflow-json';
-import { readText, releaseValues, WORKFLOW_INPUT_LIMIT } from './values';
+import { runtimeMessageValues, readText, releaseValues, WORKFLOW_INPUT_LIMIT } from './values';
 
 function fixture() {
   const outputs = createOutputStoreFixture({ limits: { maxBytes: 4 * 1024 * 1024, maxOutputBytes: 2 * 1024 * 1024, maxEntries: 32, maxPendingWriteBytes: 131072, maxWriteChunkBytes: 32768 } });
@@ -14,7 +14,7 @@ function fixture() {
     throw new Error('fixture');
   }
   const controller = new AbortController();
-  const input: WorkflowGenerationInput = { step, target: { type: 'model', endpoint: { type: 'ollama', url: 'http://localhost' }, modelId: 'test' }, conversation: [{ role: 'user', parts: [{ type: 'json', value: 'question' }] }], signal: controller.signal, store: outputs.store };
+  const input: WorkflowGenerationInput = { step, targetSources: ['definition'], target: { type: 'model', endpoint: { type: 'ollama', url: 'http://localhost' }, modelId: 'test' }, conversation: [{ role: 'user', parts: [{ type: 'json', value: 'question' }] }], signal: controller.signal, store: outputs.store };
   return {
     input,
     outputs,
@@ -121,7 +121,7 @@ question
     }
     expect(conversation.messages.map(message => message.role)).toEqual(['user', 'assistant']);
     await releaseValues({ values: [result.text!, result.reasoning!, result.metrics!] });
-    expect(await readText({ value: conversation.messages[1]!.parts[0]!, maxBytes: 100, signal: undefined })).toBe('AB');
+    expect(await Promise.all(runtimeMessageValues({ messages: [conversation.messages[1]!] }).map(value => readText({ value, maxBytes: 100, signal: undefined })))).toEqual(['A', 'think', 'B']);
     await releaseValues({ values: [conversation] });
     expect(test.outputs.store.getUsage().entries).toBe(0);
   });

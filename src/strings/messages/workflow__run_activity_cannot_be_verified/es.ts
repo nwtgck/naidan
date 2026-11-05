@@ -1,0 +1,1 @@
+export const workflow__run_activity_cannot_be_verified = (): string => "No se puede verificar el propietario de esta ejecución. Puede seguir activa en otra pestaña o en una versión anterior. Abrir el historial no la reanuda.";

@@ -3,6 +3,7 @@ import type { PrivacyFetchResponse } from '@/features/privacy-fetch';
 import { createPrivacyFetchError } from '@/features/privacy-fetch/errors';
 import {
   getWikipediaPage,
+  getWikipediaPageContent,
   searchWikipedia,
   TEST_ONLY as WIKIPEDIA_CLIENT_TEST_ONLY,
 } from './client';
@@ -1221,4 +1222,12 @@ Line 2`,
       requestResponseImpl,
     })).rejects.toThrow(/not found/i);
   });
+});
+
+it('retrieves a long page without saving a chat binary object when raw content is requested', async () => {
+  mockSaveWikipediaPageTextAsBinaryObject.mockClear();
+  const content = 'long article\n'.repeat(WIKIPEDIA_INLINE_CONTENT_MAX_LINES + 10);
+  const requestResponseImpl = createRequestResponseImpl({ impl: () => ({ query: { pages: [{ pageid: 12, ns: 0, title: 'Example', extract: content }] } }) });
+  expect(await getWikipediaPageContent({ lang: 'en', pageId: 12, signal: undefined, requestResponseImpl })).toEqual({ lang: 'en', pageId: 12, title: 'Example', content });
+  expect(mockSaveWikipediaPageTextAsBinaryObject).not.toHaveBeenCalled();
 });

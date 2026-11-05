@@ -4,7 +4,7 @@ import { toWorkflowStepId } from '@/01-models/ids';
 import { newWorkflowStep } from './editor';
 import { executeWorkflow, type WorkflowRuntimeServices } from './runtime';
 import { createOutputStoreFixture } from './output-store.test-support';
-import { retainValue, spoolText } from './values';
+import { retainRuntimeMessage, retainValue, spoolText } from './values';
 
 export function stepId({ raw }: { raw: string }) {
   return toWorkflowStepId({ raw });
@@ -36,7 +36,7 @@ export async function runtimeFixture({ definition, overrides }: { definition: Wo
     const text = await spoolText({ store: input.store, signal: input.signal, chunks: chunks() });
     return {
       text,
-      conversation: { type: 'conversation', messages: [...input.conversation.map(message => ({ ...message, parts: message.parts.map(value => retainValue({ value })) })), { role: 'assistant', parts: [retainValue({ value: text })] }] },
+      conversation: { type: 'conversation', messages: [...input.conversation.map(message => retainRuntimeMessage({ message })), { role: 'assistant', parts: [retainValue({ value: text })] }] },
       reasoning: { type: 'json', value: '' },
       metrics: { type: 'json', value: {} },
     };
@@ -48,6 +48,15 @@ export async function runtimeFixture({ definition, overrides }: { definition: Wo
       signal: controller.signal,
       services: {
         generate,
+        callTool: async () => {
+          throw new Error('No tool adapter.');
+        },
+        generateImage: async () => {
+          throw new Error('No image adapter.');
+        },
+        generateAudio: async () => {
+          throw new Error('No audio adapter.');
+        },
         requestInput: async () => 'reply',
         readFile: async () => {
           throw new Error('No file adapter.');

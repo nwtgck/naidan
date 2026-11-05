@@ -1,0 +1,1 @@
+export const workflow__run_has_no_active_owner = (): string => "Nenhum responsável ativo foi encontrado para esta execução salva. Você pode marcá-la como interrompida; a verificação será repetida antes de salvar.";

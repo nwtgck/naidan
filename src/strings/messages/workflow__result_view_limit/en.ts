@@ -1,0 +1,1 @@
+export const workflow__result_view_limit = (): string => "Images are loaded only when opened, up to 16 MiB; audio up to 64 MiB. Text and conversation display is limited to 2 MiB. Use files or ZIP for larger results.";

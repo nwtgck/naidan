@@ -1,0 +1,1 @@
+export const workflow__history_preview_notice = (): string => "Only the last 200 step entries and up to 4,096 characters per preview are recorded here. Full exported outputs are in the result folder.";

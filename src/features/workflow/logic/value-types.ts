@@ -1,3 +1,5 @@
+import { workflowToolArgumentFields, workflowToolArgumentKinds } from './tool-input';
+import { workflowImageParameterKeys, workflowImageParameterType } from './image-input';
 import type { JsonValue } from '@/01-models/lm';
 import type { WorkflowDefinition, WorkflowStep, WorkflowValue } from '@/01-models/workflow';
 import type { WorkflowStepId } from '@/01-models/ids';
@@ -21,6 +23,16 @@ export type WorkflowExpectedType = 'any' | 'text' | 'number' | 'boolean' | 'iter
 export type WorkflowTypeScope = {
   outputs: Map<WorkflowStepId, { step: WorkflowStep, outputs: Record<string, WorkflowDataType> }>,
   loops: Map<WorkflowStepId, { step: WorkflowStep, item: WorkflowDataType | undefined, state: Record<string, WorkflowDataType> }>,
+};
+/** An exact expression address inside its owning Step, never a path into literal JSON.
+ * The scope is captured at evaluation time, not the mutable end-of-block scope.
+ */
+export type WorkflowValueBinding = {
+  location: readonly (string | number)[],
+  path: string,
+  value: WorkflowValue,
+  expected: WorkflowExpectedType,
+  scope: WorkflowTypeScope,
 };
 export type WorkflowTypeProblem = { stepId: WorkflowStepId, path: string, message: string };
 const unknownType: WorkflowDataType = { kind: 'unknown' };
@@ -133,7 +145,7 @@ export function inferWorkflowValueType({ value, scope }: { value: WorkflowValue,
   case 'conversation': return { kind: 'conversation' };
   case 'step_output': return scope.outputs.get(value.stepId)?.outputs[value.output] ?? unknownType;
   case 'loop_item': return scope.loops.get(value.stepId)?.item ?? unknownType;
-  case 'loop_index': return { kind: 'number' };
+  case 'loop_index': case 'arithmetic': return { kind: 'number' };
   case 'format_number': return { kind: 'text' };
   case 'loop_state': return scope.loops.get(value.stepId)?.state[value.key] ?? unknownType;
   case 'range': return { kind: 'sequence', item: { kind: 'number' } };
@@ -148,7 +160,7 @@ export function inferWorkflowValueType({ value, scope }: { value: WorkflowValue,
   }
   case 'get': return workflowFieldType({ type: infer({ value: value.value }), path: value.path });
   case 'concat': case 'path': case 'filename': return { kind: 'text' };
-  case 'equals': case 'not_empty': return { kind: 'boolean' };
+  case 'equals': case 'not_empty': case 'compare': case 'all': case 'any': case 'not': return { kind: 'boolean' };
   default: {
     const exhaustive: never = value;
     throw new Error(String(exhaustive));
@@ -245,11 +257,19 @@ function fileSourceType({ format }: { format: Extract<WorkflowStep, { type: 'wri
 /** Shared by preflight validation and contextual editor suggestions. */
 export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefinition }): {
   inputs: Map<WorkflowStepId, WorkflowTypeScope>, bodies: Map<WorkflowStepId, WorkflowTypeScope>, branches: Map<WorkflowStepId, { then: WorkflowTypeScope, else: WorkflowTypeScope }>, problems: WorkflowTypeProblem[],
+  valueBindings: Map<WorkflowStepId, WorkflowValueBinding[]>, outputTypes: Map<WorkflowStepId, Record<string, WorkflowDataType>>,
 } {
   const inputs = new Map<WorkflowStepId, WorkflowTypeScope>(), bodies = new Map<WorkflowStepId, WorkflowTypeScope>();
   const branches = new Map<WorkflowStepId, { then: WorkflowTypeScope, else: WorkflowTypeScope }>();
   const problems: WorkflowTypeProblem[] = [];
-  function check({ step, value, expected, scope, path }: { step: WorkflowStep, value: WorkflowValue, expected: WorkflowExpectedType, scope: WorkflowTypeScope, path: string }): void {
+  const bindingMaps = new Map<WorkflowStepId, Map<string, WorkflowValueBinding>>();
+  const outputTypes = new Map<WorkflowStepId, Record<string, WorkflowDataType>>();
+  function check({ step, value, expected, scope, path, location }: { step: WorkflowStep, value: WorkflowValue, expected: WorkflowExpectedType, scope: WorkflowTypeScope, path: string, location: readonly (string | number)[] | undefined }): void {
+    if (location !== undefined) {
+      const bindings = bindingMaps.get(step.id) ?? new Map<string, WorkflowValueBinding>();
+      bindings.set(JSON.stringify(location), { location, path, value, expected, scope });
+      bindingMaps.set(step.id, bindings);
+    }
     const actual = inferWorkflowValueType({ value, scope });
     const compatibility = workflowTypeCompatibility({ actual, expected });
     switch (compatibility) {
@@ -261,29 +281,29 @@ export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefin
       throw new Error(String(exhaustive));
     }
     }
-    const child = ({ value, expected, key }: { value: WorkflowValue, expected: WorkflowExpectedType, key: string }) => check({ step, value, expected, scope, path: `${path}.${key}` });
+    const child = ({ value, expected, key, suffix }: { value: WorkflowValue, expected: WorkflowExpectedType, key: string, suffix: readonly (string | number)[] }) => check({ step, value, expected, scope, path: `${path}.${key}`, location: location === undefined ? undefined : [...location, ...suffix] });
     switch (value.type) {
     case 'range':
-      child({ value: value.start, expected: 'number', key: 'start' });
-      child({ value: value.step, expected: 'number', key: 'step' });
+      child({ value: value.start, expected: 'number', key: 'start', suffix: ['start'] });
+      child({ value: value.step, expected: 'number', key: 'step', suffix: ['step'] });
       if (value.end !== undefined) {
-        child({ value: value.end, expected: 'number', key: 'end' });
+        child({ value: value.end, expected: 'number', key: 'end', suffix: ['end'] });
       }
       break;
-    case 'concat': case 'path': value.items.forEach((value, index) => child({ value, expected: 'text', key: `items[${index}]` }));
+    case 'concat': case 'path': value.items.forEach((value, index) => child({ value, expected: 'text', key: `items[${index}]`, suffix: ['items', index] }));
       break;
-    case 'array': value.items.forEach((value, index) => child({ value, expected: 'any', key: `items[${index}]` }));
+    case 'array': value.items.forEach((value, index) => child({ value, expected: 'any', key: `items[${index}]`, suffix: ['items', index] }));
       break;
-    case 'object': Object.entries(value.properties).forEach(([key, value]) => child({ value, expected: 'any', key }));
+    case 'object': Object.entries(value.properties).forEach(([key, value]) => child({ value, expected: 'any', key, suffix: ['properties', key] }));
       break;
-    case 'json_compose': value.assignments.forEach((item, index) => child({ value: item.value, expected: 'json', key: `assignments[${index}]` }));
+    case 'json_compose': value.assignments.forEach((item, index) => child({ value: item.value, expected: 'json', key: `assignments[${index}]`, suffix: ['assignments', index, 'value'] }));
       break;
-    case 'filename': child({ value: value.value, expected: 'text', key: 'value' });
+    case 'filename': child({ value: value.value, expected: 'text', key: 'value', suffix: ['value'] });
       break;
-    case 'format_number': child({ value: value.value, expected: 'number', key: 'value' });
+    case 'format_number': child({ value: value.value, expected: 'number', key: 'value', suffix: ['value'] });
       break;
     case 'get': {
-      child({ value: value.value, expected: 'any', key: 'value' });
+      child({ value: value.value, expected: 'any', key: 'value', suffix: ['value'] });
       let type = inferWorkflowValueType({ value: value.value, scope });
       for (const key of value.path) {
         if (type.kind === 'object' && (typeof key !== 'string' || !Object.hasOwn(type.fields, key))) {
@@ -298,15 +318,27 @@ export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefin
       }
       break;
     }
-    case 'not_empty': child({ value: value.value, expected: 'any', key: 'value' });
+    case 'not_empty': child({ value: value.value, expected: 'any', key: 'value', suffix: ['value'] });
       break;
-    case 'equals': child({ value: value.left, expected: 'any', key: 'left' });
-      child({ value: value.right, expected: 'any', key: 'right' });
+    case 'arithmetic': case 'compare':
+      child({ value: value.left, expected: 'number', key: 'left', suffix: ['left'] });
+      child({ value: value.right, expected: 'number', key: 'right', suffix: ['right'] });
+      break;
+    case 'all': case 'any':
+      value.items.forEach((value, index) => child({ value, expected: 'boolean', key: `items[${index}]`, suffix: ['items', index] }));
+      break;
+    case 'not': child({ value: value.value, expected: 'boolean', key: 'value', suffix: ['value'] });
+      break;
+    case 'equals': child({ value: value.left, expected: 'any', key: 'left', suffix: ['left'] });
+      child({ value: value.right, expected: 'any', key: 'right', suffix: ['right'] });
       break;
     case 'conversation': value.messages.forEach((message, index) => message.parts.forEach((part, partIndex) => {
       switch (part.type) {
-      case 'text': break;
-      case 'value': child({ value: part.value, expected: 'text', key: `messages[${index}].parts[${partIndex}]` });
+      case 'text': case 'reasoning':
+      case 'tool_call': break;
+      case 'tool_result': child({ value: part.content, expected: 'text', key: `messages[${index}].parts[${partIndex}]`, suffix: ['messages', index, 'parts', partIndex, 'content'] });
+        break;
+      case 'value': child({ value: part.value, expected: 'text', key: `messages[${index}].parts[${partIndex}]`, suffix: ['messages', index, 'parts', partIndex, 'value'] });
         break;
       default: {
         const exhaustive: never = part;
@@ -327,18 +359,110 @@ export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefin
     for (const step of steps) {
       inputs.set(step.id, { outputs: new Map(scope.outputs), loops: new Map(scope.loops) });
       const infer = ({ value }: { value: WorkflowValue }) => inferWorkflowValueType({ value, scope });
-      const input = ({ value, expected, path }: { value: WorkflowValue, expected: WorkflowExpectedType, path: string }) => check({ step, value, expected, scope, path });
+      const input = ({ value, expected, path, location }: { value: WorkflowValue, expected: WorkflowExpectedType, path: string, location: readonly (string | number)[] | undefined }) => check({ step, value, expected, scope: inputs.get(step.id)!, path, location });
       let outputs: Record<string, WorkflowDataType>;
       switch (step.type) {
-      case 'value': input({ value: step.value, expected: 'any', path: 'value' });
+      case 'value': input({ value: step.value, expected: 'any', path: 'value', location: ['value'] });
         outputs = { value: infer({ value: step.value }) };
         break;
       case 'model_selection': outputs = { value: { kind: 'array', item: { kind: 'model' } } };
         break;
-      case 'parse_json': input({ value: step.source, expected: 'text', path: 'source' });
+      case 'parse_json': input({ value: step.source, expected: 'text', path: 'source', location: ['source'] });
         outputs = { value: unknownType };
         break;
-      case 'request_input': input({ value: step.prompt, expected: 'text', path: 'prompt' });
+      case 'audio_generation':
+        input({ value: step.modelId, expected: 'text', path: 'modelId', location: ['modelId'] });
+        input({ value: step.text, expected: 'text', path: 'text', location: ['text'] });
+        if (step.reference !== undefined) {
+          input({ value: step.reference, expected: 'binary', path: 'reference', location: ['reference'] });
+        }
+        for (const [key, value] of Object.entries(step.parameters)) {
+          input({ value, expected: key === 'language' || key === 'audioBackend' ? 'text' : 'number', path: `parameters.${key}`, location: ['parameters', key] });
+        }
+        outputs = {
+          audio: { kind: 'binary' },
+          complete: { kind: 'boolean' },
+          metadata: { kind: 'object', fields: { sampleRate: { kind: 'number' }, samples: { kind: 'number' }, frames: { kind: 'number' }, finishReason: { kind: 'text' }, pipeline: { kind: 'text' }, byteLength: { kind: 'number' } } },
+        };
+        break;
+      case 'image_generation':
+        input({ value: step.model, expected: 'json', path: 'model', location: ['model'] });
+        input({ value: step.prompt, expected: 'text', path: 'prompt', location: ['prompt'] });
+        if (step.imageInputs !== undefined) {
+          if (step.imageInputs.initImage !== undefined) {
+            input({ value: step.imageInputs.initImage, expected: 'binary', path: 'imageInputs.initImage', location: ['imageInputs', 'initImage'] });
+          }
+          input({ value: step.imageInputs.strength, expected: 'number', path: 'imageInputs.strength', location: ['imageInputs', 'strength'] });
+          step.imageInputs.referenceImages.forEach((value, index) => input({ value, expected: 'binary', path: `imageInputs.referenceImages[${index}]`, location: ['imageInputs', 'referenceImages', index] }));
+        }
+        if (step.gpuBudgetMiB !== undefined) {
+          input({ value: step.gpuBudgetMiB, expected: 'number', path: 'gpuBudgetMiB', location: ['gpuBudgetMiB'] });
+        }
+        for (const key of workflowImageParameterKeys) {
+          input({ value: step.parameters[key], expected: workflowImageParameterType({ key }), path: `parameters.${key}`, location: ['parameters', key] });
+        }
+        outputs = {
+          image: { kind: 'binary' },
+          metadata: { kind: 'object', fields: { width: { kind: 'number' }, height: { kind: 'number' }, modelVersion: { kind: 'text' }, uniformOutput: { kind: 'boolean' }, byteLength: { kind: 'number' }, requestedSeed: { kind: 'text' }, profile: { kind: 'text' } } },
+        };
+        break;
+      case 'tool_call': {
+        input({ value: step.arguments, expected: 'json', path: 'arguments', location: ['arguments'] });
+        const argumentsByName = workflowToolArgumentFields({ value: step.arguments });
+        if (argumentsByName !== undefined) {
+          for (const [key, expected] of Object.entries(workflowToolArgumentKinds({ name: step.tool.name }))) {
+            const argument = Object.hasOwn(argumentsByName, key) ? argumentsByName[key] : undefined;
+            if (argument !== undefined) {
+              input({ value: argument, expected, path: `arguments.${key}`, location: bindingMaps.get(step.id)?.get(JSON.stringify(['arguments', 'properties', key]))?.location });
+            }
+          }
+        }
+        const fields: Record<string, WorkflowDataType> = { tool: { kind: 'text' }, status: { kind: 'text' } };
+        const successful = ({ type }: { type: WorkflowDataType }): WorkflowDataType => {
+          switch (step.onError) {
+          case 'fail': return type;
+          case 'continue': return unknownType;
+          default: {
+            const exhaustive: never = step.onError;
+            throw new Error(String(exhaustive));
+          }
+          }
+        };
+        switch (step.onError) {
+        case 'continue': fields.code = unknownType;
+          break;
+        case 'fail': break;
+        default: {
+          const exhaustive: never = step.onError;
+          throw new Error(String(exhaustive));
+        }
+        }
+        switch (step.tool.name) {
+        case 'calculator': break;
+        case 'wikipedia_search': fields.items = successful({ type: { kind: 'array', item: { kind: 'object', fields: { lang: { kind: 'text' }, pageId: { kind: 'number' }, title: { kind: 'text' } } } } });
+          break;
+        case 'wikipedia_get_page':
+          fields.lang = successful({ type: { kind: 'text' } });
+          fields.pageId = successful({ type: { kind: 'number' } });
+          fields.title = successful({ type: { kind: 'text' } });
+          break;
+        case 'shell_execute':
+          fields.exitCode = successful({ type: { kind: 'number' } });
+          fields.truncated = { kind: 'boolean' };
+          fields.truncatedStreams = { kind: 'array', item: { kind: 'text' } };
+          break;
+        default: {
+          const exhaustive: never = step.tool;
+          throw new Error(String(exhaustive));
+        }
+        }
+        outputs = { text: { kind: 'text' }, ok: { kind: 'boolean' }, metadata: { kind: 'object', fields } };
+        break;
+      }
+      case 'request_input': input({ value: step.prompt, expected: 'text', path: 'prompt', location: ['prompt'] });
+        if (step.choices !== undefined) {
+          input({ value: step.choices, expected: 'iterable', path: 'choices', location: ['choices'] });
+        }
         switch (step.responseType) {
         case 'text': outputs = { value: { kind: 'text' } };
           break;
@@ -351,25 +475,38 @@ export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefin
         }
         break;
       case 'text_generation':
-        input({ value: step.target, expected: 'model', path: 'target' });
-        input({ value: step.conversation, expected: 'conversation', path: 'conversation' });
-        input({ value: { type: 'conversation', messages: step.appendMessages }, expected: 'conversation', path: 'appendMessages' });
+        input({ value: step.target, expected: 'model', path: 'target', location: ['target'] });
+        input({ value: step.conversation, expected: 'conversation', path: 'conversation', location: ['conversation'] });
+        step.appendMessages.forEach((message, index) => message.parts.forEach((part, partIndex) => {
+          switch (part.type) {
+          case 'text': case 'reasoning':
+          case 'tool_call': break;
+          case 'tool_result': input({ value: part.content, expected: 'text', path: `appendMessages[${index}].parts[${partIndex}]`, location: ['appendMessages', index, 'parts', partIndex, 'content'] });
+            break;
+          case 'value': input({ value: part.value, expected: 'text', path: `appendMessages[${index}].parts[${partIndex}]`, location: ['appendMessages', index, 'parts', partIndex, 'value'] });
+            break;
+          default: {
+            const exhaustive: never = part;
+            throw new Error(String(exhaustive));
+          }
+          }
+        }));
         outputs = { text: { kind: 'text' }, reasoning: { kind: 'text' }, conversation: { kind: 'conversation' }, metrics: unknownType };
         break;
-      case 'read_file': input({ value: step.relativePath, expected: 'text', path: 'relativePath' });
+      case 'read_file': input({ value: step.relativePath, expected: 'text', path: 'relativePath', location: ['relativePath'] });
         outputs = { content: { kind: 'binary' }, text: { kind: 'text' }, metadata: unknownType };
         break;
-      case 'write_file': input({ value: step.relativePath, expected: 'text', path: 'relativePath' });
-        input({ value: step.source, expected: fileSourceType({ format: step.format }), path: 'source' });
+      case 'write_file': input({ value: step.relativePath, expected: 'text', path: 'relativePath', location: ['relativePath'] });
+        input({ value: step.source, expected: fileSourceType({ format: step.format }), path: 'source', location: ['source'] });
         outputs = { file: unknownType };
         break;
       case 'repeat': case 'for_each': {
         let item: WorkflowDataType | undefined;
         switch (step.type) {
-        case 'repeat': input({ value: step.count, expected: 'number', path: 'count' });
+        case 'repeat': input({ value: step.count, expected: 'number', path: 'count', location: ['count'] });
           item = undefined;
           break;
-        case 'for_each': input({ value: step.source, expected: 'iterable', path: 'source' });
+        case 'for_each': input({ value: step.source, expected: 'iterable', path: 'source', location: ['source'] });
           item = workflowItemType({ type: infer({ value: step.source }) });
           break;
         default: {
@@ -378,7 +515,7 @@ export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefin
         }
         }
         const state = Object.fromEntries(Object.entries(step.state).map(([key, value]) => {
-          input({ value: value.initial, expected: 'any', path: `state.${key}.initial` });
+          input({ value: value.initial, expected: 'any', path: `state.${key}.initial`, location: ['state', key, 'initial'] });
           // A changing state has no declared invariant. Do not promise the initial
           // type on every iteration; its next expression may produce another type.
           return [key, value.next.type === 'loop_state' && value.next.stepId === step.id && value.next.key === key ? infer({ value: value.initial }) : unknownType];
@@ -388,27 +525,30 @@ export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefin
         const body = visit({ steps: step.body.steps, parent: { outputs: scope.outputs, loops } });
         bodies.set(step.id, body);
         for (const [key, value] of Object.entries(step.state)) {
-          check({ step, value: value.next, expected: 'any', scope: body, path: `state.${key}.next` });
+          check({ step, value: value.next, expected: 'any', scope: body, path: `state.${key}.next`, location: ['state', key, 'next'] });
         }
-        outputs = { state: { kind: 'object', fields: state } };
+        outputs = { state: { kind: 'object', fields: state }, iterations: { kind: 'number' }, stoppedBy: { kind: 'text' } };
+        if (step.stopWhen !== undefined) {
+          check({ step, value: step.stopWhen, expected: 'boolean', scope: body, path: 'stopWhen', location: ['stopWhen'] });
+        }
         if (step.emit !== undefined) {
-          check({ step, value: step.emit, expected: 'any', scope: body, path: 'emit' });
+          check({ step, value: step.emit, expected: 'any', scope: body, path: 'emit', location: ['emit'] });
           outputs.items = { kind: 'sequence', item: inferWorkflowValueType({ value: step.emit, scope: body }) };
         }
         break;
       }
       case 'if': {
-        input({ value: step.condition, expected: 'boolean', path: 'condition' });
+        input({ value: step.condition, expected: 'boolean', path: 'condition', location: ['condition'] });
         const left = visit({ steps: step.then.steps, parent: scope }), right = visit({ steps: step.else.steps, parent: scope });
         branches.set(step.id, { then: left, else: right });
         outputs = Object.fromEntries(Object.entries(step.then.outputs).map(([key, value]) => {
-          check({ step, value, expected: 'any', scope: left, path: `then.outputs.${key}` });
-          const other = step.else.outputs[key];
-          if (other) {
-            check({ step, value: other, expected: 'any', scope: right, path: `else.outputs.${key}` });
-          }
+          check({ step, value, expected: 'any', scope: left, path: `then.outputs.${key}`, location: ['then', 'outputs', key] });
+          const other = Object.hasOwn(step.else.outputs, key) ? step.else.outputs[key] : undefined;
           return [key, joinWorkflowTypes({ types: [inferWorkflowValueType({ value, scope: left }), other ? inferWorkflowValueType({ value: other, scope: right }) : unknownType] })];
         }));
+        for (const [key, value] of Object.entries(step.else.outputs)) {
+          check({ step, value, expected: 'any', scope: right, path: `else.outputs.${key}`, location: ['else', 'outputs', key] });
+        }
         break;
       }
       default: {
@@ -416,12 +556,13 @@ export function analyzeWorkflowTypes({ definition }: { definition: WorkflowDefin
         throw new Error(String(exhaustive));
       }
       }
+      outputTypes.set(step.id, outputs);
       scope.outputs.set(step.id, { step, outputs });
     }
     return scope;
   }
   visit({ steps: definition.steps, parent: emptyWorkflowTypeScope() });
-  return { inputs, bodies, branches, problems };
+  return { inputs, bodies, branches, problems, valueBindings: new Map([...bindingMaps].map(([id, bindings]) => [id, [...bindings.values()]])), outputTypes };
 }
 
 export const TEST_ONLY = {

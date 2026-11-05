@@ -1,1 +1,1 @@
-export const workflow__run_notice = (): string => "Results are temporary until written to a folder or downloaded. Reloading the page ends the run. Each run uses a fixed copy of the definition.";
+export const workflow__run_notice = (): string => "每次运行都使用开始时的定义副本。使用 OPFS 存储时，快照和有限的预览将保存到运行历史中。结果文件是临时文件，除非明确保存或下载。重新加载会结束运行，不会自动恢复。";

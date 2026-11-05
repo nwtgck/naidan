@@ -3,6 +3,8 @@ import type { Endpoint, LmParameters } from '@/01-models/types';
 import { toVolumeId, type WorkflowStepId } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
 import { childWorkflowSteps, copyWorkflowSteps } from './definition';
+import { defaultWorkflowAudioParameters } from './audio-input';
+import { defaultWorkflowImageParameters } from './image-input';
 import { formatWorkflowDefinition } from '@/00-storage/service/workflow-json';
 
 export type WorkflowDropTarget = { parentId: WorkflowStepId | undefined, branch: 'root' | 'body' | 'then' | 'else', index: number };
@@ -30,6 +32,18 @@ export function newWorkflowStep({ type, name, endpoint, modelId, lmParameters }:
     systemPrompt: undefined,
     toolConfigs: [],
   };
+  case 'audio_generation': return {
+    id,
+    name,
+    type,
+    modelId: literalValue({ value: '' }),
+    text: literalValue({ value: '' }),
+    reference: undefined,
+    parameters: defaultWorkflowAudioParameters(),
+    onLimit: 'error',
+  };
+  case 'image_generation': return { id, name, type, model: { type: 'literal', value: {} }, prompt: { type: 'literal', value: '' }, parameters: defaultWorkflowImageParameters(), gpuBudgetMiB: undefined };
+  case 'tool_call': return { id, name, type, tool: { name: 'calculator' }, arguments: { type: 'object', properties: { expression: literalValue({ value: '1 + 1' }) } }, onError: 'fail' };
   case 'request_input': return { id, name, type, prompt: literalValue({ value: '' }), responseType: 'text' };
   case 'repeat': return { id, name, type, count: literalValue({ value: 3 }), state: {}, body: { steps: [] }, emit: undefined };
   case 'for_each': return { id, name, type, source: { type: 'literal', value: [] }, state: {}, body: { steps: [] }, emit: undefined };

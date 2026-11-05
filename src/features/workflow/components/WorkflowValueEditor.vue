@@ -83,7 +83,7 @@ function setReference({ id }: { id: string }): void {
 }
 
 function changeItem({ index, value }: { index: number, value: WorkflowValue }): void {
-  if (props.value.type === 'array' || props.value.type === 'concat' || props.value.type === 'path') {
+  if (props.value.type === 'array' || props.value.type === 'concat' || props.value.type === 'path' || props.value.type === 'all' || props.value.type === 'any') {
     emit('change', { ...props.value, items: props.value.items.map((item, i) => i === index ? value : item) });
   }
 }
@@ -91,7 +91,7 @@ function changeItem({ index, value }: { index: number, value: WorkflowValue }): 
 function property({ key, value, rename }: { key: string, value: WorkflowValue | undefined, rename?: string }): void {
   switch (props.value.type) {
   case 'object': break;
-  case 'literal': case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'concat': case 'path': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return;
+  case 'arithmetic': case 'compare': case 'all': case 'any': case 'not': case 'literal': case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'concat': case 'path': case 'get': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return;
   default: {
     const exhaustive: never = props.value;
     throw new Error(String(exhaustive));
@@ -124,7 +124,7 @@ function addProperty(): void {
 const fieldType = computed(() => {
   switch (props.value.type) {
   case 'get': return inferWorkflowValueType({ value: props.value, scope: scope.value });
-  case 'literal': case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return undefined;
+  case 'arithmetic': case 'compare': case 'all': case 'any': case 'not': case 'literal': case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return undefined;
   default: {
     const exhaustive: never = props.value;
     throw new Error(String(exhaustive));
@@ -157,13 +157,27 @@ function pathPart({ index, key }: { index: number, key: string | number }): void
   switch (props.value.type) {
   case 'get': emit('change', { ...props.value, path: props.value.path.map((part, i) => i === index ? key : part) });
     return;
-  case 'literal': case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return;
+  case 'arithmetic': case 'compare': case 'all': case 'any': case 'not': case 'literal': case 'model': case 'step_output': case 'loop_item': case 'loop_index': case 'loop_state': case 'array': case 'object': case 'concat': case 'path': case 'filename': case 'format_number': case 'equals': case 'not_empty': case 'conversation': case 'range': case 'json_compose': return;
   default: {
     const exhaustive: never = props.value;
     throw new Error(String(exhaustive));
   }
   }
 }
+
+const arithmeticOptions = computed(() => [
+  { value: 'add' as const, label: lazyStrings.workflow__add_numbers() },
+  { value: 'subtract' as const, label: lazyStrings.workflow__subtract_numbers() },
+  { value: 'multiply' as const, label: lazyStrings.workflow__multiply_numbers() },
+  { value: 'divide' as const, label: lazyStrings.workflow__divide_numbers() },
+  { value: 'remainder' as const, label: lazyStrings.workflow__remainder() },
+]);
+const comparisonOptions = computed(() => [
+  { value: 'less' as const, label: lazyStrings.workflow__less_than() },
+  { value: 'less_or_equal' as const, label: lazyStrings.workflow__at_most() },
+  { value: 'greater' as const, label: lazyStrings.workflow__greater_than() },
+  { value: 'greater_or_equal' as const, label: lazyStrings.workflow__at_least() },
+]);
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -189,12 +203,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <WorkflowModelEditor v-else-if="value.type === 'model'" :value="{ endpoint: value.endpoint, modelId: value.modelId, lmParameters: undefined }" :disabled="locked" :show-parameters="false" @change="emit('change', { type: 'model', endpoint: $event.endpoint, modelId: $event.modelId })" />
     <WorkflowJsonComposer v-else-if="value.type === 'json_compose'" :value="value" :steps="steps" :scope="scope" :disabled="disabled" @change="emit('change', $event)" />
     <WorkflowMessageEditor v-else-if="value.type === 'conversation'" :messages="value.messages" :steps="steps" :scope="scope" :disabled="disabled" @change="emit('change', { type: 'conversation', messages: $event })" />
-    <template v-else-if="value.type === 'array' || value.type === 'concat' || value.type === 'path'">
+    <template v-else-if="value.type === 'array' || value.type === 'concat' || value.type === 'path' || value.type === 'all' || value.type === 'any'">
       <div v-for="(item, index) in value.items" :key="index" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
         <div tw-class="flex justify-between items-center text-xs text-gray-500"><span>{{ index + 1 }}</span><button type="button" :disabled="locked" :aria-label="lazyStrings.workflow__delete()" @click="emit('change', { ...value, items: value.items.filter((_, i) => i !== index) })" tw-class="p-1 rounded-md hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-40"><Trash2Icon tw-class="w-3.5 h-3.5" /></button></div>
-        <WorkflowValueEditor :value="item" :steps="steps" :scope="scope" :disabled="disabled" :expected="value.type === 'array' ? 'any' : 'text'" @change="changeItem({ index, value: $event })" />
+        <WorkflowValueEditor :value="item" :steps="steps" :scope="scope" :disabled="disabled" :expected="value.type === 'array' ? 'any' : value.type === 'all' || value.type === 'any' ? 'boolean' : 'text'" @change="changeItem({ index, value: $event })" />
       </div>
-      <button type="button" :disabled="locked" @click="emit('change', { ...value, items: [...value.items, { type: 'literal', value: '' }] })" tw-class="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 disabled:opacity-40"><PlusIcon tw-class="w-4 h-4" />{{ lazyStrings.workflow__add_item() }}</button>
+      <button type="button" :disabled="locked" @click="emit('change', { ...value, items: [...value.items, { type: 'literal', value: value.type === 'all' || value.type === 'any' ? true : '' }] })" tw-class="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 disabled:opacity-40"><PlusIcon tw-class="w-4 h-4" />{{ lazyStrings.workflow__add_item() }}</button>
     </template>
     <template v-else-if="value.type === 'object'">
       <div v-for="(item, key) in value.properties" :key="key" tw-class="p-3 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
@@ -219,9 +233,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <SettingsFormSelect v-if="fieldOptions.length" :model-value="''" :options="[{ value: '', label: lazyStrings.workflow__get_field(), disabled: true }, ...fieldOptions]" :disabled="locked" :label="lazyStrings.workflow__key()" @update:model-value="appendField({ key: $event })" />
       <div tw-class="flex gap-3 text-xs"><button type="button" :disabled="locked" @click="appendField({ key: '' })" tw-class="text-blue-600 dark:text-blue-400 hover:underline">＋ {{ lazyStrings.workflow__key() }}</button><button type="button" :disabled="locked" @click="appendField({ key: 0 })" tw-class="text-blue-600 dark:text-blue-400 hover:underline">＋ {{ lazyStrings.workflow__number() }}</button></div>
     </template>
-    <template v-else-if="value.type === 'filename' || value.type === 'format_number' || value.type === 'not_empty'">
-      <WorkflowValueEditor :value="value.value" :scope="scope" :steps="steps" :disabled="disabled" :expected="value.type === 'format_number' ? 'number' : value.type === 'filename' ? 'text' : 'any'" @change="emit('change', { ...value, value: $event })" />
+    <template v-else-if="value.type === 'filename' || value.type === 'format_number' || value.type === 'not_empty' || value.type === 'not'">
+      <WorkflowValueEditor :value="value.value" :scope="scope" :steps="steps" :disabled="disabled" :expected="value.type === 'format_number' ? 'number' : value.type === 'filename' ? 'text' : value.type === 'not' ? 'boolean' : 'any'" @change="emit('change', { ...value, value: $event })" />
       <WorkflowNumberInput v-if="value.type === 'format_number'" :value="value.minDigits" :disabled="disabled" label="minDigits" @change="emit('change', { ...value, minDigits: $event })" />
+    </template>
+    <template v-else-if="value.type === 'arithmetic' || value.type === 'compare'">
+      <WorkflowValueEditor :value="value.left" :scope="scope" :steps="steps" :disabled="disabled" expected="number" @change="emit('change', { ...value, left: $event })" />
+      <SettingsFormSelect v-if="value.type === 'arithmetic'" :model-value="value.operator" :options="arithmeticOptions" :disabled="locked" :label="lazyStrings.workflow__operation()" @update:model-value="emit('change', { ...value, operator: $event })" />
+      <SettingsFormSelect v-else :model-value="value.operator" :options="comparisonOptions" :disabled="locked" :label="lazyStrings.workflow__operation()" @update:model-value="emit('change', { ...value, operator: $event })" />
+      <WorkflowValueEditor :value="value.right" :scope="scope" :steps="steps" :disabled="disabled" expected="number" @change="emit('change', { ...value, right: $event })" />
     </template>
     <template v-else-if="value.type === 'equals'">
       <WorkflowValueEditor :value="value.left" :scope="scope" :steps="steps" :disabled="disabled" @change="emit('change', { ...value, left: $event })" /><p tw-class="text-center text-gray-400">=</p><WorkflowValueEditor :value="value.right" :scope="scope" :steps="steps" :disabled="disabled" @change="emit('change', { ...value, right: $event })" />

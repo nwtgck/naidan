@@ -1,0 +1,1 @@
+export const workflow__fixed_connection_review_scope = (): string => "Esta conexão fixa ainda não foi revisada nesta sessão de edição. A permissão cobre exatamente esta conexão e este modelo a partir de valores fixos até abrir outro fluxo de trabalho ou uma definição JSON, limpar as revisões ou recarregar a página. Ela não autoriza destinos obtidos dinamicamente.";

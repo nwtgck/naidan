@@ -83,8 +83,8 @@ describe('MainAppSurface', () => {
     expect(activeWrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
   });
 
-  it('replaces the chat sidebar on the Workflow route and restores it when leaving', async () => {
-    route.path = '/workflows';
+  it.each(['/workflows', '/workflows/workflow-one', '/workflows/runs', '/workflows/runs/run-one'])('replaces the chat sidebar at %s and restores it when leaving', async (path) => {
+    route.path = path;
     const wrapper = mountSurface({ postStartupFeatures: 'active' });
     await flushPromises();
     expect(wrapper.find('[data-testid="workflow-sidebar"]').exists()).toBe(true);

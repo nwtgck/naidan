@@ -1,1 +1,1 @@
-export const workflow__clear_results = (): string => "結果を破棄";
+export const workflow__clear_results = (): string => "結果表示を閉じる";

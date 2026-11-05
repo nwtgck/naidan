@@ -133,7 +133,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <ImageRemoteModelConfiguration v-if="remote && view.inferenceLocation" :inference-location="view.inferenceLocation" :disabled="formDisabled" :active="active" />
           <fieldset v-else :disabled="formDisabled" tw-class="min-w-0 space-y-4" data-testid="image-model-options">
             <ImageModelConfiguration :active="active" :view="library" :disabled="formDisabled" />
-            <ImageLoraControls :active="active" embedded v-model="loras" :saved="library.savedLoras.value" :disabled="formDisabled || !supported || library.importing.value" />
+            <ImageLoraControls sources="library_and_files" :active="active" embedded v-model="loras" :saved="library.savedLoras.value" :disabled="formDisabled || !supported || library.importing.value" />
             <ImageSettingsSection :title="lazyStrings.stableDiffusionCppBrowser__manual_model_files()" :summary="(files.model || files.diffusion)?.name" data-testid="image-manual-settings">
               <label tw-class="block text-sm space-y-1">
                 <span>{{ lazyStrings.stableDiffusionCppBrowser__model_layout() }}</span>

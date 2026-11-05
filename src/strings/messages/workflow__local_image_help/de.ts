@@ -1,0 +1,1 @@
+export const workflow__local_image_help = (): string => "Erzeugt ein Bild mit stable-diffusion.cpp browser. Verwenden Sie eine Schleife für mehrere Prompts oder Seeds. Die Modelle müssen bereits in der lokalen Modellbibliothek verfügbar sein.";

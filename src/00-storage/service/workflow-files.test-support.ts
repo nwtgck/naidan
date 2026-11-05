@@ -5,6 +5,7 @@ export function createWorkflowTestFileSystem() {
   const files = new Map<string, Uint8Array>();
   const directories = new Set(['']);
   const calls: string[] = [];
+  const directoryPaths = new WeakMap<FileSystemHandle, string>();
   let closeHook: (() => Promise<void>) | undefined;
   let removeHook: (() => Promise<void>) | undefined;
 
@@ -91,6 +92,15 @@ export function createWorkflowTestFileSystem() {
   function directoryHandle({ path }: { path: string }): FileSystemDirectoryHandle {
     const handle = {
       kind: 'directory' as const,
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemDirectoryHandle.resolve.
+      async resolve(child: FileSystemHandle): Promise<string[] | null> {
+        const target = directoryPaths.get(child);
+        const prefix = path ? path + '/' : '';
+        if (target === path) {
+          return [];
+        }
+        return target !== undefined && target.startsWith(prefix) ? target.slice(prefix.length).split('/') : null;
+      },
       name: path.split('/').at(-1) || 'test-folder',
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemDirectoryHandle.getFileHandle.
       async getFileHandle(name: string, options: FileSystemGetFileOptions | undefined) {
@@ -157,13 +167,18 @@ export function createWorkflowTestFileSystem() {
         }
       },
     };
-    return handle as unknown as FileSystemDirectoryHandle;
+    const typed = handle as unknown as FileSystemDirectoryHandle;
+    directoryPaths.set(typed, path);
+    return typed;
   }
   const root = directoryHandle({ path: '' });
   return {
     root,
     files,
     calls,
+    beforeClose({ hook }: { hook: () => Promise<void> }) {
+      closeHook = hook;
+    },
     failClose({ error }: { error: Error }) {
       closeHook = async () => {
         throw error;

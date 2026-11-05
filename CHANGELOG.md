@@ -20,9 +20,22 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Experimental workflows with shared step, JSON, and scoped graph editing, reusable parts, typed values, sequential text generation, branching, loops, interactive input, and folder-based file operations. Graph connections and moves validate scope and downstream types, preserve undo history, and protect unfinished inputs.
+- Workflow execution history with immutable definition snapshots, bounded progress checkpoints, individual workflow/run links, result browsing, and streamed archive downloads. Abandoned runs can be explicitly marked as interrupted without replay; per-run ownership locks protect active runs and pending completion saves. Composable arithmetic and boolean values support conditional loop completion and configurable execution-wide budgets.
+- Local Workflow audio and image generation through the existing browser engines, with typed dynamic inputs and sequential batching through loops. Audio generation supports reference voices and an explicit incomplete-output policy; image generation supports bounded initial/reference images and transient previews while fixing model and component file locations rather than substituting missing files.
+- Session- and run-scoped model connection approvals that preserve value origins, separate text/audio/image authority, and do not survive imports or history copies. Binary results remain usable when optional text previews cannot be decoded, and cancellation preserves completed outputs without publishing unfinished generation.
+- Explicit Workflow tool steps for calculator, Wikipedia search/page retrieval, and an isolated Wesh shell with one selected folder, plus bounded model-selected rounds using these tools and interactive choices. Typed arguments compose with model outputs and loops; external access is reviewed per call, historical tool records are never replayed, and tool failures or truncated shell output stop explicit steps unless error outputs are requested.
+- On-demand Workflow image, audio, and conversation viewers, fixed-choice input, and explicit copying between complete text chats and editable workflows. Copies do not inherit tool permissions or automatically generate responses or titles. Structure-only exports remove authored content and connection/folder bindings separately from full-fidelity backups.
+
 ### Changed
 
 - GitHub Release descriptions now use the curated `CHANGELOG.md` notes, including corrections to previously published releases.
+
+### Fixed
+
+- Drain active shell-tool executions before releasing their execution records after cancellation, and clear completed shell-tool timeout timers.
 
 ## [0.63.0] - 2026-11-04
 

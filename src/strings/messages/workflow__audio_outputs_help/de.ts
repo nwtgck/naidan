@@ -1,0 +1,1 @@
+export const workflow__audio_outputs_help = (): string => "Ausgaben: audio (WAV-Datei), metadata (tatsächliches Format und Beendigungsgrund) und complete (ob die Generierung normal endete). Beim Stoppen des Workflows wird das aktuell unfertige Audio immer verworfen.";

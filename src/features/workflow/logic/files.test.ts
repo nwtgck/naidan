@@ -174,3 +174,44 @@ b`,
     expect(source.text({ path: 'answer.txt' })).toBe('hello 日本語');
   });
 });
+
+describe('Workflow binary file text views', () => {
+  it.each([{ bytes: [0x61, 0xff, 0x62] }, { bytes: [0x61, 0xe3, 0x81] }])('keeps binary bytes and skips an invalid text view ($bytes)', async ({ bytes }) => {
+    using source = createWorkflowTestFileSystem();
+    using destination = createWorkflowTestFileSystem();
+    await using fixture = createOutputStoreFixture({ limits: {} });
+    source.files.set('binary.dat', new Uint8Array(bytes));
+    resolveVolumeAccess.mockResolvedValue({ kind: 'native', handle: source.root });
+    const service = createWorkflowFileServices({ authorize: async () => undefined, onWritten: () => undefined });
+    const outputs = await service.readFile({ volumeId: toVolumeId({ raw: 'v' }), path: ['binary.dat'], signal: signal(), store: fixture.store });
+    await using cleanup = {
+      async [Symbol.asyncDispose]() {
+        await releaseValues({ values: Object.values(outputs) });
+      },
+    };
+    void cleanup;
+    await expect(readText({ value: outputs.text!, signal: signal(), maxBytes: 100 })).rejects.toThrow('not valid UTF-8 text');
+    await exportWorkflowResults({ result: { ...emptyResult(), outputs: new Map([[stepId({ raw: 'read' }), outputs]]) }, directory: destination.root, signal: signal(), writtenFiles: [] });
+    expect(destination.files.get('result-0001.bin')).toEqual(source.files.get('binary.dat'));
+    expect(destination.files.has('result-0002.txt')).toBe(false);
+    expect(JSON.parse(destination.text({ path: 'index.json' })).outputs).toContainEqual({ stepId: 'read', output: 'text', path: null, skipped: 'Output is not valid UTF-8 text.' });
+  });
+
+  it('does not hide storage read failures as unavailable text previews or successful exports', async () => {
+    using destination = createWorkflowTestFileSystem();
+    await using fixture = createOutputStoreFixture({ limits: {} });
+    const writer = await fixture.store.createWriter({ signal: signal() });
+    await writer.write({ chunk: new TextEncoder().encode('hello') });
+    const output = await writer.seal();
+    await using cleanup = {
+      async [Symbol.asyncDispose]() {
+        await output.release();
+      },
+    };
+    void cleanup;
+    const result = { ...emptyResult(), outputs: new Map([[stepId({ raw: 'read' }), { text: { type: 'text' as const, output } }]]) };
+    fixture.failNext({ operation: 'read', error: new Error('disk unavailable') });
+    await expect(exportWorkflowResults({ result, directory: destination.root, signal: signal(), writtenFiles: [] })).rejects.toThrow('disk unavailable');
+    expect(destination.files.has('index.json')).toBe(false);
+  });
+});

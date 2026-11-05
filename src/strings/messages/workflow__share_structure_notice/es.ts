@@ -1,0 +1,1 @@
+export const workflow__share_structure_notice = (): string => "Elimina el contenido introducido, los nombres, las conexiones de modelos, las referencias a carpetas y los argumentos de herramientas. Conserva las referencias y la estructura de control con identificadores nuevos. Es una plantilla, no una copia ejecutable. Revísala antes de compartirla.";

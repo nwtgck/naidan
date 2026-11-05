@@ -1,0 +1,1 @@
+export const workflow__mark_interrupted_notice = (): string => "Mark this run as interrupted? Only the last saved progress will be kept. This does not resume or repeat any steps, restore temporary files, or undo effects. The recorded time is when you mark it, not the unknown time it stopped.";

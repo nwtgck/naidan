@@ -1,0 +1,1 @@
+export const workflow__interrupted_run_notice = (): string => "This history was marked as interrupted. Previews reflect the last saved checkpoint, not necessarily the last completed effect. No steps were resumed and temporary files were not restored.";

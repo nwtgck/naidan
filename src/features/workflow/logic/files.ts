@@ -2,7 +2,7 @@ import { storageService } from '@/00-storage/service';
 import { createRemoteDirectoryHandle } from '@/utils/remote-directory-handle';
 import { idToRaw, type VolumeId } from '@/01-models/ids';
 import type { WorkflowRuntimeServices, WorkflowRunResult } from './runtime';
-import { readOutput, textChunks, serializeValue, safeRelativePath, type RuntimeValue } from './values';
+import { runtimeMessageValues, WorkflowTextDecodingError, readOutput, textChunks, serializeValue, safeRelativePath, type RuntimeValue } from './values';
 import { createFileExplorerDirectoryArchive } from '@/features/file-explorer/worker/directory-archive';
 
 export async function resolveWorkflowFolder({ volumeId, mode }: { volumeId: VolumeId, mode: 'read' | 'write' }): Promise<{ directory: FileSystemDirectoryHandle, close: () => Promise<void> }> {
@@ -231,13 +231,13 @@ export function createWorkflowFileServices({ authorize, onWritten }: {
 /** Model values are capabilities with credentials, not downloadable result data.
  * Inspect structural values only: user-owned literal JSON is never silently redacted.
  */
-function exportable({ value }: { value: RuntimeValue }): boolean {
+export function exportable({ value }: { value: RuntimeValue }): boolean {
   switch (value.type) {
   case 'range': case 'model': return false;
   case 'json': case 'text': case 'binary': case 'sequence': return true;
   case 'array': return value.items.every(value => exportable({ value }));
   case 'object': return Object.values(value.properties).every(value => exportable({ value }));
-  case 'conversation': return value.messages.every(message => message.parts.every(value => exportable({ value })));
+  case 'conversation': return runtimeMessageValues({ messages: value.messages }).every(value => exportable({ value }));
   default: {
     const exhaustive: never = value;
     throw new Error(`Unknown value: ${exhaustive}`);
@@ -247,7 +247,7 @@ function exportable({ value }: { value: RuntimeValue }): boolean {
 
 function exportFormat({ value }: { value: RuntimeValue }): { format: 'text' | 'json' | 'jsonl' | 'binary', extension: string } {
   switch (value.type) {
-  case 'binary': return { format: 'binary', extension: 'bin' };
+  case 'binary': return { format: 'binary', extension: value.format ?? 'bin' };
   case 'text': return { format: 'text', extension: 'txt' };
   case 'sequence': return { format: 'jsonl', extension: 'jsonl' };
   case 'json': case 'array': case 'object': case 'conversation': return { format: 'json', extension: 'json' };
@@ -263,7 +263,7 @@ function exportFormat({ value }: { value: RuntimeValue }): { format: 'text' | 'j
 /** Export to a temporary folder first, allowing Explorer and ZIP to share the same files. */
 export async function exportWorkflowResults({ result, directory, signal, writtenFiles }: { result: WorkflowRunResult, directory: FileSystemDirectoryHandle, signal: AbortSignal, writtenFiles: readonly WorkflowWrittenFile[] }): Promise<void> {
   let count = 0, remaining = 256 * 1024 * 1024;
-  const manifest: { stepId: string, output: string, path: string | null, skipped: string | null }[] = [];
+  const manifest: { stepId: string, output: string, path: string | null, skipped: string | null, kind?: 'conversation' }[] = [];
   for (const [stepId, outputs] of result.outputs) {
     for (const [name, source] of Object.entries(outputs)) {
       if (++count > 1000) {
@@ -276,8 +276,29 @@ export async function exportWorkflowResults({ result, directory, signal, written
       const { format, extension } = exportFormat({ value: source });
       // Imported IDs and output names are labels, not trusted path segments.
       const path = `result-${String(count).padStart(4, '0')}.${extension}`;
-      remaining -= await saveFile({ directory, path: [path], source, format, onConflict: 'error', signal, maxBytes: Math.min(64 * 1024 * 1024, remaining) });
-      manifest.push({ stepId: idToRaw({ id: stepId }), output: name, path, skipped: null });
+      try {
+        remaining -= await saveFile({ directory, path: [path], source, format, onConflict: 'error', signal, maxBytes: Math.min(64 * 1024 * 1024, remaining) });
+      } catch (reason) {
+        if (!(reason instanceof WorkflowTextDecodingError)) {
+          throw reason;
+        }
+        // This is a newly created runtime-owned export, never a user Volume
+        // file. An aborted writable can leave its empty file handle behind.
+        await directory.removeEntry(path);
+        manifest.push({ stepId: idToRaw({ id: stepId }), output: name, path: null, skipped: reason.message });
+        continue;
+      }
+      const kind = (() => {
+        switch (source.type) {
+        case 'conversation': return { kind: 'conversation' as const };
+        case 'json': case 'model': case 'range': case 'text': case 'binary': case 'sequence': case 'array': case 'object': return {};
+        default: {
+          const exhaustive: never = source;
+          throw new Error(String(exhaustive));
+        }
+        }
+      })();
+      manifest.push({ stepId: idToRaw({ id: stepId }), output: name, path, skipped: null, ...kind });
     }
   }
   const volumeIndices = new Map<VolumeId, number>();

@@ -20,10 +20,20 @@ type WorkflowValueShapeDto<E> =
   | { type: 'filename' | 'not_empty', value: WorkflowValueShapeDto<E> }
   | { type: 'format_number', value: WorkflowValueShapeDto<E>, minDigits: number }
   | { type: 'equals', left: WorkflowValueShapeDto<E>, right: WorkflowValueShapeDto<E> }
+  | { type: 'arithmetic', operator: 'add' | 'subtract' | 'multiply' | 'divide' | 'remainder', left: WorkflowValueShapeDto<E>, right: WorkflowValueShapeDto<E> }
+  | { type: 'compare', operator: 'less' | 'less_or_equal' | 'greater' | 'greater_or_equal', left: WorkflowValueShapeDto<E>, right: WorkflowValueShapeDto<E> }
+  | { type: 'all' | 'any', items: WorkflowValueShapeDto<E>[] }
+  | { type: 'not', value: WorkflowValueShapeDto<E> }
   | { type: 'conversation', messages: WorkflowMessageShapeDto<E>[] };
 type WorkflowMessageShapeDto<E> = {
-  role: 'system' | 'user' | 'assistant',
-  parts: ({ type: 'text', text: string } | { type: 'value', value: WorkflowValueShapeDto<E> })[],
+  role: 'system' | 'user' | 'assistant' | 'tool',
+  parts: (
+    | { type: 'text', text: string }
+    | { type: 'reasoning', text: string }
+    | { type: 'value', value: WorkflowValueShapeDto<E> }
+    | { type: 'tool_call', id: string, name: string, arguments: string }
+    | { type: 'tool_result', id: string, status: 'success' | 'error', code?: 'invalid_arguments' | 'execution_failed' | 'timeout' | 'other' | undefined, content: WorkflowValueShapeDto<E> }
+  )[],
 };
 export interface ExperimentalWorkflowValueSchemaTypeDto extends dtozod.DtoSchema {
   readonly _zod: {
@@ -35,9 +45,20 @@ export interface ExperimentalWorkflowValueSchemaTypeDto extends dtozod.DtoSchema
 }
 
 export const ExperimentalWorkflowMessageSchemaDto = dtozod.object({
-  role: dtozod.enum(['system', 'user', 'assistant']),
+  role: dtozod.enum(['system', 'user', 'assistant', 'tool']),
   parts: dtozod.array(dtozod.discriminatedUnion('type', [
+    dtozod.object({ type: dtozod.literal('tool_call'), id: dtozod.string(), name: dtozod.string(), arguments: dtozod.string() }),
+    resolveMissingAsUndefined(dtozod.object({
+      type: dtozod.literal('tool_result'),
+      id: dtozod.string(),
+      status: dtozod.enum(['success', 'error']),
+      code: missingAsUndefined(dtozod.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other'])),
+      get content(): ExperimentalWorkflowValueSchemaTypeDto {
+        return ExperimentalWorkflowValueSchemaDto;
+      },
+    })),
     dtozod.object({ type: dtozod.literal('text'), text: dtozod.string() }),
+    dtozod.object({ type: dtozod.literal('reasoning'), text: dtozod.string() }),
     dtozod.object({
       type: dtozod.literal('value'),
       get value(): ExperimentalWorkflowValueSchemaTypeDto {
@@ -55,7 +76,7 @@ export const ExperimentalWorkflowValueSchemaDto: ExperimentalWorkflowValueSchema
   dtozod.object({ type: dtozod.enum(['loop_item', 'loop_index']), stepId: dtozod.string() }),
   dtozod.object({ type: dtozod.literal('loop_state'), stepId: dtozod.string(), key: dtozod.string() }),
   dtozod.object({
-    type: dtozod.enum(['array', 'concat', 'path']),
+    type: dtozod.enum(['array', 'concat', 'path', 'all', 'any']),
     get items(): dtozod.DtoArray<ExperimentalWorkflowValueSchemaTypeDto> {
       return dtozod.array(ExperimentalWorkflowValueSchemaDto);
     },
@@ -74,7 +95,7 @@ export const ExperimentalWorkflowValueSchemaDto: ExperimentalWorkflowValueSchema
     path: dtozod.array(dtozod.union([dtozod.string(), dtozod.number()])),
   }),
   dtozod.object({
-    type: dtozod.enum(['filename', 'not_empty']),
+    type: dtozod.enum(['filename', 'not_empty', 'not']),
     get value(): ExperimentalWorkflowValueSchemaTypeDto {
       return ExperimentalWorkflowValueSchemaDto;
     },
@@ -88,6 +109,26 @@ export const ExperimentalWorkflowValueSchemaDto: ExperimentalWorkflowValueSchema
   }),
   dtozod.object({
     type: dtozod.literal('equals'),
+    get left(): ExperimentalWorkflowValueSchemaTypeDto {
+      return ExperimentalWorkflowValueSchemaDto;
+    },
+    get right(): ExperimentalWorkflowValueSchemaTypeDto {
+      return ExperimentalWorkflowValueSchemaDto;
+    },
+  }),
+  dtozod.object({
+    type: dtozod.literal('arithmetic'),
+    operator: dtozod.enum(['add', 'subtract', 'multiply', 'divide', 'remainder']),
+    get left(): ExperimentalWorkflowValueSchemaTypeDto {
+      return ExperimentalWorkflowValueSchemaDto;
+    },
+    get right(): ExperimentalWorkflowValueSchemaTypeDto {
+      return ExperimentalWorkflowValueSchemaDto;
+    },
+  }),
+  dtozod.object({
+    type: dtozod.literal('compare'),
+    operator: dtozod.enum(['less', 'less_or_equal', 'greater', 'greater_or_equal']),
     get left(): ExperimentalWorkflowValueSchemaTypeDto {
       return ExperimentalWorkflowValueSchemaDto;
     },
@@ -162,14 +203,86 @@ export const ExperimentalWorkflowStepSchemaDto = resolveMissingAsUndefined(dtozo
     systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
     lmParameters: missingAsUndefined(LmParametersSchemaDto),
     toolConfigs: ExperimentalToolConfigsSchemaDto,
+    toolExecution: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+      maxRounds: dtozod.number(),
+      maxCalls: dtozod.number(),
+      shell: missingAsUndefined(dtozod.object({ volumeId: dtozod.string(), access: dtozod.enum(['read-only', 'read-write']) })),
+    }))),
   }),
-  WorkflowStepBaseSchemaDto.extend({ type: dtozod.literal('request_input'), prompt: ExperimentalWorkflowValueSchemaDto, responseType: dtozod.enum(['text', 'json']) }),
+  WorkflowStepBaseSchemaDto.extend({
+    type: dtozod.literal('audio_generation'),
+    modelId: ExperimentalWorkflowValueSchemaDto,
+    text: ExperimentalWorkflowValueSchemaDto,
+    reference: missingAsUndefined(ExperimentalWorkflowValueSchemaDto),
+    parameters: dtozod.object({
+      language: ExperimentalWorkflowValueSchemaDto,
+      audioBackend: ExperimentalWorkflowValueSchemaDto,
+      contextTokens: ExperimentalWorkflowValueSchemaDto,
+      maxFrames: ExperimentalWorkflowValueSchemaDto,
+      temperature: ExperimentalWorkflowValueSchemaDto,
+      topK: ExperimentalWorkflowValueSchemaDto,
+      topP: ExperimentalWorkflowValueSchemaDto,
+      seed: ExperimentalWorkflowValueSchemaDto,
+    }),
+    onLimit: dtozod.enum(['error', 'keep']),
+  }),
+  WorkflowStepBaseSchemaDto.extend({
+    type: dtozod.literal('image_generation'),
+    model: ExperimentalWorkflowValueSchemaDto,
+    prompt: ExperimentalWorkflowValueSchemaDto,
+    parameters: dtozod.object({
+      negativePrompt: ExperimentalWorkflowValueSchemaDto,
+      width: ExperimentalWorkflowValueSchemaDto,
+      height: ExperimentalWorkflowValueSchemaDto,
+      steps: ExperimentalWorkflowValueSchemaDto,
+      guidance: ExperimentalWorkflowValueSchemaDto,
+      seed: ExperimentalWorkflowValueSchemaDto,
+      sampler: ExperimentalWorkflowValueSchemaDto,
+      scheduler: ExperimentalWorkflowValueSchemaDto,
+      distilledGuidance: ExperimentalWorkflowValueSchemaDto,
+      vaeTiling: ExperimentalWorkflowValueSchemaDto,
+      vaeTileSize: ExperimentalWorkflowValueSchemaDto,
+      flashAttention: ExperimentalWorkflowValueSchemaDto,
+      bf16WeightType: ExperimentalWorkflowValueSchemaDto,
+      qwenVaePolicy: ExperimentalWorkflowValueSchemaDto,
+      conditioningCacheSize: ExperimentalWorkflowValueSchemaDto,
+      modelArguments: ExperimentalWorkflowValueSchemaDto,
+      profile: ExperimentalWorkflowValueSchemaDto,
+      weightResidency: ExperimentalWorkflowValueSchemaDto,
+    }),
+    gpuBudgetMiB: missingAsUndefined(ExperimentalWorkflowValueSchemaDto),
+    imageInputs: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+      initImage: missingAsUndefined(ExperimentalWorkflowValueSchemaDto),
+      referenceImages: dtozod.array(ExperimentalWorkflowValueSchemaDto),
+      strength: ExperimentalWorkflowValueSchemaDto,
+    }))),
+    preview: missingAsUndefined(dtozod.object({
+      enabled: dtozod.boolean(),
+      interval: dtozod.number(),
+      startStep: dtozod.number(),
+      mode: dtozod.enum(['projection', 'vae']),
+      maxEdge: dtozod.number(),
+    })),
+  }),
+  WorkflowStepBaseSchemaDto.extend({
+    type: dtozod.literal('tool_call'),
+    tool: dtozod.discriminatedUnion('name', [
+      dtozod.object({ name: dtozod.literal('calculator') }),
+      dtozod.object({ name: dtozod.literal('wikipedia_search') }),
+      dtozod.object({ name: dtozod.literal('wikipedia_get_page') }),
+      dtozod.object({ name: dtozod.literal('shell_execute'), volumeId: dtozod.string(), access: dtozod.enum(['read-only', 'read-write']) }),
+    ]),
+    arguments: ExperimentalWorkflowValueSchemaDto,
+    onError: dtozod.enum(['fail', 'continue']),
+  }),
+  WorkflowStepBaseSchemaDto.extend({ type: dtozod.literal('request_input'), prompt: ExperimentalWorkflowValueSchemaDto, responseType: dtozod.enum(['text', 'json']), choices: missingAsUndefined(ExperimentalWorkflowValueSchemaDto) }),
   WorkflowStepBaseSchemaDto.extend({
     type: dtozod.literal('repeat'),
     count: ExperimentalWorkflowValueSchemaDto,
     state: WorkflowLoopStateSchemaDto,
     body: WorkflowBlockSchemaDto,
     emit: missingAsUndefined(ExperimentalWorkflowValueSchemaDto),
+    stopWhen: missingAsUndefined(ExperimentalWorkflowValueSchemaDto),
   }),
   WorkflowStepBaseSchemaDto.extend({
     type: dtozod.literal('for_each'),
@@ -177,6 +290,7 @@ export const ExperimentalWorkflowStepSchemaDto = resolveMissingAsUndefined(dtozo
     state: WorkflowLoopStateSchemaDto,
     body: WorkflowBlockSchemaDto,
     emit: missingAsUndefined(ExperimentalWorkflowValueSchemaDto),
+    stopWhen: missingAsUndefined(ExperimentalWorkflowValueSchemaDto),
   }),
   WorkflowStepBaseSchemaDto.extend({ type: dtozod.literal('if'), condition: ExperimentalWorkflowValueSchemaDto, then: WorkflowBranchSchemaDto, else: WorkflowBranchSchemaDto }),
   WorkflowStepBaseSchemaDto.extend({ type: dtozod.literal('read_file'), volumeId: dtozod.string(), relativePath: ExperimentalWorkflowValueSchemaDto }),
@@ -191,15 +305,23 @@ export const ExperimentalWorkflowStepSchemaDto = resolveMissingAsUndefined(dtozo
 ]));
 export type ExperimentalWorkflowStepDto = dtozod.infer<typeof ExperimentalWorkflowStepSchemaDto>;
 
+const WorkflowExecutionLimitsSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  maxLoopIterations: dtozod.number(),
+  maxStepExecutions: dtozod.number(),
+  maxValueEvaluations: dtozod.number(),
+  timeoutMs: missingAsUndefined(dtozod.number()),
+}));
+
 /**
  * Editable workflow content, not a projection made by removing storage fields.
  * Adding record metadata must not silently expose it in the form or JSON editor.
  * Step IDs remain part of this definition because output references use them.
  */
-export const ExperimentalWorkflowDefinitionSchemaDto = dtozod.object({
+export const ExperimentalWorkflowDefinitionSchemaDto = resolveMissingAsUndefined(dtozod.object({
   name: dtozod.string(),
   steps: dtozod.array(ExperimentalWorkflowStepSchemaDto),
-});
+  executionLimits: missingAsUndefined(WorkflowExecutionLimitsSchemaDto),
+}));
 export type ExperimentalWorkflowDefinitionDto = dtozod.infer<typeof ExperimentalWorkflowDefinitionSchemaDto>;
 
 export const ExperimentalWorkflowSchemaDto = dtozod.object({
@@ -210,6 +332,33 @@ export const ExperimentalWorkflowSchemaDto = dtozod.object({
   definition: ExperimentalWorkflowDefinitionSchemaDto,
 });
 export type ExperimentalWorkflowDto = dtozod.infer<typeof ExperimentalWorkflowSchemaDto>;
+
+/** Run snapshots retain their own definition even if the source document is edited
+ * or removed. Result paths locate runtime-owned temporary files, not durable data.
+ */
+export const ExperimentalWorkflowRunSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  id: dtozod.string(),
+  workflowId: missingAsUndefined(dtozod.string()),
+  definition: ExperimentalWorkflowDefinitionSchemaDto,
+  startedAt: dtozod.number(),
+  finishedAt: missingAsUndefined(dtozod.number()),
+  status: dtozod.enum(['running', 'completed', 'failed', 'cancelled', 'interrupted']),
+  ownership: missingAsUndefined(dtozod.literal('web_lock')),
+  checkpointAt: missingAsUndefined(dtozod.number()),
+  entries: dtozod.array(dtozod.object({
+    number: dtozod.number(),
+    name: dtozod.string(),
+    stepId: dtozod.string(),
+    trace: dtozod.array(dtozod.number()),
+    phase: dtozod.enum(['running', 'completed']),
+    preview: dtozod.string(),
+    inputPreview: dtozod.string(),
+  })),
+  error: missingAsUndefined(dtozod.string()),
+  resultsPath: missingAsUndefined(dtozod.array(dtozod.string())),
+  resultError: missingAsUndefined(dtozod.string()),
+}));
+export type ExperimentalWorkflowRunDto = dtozod.infer<typeof ExperimentalWorkflowRunSchemaDto>;
 
 export const TEST_ONLY = {
 };

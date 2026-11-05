@@ -1,0 +1,1 @@
+export const workflow__fixed_connection_review_scope = (): string => "This fixed connection has not been reviewed in this editor session. Allowing it covers this exact connection and model for fixed values until another workflow or JSON definition is opened, reviews are cleared, or the page is reloaded. This does not authorize dynamically derived targets.";

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onBeforeUnmount, inject } from 'vue';
+import { workflowModelReviewKey } from '@/features/workflow/composables/model-review';
 import type { WorkflowModelConfiguration } from '@/01-models/workflow';
 import type { Endpoint } from '@/01-models/types';
 import { cloneEndpoint } from '@/01-models/endpoint';
@@ -15,6 +16,15 @@ import { workflowInputText } from '@/features/workflow/logic/forms';
 const props = defineProps<{ value: WorkflowModelConfiguration, disabled: boolean, showParameters: boolean }>();
 const emit = defineEmits<{ change: [value: WorkflowModelConfiguration] }>();
 const { settings } = useSettings();
+const review = inject(workflowModelReviewKey, undefined);
+
+function changeConnection({ target }: { target: WorkflowModelConfiguration }): void {
+  if (!props.disabled) {
+    emit('change', target);
+    review?.({ target });
+  }
+}
+
 const models = ref<string[]>([]), loading = ref(false), failed = ref(false);
 let controller: AbortController | undefined;
 let alive = true;
@@ -59,7 +69,7 @@ function endpointType({ type }: { type: string }): void {
   }
   // A model ID belongs to its connection. Never silently keep a remote ID when
   // switching to another backend; the caller chooses a matching candidate.
-  emit('change', { ...props.value, endpoint, modelId: '' });
+  changeConnection({ target: { ...props.value, endpoint, modelId: '' } });
 }
 
 async function refresh(): Promise<void> {
@@ -109,7 +119,21 @@ function opened({ open }: { open: boolean }): void {
 
 function setId({ modelId }: { modelId: string | undefined }): void {
   if (!props.disabled) {
-    emit('change', { ...props.value, modelId: modelId ?? '' });
+    changeConnection({ target: { ...props.value, modelId: modelId ?? '' } });
+  }
+}
+
+function typeId({ modelId }: { modelId: string }): void {
+  if (!props.disabled) {
+    emit('change', { ...props.value, modelId });
+  }
+}
+
+function confirmId({ modelId }: { modelId: string }): void {
+  // Intermediate keystrokes are editable content, not selected model authority.
+  // Confirm on change without adding a duplicate undo entry for the same value.
+  if (!props.disabled) {
+    review?.({ target: { ...props.value, modelId } });
   }
 }
 
@@ -119,10 +143,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div tw-class="space-y-3" data-testid="workflow-model-editor">
     <SettingsFormSelect :model-value="value.endpoint.type" :options="endpointOptions" :disabled="disabled" :label="lazyStrings.workflow__endpoint()" @update:model-value="endpointType({ type: $event })" />
-    <input v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :value="value.endpoint.url" :disabled="disabled" :aria-label="lazyStrings.workflow__endpoint()" @change="emit('change', { ...value, endpoint: { ...value.endpoint, url: workflowInputText({ event: $event }) } })" type="url" spellcheck="false" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/70 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-45" />
-    <fieldset v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :disabled="disabled"><HttpHeadersEditor :model-value="value.endpoint.httpHeaders ?? []" test-id-prefix="workflow-headers" @update:model-value="emit('change', { ...value, endpoint: { ...value.endpoint, httpHeaders: $event } })" /></fieldset>
+    <input v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :value="value.endpoint.url" :disabled="disabled" :aria-label="lazyStrings.workflow__endpoint()" @change="changeConnection({ target: { ...value, endpoint: { ...value.endpoint, url: workflowInputText({ event: $event }) } } })" type="url" spellcheck="false" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/70 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-45" />
+    <fieldset v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :disabled="disabled"><HttpHeadersEditor :model-value="value.endpoint.httpHeaders ?? []" test-id-prefix="workflow-headers" @update:model-value="changeConnection({ target: { ...value, endpoint: { ...value.endpoint, httpHeaders: $event } } })" /></fieldset>
     <ModelSelector data-testid="workflow-model-selector" :model-value="value.modelId" :models="models" :loading="loading" :disabled="disabled" surface="settings" @update:model-value="setId({ modelId: $event })" @update:open="opened({ open: $event })" @refresh="refresh" />
-    <input data-testid="workflow-model-id" :value="value.modelId" :disabled="disabled" @input="setId({ modelId: workflowInputText({ event: $event }) })" :placeholder="lazyStrings.workflow__model_id()" :aria-label="lazyStrings.workflow__model_id()" spellcheck="false" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/70 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-45" />
+    <input data-testid="workflow-model-id" :value="value.modelId" :disabled="disabled" @input="typeId({ modelId: workflowInputText({ event: $event }) })" @change="confirmId({ modelId: workflowInputText({ event: $event }) })" :placeholder="lazyStrings.workflow__model_id()" :aria-label="lazyStrings.workflow__model_id()" spellcheck="false" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/70 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-45" />
     <p v-if="failed" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.workflow__model_candidates_failed() }}</p>
     <WorkflowDisclosure v-if="showParameters" :title="lazyStrings.workflow__parameters()" :initially-open="!!value.lmParameters">
       <template #summary><span v-if="parameterSummary" tw-class="max-w-32 truncate text-xs font-normal text-gray-500">{{ parameterSummary }}</span></template>

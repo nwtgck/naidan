@@ -1,1 +1,1 @@
-export const workflow__run_notice = (): string => "Results are temporary until written to a folder or downloaded. Reloading the page ends the run. Each run uses a fixed copy of the definition.";
+export const workflow__run_notice = (): string => "Each run uses a fixed copy of the definition. With OPFS storage, its snapshot and bounded previews are saved in run history. Result files are temporary unless explicitly saved or downloaded. Reloading ends the run; it does not resume automatically.";

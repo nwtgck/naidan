@@ -1,0 +1,1 @@
+export const workflow__audio_outputs_help = (): string => "Saídas: audio (arquivo WAV), metadata (formato real e motivo do término) e complete (se a geração terminou normalmente). Interromper o fluxo sempre descarta o áudio ainda em geração.";

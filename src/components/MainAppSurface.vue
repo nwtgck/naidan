@@ -16,7 +16,7 @@ const props = defineProps<{
 
 const { active: generationNavigation } = useImageGenerationWorkspaceNavigation();
 const route = useRoute();
-const isWorkflowRoute = computed(() => route.path.replace(/\/+$/, '') === '/workflows');
+const isWorkflowRoute = computed(() => route.path.replace(/\/+$/, '') === '/workflows' || route.path.startsWith('/workflows/'));
 const WorkflowSidebar = defineAsyncComponent(() => import('@/features/workflow/components/WorkflowSidebar.vue'));
 const ImageGenerationSidebar = defineAsyncComponent(() => import('@/features/image-generation/components/ImageGenerationSidebar.vue'));
 const DebugPanel = defineAsyncComponent(() => import('@/components/DebugPanel.vue'));

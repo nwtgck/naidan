@@ -645,7 +645,7 @@ export async function searchWikipedia({
   return { groups };
 }
 
-export async function getWikipediaPage({
+export async function getWikipediaPageContent({
   lang,
   pageId,
   signal,
@@ -655,7 +655,7 @@ export async function getWikipediaPage({
   pageId: number,
   signal: AbortSignal | undefined,
   requestResponseImpl: RequestWikipediaResponseImpl | undefined,
-}): Promise<WikipediaPageResult> {
+}): Promise<{ lang: string, pageId: number, title: string, content: string }> {
   const url = createWikipediaApiUrl({ lang });
   url.searchParams.set('origin', '*');
   url.searchParams.set('action', 'query');
@@ -681,12 +681,20 @@ export async function getWikipediaPage({
   }
 
   const content = page.extract;
+  return { lang, pageId: page.pageid, title: page.title, content };
+}
+
+export async function getWikipediaPage({ lang, pageId, signal, requestResponseImpl }: {
+  lang: string, pageId: number, signal: AbortSignal | undefined, requestResponseImpl: RequestWikipediaResponseImpl | undefined,
+}): Promise<WikipediaPageResult> {
+  const page = await getWikipediaPageContent({ lang, pageId, signal, requestResponseImpl });
+  const { content } = page;
   const lineCount = countLines({ text: content });
   if (lineCount <= WIKIPEDIA_INLINE_CONTENT_MAX_LINES) {
     return {
       kind: 'inline',
       lang,
-      pageId: page.pageid,
+      pageId: page.pageId,
       title: page.title,
       content,
     };
@@ -694,7 +702,7 @@ export async function getWikipediaPage({
 
   const saved = await saveWikipediaPageTextAsBinaryObject({
     lang,
-    pageId: page.pageid,
+    pageId: page.pageId,
     title: page.title,
     content,
     lineCount,
@@ -703,7 +711,7 @@ export async function getWikipediaPage({
   return {
     kind: 'binary_object',
     lang,
-    pageId: page.pageid,
+    pageId: page.pageId,
     title: page.title,
     lineCount: saved.lineCount,
     byteLength: saved.byteLength,

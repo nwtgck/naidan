@@ -1,16 +1,47 @@
 import { parseWorkflowJson, parseWorkflowModelConfiguration } from '@/00-storage/service/workflow-json';
 import type { JsonValue } from '@/01-models/lm';
+import type { WorkflowMessage } from '@/01-models/workflow';
+import type { ToolCallId } from '@/01-models/ids';
+import type { ToolExecutionErrorCode } from '@/01-models/tool';
 import type { WorkflowNumberRange } from './range';
 import type { Endpoint, LmParameters } from '@/01-models/types';
 import type { WorkflowOutput, WorkflowOutputStore, WorkflowOutputWriter } from './output-store';
 
-export type RuntimeMessage = { role: 'system' | 'user' | 'assistant', parts: RuntimeValue[] };
+export type RuntimeToolCall = { type: 'tool_call', id: ToolCallId, name: string, arguments: string };
+export type RuntimeToolResult = { type: 'tool_result', id: ToolCallId, status: 'success' | 'error', code: ToolExecutionErrorCode | undefined, content: RuntimeValue };
+export type RuntimeMessagePart = RuntimeValue | RuntimeToolCall | RuntimeToolResult | { type: 'reasoning', content: RuntimeValue };
+export type RuntimeMessage = { role: WorkflowMessage['role'], parts: RuntimeMessagePart[] };
+
+/** Only value-bearing parts own leases. Historical calls never own authority. */
+export function runtimeMessageValues({ messages }: { messages: RuntimeMessage[] }): RuntimeValue[] {
+  return messages.flatMap(message => message.parts.flatMap(part => {
+    switch (part.type) {
+    case 'tool_call': return [];
+    case 'reasoning': case 'tool_result': return [part.content];
+    default: return [part];
+    }
+  }));
+}
+
+export function retainRuntimeMessage({ message }: { message: RuntimeMessage }): RuntimeMessage {
+  return {
+    role: message.role,
+    parts: message.parts.map(part => {
+      switch (part.type) {
+      case 'tool_call': return { ...part };
+      case 'reasoning': case 'tool_result': return { ...part, content: retainValue({ value: part.content }) };
+      default: return retainValue({ value: part });
+      }
+    }),
+  };
+}
+
 export type RuntimeValue =
   | { type: 'json', value: JsonValue }
   | { type: 'model', endpoint: Endpoint, modelId: string, lmParameters?: LmParameters | undefined }
   | ({ type: 'range' } & WorkflowNumberRange)
   | { type: 'text', output: WorkflowOutput }
-  | { type: 'binary', output: WorkflowOutput }
+  | { type: 'binary', output: WorkflowOutput, format?: 'wav' | 'png' }
   | { type: 'sequence', output: WorkflowOutput }
   | { type: 'array', items: RuntimeValue[] }
   | { type: 'object', properties: Record<string, RuntimeValue> }
@@ -76,7 +107,16 @@ export function freezeRuntimeValue({ value }: { value: RuntimeValue }): void {
     break;
   case 'conversation':
     value.messages.forEach(message => {
-      message.parts.forEach(value => freezeRuntimeValue({ value }));
+      message.parts.forEach(part => {
+        switch (part.type) {
+        case 'tool_call': Object.freeze(part);
+          break;
+        case 'reasoning': case 'tool_result': freezeRuntimeValue({ value: part.content });
+          Object.freeze(part);
+          break;
+        default: freezeRuntimeValue({ value: part });
+        }
+      });
       Object.freeze(message.parts);
       Object.freeze(message);
     });
@@ -99,7 +139,7 @@ export function retainValue({ value }: { value: RuntimeValue }): RuntimeValue {
   case 'text': case 'binary': case 'sequence': return { ...value, output: value.output.retain() };
   case 'array': return { ...value, items: value.items.map(value => retainValue({ value })) };
   case 'object': return { ...value, properties: Object.fromEntries(Object.entries(value.properties).map(([key, value]) => [key, retainValue({ value })])) };
-  case 'conversation': return { ...value, messages: value.messages.map(message => ({ ...message, parts: message.parts.map(value => retainValue({ value })) })) };
+  case 'conversation': return { ...value, messages: value.messages.map(message => retainRuntimeMessage({ message })) };
   default: {
     const exhaustive: never = value;
     throw new Error(`Unknown runtime value: ${exhaustive}`);
@@ -116,7 +156,7 @@ export async function releaseValue({ value }: { value: RuntimeValue }): Promise<
     return;
   case 'object': await releaseValues({ values: Object.values(value.properties) });
     return;
-  case 'conversation': await releaseValues({ values: value.messages.flatMap(message => message.parts) });
+  case 'conversation': await releaseValues({ values: runtimeMessageValues({ messages: value.messages }) });
     return;
   default: {
     const exhaustive: never = value;
@@ -150,6 +190,16 @@ export async function* readOutput({ output, signal }: { output: WorkflowOutput, 
   }
 }
 
+/** Decoding is distinct from storage and cancellation failures. Binary file
+ * outputs also expose a lazy text view; display/export may skip only this error.
+ */
+export class WorkflowTextDecodingError extends Error {
+  constructor({ cause }: { cause: unknown }) {
+    super('Output is not valid UTF-8 text.', { cause });
+    this.name = 'WorkflowTextDecodingError';
+  }
+}
+
 export async function* textChunks({ value, signal }: { value: RuntimeValue, signal: AbortSignal | undefined }): AsyncGenerator<string> {
   switch (value.type) {
   case 'json':
@@ -160,10 +210,17 @@ export async function* textChunks({ value, signal }: { value: RuntimeValue, sign
     return;
   case 'text': {
     const decoder = new TextDecoder('utf-8', { fatal: true });
+    const decode = ({ bytes, stream }: { bytes: Uint8Array | undefined, stream: boolean }): string => {
+      try {
+        return decoder.decode(bytes, { stream });
+      } catch (cause) {
+        throw new WorkflowTextDecodingError({ cause });
+      }
+    };
     for await (const chunk of readOutput({ output: value.output, signal })) {
-      yield decoder.decode(chunk, { stream: true });
+      yield decode({ bytes: chunk, stream: true });
     }
-    yield decoder.decode();
+    yield decode({ bytes: undefined, stream: false });
     return;
   }
   case 'range': case 'model': case 'binary': case 'sequence': case 'array': case 'object': case 'conversation':
@@ -288,9 +345,24 @@ export async function* serializeValue({ value, signal }: { value: RuntimeValue, 
         if (partIndex) {
           yield ',';
         }
-        yield '{"type":"text","text":';
-        yield* serializeValue({ value: part, signal });
-        yield '}';
+        switch (part.type) {
+        case 'tool_call': yield JSON.stringify(part);
+          break;
+        case 'reasoning':
+          yield '{"type":"reasoning","text":';
+          yield* serializeValue({ value: part.content, signal });
+          yield '}';
+          break;
+        case 'tool_result':
+          yield JSON.stringify({ type: part.type, id: part.id, status: part.status, code: part.code }).slice(0, -1) + ',"content":';
+          yield* serializeValue({ value: part.content, signal });
+          yield '}';
+          break;
+        default:
+          yield '{"type":"text","text":';
+          yield* serializeValue({ value: part, signal });
+          yield '}';
+        }
       }
       yield ']}';
     }

@@ -1,0 +1,1 @@
+export const workflow__tool_history_notice = (): string => "Estas partes descrevem chamadas e resultados anteriores. Os identificadores devem corresponder; eles não concedem permissões nem executam ferramentas.";
