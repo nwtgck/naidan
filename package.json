@@ -40,7 +40,7 @@
     "marked": "^18.0.5",
     "marked-highlight": "^2.2.4",
     "marked-katex-extension": "^5.1.10",
-    "mermaid": "11.16.0",
+    "mermaid": "12.2.0",
     "nanoid": "^5.1.16",
     "stable-diffusion-cpp-browser-core": "github:nwtgck/browser-inference-core#3f85c7ec57c54763f855439d1aaf09879ed57105",
     "vue": "^3.5.39",
