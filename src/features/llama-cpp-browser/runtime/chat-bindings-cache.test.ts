@@ -72,11 +72,23 @@ function fixture() {
 
     apply = apply;
   }
+  const maps: { values: Map<string, string>, deleted: ReturnType<typeof vi.fn> }[] = [];
   const fakeNative = {
     string_map: class {
-      set(_key: string, _value: string) {}
+      readonly values = new Map<string, string>();
+      readonly deleted = vi.fn();
 
-      delete() {}
+      constructor() {
+        maps.push(this);
+      }
+
+      set(key: string, value: string) {
+        this.values.set(key, value);
+      }
+
+      delete() {
+        this.deleted();
+      }
     },
     common_reasoning_format: { COMMON_REASONING_FORMAT_DEEPSEEK: 1 },
     common_json: { parse: (_text: string) => ({ delete() {} }) },
@@ -111,6 +123,7 @@ function fixture() {
     parse,
     message,
     calls,
+    maps,
     [Symbol.dispose]() {
       chat.releaseModel({ assertIdle, model: 7n });
     },
@@ -339,5 +352,49 @@ describe('v0.7 native chat value ownership', () => {
     expect(f.calls.delete).toHaveBeenCalledOnce();
     expect(f.message.delete).toHaveBeenCalledOnce();
     expect(f.deleteInput).toHaveBeenCalledOnce();
+  });
+});
+
+describe('native chat template JSON arguments', () => {
+  it('serializes strings, arrays, objects and booleans only at the native boundary', () => {
+    using f = fixture();
+    const kwargs = { target_lang: 'en', context: '日本語 "context"', glossary: [{ source: 'a', target: 'b' }], enabled: false, count: 2 };
+    f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: { ...f.request, chatTemplateKwargs: kwargs } }).dispose();
+    expect(Object.fromEntries(f.maps[0]!.values)).toEqual(Object.fromEntries(Object.entries(kwargs).map(([key, value]) => [key, JSON.stringify(value)])));
+    expect(f.maps[0]!.deleted).toHaveBeenCalledOnce();
+    expect(kwargs.target_lang).toBe('en');
+  });
+
+  it('does not leak template arguments into the next request through the cached model template', () => {
+    using f = fixture();
+    f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: { ...f.request, chatTemplateKwargs: { target_lang: 'ko' } } }).dispose();
+    f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request }).dispose();
+    expect(f.templateConstructed).toHaveBeenCalledOnce();
+    expect(f.maps).toHaveLength(1);
+    expect(f.apply.mock.calls[1]?.[0].chat_template_kwargs).toBeUndefined();
+  });
+
+  it('merges reasoning effort without discarding translation arguments and gives the dedicated field precedence', () => {
+    using f = fixture();
+    f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: { ...f.request, reasoningEffort: 'high', chatTemplateKwargs: { target_lang: 'en', reasoning_effort: 'low' } } }).dispose();
+    expect(f.maps[0]!.values.get('reasoning_effort')).toBe('"high"');
+    expect(f.maps[0]!.values.get('target_lang')).toBe('"en"');
+  });
+
+  it('preserves an explicit thinking-off control when generic arguments conflict', () => {
+    using f = fixture();
+    f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: { ...f.request, reasoningEffort: 'none', chatTemplateKwargs: { target_lang: 'en', enable_thinking: true, reasoning_effort: 'high' } } }).dispose();
+    expect(f.maps[0]!.values.get('enable_thinking')).toBe('false');
+    expect(f.maps[0]!.values.has('reasoning_effort')).toBe(false);
+    expect(f.apply.mock.calls[0]?.[0].enable_thinking).toBe(false);
+  });
+
+  it('releases temporary argument maps even when template application fails', () => {
+    using f = fixture();
+    f.apply.mockImplementationOnce(() => {
+      throw new Error('template rejected');
+    });
+    expect(() => f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: { ...f.request, chatTemplateKwargs: { target_lang: 'ja' } } })).toThrow();
+    expect(f.maps[0]!.deleted).toHaveBeenCalledOnce();
   });
 });

@@ -27,7 +27,7 @@ import { useHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { modelLaunchShareUrl } from '@/features/llama-cpp-browser/model-launch/share-url';
-const props = defineProps<{ disabled: boolean, modelPreset?: ModelPreset }>();
+const props = defineProps<{ scrollOwner?: 'self' | 'parent', disabled: boolean, modelPreset?: ModelPreset }>();
 const emit = defineEmits<{ changed: [], busy: [value: boolean], modelReady: [model: LocalModel], selectionChanged: [] }>();
 const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
 const { input, checkedInput, catalog, requestedVariantUnresolved, quantization, candidate, projector, multimodal } = useHuggingFaceSession();
@@ -451,7 +451,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
       <LlamaCppBrowserDownloadDestination :view="downloadDestination.view" :disabled="disabled || deleting" :layout-file="catalog && selectedFiles[0] ? { repository: catalog.repository, path: selectedFiles[0].path } : undefined" />
     </div>
     <p v-if="destinationFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
-    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" v-model:input="input" :disabled="disabled || deleting" :selection-status="active !== undefined ? 'loading' : 'idle'" direct-action="inspect" :input-error="undefined" scroll-owner="results" @busy="searching = $event" @select="inspect({ input: $event })" />
+    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" v-model:input="input" :disabled="disabled || deleting" :selection-status="active !== undefined ? 'loading' : 'idle'" direct-action="inspect" :input-error="undefined" :scroll-owner="scrollOwner === 'parent' ? 'parent' : 'results'" @busy="searching = $event" @select="inspect({ input: $event })" />
     <fieldset v-if="catalog" :disabled="disabled || active !== undefined || deleting || searching" tw-class="space-y-3 disabled:opacity-50">
       <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: catalog.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-repository-link" tw-class="inline-flex items-center gap-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 break-all"><span>Hugging Face · {{ catalog.repository }}</span><ExternalLinkIcon tw-class="w-3 h-3 shrink-0" /></a>
       <div tw-class="flex flex-wrap items-center gap-x-4 gap-y-3" data-testid="llama-hf-options">

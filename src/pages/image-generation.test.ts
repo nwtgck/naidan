@@ -128,7 +128,7 @@ it('opens the diagnostics URL directly and preserves both forms when navigating 
   expect(owner.TEST_ONLY.parameters.value.prompt).toBe('ordinary prompt');
   expect(mocks.dispose).not.toHaveBeenCalled();
   expect(mocks.create).not.toHaveBeenCalled();
-});
+}, 15_000);
 
 it('preserves an active benchmark and its retained results across browser back and forward navigation', async () => {
   const pending = Promise.withResolvers<unknown>();

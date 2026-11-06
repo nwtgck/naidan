@@ -1,0 +1,1 @@
+export const translation__supported_models_help = (): string => "Se admite PLaMo 3 Translate. Al seleccionar un modelo se comprueba su plantilla de traducción. La biblioteca compartida también muestra modelos para otros usos.";

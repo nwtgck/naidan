@@ -621,11 +621,12 @@ sys.exit(module.main())
         (self.root / 'untracked.txt').write_text('preserve')
         self.assert_unchanged_failure(args=['patch'], message='clean')
 
-    @unittest.skipIf(os.name == 'nt', 'This fixture uses a POSIX Git hook.')
     def test_failed_commit_preserves_inspectable_work_and_reports_failure(self) -> None:
-        hook = self.root / '.git/hooks/pre-commit'
-        hook.write_text('#!/bin/sh\nexit 1\n')
-        hook.chmod(0o755)
+        # Do not depend on executing hooks from /tmp: hardened CI containers
+        # may mount it noexec and Git silently skips non-executable hooks.
+        # Force a failure at `git commit` using a deliberately missing signer.
+        self.git(args=['config', 'commit.gpgsign', 'true'])
+        self.git(args=['config', 'gpg.program', str(self.root / 'missing-test-gpg')])
         before_head = self.git(args=['rev-parse', 'HEAD'])
         result = self.invoke(args=['patch', '--date', '2026-11-04'])
         self.assertNotEqual(result.returncode, 0)

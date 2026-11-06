@@ -1,0 +1,1 @@
+export const translation__supported_models_help = (): string => "PLaMo 3 Translate is supported. The embedded translation template is checked when you select a model. Other saved models remain available in the shared library.";

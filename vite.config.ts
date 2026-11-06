@@ -440,6 +440,8 @@ export default defineConfig(({ mode, command }) => {
         'docs/**',
         'src/test-tmp/**',
         'src/lint-rule-tmp/**',
+        // These Python and node:test suites run separately in test_release_tooling.
+        'scripts/tests/**',
       ],
       setupFiles: ['./src/test-setup.test-support.ts'],
     },

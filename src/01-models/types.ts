@@ -537,6 +537,11 @@ export interface Settings {
     },
     /** Only the selected model is persisted; live conversation/media stay in memory. */
     liveConversationModelId?: string,
+    /** Translation preferences only; source text, output and terminology remain in memory. */
+    translation?: {
+      modelId?: string,
+      autoTranslate?: { enabled?: boolean, debounceMs?: number },
+    },
     llamaCppBrowser?: LlamaCppBrowserSettings,
     browserImageGeneration?: BrowserImageGenerationSettings,
     readonly unreadable?: {

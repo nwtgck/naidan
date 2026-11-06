@@ -91,3 +91,18 @@ it('bounds a local tool schema before recursive Zod validation, including cyclic
   parameters.child = parameters;
   expect(() => prepareTranscript({ input: { ...input, tools: [{ type: 'function', function: { name: 'tool', description: '', parameters } }] } })).toThrow('depth');
 });
+
+it('rejects template arguments unsupported by the peer protocol instead of silently dropping translation direction', () => {
+  expect(() => prepareTranscript({
+    input: {
+      modelId: 'model',
+      messages: [{ role: 'user', content: 'hello' }],
+      temperature: 0,
+      topP: 1,
+      presencePenalty: 0,
+      frequencyPenalty: 0,
+      stop: [],
+      chatTemplateKwargs: { target_lang: 'en' },
+    },
+  })).toThrow('Chat template arguments are not supported by peer inference.');
+});

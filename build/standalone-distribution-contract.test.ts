@@ -23,10 +23,12 @@ describe('standalone distribution contract', () => {
   });
 
   it('publishes every locale package to GitHub Release without renaming the universal public convention', () => {
-    const workflow = readRepositoryFile({ fileName: '.github/workflows/main.yml' });
-    expect(workflow).toContain('mv dist/naidan-standalone.zip dist/naidan-standalone-${TAG}.zip');
-    expect(workflow).toContain('for ZIP_PATH in dist/naidan-standalone-*.zip; do');
-    expect(workflow).toContain('dist/naidan-standalone-*-${{ steps.get_tag.outputs.TAG_NAME }}.zip');
+    const workflow = readRepositoryFile({ fileName: '.github/workflows/sync-release-notes.yml' });
+    expect(workflow).toContain('for zip_path in dist/naidan-standalone-*.zip; do');
+    expect(workflow).toContain('mv "$zip_path" "${zip_path%.zip}-${PUBLISH_TAG}.zip"');
+    expect(workflow).toContain('mv dist/naidan-standalone.zip "dist/naidan-standalone-${PUBLISH_TAG}.zip"');
+    expect(workflow).toContain('dist/naidan-standalone-${{ inputs.publish-tag }}.zip');
+    expect(workflow).toContain('dist/naidan-standalone-*-${{ inputs.publish-tag }}.zip');
   });
 
   it('serves locale packages but intentionally keeps them out of PWA precache', () => {

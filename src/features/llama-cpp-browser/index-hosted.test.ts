@@ -1320,3 +1320,15 @@ describe('live conversation shared lane ownership', () => {
     expect(() => scope.request({ command: { type: 'close' }, onEvent: async () => {} })).toThrow('owns session close');
   });
 });
+
+it('keeps structured template arguments through the scoped generation service and worker request', async () => {
+  const chatTemplateKwargs = { target_lang: 'en', glossary: [{ source: 'a', target: 'b' }] };
+  await service.runGenerationOperation({
+    signal: undefined,
+    operation: async ({ scope }) => {
+      await scope.generate({ input: { ...input(), chatTemplateKwargs }, onEvent: () => {}, signal: scope.signal });
+    },
+  });
+  expect(worker.generate.mock.calls[0]?.[0].request.chatTemplateKwargs).toEqual(chatTemplateKwargs);
+  expect(worker.generate.mock.calls[0]?.[0].request.messages).toEqual(input().messages);
+});

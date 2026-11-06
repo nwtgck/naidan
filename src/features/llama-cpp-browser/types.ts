@@ -140,6 +140,8 @@ export const generateInputSchema = z.object({
   messages: z.array(chatMessageSchema).min(1),
   tools: z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string().min(1), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict() }).strict()).optional(),
   reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
+  // Values are JSON, not pre-serialized strings. Only the native bridge encodes them.
+  chatTemplateKwargs: z.record(z.string(), z.json()).optional(),
   temperature: z.number().min(0).max(10),
   topP: z.number().min(0).max(1),
   maxTokens: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
