@@ -4,6 +4,7 @@ import type { Endpoint, LmParameters } from '@/01-models/types';
 import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import type { UiLocale } from '@/01-models/ui-locale';
+import { lazyStrings } from '@/strings';
 
 export type TranslationSource = 'session' | 'workspace' | 'global';
 export type ImagePromptTranslationTarget = {
@@ -50,7 +51,7 @@ export const imagePromptTranslationLanguages: readonly { locale: UiLocale, name:
 ];
 
 /** Public display, never include authentication headers or URL credentials. */
-export function imagePromptTranslationEndpointLabel({ endpoint }: { endpoint: Endpoint }): string {
+export function imagePromptTranslationEndpointLabel({ endpoint }: { endpoint: Endpoint }): string | undefined {
   switch (endpoint.type) {
   case 'openai': case 'ollama': {
     try {
@@ -61,7 +62,7 @@ export function imagePromptTranslationEndpointLabel({ endpoint }: { endpoint: En
   }
   case 'naidan_rpc': return 'Naidan RPC';
   case 'transformers_js': return 'Transformers.js';
-  case 'llama_cpp_browser': return 'llama.cpp (browser)';
+  case 'llama_cpp_browser': return lazyStrings.llamaCppBrowser__endpoint_label();
   case 'browser_provided_lm': return 'Browser';
   case 'unsupported_experimental_endpoint': return 'Unsupported endpoint';
   default: {

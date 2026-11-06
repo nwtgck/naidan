@@ -88,12 +88,9 @@ function canOpen(): boolean {
   return !props.disabled && disclosureOpen?.value !== false;
 }
 
-async function toggle() {
-  if (!canOpen()) {
-    return;
-  }
-  if (open.value) {
-    close({ restoreFocus: false });
+/** Open explicitly without toggling a menu that another caller already opened. */
+async function openMenu() {
+  if (open.value || !canOpen()) {
     return;
   }
   popup.refresh();
@@ -109,6 +106,14 @@ async function toggle() {
   }
   const selectedButton = menuRef.value?.querySelector<HTMLButtonElement>('[aria-selected="true"]:not(:disabled)');
   (selectedButton ?? menuRef.value?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)'))?.focus();
+}
+
+async function toggle() {
+  if (open.value) {
+    close({ restoreFocus: false });
+    return;
+  }
+  await openMenu();
 }
 
 function choose({ value }: { value: string }) {
@@ -213,6 +218,7 @@ watch(() => disclosureOpen?.value, value => {
   }
 });
 defineExpose({
+  openMenu,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.

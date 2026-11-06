@@ -20,6 +20,12 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Persist llama.cpp browser endpoints with the stable `llama_cpp_browser` type on their next save while continuing to read existing `experimental_type` records without rewriting them on load. Other experimental endpoints and settings are unchanged.
+- Rename user-facing llama.cpp browser labels to “llama.cpp in the browser” (localized in each language) and list it first among concrete endpoint choices, without changing inherited choices or default connections.
+- Open the endpoint choices together with connection details in chat and chat-group overrides. Selecting an endpoint closes only the choices; clicking the connection summary again closes the details.
+
 ## [0.64.0] - 2026-11-06
 
 ### Added

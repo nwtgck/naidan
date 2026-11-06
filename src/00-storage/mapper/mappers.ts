@@ -864,6 +864,11 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
 
     return exactObject<Extract<Endpoint, { type: 'transformers_js' }>>()({ type });
   }
+  case 'llama_cpp_browser': {
+    const { type, experimental: _experimental, ...unhandled } = dto;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<Endpoint, { type: 'llama_cpp_browser' }>>()({ type });
+  }
   case 'experimental_type': {
     const {
       type: _type,
@@ -968,9 +973,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
   case 'llama_cpp_browser': {
     const { type, ...unhandled } = endpoint;
     unhandled satisfies Record<PropertyKey, never>;
-    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'llama_cpp_browser' }>>()({ type });
-    const experimental = exactObject<ExperimentalEndpointDto>()({ endpoint: payload, unreadable: undefined });
-    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({ type: 'experimental_type', experimental });
+    return exactObject<Extract<EndpointDto, { type: 'llama_cpp_browser' }>>()({ type, experimental: undefined });
   }
   case 'browser_provided_lm': {
     const { type, ...unhandled } = endpoint;

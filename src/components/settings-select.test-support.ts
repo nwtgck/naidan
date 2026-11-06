@@ -9,7 +9,8 @@ export const SettingsSelectStub = defineComponent({
     disabled: Boolean,
   },
   emits: ['update:modelValue'],
-  setup(props, { emit }) {
+  setup(props, { emit, expose }) {
+    expose({ openMenu() {} });
     return () => h('select', {
       value: props.modelValue,
       disabled: props.disabled,

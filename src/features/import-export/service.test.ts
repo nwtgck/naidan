@@ -862,6 +862,50 @@ ${JSON.stringify({
       expect(settings.endpoint.type).toBe('transformers_js');
     });
 
+    it('exports legacy llama.cpp endpoints in the stable format without rewriting source storage', async () => {
+      localStorage.clear();
+      using _storageCleanup = {
+        [Symbol.dispose]() {
+          localStorage.clear();
+        },
+      };
+      const key = `${STORAGE_KEY_PREFIX}lsp:settings`;
+      const original = JSON.stringify({
+        ...createValidSettingsDto(),
+        endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } },
+        experimental: { llamaCppBrowser: { contextTokens: 8192 } },
+      });
+      localStorage.setItem(key, original);
+      const provider = new LocalStorageProvider();
+      mockStorage.dumpWithoutLock.mockImplementation(() => provider.dump());
+      const { stream } = await service.exportData({});
+      const reader = stream.getReader();
+      await using _readerCleanup = {
+        async [Symbol.asyncDispose]() {
+          await reader.cancel();
+          reader.releaseLock();
+        },
+      };
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        chunks.push(Uint8Array.from(value));
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks));
+      const settingsEntry = Object.values(zip.files).find(file => file.name.endsWith('/settings.json'));
+      if (!settingsEntry) {
+        throw new Error('Export must contain settings.');
+      }
+      const exported = JSON.parse(await settingsEntry.async('string'));
+      expect(exported.endpoint).toStrictEqual({ type: 'llama_cpp_browser' });
+      expect(exported.experimental.llamaCppBrowser).toStrictEqual({ contextTokens: 8192 });
+      expect(localStorage.getItem(key)).toBe(original);
+      expect(mockStorage.updateSettings).not.toHaveBeenCalled();
+    });
+
     it('sanitizes and truncates export filenames', async () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {

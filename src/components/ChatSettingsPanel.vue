@@ -403,10 +403,10 @@ function titleReasoningLabel({
 // Keep select parsing exhaustive: adding an EndpointType must fail typechecking
 // until the UI value and label handling are reviewed.
 const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
+  llama_cpp_browser: true,
   openai: true,
   ollama: true,
   naidan_rpc: true,
-  llama_cpp_browser: true,
   transformers_js: true,
   browser_provided_lm: true,
 };
@@ -1744,6 +1744,20 @@ async function handleRestoreDefaults() {
 
 // Presentation stays separate from raw draft values and the existing save commands.
 const connectionOpen = ref(false);
+const endpointTypeSelect = ref<InstanceType<typeof SettingsSelect> | null>(null);
+
+async function toggleConnection() {
+  connectionOpen.value = !connectionOpen.value;
+  if (!connectionOpen.value) {
+    return;
+  }
+  // The disclosure must be visible before the menu measures its anchor and focuses.
+  await nextTick();
+  if (connectionOpen.value) {
+    await endpointTypeSelect.value?.openMenu();
+  }
+}
+
 const connectionTrigger = ref<HTMLButtonElement | null>(null);
 const connectionDetailsId = useId();
 const headingId = useId();
@@ -1892,7 +1906,7 @@ function handleModalKeydown({ event }: { event: KeyboardEvent }) {
         <div class="scoped-settings-main">
           <div tw-class="min-w-0 space-y-2">
             <span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</span>
-            <button type="button" :aria-expanded="connectionOpen" :aria-controls="connectionDetailsId" ref="connectionTrigger" data-testid="chat-setting-connection-trigger" class="scoped-connection-trigger" tw-class="group flex w-full min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800" @click="connectionOpen = !connectionOpen">
+            <button type="button" :aria-expanded="connectionOpen" :aria-controls="connectionDetailsId" ref="connectionTrigger" data-testid="chat-setting-connection-trigger" class="scoped-connection-trigger" tw-class="group flex w-full min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800" @click="toggleConnection">
               <span tw-class="block min-w-0 flex-1"><span tw-class="block truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ scopedEndpointTypeLabel({ endpointType: effectiveEndpointType }) }}</span><span tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="localSettings.endpoint ? undefined : inheritedEndpointSource" /><span tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ endpointDetail({ endpoint: effectiveEndpoint }) }}</span></span></span><ChevronDownIcon :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200', connectionOpen && 'rotate-180']" />
             </button>
             <CspLmEndpointHint activity-for-display-only="connection" v-if="!connectionOpen && isHttpEndpoint(effectiveEndpoint)" :fake-lm-debug-mode-status="undefined" :endpoint="effectiveEndpoint" operation="models" presentation="compact" />
@@ -1908,7 +1922,7 @@ function handleModalKeydown({ event }: { event: KeyboardEvent }) {
           </div>
         </div>
         <SettingsCollapse :id="connectionDetailsId" :open="connectionOpen" :return-focus="connectionTrigger ?? undefined"><div tw-class="space-y-4 rounded-xl bg-gray-50/70 p-4 dark:bg-gray-800/25">
-          <div tw-class="max-w-sm space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</span><SettingsSelect :model-value="localSettings.endpoint?.type || 'global'" :options="mainEndpointChoices" :label="lazyStrings.ChatSettingsPanel__endpoint_type()" @update:model-value="value => changeMainType({ value })" data-testid="chat-setting-endpoint-type-select" /></div>
+          <div tw-class="max-w-sm space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</span><SettingsSelect ref="endpointTypeSelect" :model-value="localSettings.endpoint?.type || 'global'" :options="mainEndpointChoices" :label="lazyStrings.ChatSettingsPanel__endpoint_type()" @update:model-value="value => changeMainType({ value })" data-testid="chat-setting-endpoint-type-select" /></div>
           <RpcRegistrationSelect surface="settings" v-if="localSettings.endpoint?.type === 'naidan_rpc'" :model-value="localSettings.endpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: false })" />
           <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
           <template v-if="isHttpEndpoint(effectiveEndpoint)">
