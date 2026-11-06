@@ -65,7 +65,7 @@
     "@typescript-eslint/eslint-plugin": "^8.61.0",
     "@typescript-eslint/parser": "^8.61.0",
     "@vitejs/plugin-vue": "^6.0.7",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.0.5",
     "@vue/babel-plugin-jsx": "^1.5.0",
     "@vue/compiler-dom": "^3.5.39",
     "@vue/compiler-sfc": "^3.5.39",
