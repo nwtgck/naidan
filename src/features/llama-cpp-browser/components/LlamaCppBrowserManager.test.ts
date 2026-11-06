@@ -1325,3 +1325,37 @@ it('removes temporary model entries without a file deletion plan or confirmation
   expect(prepareModelRemoval).not.toHaveBeenCalled();
   expect(llamaCppBrowserService.removeModel).not.toHaveBeenCalled();
 });
+
+it('lets a translation owner tab the existing library without unmounting drafts or changing chat settings', async () => {
+  vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([storedModel]);
+  const host = document.createElement('div');
+  document.body.append(host);
+  using _host = {
+    [Symbol.dispose]() {
+      host.remove();
+    },
+  };
+  const wrapper = mount(LlamaCppBrowserManager, { attachTo: host, props: { presentation: 'settings', catalogFirst: true, modelView: 'catalog', scrollOwner: 'parent', runtimeSettings: 'hide', selectionAction: 'select' } });
+  wrappers.push(wrapper);
+  await flushPromises();
+  const suggestions = wrapper.getComponent(LlamaCppBrowserModelSuggestions);
+  const library = wrapper.get('[data-testid="llama-cpp-browser-model-library"]').element;
+  expect(suggestions.props('scrollOwner')).toBe('parent');
+  expect(wrapper.get('[data-testid="llama-model-suggestions"]').isVisible()).toBe(true);
+  expect(wrapper.findComponent({ name: 'LlamaCppBrowserRuntimeSettings' }).exists()).toBe(false);
+  expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').isVisible()).toBe(false);
+  await wrapper.setProps({ modelView: 'repository' });
+  expect(wrapper.get('[data-testid="llama-model-suggestions"]').isVisible()).toBe(false);
+  await wrapper.setProps({ modelView: 'local' });
+  expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').isVisible()).toBe(true);
+  expect(wrapper.get('[data-testid="llama-cpp-browser-model-library"]').element).toBe(library);
+  // An event queued by a hidden catalog may not select a model in another tab.
+  suggestions.vm.$emit('select', storedModel);
+  await flushPromises();
+  expect(wrapper.emitted('modelSelected')).toBeUndefined();
+  expect(llamaCppBrowserService.setOptions).not.toHaveBeenCalled();
+  const chat = render();
+  await flushPromises();
+  expect(chat.findComponent({ name: 'LlamaCppBrowserRuntimeSettings' }).exists()).toBe(true);
+  expect(chat.get('[data-testid="llama-cpp-browser-choose-files"]').isVisible()).toBe(true);
+});

@@ -16,7 +16,7 @@ describe('experimental translation settings persistence', () => {
   });
 
   it('round trips exactly the two approved settings without changing chat configuration', () => {
-    const translation = { modelId: 'renamed-model.gguf', autoTranslate: false };
+    const translation = { modelId: 'renamed-model.gguf', autoTranslate: { enabled: false } };
     const initial: Settings = { ...base, defaultModelId: 'chat-model', experimental: { locale: 'ja', translation } };
     const dto = SettingsSchemaDto.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: initial }))));
     const domain = settingsToDomain({ dto });
@@ -46,9 +46,9 @@ describe('experimental translation settings persistence', () => {
   it('isolates unreadable experimental translation settings without discarding unrelated preferences', () => {
     const schema = optionalExperimentalFieldSchemaDto({ schema: ExperimentalSettingsSchemaDto });
     const parsed = schema.parse({ locale: 'ja', translation: { modelId: 123 } });
-    expect(parsed?.translation).toBeUndefined();
+    expect(parsed?.translation?.modelId).toBeUndefined();
     expect(parsed?.locale).toBe('ja');
-    expect(parsed?.unreadable).toHaveProperty('translation');
+    expect(parsed?.translation?.unreadable).toHaveProperty('modelId');
   });
 });
 
@@ -60,4 +60,18 @@ it('discards legacy language fields on a settings round trip, including malforme
   expect(serialized).not.toContain('sourceLang');
   expect(serialized).not.toContain('targetLang');
   expect(domain.experimental?.locale).toBe('ja');
+});
+
+it.each([true, false])('destructively discards old boolean %s without losing the selected model or other settings', old => {
+  const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { locale: 'ja', translation: { modelId: 'model', autoTranslate: old } } });
+  const domain = settingsToDomain({ dto });
+  expect(domain.experimental?.translation).toEqual({ modelId: 'model', autoTranslate: undefined });
+  expect(domain.experimental?.locale).toBe('ja');
+  expect(JSON.parse(JSON.stringify(settingsToDto({ domain }))).experimental.translation).toEqual({ modelId: 'model' });
+});
+
+it('round trips an explicit delay without persisting source text or language parameters', () => {
+  const initial: Settings = { ...base, experimental: { translation: { modelId: 'model', autoTranslate: { enabled: false, debounceMs: 1200 } } } };
+  const domain = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(settingsToDto({ domain: initial })))) });
+  expect(domain.experimental?.translation).toEqual(initial.experimental?.translation);
 });

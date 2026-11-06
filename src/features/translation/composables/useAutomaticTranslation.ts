@@ -1,20 +1,23 @@
-import { onScopeDispose, watch, type Ref } from 'vue';
+import { onScopeDispose, ref, watch, type Ref } from 'vue';
 
 // One debounced intent, not a queue of obsolete text snapshots. The session
 // keeps busy true until cancellation has settled, including native teardown.
-export function useAutomaticTranslation({ key, enabled, ready, busy, composing, run, invalidate, stop }: {
+export function useAutomaticTranslation({ key, enabled, ready, busy, composing, debounceMs, run, invalidate, stop }: {
   key: Readonly<Ref<string>>,
   enabled: Readonly<Ref<boolean>>,
   ready: Readonly<Ref<boolean>>,
   busy: Readonly<Ref<boolean>>,
   composing: Readonly<Ref<boolean>>,
+  debounceMs: Readonly<Ref<number>>,
   run: () => Promise<void>,
   invalidate: () => void,
   stop: () => void,
 }) {
+  const manuallyStopped = ref(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let attempted: string | undefined;
-  let quietUntil = 0;
+  let lastChangeAt = Date.now();
+  let quietUntil = lastChangeAt + debounceMs.value;
   let disposed = false;
 
   function clearTimer(): void {
@@ -24,12 +27,12 @@ export function useAutomaticTranslation({ key, enabled, ready, busy, composing, 
 
   function schedule(): void {
     clearTimer();
-    if (disposed || !enabled.value || !ready.value || busy.value || composing.value || attempted === key.value) {
+    if (disposed || !enabled.value || !ready.value || busy.value || attempted === key.value) {
       return;
     }
     timer = setTimeout(() => {
       timer = undefined;
-      if (disposed || !enabled.value || !ready.value || busy.value || composing.value || attempted === key.value) {
+      if (disposed || !enabled.value || !ready.value || busy.value || attempted === key.value) {
         return;
       }
       attempted = key.value;
@@ -39,17 +42,26 @@ export function useAutomaticTranslation({ key, enabled, ready, busy, composing, 
     }, Math.max(0, quietUntil - Date.now()));
   }
 
-  watch([key, composing], () => {
+  watch(key, () => {
     clearTimer();
     attempted = undefined;
-    quietUntil = Date.now() + 600;
+    manuallyStopped.value = false;
+    lastChangeAt = Date.now();
+    quietUntil = lastChangeAt + debounceMs.value;
     invalidate();
+    schedule();
+  }, { flush: 'sync' });
+  watch(debounceMs, () => {
+    // Changing timing neither cancels a running request nor retries a stopped one.
+    quietUntil = lastChangeAt + debounceMs.value;
     schedule();
   }, { flush: 'sync' });
   watch(enabled, value => {
     if (value) {
       attempted = undefined;
-      quietUntil = Date.now() + 600;
+      manuallyStopped.value = false;
+      lastChangeAt = Date.now();
+      quietUntil = lastChangeAt + debounceMs.value;
     }
     schedule();
   }, { flush: 'sync' });
@@ -61,6 +73,7 @@ export function useAutomaticTranslation({ key, enabled, ready, busy, composing, 
     }
     clearTimer();
     attempted = key.value;
+    manuallyStopped.value = false;
     await run();
   }
 
@@ -69,6 +82,7 @@ export function useAutomaticTranslation({ key, enabled, ready, busy, composing, 
     // Explicit stop wins over the automatic scheduler until the request is
     // edited, the user retries, or automatic translation is enabled again.
     attempted = key.value;
+    manuallyStopped.value = true;
     stop();
   }
 
@@ -76,7 +90,7 @@ export function useAutomaticTranslation({ key, enabled, ready, busy, composing, 
     disposed = true;
     clearTimer();
   });
-  return { runManually, stopManually, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
+  return { runManually, stopManually, manuallyStopped, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
 
 export const TEST_ONLY = {

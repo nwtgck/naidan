@@ -17,9 +17,10 @@ import { useRecentModelImports } from '@/features/llama-cpp-browser/composables/
 
 // Suspension is opt-in: an omitted Boolean prop is false in Vue. It must not
 // disable model management in onboarding or other callers without this prop.
-const props = defineProps<{ suspended?: boolean, catalogFirst?: boolean, inventory?: ModelInventorySource, externalBusy?: boolean, runtimeStatus?: 'idle' | 'working' | 'unavailable', defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
+const props = defineProps<{ view?: 'catalog' | 'repository' | 'local', suspended?: boolean, catalogFirst?: boolean, inventory?: ModelInventorySource, externalBusy?: boolean, runtimeStatus?: 'idle' | 'working' | 'unavailable', defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [modelId: string] }>();
 const slots = useSlots();
+const showLocal = computed(() => props.view === undefined || props.view === 'local');
 defineSlots<{
   'selection-hint'(): unknown,
   'model-actions'({ model, disabled }: { model: LocalModel, disabled: boolean }): unknown,
@@ -203,6 +204,7 @@ onUnmounted(() => {
   refreshController?.abort();
   unsubscribeModels?.();
 });
+watch(() => props.view, invalidateModelSelection);
 const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
 
 defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -213,25 +215,33 @@ defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD
       <AlertCircleIcon tw-class="w-5 h-5 shrink-0 mt-0.5" />
       <p>{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     </div>
-    <slot v-if="props.catalogFirst" name="suggestions" :models="models" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
-    <slot name="header" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :busy="busy" :refresh="refresh" :select-ready-model="selectReadyModel" :invalidate-model-selection="invalidateModelSelection" />
-    <LlamaCppBrowserModelImport :disabled="props.suspended || unavailable || busy" @busy="importing = $event" @changed="refresh" />
+    <div v-if="props.catalogFirst" v-show="props.view === undefined || props.view === 'catalog'">
+      <slot name="suggestions" :models="models" :disabled="(props.view !== undefined && props.view !== 'catalog') || props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
+    </div>
+    <div v-show="props.view === undefined || props.view === 'repository'">
+      <slot name="header" :disabled="(props.view !== undefined && props.view !== 'repository') || props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :busy="busy" :refresh="refresh" :select-ready-model="selectReadyModel" :invalidate-model-selection="invalidateModelSelection" />
+    </div>
+    <div v-show="showLocal">
+      <LlamaCppBrowserModelImport :disabled="!showLocal || props.suspended || unavailable || busy" @busy="importing = $event" @changed="refresh" />
+    </div>
     <p v-if="removalChanged" role="alert" data-testid="llama-removal-changed" tw-class="text-xs text-red-500">{{ lazyStrings.llamaCppBrowser__files_changed_review_before_deleting() }}</p>
     <div v-if="displayedError" role="alert" tw-class="flex items-start gap-3 rounded-2xl p-4 border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400">
       <AlertCircleIcon tw-class="w-4 h-4 shrink-0 mt-0.5" /><div tw-class="text-xs space-y-1"><p>{{ displayedError === 'invalid-gguf' ? lazyStrings.llamaCppBrowser__gguf_files_only() : lazyStrings.llamaCppBrowser__operation_failed() }}</p><code tw-class="font-mono">{{ displayedError }}</code></div>
     </div>
     <p v-if="chatGroupCreationFailed" role="alert" data-testid="llama-cpp-browser-create-chat-group-error" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group() }}</p>
-    <slot v-if="!props.catalogFirst" name="suggestions" :models="models" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
-    <section v-if="recentModels.length" data-testid="llama-recent-imports" tw-class="space-y-2 rounded-2xl border border-blue-100 bg-blue-50/30 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
+    <div v-if="!props.catalogFirst" v-show="props.view === undefined || props.view === 'catalog'">
+      <slot name="suggestions" :models="models" :disabled="(props.view !== undefined && props.view !== 'catalog') || props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :create-chat-group="props.createChatGroup ? handleCreateChatGroup : undefined" :creating-chat-group-model-id="creatingChatGroup?.modelId" :select-default="selectDefault" :refresh="refresh" />
+    </div>
+    <section v-show="showLocal" v-if="recentModels.length" data-testid="llama-recent-imports" tw-class="space-y-2 rounded-2xl border border-blue-100 bg-blue-50/30 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
       <div tw-class="flex items-center justify-between gap-3">
         <h3 :tw-class="['inline-flex items-center gap-2 text-sm font-semibold text-gray-800', isSettingsTypography ? 'dark:text-gray-300' : 'dark:text-gray-100']"><CheckIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserModelLibrary__just_added_models() }}<span tw-class="text-xs font-normal tabular-nums text-gray-400">{{ recentModels.length }}</span></h3>
         <button type="button" :aria-label="lazyStrings.LlamaCppBrowserModelLibrary__dismiss_just_added_models()" :title="lazyStrings.LlamaCppBrowserModelLibrary__dismiss_just_added_models()" data-testid="llama-dismiss-recent-imports" tw-class="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-gray-400 transition-colors hover:bg-blue-100/50 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-blue-500/10 dark:hover:text-gray-200" @click="dismissRecentModels"><XIcon aria-hidden="true" tw-class="h-3.5 w-3.5" /></button>
       </div>
       <ul tw-class="space-y-2">
-        <LlamaCppBrowserImportedModelRow v-for="model in recentModels" :key="model.modelId" :model="model" :default-model="displayedDefault" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :removal-disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || downloading || queuedDownloadBusy || refreshing" :default-action-disabled="defaultActionDisabled" :chat-group-action="props.createChatGroup ? 'available' : 'unavailable'" :creating="creatingChatGroup?.modelId === model.modelId" @create-chat-group="handleCreateChatGroup({ model })" @select-default="selectDefault({ model: $event })" @remove="remove({ modelId: model.modelId })"><template v-if="slots['model-actions']" #actions="{ disabled }"><slot name="model-actions" :model="model" :disabled="disabled" /></template></LlamaCppBrowserImportedModelRow>
+        <LlamaCppBrowserImportedModelRow v-for="model in recentModels" :key="model.modelId" :model="model" :default-model="displayedDefault" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :removal-disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || downloading || queuedDownloadBusy || refreshing" :default-action-disabled="defaultActionDisabled" :chat-group-action="props.createChatGroup ? 'available' : 'unavailable'" :creating="creatingChatGroup?.modelId === model.modelId" @create-chat-group="handleCreateChatGroup({ model })" @select-default="selectDefault({ model: $event })" @remove="remove({ modelId: model.modelId })"><template v-if="slots['model-actions']" #actions="{ disabled }"><slot name="model-actions" :model="model" :disabled="disabled || !showLocal" /></template></LlamaCppBrowserImportedModelRow>
       </ul>
     </section>
-    <section tw-class="space-y-4">
+    <section v-show="showLocal" tw-class="space-y-4">
       <div tw-class="flex items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
         <h3 :tw-class="['flex items-center gap-2 text-sm text-gray-800', isSettingsTypography ? 'font-semibold dark:text-gray-300' : 'font-bold dark:text-white']"><HardDriveIcon tw-class="w-4 h-4 text-blue-500" />{{ lazyStrings.llamaCppBrowser__imported_models() }}<span tw-class="text-xs text-gray-400 tabular-nums">{{ modelFilter.trim() ? `${filteredModels.length} / ${models.length}` : models.length }}</span></h3>
         <button type="button" data-testid="llama-cpp-browser-refresh" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :aria-label="lazyStrings.llamaCppBrowser__refresh_models()" :title="lazyStrings.llamaCppBrowser__refresh_models()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="refresh"><RefreshCcwIcon :tw-class="['w-4 h-4', { 'animate-spin': refreshing }]" /></button>
@@ -248,7 +258,7 @@ defineExpose({ refresh, selectReadyModel, invalidateModelSelection, ...((__BUILD
       <div v-else-if="models.length === 0" tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-6 text-center text-sm text-gray-500 dark:text-gray-400"><p>{{ lazyStrings.llamaCppBrowser__no_imported_models() }}</p></div>
       <p v-else-if="filteredModels.length === 0" role="status" data-testid="llama-imported-model-no-results" tw-class="py-6 text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__no_matching_models() }}</p>
       <ul v-else data-testid="llama-cpp-browser-model-list" tw-class="space-y-2">
-        <LlamaCppBrowserImportedModelRow v-for="model in filteredModels" :key="model.modelId" :model="model" :default-model="displayedDefault" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :removal-disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || downloading || queuedDownloadBusy || refreshing" :default-action-disabled="defaultActionDisabled" :chat-group-action="props.createChatGroup ? 'available' : 'unavailable'" :creating="creatingChatGroup?.modelId === model.modelId" @create-chat-group="handleCreateChatGroup({ model })" @select-default="selectDefault({ model: $event })" @remove="remove({ modelId: model.modelId })"><template v-if="slots['model-actions']" #actions="{ disabled }"><slot name="model-actions" :model="model" :disabled="disabled" /></template></LlamaCppBrowserImportedModelRow>
+        <LlamaCppBrowserImportedModelRow v-for="model in filteredModels" :key="model.modelId" :model="model" :default-model="displayedDefault" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" :removal-disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || downloading || queuedDownloadBusy || refreshing" :default-action-disabled="defaultActionDisabled" :chat-group-action="props.createChatGroup ? 'available' : 'unavailable'" :creating="creatingChatGroup?.modelId === model.modelId" @create-chat-group="handleCreateChatGroup({ model })" @select-default="selectDefault({ model: $event })" @remove="remove({ modelId: model.modelId })"><template v-if="slots['model-actions']" #actions="{ disabled }"><slot name="model-actions" :model="model" :disabled="disabled || !showLocal" /></template></LlamaCppBrowserImportedModelRow>
       </ul>
       <slot name="selection-hint"><p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowser__import_then_select() }}</p></slot>
     </section>

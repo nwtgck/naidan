@@ -3378,8 +3378,10 @@ import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_to
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/ko';
 import { translation__add_term } from '@/strings/messages/translation__add_term/ko';
 import { translation__automatic_translation } from '@/strings/messages/translation__automatic_translation/ko';
+import { translation__automatic_translation_settings } from '@/strings/messages/translation__automatic_translation_settings/ko';
 import { translation__back_to_chats } from '@/strings/messages/translation__back_to_chats/ko';
 import { translation__back_to_translation } from '@/strings/messages/translation__back_to_translation/ko';
+import { translation__candidate_models } from '@/strings/messages/translation__candidate_models/ko';
 import { translation__check_again } from '@/strings/messages/translation__check_again/ko';
 import { translation__checking_model } from '@/strings/messages/translation__checking_model/ko';
 import { translation__choose_model_to_start } from '@/strings/messages/translation__choose_model_to_start/ko';
@@ -3390,6 +3392,7 @@ import { translation__copied } from '@/strings/messages/translation__copied/ko';
 import { translation__copy } from '@/strings/messages/translation__copy/ko';
 import { translation__copy_failed_select_text } from '@/strings/messages/translation__copy_failed_select_text/ko';
 import { translation__default_style } from '@/strings/messages/translation__default_style/ko';
+import { translation__delay_after_editing_ms } from '@/strings/messages/translation__delay_after_editing_ms/ko';
 import { translation__detect_language } from '@/strings/messages/translation__detect_language/ko';
 import { translation__easy_japanese } from '@/strings/messages/translation__easy_japanese/ko';
 import { translation__enter_source_text } from '@/strings/messages/translation__enter_source_text/ko';
@@ -3398,10 +3401,13 @@ import { translation__glossary } from '@/strings/messages/translation__glossary/
 import { translation__japanese_style } from '@/strings/messages/translation__japanese_style/ko';
 import { translation__model_selection_help } from '@/strings/messages/translation__model_selection_help/ko';
 import { translation__model_unreadable } from '@/strings/messages/translation__model_unreadable/ko';
+import { translation__models_on_your_device } from '@/strings/messages/translation__models_on_your_device/ko';
+import { translation__no_matching_languages } from '@/strings/messages/translation__no_matching_languages/ko';
 import { translation__plain_style } from '@/strings/messages/translation__plain_style/ko';
 import { translation__polite_style } from '@/strings/messages/translation__polite_style/ko';
 import { translation__preferences_not_saved } from '@/strings/messages/translation__preferences_not_saved/ko';
 import { translation__preparing_model } from '@/strings/messages/translation__preparing_model/ko';
+import { translation__previous_translation } from '@/strings/messages/translation__previous_translation/ko';
 import { translation__privacy_notice } from '@/strings/messages/translation__privacy_notice/ko';
 import { translation__processing_source } from '@/strings/messages/translation__processing_source/ko';
 import { translation__reference_context } from '@/strings/messages/translation__reference_context/ko';
@@ -3409,6 +3415,7 @@ import { translation__remove_term } from '@/strings/messages/translation__remove
 import { translation__reserved_tokens_not_allowed } from '@/strings/messages/translation__reserved_tokens_not_allowed/ko';
 import { translation__runtime_busy } from '@/strings/messages/translation__runtime_busy/ko';
 import { translation__runtime_unavailable } from '@/strings/messages/translation__runtime_unavailable/ko';
+import { translation__search_languages } from '@/strings/messages/translation__search_languages/ko';
 import { translation__selected_model } from '@/strings/messages/translation__selected_model/ko';
 import { translation__source_language } from '@/strings/messages/translation__source_language/ko';
 import { translation__source_term } from '@/strings/messages/translation__source_term/ko';
@@ -6921,8 +6928,10 @@ export const catalog = {
   toolCall__tool_executions,
   translation__add_term,
   translation__automatic_translation,
+  translation__automatic_translation_settings,
   translation__back_to_chats,
   translation__back_to_translation,
+  translation__candidate_models,
   translation__check_again,
   translation__checking_model,
   translation__choose_model_to_start,
@@ -6933,6 +6942,7 @@ export const catalog = {
   translation__copy,
   translation__copy_failed_select_text,
   translation__default_style,
+  translation__delay_after_editing_ms,
   translation__detect_language,
   translation__easy_japanese,
   translation__enter_source_text,
@@ -6941,10 +6951,13 @@ export const catalog = {
   translation__japanese_style,
   translation__model_selection_help,
   translation__model_unreadable,
+  translation__models_on_your_device,
+  translation__no_matching_languages,
   translation__plain_style,
   translation__polite_style,
   translation__preferences_not_saved,
   translation__preparing_model,
+  translation__previous_translation,
   translation__privacy_notice,
   translation__processing_source,
   translation__reference_context,
@@ -6952,6 +6965,7 @@ export const catalog = {
   translation__reserved_tokens_not_allowed,
   translation__runtime_busy,
   translation__runtime_unavailable,
+  translation__search_languages,
   translation__selected_model,
   translation__source_language,
   translation__source_term,

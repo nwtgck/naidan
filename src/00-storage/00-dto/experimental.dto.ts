@@ -1,5 +1,6 @@
 import * as dtozod from '@/utils/dtozod';
 
+import { optionalExperimentalFieldSchemaDto } from './compatibility/experimental-field';
 import { UI_LOCALES } from '@/01-models/ui-locale';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/dtozod/missingAsUndefined';
 
@@ -248,9 +249,14 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
   bf16WeightType: missingAsUndefined(dtozod.enum(['f32', 'f16'])),
 }));
 
+export const ExperimentalTranslationAutoTranslateSchemaDto = resolveMissingAsUndefined(dtozod.object({
+  enabled: missingAsUndefined(dtozod.boolean()),
+  debounceMs: missingAsUndefined(dtozod.number()),
+}));
+
 export const ExperimentalTranslationSettingsSchemaDto = resolveMissingAsUndefined(dtozod.object({
   modelId: missingAsUndefined(dtozod.string()),
-  autoTranslate: missingAsUndefined(dtozod.boolean()),
+  autoTranslate: missingAsUndefined(ExperimentalTranslationAutoTranslateSchemaDto),
 }));
 export type ExperimentalTranslationSettingsDto = dtozod.infer<typeof ExperimentalTranslationSettingsSchemaDto>;
 
@@ -292,7 +298,8 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
     ])),
   }))),
   liveConversationModelId: missingAsUndefined(dtozod.string()),
-  translation: missingAsUndefined(ExperimentalTranslationSettingsSchemaDto),
+  // Isolate the deliberately removed Boolean autoTranslate without losing the model.
+  translation: missingAsUndefined(optionalExperimentalFieldSchemaDto({ schema: ExperimentalTranslationSettingsSchemaDto })),
   llamaCppBrowser: missingAsUndefined(ExperimentalLlamaCppBrowserSettingsSchemaDto),
   browserImageGeneration: missingAsUndefined(ExperimentalBrowserImageGenerationSettingsSchemaDto),
   hostModelDirectories: missingAsUndefined(dtozod.array(dtozod.object({

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   inspect: vi.fn<InspectTranslationModel>(),
   generate: vi.fn<LlamaCppBrowserService['generate']>(),
   run: vi.fn<LlamaCppBrowserService['runGenerationOperation']>(),
+  prepare: vi.fn<LlamaCppBrowserService['prepareModel']>(),
   store: undefined as Pick<ReturnType<typeof useSettings>, 'settings' | 'initialized' | 'captureExperimentalStorage' | 'updateExperimentalForStorage'> | undefined,
   state: { status: 'idle' } as EngineState,
   listener: undefined as (({ state }: { state: EngineState }) => void) | undefined,
@@ -24,6 +25,11 @@ vi.mock('../model-detection', () => ({ inspectStoredTranslationModel: mocks.insp
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
     getState: () => mocks.state,
+    prepareModel: mocks.prepare,
+    getOptions: () => ({ profile: 'auto', contextTokens: 4096 }),
+    subscribeOptions: () => () => {},
+    getProfileState: () => ({ status: 'idle' }),
+    subscribeProfiles: () => () => {},
     subscribe: ({ listener }: { listener: ({ state }: { state: EngineState }) => void }) => {
       mocks.listener = listener;
       return () => {
@@ -48,10 +54,11 @@ beforeEach(async () => {
   mocks.generate.mockReset().mockResolvedValue({ content: 'Hello', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   mocks.run.mockReset().mockImplementation(async ({ operation, signal }) => operation({ scope: { signal: signal!, generate: mocks.generate } }));
   mocks.state = { status: 'idle' };
+  mocks.prepare.mockReset().mockResolvedValue('ready');
 });
 
 async function fixture() {
-  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', defaultModelId: 'chat-default', experimental: { locale: 'en', translation: { modelId: 'first.gguf', autoTranslate: false } } });
+  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: 'https://example.invalid/v1' }, storageType: 'local', defaultModelId: 'chat-default', experimental: { locale: 'en', translation: { modelId: 'first.gguf', autoTranslate: { enabled: false } } } });
   let storageGeneration = 0;
   const save = vi.fn<ReturnType<typeof useSettings>['updateExperimentalForStorage']>().mockImplementation(async ({ isCurrent, updater }) => {
     if (!isCurrent()) {
@@ -111,7 +118,8 @@ describe('translation workspace workflow', () => {
     expect(f.wrapper.get('[data-testid="translation-output"]').text()).toBe('<img src=x onerror=alert(1)>');
     expect(f.wrapper.find('[data-testid="translation-output"] img').exists()).toBe(false);
     await f.wrapper.get('[data-testid="translation-source"]').setValue('changed');
-    expect(f.wrapper.get('[data-testid="translation-output"]').text()).not.toContain('<img');
+    expect(f.wrapper.get('[data-testid="translation-current-text"]').text()).toBe('');
+    expect(f.wrapper.get('[data-testid="translation-previous-text"]').text()).toBe('<img src=x onerror=alert(1)>');
   });
 
   it('keeps the draft while visiting models, selects without creating a chat and returns to the workspace', async () => {
@@ -148,7 +156,7 @@ describe('translation workspace workflow', () => {
     await flushPromises();
     expect(f.router.currentRoute.value.query).toEqual({ to: 'en' });
     expect(f.save).not.toHaveBeenCalled();
-    expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', autoTranslate: false });
+    expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', autoTranslate: { enabled: false } });
     expect(f.wrapper.get<HTMLButtonElement>('[data-testid="translation-swap"]').element.disabled).toBe(true);
     expect(f.settings.value.defaultModelId).toBe('chat-default');
   });
@@ -241,7 +249,7 @@ describe('translation workspace workflow', () => {
     await f.wrapper.get('[data-testid="translation-source"]').setValue('new source');
     pending.reject(new Error('clipboard denied'));
     await flushPromises();
-    expect(f.wrapper.get('[data-testid="translation-status"]').text()).toBe('');
+    expect(f.wrapper.get('[data-testid="translation-status"]').text()).toBe('Previous translation');
   });
 
   it('does not enable Japanese style controls for a non-Japanese target', async () => {
@@ -284,7 +292,7 @@ describe('translation automatic workflow', () => {
   it('keeps editing available, cancels obsolete output and waits before starting the newest request', async () => {
     using f = await fixture();
     using _clock = fakeClock();
-    f.settings.value.experimental!.translation!.autoTranslate = true;
+    f.settings.value.experimental!.translation!.autoTranslate = { enabled: true };
     const old = Promise.withResolvers<GenerationResult>();
     mocks.generate.mockImplementationOnce(async ({ onEvent }) => {
       await onEvent({ event: { type: 'text', text: 'obsolete' } });
@@ -308,42 +316,45 @@ describe('translation automatic workflow', () => {
     expect(f.wrapper.get('[data-testid="translation-output"]').text()).toBe('Hello');
   });
 
-  it('does not translate IME preedit text, including a submit during composition', async () => {
+  it('automatically translates IME preedit text but does not manually submit the composition', async () => {
     using f = await fixture();
     using _clock = fakeClock();
-    f.settings.value.experimental!.translation!.autoTranslate = true;
+    f.settings.value.experimental!.translation!.autoTranslate = { enabled: true };
     const source = f.wrapper.get('[data-testid="translation-source"]');
     await source.trigger('compositionstart');
     await source.setValue('preedit');
     await f.wrapper.get('form').trigger('submit');
-    await vi.advanceTimersByTimeAsync(1200);
     expect(mocks.generate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+    expect(mocks.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'user', content: 'preedit' }]);
     await source.trigger('compositionend');
     await source.setValue('confirmed');
     await vi.advanceTimersByTimeAsync(600);
     await flushPromises();
-    expect(mocks.generate).toHaveBeenCalledOnce();
+    expect(mocks.generate).toHaveBeenCalledTimes(2);
   });
 
   it('persists only the automatic preference and retains the old value after save failure', async () => {
     using f = await fixture();
-    f.settings.value.experimental!.translation!.autoTranslate = true;
+    f.settings.value.experimental!.translation!.autoTranslate = { enabled: true };
     await flushPromises();
     f.save.mockRejectedValueOnce(new Error('full'));
     await f.wrapper.get('[data-testid="translation-automatic"]').setValue(false);
     await flushPromises();
     expect(f.wrapper.get<HTMLInputElement>('[data-testid="translation-automatic"]').element.checked).toBe(true);
-    expect(f.settings.value.experimental?.translation?.autoTranslate).toBe(true);
+    expect(f.settings.value.experimental?.translation?.autoTranslate).toEqual({ enabled: true });
     await f.wrapper.get('[data-testid="translation-automatic"]').setValue(false);
     await flushPromises();
-    expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', autoTranslate: false });
+    expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', autoTranslate: { enabled: false } });
     expect(f.wrapper.get('[data-testid="translation-run"]').isVisible()).toBe(true);
   });
 
   it('keeps automatic translation stopped until edit or explicit retry', async () => {
     using f = await fixture();
     using _clock = fakeClock();
-    f.settings.value.experimental!.translation!.autoTranslate = true;
+    f.settings.value.experimental!.translation!.autoTranslate = { enabled: true };
     const pending = Promise.withResolvers<GenerationResult>();
     mocks.generate.mockReturnValueOnce(pending.promise);
     await f.wrapper.get('[data-testid="translation-source"]').setValue('text');
@@ -362,7 +373,7 @@ describe('translation automatic workflow', () => {
 
   it('shows the catalog above real editors without losing text on model selection', async () => {
     using f = await fixture();
-    f.settings.value.experimental!.translation = { autoTranslate: false };
+    f.settings.value.experimental!.translation = { autoTranslate: { enabled: false } };
     await flushPromises();
     await f.wrapper.get('[data-testid="translation-source"]').setValue('draft before model');
     const modelPanel = f.wrapper.get('[data-testid="translation-model-panel"]').element;
@@ -415,4 +426,66 @@ describe('translation automatic workflow', () => {
     pending.resolve({ content: 'done', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     await flushPromises();
   });
+});
+
+it('prepares the selected model before input and keeps loading through edits, language changes and explicit stop', async () => {
+  const pending = Promise.withResolvers<'ready' | 'skipped-busy'>();
+  mocks.prepare.mockReturnValueOnce(pending.promise);
+  using f = await fixture();
+  using _clock = fakeClock();
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  expect(mocks.generate).not.toHaveBeenCalled();
+  const preparation = mocks.prepare.mock.calls[0]![0];
+  preparation.onProgress?.({ progress: { phase: 'loading', completed: 1, total: 4 } });
+  f.settings.value.experimental!.translation!.autoTranslate = { enabled: true };
+  await f.wrapper.get('[data-testid="translation-source"]').setValue('first');
+  await vi.advanceTimersByTimeAsync(800);
+  await f.wrapper.get('[data-testid="translation-source"]').setValue('latest');
+  await f.router.replace('/translation?from=en&to=ja');
+  await flushPromises();
+  expect(f.wrapper.get('[data-testid="model-load-percentage"]').text()).toBe('25%');
+  expect(preparation.signal?.aborted).toBe(false);
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  await f.wrapper.get('[data-testid="translation-stop"]').trigger('click');
+  expect(preparation.signal?.aborted).toBe(false);
+  pending.resolve('ready');
+  await flushPromises();
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(mocks.generate).not.toHaveBeenCalled();
+  expect(f.wrapper.get('[data-testid="translation-run"]').isVisible()).toBe(true);
+  await f.wrapper.get('form').trigger('submit');
+  await flushPromises();
+  expect(mocks.generate).toHaveBeenCalledOnce();
+  expect(mocks.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'user', content: 'latest' }]);
+});
+
+it('does not flash model-loading UI for context initialization on a prepared model', async () => {
+  using f = await fixture();
+  const pending = Promise.withResolvers<GenerationResult>();
+  mocks.generate.mockReturnValueOnce(pending.promise);
+  mocks.run.mockImplementationOnce(async ({ operation, signal, onProgress }) => {
+    onProgress?.({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+    await operation({ scope: { signal: signal!, generate: mocks.generate } });
+  });
+  await f.wrapper.get('[data-testid="translation-source"]').setValue('text');
+  await f.wrapper.get('form').trigger('submit');
+  await flushPromises();
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  expect(f.wrapper.find('[data-testid="model-launch-loading"]').exists()).toBe(false);
+  expect(f.wrapper.find('[data-testid="translation-input-progress"]').exists()).toBe(true);
+  expect(f.wrapper.find('progress').exists()).toBe(false);
+  pending.resolve({ content: 'done', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+  await flushPromises();
+});
+
+it('updates only nested automatic timing settings from the floating details control', async () => {
+  using f = await fixture();
+  await f.wrapper.get('[data-testid="translation-auto-settings"]').trigger('click');
+  await f.wrapper.get('[data-testid="translation-debounce"]').setValue(1200);
+  await flushPromises();
+  expect(f.settings.value.experimental?.translation).toEqual({ modelId: 'first.gguf', autoTranslate: { enabled: false, debounceMs: 1200 } });
+  await f.wrapper.get('[data-testid="translation-automatic"]').setValue(true);
+  await flushPromises();
+  expect(f.settings.value.experimental?.translation?.autoTranslate).toEqual({ enabled: true, debounceMs: 1200 });
+  expect(mocks.prepare).toHaveBeenCalledOnce();
 });

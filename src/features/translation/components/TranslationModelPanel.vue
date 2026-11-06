@@ -86,7 +86,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <section ref="panel" :role="drawer ? 'dialog' : undefined" :aria-modal="drawer ? true : undefined" :aria-labelledby="`${id}-title`" :tabindex="drawer ? -1 : undefined" :class="{ 'translation-model-drawer': drawer }" :tw-class="[drawer ? 'flex h-dvh w-full max-w-2xl flex-col border-l border-gray-200 bg-white shadow-2xl outline-none dark:border-gray-800 dark:bg-gray-900' : 'space-y-3']" data-testid="translation-model-panel" @keydown="keydown({ event: $event })">
             <header :tw-class="['flex shrink-0 items-center justify-between gap-3', drawer ? 'border-b border-gray-100 px-5 py-4 dark:border-gray-800' : 'px-1']"><h2 :id="`${id}-title`" tw-class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ lazyStrings.translation__translation_models() }}</h2><button v-if="drawer" type="button" data-testid="translation-close-models" :aria-label="lazyStrings.translation__back_to_translation()" @click="emit('close')" tw-class="rounded-lg p-2 text-gray-400 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:hover:bg-gray-800"><XIcon aria-hidden="true" tw-class="h-4 w-4" /></button></header>
             <div :tw-class="['space-y-3', drawer ? 'px-5 pt-3' : '']"><slot /></div>
-            <div :class="{ 'translation-inline-catalog': !drawer }" :tw-class="['min-h-0 overflow-y-auto overscroll-contain', drawer ? 'flex-1 p-5' : 'pr-1']">
+            <div class="translation-model-content" :class="{ 'translation-inline-catalog': !drawer }" :tw-class="['min-h-0', drawer ? 'flex-1 p-5' : '']">
               <SettingsSelectScope :active="open" :return-focus="returnFocus"><TranslationModels v-if="visited" :suspended="!open" :disabled="disabled" :model-id="modelId" @select="emit('select', $event)" @changed="emit('changed')" /></SettingsSelectScope>
             </div>
           </section>
@@ -105,7 +105,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   grid-template-rows: 1fr;
 }
 .translation-inline-catalog {
-  max-height: clamp(10rem, calc(100dvh - 28rem), 28rem);
+  height: clamp(20rem, 50dvh, 30rem);
 }
 .translation-model-drawer {
   animation: translation-drawer-enter 180ms ease-out;

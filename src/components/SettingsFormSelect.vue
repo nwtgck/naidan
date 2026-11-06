@@ -5,10 +5,11 @@ import SettingsSelect from './SettingsSelect.vue';
 defineOptions({ inheritAttrs: false });
 const props = defineProps<{
   modelValue: T,
-  options: readonly { value: T, label: string | undefined, disabled?: boolean }[],
+  options: readonly { value: T, label: string | undefined, disabled?: boolean, searchTerms?: readonly string[] }[],
   label: string | undefined,
   disabled: boolean,
   presentation?: 'field' | 'inline',
+  search?: { label: string | undefined, noResults: string | undefined },
 }>();
 const emit = defineEmits<{ 'update:modelValue': [value: T] }>();
 const choices = computed(() => props.options.map(option => ({ ...option, value: String(option.value) })));
@@ -23,7 +24,7 @@ function choose({ value }: { value: string }): void {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <SettingsSelect v-bind="$attrs" :model-value="String(modelValue)" :options="choices" :label="label" :disabled="disabled" :presentation="presentation === 'inline' ? 'inline' : 'toolbar'" size="compact" :menu-width-rem="22" class="settings-form-select" :class="{ 'settings-form-select-field': presentation !== 'inline' }" tw-class="disabled:cursor-not-allowed disabled:opacity-45" @update:model-value="choose({ value: $event })" />
+  <SettingsSelect v-bind="$attrs" :model-value="String(modelValue)" :options="choices" :search="search" :label="label" :disabled="disabled" :presentation="presentation === 'inline' ? 'inline' : 'toolbar'" size="compact" :menu-width-rem="22" class="settings-form-select" :class="{ 'settings-form-select-field': presentation !== 'inline' }" tw-class="disabled:cursor-not-allowed disabled:opacity-45" @update:model-value="choose({ value: $event })" />
 </template>
 <style>
 .settings-form-select-field.settings-select-trigger.settings-select-trigger-compact {

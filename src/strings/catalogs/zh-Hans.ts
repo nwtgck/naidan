@@ -3378,8 +3378,10 @@ import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_to
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/zh-Hans';
 import { translation__add_term } from '@/strings/messages/translation__add_term/zh-Hans';
 import { translation__automatic_translation } from '@/strings/messages/translation__automatic_translation/zh-Hans';
+import { translation__automatic_translation_settings } from '@/strings/messages/translation__automatic_translation_settings/zh-Hans';
 import { translation__back_to_chats } from '@/strings/messages/translation__back_to_chats/zh-Hans';
 import { translation__back_to_translation } from '@/strings/messages/translation__back_to_translation/zh-Hans';
+import { translation__candidate_models } from '@/strings/messages/translation__candidate_models/zh-Hans';
 import { translation__check_again } from '@/strings/messages/translation__check_again/zh-Hans';
 import { translation__checking_model } from '@/strings/messages/translation__checking_model/zh-Hans';
 import { translation__choose_model_to_start } from '@/strings/messages/translation__choose_model_to_start/zh-Hans';
@@ -3390,6 +3392,7 @@ import { translation__copied } from '@/strings/messages/translation__copied/zh-H
 import { translation__copy } from '@/strings/messages/translation__copy/zh-Hans';
 import { translation__copy_failed_select_text } from '@/strings/messages/translation__copy_failed_select_text/zh-Hans';
 import { translation__default_style } from '@/strings/messages/translation__default_style/zh-Hans';
+import { translation__delay_after_editing_ms } from '@/strings/messages/translation__delay_after_editing_ms/zh-Hans';
 import { translation__detect_language } from '@/strings/messages/translation__detect_language/zh-Hans';
 import { translation__easy_japanese } from '@/strings/messages/translation__easy_japanese/zh-Hans';
 import { translation__enter_source_text } from '@/strings/messages/translation__enter_source_text/zh-Hans';
@@ -3398,10 +3401,13 @@ import { translation__glossary } from '@/strings/messages/translation__glossary/
 import { translation__japanese_style } from '@/strings/messages/translation__japanese_style/zh-Hans';
 import { translation__model_selection_help } from '@/strings/messages/translation__model_selection_help/zh-Hans';
 import { translation__model_unreadable } from '@/strings/messages/translation__model_unreadable/zh-Hans';
+import { translation__models_on_your_device } from '@/strings/messages/translation__models_on_your_device/zh-Hans';
+import { translation__no_matching_languages } from '@/strings/messages/translation__no_matching_languages/zh-Hans';
 import { translation__plain_style } from '@/strings/messages/translation__plain_style/zh-Hans';
 import { translation__polite_style } from '@/strings/messages/translation__polite_style/zh-Hans';
 import { translation__preferences_not_saved } from '@/strings/messages/translation__preferences_not_saved/zh-Hans';
 import { translation__preparing_model } from '@/strings/messages/translation__preparing_model/zh-Hans';
+import { translation__previous_translation } from '@/strings/messages/translation__previous_translation/zh-Hans';
 import { translation__privacy_notice } from '@/strings/messages/translation__privacy_notice/zh-Hans';
 import { translation__processing_source } from '@/strings/messages/translation__processing_source/zh-Hans';
 import { translation__reference_context } from '@/strings/messages/translation__reference_context/zh-Hans';
@@ -3409,6 +3415,7 @@ import { translation__remove_term } from '@/strings/messages/translation__remove
 import { translation__reserved_tokens_not_allowed } from '@/strings/messages/translation__reserved_tokens_not_allowed/zh-Hans';
 import { translation__runtime_busy } from '@/strings/messages/translation__runtime_busy/zh-Hans';
 import { translation__runtime_unavailable } from '@/strings/messages/translation__runtime_unavailable/zh-Hans';
+import { translation__search_languages } from '@/strings/messages/translation__search_languages/zh-Hans';
 import { translation__selected_model } from '@/strings/messages/translation__selected_model/zh-Hans';
 import { translation__source_language } from '@/strings/messages/translation__source_language/zh-Hans';
 import { translation__source_term } from '@/strings/messages/translation__source_term/zh-Hans';
@@ -6921,8 +6928,10 @@ export const catalog = {
   toolCall__tool_executions,
   translation__add_term,
   translation__automatic_translation,
+  translation__automatic_translation_settings,
   translation__back_to_chats,
   translation__back_to_translation,
+  translation__candidate_models,
   translation__check_again,
   translation__checking_model,
   translation__choose_model_to_start,
@@ -6933,6 +6942,7 @@ export const catalog = {
   translation__copy,
   translation__copy_failed_select_text,
   translation__default_style,
+  translation__delay_after_editing_ms,
   translation__detect_language,
   translation__easy_japanese,
   translation__enter_source_text,
@@ -6941,10 +6951,13 @@ export const catalog = {
   translation__japanese_style,
   translation__model_selection_help,
   translation__model_unreadable,
+  translation__models_on_your_device,
+  translation__no_matching_languages,
   translation__plain_style,
   translation__polite_style,
   translation__preferences_not_saved,
   translation__preparing_model,
+  translation__previous_translation,
   translation__privacy_notice,
   translation__processing_source,
   translation__reference_context,
@@ -6952,6 +6965,7 @@ export const catalog = {
   translation__reserved_tokens_not_allowed,
   translation__runtime_busy,
   translation__runtime_unavailable,
+  translation__search_languages,
   translation__selected_model,
   translation__source_language,
   translation__source_term,

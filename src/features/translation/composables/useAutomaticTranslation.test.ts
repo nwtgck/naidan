@@ -6,16 +6,18 @@ function fixture() {
   vi.useFakeTimers();
   const scope = effectScope();
   const key = ref('first');
+  const debounceMs = ref(600);
   const enabled = ref(true), ready = ref(false), busy = ref(false), composing = ref(false);
   const run = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   const invalidate = vi.fn(), stop = vi.fn();
-  const actions = scope.run(() => useAutomaticTranslation({ key, enabled, ready, busy, composing, run, invalidate, stop }))!;
+  const actions = scope.run(() => useAutomaticTranslation({ key, enabled, ready, busy, composing, debounceMs, run, invalidate, stop }))!;
   return {
     key,
     enabled,
     ready,
     busy,
     composing,
+    debounceMs,
     run,
     invalidate,
     stop,
@@ -49,20 +51,23 @@ describe('automatic translation scheduling', () => {
     expect(f.run).toHaveBeenCalledOnce();
   });
 
-  it('does not submit composing text and waits again after composition ends', async () => {
+  it('automatically translates composing text without using Enter to submit the IME', async () => {
     using f = fixture();
     f.ready.value = true;
     f.composing.value = true;
     f.key.value = '仮';
-    await f.settle();
     await f.actions.runManually();
     expect(f.run).not.toHaveBeenCalled();
+    await f.settle();
+    expect(f.run).toHaveBeenCalledOnce();
     f.composing.value = false;
+    await f.settle();
+    expect(f.run).toHaveBeenCalledOnce();
     f.key.value = '確定';
     await vi.advanceTimersByTimeAsync(599);
-    expect(f.run).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
     expect(f.run).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.run).toHaveBeenCalledTimes(2);
   });
 
   it('waits for cancellation to settle, then uses the latest intent only', async () => {
@@ -180,4 +185,24 @@ describe('automatic translation scheduling', () => {
     expect(f.run).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
+});
+
+it('applies the configured delay to pending input without retrying an explicitly stopped input', async () => {
+  using f = fixture();
+  f.ready.value = true;
+  f.key.value = 'configured';
+  f.debounceMs.value = 1200;
+  await nextTick();
+  await vi.advanceTimersByTimeAsync(1199);
+  expect(f.run).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(f.run).toHaveBeenCalledOnce();
+  f.actions.stopManually();
+  expect(f.actions.manuallyStopped.value).toBe(true);
+  f.debounceMs.value = 200;
+  await f.settle();
+  expect(f.run).toHaveBeenCalledOnce();
+  await f.actions.runManually();
+  expect(f.run).toHaveBeenCalledTimes(2);
+  expect(f.actions.manuallyStopped.value).toBe(false);
 });

@@ -9,6 +9,9 @@ export function useTranslationSession({ service, inspectModel }: {
 }) {
   const phase = ref<TranslationPhase>('idle');
   const output = ref('');
+  const previousOutput = ref('');
+  const displayRevision = ref(0);
+  let completedOutput = '';
   const progress = shallowRef<TranslationProgress>();
   const issue = ref<TranslationIssue>();
   const failure = ref<ErrorCode>();
@@ -28,6 +31,8 @@ export function useTranslationSession({ service, inspectModel }: {
     const current = () => !disposed && requestRevision === revision && active.value === controller;
     active.value = controller;
     phase.value = 'checking';
+    previousOutput.value = completedOutput;
+    displayRevision.value++;
     output.value = '';
     issue.value = undefined;
     failure.value = undefined;
@@ -47,7 +52,8 @@ export function useTranslationSession({ service, inspectModel }: {
       if (!current()) {
         return;
       }
-      phase.value = 'preparing';
+      // A new request does not imply that model weights are loading.
+      phase.value = 'prefill';
       await service.runGenerationOperation({
         signal: controller.signal,
         onProgress: ({ progress: next }) => {
@@ -56,8 +62,9 @@ export function useTranslationSession({ service, inspectModel }: {
           }
           progress.value = next;
           switch (next.phase) {
-          case 'importing': case 'initializing': case 'loading': phase.value = 'preparing';
+          case 'loading': phase.value = 'preparing';
             break;
+          case 'importing': case 'initializing': break;
           case 'prefill': phase.value = 'prefill';
             break;
           case 'generating': phase.value = 'generating';
@@ -113,6 +120,9 @@ export function useTranslationSession({ service, inspectModel }: {
         },
       });
       controller.signal.throwIfAborted();
+      if (current()) {
+        completedOutput = output.value;
+      }
     } catch (error) {
       if (!current()) {
         return;
@@ -121,6 +131,8 @@ export function useTranslationSession({ service, inspectModel }: {
         phase.value = 'stopped';
       } else {
         phase.value = 'error';
+        // A failed replacement must not erase the last successful translation.
+        output.value = '';
         if (error instanceof TranslationInputError) {
           issue.value = error.issue;
         } else {
@@ -147,14 +159,21 @@ export function useTranslationSession({ service, inspectModel }: {
     }
   }
 
-  function reset(): void {
+  function invalidate(): void {
     revision++;
     active.value?.abort();
     output.value = '';
+    previousOutput.value = completedOutput;
+    displayRevision.value++;
     progress.value = undefined;
     issue.value = undefined;
     failure.value = undefined;
     phase.value = active.value ? 'stopping' : 'idle';
+  }
+
+  function reset(): void {
+    completedOutput = '';
+    invalidate();
   }
 
   onScopeDispose(() => {
@@ -164,12 +183,15 @@ export function useTranslationSession({ service, inspectModel }: {
   return {
     phase,
     output,
+    previousOutput,
+    displayRevision,
     progress,
     issue,
     failure,
     busy,
     translate,
     stop,
+    invalidate,
     reset,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };

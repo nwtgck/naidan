@@ -184,3 +184,42 @@ describe('translation operation ownership', () => {
     expect(f.session.busy.value).toBe(false);
   });
 });
+
+it('retains the previous completed result during prefill and restores it after a failed replacement', async () => {
+  using f = fixture();
+  await f.session.translate({ draft: f.draft });
+  f.session.invalidate();
+  expect(f.session.output.value).toBe('');
+  expect(f.session.previousOutput.value).toBe('Hello');
+  const pending = Promise.withResolvers<GenerationResult>();
+  f.generate.mockImplementationOnce(async ({ onEvent }) => {
+    expect(f.session.previousOutput.value).toBe('Hello');
+    await onEvent({ event: { type: 'text', text: 'new' } });
+    return pending.promise;
+  });
+  const replacement = f.session.translate({ draft: { ...f.draft, text: 'changed' } });
+  await flushPromises();
+  expect(f.session.output.value).toBe('new');
+  pending.reject(new LlamaCppBrowserError({ code: 'runtime-error' }));
+  await replacement;
+  expect(f.session.phase.value).toBe('error');
+  expect(f.session.output.value).toBe('');
+  expect(f.session.previousOutput.value).toBe('Hello');
+  f.session.reset();
+  expect(f.session.previousOutput.value).toBe('');
+});
+
+it('does not call context initialization model loading without an actual weight-loading event', async () => {
+  using f = fixture();
+  f.runGenerationOperation.mockImplementation(async ({ onProgress, operation, signal }) => {
+    onProgress?.({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+    expect(f.session.phase.value).toBe('prefill');
+    onProgress?.({ progress: { phase: 'loading', completed: 1, total: 2 } });
+    expect(f.session.phase.value).toBe('preparing');
+    onProgress?.({ progress: { phase: 'prefill', completed: 1, total: 3 } });
+    expect(f.session.phase.value).toBe('prefill');
+    await operation({ scope: { signal: signal!, generate: f.generate } });
+  });
+  await f.session.translate({ draft: f.draft });
+  expect(f.session.phase.value).toBe('complete');
+});

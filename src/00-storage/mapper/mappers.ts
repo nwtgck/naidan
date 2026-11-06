@@ -2364,9 +2364,16 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       globalSearch: globalSearchDomain,
       liveConversationModelId,
       translation: translation === undefined ? undefined : (() => {
-        const { modelId, autoTranslate, ...unhandledTranslation } = translation;
+        const { modelId, autoTranslate, unreadable: _unreadable, ...unhandledTranslation } = translation;
         unhandledTranslation satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<Settings['experimental']>['translation']>>()({ modelId, autoTranslate });
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['translation']>>()({
+          modelId,
+          autoTranslate: autoTranslate === undefined ? undefined : (() => {
+            const { enabled, debounceMs, ...unhandledAutomatic } = autoTranslate;
+            unhandledAutomatic satisfies Record<PropertyKey, never>;
+            return exactObject<NonNullable<NonNullable<NonNullable<Settings['experimental']>['translation']>['autoTranslate']>>()({ enabled, debounceMs });
+          })(),
+        });
       })(),
       llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
       // A structurally unreadable saved image block is not an absent location.
@@ -2540,7 +2547,15 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       translation: translation === undefined ? undefined : (() => {
         const { modelId, autoTranslate, ...unhandledTranslation } = translation;
         unhandledTranslation satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['translation']>>()({ modelId, autoTranslate });
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['translation']>>()({
+          modelId,
+          unreadable: undefined,
+          autoTranslate: autoTranslate === undefined ? undefined : (() => {
+            const { enabled, debounceMs, ...unhandledAutomatic } = autoTranslate;
+            unhandledAutomatic satisfies Record<PropertyKey, never>;
+            return exactObject<NonNullable<NonNullable<NonNullable<SettingsDto['experimental']>['translation']>['autoTranslate']>>()({ enabled, debounceMs });
+          })(),
+        });
       })(),
       llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
