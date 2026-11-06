@@ -1,3 +1,4 @@
+import { installHandleCloneProbe } from '@/utils/worker-capability-probe.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
 import * as Comlink from 'comlink';
@@ -5,7 +6,7 @@ import JSZip from 'jszip';
 import { MessageChannel } from 'node:worker_threads';
 import { isProxy, reactive } from 'vue';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import { TEST_ONLY as FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY } from '@/utils/file-system-handle-transport';
+import { TEST_ONLY as FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY } from '@/utils/worker-transport';
 import { createFileExplorerWorker } from './impl';
 import type { FileExplorerZipUploadPlacement } from './types';
 import { storageService } from '@/00-storage/service';
@@ -135,11 +136,14 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
   const originalWorker = globalThis.Worker;
   const createdWorkers: FakeWorker[] = [];
 
+  let capabilityProbe: ReturnType<typeof installHandleCloneProbe>;
+
   beforeEach(() => {
     vi.stubGlobal('MessageChannel', MessageChannel);
+    capabilityProbe = installHandleCloneProbe({ mode: () => fileSystemHandlesCloneable ? 'supported' : 'unsupported' });
     createdWorkers.length = 0;
     fileSystemHandlesCloneable = true;
-    FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY.resetFileSystemHandleCloneCapability();
+    FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY.resetCapabilitySupport();
     globalThis.Worker = class WorkerForTest extends FakeWorker {
       constructor(url: URL | string, options?: WorkerOptions) {
         super(url, options);
@@ -149,6 +153,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
   });
 
   afterEach(() => {
+    capabilityProbe[Symbol.dispose]();
     globalThis.Worker = originalWorker;
     vi.unstubAllGlobals();
   });
@@ -310,7 +315,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     expect(createdWorkers[0]?.terminated).toBe(true);
   });
 
-  it('retries OPFS directories with a locator when handles cannot be cloned', async () => {
+  it('selects OPFS locators before creating a Worker when handles cannot be cloned', async () => {
     fileSystemHandlesCloneable = false;
     const opfsRoot = new MockFileSystemDirectoryHandle({ name: '' });
     const rootHandle = await opfsRoot.getDirectoryHandle('files', { create: true });
@@ -336,11 +341,11 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
     const listing = await client.readDirectory({ path: '/' });
     expect(listing.entries.map(entry => entry.name)).toEqual(['fallback.txt']);
-    expect(createdWorkers).toHaveLength(2);
-    expect(createdWorkers[0]?.terminated).toBe(true);
+    expect(createdWorkers).toHaveLength(1);
+    expect(createdWorkers[0]?.terminated).toBe(false);
 
     await client.dispose();
-    expect(createdWorkers[1]?.terminated).toBe(true);
+    expect(createdWorkers[0]?.terminated).toBe(true);
   });
 
   it('converts reactive ZIP placements to cloneable worker requests', async () => {

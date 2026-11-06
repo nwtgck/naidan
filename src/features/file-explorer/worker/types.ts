@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { z } from 'zod';
 
 import type { WorkerCapability, WorkerProxy, WorkerTransfer } from '@/utils/worker-transport';
@@ -415,7 +416,7 @@ export interface IFileExplorerWorker {
   prepareSession(
     options: WorkerCapability<
       { request: FileExplorerPrepareSessionRequest },
-      'file-system-handle-clone'
+      typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION
     >,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
     managedVolumeRemoteAccess?: WorkerProxy<ManagedVolumeRemoteAccess>,

@@ -1,6 +1,7 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import type { LiveRequest, LiveResult, LiveEvent, LiveEventHandler } from '@/features/llama-cpp-browser/live-types';
 import type { VisionAdmission } from '@/features/llama-cpp-browser/performance/vision-admission-schema';
-import { resolvedModelSchema } from '@/features/llama-cpp-browser/runtime/resolved-model-schema';
+import { workerResolvedModelSchema, type PortableModelRequest } from './model-transport-schema';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { MemoryDiagnostics } from '@/features/llama-cpp-browser/performance/memory-schema';
 import type { AudioPreviewDelivery } from '@/features/audio-generation/preview-requests';
@@ -13,7 +14,7 @@ import { generateInputSchema, profileSchema, runtimeOptionsSchema } from '@/feat
 import type { WorkerProxy, WorkerCapability } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, GenerationCallback, GenerationEvent, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.enum(['placement', 'vision']).optional() }).strict().optional(), assetBaseURL: z.url().optional(), resolvedModel: resolvedModelSchema }).strict();
+const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.enum(['placement', 'vision']).optional() }).strict().optional(), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema }).strict();
 export const workerGenerateInputSchema = workerGenerateBaseSchema.refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
@@ -26,7 +27,7 @@ export type WorkerPrepareCall = z.infer<typeof workerPrepareCallSchema>;
 export const workerGenerateCallSchema = workerGenerateBaseSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerGenerateCall = z.infer<typeof workerGenerateCallSchema>;
 
-const workerAudioBaseSchema = audioGenerationInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional(), resolvedModel: resolvedModelSchema }).strict();
+const workerAudioBaseSchema = audioGenerationInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema }).strict();
 export const workerAudioInputSchema = workerAudioBaseSchema.refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerAudioInput = z.infer<typeof workerAudioInputSchema>;
 export const workerAudioCallSchema = workerAudioBaseSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
@@ -35,16 +36,22 @@ export type WorkerAudioCall = z.infer<typeof workerAudioCallSchema>;
 export type AcceptedGenerateInput = GenerateInput & { resolvedModel: ResolvedModel };
 export type AcceptedAudioInput = AudioGenerationInput & { resolvedModel: ResolvedModel };
 
+type ModelWorkerCall<T extends object> = WorkerCapability<T, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION> | PortableModelRequest<T>;
+export type PortableLiveCall = {
+  generationId: number,
+  request: Exclude<LiveRequest, { type: 'open' }> | (Omit<Extract<LiveRequest, { type: 'open' }>, 'prepare'> & { prepare: PortableModelRequest<WorkerPrepareInput> }),
+};
+
 export interface LlamaCppWorkerApi {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink boundary with top-level event proxies.
-  live(call: WorkerCapability<{ request: LiveRequest, generationId: number }, 'file-system-handle-clone'>, onEvent: WorkerProxy<(event: LiveEvent) => Promise<void>>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<LiveResult>;
+  live(call: WorkerCapability<{ request: LiveRequest, generationId: number }, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION> | PortableLiveCall, onEvent: WorkerProxy<(event: LiveEvent) => Promise<void>>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<LiveResult>;
   interruptLive({ sessionId, turnId }: { sessionId: string, turnId: string }): Promise<void>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
-  prepareVision(request: WorkerCapability<WorkerPrepareCall, 'file-system-handle-clone'>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<VisionAdmission>;
+  prepareVision(request: ModelWorkerCall<WorkerPrepareCall>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<VisionAdmission>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
-  prepareModel(request: WorkerCapability<WorkerPrepareCall, 'file-system-handle-clone'>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<void>;
+  prepareModel(request: ModelWorkerCall<WorkerPrepareCall>, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<void>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  generateAudio(request: WorkerCapability<WorkerAudioCall, 'file-system-handle-clone'>, onProgress: WorkerProxy<(progress: Progress) => void>, onDiagnostic: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onPreview?: WorkerProxy<(event: AudioPreviewEvent) => Promise<void>>): Promise<AudioGenerationResult>;
+  generateAudio(request: ModelWorkerCall<WorkerAudioCall>, onProgress: WorkerProxy<(progress: Progress) => void>, onDiagnostic: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onPreview?: WorkerProxy<(event: AudioPreviewEvent) => Promise<void>>): Promise<AudioGenerationResult>;
   probeProfiles(): Promise<ProfileCapabilities>;
   verifyStorage({ probeId }: { probeId: string }): Promise<boolean>;
   release(): Promise<void>;
@@ -57,9 +64,9 @@ export interface LlamaCppWorkerApi {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level callback.
   importDirectory(request: { directory: ModelDirectoryInput, generationId: number }, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<LocalModel>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- The Worker RPC capability marker wraps the complete wire request.
-  removeModel(request: WorkerCapability<{ plan: DeletionPlan }, 'file-system-handle-clone'>): Promise<DeletionResult>;
+  removeModel(request: WorkerCapability<{ plan: DeletionPlan }, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>): Promise<DeletionResult>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  generate(request: WorkerCapability<WorkerGenerateCall, 'file-system-handle-clone'>, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<(progress: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onSummary?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
+  generate(request: ModelWorkerCall<WorkerGenerateCall>, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<(progress: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onSummary?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
   live({ request, onEvent, onProgress, signal }: { request: LiveRequest, onEvent: LiveEventHandler, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<LiveResult>;

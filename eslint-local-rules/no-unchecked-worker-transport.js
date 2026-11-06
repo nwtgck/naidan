@@ -133,6 +133,7 @@ export const rule = {
     }],
     messages: {
       directComlink: 'Do not use comlink directly. Use the project-owned worker transport API.',
+      uncheckedCapability: 'Do not assert a WorkerCapability marker. Await workerCapability or prepareWorkerCapability so runtime feature detection cannot be bypassed.',
       directPostMessage: '{{ typeName }}.postMessage must not be called directly. Use the audited worker transport.',
       directMessageListener: 'Do not register message listeners directly on {{ typeName }}. Use the audited worker transport.',
       dynamicWorkerMember: 'Dynamic member access on {{ typeName }} is not allowed because it can bypass the worker transport boundary.',
@@ -151,7 +152,30 @@ export const rule = {
         context.report({ node, messageId: 'directComlink' });
       }
     };
+    const checkCapabilityAssertion = node => {
+      const typeInfo = getObjectTypeInfo(context, node.typeAnnotation);
+      if (!typeInfo) {
+        return;
+      }
+      const pending = [typeInfo.type], seen = new Set();
+      while (pending.length) {
+        const type = pending.pop();
+        if (seen.has(type)) {
+          continue;
+        }
+        seen.add(type);
+        if (type.getProperties().some(property => property.escapedName.toString().includes('workerCapabilityMarker'))) {
+          context.report({ node, messageId: 'uncheckedCapability' });
+          return;
+        }
+        if (type.isUnionOrIntersection()) {
+          pending.push(...type.types);
+        }
+      }
+    };
     return {
+      TSAsExpression: checkCapabilityAssertion,
+      TSTypeAssertion: checkCapabilityAssertion,
       ImportDeclaration(node) {
         if (isComlinkModuleSpecifier(node.source.value)) {
           reportDirectComlink(node);

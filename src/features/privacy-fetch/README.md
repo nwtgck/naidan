@@ -141,8 +141,10 @@ both realms support it, without checking browser names or versions. Otherwise,
 each consumer pull requests at most one 256 KiB transferred chunk; slow OPFS writes
 therefore stop further broker reads. Stream transfer is not a zero-copy guarantee.
 Worker API stream arguments and returns require both `WorkerTransfer` and
-`WorkerCapability<..., 'readable-stream-transfer'>`; capability markers are
-applied only in the successful probe branch. Body cancellation, request abort, and broker
+`WorkerCapability<..., typeof READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>`.
+The canonical symbol lives in `src/utils/worker-transport-capabilities.ts`;
+`await workerCapability(...)` issues the marker only after the transfer probe
+succeeds. Symbols and markers are local typing/control information, not wire data. Body cancellation, request abort, and broker
 disposal cancel the network reader. Errors use fixed messages so signed delivery
 URLs are not included in diagnostic error text. Standalone streams read the native response body on demand with the same
 fixed error messages. Existing buffered `privacyFetch` calls remain

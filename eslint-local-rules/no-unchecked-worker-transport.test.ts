@@ -104,6 +104,12 @@ function countTypeQueries({ code, endpoint }: { code: string, endpoint: boolean 
 }
 
 describe('no-unchecked-worker-transport rule', () => {
+  it('rejects manufacturing capability markers by assertion, including aliases and unions', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-capability-assertion-probe.ts')]);
+    expect(result.fatalErrorCount).toBe(0);
+    expect(result.messages.map(message => message.messageId)).toEqual(Array(4).fill('uncheckedCapability'));
+  }, 20_000);
+
   it('blocks Worker/MessagePort transport and raw Comlink without blocking window or BroadcastChannel', async () => {
     const [result] = await createEslint().lintFiles([
       path.join(fixtureRoot, 'lint-probe.ts'),

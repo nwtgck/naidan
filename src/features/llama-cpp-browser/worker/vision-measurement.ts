@@ -1,7 +1,7 @@
 import { subscribeDiagnostics, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { subscribeMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { visionDiagnosticSchema, visionStageSchema, type VisionDiagnostic } from '@/features/llama-cpp-browser/performance/vision-diagnostic-schema';
-import type { ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
+import type { WorkerModelDirectory as ModelDirectory } from './model-transport-schema';
 
 /** Installed only for the explicit image workload. No native callbacks or waits. */
 export function createVisionMeasurement({ directory, now }: { directory: ModelDirectory, now: () => number }) {

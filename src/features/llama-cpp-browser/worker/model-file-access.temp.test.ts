@@ -4,8 +4,8 @@ import { openModelFileAccess } from './model-file-access';
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('temporary File readers', () => {
-  it('reads only bounded slices from the captured File without handles, OPFS or whole-file buffering', async () => {
+describe('captured File readers', () => {
+  it.each(['temp', 'opfs', 'host'] as const)('reads bounded %s snapshot slices without handles, OPFS or whole-file buffering', async storageKind => {
     const bytes = Uint8Array.from({ length: 9 * 1024 * 1024 }, (_value, index) => index % 251);
     const file = new File([bytes], 'model.gguf');
     const slices = new WeakMap<Blob, Uint8Array>();
@@ -29,7 +29,7 @@ describe('temporary File readers', () => {
         return new Uint8Array(part).buffer;
       }
     });
-    const access = await openModelFileAccess({ entry: { storageKind: 'temp', registrationRevision: 1, relativePath: 'model.gguf', file } });
+    const access = await openModelFileAccess({ entry: storageKind === 'temp' ? { storageKind, registrationRevision: 1, relativePath: 'model.gguf', file } : { storageKind, snapshotId: 'captured', relativePath: 'model.gguf', file } });
     using _cleanup = { [Symbol.dispose]: () => access.close() };
     const destination = new Uint8Array(bytes.length);
     expect(access.getSize()).toBe(bytes.length);
@@ -51,8 +51,23 @@ describe('temporary File readers', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('fails normally when the worker cannot read File slices', async () => {
+  it.each(['opfs', 'host'] as const)('does not reopen an invalidated %s snapshot after a read failure', async storageKind => {
+    const failure = new DOMException('Snapshot invalidated', 'NotReadableError');
+    vi.stubGlobal('FileReaderSync', class {
+      readAsArrayBuffer(): ArrayBuffer {
+        throw failure;
+      }
+    });
+    const file = new File(['x'], 'model.gguf');
+    const access = await openModelFileAccess({ entry: { storageKind, snapshotId: 'accepted', file, relativePath: 'model.gguf' } });
+    using _cleanup = { [Symbol.dispose]: () => access.close() };
+    expect(() => access.read(new Uint8Array(1), { at: 0 })).toThrow(failure);
+  });
+
+  it.each(['temp', 'opfs', 'host'] as const)('fails normally when the worker cannot read %s File slices', async storageKind => {
     vi.stubGlobal('FileReaderSync', undefined);
-    await expect(openModelFileAccess({ entry: { storageKind: 'temp', registrationRevision: 1, relativePath: 'model.gguf', file: new File(['x'], 'model.gguf') } })).rejects.toThrow('unavailable');
+    const file = new File(['x'], 'model.gguf'), relativePath = 'model.gguf';
+    const entry = storageKind === 'temp' ? { storageKind, file, relativePath, registrationRevision: 1 } : { storageKind, file, relativePath, snapshotId: 'accepted' };
+    await expect(openModelFileAccess({ entry })).rejects.toThrow('unavailable');
   });
 });

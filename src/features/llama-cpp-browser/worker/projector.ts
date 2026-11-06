@@ -1,7 +1,7 @@
 import { openModelFileAccess } from './model-file-access';
 import type { AudioBackend } from '@/features/audio-generation/types';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
-import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
+import type { WorkerModelFile as ModelFile } from './model-transport-schema';
 import { mountReadOnlyFile } from '@/features/llama-cpp-browser/runtime/read-only-file';
 import { createModelReadCache } from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import { logDiagnostic, logFailure, logOperation } from '@/features/llama-cpp-browser/debug-log';

@@ -19,7 +19,8 @@ function notify({ report, progress }: { report: Report, progress: FileDownloadPr
 }
 
 /** Explicit acquisition only. Metadata discovery, transfer, verification and
- * publication run in a Worker. A completed file survives failures in later
+ * publication normally run in a Worker; linked-folder compatibility may use
+ * the same asynchronous writer on the main thread. A completed file survives failures in later
  * components; pending files can only be resumed by another explicit action.
  * File acquisition is role-independent, including optional adapter downloads.
  */
