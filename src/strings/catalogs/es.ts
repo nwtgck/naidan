@@ -3376,6 +3376,72 @@ import { toolCall__raw_json } from '@/strings/messages/toolCall__raw_json/es';
 import { toolCall__result } from '@/strings/messages/toolCall__result/es';
 import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_tools_count/es';
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/es';
+import { translation__add_term } from '@/strings/messages/translation__add_term/es';
+import { translation__automatic_translation } from '@/strings/messages/translation__automatic_translation/es';
+import { translation__automatic_translation_settings } from '@/strings/messages/translation__automatic_translation_settings/es';
+import { translation__back_to_chats } from '@/strings/messages/translation__back_to_chats/es';
+import { translation__back_to_translation } from '@/strings/messages/translation__back_to_translation/es';
+import { translation__candidate_models } from '@/strings/messages/translation__candidate_models/es';
+import { translation__check_again } from '@/strings/messages/translation__check_again/es';
+import { translation__checking_model } from '@/strings/messages/translation__checking_model/es';
+import { translation__choose_model_to_start } from '@/strings/messages/translation__choose_model_to_start/es';
+import { translation__choose_supported_languages } from '@/strings/messages/translation__choose_supported_languages/es';
+import { translation__clear } from '@/strings/messages/translation__clear/es';
+import { translation__complete_glossary_entries } from '@/strings/messages/translation__complete_glossary_entries/es';
+import { translation__copied } from '@/strings/messages/translation__copied/es';
+import { translation__copy } from '@/strings/messages/translation__copy/es';
+import { translation__copy_failed_select_text } from '@/strings/messages/translation__copy_failed_select_text/es';
+import { translation__default_style } from '@/strings/messages/translation__default_style/es';
+import { translation__delay_after_editing_ms } from '@/strings/messages/translation__delay_after_editing_ms/es';
+import { translation__detect_language } from '@/strings/messages/translation__detect_language/es';
+import { translation__easy_japanese } from '@/strings/messages/translation__easy_japanese/es';
+import { translation__enter_source_text } from '@/strings/messages/translation__enter_source_text/es';
+import { translation__find_translation_models } from '@/strings/messages/translation__find_translation_models/es';
+import { translation__glossary } from '@/strings/messages/translation__glossary/es';
+import { translation__japanese_style } from '@/strings/messages/translation__japanese_style/es';
+import { translation__model_selection_help } from '@/strings/messages/translation__model_selection_help/es';
+import { translation__model_unreadable } from '@/strings/messages/translation__model_unreadable/es';
+import { translation__models_on_your_device } from '@/strings/messages/translation__models_on_your_device/es';
+import { translation__no_matching_languages } from '@/strings/messages/translation__no_matching_languages/es';
+import { translation__plain_style } from '@/strings/messages/translation__plain_style/es';
+import { translation__polite_style } from '@/strings/messages/translation__polite_style/es';
+import { translation__preferences_not_saved } from '@/strings/messages/translation__preferences_not_saved/es';
+import { translation__preparing_model } from '@/strings/messages/translation__preparing_model/es';
+import { translation__previous_translation } from '@/strings/messages/translation__previous_translation/es';
+import { translation__privacy_notice } from '@/strings/messages/translation__privacy_notice/es';
+import { translation__processing_source } from '@/strings/messages/translation__processing_source/es';
+import { translation__reference_context } from '@/strings/messages/translation__reference_context/es';
+import { translation__remove_term } from '@/strings/messages/translation__remove_term/es';
+import { translation__reserved_tokens_not_allowed } from '@/strings/messages/translation__reserved_tokens_not_allowed/es';
+import { translation__runtime_busy } from '@/strings/messages/translation__runtime_busy/es';
+import { translation__runtime_unavailable } from '@/strings/messages/translation__runtime_unavailable/es';
+import { translation__search_languages } from '@/strings/messages/translation__search_languages/es';
+import { translation__selected_model } from '@/strings/messages/translation__selected_model/es';
+import { translation__source_language } from '@/strings/messages/translation__source_language/es';
+import { translation__source_term } from '@/strings/messages/translation__source_term/es';
+import { translation__source_text } from '@/strings/messages/translation__source_text/es';
+import { translation__source_too_long } from '@/strings/messages/translation__source_too_long/es';
+import { translation__stop } from '@/strings/messages/translation__stop/es';
+import { translation__stopping } from '@/strings/messages/translation__stopping/es';
+import { translation__supported_models_help } from '@/strings/messages/translation__supported_models_help/es';
+import { translation__swap_languages } from '@/strings/messages/translation__swap_languages/es';
+import { translation__target_language } from '@/strings/messages/translation__target_language/es';
+import { translation__translate } from '@/strings/messages/translation__translate/es';
+import { translation__translated_term } from '@/strings/messages/translation__translated_term/es';
+import { translation__translated_text } from '@/strings/messages/translation__translated_text/es';
+import { translation__translating } from '@/strings/messages/translation__translating/es';
+import { translation__translation } from '@/strings/messages/translation__translation/es';
+import { translation__translation_appears_here } from '@/strings/messages/translation__translation_appears_here/es';
+import { translation__translation_complete } from '@/strings/messages/translation__translation_complete/es';
+import { translation__translation_failed } from '@/strings/messages/translation__translation_failed/es';
+import { translation__translation_models } from '@/strings/messages/translation__translation_models/es';
+import { translation__translation_options } from '@/strings/messages/translation__translation_options/es';
+import { translation__translation_stopped } from '@/strings/messages/translation__translation_stopped/es';
+import { translation__translation_truncated } from '@/strings/messages/translation__translation_truncated/es';
+import { translation__unexpected_model_output } from '@/strings/messages/translation__unexpected_model_output/es';
+import { translation__unsupported_model } from '@/strings/messages/translation__unsupported_model/es';
+import { translation__use_for_translation } from '@/strings/messages/translation__use_for_translation/es';
+import { translation__waiting_for_translation } from '@/strings/messages/translation__waiting_for_translation/es';
 import { useAppEntry__could_not_open_model_browser } from '@/strings/messages/useAppEntry__could_not_open_model_browser/es';
 import { useBinaryActions__delete_binary_object } from '@/strings/messages/useBinaryActions__delete_binary_object/es';
 import { useBinaryActions__delete_binary_object_warning } from '@/strings/messages/useBinaryActions__delete_binary_object_warning/es';
@@ -6860,6 +6926,72 @@ export const catalog = {
   toolCall__result,
   toolCall__show_tools_count,
   toolCall__tool_executions,
+  translation__add_term,
+  translation__automatic_translation,
+  translation__automatic_translation_settings,
+  translation__back_to_chats,
+  translation__back_to_translation,
+  translation__candidate_models,
+  translation__check_again,
+  translation__checking_model,
+  translation__choose_model_to_start,
+  translation__choose_supported_languages,
+  translation__clear,
+  translation__complete_glossary_entries,
+  translation__copied,
+  translation__copy,
+  translation__copy_failed_select_text,
+  translation__default_style,
+  translation__delay_after_editing_ms,
+  translation__detect_language,
+  translation__easy_japanese,
+  translation__enter_source_text,
+  translation__find_translation_models,
+  translation__glossary,
+  translation__japanese_style,
+  translation__model_selection_help,
+  translation__model_unreadable,
+  translation__models_on_your_device,
+  translation__no_matching_languages,
+  translation__plain_style,
+  translation__polite_style,
+  translation__preferences_not_saved,
+  translation__preparing_model,
+  translation__previous_translation,
+  translation__privacy_notice,
+  translation__processing_source,
+  translation__reference_context,
+  translation__remove_term,
+  translation__reserved_tokens_not_allowed,
+  translation__runtime_busy,
+  translation__runtime_unavailable,
+  translation__search_languages,
+  translation__selected_model,
+  translation__source_language,
+  translation__source_term,
+  translation__source_text,
+  translation__source_too_long,
+  translation__stop,
+  translation__stopping,
+  translation__supported_models_help,
+  translation__swap_languages,
+  translation__target_language,
+  translation__translate,
+  translation__translated_term,
+  translation__translated_text,
+  translation__translating,
+  translation__translation,
+  translation__translation_appears_here,
+  translation__translation_complete,
+  translation__translation_failed,
+  translation__translation_models,
+  translation__translation_options,
+  translation__translation_stopped,
+  translation__translation_truncated,
+  translation__unexpected_model_output,
+  translation__unsupported_model,
+  translation__use_for_translation,
+  translation__waiting_for_translation,
   useAppEntry__could_not_open_model_browser,
   useBinaryActions__delete_binary_object,
   useBinaryActions__delete_binary_object_warning,

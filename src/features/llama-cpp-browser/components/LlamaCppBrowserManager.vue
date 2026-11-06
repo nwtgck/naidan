@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef, useSlots, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useRecentModelImports } from '@/features/llama-cpp-browser/composables/useRecentModelImports';
 import { provideLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import type { EngineState, LocalModel } from '@/features/llama-cpp-browser/types';
 import type { ApplyDefaultModel, DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
+import type { ModelSuggestion } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import LlamaCppBrowserModelLibrary from './LlamaCppBrowserModelLibrary.vue';
@@ -14,9 +15,10 @@ import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManag
 import LlamaCppBrowserRuntimeSettings from './LlamaCppBrowserRuntimeSettings.vue';
 
 // Settings keeps its catalog and runtime controls around the shared file library.
-const props = defineProps<{ presentation: 'settings' | 'embedded', suspended?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
+const props = defineProps<{ presentation: 'settings' | 'embedded', modelView?: 'catalog' | 'repository' | 'local', scrollOwner?: 'self' | 'parent', runtimeSettings?: 'show' | 'hide', suspended?: boolean, disabled?: boolean, suggestions?: 'chat' | 'none', modelSuggestions?: readonly ModelSuggestion[], catalogFirst?: boolean, selectionAction?: 'default' | 'select', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel, createChatGroup?: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }>();
 provideLlamaCppBrowserSettingsTypography({ presentation: () => props.presentation });
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [modelId: string], runtimeReady: [ready: boolean] }>();
+const slots = useSlots();
 const library = ref<InstanceType<typeof LlamaCppBrowserModelLibrary>>();
 const repositoryManager = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceManager>>();
 const downloading = ref(false);
@@ -45,14 +47,18 @@ onMounted(() => {
   });
 });
 const queue = getDownloadQueue();
-const externalBusy = computed(() => downloading.value || queue.jobs.value.some(job => jobIsBusy({ job })));
+const externalBusy = computed(() => props.disabled === true || downloading.value || queue.jobs.value.some(job => jobIsBusy({ job })));
 const defaultActionDisabled = computed(() => !props.defaultModel || !props.applyDefaultModel);
 
 async function inspectRepository({ input }: { input: string }): Promise<void> {
   await repositoryManager.value?.inspectRepository({ input });
 }
 
-defineSlots<{ catalog({ disabled, inspect }: { disabled: boolean, inspect: typeof inspectRepository }): unknown }>();
+defineSlots<{
+  catalog({ disabled, inspect }: { disabled: boolean, inspect: typeof inspectRepository }): unknown,
+  'model-actions'({ model, disabled }: { model: LocalModel, disabled: boolean }): unknown,
+  'selection-hint'(): unknown,
+}>();
 
 async function refresh(): Promise<void> {
   await library.value?.refresh();
@@ -69,17 +75,19 @@ defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
 </script>
 <template>
   <section data-testid="llama-cpp-browser-manager">
-    <LlamaCppBrowserModelLibrary ref="library" :suspended="props.suspended" :external-busy="externalBusy" :runtime-status="runtimeStatus" :default-model="defaultModel" :apply-default-model="applyDefaultModel" :create-chat-group="props.createChatGroup" @models-changed="emit('modelsChanged', $event)" @model-selected="emit('modelSelected', $event)">
+    <LlamaCppBrowserModelLibrary ref="library" :view="props.modelView" :suspended="props.suspended" :catalog-first="props.catalogFirst" :external-busy="externalBusy" :runtime-status="runtimeStatus" :default-model="defaultModel" :apply-default-model="applyDefaultModel" :create-chat-group="props.createChatGroup" @models-changed="emit('modelsChanged', $event)" @model-selected="emit('modelSelected', $event)">
+      <template v-if="slots['model-actions']" #model-actions="{ model, disabled }"><slot name="model-actions" :model="model" :disabled="disabled || props.disabled === true" /></template>
+      <template v-if="slots['selection-hint']" #selection-hint><slot name="selection-hint" /></template>
       <template #header="{ disabled, refresh: refreshModels, selectReadyModel, invalidateModelSelection }">
-        <slot name="catalog" :disabled="disabled || downloading" :inspect="inspectRepository" />
-        <LlamaCppBrowserHuggingFaceManager ref="repositoryManager" :model-preset="props.modelPreset" :disabled="disabled" @busy="downloading = $event" @changed="refreshModels" @model-ready="selectReadyModel({ model: $event })" @selection-changed="invalidateModelSelection" />
+        <slot name="catalog" :disabled="disabled || downloading || props.disabled === true" :inspect="inspectRepository" />
+        <LlamaCppBrowserHuggingFaceManager ref="repositoryManager" :scroll-owner="props.scrollOwner" :model-preset="props.modelPreset" :disabled="disabled || props.disabled === true" @busy="downloading = $event" @changed="refreshModels" @model-ready="(props.modelView === undefined || props.modelView === 'repository') && selectReadyModel({ model: $event })" @selection-changed="invalidateModelSelection" />
       </template>
       <template #suggestions="{ models, disabled, createChatGroup, creatingChatGroupModelId, selectDefault, refresh: refreshModels }">
         <!-- Bundled suggestions require no network request until an explicit action. -->
-        <LlamaCppBrowserModelSuggestions v-if="props.suggestions !== 'none'" :models="models" :disabled="disabled" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" :create-chat-group="createChatGroup" :creating-chat-group-model-id="creatingChatGroupModelId" @select-default="selectDefault({ model: $event })" @changed="refreshModels" />
+        <LlamaCppBrowserModelSuggestions :scroll-owner="props.scrollOwner" v-if="props.suggestions !== 'none'" :suggestions="props.modelSuggestions" :selection-action="props.selectionAction" :models="models" :disabled="disabled || props.disabled === true" :default-model="defaultModel" :default-action-disabled="props.selectionAction === 'select' ? props.disabled === true : defaultActionDisabled" :create-chat-group="createChatGroup" :creating-chat-group-model-id="creatingChatGroupModelId" @select="(props.modelView === undefined || props.modelView === 'catalog') && library?.selectReadyModel({ model: $event })" @select-default="selectDefault({ model: $event })" @changed="refreshModels" />
       </template>
       <template #footer="{ disabled, releaseDisabled }">
-        <LlamaCppBrowserRuntimeSettings :disabled="disabled" :release-disabled="releaseDisabled" @runtime-ready="emit('runtimeReady', $event)" />
+        <LlamaCppBrowserRuntimeSettings v-if="props.runtimeSettings !== 'hide'" :disabled="disabled" :release-disabled="releaseDisabled || props.disabled === true" @runtime-ready="emit('runtimeReady', $event)" />
       </template>
     </LlamaCppBrowserModelLibrary>
   </section>

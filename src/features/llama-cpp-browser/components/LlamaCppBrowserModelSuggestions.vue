@@ -10,7 +10,7 @@ import { preferredQuantizationHint, matchesMemoryHint, modelSuggestions, suggest
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
-const props = defineProps<{ models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, suggestions?: readonly ModelSuggestion[], selectionAction?: 'default' | 'select', memoryFilter?: 'show' | 'hide', createChatGroup?: ({ model }: { model: LocalModel }) => Promise<void>, creatingChatGroupModelId?: string }>();
+const props = defineProps<{ models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, suggestions?: readonly ModelSuggestion[], selectionAction?: 'default' | 'select', memoryFilter?: 'show' | 'hide', scrollOwner?: 'self' | 'parent', createChatGroup?: ({ model }: { model: LocalModel }) => Promise<void>, creatingChatGroupModelId?: string }>();
 const emit = defineEmits<{ selectDefault: [model: LocalModel], select: [model: LocalModel], changed: [] }>();
 const entries = computed(() => props.suggestions ?? modelSuggestions);
 const id = useId();
@@ -63,7 +63,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             </div>
             <LlamaCppBrowserDownloadDestination :view="downloadDestination.view" :disabled="disabled" />
           </div>
-          <ul tw-class="max-h-[28rem] space-y-2 overflow-y-auto overscroll-contain pr-1" data-testid="llama-suggestions-list">
+          <ul :tw-class="['space-y-2 pr-1', scrollOwner === 'parent' ? '' : 'max-h-[28rem] overflow-y-auto overscroll-contain']" data-testid="llama-suggestions-list">
             <li v-for="suggestion in entries" v-show="visible({ suggestion })" :key="suggestion.id">
               <LlamaCppBrowserModelSuggestion :suggestion="suggestion" :models="models" :destination="destination" :destination-unavailable="destinationUnavailable" :destination-revision="destinationRevision" :authorize-destination="downloadDestination.authorize" :destination-label="downloadDestination.label" :disabled="disabled" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" :selection-action="selectionAction" :create-chat-group="createChatGroup" :creating-chat-group-model-id="creatingChatGroupModelId" @select-default="emit('selectDefault', $event)" @select="emit('select', $event)" />
             </li>

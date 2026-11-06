@@ -15,9 +15,14 @@ export type ImageUpload = { mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
 export function prepareTranscript({ input }: { input: PeerChatInput }): {
   transcript: ReadableStream<Uint8Array>; images: ImageUpload[];
 } {
-  const { messages, modelId: _modelId, debug: _debug, tools, reasoningEffort, temperature, topP, maxTokens,
+  const { messages, modelId: _modelId, debug: _debug, tools, reasoningEffort, chatTemplateKwargs, temperature, topP, maxTokens,
     presencePenalty, frequencyPenalty, stop, ...rest } = input;
   rest satisfies Record<PropertyKey, never>;
+  // The current peer protocol has no template-argument capability. Reject
+  // rather than silently translating with the receiver's default language.
+  if (chatTemplateKwargs && Object.keys(chatTemplateKwargs).length !== 0) {
+    throw new Error('Chat template arguments are not supported by peer inference.');
+  }
   const images: ImageUpload[] = [];
   let imageBytes = 0;
   const projected = messages.map(message => {

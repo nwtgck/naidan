@@ -8,6 +8,7 @@ import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 import SettingsSourceBadge from './SettingsSourceBadge.vue';
 import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
 import { lazyStrings } from '@/strings';
+import { splitModelName } from '@/utils/model-name';
 
 const disclosureOpen = inject<Readonly<Ref<boolean>> | undefined>('settings-disclosure-open', undefined);
 const disclosureFocusReturn = inject<(() => HTMLElement | undefined) | undefined>('settings-disclosure-focus-return', undefined);
@@ -56,19 +57,6 @@ const displayModelName = computed(() => {
 });
 const inheritedModelParts = computed(() => splitModelName({ name: props.inheritedModel?.id ? modelLabel({ model: props.inheritedModel.id }) : props.clearLabel }));
 
-function splitModelName({ name }: { name: string | undefined }) {
-  if (name === undefined) {
-    return { prefix: '', suffix: undefined };
-  }
-  const lastSlashIndex = name.lastIndexOf('/');
-  if (lastSlashIndex === -1) {
-    return { prefix: '', suffix: name };
-  }
-  return {
-    prefix: name.slice(0, lastSlashIndex + 1),
-    suffix: name.slice(lastSlashIndex + 1),
-  };
-}
 
 const modelNameParts = computed(() => splitModelName({ name: displayModelName.value }));
 const modelHasMetadata = computed(() => Boolean(modelNameParts.value.prefix || (!props.modelValue && props.inheritedModel?.source)));

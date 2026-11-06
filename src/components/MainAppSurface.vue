@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent } from 'vue';
 import HomeWelcome from '@/components/HomeWelcome.vue';
 import Sidebar from '@/components/Sidebar.vue';
+import { useTranslationNavigation } from '@/features/translation/navigation';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import MainLayoutFrame from '@/components/layout/MainLayoutFrame.vue';
 import { useLayout } from '@/composables/useLayout';
@@ -14,6 +15,8 @@ const props = defineProps<{
 }>();
 
 const { active: generationNavigation } = useImageGenerationWorkspaceNavigation();
+const { active: translationNavigation } = useTranslationNavigation();
+const TranslationSidebar = defineAsyncComponent(() => import('@/features/translation/components/TranslationSidebar.vue'));
 const ImageGenerationSidebar = defineAsyncComponent(() => import('@/features/image-generation/components/ImageGenerationSidebar.vue'));
 const DebugPanel = defineAsyncComponent(() => import('@/components/DebugPanel.vue'));
 const AppEntrySurface = defineAsyncComponent(() => import('@/components/AppEntrySurface.vue'));
@@ -66,6 +69,7 @@ defineExpose({
   <MainLayoutFrame :sidebar-width="sidebarWidth">
     <template #sidebar>
       <ImageGenerationSidebar v-if="generationNavigation && !renderEntry" :navigation="generationNavigation" />
+      <TranslationSidebar v-else-if="translationNavigation && !renderEntry" :navigation="translationNavigation" />
       <Sidebar v-else />
     </template>
 

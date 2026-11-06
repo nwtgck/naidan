@@ -15,6 +15,7 @@ type SettingsSelectOption = {
   detail?: string,
   source?: SettingsSourcePresentation,
   disabled?: boolean,
+  searchTerms?: readonly string[],
 };
 
 const disclosureOpen = inject<Readonly<Ref<boolean>> | undefined>('settings-disclosure-open', undefined);
@@ -28,6 +29,7 @@ const props = defineProps<{
   presentation?: 'default' | 'toolbar' | 'inline',
   size?: 'default' | 'compact',
   menuWidthRem?: number,
+  search?: { label: string | undefined, noResults: string | undefined },
 }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void,
@@ -41,6 +43,15 @@ const selected = computed(() => props.options.find(option => option.value === pr
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
 const open = ref(false);
+const query = ref('');
+const searchInput = ref<HTMLInputElement>();
+
+const normalized = ({ value }: { value: string }) => value.normalize('NFKC').trim().toLocaleLowerCase();
+
+const filteredOptions = computed(() => {
+  const needle = normalized({ value: query.value });
+  return !props.search || !needle ? props.options : props.options.filter(option => [option.label, option.value, ...option.searchTerms ?? []].some(value => value !== undefined && normalized({ value }).includes(needle)));
+});
 const menuId = useId();
 const popup = useAnchoredPopup({
   anchor: triggerRef,
@@ -67,13 +78,18 @@ const popup = useAnchoredPopup({
 
 function close({ restoreFocus }: { restoreFocus: boolean }) {
   open.value = false;
+  query.value = '';
   if (restoreFocus) {
     triggerRef.value?.focus();
   }
 }
 
+function canOpen(): boolean {
+  return !props.disabled && disclosureOpen?.value !== false;
+}
+
 async function toggle() {
-  if (props.disabled || disclosureOpen?.value === false) {
+  if (!canOpen()) {
     return;
   }
   if (open.value) {
@@ -83,13 +99,20 @@ async function toggle() {
   popup.refresh();
   open.value = true;
   await nextTick();
+  if (!open.value || !canOpen()) {
+    return;
+  }
   popup.refresh();
+  if (props.search) {
+    searchInput.value?.focus();
+    return;
+  }
   const selectedButton = menuRef.value?.querySelector<HTMLButtonElement>('[aria-selected="true"]:not(:disabled)');
   (selectedButton ?? menuRef.value?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)'))?.focus();
 }
 
 function choose({ value }: { value: string }) {
-  if (props.disabled || disclosureOpen?.value === false || !open.value || !props.options.some(option => option.value === value && !option.disabled)) {
+  if (props.disabled || disclosureOpen?.value === false || !open.value || !filteredOptions.value.some(option => option.value === value && !option.disabled)) {
     return;
   }
   // Reselecting a native select did not request another owner mutation.
@@ -115,6 +138,36 @@ function handleMenuKeydown({ event }: { event: KeyboardEvent }) {
     return;
   }
   const buttons = Array.from(menuRef.value?.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)') ?? []);
+  if (props.search && event.target === searchInput.value) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const first = filteredOptions.value.find(option => !option.disabled);
+      if (first) {
+        choose({ value: first.value });
+      }
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const key = event.key;
+      switch (key) {
+      case 'ArrowDown': buttons[0]?.focus();
+        break;
+      case 'ArrowUp': buttons.at(-1)?.focus();
+        break;
+      default: {
+        const exhaustive: never = key;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
+    // Let the textbox own typing, selection and caret movement, including IME.
+    return;
+  }
+  if (props.search && event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    searchInput.value?.focus();
+    query.value += event.key;
+    return;
+  }
   const index = buttons.findIndex(button => button === document.activeElement);
   const nextIndex = event.key === 'ArrowDown' ? (index + 1) % buttons.length
     : event.key === 'ArrowUp' ? (index - 1 + buttons.length) % buttons.length
@@ -176,7 +229,7 @@ defineExpose({
     type="button"
     :disabled="disabled"
     :aria-label="`${label ?? ''}: ${selected?.label ?? modelValue}${selected?.detail ? ` (${selected.detail})` : ''}${selected?.source?.description ? ` · ${selected.source.description}` : ''}`"
-    aria-haspopup="listbox"
+    :aria-haspopup="search ? 'dialog' : 'listbox'"
     :aria-expanded="open"
     :aria-controls="open ? menuId : undefined"
     :title="[selected?.label, selected?.detail, selected?.source?.description].filter(Boolean).join(' · ')"
@@ -203,7 +256,7 @@ defineExpose({
         v-show="open"
         :id="menuId"
         ref="menuRef"
-        role="listbox"
+        :role="search ? 'dialog' : 'listbox'"
         :aria-label="label"
         :aria-hidden="!open"
         :inert="!open || undefined"
@@ -214,30 +267,36 @@ defineExpose({
         :tw-class="['overflow-y-auto overscroll-contain border border-gray-200 bg-white p-1.5 shadow-xl shadow-gray-950/15 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/40', size === 'compact' ? 'rounded-xl' : 'rounded-2xl']"
         @keydown="handleMenuKeydown({ event: $event })"
       >
-        <button
-          v-for="option in options"
-          :key="option.value"
-          type="button"
-          role="option"
-          :data-testid="'settings-select-option-' + option.value"
-          :disabled="option.disabled"
-          :aria-selected="option.value === modelValue"
-          :aria-label="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
-          :title="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
-          :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex w-full items-center text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', size === 'compact' ? 'min-h-8 gap-2 rounded-md px-2.5 py-1.5' : 'min-h-12 gap-3 rounded-xl px-3 py-2.5', option.value === modelValue ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
-          @click="choose({ value: option.value })"
-        >
-          <slot name="option" :option="option">
-            <span tw-class="block min-w-0 flex-1">
-              <span :tw-class="['block truncate font-medium', size === 'compact' ? 'text-xs' : 'text-sm']">{{ option.label }}</span>
-              <span v-if="option.detail || option.source" tw-class="mt-1 flex min-w-0 items-center gap-1.5">
-                <SettingsSourceBadge :source="option.source" />
-                <span v-if="option.detail" tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ option.detail }}</span>
+        <div v-if="search" tw-class="sticky top-0 z-10 bg-white pb-1.5 dark:bg-gray-900">
+          <input ref="searchInput" v-model="query" type="search" :aria-label="search.label" :placeholder="search.label" :aria-controls="`${menuId}-choices`" data-testid="settings-select-search" tw-class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none focus:border-blue-400 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-100" />
+        </div>
+        <div :id="search ? `${menuId}-choices` : undefined" :role="search ? 'listbox' : undefined" :aria-label="search ? label : undefined">
+          <button
+            v-for="option in filteredOptions"
+            :key="option.value"
+            type="button"
+            role="option"
+            :data-testid="'settings-select-option-' + option.value"
+            :disabled="option.disabled"
+            :aria-selected="option.value === modelValue"
+            :aria-label="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
+            :title="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
+            :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex w-full items-center text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', size === 'compact' ? 'min-h-8 gap-2 rounded-md px-2.5 py-1.5' : 'min-h-12 gap-3 rounded-xl px-3 py-2.5', option.value === modelValue ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
+            @click="choose({ value: option.value })"
+          >
+            <slot name="option" :option="option">
+              <span tw-class="block min-w-0 flex-1">
+                <span :tw-class="['block truncate font-medium', size === 'compact' ? 'text-xs' : 'text-sm']">{{ option.label }}</span>
+                <span v-if="option.detail || option.source" tw-class="mt-1 flex min-w-0 items-center gap-1.5">
+                  <SettingsSourceBadge :source="option.source" />
+                  <span v-if="option.detail" tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ option.detail }}</span>
+                </span>
               </span>
-            </span>
-          </slot>
-          <CheckIcon v-if="option.value === modelValue" tw-class="h-4 w-4 shrink-0" />
-        </button>
+            </slot>
+            <CheckIcon v-if="option.value === modelValue" tw-class="h-4 w-4 shrink-0" />
+          </button>
+        </div>
+        <p v-if="search && filteredOptions.length === 0" role="status" data-testid="settings-select-no-results" tw-class="px-3 py-4 text-center text-xs text-gray-500 dark:text-gray-400">{{ search.noResults }}</p>
       </div>
     </Transition>
   </Teleport>

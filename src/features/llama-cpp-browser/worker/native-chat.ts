@@ -4,7 +4,7 @@ import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { GenerateInput } from '@/features/llama-cpp-browser/types';
 
 /** Native handles and their width-specific consumers stay inside one bound module. */
-export function prepareChat({ core, model, request }: { core: Core, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) {
+export function prepareChat({ core, model, request }: { core: Core, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'> }) {
   return core.chat.prepare({ assertIdle: core.assertIdle, model, request });
 }
 
