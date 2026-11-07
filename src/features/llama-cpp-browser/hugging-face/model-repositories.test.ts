@@ -9,8 +9,8 @@ describe('shared Hugging Face repositories', () => {
     expect(names).toEqual([...names].sort());
     for (const entry of hfRepositories) {
       expect(entry.hfRepository).toMatch(/^[^/:]+\/[^/:]+$/);
-      expect(entry.sitemapQuantizations.length).toBeGreaterThan(0);
-      expect(new Set(entry.sitemapQuantizations).size).toBe(entry.sitemapQuantizations.length);
+      expect(entry.seoPageQuantizations.length).toBeGreaterThan(0);
+      expect(new Set(entry.seoPageQuantizations).size).toBe(entry.seoPageQuantizations.length);
     }
   });
 
@@ -41,11 +41,11 @@ describe('shared Hugging Face repositories', () => {
     for (const suggestion of modelSuggestions) {
       const choice = preferredQuantizationHint({ suggestion });
       const entry = hfRepositories.find(entry => entry.hfRepository === choice.hfRepository);
-      expect(entry?.sitemapQuantizations).toContain(choice.preferredQuantization);
+      expect(entry?.seoPageQuantizations).toContain(choice.preferredQuantization);
     }
     expect(getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' })).toMatchObject({
       hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF',
-      sitemapQuantizations: ['Q4_K_M'],
+      seoPageQuantizations: ['Q4_K_M'],
     });
   });
 });

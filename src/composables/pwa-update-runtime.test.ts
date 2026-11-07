@@ -74,3 +74,19 @@ describe('page-scoped PWA runtime', () => {
     expect(useGlobalEvents().errorCount.value).toBe(0);
   });
 });
+
+it('registers the root worker rather than a model-page worker when the document has a publication base', () => {
+  const previous = window.location.href;
+  window.history.replaceState(undefined, '', '/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M/');
+  const base = document.createElement('base');
+  base.href = '/';
+  document.head.prepend(base);
+  using _base = {
+    [Symbol.dispose]() {
+      base.remove();
+      window.history.replaceState(undefined, '', previous);
+    },
+  };
+  startPWAUpdateRuntime();
+  expect(start.mock.calls[0]?.[0].baseUrl.href).toBe(`${window.location.origin}/`);
+});

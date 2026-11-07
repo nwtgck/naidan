@@ -113,5 +113,31 @@ export function applyDocumentMetadata({ document, page, documentTitle }: {
   }
 }
 
+/** Page identity is independent of temporary loading and print titles. */
+export function applyDocumentCanonicalUrl({ document, canonicalUrl }: { document: Document, canonicalUrl: string }): void {
+  const links = [...document.head.querySelectorAll<HTMLLinkElement>('link[rel="canonical"]')];
+  const link = links[0] ?? document.createElement('link');
+  for (const duplicate of links.slice(1)) {
+    duplicate.remove();
+  }
+  link.rel = 'canonical';
+  link.setAttribute('href', canonicalUrl);
+  link.setAttribute('data-document-metadata', '');
+  if (link.parentNode === null) {
+    document.head.append(link);
+  }
+  const metas = [...document.head.querySelectorAll<HTMLMetaElement>('meta[property="og:url"]')];
+  const meta = metas[0] ?? document.createElement('meta');
+  for (const duplicate of metas.slice(1)) {
+    duplicate.remove();
+  }
+  meta.setAttribute('property', 'og:url');
+  meta.setAttribute('content', canonicalUrl);
+  meta.setAttribute('data-document-metadata', '');
+  if (meta.parentNode === null) {
+    document.head.append(meta);
+  }
+}
+
 export const TEST_ONLY = {
 };

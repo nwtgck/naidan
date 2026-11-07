@@ -22,6 +22,7 @@ All notable changes to Naidan are documented in this file.
 
 ### Added
 
+- Searchable model-specific browser launch pages, generated from the shared model registry with local/on-device titles, quantization details, canonical URLs, and sitemap entries. The same app preview opens without redirecting; starting a chat returns to the existing fragment route.
 - Experimental workflows with shared step, JSON, and scoped graph editing, reusable parts, typed values, sequential text generation, branching, loops, interactive input, and folder-based file operations. Graph connections and moves validate scope and downstream types, preserve undo history, and protect unfinished inputs.
 - Workflow execution history with immutable definition snapshots, bounded progress checkpoints, individual workflow/run links, result browsing, and streamed archive downloads. Abandoned runs can be explicitly marked as interrupted without replay; per-run ownership locks protect active runs and pending completion saves. Composable arithmetic and boolean values support conditional loop completion and configurable execution-wide budgets.
 - Local Workflow audio and image generation through the existing browser engines, with typed dynamic inputs and sequential batching through loops. Audio generation supports reference voices and an explicit incomplete-output policy; image generation supports bounded initial/reference images and transient previews while fixing model and component file locations rather than substituting missing files.
@@ -38,6 +39,7 @@ All notable changes to Naidan are documented in this file.
 
 ### Changed
 
+- Link the English and Japanese browser-model guide shortlist to the new model pages while preserving Docs' current-origin link handling. Portable hosted and standalone packages do not include the public model-page overlay.
 - Persist llama.cpp browser endpoints with the stable `llama_cpp_browser` type on their next save while continuing to read existing `experimental_type` records without rewriting them on load. Other experimental endpoints and settings are unchanged.
 - Rename user-facing llama.cpp browser labels to “llama.cpp in the browser” (localized in each language) and list it first among concrete endpoint choices, without changing inherited choices or default connections.
 - Open the endpoint choices together with connection details in chat and chat-group overrides. Selecting an endpoint closes only the choices; clicking the connection summary again closes the details.

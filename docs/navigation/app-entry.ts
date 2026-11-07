@@ -1,8 +1,10 @@
 import { DOCS_PUBLIC_ORIGIN } from '../build/seo';
+import type { ModelSeoId } from '../../src/features/llama-cpp-browser/hugging-face/model-repositories';
 
 export type AppDestination =
   | { kind: 'screen'; screen: 'home' | 'gguf-manager' | 'transformers-js-manager' | 'connection' | 'files-settings' | 'folders-settings' | 'image-generation' | 'audio-generation' }
-  | { kind: 'model'; model: string };
+  | { kind: 'model'; model: string }
+  | { kind: 'model-page'; model: ModelSeoId };
 
 export function appDestinationPath({ destination }: { destination: AppDestination }): string {
   switch (destination.kind) {
@@ -22,6 +24,9 @@ export function appDestinationPath({ destination }: { destination: AppDestinatio
     }
     }
   }
+  // Published IDs contain only path-safe repository names and quantizations.
+  // The build contract checks this Docs path against the public page registry.
+  case 'model-page': return `/llama-cpp-browser/${destination.model}/`;
   case 'model': return `/#/?${new URLSearchParams({ 'llama-cpp-browser-model': destination.model }).toString()}`;
   default: {
     const unreachable: never = destination;
@@ -37,4 +42,10 @@ export function appEntryUrl({ destination, base }: { destination: AppDestination
 export function appEntryFallbackUrl({ destination }: { destination: AppDestination }): string {
   // This is an HTML fallback, separate from the fixed Docs canonical metadata.
   return appEntryUrl({ destination, base: DOCS_PUBLIC_ORIGIN });
+}
+
+/** Accept only root-relative app routes, never an origin supplied by article HTML. */
+export function isAppEntryPath({ value }: { value: string }): boolean {
+  return value.startsWith('/#/')
+    || /^\/llama-cpp-browser\/hf\.co\/[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*:[A-Za-z0-9][A-Za-z0-9._-]*\/$/.test(value);
 }

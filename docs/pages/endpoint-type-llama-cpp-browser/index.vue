@@ -37,7 +37,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p><RenderText :node="s.suggested_models_instructions()" /></p>
       <ul class="quick-model-list">
         <li v-for="item in quickModels" :key="item.model">
-          <AppEntryLink :destination="{ kind: 'model', model: item.model }" :locale="locale" display="label">{{ item.name }}</AppEntryLink>
+          <AppEntryLink :destination="{ kind: 'model-page', model: item.model }" :locale="locale" display="label">{{ item.name }}</AppEntryLink>
         </li>
       </ul>
       <p><RenderText :node="s.model_link_boundary()" /></p>

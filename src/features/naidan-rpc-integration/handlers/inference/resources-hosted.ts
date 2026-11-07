@@ -248,7 +248,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           loras,
           debug: 'off',
           weightResidency: 'auto',
-          baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
+          baseUrl: new URL(import.meta.env.BASE_URL, document.baseURI).href,
           preview: input.preview,
           imageInputs: { initImage: input.imageInputs.initial, referenceImages: input.imageInputs.references, strength: input.imageInputs.strength },
           parameters: {

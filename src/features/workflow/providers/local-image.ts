@@ -74,7 +74,7 @@ export function createWorkflowImageProvider({ directories }: { directories: { di
       const nativeRequest = requestSchema.parse({
         debug: 'off',
         artifact,
-        baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
+        baseUrl: new URL(import.meta.env.BASE_URL, document.baseURI).href,
         models,
         loras,
         parameters: { ...parameters, prompt: request.prompt },

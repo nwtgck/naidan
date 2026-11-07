@@ -1,9 +1,10 @@
 import { computed, hasInjectionContext, inject, onActivated, onDeactivated, onScopeDispose, provide, ref, shallowReactive, watchEffect, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import { START_LOCATION, type Router } from 'vue-router';
-import { HOME_METADATA, applyDocumentMetadata, isHomeIntroductionActive, routeDocumentMetadata, type HomeIntroduction, type PageMetadata } from '@/logic/document-metadata';
+import { HOME_METADATA, SITE_METADATA, applyDocumentCanonicalUrl, applyDocumentMetadata, isHomeIntroductionActive, routeDocumentMetadata, type HomeIntroduction, type PageMetadata } from '@/logic/document-metadata';
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
 import { lazyStrings } from '@/strings';
 import { exactObject } from '@/utils/exact-object';
+import { findModelSeoEntry } from '@/features/llama-cpp-browser/model-launch/seo-entries';
 
 type ScopedPageMetadata = Readonly<{ routePath: string, metadata: PageMetadata }>;
 type ScopedTitle = Readonly<{ routePath: string, title: string }>;
@@ -27,6 +28,14 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
     return route.value !== undefined && routePath.replace(/\/+$/, '') === route.value.path.replace(/\/+$/, '');
   }
   const introduction = computed(() => isHomeIntroductionActive({ introduction: homeIntroduction.value, route: route.value }));
+  const seoEntry = computed(() => {
+    const current = route.value;
+    if (__BUILD_MODE_IS_STANDALONE__ || current?.path !== '/' || document.location?.protocol === 'file:') {
+      return undefined;
+    }
+    const entry = findModelSeoEntry({ pathname: document.location?.pathname ?? '' });
+    return entry?.modelId === current.query['llama-cpp-browser-model'] ? entry : undefined;
+  });
   const page = computed(() => {
     if (introduction.value) {
       const title = lazyStrings.documentTitle__run_ai_on_your_device_directly_in_your_browser();
@@ -42,7 +51,7 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
         return value.metadata;
       }
     }
-    return routeDocumentMetadata({ route: route.value });
+    return seoEntry.value?.metadata ?? routeDocumentMetadata({ route: route.value });
   });
 
   function apply(): void {
@@ -60,6 +69,7 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
       }
     }
     applyDocumentMetadata({ document, page: page.value, documentTitle: documentTitle ?? page.value.title });
+    applyDocumentCanonicalUrl({ document, canonicalUrl: seoEntry.value?.canonicalUrl ?? SITE_METADATA.url });
   }
 
   watchEffect(apply, { flush: 'post' });

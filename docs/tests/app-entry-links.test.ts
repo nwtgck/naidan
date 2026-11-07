@@ -3,7 +3,7 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { JSDOM } from 'jsdom';
 import AppEntryLink from '../components/AppEntryLink.vue';
-import { appDestinationPath, appEntryFallbackUrl, appEntryUrl } from '../navigation/app-entry';
+import { appDestinationPath, appEntryFallbackUrl, appEntryUrl, isAppEntryPath } from '../navigation/app-entry';
 import { updateAppEntryLinks } from '../client/app-entry-enhancement';
 import { createSiteFixture, startSiteDev } from './site.test-support';
 
@@ -117,6 +117,35 @@ describe('Docs app entry links', () => {
       article.window.close();
       transformersArticle.window.close();
       unrelated.window.close();
+    }
+  });
+});
+
+describe('published model app links', () => {
+  const model = 'hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M';
+  const pathname = `/llama-cpp-browser/${model}/`;
+
+  it.each(['en', 'ja'] as const)('renders a path link and rebases it without changing canonical in %s', async locale => {
+    const html = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination: { kind: 'model-page', model }, locale, display: 'path' }) }));
+    for (const origin of ['https://naidan.pages.dev', 'https://preview.example', 'http://localhost:5173']) {
+      const canonical = `https://naidan.nwtgck.org/docs/${locale}/endpoint-type-llama-cpp-browser/`;
+      const dom = new JSDOM(`<head><link rel="canonical" href="${canonical}"></head><body>${html}</body>`, { url: `${origin}/docs/${locale}/endpoint-type-llama-cpp-browser/` });
+      using _dom = { [Symbol.dispose]: () => dom.window.close() };
+      const anchor = dom.window.document.querySelector<HTMLAnchorElement>('a');
+      expect(anchor?.getAttribute('href')).toBe(`https://naidan.nwtgck.org${pathname}`);
+      updateAppEntryLinks({ document: dom.window.document, locationHref: dom.window.location.href });
+      expect(anchor?.href).toBe(`${origin}${pathname}`);
+      expect(anchor?.hash).toBe('');
+      expect(anchor?.textContent).toBe(pathname);
+      expect(dom.window.document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(canonical);
+    }
+  });
+
+  it('does not admit absolute, protocol-relative or malformed model URLs as app paths', () => {
+    expect(isAppEntryPath({ value: pathname })).toBe(true);
+    expect(isAppEntryPath({ value: '/#/settings/connection' })).toBe(true);
+    for (const value of [`https://example.test${pathname}`, '//example.test/#/', pathname.replace('hf.co/', 'hf.co%2F'), pathname.replace('/LiquidAI/', '/../'), pathname + '?q=x', '/llama-cpp-browser/']) {
+      expect(isAppEntryPath({ value })).toBe(false);
     }
   });
 });

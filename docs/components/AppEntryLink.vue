@@ -26,7 +26,7 @@ const pathText = computed(() => {
     }
     }
   }
-  case 'model': return path.value;
+  case 'model': case 'model-page': return path.value;
   default: {
     const unreachable: never = destination;
     throw new Error(`Unknown app destination: ${String(unreachable)}`);

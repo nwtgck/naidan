@@ -701,3 +701,24 @@ describe('independently published Docs', () => {
     expect(f.requested).toHaveLength(5);
   });
 });
+
+describe('independently published model entries', () => {
+  it.each(['cache-first', 'network-only'] as const)('does not replace model HTTP responses with the home shell in %s mode', async mode => {
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    if (mode === 'network-only') {
+      await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    }
+    for (const suffix of ['llama-cpp-browser', 'llama-cpp-browser/', 'llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M/', 'llama-cpp-browser/hf.co/unknown/Model:Q4_K_M/']) {
+      const response = await worker.request({ url: new URL(suffix, scope).href, navigation: true });
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe('missing');
+    }
+    f.offline();
+    await expect(worker.request({ url: new URL('llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M/', scope).href, navigation: true })).rejects.toThrow('offline');
+    if (mode === 'cache-first') {
+      expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
+    }
+  });
+});

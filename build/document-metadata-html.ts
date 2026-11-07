@@ -1,6 +1,6 @@
 import { createBuildDom } from './jsdom';
 import type { Plugin } from 'vite';
-import { HOME_METADATA, SITE_METADATA, applyDocumentMetadata } from '../src/logic/document-metadata';
+import { HOME_METADATA, SITE_METADATA, applyDocumentCanonicalUrl, applyDocumentMetadata } from '../src/logic/document-metadata';
 
 const metadataMarker = '<!-- naidan-document-metadata -->';
 
@@ -10,7 +10,6 @@ export function createDocumentMetadataHtml(): string {
     const document = dom.window.document;
     applyDocumentMetadata({ document, page: HOME_METADATA, documentTitle: HOME_METADATA.title });
     for (const { attribute, key, content } of [
-      { attribute: 'property', key: 'og:url', content: SITE_METADATA.url },
       { attribute: 'property', key: 'og:type', content: 'website' },
       { attribute: 'property', key: 'og:image', content: SITE_METADATA.image },
       { attribute: 'name', key: 'twitter:card', content: 'summary' },
@@ -21,10 +20,7 @@ export function createDocumentMetadataHtml(): string {
       meta.content = content;
       document.head.append(meta);
     }
-    const canonical = document.createElement('link');
-    canonical.rel = 'canonical';
-    canonical.href = SITE_METADATA.url;
-    document.head.append(canonical);
+    applyDocumentCanonicalUrl({ document, canonicalUrl: SITE_METADATA.url });
     const schema = document.createElement('script');
     schema.type = 'application/ld+json';
     schema.textContent = JSON.stringify({

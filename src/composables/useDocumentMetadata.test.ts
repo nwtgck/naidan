@@ -2,7 +2,9 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, KeepAlive, nextTick, ref, shallowRef, type Component } from 'vue';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { APPLICATION_METADATA, AUDIO_METADATA, HOME_METADATA, IMAGE_METADATA, type PageMetadata } from '@/logic/document-metadata';
+import { APPLICATION_METADATA, AUDIO_METADATA, HOME_METADATA, IMAGE_METADATA, SITE_METADATA, type PageMetadata } from '@/logic/document-metadata';
+import { findModelSeoEntry } from '@/features/llama-cpp-browser/model-launch/seo-entries';
+import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { TEST_ONLY as presentationTestOnly } from './useAppPresentation';
 import { provideDocumentMetadata, useDocumentMetadata, useDocumentTitleOverride, usePageDocumentMetadata } from './useDocumentMetadata';
@@ -271,7 +273,47 @@ describe('document metadata ownership', () => {
     expect(document.head.querySelectorAll('meta[name="description"]')).toHaveLength(1);
     expect(document.head.querySelectorAll('meta[property="og:title"]')).toHaveLength(1);
     expect(document.head.querySelector('meta[name="referrer"]')?.getAttribute('content')).toBe('no-referrer');
-    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://example.test/');
+    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(SITE_METADATA.url);
     expectHead({ page: AUDIO_METADATA, documentTitle: AUDIO_METADATA.title });
+  });
+
+  it('preserves initial SEO metadata, allows variant/title overrides and resets URL metadata on chat navigation', async () => {
+    const pathname = '/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M/';
+    const entry = findModelSeoEntry({ pathname });
+    if (!entry) {
+      throw new Error('Missing test model');
+    }
+    const previous = window.location.href;
+    using _location = { [Symbol.dispose]: () => window.history.replaceState(undefined, '', previous) };
+    window.history.replaceState(undefined, '', pathname);
+    const router = routerForPages();
+    await router.push({ path: '/', query: { 'llama-cpp-browser-model': entry.modelId } });
+    const selection = ref<PageMetadata>();
+    const progress = ref<string>();
+    using _owner = mountOwner({
+      router,
+      introduction: presentationTestOnly.createHomeIntroduction({ router }),
+      content: defineComponent({
+        setup() {
+          usePageDocumentMetadata({ source: computed(() => selection.value === undefined ? undefined : { routePath: '/', metadata: selection.value }) });
+          useDocumentTitleOverride({ kind: 'model-loading', source: computed(() => progress.value === undefined ? undefined : { routePath: '/', title: progress.value }) });
+          return () => h('div');
+        },
+      }),
+    });
+    await nextTick();
+    expectHead({ page: entry.metadata, documentTitle: entry.metadata.title });
+    expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(entry.canonicalUrl);
+    const alternate = modelLaunchMetadata({ repository: entry.repository, variant: 'Q8_0' });
+    selection.value = alternate;
+    progress.value = 'Loading 25%';
+    await nextTick();
+    expectHead({ page: alternate, documentTitle: 'Loading 25%' });
+    expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(entry.canonicalUrl);
+    await router.replace('/chat/created');
+    await nextTick();
+    expectHead({ page: APPLICATION_METADATA, documentTitle: APPLICATION_METADATA.title });
+    expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(SITE_METADATA.url);
+    expect(document.querySelector('meta[property="og:url"]')?.getAttribute('content')).toBe(SITE_METADATA.url);
   });
 });

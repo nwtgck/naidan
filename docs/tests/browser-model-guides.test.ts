@@ -12,6 +12,7 @@ import { messages as overviewEnglish } from '../pages/in-browser-models/messages
 import { messages as overviewJapanese } from '../pages/in-browser-models/messages/ja';
 import { messages as commonEnglish } from '../messages/common/en';
 import { messages as commonJapanese } from '../messages/common/ja';
+import { updateAppEntryLinks } from '../client/app-entry-enhancement';
 import { parsePage } from './site.test-support';
 
 // README's Text Generation model links are the source of this guide's shortlist.
@@ -39,11 +40,23 @@ describe('browser model guides', () => {
     const article = page.document.querySelector('[data-testid="docs-models-llama-cpp-browser"]');
     const modelLinks = [...(article?.querySelectorAll('.quick-model-list a') ?? [])];
     expect(modelLinks.map(link => {
-      const hash = new URL(link.getAttribute('href') ?? '').hash;
-      expect(hash.startsWith('#/?llama-cpp-browser-model=')).toBe(true);
+      const url = new URL(link.getAttribute('href') ?? '');
+      expect(url.hash).toBe('');
+      expect(url.pathname.startsWith('/llama-cpp-browser/hf.co/')).toBe(true);
+      expect(url.origin).toBe('https://naidan.nwtgck.org');
       expect(link.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
-      return [link.textContent?.trim(), new URLSearchParams(hash.slice(3)).get('llama-cpp-browser-model')];
+      return [link.textContent?.trim(), url.pathname.slice('/llama-cpp-browser/'.length, -1)];
     })).toEqual(readmeTextModels);
+    for (const origin of ['https://naidan.pages.dev', 'http://localhost:5173', 'https://preview.example']) {
+      updateAppEntryLinks({ document: page.document, locationHref: `${origin}/docs/${locale}/endpoint-type-llama-cpp-browser/` });
+      for (const link of modelLinks) {
+        const url = new URL(link.getAttribute('href') ?? '');
+        expect(url.origin).toBe(origin);
+        expect(url.pathname.startsWith('/llama-cpp-browser/hf.co/')).toBe(true);
+        expect(url.hash).toBe('');
+      }
+    }
+
     expect(article?.querySelectorAll('section.walkthrough-step')).toHaveLength(4);
     for (const stage of ['open', 'import', 'download', 'default']) {
       const scene = article?.querySelector(`[data-testid="llama-settings-${stage}"]`);
