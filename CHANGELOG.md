@@ -31,6 +31,7 @@ All notable changes to Naidan are documented in this file.
 
 ### Fixed
 
+- Fail Privacy Fetch requests when the sandboxed broker cannot start, release its resources, and allow the next request to try a fresh broker instead of waiting indefinitely.
 - Restore browser-local llama.cpp model operations in environments that cannot clone file-system handles to workers, using captured file snapshots without reopening model paths. Preserve source identity checks for resident-model reuse and prevent cancelled preparation from dispatching late work.
 - Check file-system-handle cloning before worker initialization or linked-folder downloads, retaining the confirmed download root and avoiding retries of already-started operations after remote clone errors.
 - Drain active shell-tool executions before releasing their execution records after cancellation, and clear completed shell-tool timeout timers.

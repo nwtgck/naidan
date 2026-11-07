@@ -29,7 +29,7 @@ class TrackedMessageChannel extends MessageChannel {
 }
 
 function createModuleLoader() {
-  const context = vm.createContext({ window, document, HTMLElement, Headers, MessageChannel: TrackedMessageChannel });
+  const context = vm.createContext({ window, document, HTMLElement, Headers, setTimeout, clearTimeout, MessageChannel: TrackedMessageChannel });
   const hotData: Record<string, unknown> = {};
   const dependencies: Record<string, Record<string, unknown>> = {
     '@/logic/development-meta-csp/privacy-broker-sync': { getDevelopmentMetaCspPrivacyBrokerSyncNotForSecurity },
