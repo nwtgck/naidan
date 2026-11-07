@@ -19,7 +19,7 @@ describe('development plugin lifecycle', () => {
     expect(names).not.toContain('strip-privacy-fetch-broker-dev-injected-scripts');
     expect(names).not.toContain('manual-gzip-wasm-plugin');
     expect(names).not.toContain('copy-zip-plugin');
-    expect(names.some((name) => name.startsWith('zip-packager-plugin-'))).toBe(false);
+    expect(names).not.toContain('hosted-package');
   });
 
   it('retains compression and standalone package copying in hosted builds', async () => {
@@ -32,7 +32,7 @@ describe('development plugin lifecycle', () => {
 
   it('retains hosted archive creation in hosted builds', async () => {
     const config = await resolveConfig({ mode: 'hosted' }, 'build');
-    expect(config.plugins.some((plugin) => plugin.name.startsWith('zip-packager-plugin-'))).toBe(true);
+    expect(config.plugins.map((plugin) => plugin.name)).toContain('hosted-package');
   });
 });
 
