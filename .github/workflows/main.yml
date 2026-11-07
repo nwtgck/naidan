@@ -164,7 +164,7 @@ jobs:
           node-image: node:22-bookworm
 
       - name: Run typecheck
-        # Retain the same checks as npm run build: project references and PWA.
+        # Use the same project-reference and PWA checks as local builds.
         env:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
@@ -179,7 +179,7 @@ jobs:
             -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
             node:22-bookworm \
-            sh -c './node_modules/.bin/vue-tsc -b && ./node_modules/.bin/tsc --noEmit -p pwa/tsconfig.json'
+            npm run typecheck
 
   build:
     runs-on: ubuntu-latest

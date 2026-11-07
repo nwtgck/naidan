@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && tsc --noEmit -p pwa/tsconfig.json && npm run build:all",
+    "build": "npm run typecheck && npm run build:all",
     "build:all": "npm run build:standalone && npm run build:hosted",
     "build:standalone": "vite build --mode standalone --logLevel warn",
     "build:hosted": "vite build --mode hosted --logLevel warn",
@@ -16,7 +16,7 @@
     "strings:catalogs": "tsx scripts/generate-string-catalogs.ts",
     "strings:catalogs:check": "tsx scripts/generate-string-catalogs.ts --check",
     "strings:catalogs:test": "npm run test:only-failed -- --config build/boundary-strings/vitest.catalogs.config.ts",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
+    "typecheck": "vue-tsc -b && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint --fix",
     "lint:ci:strings-components": "eslint src/strings src/components --max-warnings 0 --concurrency off",
