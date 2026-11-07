@@ -1,11 +1,12 @@
 import type { BrowserImageModelSelection } from '@/01-models/types';
+import { Secret } from '@/utils/secret';
 import { createWorkflowTargetPermissions } from './model-permissions';
 import { workflowImageModelSchema, workflowImageLocationLabel } from './image-model-schema';
 
 /** Separate from text/audio even when a local file or model name is identical. */
 export function createWorkflowImagePermissions() {
   return createWorkflowTargetPermissions<BrowserImageModelSelection>({
-    targetIdentity: ({ target }) => JSON.stringify(workflowImageModelSchema.parse(target)),
+    targetIdentity: ({ target }) => Secret.from({ value: JSON.stringify(workflowImageModelSchema.parse(target)) }),
     describe({ target, scope, sources }) {
       const selection = workflowImageModelSchema.parse(target);
       const modelId = [

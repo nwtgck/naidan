@@ -1,3 +1,4 @@
+import { areOptionalEndpointsEqual } from '@/01-models/endpoint';
 import { resolveLmParameterLayers } from '@/logic/chat-settings-resolver';
 import { cloneLmParameters } from '@/utils/lm-parameters';
 import type { Endpoint, LmParameters } from '@/01-models/types';
@@ -38,6 +39,21 @@ export function cloneImagePromptTranslationOverride({ value }: { value: ImageGen
   const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
   return { endpoint: endpoint === undefined ? undefined : cloneEndpoint({ endpoint }), modelId, lmParameters: cloneLmParameters({ lmParameters }) };
+}
+
+export function areImagePromptTranslationOverridesEqual({ left, right }: {
+  left: ImageGenerationTranslationOverride | undefined,
+  right: ImageGenerationTranslationOverride | undefined,
+}): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  const { endpoint: leftEndpoint, modelId: leftModel, lmParameters: leftParameters, ...leftRest } = left;
+  const { endpoint: rightEndpoint, modelId: rightModel, lmParameters: rightParameters, ...rightRest } = right;
+  leftRest satisfies Record<PropertyKey, never>;
+  rightRest satisfies Record<PropertyKey, never>;
+  return areOptionalEndpointsEqual({ left: leftEndpoint, right: rightEndpoint })
+    && leftModel === rightModel && JSON.stringify(leftParameters) === JSON.stringify(rightParameters);
 }
 
 export const imagePromptTranslationLanguages: readonly { locale: UiLocale, name: string, instructionName: string }[] = [

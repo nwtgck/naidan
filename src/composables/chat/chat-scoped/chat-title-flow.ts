@@ -1,3 +1,5 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { areResolvedTitleGenerationsEqual } from '@/logic/chat-settings-resolver';
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import type { Chat, ChatMessage, Endpoint } from '@/01-models/types';
 import { isConfiguredEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
@@ -165,7 +167,7 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
       return undefined;
     }
 
-    const settingsAtStart = JSON.stringify(resolved.titleGeneration);
+    const settingsAtStart = clonePlainData({ value: resolved.titleGeneration });
     const titleModelId = titleModelIdOverride || resolved.titleGeneration.modelId;
     if (!titleModelId) {
       return undefined;
@@ -221,7 +223,7 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
       && chatRuntimeStore.getActiveTitleGeneration({ chatId: taskId }) === controller
       && mutableChat.title === titleAtStart
       && mutableChat.currentLeafId === leafAtStart
-      && JSON.stringify(resolveTitleSettings({ chat: mutableChat }).titleGeneration) === settingsAtStart;
+      && areResolvedTitleGenerationsEqual({ left: resolveTitleSettings({ chat: mutableChat }).titleGeneration, right: settingsAtStart });
     if (!canCommit()) {
       return undefined;
     }

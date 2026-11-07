@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import { toVolumeId } from '@/01-models/ids';
@@ -153,7 +154,7 @@ b`,
 
   it('omits nested model capabilities from exports but preserves ordinary literal JSON', async () => {
     using fs = createWorkflowTestFileSystem();
-    const model: RuntimeValue = { type: 'model', endpoint: { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['Authorization', 'SECRET']] }, modelId: 'model' };
+    const model: RuntimeValue = { type: 'model', endpoint: { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['Authorization', Secret.from({ value: 'SECRET' })]] }, modelId: 'model' };
     const result = emptyResult();
     const outputs = new Map([[stepId({ raw: '../unsafe' }), { connection: { type: 'object' as const, properties: { nested: model } }, data: { type: 'json' as const, value: { type: 'model', label: 'literal' } } }]]);
     await exportWorkflowResults({ result: { ...result, outputs }, directory: fs.root, signal: signal(), writtenFiles: [] });

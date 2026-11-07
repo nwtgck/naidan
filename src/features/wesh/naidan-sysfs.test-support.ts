@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import { Wesh } from './index';
 import { createTextShellSource } from '@/features/wesh/shell/source';
@@ -94,7 +95,7 @@ export const mainChatMetadata: ChatMeta = {
   endpoint: {
     type: 'openai',
     url: 'https://example.invalid/v1',
-    httpHeaders: [['Authorization', 'secret-token']],
+    httpHeaders: [['Authorization', Secret.from({ value: 'secret-token' })]],
   },
   modelId: 'gpt-5',
   titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -331,7 +332,7 @@ export const chatGroup: ChatGroup = {
   endpoint: {
     type: 'openai',
     url: 'https://example.invalid/v1',
-    httpHeaders: [['Authorization', 'group-secret-token']],
+    httpHeaders: [['Authorization', Secret.from({ value: 'group-secret-token' })]],
   },
   modelId: 'gpt-5',
   titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },

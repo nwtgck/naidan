@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { expect, it, vi } from 'vitest';
 import { createWorkflowTestFileSystem } from '@/00-storage/service/workflow-files.test-support';
 import { toToolCallId } from '@/01-models/ids';
@@ -106,7 +107,7 @@ it('copies an archived conversation into an independent chat tree without retain
 });
 
 it('does not reveal model settings through the generic result viewer', () => {
-  const model: RuntimeValue = { type: 'model', endpoint: { type: 'openai', url: 'https://private', httpHeaders: [['Authorization', 'secret']] }, modelId: 'private' };
+  const model: RuntimeValue = { type: 'model', endpoint: { type: 'openai', url: 'https://private', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] }, modelId: 'private' };
   expect(workflowResultSources({ result: result({ outputs: { model, wrapped: { type: 'object', properties: { model } }, text: { type: 'json', value: 'visible' } } }) }).map(source => source.label)).toEqual(['source / text']);
 });
 

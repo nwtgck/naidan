@@ -1,6 +1,10 @@
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { Secret } from '@/utils/secret';
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import type { Chat, ChatContent, ChatMeta, UserMessageNode } from '@/01-models/types';
+import type { Chat, ChatContent, ChatMeta, HttpEndpoint, ScopedTitleGeneration, UserMessageNode } from '@/01-models/types';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { ChatContentBindingChangedError, createChatContentWrite, snapshotChatContent, type ChatContentWrite } from '@/00-storage/service/chat-content-binding';
 import { rememberSavedLocalModelReference, TEST_ONLY as localReferences, type LocalModelPromotion } from '@/00-storage/service/local-model-references';
@@ -34,6 +38,8 @@ vi.mock('@/00-storage/service', () => ({
 }));
 import { createChatDataStore, type ChatDataStore } from './chat-data-store';
 
+installSecretEqualityTester();
+
 function chat(): Chat {
   return { id: toChatId({ raw: 'owner' }), title: 'Owner', createdAt: 1, updatedAt: 1, debugEnabled: false, root: { items: [] } };
 }
@@ -50,7 +56,7 @@ function store() {
 }
 
 async function installSaved({ registry, value }: { registry: ChatDataStore, value: Chat }): Promise<Chat> {
-  loadChat.mockResolvedValueOnce(structuredClone(value));
+  loadChat.mockResolvedValueOnce(clonePlainData({ value }));
   const live = await registry.openChat({ id: value.id, leafId: undefined });
   expect(live).not.toBeNull();
   loadChat.mockClear();
@@ -549,5 +555,84 @@ describe('live chat model-binding content guards', () => {
     loadChat.mockResolvedValueOnce({ ...original, currentLeafId: toMessageId({ raw: 'next-fixture' }) });
     expect(await registry.synchronizeModelBindingContent({ chatId: original.id })).toBe('changed');
     expect(registry.getLiveChatById({ chatId: original.id })?.currentLeafId).toBeUndefined();
+  });
+});
+
+describe('protected live metadata', () => {
+  function credentialFields({ value }: { value: string }): { endpoint: HttpEndpoint, titleGeneration: ScopedTitleGeneration } {
+    const endpoint: HttpEndpoint = { type: 'openai', url: 'https://example.invalid', httpHeaders: [['X-Custom', Secret.from({ value })]] };
+    return { endpoint, titleGeneration: { endpoint, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS } } };
+  }
+
+  it.each(['endpoint', 'titleGeneration'] as const)('applies a credential-only in-place update to live %s', async field => {
+    const registry = store();
+    const original = { ...chat(), ...credentialFields({ value: 'old' }) };
+    const live = await installSaved({ registry, value: original });
+    let persisted: ChatMeta = clonePlainData({ value: original });
+    updateMeta.mockImplementation(async ({ updater }: { updater({ current }: { current: ChatMeta | null }): ChatMeta | undefined }) => {
+      persisted = updater({ current: persisted })!;
+    });
+    const next = credentialFields({ value: 'accepted' });
+    await registry.updateChatMeta({
+      id: live.id,
+      updater: ({ current }) => {
+        if (current === null) {
+          throw new Error('Missing metadata');
+        }
+        if (field === 'endpoint') {
+          current.endpoint = next.endpoint;
+        } else {
+          current.titleGeneration = next.titleGeneration;
+        }
+        return current;
+      },
+    });
+    expect(live[field]).toEqual(next[field]);
+    expect(live[field]).not.toEqual(original[field]);
+    expect(live.updatedAt).toBe(original.updatedAt);
+    expect(loadChat).not.toHaveBeenCalled();
+  });
+
+  it.each(['endpoint', 'titleGeneration'] as const)('does not overwrite a concurrent credential-only edit to %s', async field => {
+    const registry = store();
+    const original = { ...chat(), ...credentialFields({ value: 'old' }) };
+    const live = await installSaved({ registry, value: original });
+    const pending = Promise.withResolvers<void>();
+    updateMeta.mockImplementation(async ({ updater }: { updater({ current }: { current: ChatMeta | null }): ChatMeta | undefined }) => {
+      updater({ current: clonePlainData({ value: original }) });
+      await pending.promise;
+    });
+    const operation = registry.updateChatMeta({ id: live.id, updater: ({ current }) => ({ ...current!, ...credentialFields({ value: 'stale' }), updatedAt: 3 }) });
+    const newer = credentialFields({ value: 'newer' });
+    if (field === 'endpoint') {
+      live.endpoint = newer.endpoint;
+    } else {
+      live.titleGeneration = newer.titleGeneration;
+    }
+    pending.resolve();
+    await operation;
+    expect(live[field]).toEqual(newer[field]);
+    expect(live.updatedAt).toBe(original.updatedAt);
+  });
+
+  it.each(['endpoint', 'titleGeneration'] as const)('does not overwrite a credential-only edit during an external %s refresh', async field => {
+    const registry = store();
+    const original = { ...chat(), ...credentialFields({ value: 'old' }) };
+    const live = await installSaved({ registry, value: original });
+    registry.currentChatRef.value = live;
+    const pending = Promise.withResolvers<Chat>();
+    loadChat.mockReturnValueOnce(pending.promise);
+    const operation = subscribe.mock.calls.at(-1)![0].listener({ event: { type: 'chat_meta_and_chat_group', id: 'owner', timestamp: 1 } });
+    expect(loadChat).toHaveBeenCalledOnce();
+    const newer = credentialFields({ value: 'newer' });
+    if (field === 'endpoint') {
+      live.endpoint = newer.endpoint;
+    } else {
+      live.titleGeneration = newer.titleGeneration;
+    }
+    pending.resolve({ ...original, title: 'Stale external title' });
+    await operation;
+    expect(live[field]).toEqual(newer[field]);
+    expect(live.title).toBe(original.title);
   });
 });

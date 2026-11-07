@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import OllamaManagementView from './OllamaManagementView.vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { Secret } from '@/utils/secret';
 
 const { mockCreateOllamaProvider } = vi.hoisted(() => ({
   mockCreateOllamaProvider: vi.fn(),
@@ -19,10 +20,11 @@ describe('OllamaManagementView', () => {
 
   it('renders the current ps screen without a one-item tab interface', async () => {
     await ensureAllStringsForTest({ locale: 'en' });
+    const endpointHttpHeaders: [name: string, value: Secret<string>][] = [['Authorization', Secret.from({ value: 'Bearer token' })]];
     const wrapper = mount(OllamaManagementView, {
       props: {
         endpointUrl: 'http://localhost:11434',
-        endpointHttpHeaders: [['Authorization', 'Bearer token']],
+        endpointHttpHeaders,
         fakeLmDebugModeStatus: 'disabled',
       },
       global: {
@@ -42,9 +44,12 @@ describe('OllamaManagementView', () => {
     expect(wrapper.text()).toContain('Ollama Runtime');
     expect(mockCreateOllamaProvider).toHaveBeenCalledWith({
       endpointUrl: 'http://localhost:11434',
-      endpointHttpHeaders: [['Authorization', 'Bearer token']],
+      endpointHttpHeaders,
       fakeLmDebugModeStatus: 'disabled',
     });
+    const suppliedHeaders = (mockCreateOllamaProvider.mock.calls[0]?.[0] as { endpointHttpHeaders: [name: string, value: Secret<string>][] } | undefined)?.endpointHttpHeaders;
+    expect(suppliedHeaders?.[0]?.[1]).toBe(endpointHttpHeaders[0]?.[1]);
+    expect(suppliedHeaders?.[0]?.[1].reveal()).toBe('Bearer token');
   });
 
   it('uses the existing runtime in settings without a second heading or disclosure', async () => {

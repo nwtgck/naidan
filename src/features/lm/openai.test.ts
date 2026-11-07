@@ -1,9 +1,13 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { runProviderConversationForTest } from './provider.test-support';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from './openai';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import http from 'http';
 import type { AddressInfo } from 'net';
+
+installSecretEqualityTester();
 
 describe('OpenAIProvider Integration Tests', () => {
   let server: http.Server | null = null;
@@ -164,7 +168,7 @@ data: [DONE]
 
       const provider = new OpenAIProvider({
         endpoint: baseUrl,
-        headers: [['Authorization', 'Bearer test-token']],
+        headers: [['Authorization', Secret.from({ value: 'Bearer test-token' })]],
       });
       await runProviderConversationForTest({
         provider,

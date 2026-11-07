@@ -1,3 +1,5 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { areScopedTitleGenerationsEqual } from '@/01-models/title-generation';
 import { isProxy, reactive, ref, toRaw, triggerRef, watch, type Ref } from 'vue';
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
@@ -5,7 +7,7 @@ import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/01-m
 import { storageService, type ChatContentWrite } from '@/00-storage/service';
 import { useSettings } from '@/composables/useSettings';
 import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
-import { cloneEndpoint } from '@/01-models/endpoint';
+import { cloneEndpoint, areOptionalEndpointsEqual } from '@/01-models/endpoint';
 import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
 import { applyLocalModelPromotion, normalizeSavedLocalModelFields } from '@/features/llama-cpp-browser/model-reference-promotion';
 import { chatContentFingerprint, type ChatContentModelBinding } from '@/00-storage/service/chat-content-binding';
@@ -238,8 +240,31 @@ export function createChatDataStore({
     return metadata;
   }
 
-  function metadataSnapshot({ chat }: { chat: Chat }): string {
-    return JSON.stringify(metadataWithoutContent({ chat }));
+  type LiveMetadata = ReturnType<typeof metadataWithoutContent>;
+
+  function metadataSnapshot({ chat }: { chat: ChatMeta & Partial<Pick<Chat, 'root'>> }): LiveMetadata {
+    return clonePlainData({ value: metadataWithoutContent({ chat }) });
+  }
+
+  function sameMetadataField({ field, left, right }: { field: keyof LiveMetadata, left: LiveMetadata | undefined, right: LiveMetadata }): boolean {
+    switch (field) {
+    case 'endpoint': return areOptionalEndpointsEqual({ left: left?.endpoint, right: right.endpoint });
+    case 'titleGeneration': return areScopedTitleGenerationsEqual({ left: left?.titleGeneration, right: right.titleGeneration });
+    case 'id': case 'title': case 'groupId': case 'createdAt': case 'updatedAt': case 'debugEnabled':
+    case 'modelId': case 'originChatId': case 'originMessageId': case 'systemPrompt': case 'lmParameters':
+    case 'mounts': case 'toolConfigs':
+      // These fields contain no Secret. Keep their existing JSON comparison.
+      return JSON.stringify(left?.[field]) === JSON.stringify(right[field]);
+    default: {
+      const exhaustive: never = field;
+      throw new Error(`Unhandled metadata field: ${String(exhaustive)}`);
+    }
+    }
+  }
+
+  function sameMetadataSnapshot({ left, right }: { left: LiveMetadata, right: LiveMetadata }): boolean {
+    const fields = Object.keys({ ...left, ...right }) as (keyof LiveMetadata)[];
+    return fields.every(field => sameMetadataField({ field, left, right }));
   }
 
   function registerLiveInstance({
@@ -610,22 +635,22 @@ export function createChatDataStore({
           throw new Error(String(exhaustive));
         }
         }
-        const previousMetadata = current === null ? undefined : metadataWithoutContent({ chat: current });
-        const previousFields = new Map(Object.entries(previousMetadata ?? {}).map(([field, value]) => [field, JSON.stringify(value)]));
+        // Snapshot before the updater: it may mutate its input in place.
+        const previousMetadata = current === null ? undefined : metadataSnapshot({ chat: current });
         const updated: ChatMeta & Partial<Pick<Chat, 'root'>> = updater({ current });
         const { root: _root, ...metadata } = updated;
         const updatedMetadata = metadataWithoutContent({ chat: metadata });
         acceptedChanges = {};
         const fields = Object.keys({ ...previousMetadata, ...updatedMetadata }) as (keyof typeof updatedMetadata)[];
         for (const field of fields) {
-          if (previousFields.get(field) !== JSON.stringify(updatedMetadata[field])) {
+          if (!sameMetadataField({ field, left: previousMetadata, right: updatedMetadata })) {
             acceptedChanges = { ...acceptedChanges, [field]: updatedMetadata[field] };
           }
         }
         return metadata;
       },
     });
-    if (acceptedChanges !== undefined && existing !== undefined && liveChatRegistry.get(id) === existing && metadataSnapshot({ chat: existing }) === before) {
+    if (acceptedChanges !== undefined && existing !== undefined && liveChatRegistry.get(id) === existing && before !== undefined && sameMetadataSnapshot({ left: metadataSnapshot({ chat: existing }), right: before })) {
       Object.assign(existing, acceptedChanges);
       normalizeLocalChat({ chat: existing });
       if (currentChatRef.value?.id === id) {
@@ -895,7 +920,7 @@ export function createChatDataStore({
           const existing = currentChatRef.value;
           const before = metadataSnapshot({ chat: existing });
           const fresh = await storageService.loadChat({ id: chatId });
-          if (currentChatRef.value !== existing || metadataSnapshot({ chat: existing }) !== before) {
+          if (currentChatRef.value !== existing || !sameMetadataSnapshot({ left: metadataSnapshot({ chat: existing }), right: before })) {
             break;
           }
           if (fresh) {

@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { it, expect } from 'vitest';
 import type { WorkflowStep, WorkflowDefinition } from '@/01-models/workflow';
 import { toVolumeId, toToolCallId } from '@/01-models/ids';
@@ -14,7 +15,7 @@ it('removes all authored content, connections, field names and capability bindin
     case 'value': step.value = { type: 'json_compose', base: { 'secret-field': 'secret-base', pin: 707070 }, assignments: [{ path: ['secret-field'], value: { type: 'literal', value: 'secret-assigned' } }] };
       break;
     case 'text_generation':
-      step.target = { type: 'model', endpoint: { type: 'openai', url: 'https://secret-url/?secret-query', httpHeaders: [['secret-header', 'secret-token']] }, modelId: 'secret-model' };
+      step.target = { type: 'model', endpoint: { type: 'openai', url: 'https://secret-url/?secret-query', httpHeaders: [['secret-header', Secret.from({ value: 'secret-token' })]] }, modelId: 'secret-model' };
       step.systemPrompt = { behavior: 'append', content: 'secret-system' };
       step.lmParameters = { temperature: 707070, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: ['secret-stop'], reasoning: { effort: undefined } };
       step.appendMessages = [{ role: 'assistant', parts: [{ type: 'reasoning', text: 'secret-thought' }, { type: 'tool_call', id: toToolCallId({ raw: 'secret-call' }), name: 'secret-tool', arguments: 'secret-arguments' }] }, { role: 'tool', parts: [{ type: 'tool_result', id: toToolCallId({ raw: 'secret-call' }), status: 'success', code: undefined, content: { type: 'literal', value: 'secret-result' } }] }];

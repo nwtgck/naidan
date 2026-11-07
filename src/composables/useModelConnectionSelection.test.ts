@@ -1,9 +1,13 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, ref } from 'vue';
 import type { HttpEndpoint } from '@/01-models/types';
 import type { LmProvider } from '@/01-models/lm';
 import { useModelConnectionSelection } from './useModelConnectionSelection';
+
+installSecretEqualityTester();
 
 const loadLmProvider = vi.hoisted(() => vi.fn());
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider }));
@@ -12,7 +16,7 @@ function createHarness() {
   const active = ref(true);
   const type = ref<HttpEndpoint['type'] | 'browser_provided_lm'>('openai');
   const url = ref('');
-  const headers = ref<[string, string][]>([]);
+  const headers = ref<[name: string, value: Secret<string>][]>([]);
   const scope = effectScope();
   const selection = scope.run(() => useModelConnectionSelection({ active, type, url, headers, getFakeLmDebugModeStatus: () => 'disabled' }));
   if (selection === undefined) {
@@ -35,11 +39,11 @@ describe('uncommitted connection model discovery', () => {
     vi.useFakeTimers();
     using owner = createHarness();
     owner.url.value = 'https://example.invalid/v1';
-    owner.headers.value = [['Authorization', 'Bearer secret']];
+    owner.headers.value = [['Authorization', Secret.from({ value: 'Bearer secret' })]];
     await vi.advanceTimersByTimeAsync(500);
     expect(loadLmProvider).not.toHaveBeenCalled();
     await owner.selection.refresh();
-    expect(loadLmProvider).toHaveBeenCalledExactlyOnceWith({ endpoint: { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['Authorization', 'Bearer secret']] }, fakeLmDebugModeStatus: 'disabled' });
+    expect(loadLmProvider).toHaveBeenCalledExactlyOnceWith({ endpoint: { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['Authorization', Secret.from({ value: 'Bearer secret' })]] }, fakeLmDebugModeStatus: 'disabled' });
     expect(owner.selection.models.value).toEqual(['model-2', 'model-10']);
     expect(owner.selection.modelId.value).toBe('model-2');
     expect(owner.selection.state.value).toEqual({ status: 'ready' });
@@ -74,7 +78,7 @@ describe('uncommitted connection model discovery', () => {
     const pending = owner.selection.refresh();
     await flushPromises();
     const oldSignal: AbortSignal = firstList.mock.calls[0]?.[0].signal;
-    owner.headers.value = [['X-Key', 'new']];
+    owner.headers.value = [['X-Key', Secret.from({ value: 'new' })]];
     expect(oldSignal.aborted).toBe(true);
     owner.type.value = 'ollama';
     owner.url.value = 'https://second.invalid';
@@ -82,7 +86,7 @@ describe('uncommitted connection model discovery', () => {
     first.resolve(['old']);
     await pending;
     expect(owner.selection.models.value).toEqual(['model-2', 'model-10']);
-    expect(loadLmProvider.mock.calls[1]?.[0].endpoint).toEqual({ type: 'ollama', url: 'https://second.invalid', httpHeaders: [['X-Key', 'new']] });
+    expect(loadLmProvider.mock.calls[1]?.[0].endpoint).toEqual({ type: 'ollama', url: 'https://second.invalid', httpHeaders: [['X-Key', Secret.from({ value: 'new' })]] });
   });
 
   it('does not start a request after an obsolete provider import resolves', async () => {

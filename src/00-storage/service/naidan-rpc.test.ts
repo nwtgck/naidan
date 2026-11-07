@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { naidanRpcStorage } from './naidan-rpc';
 import { storageService } from './index';
@@ -5,6 +7,8 @@ import { LocalStorageProvider } from './local-storage';
 import { MemoryStorageProvider } from './memory-storage';
 import type { NaidanRpcRegistration, NaidanRpcIdentity } from '@/01-models/naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
+
+installSecretEqualityTester();
 
 /** Transaction fixture, not a browser IndexedDB implementation. A request may
  * succeed while commit later fails; writes are made visible only on commit. */
@@ -313,7 +317,7 @@ it('requires actual cross-tab locks for durable writes', async () => {
 
 it('keeps local trust and transport credentials out of general JSON backups', async () => {
   database();
-  await remember({ next: { ...registration, transport: { ...registration.transport, headers: [{ name: 'Authorization', value: 'private-secret' }] } } });
+  await remember({ next: { ...registration, transport: { ...registration.transport, headers: [{ name: 'Authorization', value: Secret.from({ value: 'private-secret' }) }] } } });
   const backup = await storageService.dumpWithoutLock();
   expect(JSON.stringify(backup.structure)).not.toContain('private-secret');
   expect(JSON.stringify(backup.structure)).not.toContain('localPublicKey');

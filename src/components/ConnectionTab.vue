@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Secret } from '@/utils/secret';
+import { clonePlainData } from '@/utils/clone-plain-data';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
@@ -145,7 +147,7 @@ const endpointUrl = computed({
   },
 });
 
-const endpointHttpHeaders = computed<[string, string][] | undefined>({
+const endpointHttpHeaders = computed<[name: string, value: Secret<string>][] | undefined>({
   get: () => isHttpEndpoint(form.value.endpoint)
     ? form.value.endpoint.httpHeaders
     : undefined,
@@ -428,14 +430,14 @@ const globalTitleEndpointUrl = computed({
 const globalTitleEndpointHttpHeaders = computed(() => {
   const endpoint = globalTitleEndpoint.value;
   return endpoint !== 'same_scope' && isHttpEndpoint(endpoint)
-    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [string, string]) ?? []
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [name: string, value: Secret<string>]) ?? []
     : undefined;
 });
 
 function setGlobalTitleEndpointHttpHeaders({
   httpHeaders,
 }: {
-  httpHeaders: [string, string][],
+  httpHeaders: [name: string, value: Secret<string>][],
 }): void {
   const titleGeneration = currentSettingsTitleGeneration();
   const endpoint = globalTitleEndpoint.value;
@@ -881,7 +883,7 @@ async function handleCreateProviderProfile() {
     form.value.providerProfiles = [];
   }
   form.value.providerProfiles.push(newProviderProfile);
-  await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(form.value.providerProfiles)) });
+  await updateProviderProfiles({ profiles: clonePlainData({ value: form.value.providerProfiles }) });
 
   addToast({
     message: await ensureStrings.ConnectionTab__profile_created({ profileName: name }),

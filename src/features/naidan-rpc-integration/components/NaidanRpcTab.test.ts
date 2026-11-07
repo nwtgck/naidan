@@ -1,9 +1,13 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import NaidanRpcTab from './NaidanRpcTab.vue';
 import type { RpcRegistrationView, NaidanPeerManager } from '@/features/naidan-rpc-integration/runtime/manager';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
+
+installSecretEqualityTester();
 
 vi.mock('@/components/csp/CspMessageHint.vue', () => ({
   default: {
@@ -56,7 +60,7 @@ function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcRe
       connectOnStartup: 'disabled',
       localPublicKey: 'A'.repeat(43),
       label: 'Peer 1234',
-      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'private-token' }] },
+      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: Secret.from({ value: 'private-token' }) }] },
       inboundAllowedMethods: [],
       revision: 0,
     },

@@ -1,9 +1,13 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Endpoint } from '@/01-models/types';
 import type { CspHintActivityForDisplayOnly } from '@/components/csp/types';
 import { FAKE_LM_ENDPOINT_URL } from '@/features/fake-lm';
 import CspLmEndpointHint from './CspLmEndpointHint.vue';
+
+installSecretEqualityTester();
 
 const mocks = vi.hoisted(() => ({
   settings: { value: { experimental: { fakeLm: 'disabled' as 'enabled' | 'disabled' } } },
@@ -68,7 +72,7 @@ describe('LM endpoint hint transport context', () => {
   });
 
   it('keeps the selected endpoint intact for the real provider suffix, without exposing headers', () => {
-    const endpoint: Endpoint = { type: 'openai', url: 'https://api.example/v1?mode=demo#section', httpHeaders: [['Authorization', 'secret']] };
+    const endpoint: Endpoint = { type: 'openai', url: 'https://api.example/v1?mode=demo#section', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] };
     const wrapper = renderHint({ activityForDisplayOnly: undefined, endpoint, operation: 'models', presentation: 'compact' });
 
     expect(wrapper.getComponent({ name: 'CspMessageHint' }).props()).toEqual({
@@ -76,7 +80,7 @@ describe('LM endpoint hint transport context', () => {
       presentation: 'compact',
       activityForDisplayOnly: 'model-list',
     });
-    expect(endpoint).toEqual({ type: 'openai', url: 'https://api.example/v1?mode=demo#section', httpHeaders: [['Authorization', 'secret']] });
+    expect(endpoint).toEqual({ type: 'openai', url: 'https://api.example/v1?mode=demo#section', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] });
   });
 
   it('distinguishes local Fake LM responses from the same URL used as a network endpoint', async () => {

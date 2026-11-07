@@ -1,6 +1,5 @@
 import { idToRaw } from '@/01-models/ids';
-import type { ChatMeta, Endpoint } from '@/01-models/types';
-import { cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
+import type { ChatMeta } from '@/01-models/types';
 
 function formatValue({ value }: { value: unknown }): string {
   if (value === undefined) {
@@ -15,21 +14,8 @@ function formatValue({ value }: { value: unknown }): string {
   return JSON.stringify(value);
 }
 
-function maskEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
-  if (endpoint === undefined) {
-    return undefined;
-  }
-  const cloned = cloneEndpoint({ endpoint });
-  if (!isHttpEndpoint(cloned)) {
-    return cloned;
-  }
-  return {
-    ...cloned,
-    httpHeaders: cloned.httpHeaders?.map(([name]) => [name, '[masked]']),
-  };
-}
 
-// Sensitive fields must be masked before rendering. Do not emit raw secret values here.
+// Domain Secret values mask themselves, including nested title-generation credentials.
 export function renderChatMetadataMarkdown({ metadata }: { metadata: ChatMeta }): string {
   return `\
 # Chat Metadata
@@ -47,7 +33,7 @@ originChatId: ${formatValue({ value: metadata.originChatId === undefined ? undef
 originMessageId: ${formatValue({ value: metadata.originMessageId === undefined ? undefined : idToRaw({ id: metadata.originMessageId }) })}
 systemPrompt: ${formatValue({ value: metadata.systemPrompt })}
 lmParameters: ${formatValue({ value: metadata.lmParameters })}
-endpoint: ${formatValue({ value: maskEndpoint({ endpoint: metadata.endpoint }) })}
+endpoint: ${formatValue({ value: metadata.endpoint })}
 mounts: ${formatValue({ value: metadata.mounts })}
 `;
 }

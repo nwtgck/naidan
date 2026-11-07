@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import type { WorkflowModelConfiguration } from '@/01-models/workflow';
 import { idToRaw } from '@/01-models/ids';
 import { cloneEndpoint, isConfiguredEndpoint } from '@/01-models/endpoint';
@@ -11,7 +12,7 @@ type RequestApproval = ({ review, signal }: { review: WorkflowConnectionReview, 
 const MAX_REVIEWED_TARGETS = 128;
 const MAX_IDENTITY_LENGTH = 16384;
 
-function identity({ target }: { target: Target }): string {
+function identity({ target }: { target: Target }): Secret<string> {
   if (!target.modelId.trim() || !isConfiguredEndpoint({ endpoint: target.endpoint })) {
     throw new Error('A configured model connection is required.');
   }
@@ -29,21 +30,30 @@ function identity({ target }: { target: Target }): string {
   }
   // Exact headers and registration identity matter. Do not use model namespaces,
   // host-only comparisons or model parameters as permission identities.
-  return JSON.stringify({ endpoint, modelId: target.modelId });
+  return Secret.from({
+    value: JSON.stringify({
+      endpoint: endpoint.type === 'ollama' || endpoint.type === 'openai'
+        ? { ...endpoint, httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value.reveal()]) }
+        : endpoint,
+      modelId: target.modelId,
+    }),
+  });
 }
 
-function remember({ entries, key }: { entries: Set<string>, key: string }): void {
-  // These identities may contain credentials. Never persist or display them.
-  if (key.length > MAX_IDENTITY_LENGTH) {
+function includesKey({ entries, key }: { entries: readonly Secret<string>[], key: Secret<string> }): boolean {
+  return entries.some(item => Secret.equals(item, key));
+}
+
+function remember({ entries, key }: { entries: Secret<string>[], key: Secret<string> }): void {
+  // This authorization identity contains credentials: keep it wrapped and
+  // bounded, never persisted or included in a diagnostic payload.
+  if (key.reveal().length > MAX_IDENTITY_LENGTH || includesKey({ entries, key })) {
     return;
   }
-  if (!entries.has(key) && entries.size >= MAX_REVIEWED_TARGETS) {
-    const oldest = entries.values().next().value;
-    if (oldest !== undefined) {
-      entries.delete(oldest);
-    }
+  if (entries.length >= MAX_REVIEWED_TARGETS) {
+    entries.shift();
   }
-  entries.add(key);
+  entries.push(key);
 }
 
 export function describeWorkflowConnection({ target, scope, sources }: { target: Target, scope: WorkflowConnectionReview['scope'], sources: readonly WorkflowValueSource[] }): WorkflowConnectionReview {
@@ -80,14 +90,14 @@ export function createWorkflowModelPermissions() {
 
 /** Effect-specific factories share lifecycle rules, never their authority sets. */
 export function createWorkflowTargetPermissions<T>({ targetIdentity, describe }: {
-  targetIdentity: ({ target }: { target: T }) => string,
+  targetIdentity: ({ target }: { target: T }) => Secret<string>,
   describe: ({ target, scope, sources }: { target: T, scope: WorkflowConnectionReview['scope'], sources: readonly WorkflowValueSource[] }) => WorkflowConnectionReview,
 }) {
-  const reviewed = new Set<string>();
+  const reviewed: Secret<string>[] = [];
   let epoch = 0;
   function reset(): void {
     epoch++;
-    reviewed.clear();
+    reviewed.length = 0;
   }
   function review({ target }: { target: T }): void {
     try {
@@ -99,8 +109,8 @@ export function createWorkflowTargetPermissions<T>({ targetIdentity, describe }:
   }
   function beginRun() {
     const started = epoch;
-    const fixed = new Set(reviewed);
-    const dynamic = new Set<string>();
+    const fixed = [...reviewed];
+    const dynamic: Secret<string>[] = [];
     let requesting = false;
     async function authorize({ target, sources, signal, request }: {
       target: T, sources: readonly WorkflowValueSource[], signal: AbortSignal, request: RequestApproval,
@@ -109,7 +119,7 @@ export function createWorkflowTargetPermissions<T>({ targetIdentity, describe }:
       const key = targetIdentity({ target });
       const fromDefinition = isDefinitionWorkflowTarget({ sources });
       const entries = fromDefinition ? fixed : dynamic;
-      if (entries.has(key)) {
+      if (includesKey({ entries, key })) {
         return;
       }
       if (requesting) {
@@ -122,7 +132,7 @@ export function createWorkflowTargetPermissions<T>({ targetIdentity, describe }:
         if (!allowed) {
           throw new Error('Model connection was denied.');
         }
-        if (targetIdentity({ target }) !== key) {
+        if (!Secret.equals(targetIdentity({ target }), key)) {
           throw new Error('The model connection changed during review.');
         }
         remember({ entries, key });

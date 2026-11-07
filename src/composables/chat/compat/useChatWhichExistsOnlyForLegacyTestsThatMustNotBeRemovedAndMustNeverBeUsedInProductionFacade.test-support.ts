@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { computed, type ComputedRef } from 'vue';
 import type { Attachment, Chat, ChatContent, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
@@ -367,7 +368,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
             type: customEndpoint.type,
             url: customEndpoint.url,
             httpHeaders: customEndpoint.headers
-              ? customEndpoint.headers.map(([name, value]) => [name, value] as [string, string])
+              ? customEndpoint.headers.map(([name, value]): [name: string, value: Secret<string>] => [name, Secret.from({ value })])
               : undefined,
           };
         case 'llama_cpp_browser':

@@ -1,3 +1,4 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
 import type { WorkflowStep, WorkflowDefinition, WorkflowValue } from '@/01-models/workflow';
 import type { Endpoint, LmParameters } from '@/01-models/types';
 import { toVolumeId, type WorkflowStepId } from '@/01-models/ids';
@@ -95,7 +96,7 @@ function targetList({ definition, target }: { definition: WorkflowDefinition, ta
 }
 
 export function moveWorkflowStep({ definition, id, target }: { definition: WorkflowDefinition, id: WorkflowStepId, target: WorkflowDropTarget }): WorkflowDefinition {
-  const next = structuredClone(definition);
+  const next = clonePlainData({ value: definition });
   const source = locate({ steps: next.steps, id });
   if (!source) {
     throw new Error('The moved step no longer exists.');
@@ -115,7 +116,7 @@ export function moveWorkflowStep({ definition, id, target }: { definition: Workf
 }
 
 export function insertWorkflowSteps({ definition, steps, target }: { definition: WorkflowDefinition, steps: WorkflowStep[], target: WorkflowDropTarget }): WorkflowDefinition {
-  const next = structuredClone(definition), destination = targetList({ definition: next, target });
+  const next = clonePlainData({ value: definition }), destination = targetList({ definition: next, target });
   if (!Number.isInteger(target.index) || target.index < 0 || target.index > destination.length) {
     throw new Error('Invalid insertion position.');
   }
@@ -124,16 +125,16 @@ export function insertWorkflowSteps({ definition, steps, target }: { definition:
 }
 
 export function replaceWorkflowStep({ definition, step }: { definition: WorkflowDefinition, step: WorkflowStep }): WorkflowDefinition {
-  const next = structuredClone(definition), found = locate({ steps: next.steps, id: step.id });
+  const next = clonePlainData({ value: definition }), found = locate({ steps: next.steps, id: step.id });
   if (!found) {
     throw new Error('The step no longer exists.');
   }
-  found.list[found.index] = structuredClone(step);
+  found.list[found.index] = clonePlainData({ value: step });
   return next;
 }
 
 export function removeWorkflowSteps({ definition, ids }: { definition: WorkflowDefinition, ids: Set<WorkflowStepId> }): WorkflowDefinition {
-  const next = structuredClone(definition);
+  const next = clonePlainData({ value: definition });
   const remove = ({ steps }: { steps: WorkflowStep[] }): void => {
     for (let index = steps.length - 1; index >= 0; index--) {
       const step = steps[index]!;
@@ -170,7 +171,7 @@ export function selectedWorkflowSteps({ definition, ids }: { definition: Workflo
 /** Undo retains bounded document snapshots, never runtime outputs. */
 export function createWorkflowHistory() {
   const undo: { definition: WorkflowDefinition, bytes: number }[] = [], redo: typeof undo = [];
-  const entry = ({ definition }: { definition: WorkflowDefinition }) => ({ definition: structuredClone(definition), bytes: new TextEncoder().encode(formatWorkflowDefinition({ definition })).byteLength });
+  const entry = ({ definition }: { definition: WorkflowDefinition }) => ({ definition: clonePlainData({ value: definition }), bytes: new TextEncoder().encode(formatWorkflowDefinition({ definition })).byteLength });
   const trim = (): void => {
     while (undo.length + redo.length > 30 || [...undo, ...redo].reduce((sum, item) => sum + item.bytes, 0) > 8 * 1024 * 1024) {
       if (undo.length) {

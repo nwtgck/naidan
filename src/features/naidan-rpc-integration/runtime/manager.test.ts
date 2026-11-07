@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { ResponseUnconfirmedError } from '@/features/naidan-piping-duplex';
 import { HandshakeResponseUnconfirmedError } from '@/features/naidan-piping-duplex';
 import { createRpcStopControl } from './stop-control';
@@ -16,6 +18,8 @@ import { createRpcProtocolAdvertisement, NaidanRpcProtocolError, expose, NaidanR
 import { describePeerMethods, naidanPeerContract } from '@/features/naidan-rpc-integration/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-rpc-integration/implementation';
 import { RpcOwnerBusyError } from './owner';
+
+installSecretEqualityTester();
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -523,7 +527,7 @@ it('remembering and disconnecting concurrently preserves only the explicitly sav
 
 it('same-peer same-origin duplicate registrations fail even with different header values', async () => {
   const { manager, dependencies, storage } = fixture();
-  const other = { ...record, id: toNaidanRpcRegistrationId({ raw: 'registration-2' }), transport: { ...transport, headers: [{ name: 'X-Test', value: 'different' }] } };
+  const other = { ...record, id: toNaidanRpcRegistrationId({ raw: 'registration-2' }), transport: { ...transport, headers: [{ name: 'X-Test', value: Secret.from({ value: 'different' }) }] } };
   vi.mocked(storage.list).mockResolvedValue(snapshot({ registrations: [record, other] }));
   await manager.setEnabled({ enabled: true });
   await manager.reload();

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { Secret } from '@/utils/secret';
+import { areEndpointsEqual } from '@/01-models/endpoint';
+import { areImagePromptTranslationOverridesEqual } from '@/features/image-generation/translation/settings';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import { computed, onScopeDispose, ref, useId, watch } from 'vue';
 import { ChevronDownIcon, PlusIcon, XIcon } from 'lucide-vue-next';
@@ -38,7 +41,10 @@ const isSessionScope = computed(() => {
 });
 const owner = computed(() => [props.scope, props.workspace.store.value?.storeId, isSessionScope.value ? props.workspace.selectedSessionId.value : undefined] as const);
 const stored = computed(() => isSessionScope.value ? props.workspace.currentSession.value?.translation : props.workspace.catalog.value?.preferences.translation);
-watch(() => JSON.stringify([owner.value, stored.value]), () => {
+watch(() => ({ owner: JSON.stringify(owner.value), stored: cloneImagePromptTranslationOverride({ value: stored.value }) }), (current, previous) => {
+  if (previous !== undefined && current.owner === previous.owner && areImagePromptTranslationOverridesEqual({ left: current.stored, right: previous.stored })) {
+    return;
+  }
   epoch++;
   controller?.abort();
   loading.value = false;
@@ -104,7 +110,7 @@ const httpEndpoint = computed(() => {
 
 function addHeader(): void {
   if (httpEndpoint.value) {
-    (httpEndpoint.value.httpHeaders ??= []).push(['', '']);
+    (httpEndpoint.value.httpHeaders ??= []).push(['', Secret.from({ value: '' })]);
   }
 }
 
@@ -119,10 +125,15 @@ function changeModel({ event }: { event: Event }): void {
   }
 }
 
-watch(() => JSON.stringify(draft.value), () => {
-  saved.value = false;
+watch(() => cloneImagePromptTranslationOverride({ value: draft.value }), (current, previous) => {
+  if (!areImagePromptTranslationOverridesEqual({ left: current, right: previous })) {
+    saved.value = false;
+  }
 });
-watch(() => JSON.stringify(effective.value.endpoint), () => {
+watch(() => cloneEndpoint({ endpoint: effective.value.endpoint }), (current, previous) => {
+  if (areEndpointsEqual({ left: current, right: previous })) {
+    return;
+  }
   epoch++;
   controller?.abort();
   loading.value = false;
@@ -171,8 +182,8 @@ async function save(): Promise<void> {
   failure.value = '';
   requestFailureEndpoint.value = undefined;
   saved.value = false;
-  const ownerKey = JSON.stringify(owner.value), submitted = JSON.stringify(draft.value);
-  const stillCurrent = () => !disposed && JSON.stringify(owner.value) === ownerKey && JSON.stringify(draft.value) === submitted;
+  const ownerKey = JSON.stringify(owner.value), submitted = cloneImagePromptTranslationOverride({ value: draft.value });
+  const stillCurrent = () => !disposed && JSON.stringify(owner.value) === ownerKey && areImagePromptTranslationOverridesEqual({ left: draft.value, right: submitted });
   const value = cloneImagePromptTranslationOverride({ value: draft.value });
   const translation = value?.endpoint === undefined && value?.modelId === undefined && !hasLmParameterOverrides({ lmParameters: value?.lmParameters }) ? undefined : value;
   try {
@@ -220,7 +231,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <ImageSettingsSection compact :title="lazyStrings.imageGeneration__translation_headers()" :summary="undefined">
         <div v-for="(header, index) in httpEndpoint.httpHeaders" :key="index" tw-class="flex items-center gap-2">
           <input v-model="header[0]" :aria-label="lazyStrings.imageGeneration__translation_header_name()" spellcheck="false" tw-class="w-1/3 min-w-0 rounded-lg border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-2 py-1.5" />
-          <input v-model="header[1]" :aria-label="lazyStrings.imageGeneration__translation_header_value()" type="password" autocomplete="off" tw-class="min-w-0 flex-1 rounded-lg border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-2 py-1.5" />
+          <input :value="header[1].reveal()" @input="header[1] = Secret.from({ value: ($event.target as HTMLInputElement).value })" :aria-label="lazyStrings.imageGeneration__translation_header_value()" type="password" autocomplete="off" tw-class="min-w-0 flex-1 rounded-lg border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-2 py-1.5" />
           <button type="button" @click="httpEndpoint.httpHeaders?.splice(index, 1)" :aria-label="lazyStrings.imageGeneration__translation_remove_header()" tw-class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"><XIcon tw-class="w-4 h-4" /></button>
         </div>
         <button type="button" @click="addHeader" tw-class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-blue-600 dark:text-blue-400"><PlusIcon tw-class="w-4 h-4" />{{ lazyStrings.imageGeneration__translation_add_header() }}</button>

@@ -1,6 +1,5 @@
 import { idToRaw } from '@/01-models/ids';
-import type { ChatGroup, Endpoint } from '@/01-models/types';
-import { cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
+import type { ChatGroup } from '@/01-models/types';
 
 function formatValue({ value }: { value: unknown }): string {
   if (value === undefined) {
@@ -15,21 +14,8 @@ function formatValue({ value }: { value: unknown }): string {
   return JSON.stringify(value);
 }
 
-function maskEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
-  if (endpoint === undefined) {
-    return undefined;
-  }
-  const cloned = cloneEndpoint({ endpoint });
-  if (!isHttpEndpoint(cloned)) {
-    return cloned;
-  }
-  return {
-    ...cloned,
-    httpHeaders: cloned.httpHeaders?.map(([name]) => [name, '[masked]']),
-  };
-}
 
-// Sensitive fields must be masked before rendering. Do not emit raw secret values here.
+// Domain Secret values mask themselves, including nested title-generation credentials.
 export function renderChatGroupMetadataMarkdown({ chatGroup }: { chatGroup: ChatGroup }): string {
   return `\
 # Chat Group Metadata
@@ -42,7 +28,7 @@ modelId: ${formatValue({ value: chatGroup.modelId })}
 titleGeneration: ${formatValue({ value: chatGroup.titleGeneration })}
 systemPrompt: ${formatValue({ value: chatGroup.systemPrompt })}
 lmParameters: ${formatValue({ value: chatGroup.lmParameters })}
-endpoint: ${formatValue({ value: maskEndpoint({ endpoint: chatGroup.endpoint }) })}
+endpoint: ${formatValue({ value: chatGroup.endpoint })}
 mounts: ${formatValue({ value: chatGroup.mounts })}
 items: ${formatValue({ value: chatGroup.items.map(item => idToRaw({ id: item.chat.id })) })}
 `;

@@ -5,7 +5,8 @@ import StorageTab from './StorageTab.vue';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '@/composables/useSettings';
 import { storageService } from '@/00-storage/service';
-import type { ProviderProfile } from '@/01-models/types';
+import { DEFAULT_SETTINGS, type ProviderProfile, type Settings } from '@/01-models/types';
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { useRouter, useRoute } from 'vue-router';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
@@ -39,7 +40,7 @@ const mockUpdateProviderProfiles = vi.fn();
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
-    settings: ref({ storageType: 'local', providerProfiles: [] }),
+    settings: ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }),
     mounts: [],
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
@@ -106,7 +107,8 @@ async function wait() {
   await nextTick();
 }
 
-const mockSettings = {
+const mockSettings: Settings = {
+  ...DEFAULT_SETTINGS,
   endpoint: {
     type: 'openai',
     url: 'http://localhost:1234/v1',
@@ -216,7 +218,7 @@ describe('StorageTab.vue Tests', () => {
     });
 
     vi.mocked(useSettings).mockReturnValue({
-      settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+      settings: ref<Settings>(clonePlainData({ value: mockSettings })),
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: mockSave,
@@ -568,7 +570,7 @@ describe('StorageTab.vue Tests', () => {
       const mockSaveFail = vi.fn().mockRejectedValue(error);
 
       vi.mocked(useSettings).mockReturnValue({
-        settings: { value: { storageType: 'local', providerProfiles: [], endpoint: { type: 'openai', url: '' } } } as any,
+        settings: ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }),
         save: mockSaveFail,
         updateExperimental: vi.fn(),
         captureExperimentalStorage: () => () => true,

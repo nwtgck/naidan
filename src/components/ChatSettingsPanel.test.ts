@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { endpointTypeDescription } from './endpoint-type-label';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
@@ -16,6 +18,8 @@ import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes'
 import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration, type Settings } from '@/01-models/types';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+
+installSecretEqualityTester();
 
 // Unmount before the next fixture replaces shared refs; settle the owner's
 // existing asynchronous unmount save before the next test installs its mocks.
@@ -57,6 +61,19 @@ vi.mock('../composables/useLayout', () => ({
 }));
 
 describe('ChatSettingsPanel.vue', () => {
+  it('synchronizes credential-only external changes without discarding an unsaved prompt', async () => {
+    mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'before' })]] };
+    mockCurrentChat.value.systemPrompt = { behavior: 'override', content: 'original prompt' };
+    const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+    const prompt = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-setting-system-prompt-textarea"]');
+    await prompt.setValue('unsaved prompt');
+    mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'after' })]] };
+    await nextTick();
+    expect(wrapper.get<HTMLInputElement>('[data-testid="chat-setting-http-header-value-input"]').element.value).toBe('after');
+    expect(prompt.element.value).toBe('unsaved prompt');
+  });
+
   it('moves the warning between the collapsed endpoint summary and the URL without recreating the input', async () => {
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
@@ -401,7 +418,7 @@ describe('ChatSettingsPanel.vue', () => {
       endpoint: {
         type: 'openai',
         url: 'http://example.test/v1',
-        httpHeaders: [['Authorization', 'Bearer token']],
+        httpHeaders: [['Authorization', Secret.from({ value: 'Bearer token' })]],
       },
     });
 
@@ -480,7 +497,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockSettings.value.endpoint = {
       type: 'openai',
       url: 'http://global:1234/v1',
-      httpHeaders: [['X-Global', 'value']],
+      httpHeaders: [['X-Global', Secret.from({ value: 'value' })]],
     };
     mockCurrentChat.value.endpoint = { type: 'transformers_js' };
 
@@ -499,7 +516,7 @@ describe('ChatSettingsPanel.vue', () => {
         endpoint: {
           type: 'ollama',
           url: 'http://global:1234/v1',
-          httpHeaders: [['X-Global', 'value']],
+          httpHeaders: [['X-Global', Secret.from({ value: 'value' })]],
         },
       }),
     });
@@ -916,7 +933,7 @@ describe('ChatSettingsPanel.vue', () => {
         endpoint: {
           type: 'openai',
           url: 'http://old.test/v1',
-          httpHeaders: [['X-Old', 'value']],
+          httpHeaders: [['X-Old', Secret.from({ value: 'value' })]],
         },
       });
 
@@ -946,7 +963,7 @@ describe('ChatSettingsPanel.vue', () => {
         endpoint: {
           type: 'openai' as const,
           url: 'http://h:1234',
-          httpHeaders: [['X-Header', 'Value']] as [string, string][],
+          httpHeaders: [['X-Header', Secret.from({ value: 'Value' })]] as [name: string, value: Secret<string>][],
         },
         defaultModelId: 'm1',
       };
@@ -965,7 +982,7 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-          endpoint: expect.objectContaining({ httpHeaders: [['X-Header', 'Value']] }),
+          endpoint: expect.objectContaining({ httpHeaders: [['X-Header', Secret.from({ value: 'Value' })]] }),
         }),
       });
     });
@@ -991,7 +1008,7 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-          endpoint: expect.objectContaining({ httpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]) }),
+          endpoint: expect.objectContaining({ httpHeaders: expect.arrayContaining([['X-Manual', Secret.from({ value: 'Val-Manual' })]]) }),
         }),
       });
 
@@ -1904,7 +1921,7 @@ describe('ChatSettingsPanel.vue', () => {
       endpoint: {
         type: 'openai',
         url: 'https://group-title.example/v1',
-        httpHeaders: [['X-Group-Title', 'old']],
+        httpHeaders: [['X-Group-Title', Secret.from({ value: 'old' })]],
       },
       model: { id: 'group-title-model' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
@@ -1926,13 +1943,13 @@ describe('ChatSettingsPanel.vue', () => {
       endpoint: {
         type: 'openai',
         url: 'https://group-title.example/v1',
-        httpHeaders: [['X-Chat-Title', 'next']],
+        httpHeaders: [['X-Chat-Title', Secret.from({ value: 'next' })]],
       },
       model: { id: 'group-title-model' },
     });
     expect(mockSettings.value.titleGeneration).toMatchObject({
       endpoint: {
-        httpHeaders: [['X-Group-Title', 'old']],
+        httpHeaders: [['X-Group-Title', Secret.from({ value: 'old' })]],
       },
     });
   });

@@ -1,3 +1,6 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
@@ -8,6 +11,8 @@ import { reactive, nextTick } from 'vue';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { storageService } from '@/00-storage/service';
 import type { ChatMeta } from '@/01-models/types';
+
+installSecretEqualityTester();
 
 afterEach(() => {
   for (const providerChat of [mockOpenAIChat, mockOllamaChat]) {
@@ -113,7 +118,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 1. Setup with Setting A
     __testOnlySetSettings({
       newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
+        ...clonePlainData({ value: settings.value }),
         endpoint: { type: 'openai', url: 'http://endpoint-a' },
         defaultModelId: 'global-gpt',
       },
@@ -131,7 +136,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 2. Change to Setting B
     __testOnlySetSettings({
       newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
+        ...clonePlainData({ value: settings.value }),
         endpoint: { type: 'openai', url: 'http://endpoint-b' },
         defaultModelId: 'model-b',
       },
@@ -157,7 +162,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', signal: expect.any(AbortSignal) }));
 
     // Change global model - should NOT affect pinned chat
-    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'new-global-gpt' } });
+    __testOnlySetSettings({ newSettings: { ...clonePlainData({ value: settings.value }), defaultModelId: 'new-global-gpt' } });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', signal: expect.any(AbortSignal) }));
@@ -180,7 +185,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-global', signal: expect.any(AbortSignal) }));
 
     // Change global model to something available in Ollama
-    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'llama-other' } });
+    __testOnlySetSettings({ newSettings: { ...clonePlainData({ value: settings.value }), defaultModelId: 'llama-other' } });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
     expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-other', signal: expect.any(AbortSignal) }));
@@ -191,7 +196,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const id = chat!.id;
     await openChat({ id: idToRaw({ id }) });
 
-    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'non-existent' } });
+    __testOnlySetSettings({ newSettings: { ...clonePlainData({ value: settings.value }), defaultModelId: 'non-existent' } });
     mockOpenAIModels.mockResolvedValue(['first-available', 'second']);
 
     await sendMessage({ content: 'M1' });
@@ -203,11 +208,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 1. Global only
     __testOnlySetSettings({
       newSettings: {
-        ...JSON.parse(JSON.stringify(settings.value)),
+        ...clonePlainData({ value: settings.value }),
         endpoint: {
           type: 'openai',
           url: 'http://global-openai',
-          httpHeaders: [['X-Global', '1']],
+          httpHeaders: [['X-Global', Secret.from({ value: '1' })]],
         },
       },
     });
@@ -226,7 +231,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         endpoint: {
           type: 'openai',
           url: 'http://chat-openai',
-          httpHeaders: [['X-Chat', '3']],
+          httpHeaders: [['X-Chat', Secret.from({ value: '3' })]],
         },
       },
     });
@@ -256,7 +261,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         endpoint: {
           type: 'ollama' as const,
           url: 'http://group-ollama:11434',
-          httpHeaders: [['X-Group', '1']] as [string, string][],
+          httpHeaders: [['X-Group', Secret.from({ value: '1' })]] as [name: string, value: Secret<string>][],
         },
         items: [{
           id: 'chat:non-live-group-chat',
@@ -286,7 +291,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         endpoint: {
           type: 'ollama',
           url: 'http://chat-ollama:11434',
-          httpHeaders: [['X-Group', '1']],
+          httpHeaders: [['X-Group', Secret.from({ value: '1' })]],
         },
       },
     });
@@ -294,7 +299,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(persisted.endpoint).toEqual({
       type: 'ollama',
       url: 'http://chat-ollama:11434',
-      httpHeaders: [['X-Group', '1']],
+      httpHeaders: [['X-Group', Secret.from({ value: '1' })]],
     });
   });
 

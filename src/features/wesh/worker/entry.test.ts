@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import { chatMetaToDomain } from '@/00-storage/mapper/mappers';
@@ -11,6 +13,8 @@ import {
   naidanSysfsRemoteChatMetaPayloadSchema,
 } from '@/features/wesh/naidan-sysfs/remote-reader-schema';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+
+installSecretEqualityTester();
 
 vi.mock('comlink', () => ({
   expose: vi.fn(),
@@ -169,7 +173,7 @@ describe('wesh.worker', () => {
       endpoint: {
         type: 'openai',
         url: 'https://example.invalid/v1',
-        httpHeaders: [['Authorization', 'secret-token']],
+        httpHeaders: [['Authorization', Secret.from({ value: 'secret-token' })]],
       },
       modelId: 'gpt-5',
       titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },

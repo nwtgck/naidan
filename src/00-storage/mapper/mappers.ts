@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
@@ -850,7 +851,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     return exactObject<Extract<Endpoint, { type: 'openai' | 'ollama' }>>()({
       type,
       url,
-      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value]),
+      httpHeaders: httpHeaders?.map(([name, value]): [name: string, value: Secret<string>] => [name, Secret.from({ value })]),
     });
   }
   case 'transformers_js': {
@@ -954,7 +955,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       type,
       experimental: undefined,
       url,
-      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value]),
+      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value.reveal()]),
     });
   }
   case 'transformers_js': {

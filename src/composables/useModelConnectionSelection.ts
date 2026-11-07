@@ -1,3 +1,4 @@
+import type { Secret } from '@/utils/secret';
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
 import type { HttpEndpoint } from '@/01-models/types';
 import type { FakeLmDebugModeStatus } from '@/features/fake-lm/runtime/fakeLmDebugMode';
@@ -15,7 +16,7 @@ export function useModelConnectionSelection({ active, type, url, headers, getFak
   active: Readonly<Ref<boolean>>,
   type: Readonly<Ref<HttpEndpoint['type'] | 'browser_provided_lm'>>,
   url: Readonly<Ref<string>>,
-  headers: Readonly<Ref<[string, string][]>>,
+  headers: Readonly<Ref<[name: string, value: Secret<string>][]>>,
   getFakeLmDebugModeStatus(): FakeLmDebugModeStatus,
 }) {
   const models = ref<string[]>([]);

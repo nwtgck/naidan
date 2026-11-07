@@ -1,3 +1,5 @@
+import type { ScopedTitleGeneration } from './types';
+import { areEndpointsEqual } from './endpoint';
 import type { SettingsTitleGeneration } from './types';
 import { cloneLmParameters } from '@/utils/lm-parameters';
 import { cloneEndpoint } from './endpoint';
@@ -38,6 +40,43 @@ export function retargetTitleGenerationToSameScope({ source, model }: {
       ? 'same_scope'
       : cloneLmParameters({ lmParameters })!,
   };
+}
+
+/** Compare protected endpoint values rather than their masked JSON representation. */
+export function areScopedTitleGenerationsEqual({ left, right }: {
+  left: ScopedTitleGeneration | undefined,
+  right: ScopedTitleGeneration | undefined,
+}): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left === undefined || right === undefined || typeof left === 'string' || typeof right === 'string') {
+    return false;
+  }
+  const { endpoint: leftEndpoint, model: leftModel, lmParameters: leftParameters, ...leftRest } = left;
+  const { endpoint: rightEndpoint, model: rightModel, lmParameters: rightParameters, ...rightRest } = right;
+  leftRest satisfies Record<PropertyKey, never>;
+  rightRest satisfies Record<PropertyKey, never>;
+  if (leftModel === 'same_scope' || rightModel === 'same_scope') {
+    if (leftModel !== rightModel) {
+      return false;
+    }
+  } else {
+    const { id: leftId, ...leftModelRest } = leftModel;
+    const { id: rightId, ...rightModelRest } = rightModel;
+    leftModelRest satisfies Record<PropertyKey, never>;
+    rightModelRest satisfies Record<PropertyKey, never>;
+    if (leftId !== rightId) {
+      return false;
+    }
+  }
+  // Parameters contain no credentials; preserve the existing field comparison semantics.
+  if (JSON.stringify(leftParameters) !== JSON.stringify(rightParameters)) {
+    return false;
+  }
+  return leftEndpoint === 'same_scope' || rightEndpoint === 'same_scope'
+    ? leftEndpoint === rightEndpoint
+    : areEndpointsEqual({ left: leftEndpoint, right: rightEndpoint });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

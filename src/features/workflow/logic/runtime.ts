@@ -1,3 +1,4 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { workflowChoicesSchema } from './input-choices';
 import { resolveWorkflowToolRequest, type WorkflowToolRequest } from './tool-input';
 import { resolveWorkflowImageRequest, type WorkflowImageRequest } from './image-input';
@@ -63,7 +64,7 @@ type LoopFrame = { index: number, item: RuntimeValue | undefined, state: Record<
 export async function executeWorkflow({ definition, store, signal: parentSignal, services }: {
   definition: WorkflowDefinition, store: WorkflowOutputStore, signal: AbortSignal, services: WorkflowRuntimeServices,
 }): Promise<WorkflowRunResult> {
-  const snapshot = structuredClone(definition);
+  const snapshot = clonePlainData({ value: definition });
   freezeWorkflowData({ value: snapshot });
   const issues = validateWorkflow({ definition: snapshot });
   if (issues.length) {

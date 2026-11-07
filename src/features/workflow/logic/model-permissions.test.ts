@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { describe, expect, it, vi } from 'vitest';
 import type { Endpoint } from '@/01-models/types';
 import type { WorkflowModelConfiguration } from '@/01-models/workflow';
@@ -6,7 +7,7 @@ import { createWorkflowModelPermissions, describeWorkflowConnection, TEST_ONLY }
 import type { WorkflowValueSource } from './provenance';
 
 function target({ endpoint, modelId }: { endpoint?: Endpoint, modelId?: string }): WorkflowModelConfiguration {
-  return { endpoint: endpoint ?? { type: 'ollama', url: 'http://localhost:11434', httpHeaders: [['Authorization', 'secret']] }, modelId: modelId ?? 'model', lmParameters: undefined };
+  return { endpoint: endpoint ?? { type: 'ollama', url: 'http://localhost:11434', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] }, modelId: modelId ?? 'model', lmParameters: undefined };
 }
 
 function fixture() {
@@ -85,10 +86,10 @@ describe('Workflow model authority', () => {
 
   it.each([
     { name: 'URL', value: target({ endpoint: { type: 'ollama', url: 'http://different.example/' } }) },
-    { name: 'header value', value: target({ endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: [['Authorization', 'different']] } }) },
+    { name: 'header value', value: target({ endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: [['Authorization', Secret.from({ value: 'different' })]] } }) },
     { name: 'header presence', value: target({ endpoint: { type: 'ollama', url: 'http://localhost:11434' } }) },
     { name: 'model', value: target({ modelId: 'different' }) },
-    { name: 'backend', value: target({ endpoint: { type: 'openai', url: 'http://localhost:11434', httpHeaders: [['Authorization', 'secret']] } }) },
+    { name: 'backend', value: target({ endpoint: { type: 'openai', url: 'http://localhost:11434', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] } }) },
   ])('does not broaden approval across a changed $name', async ({ value }) => {
     using test = fixture();
     test.permissions.review({ target: target({}) });
@@ -106,7 +107,7 @@ describe('Workflow model authority', () => {
     test.permissions.review({ target: target({ endpoint }) });
     await test.authorize({ run: test.permissions.beginRun(), value: target({ endpoint: { type: 'naidan_rpc', registrationId: toNaidanRpcRegistrationId({ raw: 'second' }) } }) });
     expect(test.request).toHaveBeenCalledOnce();
-    const headers: [string, string][] = [['A', '1'], ['B', '2']];
+    const headers: [name: string, value: Secret<string>][] = [['A', Secret.from({ value: '1' })], ['B', Secret.from({ value: '2' })]];
     test.permissions.review({ target: target({ endpoint: { type: 'ollama', url: 'http://localhost', httpHeaders: headers } }) });
     await test.authorize({ run: test.permissions.beginRun(), value: target({ endpoint: { type: 'ollama', url: 'http://localhost', httpHeaders: [...headers].reverse() } }) });
     expect(test.request).toHaveBeenCalledTimes(2);
@@ -174,7 +175,7 @@ describe('Workflow model authority', () => {
     }
     await test.authorize({ run: test.permissions.beginRun(), value: target({ modelId: '0' }) });
     expect(test.request).toHaveBeenCalledOnce();
-    const large = target({ endpoint: { type: 'ollama', url: 'http://localhost', httpHeaders: [['Authorization', 'x'.repeat(TEST_ONLY.MAX_IDENTITY_LENGTH)]] } });
+    const large = target({ endpoint: { type: 'ollama', url: 'http://localhost', httpHeaders: [['Authorization', Secret.from({ value: 'x'.repeat(TEST_ONLY.MAX_IDENTITY_LENGTH) })]] } });
     const run = test.permissions.beginRun();
     await test.authorize({ run, value: large });
     await test.authorize({ run, value: large });
@@ -182,7 +183,7 @@ describe('Workflow model authority', () => {
   });
 
   it('redacts common credential locations while keeping a structured, non-executable target description', () => {
-    const review = describeWorkflowConnection({ target: target({ endpoint: { type: 'openai', url: 'https://user:password@example.com/v1?token=secret&token=another#private', httpHeaders: [['Authorization', 'bearer secret']] } }), scope: 'run', sources: ['model_output'] });
+    const review = describeWorkflowConnection({ target: target({ endpoint: { type: 'openai', url: 'https://user:password@example.com/v1?token=secret&token=another#private', httpHeaders: [['Authorization', Secret.from({ value: 'bearer secret' })]] } }), scope: 'run', sources: ['model_output'] });
     expect(review.endpoint).toContain('example.com/v1');
     expect(review.headerNames).toEqual(['Authorization']);
     for (const secret of ['user', 'password', 'secret', 'another', 'private', 'bearer']) {

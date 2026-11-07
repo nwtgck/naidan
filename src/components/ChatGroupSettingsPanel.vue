@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Secret } from '@/utils/secret';
+import { areScopedTitleGenerationsEqual } from '@/01-models/title-generation';
 import { preservesUnlistedModel } from '@/logic/unlisted-model-selection';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
@@ -170,38 +172,6 @@ function cloneScopedTitleGeneration({
     };
 }
 
-function areScopedTitleGenerationsEqual({
-  left,
-  right,
-}: {
-  left: ScopedTitleGeneration | undefined,
-  right: ScopedTitleGeneration | undefined,
-}): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (left === undefined || right === undefined) {
-    return false;
-  }
-  if (typeof left === 'string' || typeof right === 'string') {
-    return left === right;
-  }
-  if (left.model !== right.model) {
-    if (left.model === 'same_scope' || right.model === 'same_scope') {
-      return false;
-    }
-    if (left.model.id !== right.model.id) {
-      return false;
-    }
-  }
-  if (!areLmParametersEqual({ left: left.lmParameters, right: right.lmParameters })) {
-    return false;
-  }
-  if (left.endpoint === 'same_scope' || right.endpoint === 'same_scope') {
-    return left.endpoint === right.endpoint;
-  }
-  return areEndpointsEqual({ left: left.endpoint, right: right.endpoint });
-}
 
 type TitleGenerationMode = 'inherit' | 'override' | 'disabled';
 
@@ -778,14 +748,14 @@ const localTitleEndpointUrl = computed({
 const localTitleEndpointHttpHeaders = computed(() => {
   const endpoint = activeTitleEndpoint.value;
   return endpoint !== undefined && isHttpEndpoint(endpoint)
-    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [string, string]) ?? []
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [name: string, value: Secret<string>]) ?? []
     : undefined;
 });
 
 function setLocalTitleEndpointHttpHeaders({
   httpHeaders,
 }: {
-  httpHeaders: [string, string][],
+  httpHeaders: [name: string, value: Secret<string>][],
 }): void {
   const endpoint = activeTitleEndpoint.value;
   if (endpoint === undefined || !isHttpEndpoint(endpoint)) {
@@ -1168,7 +1138,7 @@ const localEndpointUrl = computed({
   },
 });
 
-const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
+const localEndpointHttpHeaders = computed<[name: string, value: Secret<string>][] | undefined>({
   get: () => {
     const endpoint = localSettings.value.endpoint ?? settings.value.endpoint;
     return endpoint !== undefined && isHttpEndpoint(endpoint)
@@ -1484,9 +1454,14 @@ watch(
 
     // ChatGroup also owns its chat-item list. Watch only the settings draft so
     // sidebar activity does not repeatedly reconcile this form while it is open.
-    return draft === undefined ? undefined : JSON.stringify(draft);
+    return draft;
   },
-  () => {
+  (current, previous) => {
+    // Masked JSON cannot detect a credential-only update. The getter snapshots
+    // only editable settings, and the existing field comparison preserves drafts.
+    if (current !== undefined && previous !== undefined && createChanges({ previous, next: current }).length === 0) {
+      return;
+    }
     if (currentChatGroup.value?.id === editingChatGroupId.value) {
       syncLocalWithCurrent({ preserveDirty: true });
     }
