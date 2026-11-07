@@ -37,8 +37,8 @@ type WorkflowMessageShapeDto<E> = {
 };
 export interface ExperimentalWorkflowValueSchemaTypeDto extends dtozod.DtoSchema {
   readonly _zod: {
-    readonly optin?: 'optional',
-    readonly optout?: 'optional',
+    readonly optin?: dtozod.DtoSchema['_zod']['optin'],
+    readonly optout?: dtozod.DtoSchema['_zod']['optout'],
     readonly input: WorkflowValueShapeDto<dtozod.input<typeof EndpointSchemaDto>>,
     readonly output: WorkflowValueShapeDto<dtozod.output<typeof EndpointSchemaDto>>,
   };
