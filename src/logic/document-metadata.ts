@@ -113,5 +113,60 @@ export function applyDocumentMetadata({ document, page, documentTitle }: {
   }
 }
 
+/** Page identity is independent of temporary loading and print titles. */
+export function applyDocumentCanonicalUrl({ document, canonicalUrl }: { document: Document, canonicalUrl: string }): void {
+  const links = [...document.head.querySelectorAll<HTMLLinkElement>('link[rel="canonical"]')];
+  const link = links[0] ?? document.createElement('link');
+  for (const duplicate of links.slice(1)) {
+    duplicate.remove();
+  }
+  link.rel = 'canonical';
+  link.setAttribute('href', canonicalUrl);
+  link.setAttribute('data-document-metadata', '');
+  if (link.parentNode === null) {
+    document.head.append(link);
+  }
+  const metas = [...document.head.querySelectorAll<HTMLMetaElement>('meta[property="og:url"]')];
+  const meta = metas[0] ?? document.createElement('meta');
+  for (const duplicate of metas.slice(1)) {
+    duplicate.remove();
+  }
+  meta.setAttribute('property', 'og:url');
+  meta.setAttribute('content', canonicalUrl);
+  meta.setAttribute('data-document-metadata', '');
+  if (meta.parentNode === null) {
+    document.head.append(meta);
+  }
+}
+
+/** Only manage our own noindex tag; never erase a host's separate robots policy. */
+export function applyDocumentIndexing({ document, indexing }: { document: Document, indexing: 'allowed' | 'noindex' }): void {
+  const owned = [...document.head.querySelectorAll<HTMLMetaElement>('meta[data-document-metadata-indexing]')];
+  switch (indexing) {
+  case 'allowed':
+    for (const meta of owned) {
+      meta.remove();
+    }
+    return;
+  case 'noindex': {
+    const meta = owned[0] ?? document.createElement('meta');
+    for (const duplicate of owned.slice(1)) {
+      duplicate.remove();
+    }
+    meta.name = 'robots';
+    meta.content = 'noindex';
+    meta.setAttribute('data-document-metadata-indexing', '');
+    if (meta.parentNode === null) {
+      document.head.append(meta);
+    }
+    return;
+  }
+  default: {
+    const exhaustive: never = indexing;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
 export const TEST_ONLY = {
 };

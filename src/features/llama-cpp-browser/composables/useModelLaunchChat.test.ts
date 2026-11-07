@@ -261,7 +261,7 @@ describe('model guide document metadata', () => {
       },
     };
     await flushPromises();
-    expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
+    expect(document.title).toBe('Model Q4_K_M — Local LLM on your device, in your browser | Naidan');
     expect(wrapper.find('[data-testid="model-launch-entry"]').exists()).toBe(true);
     expect(inspect).toHaveBeenCalledOnce();
     expect(download).not.toHaveBeenCalled();

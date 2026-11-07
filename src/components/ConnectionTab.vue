@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { appUrlFromLocation } from '@/logic/app-location';
 import type { Secret } from '@/utils/secret';
 import { clonePlainData } from '@/utils/clone-plain-data';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
@@ -679,7 +680,10 @@ function clearBrowserProvidedTitleModelOverride(): void {
 }
 
 async function copySetupUrl(): Promise<void> {
-  const baseUrl = window.location.origin + window.location.pathname;
+  const appUrl = appUrlFromLocation({ href: window.location.href });
+  appUrl.search = '';
+  appUrl.hash = '';
+  const baseUrl = appUrl.href;
   const params = new URLSearchParams();
 
   if (form.value.storageType) {

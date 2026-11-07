@@ -132,17 +132,17 @@ Run AI models directly inside your browser—no inference server required. Your 
 
 Choose a model to open a chat in Naidan:
 
-- [Gemma 4 E2B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
-- [Gemma 4 E4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
-- [Gemma 4 26B-A4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
-- [gpt-oss-20b](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/ggml-org/gpt-oss-20b-GGUF:MXFP4) <small>MXFP4</small>
-- [Qwen3.5 9B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [Qwen3.6 35B-A3B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/ggml-org/Qwen3.6-35B-A3B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [Qwen3.8 27B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/ggml-org/Qwen3.8-27B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [LFM2.5 230M](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [LFM2.5 2.6B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [Muse-Glimmer 30B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/meta-models/Muse-Glimmer-30B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [SmolLM2 135M Instruct](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Gemma 4 E2B it](https://naidan.pages.dev/llama-cpp-browser/hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf?quant=Q4_0) <small>QAT Q4_0</small>
+- [Gemma 4 E4B it](https://naidan.pages.dev/llama-cpp-browser/hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf?quant=Q4_0) <small>QAT Q4_0</small>
+- [Gemma 4 26B-A4B it](https://naidan.pages.dev/llama-cpp-browser/hf.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf?quant=Q4_0) <small>QAT Q4_0</small>
+- [gpt-oss-20b](https://naidan.pages.dev/llama-cpp-browser/hf.co/ggml-org/gpt-oss-20b-GGUF?quant=MXFP4) <small>MXFP4</small>
+- [Qwen3.5 9B](https://naidan.pages.dev/llama-cpp-browser/hf.co/lmstudio-community/Qwen3.5-9B-GGUF?quant=Q4_K_M) <small>Q4_K_M</small>
+- [Qwen3.6 35B-A3B](https://naidan.pages.dev/llama-cpp-browser/hf.co/ggml-org/Qwen3.6-35B-A3B-GGUF?quant=Q4_K_M) <small>Q4_K_M</small>
+- [Qwen3.8 27B](https://naidan.pages.dev/llama-cpp-browser/hf.co/ggml-org/Qwen3.8-27B-GGUF?quant=Q4_K_M) <small>Q4_K_M</small>
+- [LFM2.5 230M](https://naidan.pages.dev/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF?quant=Q4_K_M) <small>Q4_K_M</small>
+- [LFM2.5 2.6B](https://naidan.pages.dev/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-2.6B-GGUF?quant=Q4_K_M) <small>Q4_K_M</small>
+- [Muse-Glimmer 30B](https://naidan.pages.dev/llama-cpp-browser/hf.co/meta-models/Muse-Glimmer-30B-GGUF?quant=Q4_K_M) <small>Q4_K_M</small>
+- [SmolLM2 135M Instruct](https://naidan.pages.dev/llama-cpp-browser/hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF?quant=Q4_K_M) <small>Q4_K_M</small>
 
 ### Image and Audio Generation
 
@@ -193,8 +193,8 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
     `index.html#/?storage-type=memory`
 -   **Quick Question**: Start a chat immediately with a prompt.
     `index.html#/?q=%s`
--   **Browser Model Launch**: Open a chat with a specific browser-based AI model.
-    `https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M`
+-   **Browser Model Launch**: Review a browser-based model, then explicitly start a chat. Hosted model pages accept an optional `quant` query; omit it to use the recommended available quantization. Existing `llama-cpp-browser-model` fragment links remain supported.
+    `https://naidan.pages.dev/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF?quant=Q4_K_M`
 -   **Custom Behavior**: Start a chat with a specific system instruction.
     `index.html#/?sp=You+are+a+concise+assistant&q=%s`
 -   **Organized Chat**: Start a chat directly inside a specific group.

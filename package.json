@@ -24,7 +24,8 @@
     "build:docs": "npm run typecheck:docs && vite build --config docs/vite.config.ts",
     "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
     "test:docs": "vitest run --config docs/vitest.config.ts docs",
-    "lint:docs": "eslint docs build/docs-dev-bridge.ts --max-warnings 0"
+    "lint:docs": "eslint docs build/docs-dev-bridge.ts --max-warnings 0",
+    "test:model-pages": "vitest run --config build/vitest.model-pages.config.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",

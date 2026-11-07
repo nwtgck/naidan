@@ -91,7 +91,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       imageInputs: form.imageInputs.value,
       strategy: form.strategy.value,
       artifact,
-      baseUrl: new URL(import.meta.env.BASE_URL, window.location.href).href,
+      baseUrl: new URL(import.meta.env.BASE_URL, document.baseURI).href,
       preview: form.preview.value,
       weightResidency: generation.weightResidency.value,
       gpuBudgetMiB: generation.gpuBudgetMiB.value === '' ? undefined : generation.gpuBudgetMiB.value,

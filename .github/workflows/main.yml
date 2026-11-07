@@ -400,13 +400,16 @@ jobs:
           path: docs-dist
 
       - name: Add Docs to this deployment only
-        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        # Model pages are already in Hosted. Docs remain deployment-only; do not repack the ZIP.
         run: |
           test -f dist/hosted/index.html
           test -f docs-dist/index.html
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
+          test -f dist/hosted/sitemap.xml
+          test ! -e dist/hosted/404.html
+          test -d dist/hosted/llama-cpp-browser
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/
@@ -490,13 +493,16 @@ jobs:
           path: docs-dist
 
       - name: Add Docs to this deployment only
-        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        # Model pages are already in Hosted. Docs remain deployment-only; do not repack the ZIP.
         run: |
           test -f dist/hosted/index.html
           test -f docs-dist/index.html
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
+          test -f dist/hosted/sitemap.xml
+          test ! -e dist/hosted/404.html
+          test -d dist/hosted/llama-cpp-browser
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/
@@ -593,13 +599,16 @@ jobs:
           path: docs-dist
 
       - name: Add Docs to this deployment only
-        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        # Model pages are already in Hosted. Docs remain deployment-only; do not repack the ZIP.
         run: |
           test -f dist/hosted/index.html
           test -f docs-dist/index.html
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
+          test -f dist/hosted/sitemap.xml
+          test ! -e dist/hosted/404.html
+          test -d dist/hosted/llama-cpp-browser
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/

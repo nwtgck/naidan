@@ -1,4 +1,5 @@
 import { JSDOM } from 'jsdom';
+import { isAppEntryPath } from '../navigation/app-entry';
 import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL, isGitHubUrl } from '../navigation/external-link';
 import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../navigation/routes';
 import { DOCS_ARTICLE_PREFETCH_ATTRIBUTE, isDocsArticleHref } from '../navigation/navigation-prefetch';
@@ -220,7 +221,7 @@ function validateBody({ document, locale, page }: { document: Document; locale: 
       const url = new URL(value, origin);
       const appEntryPath = element.tagName === 'A' ? element.getAttribute('data-docs-app-entry-path') : null;
       if (attribute === 'href' && appEntryPath !== null) {
-        if (!appEntryPath.startsWith('/#/') || url.href !== new URL(appEntryPath, DOCS_PUBLIC_ORIGIN).href) {
+        if (!isAppEntryPath({ value: appEntryPath }) || url.href !== new URL(appEntryPath, DOCS_PUBLIC_ORIGIN).href) {
           throw new Error('Invalid Docs app entry link');
         }
       }

@@ -701,3 +701,52 @@ describe('independently published Docs', () => {
     expect(f.requested).toHaveLength(5);
   });
 });
+
+describe('independently published model entries', () => {
+  it.each(['cache-first', 'network-only'] as const)('keeps published HTML and unknown-model SPA responses in %s mode', async mode => {
+    const f = setup();
+    const seen: string[] = [];
+    const network: typeof fetch = async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname.startsWith(new URL('llama-cpp-browser/', scope).pathname)) {
+        seen.push(url.href);
+        return new Response(url.pathname.includes('/unknown/') ? 'public-spa-shell' : 'published-model-html', { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      return f.network(input, init);
+    };
+    const worker = createWorkerHarness({ script: a.script, scope, cacheStorage: f.storage, clients: f.clients, fetch: network });
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    if (mode === 'network-only') {
+      await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    }
+    for (const [suffix, body] of [
+      ['llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF/?quant=Q4_K_M', 'published-model-html'],
+      ['llama-cpp-browser/hf.co/unknown/Model?quant=Q8_0', 'public-spa-shell'],
+    ]) {
+      const response = await worker.request({ url: new URL(suffix, scope).href, navigation: true });
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(body);
+    }
+    expect(seen).toHaveLength(2);
+  });
+
+  it.each(['cache-first', 'network-only'] as const)('does not replace model HTTP responses with the home shell in %s mode', async mode => {
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    if (mode === 'network-only') {
+      await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    }
+    for (const suffix of ['llama-cpp-browser', 'llama-cpp-browser/', 'llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF/?quant=Q4_K_M', 'llama-cpp-browser/hf.co/unknown/Model?quant=Q4_K_M']) {
+      const response = await worker.request({ url: new URL(suffix, scope).href, navigation: true });
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe('missing');
+    }
+    f.offline();
+    await expect(worker.request({ url: new URL('llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF/?quant=Q4_K_M', scope).href, navigation: true })).rejects.toThrow('offline');
+    if (mode === 'cache-first') {
+      expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
+    }
+  });
+});

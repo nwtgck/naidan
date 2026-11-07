@@ -1,6 +1,7 @@
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { variantLabel } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { MODEL_LAUNCH_QUERY } from './entry-state';
+import { appUrlFromLocation } from '@/logic/app-location';
 import { resolveModelLaunchTarget } from './target';
 
 /** Share the public variant selector, not the local file ID or download plan. */
@@ -14,7 +15,7 @@ export function modelLaunchShareUrl({ baseUrl, catalog, mainFilePath }: { baseUr
     if (target.mainFilePath !== mainFilePath) {
       return undefined;
     }
-    const url = new URL(baseUrl);
+    const url = appUrlFromLocation({ href: baseUrl });
     url.search = '';
     url.hash = `/?${new URLSearchParams({ [MODEL_LAUNCH_QUERY]: input })}`;
     return url.href;
