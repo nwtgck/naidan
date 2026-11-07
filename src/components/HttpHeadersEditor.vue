@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import SettingsDisclosure from './SettingsDisclosure.vue';
 import { PlusIcon, Trash2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-const props = defineProps<{ modelValue: readonly HttpHeader[], testIdPrefix: string, namePlaceholder?: string, title?: string }>();
-const emit = defineEmits<{ (e: 'update:modelValue', headers: HttpHeader[]): void, (e: 'save'): void }>();
+const props = defineProps<{ modelValue: readonly [name: string, value: Secret<string>][], testIdPrefix: string, namePlaceholder?: string, title?: string }>();
+const emit = defineEmits<{ (e: 'update:modelValue', headers: [name: string, value: Secret<string>][]): void, (e: 'save'): void }>();
 
 function update({ index, field, value }: { index: number, field: 0 | 1, value: string }) {
   emit('update:modelValue', props.modelValue.map((header, i) => i === index ? [field === 0 ? value : header[0], field === 1 ? Secret.from({ value }) : header[1]] : [...header]));
 }
 
 function add() {
-  emit('update:modelValue', [...props.modelValue.map(header => [...header] as HttpHeader), ['', Secret.from({ value: '' })]]);
+  emit('update:modelValue', [...props.modelValue.map(header => [...header] as [name: string, value: Secret<string>]), ['', Secret.from({ value: '' })]]);
 }
 
 function remove({ index }: { index: number }) {

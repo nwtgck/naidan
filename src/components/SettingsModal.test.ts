@@ -294,7 +294,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   });
 
   it.each(['endpoint', 'titleGeneration'] as const)('detects credential-only %s edits without corrupting the saved value', async field => {
-    const endpoint = { type: 'openai' as const, url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'saved-value' })]] as import('@/01-models/types').HttpHeader[] };
+    const endpoint = { type: 'openai' as const, url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'saved-value' })]] as [name: string, value: Secret<string>][] };
     const state = ref<Settings>({ ...mockSettings, endpoint, titleGeneration: { endpoint, model: { id: 'title' }, lmParameters: EMPTY_LM_PARAMETERS } });
     vi.mocked(useSettings).mockReturnValue({ ...useSettings(), settings: state });
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -307,7 +307,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const connection = wrapper.getComponent(ConnectionTab);
     expect(connection.props('hasUnsavedChanges')).toBe(false);
     const draft = connection.props('modelValue');
-    const replacement = { ...endpoint, httpHeaders: [['X-Custom', Secret.from({ value: 'edited-value' })]] as import('@/01-models/types').HttpHeader[] };
+    const replacement = { ...endpoint, httpHeaders: [['X-Custom', Secret.from({ value: 'edited-value' })]] as [name: string, value: Secret<string>][] };
     connection.vm.$emit('update:modelValue', field === 'endpoint' ? { ...draft, endpoint: replacement } : { ...draft, titleGeneration: { endpoint: replacement, model: { id: 'title' }, lmParameters: EMPTY_LM_PARAMETERS } });
     await nextTick();
     expect(connection.props('hasUnsavedChanges')).toBe(true);
@@ -1456,7 +1456,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         endpoint: {
           type: 'openai' as const,
           url: 'http://headers:8080',
-          httpHeaders: [['X-From-Profile', Secret.from({ value: 'val-1' })]] as import('@/01-models/types').HttpHeader[],
+          httpHeaders: [['X-From-Profile', Secret.from({ value: 'val-1' })]] as [name: string, value: Secret<string>][],
         },
       };
 

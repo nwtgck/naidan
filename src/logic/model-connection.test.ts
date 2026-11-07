@@ -1,7 +1,6 @@
 import { revealHttpHeaders } from '@/01-models/endpoint';
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import { describe, expect, it } from 'vitest';
 import { isLoopbackModelConnectionUrl, modelConnectionApiKey, modelConnectionHttpEndpoint, normalizeModelConnectionUrl, withModelConnectionApiKey } from './model-connection';
 
@@ -36,7 +35,7 @@ describe('model connection drafts', () => {
   });
 
   it('uses one immutable header draft for case-insensitive API-key editing', () => {
-    const source: HttpHeader[] = [['X-Tenant', Secret.from({ value: 'tenant' })], ['authorization', Secret.from({ value: 'bearer old' })], ['Authorization', Secret.from({ value: 'Bearer duplicate' })]];
+    const source: [name: string, value: Secret<string>][] = [['X-Tenant', Secret.from({ value: 'tenant' })], ['authorization', Secret.from({ value: 'bearer old' })], ['Authorization', Secret.from({ value: 'Bearer duplicate' })]];
     expect(modelConnectionApiKey({ headers: source })).toBe('old');
     const changed = withModelConnectionApiKey({ headers: source, apiKey: ' next ' });
     expect(revealHttpHeaders({ headers: changed })).toEqual([['X-Tenant', 'tenant'], ['Authorization', 'Bearer next']]);
@@ -45,14 +44,14 @@ describe('model connection drafts', () => {
   });
 
   it('preserves a custom authorization scheme until the API-key control explicitly replaces it', () => {
-    const headers: HttpHeader[] = [['Authorization', Secret.from({ value: 'Basic custom' })], ['X-Key', Secret.from({ value: 'other' })]];
+    const headers: [name: string, value: Secret<string>][] = [['Authorization', Secret.from({ value: 'Basic custom' })], ['X-Key', Secret.from({ value: 'other' })]];
     expect(modelConnectionApiKey({ headers })).toBe('');
     expect(withModelConnectionApiKey({ headers, apiKey: '' })).toEqual(headers);
     expect(revealHttpHeaders({ headers: withModelConnectionApiKey({ headers, apiKey: 'new-token' }) })).toEqual([['X-Key', 'other'], ['Authorization', 'Bearer new-token']]);
   });
 
   it('creates an HTTP endpoint without adding an API-key persistence field', () => {
-    const headers: HttpHeader[] = [['', Secret.from({ value: 'draft' })], [' X-Key ', Secret.from({ value: 'secret' })]];
+    const headers: [name: string, value: Secret<string>][] = [['', Secret.from({ value: 'draft' })], [' X-Key ', Secret.from({ value: 'secret' })]];
     const endpoint = modelConnectionHttpEndpoint({ type: 'openai', url: 'localhost:1234/v1/', headers });
     expect(endpoint).toEqual({ type: 'openai', url: 'http://localhost:1234/v1', httpHeaders: [['X-Key', Secret.from({ value: 'secret' })]] });
     expect(revealHttpHeaders({ headers })).toEqual([['', 'draft'], [' X-Key ', 'secret']]);

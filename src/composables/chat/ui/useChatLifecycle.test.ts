@@ -4,6 +4,7 @@ import { storageService, type StorageService } from '@/00-storage/service';
 import { createChatContentWrite, snapshotChatContent } from '@/00-storage/service/chat-content-binding';
 import type { ChatDataStore } from '@/composables/chat/global/chat-data-store';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { Secret } from '@/utils/secret';
 import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -278,12 +279,13 @@ describe('useChatLifecycle', () => {
 
   it('imports a completed transcript with disabled tools and titles, no mounts, no group, and no activation', async () => {
     const messages = [{ id: toMessageId({ raw: 'old' }), role: 'assistant' as const, parts: [{ type: 'text' as const, text: 'answer', completeness: 'complete' as const }] }];
-    const endpoint = { type: 'openai' as const, url: 'https://chosen', httpHeaders: [['Authorization', 'selected']] as [string, string][] };
+    const endpoint = { type: 'openai' as const, url: 'https://chosen', httpHeaders: [['Authorization', Secret.from({ value: 'selected' })]] as [name: string, value: Secret<string>][] };
     const created = await useChatLifecycle().createChatFromHistory({ messages, endpoint, modelId: 'selected-model', lmParameters: undefined });
     expect(created?.root.items[0]?.parts).toEqual(messages[0]?.parts);
     expect(created?.root.items[0]?.id).not.toBe(messages[0]?.id);
     expect(created?.currentLeafId).toBe(created?.root.items[0]?.id);
     expect(created?.endpoint).toEqual(endpoint);
+    expect(created?.endpoint?.type === 'openai' ? created.endpoint.httpHeaders?.[0]?.[1].reveal() : undefined).toBe('selected');
     expect(created?.systemPrompt).toEqual({ behavior: 'override', content: null });
     expect(created?.groupId).toBeNull();
     expect(created?.mounts).toEqual([]);
@@ -296,8 +298,10 @@ describe('useChatLifecycle', () => {
     expect(mockCurrentChatRef.value).toBeNull();
     expect(mockUpdateChatContent).toHaveBeenCalledTimes(1);
     endpoint.url = 'https://changed';
+    endpoint.httpHeaders[0] = ['Authorization', Secret.from({ value: 'changed' })];
     messages[0]!.parts[0]!.text = 'changed';
     expect(created?.endpoint?.type === 'openai' && created.endpoint.url).toBe('https://chosen');
+    expect(created?.endpoint?.type === 'openai' ? created.endpoint.httpHeaders?.[0]?.[1].reveal() : undefined).toBe('selected');
     expect(created?.root.items[0]?.parts).toMatchObject([{ text: 'answer' }]);
   });
 

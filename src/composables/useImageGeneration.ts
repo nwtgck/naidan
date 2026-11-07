@@ -1,4 +1,4 @@
-import type { HttpHeader } from '@/01-models/types';
+import type { Secret } from '@/utils/secret';
 import { ensureStrings } from '@/strings';
 import { twClassString } from 'virtual:naidan-tailwind';
 import { generateId } from '@/01-models/id';
@@ -154,7 +154,7 @@ export function useImageGeneration() {
     seed: number | undefined,
     images: { blob: Blob }[],
     endpointUrl: string,
-    endpointHttpHeaders: HttpHeader[] | undefined,
+    endpointHttpHeaders: [name: string, value: Secret<string>][] | undefined,
     onProgress: ({ currentStep, totalSteps }: { currentStep: number, totalSteps: number }) => void,
     signal: AbortSignal | undefined,
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
@@ -219,7 +219,7 @@ export function useImageGeneration() {
     model: string | undefined,
     availableModels: string[],
     endpointUrl: string,
-    endpointHttpHeaders: HttpHeader[] | undefined,
+    endpointHttpHeaders: [name: string, value: Secret<string>][] | undefined,
     storageType: 'opfs' | 'local' | 'memory',
     signal: AbortSignal | undefined,
     getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,

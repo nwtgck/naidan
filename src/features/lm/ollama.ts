@@ -1,5 +1,5 @@
+import type { Secret } from '@/utils/secret';
 import { revealHttpHeaders } from '@/01-models/endpoint';
-import type { HttpHeader } from '@/01-models/types';
 import { createMetricsReporter, createReceivedTextMeter } from '@/logic/generation-metrics/measurement';
 import { readOllamaMetrics } from './generation-metrics';
 /**
@@ -181,11 +181,11 @@ async function blobToBase64({ blob }: { blob: Blob }): Promise<string> {
 export class OllamaProvider implements LmProvider {
   private config: {
     endpoint: string,
-    headers?: HttpHeader[],
+    headers?: [name: string, value: Secret<string>][],
     fetcher: LmFetch,
   };
 
-  constructor({ endpoint, headers, fetcher }: { endpoint: string, headers?: HttpHeader[], fetcher?: LmFetch }) {
+  constructor({ endpoint, headers, fetcher }: { endpoint: string, headers?: [name: string, value: Secret<string>][], fetcher?: LmFetch }) {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
@@ -200,7 +200,7 @@ export class OllamaProvider implements LmProvider {
   }): AsyncIterable<ChatGenerationItem> {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
     const { endpoint, headers, fetcher } = this.config;
-    const requestHeaders = headers?.map(([name, value]): HttpHeader => [name, value]);
+    const requestHeaders = headers?.map(([name, value]): [name: string, value: Secret<string>] => [name, value]);
     return createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {

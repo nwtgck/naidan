@@ -1,6 +1,5 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import { endpointTypeDescription } from './endpoint-type-label';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
@@ -964,7 +963,7 @@ describe('ChatSettingsPanel.vue', () => {
         endpoint: {
           type: 'openai' as const,
           url: 'http://h:1234',
-          httpHeaders: [['X-Header', Secret.from({ value: 'Value' })]] as HttpHeader[],
+          httpHeaders: [['X-Header', Secret.from({ value: 'Value' })]] as [name: string, value: Secret<string>][],
         },
         defaultModelId: 'm1',
       };

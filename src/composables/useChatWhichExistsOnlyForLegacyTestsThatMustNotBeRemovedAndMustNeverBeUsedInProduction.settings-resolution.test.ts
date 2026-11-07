@@ -1,6 +1,5 @@
 import { clonePlainData } from '@/utils/clone-plain-data';
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
-import type { HttpHeader } from '@/01-models/types';
 import { Secret } from '@/utils/secret';
 import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
@@ -262,7 +261,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         endpoint: {
           type: 'ollama' as const,
           url: 'http://group-ollama:11434',
-          httpHeaders: [['X-Group', Secret.from({ value: '1' })]] as HttpHeader[],
+          httpHeaders: [['X-Group', Secret.from({ value: '1' })]] as [name: string, value: Secret<string>][],
         },
         items: [{
           id: 'chat:non-live-group-chat',

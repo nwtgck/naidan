@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import type { Secret } from '@/utils/secret';
 import { areScopedTitleGenerationsEqual } from '@/01-models/title-generation';
-import type { HttpHeader } from '@/01-models/types';
 import { preservesUnlistedModel } from '@/logic/unlisted-model-selection';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
@@ -748,14 +748,14 @@ const localTitleEndpointUrl = computed({
 const localTitleEndpointHttpHeaders = computed(() => {
   const endpoint = activeTitleEndpoint.value;
   return endpoint !== undefined && isHttpEndpoint(endpoint)
-    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as HttpHeader) ?? []
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [name: string, value: Secret<string>]) ?? []
     : undefined;
 });
 
 function setLocalTitleEndpointHttpHeaders({
   httpHeaders,
 }: {
-  httpHeaders: HttpHeader[],
+  httpHeaders: [name: string, value: Secret<string>][],
 }): void {
   const endpoint = activeTitleEndpoint.value;
   if (endpoint === undefined || !isHttpEndpoint(endpoint)) {
@@ -1138,7 +1138,7 @@ const localEndpointUrl = computed({
   },
 });
 
-const localEndpointHttpHeaders = computed<HttpHeader[] | undefined>({
+const localEndpointHttpHeaders = computed<[name: string, value: Secret<string>][] | undefined>({
   get: () => {
     const endpoint = localSettings.value.endpoint ?? settings.value.endpoint;
     return endpoint !== undefined && isHttpEndpoint(endpoint)

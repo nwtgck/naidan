@@ -1,6 +1,5 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import { Blob as NodeBlob } from 'node:buffer';
 import { beforeEach, expect, it } from 'vitest';
 import { vi } from 'vitest';
@@ -86,7 +85,7 @@ it.each(['draft', 'asset', 'annotations'])('exports %s file snapshots with futur
 
 it('excludes translation destinations and authentication from shareable session exports', async () => {
   const h = await setup();
-  const translation = { endpoint: { type: 'openai' as const, url: 'https://private-translator.test', httpHeaders: [['Authorization', Secret.from({ value: 'private-secret' })]] as HttpHeader[] }, modelId: 'private-model', lmParameters: undefined };
+  const translation = { endpoint: { type: 'openai' as const, url: 'https://private-translator.test', httpHeaders: [['Authorization', Secret.from({ value: 'private-secret' })]] as [name: string, value: Secret<string>][] }, modelId: 'private-model', lmParameters: undefined };
   const catalog = await service.loadImageGenerationCatalog({ store: h.store });
   await service.saveImageGenerationCatalog({ store: h.store, expectedRevision: catalog.revision, catalog: { ...catalog, revision: catalog.revision + 1, preferences: { ...catalog.preferences, translation } } });
   await service.saveImageGenerationSession({ store: h.store, session: { ...h.session, revision: 1, translation }, expectedRevision: 0 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HttpHeader } from '@/01-models/types';
+import type { Secret } from '@/utils/secret';
 import { computed } from 'vue';
 import { lazyStrings } from '@/strings';
 import { ServerCogIcon } from 'lucide-vue-next';
@@ -10,7 +10,7 @@ import OllamaPsView from './OllamaPsView.vue';
 const props = defineProps<{
   endpointUrl: string | undefined,
   presentation?: 'default' | 'settings',
-  endpointHttpHeaders: HttpHeader[] | undefined,
+  endpointHttpHeaders: [name: string, value: Secret<string>][] | undefined,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }>();
 

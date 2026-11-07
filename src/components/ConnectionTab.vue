@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import type { Secret } from '@/utils/secret';
 import { clonePlainData } from '@/utils/clone-plain-data';
-import type { HttpHeader } from '@/01-models/types';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
@@ -147,7 +147,7 @@ const endpointUrl = computed({
   },
 });
 
-const endpointHttpHeaders = computed<HttpHeader[] | undefined>({
+const endpointHttpHeaders = computed<[name: string, value: Secret<string>][] | undefined>({
   get: () => isHttpEndpoint(form.value.endpoint)
     ? form.value.endpoint.httpHeaders
     : undefined,
@@ -430,14 +430,14 @@ const globalTitleEndpointUrl = computed({
 const globalTitleEndpointHttpHeaders = computed(() => {
   const endpoint = globalTitleEndpoint.value;
   return endpoint !== 'same_scope' && isHttpEndpoint(endpoint)
-    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as HttpHeader) ?? []
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [name: string, value: Secret<string>]) ?? []
     : undefined;
 });
 
 function setGlobalTitleEndpointHttpHeaders({
   httpHeaders,
 }: {
-  httpHeaders: HttpHeader[],
+  httpHeaders: [name: string, value: Secret<string>][],
 }): void {
   const titleGeneration = currentSettingsTitleGeneration();
   const endpoint = globalTitleEndpoint.value;

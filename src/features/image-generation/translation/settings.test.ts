@@ -75,8 +75,8 @@ it('uses the localized in-browser llama.cpp name in translation summaries', asyn
 });
 
 it('detects a credential-only change rather than comparing masked JSON', () => {
-  const left = { endpoint: { type: 'openai' as const, url: 'https://example.invalid', httpHeaders: [['X-Custom', Secret.from({ value: 'before' })]] as import('@/01-models/types').HttpHeader[] }, modelId: 'model', lmParameters: undefined };
-  const right = { ...left, endpoint: { ...left.endpoint, httpHeaders: [['X-Custom', Secret.from({ value: 'after' })]] as import('@/01-models/types').HttpHeader[] } };
+  const left = { endpoint: { type: 'openai' as const, url: 'https://example.invalid', httpHeaders: [['X-Custom', Secret.from({ value: 'before' })]] as [name: string, value: Secret<string>][] }, modelId: 'model', lmParameters: undefined };
+  const right = { ...left, endpoint: { ...left.endpoint, httpHeaders: [['X-Custom', Secret.from({ value: 'after' })]] as [name: string, value: Secret<string>][] } };
   expect(JSON.stringify(left)).toBe(JSON.stringify(right));
   expect(areImagePromptTranslationOverridesEqual({ left, right })).toBe(false);
   expect(areImagePromptTranslationOverridesEqual({ left, right: cloneImagePromptTranslationOverride({ value: left }) })).toBe(true);

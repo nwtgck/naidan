@@ -1,6 +1,5 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import { describe, it, expect } from 'vitest';
 import { resolveChatSettings, hasChatOverrides, hasGroupOverrides, type ResolvableSettings } from './chat-settings-resolver';
 import type { Chat, ChatGroup } from '@/01-models/types';
@@ -28,17 +27,17 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     const globalEndpoint = {
       type: 'openai' as const,
       url: 'https://global.example/v1',
-      httpHeaders: [['X-Scope', Secret.from({ value: 'global' })]] as HttpHeader[],
+      httpHeaders: [['X-Scope', Secret.from({ value: 'global' })]] as [name: string, value: Secret<string>][],
     };
     const groupEndpoint = {
       type: 'ollama' as const,
       url: 'https://group.example',
-      httpHeaders: [['X-Scope', Secret.from({ value: 'group' })]] as HttpHeader[],
+      httpHeaders: [['X-Scope', Secret.from({ value: 'group' })]] as [name: string, value: Secret<string>][],
     };
     const chatEndpoint = {
       type: 'openai' as const,
       url: 'https://chat.example/v1',
-      httpHeaders: [['X-Scope', Secret.from({ value: 'chat' })]] as HttpHeader[],
+      httpHeaders: [['X-Scope', Secret.from({ value: 'chat' })]] as [name: string, value: Secret<string>][],
     };
     const group: ChatGroup = {
       id: toChatGroupId({ raw: 'group-endpoint' }),

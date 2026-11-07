@@ -1,6 +1,5 @@
 import { clonePlainData } from '@/utils/clone-plain-data';
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
-import type { HttpHeader } from '@/01-models/types';
 import { Secret } from '@/utils/secret';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
@@ -170,7 +169,7 @@ describe('explicit model connection selection', () => {
       await gate.promise;
       mocks.stored = await updater({ current: mocks.stored ?? null });
     });
-    const headers: HttpHeader[] = [['Authorization', Secret.from({ value: 'Bearer selected-token' })]];
+    const headers: [name: string, value: Secret<string>][] = [['Authorization', Secret.from({ value: 'Bearer selected-token' })]];
     const pending = api.commitGlobalModelConnection({ endpoint: { type: 'openai', url: 'https://chosen.example/v1', httpHeaders: headers }, modelId: 'chosen-model', isCurrent: () => true });
     headers[0]![1] = Secret.from({ value: 'Bearer edited-after-confirmation' });
     gate.resolve();

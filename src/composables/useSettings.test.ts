@@ -1,5 +1,4 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
-import type { HttpHeader } from '@/01-models/types';
 import { Secret } from '@/utils/secret';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettings } from './useSettings';
@@ -409,7 +408,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       endpoint: {
         type: 'openai' as const,
         url: 'http://example.test/v1',
-        httpHeaders: [['Authorization', Secret.from({ value: 'Bearer old' })]] as HttpHeader[],
+        httpHeaders: [['Authorization', Secret.from({ value: 'Bearer old' })]] as [name: string, value: Secret<string>][],
       },
       storageType: 'local' as const,
     };

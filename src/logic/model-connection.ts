@@ -1,5 +1,4 @@
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import type { HttpEndpoint } from '@/01-models/types';
 
 /** Normalize an explicitly entered API URL without authorizing any request. */
@@ -29,7 +28,7 @@ export function isLoopbackModelConnectionUrl({ url }: { url: string }): boolean 
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
-export function modelConnectionApiKey({ headers }: { headers: readonly HttpHeader[] }): string {
+export function modelConnectionApiKey({ headers }: { headers: readonly [name: string, value: Secret<string>][] }): string {
   for (const [name, value] of headers) {
     if (name.trim().toLowerCase() === 'authorization') {
       const bearer = value.reveal().match(/^Bearer\s+(.+)$/i);
@@ -42,9 +41,9 @@ export function modelConnectionApiKey({ headers }: { headers: readonly HttpHeade
 }
 
 /** The API-key control edits the same header draft as the detailed editor. */
-export function withModelConnectionApiKey({ headers, apiKey }: { headers: readonly HttpHeader[], apiKey: string }): HttpHeader[] {
+export function withModelConnectionApiKey({ headers, apiKey }: { headers: readonly [name: string, value: Secret<string>][], apiKey: string }): [name: string, value: Secret<string>][] {
   const token = apiKey.trim();
-  const result: HttpHeader[] = [];
+  const result: [name: string, value: Secret<string>][] = [];
   for (const [name, value] of headers) {
     if (name.trim().toLowerCase() === 'authorization' && (token.length > 0 || /^Bearer(?:\s|$)/i.test(value.reveal()))) {
       continue;
@@ -57,12 +56,12 @@ export function withModelConnectionApiKey({ headers, apiKey }: { headers: readon
   return result;
 }
 
-export function modelConnectionHttpEndpoint({ type, url, headers }: { type: HttpEndpoint['type'], url: string, headers: readonly HttpHeader[] }): HttpEndpoint | undefined {
+export function modelConnectionHttpEndpoint({ type, url, headers }: { type: HttpEndpoint['type'], url: string, headers: readonly [name: string, value: Secret<string>][] }): HttpEndpoint | undefined {
   const normalized = normalizeModelConnectionUrl({ input: url });
   if (normalized === undefined) {
     return undefined;
   }
-  const httpHeaders: HttpHeader[] = headers.filter(([name]) => name.trim().length > 0).map(([name, value]) => [name.trim(), value]);
+  const httpHeaders: [name: string, value: Secret<string>][] = headers.filter(([name]) => name.trim().length > 0).map(([name, value]) => [name.trim(), value]);
   return { type, url: normalized, httpHeaders: httpHeaders.length > 0 ? httpHeaders : undefined };
 }
 

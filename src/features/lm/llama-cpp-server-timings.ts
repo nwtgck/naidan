@@ -1,5 +1,5 @@
+import type { Secret } from '@/utils/secret';
 import { areHttpHeadersEqual, revealHttpHeaders } from '@/01-models/endpoint';
-import type { HttpHeader } from '@/01-models/types';
 import { z } from 'zod';
 import type { LlamaCppServerTimingsMode } from '@/01-models/types';
 import type { LmFetch } from './fetch';
@@ -16,7 +16,7 @@ const propsSchema = z.object({
   }),
 });
 
-type ProbeKey = { url: string, headers: HttpHeader[] };
+type ProbeKey = { url: string, headers: [name: string, value: Secret<string>][] };
 
 type Entry =
   | { kind: 'pending', promise: Promise<boolean>, controller: AbortController }
@@ -40,7 +40,7 @@ function derivePropsUrl({ endpoint }: { endpoint: string }): string | undefined 
 }
 
 /** Detection is optional: neither credentials nor remote response bodies enter error logs. */
-async function probe({ url, headers, fetcher, signal }: { url: string, headers: HttpHeader[] | undefined, fetcher: LmFetch, signal: AbortSignal }): Promise<boolean> {
+async function probe({ url, headers, fetcher, signal }: { url: string, headers: [name: string, value: Secret<string>][] | undefined, fetcher: LmFetch, signal: AbortSignal }): Promise<boolean> {
   const response = await fetcher(url, { method: 'GET', headers: revealHttpHeaders({ headers }), signal, redirect: 'error', credentials: 'omit', cache: 'no-store' });
   // A custom fetch may ignore abort and resolve after the deadline.
   if (signal.aborted || !response.ok || response.redirected) {
@@ -113,7 +113,7 @@ function waitForProbe({ promise, signal }: { promise: Promise<boolean>, signal: 
 function createDetector({ fetcher, now = () => performance.now() }: { fetcher: LmFetch, now?: () => number }) {
   const entries = new Map<ProbeKey, Entry>();
 
-  function startProbe({ key, url, headers }: { key: ProbeKey, url: string, headers: HttpHeader[] | undefined }): Entry & { kind: 'pending' } {
+  function startProbe({ key, url, headers }: { key: ProbeKey, url: string, headers: [name: string, value: Secret<string>][] | undefined }): Entry & { kind: 'pending' } {
     const controller = new AbortController();
     const deferred = Promise.withResolvers<boolean>();
     const entry: Entry & { kind: 'pending' } = { kind: 'pending', promise: deferred.promise, controller };
@@ -142,7 +142,7 @@ function createDetector({ fetcher, now = () => performance.now() }: { fetcher: L
     return entry;
   }
 
-  async function resolve({ endpoint, headers, signal }: { endpoint: string, headers: HttpHeader[] | undefined, signal: AbortSignal }): Promise<boolean> {
+  async function resolve({ endpoint, headers, signal }: { endpoint: string, headers: [name: string, value: Secret<string>][] | undefined, signal: AbortSignal }): Promise<boolean> {
     const url = derivePropsUrl({ endpoint });
     if (url === undefined || signal.aborted) {
       return false;
@@ -152,7 +152,7 @@ function createDetector({ fetcher, now = () => performance.now() }: { fetcher: L
         entries.delete(key);
       }
     }
-    const requestHeaders = headers?.map(([name, value]): HttpHeader => [name, value]);
+    const requestHeaders = headers?.map(([name, value]): [name: string, value: Secret<string>] => [name, value]);
     // Keep credentials protected even in cache keys. The cache is bounded to 32
     // entries, so exact typed comparison avoids retaining raw JSON fingerprints.
     const key = [...entries.keys()].find(candidate => candidate.url === url
@@ -198,7 +198,7 @@ const detectors = new WeakMap<LmFetch, ReturnType<typeof createDetector>>();
 export async function resolveLlamaCppServerTimings({ mode, endpoint, headers, fetcher, signal }: {
   mode: LlamaCppServerTimingsMode,
   endpoint: string,
-  headers: HttpHeader[] | undefined,
+  headers: [name: string, value: Secret<string>][] | undefined,
   fetcher: LmFetch,
   signal: AbortSignal,
 }): Promise<boolean> {

@@ -1,6 +1,5 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import { flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, ref } from 'vue';
@@ -17,7 +16,7 @@ function createHarness() {
   const active = ref(true);
   const type = ref<HttpEndpoint['type'] | 'browser_provided_lm'>('openai');
   const url = ref('');
-  const headers = ref<HttpHeader[]>([]);
+  const headers = ref<[name: string, value: Secret<string>][]>([]);
   const scope = effectScope();
   const selection = scope.run(() => useModelConnectionSelection({ active, type, url, headers, getFakeLmDebugModeStatus: () => 'disabled' }));
   if (selection === undefined) {

@@ -1,5 +1,5 @@
+import type { Secret } from '@/utils/secret';
 import { revealHttpHeaders } from '@/01-models/endpoint';
-import type { HttpHeader } from '@/01-models/types';
 import { resolveLlamaCppServerTimings } from './llama-cpp-server-timings';
 import { createMetricsReporter, createReceivedTextMeter } from '@/logic/generation-metrics/measurement';
 import type { GenerationMetrics } from '@/01-models/generation-metrics';
@@ -80,12 +80,12 @@ interface OpenAICompletionRequest {
 export class OpenAIProvider implements LmProvider {
   private config: {
     endpoint: string,
-    headers?: HttpHeader[],
+    headers?: [name: string, value: Secret<string>][],
     fetcher: LmFetch,
     llamaCppServerTimings: LlamaCppServerTimingsMode,
   };
 
-  constructor({ endpoint, headers, fetcher, llamaCppServerTimings = 'disabled' }: { endpoint: string, headers?: HttpHeader[], fetcher?: LmFetch, llamaCppServerTimings?: LlamaCppServerTimingsMode }) {
+  constructor({ endpoint, headers, fetcher, llamaCppServerTimings = 'disabled' }: { endpoint: string, headers?: [name: string, value: Secret<string>][], fetcher?: LmFetch, llamaCppServerTimings?: LlamaCppServerTimingsMode }) {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch(), llamaCppServerTimings };
   }
 
@@ -100,7 +100,7 @@ export class OpenAIProvider implements LmProvider {
   }): AsyncIterable<ChatGenerationItem> {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
     const { endpoint, headers, fetcher, llamaCppServerTimings } = this.config;
-    const requestHeaders = headers?.map(([name, value]): HttpHeader => [name, value]);
+    const requestHeaders = headers?.map(([name, value]): [name: string, value: Secret<string>] => [name, value]);
     return createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {

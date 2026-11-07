@@ -1,6 +1,6 @@
 import { Secret } from '@/utils/secret';
 import { describe, expect, it, vi } from 'vitest';
-import type { Endpoint, HttpHeader } from '@/01-models/types';
+import type { Endpoint } from '@/01-models/types';
 import type { WorkflowModelConfiguration } from '@/01-models/workflow';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { createWorkflowModelPermissions, describeWorkflowConnection, TEST_ONLY } from './model-permissions';
@@ -107,7 +107,7 @@ describe('Workflow model authority', () => {
     test.permissions.review({ target: target({ endpoint }) });
     await test.authorize({ run: test.permissions.beginRun(), value: target({ endpoint: { type: 'naidan_rpc', registrationId: toNaidanRpcRegistrationId({ raw: 'second' }) } }) });
     expect(test.request).toHaveBeenCalledOnce();
-    const headers: HttpHeader[] = [['A', Secret.from({ value: '1' })], ['B', Secret.from({ value: '2' })]];
+    const headers: [name: string, value: Secret<string>][] = [['A', Secret.from({ value: '1' })], ['B', Secret.from({ value: '2' })]];
     test.permissions.review({ target: target({ endpoint: { type: 'ollama', url: 'http://localhost', httpHeaders: headers } }) });
     await test.authorize({ run: test.permissions.beginRun(), value: target({ endpoint: { type: 'ollama', url: 'http://localhost', httpHeaders: [...headers].reverse() } }) });
     expect(test.request).toHaveBeenCalledTimes(2);

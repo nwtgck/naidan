@@ -1,5 +1,4 @@
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from './types';
 import type { Endpoint, EndpointType, HttpEndpoint, SupportedEndpoint } from '@/01-models/types';
 
 export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
@@ -117,7 +116,7 @@ export function cloneOptionalEndpoint({
 }
 
 /** Authorized HTTP request boundary; never use this for diagnostics or comparison. */
-export function revealHttpHeaders({ headers }: { headers: readonly HttpHeader[] | undefined }): [string, string][] | undefined {
+export function revealHttpHeaders({ headers }: { headers: readonly [name: string, value: Secret<string>][] | undefined }): [string, string][] | undefined {
   return headers?.map(([name, value]) => [name, value.reveal()]);
 }
 
@@ -125,8 +124,8 @@ export function areHttpHeadersEqual({
   leftHeaders,
   rightHeaders,
 }: {
-  leftHeaders: readonly HttpHeader[] | undefined,
-  rightHeaders: readonly HttpHeader[] | undefined,
+  leftHeaders: readonly [name: string, value: Secret<string>][] | undefined,
+  rightHeaders: readonly [name: string, value: Secret<string>][] | undefined,
 }): boolean {
   if (leftHeaders === rightHeaders) {
     return true;

@@ -1,5 +1,4 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
-import type { HttpHeader } from '@/01-models/types';
 import { Secret } from '@/utils/secret';
 import { describe, expect, it } from 'vitest';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
@@ -268,9 +267,9 @@ describe('scoped setting changes', () => {
   });
 
   it('snapshots_nested_change_values_for_queued_updates', () => {
-    const headers: HttpHeader[] = [['Authorization', Secret.from({ value: 'Bearer old' })]];
+    const headers: [name: string, value: Secret<string>][] = [['Authorization', Secret.from({ value: 'Bearer old' })]];
     const stop = ['OLD'];
-    const titleEndpointHeaders: HttpHeader[] = [['X-Title', Secret.from({ value: 'old' })]];
+    const titleEndpointHeaders: [name: string, value: Secret<string>][] = [['X-Title', Secret.from({ value: 'old' })]];
     const changes = cloneScopedSettingChanges({
       changes: [
         {

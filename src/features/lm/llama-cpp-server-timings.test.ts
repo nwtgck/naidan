@@ -1,6 +1,5 @@
 import { installSecretEqualityTester } from '@/utils/secret.test-support';
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import { describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import type { LmFetch } from './fetch';
@@ -12,7 +11,7 @@ installSecretEqualityTester();
 const endpoint = 'https://server.invalid/llama/v1';
 const supportedProps = { default_generation_settings: { params: { timings_per_token: false } } };
 
-function request({ headers, signal = new AbortController().signal, url = endpoint }: { headers?: HttpHeader[], signal?: AbortSignal, url?: string } = {}) {
+function request({ headers, signal = new AbortController().signal, url = endpoint }: { headers?: [name: string, value: Secret<string>][], signal?: AbortSignal, url?: string } = {}) {
   return { endpoint: url, headers, signal };
 }
 
@@ -67,7 +66,7 @@ describe('bounded optional capability detection', () => {
   it('snapshots custom authentication and separates changed credentials and routes', async () => {
     const fetcher = vi.fn<LmFetch>(async () => Response.json(supportedProps));
     const detector = TEST_ONLY.createDetector({ fetcher });
-    const headers: HttpHeader[] = [['Authorization', Secret.from({ value: 'Bearer first' })], ['X-Route', Secret.from({ value: 'a' })]];
+    const headers: [name: string, value: Secret<string>][] = [['Authorization', Secret.from({ value: 'Bearer first' })], ['X-Route', Secret.from({ value: 'a' })]];
     const pending = detector.resolve(request({ headers }));
     headers[0]![1] = Secret.from({ value: 'Bearer second' });
     expect(await pending).toBe(true);

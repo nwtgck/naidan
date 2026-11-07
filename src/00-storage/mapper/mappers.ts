@@ -1,5 +1,4 @@
 import { Secret } from '@/utils/secret';
-import type { HttpHeader } from '@/01-models/types';
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
@@ -852,7 +851,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     return exactObject<Extract<Endpoint, { type: 'openai' | 'ollama' }>>()({
       type,
       url,
-      httpHeaders: httpHeaders?.map(([name, value]): HttpHeader => [name, Secret.from({ value })]),
+      httpHeaders: httpHeaders?.map(([name, value]): [name: string, value: Secret<string>] => [name, Secret.from({ value })]),
     });
   }
   case 'transformers_js': {

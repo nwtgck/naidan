@@ -1,4 +1,3 @@
-import type { HttpHeader } from '@/01-models/types';
 import { Secret } from '@/utils/secret';
 import { File as NodeFile, Blob as NodeBlob } from 'node:buffer';
 import { ref } from 'vue';
@@ -898,7 +897,7 @@ describe('Workflow connection review integration', () => {
     if (step.type !== 'text_generation') {
       throw new Error('fixture');
     }
-    const endpoint = { type: 'ollama' as const, url: 'http://localhost:11434', httpHeaders: [['Authorization', Secret.from({ value: 'do-not-show' })]] as HttpHeader[] };
+    const endpoint = { type: 'ollama' as const, url: 'http://localhost:11434', httpHeaders: [['Authorization', Secret.from({ value: 'do-not-show' })]] as [name: string, value: Secret<string>][] };
     step.target = { type: 'model', endpoint, modelId: 'different' };
     await adopt({ workspace: state, definition: { name: '', steps: [step] } });
     state.reviewModel({ target: { endpoint, modelId: 'different', lmParameters: undefined } });
