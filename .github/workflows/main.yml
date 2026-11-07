@@ -144,6 +144,43 @@ jobs:
           cd naidan-server.py
           ./run_test.sh
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        uses: $/.github/actions/retry-npm-ci
+        with:
+          node-image: node:22-bookworm
+
+      - name: Run typecheck
+        # Retain the same checks as npm run build: project references and PWA.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" \
+            -v "$PWD/naidan-server:/work/naidan-server:ro" \
+            -v "$PWD/package.json:/work/package.json:ro" \
+            -w /work \
+            -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
+            node:22-bookworm \
+            sh -c './node_modules/.bin/vue-tsc -b && ./node_modules/.bin/tsc --noEmit -p pwa/tsconfig.json'
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -164,14 +201,8 @@ jobs:
         with:
           node-image: node:22-bookworm
 
-      - name: Ensure licenses.json exists
-        run: |
-          mkdir -p src/assets
-          echo '[{"name": "dummy-package-for-tests", "version": "0.0.0", "license": "DUMMY-LICENSE", "licenseText": "This is a placeholder for CI tests."}]' > src/assets/licenses.json
-
       - name: Run build
-        # Build type checking hit Node's ~4 GiB heap limit before bundling.
-        # Keep every check enabled; allow headroom only for this build step.
+        # Keep headroom for memory-intensive standalone and hosted bundles.
         env:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
@@ -187,7 +218,7 @@ jobs:
             -v "$PWD/package.json:/work/package.json:ro" \
             -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
-            node:22-bookworm npm run build
+            node:22-bookworm npm run build:all
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
