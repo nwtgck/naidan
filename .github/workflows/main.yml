@@ -218,7 +218,7 @@ jobs:
             -v "$PWD/package.json:/work/package.json:ro" \
             -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
-            node:22-bookworm sh -c 'npm run build:all && npm run build:model-seo'
+            node:22-bookworm sh -c 'npm run build:all && npm run build:model-pages'
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -407,11 +407,13 @@ jobs:
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
-          test -f dist/model-seo-publication/sitemap.xml
-          test -f dist/model-seo-publication/404.html
-          test -d dist/model-seo-publication/llama-cpp-browser
+          test -f dist/model-page-publication/sitemap.xml
+          test -f dist/model-page-publication/index.html
+          test ! -e dist/model-page-publication/404.html
+          test ! -e dist/hosted/404.html
+          test -d dist/model-page-publication/llama-cpp-browser
           test ! -e dist/hosted/llama-cpp-browser
-          cp -a dist/model-seo-publication/. dist/hosted/
+          cp -a dist/model-page-publication/. dist/hosted/
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/
@@ -502,11 +504,13 @@ jobs:
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
-          test -f dist/model-seo-publication/sitemap.xml
-          test -f dist/model-seo-publication/404.html
-          test -d dist/model-seo-publication/llama-cpp-browser
+          test -f dist/model-page-publication/sitemap.xml
+          test -f dist/model-page-publication/index.html
+          test ! -e dist/model-page-publication/404.html
+          test ! -e dist/hosted/404.html
+          test -d dist/model-page-publication/llama-cpp-browser
           test ! -e dist/hosted/llama-cpp-browser
-          cp -a dist/model-seo-publication/. dist/hosted/
+          cp -a dist/model-page-publication/. dist/hosted/
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/
@@ -610,11 +614,13 @@ jobs:
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
-          test -f dist/model-seo-publication/sitemap.xml
-          test -f dist/model-seo-publication/404.html
-          test -d dist/model-seo-publication/llama-cpp-browser
+          test -f dist/model-page-publication/sitemap.xml
+          test -f dist/model-page-publication/index.html
+          test ! -e dist/model-page-publication/404.html
+          test ! -e dist/hosted/404.html
+          test -d dist/model-page-publication/llama-cpp-browser
           test ! -e dist/hosted/llama-cpp-browser
-          cp -a dist/model-seo-publication/. dist/hosted/
+          cp -a dist/model-page-publication/. dist/hosted/
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/

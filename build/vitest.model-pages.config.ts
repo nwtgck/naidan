@@ -20,7 +20,7 @@ export default defineConfig({
       'src/composables/useDocumentMetadata.test.ts',
       'src/composables/useAppPresentation.test.ts',
       'src/features/import-export/**/*.test.ts',
-      'build/model-seo*.test.ts',
+      'build/model-page*.test.ts',
       'build/site-sitemap.test.ts',
       'build/document-metadata-html.test.ts',
       'build/vite-config-imports.test.ts',

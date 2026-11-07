@@ -6,20 +6,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
 import { createServer, type ViteDevServer } from 'vite';
-import { createModelSeoDevPlugin } from './model-seo-dev';
+import { createModelPageDevPlugin } from './model-page-dev';
 import { createDocumentMetadataHtmlPlugin } from './document-metadata-html';
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
 
-export async function createModelSeoFixture() {
-  const root = await mkdtemp(path.join(tmpdir(), 'naidan-model-seo-'));
+export async function createModelPageFixture() {
+  const root = await mkdtemp(path.join(tmpdir(), 'naidan-model-page-'));
   try {
     for (const file of [
-      'src/features/llama-cpp-browser/model-launch/seo-entries.ts',
-      'src/features/llama-cpp-browser/model-launch/seo-url.ts',
+      'src/features/llama-cpp-browser/model-launch/page-entries.ts',
+      'src/features/llama-cpp-browser/model-launch/page-url.ts',
       'src/features/llama-cpp-browser/model-launch/document-metadata.ts',
       'src/features/llama-cpp-browser/hugging-face/model-repositories.ts',
       'src/logic/document-metadata.ts',
+      'src/utils/exact-object.ts',
     ]) {
       await mkdir(path.dirname(path.join(root, file)), { recursive: true });
       await cp(path.join(repository, file), path.join(root, file));
@@ -36,7 +37,7 @@ export async function createModelSeoFixture() {
   }
 }
 
-export async function createModelSeoDev({ root }: { root: string }) {
+export async function createModelPageDev({ root }: { root: string }) {
   const server = await createServer({
     configFile: false,
     root,
@@ -44,8 +45,8 @@ export async function createModelSeoDev({ root }: { root: string }) {
     server: { middlewareMode: true, ws: false },
     optimizeDeps: { noDiscovery: true, include: [] },
     css: { postcss: { plugins: [] } },
-    plugins: [createDocumentMetadataHtmlPlugin(), createModelSeoDevPlugin(), {
-      name: 'seo-test-fallthrough',
+    plugins: [createDocumentMetadataHtmlPlugin(), createModelPageDevPlugin(), {
+      name: 'model-page-test-fallthrough',
       configureServer(server) {
         server.middlewares.use((_request, response) => {
           response.statusCode = 418;
@@ -57,7 +58,7 @@ export async function createModelSeoDev({ root }: { root: string }) {
   return { server, [Symbol.asyncDispose]: () => server.close() };
 }
 
-export async function requestModelSeo({ server, method, url }: { server: ViteDevServer, method: string, url: string }) {
+export async function requestModelPage({ server, method, url }: { server: ViteDevServer, method: string, url: string }) {
   const socket = new Socket();
   const request = new IncomingMessage(socket);
   request.method = method;
@@ -71,12 +72,12 @@ export async function requestModelSeo({ server, method, url }: { server: ViteDev
       resolve();
       return response;
     });
-    server.middlewares(request, response, reject);
+    server.middlewares(request, response, error => reject(error ?? new Error('Model page middleware ended without a response')));
   }).finally(() => socket.destroy());
   return { status: response.statusCode, contentType: response.getHeader('Content-Type'), length: response.getHeader('Content-Length'), location: response.getHeader('Location'), body };
 }
 
-export async function replaceSeoSource({ root, file, before, after }: { root: string, file: string, before: string, after: string }): Promise<string> {
+export async function replacePageSource({ root, file, before, after }: { root: string, file: string, before: string, after: string }): Promise<string> {
   const absolute = path.join(root, file);
   const source = await readFile(absolute, 'utf8');
   if (!source.includes(before)) {

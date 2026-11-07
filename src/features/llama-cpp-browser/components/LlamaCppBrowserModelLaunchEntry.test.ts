@@ -306,12 +306,16 @@ describe('immediate model link presentation', () => {
   });
 });
 
-describe('published model entry with the existing rich component', () => {
-  it('keeps the path, requires explicit launch and changes to a fragment only on chat navigation', async () => {
+describe('repository model entry with the existing rich component', () => {
+  it.each([
+    { repository: 'LiquidAI/LFM2.5-230M-GGUF', heading: 'LFM2.5 230M', label: 'LFM2.5-230M', quant: 'Q4_K_M', initialQuant: 'Q4_K_M', published: true },
+    { repository: 'owner/Unknown-GGUF', heading: 'Unknown', label: 'Unknown', quant: undefined, initialQuant: 'Q4_K_M', published: false },
+    { repository: 'owner/Unknown-GGUF', heading: 'Unknown', label: 'Unknown', quant: 'Q8_0', initialQuant: 'Q8_0', published: false },
+  ])('keeps $repository with quant=$quant, requires explicit launch and changes to a fragment only on chat navigation', async ({ repository, heading, label, quant, initialQuant, published }) => {
     const previous = window.location.href;
     const oldHead = document.head.innerHTML;
-    const pathname = '/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M/';
-    window.history.replaceState(undefined, '', pathname);
+    const pathname = `/llama-cpp-browser/hf.co/${repository}/`;
+    window.history.replaceState(undefined, '', pathname + (quant === undefined ? '' : `?quant=${quant}`));
     document.head.innerHTML = '<base href="/">';
     using _location = {
       [Symbol.dispose]() {
@@ -320,7 +324,7 @@ describe('published model entry with the existing rich component', () => {
       },
     };
     inspect.mockResolvedValue({
-      repository: 'LiquidAI/LFM2.5-230M-GGUF',
+      repository,
       revision: 'a'.repeat(40),
       projectors: [],
       models: ['LFM2.5-Q4_K_M.gguf', 'LFM2.5-Q8_0.gguf'].map(path => ({ label: path, files: [{ path, size: 1024 ** 3 }], size: 1024 ** 3 })),
@@ -331,7 +335,7 @@ describe('published model entry with the existing rich component', () => {
       history,
       routes: [
         { path: '/', component: LlamaCppBrowserModelLaunchEntry, props: route => ({ input: route.query['llama-cpp-browser-model'] }) },
-        { path: '/chat/:id', component: { template: '<div data-testid="seo-chat" />' } },
+        { path: '/chat/:id', component: { template: '<div data-testid="model-page-chat" />' } },
       ],
     });
     const host = defineComponent({
@@ -345,16 +349,18 @@ describe('published model entry with the existing rich component', () => {
     using _wrapper = { [Symbol.dispose]: () => wrapper.unmount() };
     await router.isReady();
     await flushPromises();
-    expect(wrapper.get('h2').text()).toBe('LFM2.5 230M');
+    expect(wrapper.get('h2').text()).toBe(heading);
     expect(wrapper.get('[data-testid="start-preview-model"]').attributes('disabled')).toBeUndefined();
     expect(modelLaunchCommand.value).toBeUndefined();
     expect(window.location.pathname).toBe(pathname);
     expect(window.location.hash).toBe('');
-    expect(document.title).toBe('LFM2.5-230M Q4_K_M — Local LLM on your device, in your browser | Naidan');
+    expect(document.title).toBe(`${label} ${initialQuant} — Local LLM on your device, in your browser | Naidan`);
+    expect(window.location.search).toBe(quant === undefined ? '' : `?quant=${quant}`);
+    expect(document.head.querySelector('meta[data-document-metadata-indexing]')?.getAttribute('content')).toBe(published ? undefined : 'noindex');
     await wrapper.get('[data-testid="model-preview-quantization"]').trigger('click');
     await wrapper.get('[data-testid="quantization-option-LFM2.5-Q8_0.gguf"]').trigger('click');
     await flushPromises();
-    expect(document.title).toBe('LFM2.5-230M Q8_0 — Local LLM on your device, in your browser | Naidan');
+    expect(document.title).toBe(`${label} Q8_0 — Local LLM on your device, in your browser | Naidan`);
     expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(`https://naidan.nwtgck.org${pathname}`);
     expect(window.location.pathname).toBe(pathname);
     await wrapper.get('[data-testid="start-preview-model"]').trigger('click');
@@ -364,7 +370,9 @@ describe('published model entry with the existing rich component', () => {
     await flushPromises();
     expect(window.location.pathname).toBe('/');
     expect(window.location.hash).toBe('#/chat/created');
-    expect(wrapper.find('[data-testid="seo-chat"]').exists()).toBe(true);
+    expect(window.location.search).toBe('');
+    expect(document.head.querySelector('meta[data-document-metadata-indexing]')).toBeNull();
+    expect(wrapper.find('[data-testid="model-page-chat"]').exists()).toBe(true);
     expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org');
   });
 });

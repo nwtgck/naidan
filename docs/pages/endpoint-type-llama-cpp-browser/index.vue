@@ -12,17 +12,17 @@ defineProps<{ s: typeof english; locale: DocsLocale; common: CommonMessages }>()
 // Keep this shortlist in README Text Generation order. These are model
 // identifiers, while the surrounding instructions are localized page copy.
 const quickModels = [
-  { name: 'Gemma 4 E2B it', model: 'hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0' },
-  { name: 'Gemma 4 E4B it', model: 'hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0' },
-  { name: 'Gemma 4 26B-A4B it', model: 'hf.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf:Q4_0' },
-  { name: 'gpt-oss-20b', model: 'hf.co/ggml-org/gpt-oss-20b-GGUF:MXFP4' },
-  { name: 'Qwen3.5 9B', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' },
-  { name: 'Qwen3.6 35B-A3B', model: 'hf.co/ggml-org/Qwen3.6-35B-A3B-GGUF:Q4_K_M' },
-  { name: 'Qwen3.8 27B', model: 'hf.co/ggml-org/Qwen3.8-27B-GGUF:Q4_K_M' },
-  { name: 'LFM2.5 230M', model: 'hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M' },
-  { name: 'LFM2.5 2.6B', model: 'hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M' },
-  { name: 'Muse-Glimmer 30B', model: 'hf.co/meta-models/Muse-Glimmer-30B-GGUF:Q4_K_M' },
-  { name: 'SmolLM2 135M Instruct', model: 'hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF:Q4_K_M' },
+  { name: 'Gemma 4 E2B it', model: 'hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf', quant: 'Q4_0' },
+  { name: 'Gemma 4 E4B it', model: 'hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf', quant: 'Q4_0' },
+  { name: 'Gemma 4 26B-A4B it', model: 'hf.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf', quant: 'Q4_0' },
+  { name: 'gpt-oss-20b', model: 'hf.co/ggml-org/gpt-oss-20b-GGUF', quant: 'MXFP4' },
+  { name: 'Qwen3.5 9B', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF', quant: 'Q4_K_M' },
+  { name: 'Qwen3.6 35B-A3B', model: 'hf.co/ggml-org/Qwen3.6-35B-A3B-GGUF', quant: 'Q4_K_M' },
+  { name: 'Qwen3.8 27B', model: 'hf.co/ggml-org/Qwen3.8-27B-GGUF', quant: 'Q4_K_M' },
+  { name: 'LFM2.5 230M', model: 'hf.co/LiquidAI/LFM2.5-230M-GGUF', quant: 'Q4_K_M' },
+  { name: 'LFM2.5 2.6B', model: 'hf.co/LiquidAI/LFM2.5-2.6B-GGUF', quant: 'Q4_K_M' },
+  { name: 'Muse-Glimmer 30B', model: 'hf.co/meta-models/Muse-Glimmer-30B-GGUF', quant: 'Q4_K_M' },
+  { name: 'SmolLM2 135M Instruct', model: 'hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF', quant: 'Q4_K_M' },
 ] as const;
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -37,7 +37,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p><RenderText :node="s.suggested_models_instructions()" /></p>
       <ul class="quick-model-list">
         <li v-for="item in quickModels" :key="item.model">
-          <AppEntryLink :destination="{ kind: 'model-page', model: item.model }" :locale="locale" display="label">{{ item.name }}</AppEntryLink>
+          <AppEntryLink :destination="{ kind: 'model-page', model: item.model, quant: item.quant }" :locale="locale" display="label">{{ item.name }}</AppEntryLink>
         </li>
       </ul>
       <p><RenderText :node="s.model_link_boundary()" /></p>

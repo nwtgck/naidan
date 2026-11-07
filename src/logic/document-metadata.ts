@@ -139,5 +139,34 @@ export function applyDocumentCanonicalUrl({ document, canonicalUrl }: { document
   }
 }
 
+/** Only manage our own noindex tag; never erase a host's separate robots policy. */
+export function applyDocumentIndexing({ document, indexing }: { document: Document, indexing: 'allowed' | 'noindex' }): void {
+  const owned = [...document.head.querySelectorAll<HTMLMetaElement>('meta[data-document-metadata-indexing]')];
+  switch (indexing) {
+  case 'allowed':
+    for (const meta of owned) {
+      meta.remove();
+    }
+    return;
+  case 'noindex': {
+    const meta = owned[0] ?? document.createElement('meta');
+    for (const duplicate of owned.slice(1)) {
+      duplicate.remove();
+    }
+    meta.name = 'robots';
+    meta.content = 'noindex';
+    meta.setAttribute('data-document-metadata-indexing', '');
+    if (meta.parentNode === null) {
+      document.head.append(meta);
+    }
+    return;
+  }
+  default: {
+    const exhaustive: never = indexing;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
 export const TEST_ONLY = {
 };

@@ -1,15 +1,26 @@
 import { createWebHistory, type RouterHistory } from 'vue-router';
-import { findModelSeoEntry, type ModelSeoEntry } from './seo-entries';
+import { readModelPageRequest } from './page-url';
 
 const modelQuery = 'llama-cpp-browser-model';
 
 /** A presentation adapter; Vue Router still owns history state and popstate. */
-export function createModelSeoHistory({ entry }: { entry: ModelSeoEntry }): RouterHistory {
-  const initialSearch = window.location.search;
+export function createModelPageHistory(): RouterHistory {
   // A pasted legacy route takes precedence, never combine two model selectors.
   if (window.location.hash.startsWith('#/')) {
     window.history.replaceState(window.history.state, '', `/${window.location.hash}`);
   }
+  const initialPhysical = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const initialRequest = readModelPageRequest({ pathname: window.location.pathname, search: window.location.search });
+  const initialInput = (() => {
+    switch (initialRequest.kind) {
+    case 'model': return initialRequest.launchInput;
+    case 'invalid': case 'outside': return '';
+    default: {
+      const exhaustive: never = initialRequest;
+      return exhaustive;
+    }
+    }
+  })();
   const delegate = createWebHistory('/');
 
   function toLogical({ location }: { location: string }): string {
@@ -17,18 +28,26 @@ export function createModelSeoHistory({ entry }: { entry: ModelSeoEntry }): Rout
     if (url.hash.startsWith('#/')) {
       return url.hash.slice(1);
     }
-    const selected = findModelSeoEntry({ pathname: url.pathname });
-    return selected === undefined ? '/' : `/?${new URLSearchParams({ [modelQuery]: selected.modelId })}`;
+    const request = readModelPageRequest({ pathname: url.pathname, search: url.search });
+    switch (request.kind) {
+    case 'model': return `/?${new URLSearchParams({ [modelQuery]: request.launchInput })}`;
+    // The existing repair UI handles invalid inputs without fetching a model.
+    case 'invalid': return `/?${new URLSearchParams({ [modelQuery]: '' })}`;
+    case 'outside': return '/';
+    default: {
+      const exhaustive: never = request;
+      return exhaustive;
+    }
+    }
   }
 
   function toPhysical({ location }: { location: string }): string {
-    // Only the entry route has a path representation. Other model links and
-    // normal app routes keep their legacy fragment semantics in this session.
     const url = new URL(location, window.location.origin);
-    if (url.pathname === '/' && url.hash === '' && [...url.searchParams].length === 1
-      && url.searchParams.get(modelQuery) === entry.modelId) {
-      return `${entry.pathname}${initialSearch}`;
+    if (initialRequest.kind !== 'outside' && url.pathname === '/' && url.hash === ''
+      && [...url.searchParams].length === 1 && url.searchParams.get(modelQuery) === initialInput) {
+      return initialPhysical;
     }
+    // Other model links and app routes retain their fragment semantics.
     return `/#${location}`;
   }
 

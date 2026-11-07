@@ -3,7 +3,7 @@ import { computed, defineComponent, h, KeepAlive, nextTick, ref, shallowRef, typ
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { APPLICATION_METADATA, AUDIO_METADATA, HOME_METADATA, IMAGE_METADATA, SITE_METADATA, type PageMetadata } from '@/logic/document-metadata';
-import { findModelSeoEntry } from '@/features/llama-cpp-browser/model-launch/seo-entries';
+import { findModelPageEntry } from '@/features/llama-cpp-browser/model-launch/page-entries';
 import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { TEST_ONLY as presentationTestOnly } from './useAppPresentation';
@@ -277,9 +277,9 @@ describe('document metadata ownership', () => {
     expectHead({ page: AUDIO_METADATA, documentTitle: AUDIO_METADATA.title });
   });
 
-  it('preserves initial SEO metadata, allows variant/title overrides and resets URL metadata on chat navigation', async () => {
-    const pathname = '/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M/';
-    const entry = findModelSeoEntry({ pathname });
+  it('preserves initial model-page metadata, allows variant/title overrides and resets URL metadata on chat navigation', async () => {
+    const pathname = '/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF/';
+    const entry = findModelPageEntry({ pathname });
     if (!entry) {
       throw new Error('Missing test model');
     }
@@ -315,5 +315,43 @@ describe('document metadata ownership', () => {
     expectHead({ page: APPLICATION_METADATA, documentTitle: APPLICATION_METADATA.title });
     expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(SITE_METADATA.url);
     expect(document.querySelector('meta[property="og:url"]')?.getAttribute('content')).toBe(SITE_METADATA.url);
+  });
+
+  it.each([
+    { model: 'hf.co/LiquidAI/LFM2.5-230M-GGUF', quant: 'Q8_0', indexing: 'allowed' },
+    { model: 'hf.co/owner/Unlisted-GGUF', quant: undefined, indexing: 'noindex' },
+    { model: 'hf.co/owner/Unlisted-GGUF', quant: 'Q4_K_M', indexing: 'noindex' },
+  ] as const)('uses central copy and $indexing for $model with $quant', async ({ model, quant, indexing }) => {
+    const previous = window.location.href;
+    using _location = { [Symbol.dispose]: () => window.history.replaceState(undefined, '', previous) };
+    const pathname = `/llama-cpp-browser/${model}`;
+    window.history.replaceState(undefined, '', pathname + (quant === undefined ? '' : `?quant=${quant}`));
+    const router = routerForPages();
+    await router.push({ path: '/', query: { 'llama-cpp-browser-model': model + (quant === undefined ? '' : `:${quant}`) } });
+    // A deployment-owned robots policy must survive all app transitions.
+    document.head.insertAdjacentHTML('beforeend', '<meta name="robots" content="nofollow" data-host-policy>');
+    using _owner = mountOwner({ router, introduction: presentationTestOnly.createHomeIntroduction({ router }), content: defineComponent({ template: '<div />' }) });
+    await nextTick();
+    const metadata = modelLaunchMetadata({ repository: model.slice('hf.co/'.length), variant: quant });
+    expectHead({ page: metadata, documentTitle: metadata.title });
+    expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(`${SITE_METADATA.url}${pathname}/`);
+    expect(document.querySelector('meta[data-document-metadata-indexing]')?.getAttribute('content')).toBe(indexing === 'noindex' ? 'noindex' : undefined);
+    await router.replace('/chat/created');
+    await nextTick();
+    expect(document.querySelector('meta[data-document-metadata-indexing]')).toBeNull();
+    expect(document.querySelector('meta[data-host-policy]')?.getAttribute('content')).toBe('nofollow');
+    expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(SITE_METADATA.url);
+  });
+
+  it('marks an invalid model request noindex without authorizing another repository', async () => {
+    const previous = window.location.href;
+    using _location = { [Symbol.dispose]: () => window.history.replaceState(undefined, '', previous) };
+    window.history.replaceState(undefined, '', '/llama-cpp-browser/hf.co/owner/Model?quant=');
+    const router = routerForPages();
+    await router.push({ path: '/', query: { 'llama-cpp-browser-model': '' } });
+    using _owner = mountOwner({ router, introduction: presentationTestOnly.createHomeIntroduction({ router }), content: defineComponent({ template: '<div />' }) });
+    await nextTick();
+    expect(document.querySelector('meta[data-document-metadata-indexing]')?.getAttribute('content')).toBe('noindex');
+    expect(document.querySelector('meta[name=description]')?.getAttribute('content')).not.toContain('Run Model');
   });
 });

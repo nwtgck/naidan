@@ -1,10 +1,10 @@
 import { createWebHashHistory, type RouterHistory } from 'vue-router';
-import { createModelSeoHistory } from '@/features/llama-cpp-browser/model-launch/seo-history';
-import { findModelSeoEntry } from '@/features/llama-cpp-browser/model-launch/seo-entries';
+import { createModelPageHistory } from '@/features/llama-cpp-browser/model-launch/page-history';
+import { isModelPagePath } from '@/features/llama-cpp-browser/model-launch/page-url';
 
 export function createAppHistory(): RouterHistory {
-  const entry = window.location.protocol === 'file:' ? undefined : findModelSeoEntry({ pathname: window.location.pathname });
-  return entry === undefined ? createWebHashHistory() : createModelSeoHistory({ entry });
+  const modelPage = window.location.protocol !== 'file:' && isModelPagePath({ pathname: window.location.pathname });
+  return modelPage ? createModelPageHistory() : createWebHashHistory();
 }
 
 export const TEST_ONLY = {

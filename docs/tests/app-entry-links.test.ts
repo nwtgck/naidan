@@ -122,11 +122,11 @@ describe('Docs app entry links', () => {
 });
 
 describe('published model app links', () => {
-  const model = 'hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M';
-  const pathname = `/llama-cpp-browser/${model}/`;
+  const model = 'hf.co/LiquidAI/LFM2.5-230M-GGUF';
+  const pathname = `/llama-cpp-browser/${model}?quant=Q4_K_M`;
 
   it.each(['en', 'ja'] as const)('renders a path link and rebases it without changing canonical in %s', async locale => {
-    const html = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination: { kind: 'model-page', model }, locale, display: 'path' }) }));
+    const html = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination: { kind: 'model-page', model, quant: 'Q4_K_M' }, locale, display: 'path' }) }));
     for (const origin of ['https://naidan.pages.dev', 'https://preview.example', 'http://localhost:5173']) {
       const canonical = `https://naidan.nwtgck.org/docs/${locale}/endpoint-type-llama-cpp-browser/`;
       const dom = new JSDOM(`<head><link rel="canonical" href="${canonical}"></head><body>${html}</body>`, { url: `${origin}/docs/${locale}/endpoint-type-llama-cpp-browser/` });

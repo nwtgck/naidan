@@ -45,7 +45,7 @@ describe('browser model guides', () => {
       expect(url.pathname.startsWith('/llama-cpp-browser/hf.co/')).toBe(true);
       expect(url.origin).toBe('https://naidan.nwtgck.org');
       expect(link.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
-      return [link.textContent?.trim(), url.pathname.slice('/llama-cpp-browser/'.length, -1)];
+      return [link.textContent?.trim(), `${url.pathname.slice('/llama-cpp-browser/'.length)}:${url.searchParams.get('quant')}`];
     })).toEqual(readmeTextModels);
     for (const origin of ['https://naidan.pages.dev', 'http://localhost:5173', 'https://preview.example']) {
       updateAppEntryLinks({ document: page.document, locationHref: `${origin}/docs/${locale}/endpoint-type-llama-cpp-browser/` });

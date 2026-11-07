@@ -7,7 +7,7 @@ import { installStreamDownloadWorker } from '../src/utils/download/service-worke
 import { createOfflineHandoff } from './offline-handoff';
 import { waitForActiveCleanup } from './precache-lifecycle';
 import { isDocsUrl } from './docs-routing';
-import { isModelSeoNavigation } from './model-seo-routing';
+import { isModelPageNavigation } from './model-page-routing';
 
 declare const __PWA_BUILD_ID__: string;
 declare const self: ServiceWorkerGlobalScope & {
@@ -76,7 +76,7 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) {
     return;
   }
-  if (isDocsUrl({ url, scope }) || isModelSeoNavigation({ url, scope, mode: event.request.mode })) {
+  if (isDocsUrl({ url, scope }) || isModelPageNavigation({ url, scope, mode: event.request.mode })) {
     return;
   }
   const response = (async () => {

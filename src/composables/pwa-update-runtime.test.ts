@@ -77,7 +77,7 @@ describe('page-scoped PWA runtime', () => {
 
 it('registers the root worker rather than a model-page worker when the document has a publication base', () => {
   const previous = window.location.href;
-  window.history.replaceState(undefined, '', '/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M/');
+  window.history.replaceState(undefined, '', '/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF/');
   const base = document.createElement('base');
   base.href = '/';
   document.head.prepend(base);
