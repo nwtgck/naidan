@@ -22,6 +22,7 @@ All notable changes to Naidan are documented in this file.
 
 ### Added
 
+- Publish repository-specific browser model pages for Unsloth's Qwen3.8-Flash-Next and ISTA DASLab's Qwen3.8-27B GSQ-RCO, with explicit variant names in generated and live page metadata. Record editorial model naming for every published repository independently of the suggested-model catalog.
 - Publish browser model pages and sitemap entries for Google Gemma 4 12B QAT and LiquidAI LFM3-1.7B and LFM3-VL-2B without adding them to the suggested-model catalog.
 - Searchable repository-specific browser model pages, generated from the shared registry with local/on-device metadata, canonical URLs, and sitemap entries. Optional `?quant=` selects a quantization; unlisted repositories open the same preview through the static app fallback. Starting a chat returns to the existing fragment route without reloading. Model routes do not inject `noindex`, including for unlisted or invalid repositories.
 - Experimental workflows with shared step, JSON, and scoped graph editing, reusable parts, typed values, sequential text generation, branching, loops, interactive input, and folder-based file operations. Graph connections and moves validate scope and downstream types, preserve undo history, and protect unfinished inputs.

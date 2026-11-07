@@ -18,7 +18,26 @@ describe('shared Hugging Face repositories', () => {
       'LiquidAI/LFM3-1.7B-GGUF',
       'LiquidAI/LFM3-VL-2B-GGUF',
     ] as const) {
-      expect(getHfRepository({ hfRepository })).toEqual({ hfRepository });
+      expect(getHfRepository({ hfRepository })).toMatchObject({ hfRepository, modelNaming: { kind: 'base-model-aligned' } });
+    }
+  });
+
+  it('identifies separately named quantizations without adding them to recommendations', () => {
+    expect(getHfRepository({ hfRepository: 'ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF' }).modelNaming).toEqual({
+      kind: 'custom-variant',
+      name: 'Qwen3.8-27B GSQ-RCO (ISTA DASLab)',
+    });
+    expect(getHfRepository({ hfRepository: 'unsloth/Qwen3.8-Flash-Next-GGUF' }).modelNaming).toEqual({
+      kind: 'custom-variant',
+      name: 'Qwen3.8-Flash-Next (Unsloth)',
+    });
+    expect(getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).modelNaming).toEqual({ kind: 'base-model-aligned' });
+    expect(getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).modelNaming).toEqual({ kind: 'base-model-aligned' });
+    for (const suggestion of modelSuggestions) {
+      for (const choice of suggestion.quantizationHints) {
+        expect(choice.hfRepository).not.toBe('ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF');
+        expect(choice.hfRepository).not.toBe('unsloth/Qwen3.8-Flash-Next-GGUF');
+      }
     }
   });
 

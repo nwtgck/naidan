@@ -30,6 +30,7 @@ const retainedLaunches = [
   'hf.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf',
   'hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf',
   'hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf',
+  'hf.co/ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF',
   'hf.co/LiquidAI/LFM2.5-2.6B-GGUF',
   'hf.co/LiquidAI/LFM2.5-230M-GGUF',
   'hf.co/LiquidAI/LFM3-1.7B-GGUF',
@@ -40,6 +41,7 @@ const retainedLaunches = [
   'hf.co/lmstudio-community/Qwen3.5-9B-GGUF',
   'hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF',
   'hf.co/meta-models/Muse-Glimmer-30B-GGUF',
+  'hf.co/unsloth/Qwen3.8-Flash-Next-GGUF',
 ];
 
 describe('site sitemap', () => {
@@ -71,8 +73,8 @@ describe('site sitemap', () => {
   it('retains distinct repositories independently of launch-time quantizations and deduplicates identical sitemap URLs', () => {
     const entries = modelPageEntries({
       repositories: [
-        { hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' },
-        { hfRepository: 'another-owner/LFM2.5-2.6B-GGUF' },
+        { hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF', modelNaming: { kind: 'base-model-aligned' } },
+        { hfRepository: 'another-owner/LFM2.5-2.6B-GGUF', modelNaming: { kind: 'base-model-aligned' } },
       ],
     });
     const dom = new JSDOM(createSiteSitemap({ entries: [...entries, ...entries] }), { contentType: 'application/xml' });

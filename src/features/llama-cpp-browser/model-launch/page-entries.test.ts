@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { hfRepositories } from '@/features/llama-cpp-browser/hugging-face/model-repositories';
 import { findModelPageEntry, listModelPageEntries, modelPageEntries } from './page-entries';
 import { modelIdFromPagePath, modelPagePath, modelPageHref, modelPageLocation, readModelPageRequest } from './page-url';
-import { modelLaunchMetadata } from './document-metadata';
+import { modelLaunchMetadata, modelLaunchLabel } from './document-metadata';
 import { SITE_METADATA } from '@/logic/document-metadata';
 
 const modelId = 'hf.co/LiquidAI/LFM2.5-230M-GGUF';
@@ -23,7 +23,7 @@ describe('model page publication registry', () => {
   });
 
   it('publishes one repository page while quantization stays a launch-time option', () => {
-    const entries = modelPageEntries({ repositories: [{ hfRepository: 'owner/Exact-it-GGUF' }] });
+    const entries = modelPageEntries({ repositories: [{ hfRepository: 'owner/Exact-it-GGUF', modelNaming: { kind: 'base-model-aligned' } }] });
     expect(entries.map(entry => entry.modelId)).toEqual(['hf.co/owner/Exact-it-GGUF']);
     expect(entries[0]?.metadata.title).toBe('Exact-it — Local LLM on your device, in your browser | Naidan');
     for (const quantization of ['Q4_K_M', 'Q8_0']) {
@@ -31,8 +31,38 @@ describe('model page publication registry', () => {
     }
   });
 
+  it.each([
+    { repository: 'unsloth/Qwen3.8-Flash-Next-GGUF', label: 'Qwen3.8-Flash-Next (Unsloth)' },
+    { repository: 'ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF', label: 'Qwen3.8-27B GSQ-RCO (ISTA DASLab)' },
+  ])('uses editorial identity for published and runtime metadata of $repository', ({ repository, label }) => {
+    const entry = listModelPageEntries().find(entry => entry.repository === repository);
+    expect(entry?.modelId).toBe(`hf.co/${repository}`);
+    expect(entry?.label).toBe(label);
+    expect(entry?.metadata.title).toBe(`${label} — Local LLM on your device, in your browser | Naidan`);
+    expect(entry?.metadata.description).toContain(`Run ${label} as a local LLM`);
+    expect(modelLaunchLabel({ repository, variant: 'IQ3_S' })).toBe(`${label} IQ3_S`);
+    expect(modelLaunchMetadata({ repository, variant: 'IQ3_S' }).title).toBe(`${label} IQ3_S — Local LLM on your device, in your browser | Naidan`);
+    expect(entry?.canonicalUrl).toBe(`${SITE_METADATA.url}/llama-cpp-browser/hf.co/${repository}/`);
+  });
+
+  it('preserves familiar names for base-model-aligned third-party quantizations', () => {
+    expect(modelLaunchLabel({ repository: 'bartowski/Qwen3.8-Flash-Next-GGUF', variant: undefined })).toBe('Qwen3.8-Flash-Next');
+    expect(modelLaunchLabel({ repository: 'ggml-org/Qwen3.8-27B-GGUF', variant: 'Q4_K_M' })).toBe('Qwen3.8-27B Q4_K_M');
+  });
+
+  it('uses the explicit naming of an injected repository without consulting the publication registry', () => {
+    const entries = modelPageEntries({
+      repositories: [{
+        hfRepository: 'owner/Experimental-GGUF',
+        modelNaming: { kind: 'custom-variant', name: 'Experimental (Research Edition)' },
+      }],
+    });
+    expect(entries[0]?.label).toBe('Experimental (Research Edition)');
+    expect(entries[0]?.metadata.title).toBe('Experimental (Research Edition) — Local LLM on your device, in your browser | Naidan');
+  });
+
   it('fails duplicate output paths instead of silently overwriting pages', () => {
-    const entry = { hfRepository: 'owner/Model' } as const;
+    const entry = { hfRepository: 'owner/Model', modelNaming: { kind: 'base-model-aligned' } } as const;
     expect(() => modelPageEntries({ repositories: [entry, entry] })).toThrow('Duplicate');
   });
 

@@ -19,7 +19,7 @@ export type ModelPageEntry = Readonly<{
 export function modelPageEntries({ repositories }: { repositories: readonly HfRepositoryEntry[] }): readonly ModelPageEntry[] {
   const seen = new Set<string>();
   return repositories.map(entry => {
-    const { hfRepository, ...unhandled } = entry;
+    const { hfRepository, modelNaming, ...unhandled } = entry;
     unhandled satisfies Record<PropertyKey, never>;
     const modelId = `hf.co/${hfRepository}`;
     const pathname = modelPagePath({ modelId });
@@ -30,11 +30,11 @@ export function modelPageEntries({ repositories }: { repositories: readonly HfRe
     return exactObject<ModelPageEntry>()({
       modelId,
       repository: hfRepository,
-      label: modelLaunchLabel({ repository: hfRepository, variant: undefined }),
+      label: modelLaunchLabel({ repository: hfRepository, variant: undefined, modelNaming }),
       pathname,
       canonicalUrl: new URL(pathname, SITE_METADATA.url).href,
       // A repository page cannot know the current upstream quantization choices.
-      metadata: modelLaunchMetadata({ repository: hfRepository, variant: undefined }),
+      metadata: modelLaunchMetadata({ repository: hfRepository, variant: undefined, modelNaming }),
     });
   });
 }
