@@ -1,0 +1,1 @@
+export const workflow__audio_outputs_help = (): string => "Salidas: audio (archivo WAV), metadata (formato real y motivo de finalización) y complete (si la generación terminó normalmente). Detener el flujo siempre descarta el audio aún en curso.";

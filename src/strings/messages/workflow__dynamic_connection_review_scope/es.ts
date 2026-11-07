@@ -1,0 +1,1 @@
+export const workflow__dynamic_connection_review_scope = (): string => "Esta conexión o este modelo procede de una respuesta del modelo, un archivo, una entrada interactiva o una fuente desconocida. Permite únicamente esta conexión y este modelo exactos durante esta ejecución. Las ejecuciones futuras requieren una nueva revisión.";

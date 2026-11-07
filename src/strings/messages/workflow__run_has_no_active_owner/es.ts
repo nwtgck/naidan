@@ -1,0 +1,1 @@
+export const workflow__run_has_no_active_owner = (): string => "No se encontró ningún propietario activo de esta ejecución guardada. Puedes marcarla como interrumpida; se comprobará de nuevo antes de guardar.";

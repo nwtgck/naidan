@@ -3548,6 +3548,319 @@ import { weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell } fr
 import { weshTerminal__session } from '@/strings/messages/weshTerminal__session/en';
 import { weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue } from '@/strings/messages/weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue/en';
 import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__wesh_terminal/en';
+import { workflow__add_field } from '@/strings/messages/workflow__add_field/en';
+import { workflow__add_item } from '@/strings/messages/workflow__add_item/en';
+import { workflow__add_message } from '@/strings/messages/workflow__add_message/en';
+import { workflow__add_numbers } from '@/strings/messages/workflow__add_numbers/en';
+import { workflow__add_reference_image } from '@/strings/messages/workflow__add_reference_image/en';
+import { workflow__add_step } from '@/strings/messages/workflow__add_step/en';
+import { workflow__add_text_part } from '@/strings/messages/workflow__add_text_part/en';
+import { workflow__all_conditions } from '@/strings/messages/workflow__all_conditions/en';
+import { workflow__allow } from '@/strings/messages/workflow__allow/en';
+import { workflow__any_condition } from '@/strings/messages/workflow__any_condition/en';
+import { workflow__append_messages } from '@/strings/messages/workflow__append_messages/en';
+import { workflow__apply } from '@/strings/messages/workflow__apply/en';
+import { workflow__apply_image_model_selection } from '@/strings/messages/workflow__apply_image_model_selection/en';
+import { workflow__arithmetic } from '@/strings/messages/workflow__arithmetic/en';
+import { workflow__array } from '@/strings/messages/workflow__array/en';
+import { workflow__at_least } from '@/strings/messages/workflow__at_least/en';
+import { workflow__at_most } from '@/strings/messages/workflow__at_most/en';
+import { workflow__audio_connection_permission } from '@/strings/messages/workflow__audio_connection_permission/en';
+import { workflow__audio_generation_limit } from '@/strings/messages/workflow__audio_generation_limit/en';
+import { workflow__audio_outputs_help } from '@/strings/messages/workflow__audio_outputs_help/en';
+import { workflow__audio_reference_help } from '@/strings/messages/workflow__audio_reference_help/en';
+import { workflow__back_to_chats } from '@/strings/messages/workflow__back_to_chats/en';
+import { workflow__back_to_editor } from '@/strings/messages/workflow__back_to_editor/en';
+import { workflow__backup_contains_content } from '@/strings/messages/workflow__backup_contains_content/en';
+import { workflow__body } from '@/strings/messages/workflow__body/en';
+import { workflow__boolean } from '@/strings/messages/workflow__boolean/en';
+import { workflow__call_tool } from '@/strings/messages/workflow__call_tool/en';
+import { workflow__cancel } from '@/strings/messages/workflow__cancel/en';
+import { workflow__cancelled } from '@/strings/messages/workflow__cancelled/en';
+import { workflow__choices_help } from '@/strings/messages/workflow__choices_help/en';
+import { workflow__choose_value } from '@/strings/messages/workflow__choose_value/en';
+import { workflow__clear_results } from '@/strings/messages/workflow__clear_results/en';
+import { workflow__close_result } from '@/strings/messages/workflow__close_result/en';
+import { workflow__collect_results } from '@/strings/messages/workflow__collect_results/en';
+import { workflow__compare_numbers } from '@/strings/messages/workflow__compare_numbers/en';
+import { workflow__completed } from '@/strings/messages/workflow__completed/en';
+import { workflow__compose_json } from '@/strings/messages/workflow__compose_json/en';
+import { workflow__condition } from '@/strings/messages/workflow__condition/en';
+import { workflow__confirm_clear } from '@/strings/messages/workflow__confirm_clear/en';
+import { workflow__confirm_delete } from '@/strings/messages/workflow__confirm_delete/en';
+import { workflow__confirm_discard } from '@/strings/messages/workflow__confirm_discard/en';
+import { workflow__connection_permission } from '@/strings/messages/workflow__connection_permission/en';
+import { workflow__connections_notice } from '@/strings/messages/workflow__connections_notice/en';
+import { workflow__content } from '@/strings/messages/workflow__content/en';
+import { workflow__continue } from '@/strings/messages/workflow__continue/en';
+import { workflow__continue_in_chat } from '@/strings/messages/workflow__continue_in_chat/en';
+import { workflow__continue_with_error_output } from '@/strings/messages/workflow__continue_with_error_output/en';
+import { workflow__continue_without_history_save } from '@/strings/messages/workflow__continue_without_history_save/en';
+import { workflow__conversation } from '@/strings/messages/workflow__conversation/en';
+import { workflow__conversation_import_help } from '@/strings/messages/workflow__conversation_import_help/en';
+import { workflow__copy_conversation_notice } from '@/strings/messages/workflow__copy_conversation_notice/en';
+import { workflow__copy_snapshot_to_edit } from '@/strings/messages/workflow__copy_snapshot_to_edit/en';
+import { workflow__copy_to_workflow } from '@/strings/messages/workflow__copy_to_workflow/en';
+import { workflow__count } from '@/strings/messages/workflow__count/en';
+import { workflow__definition_name } from '@/strings/messages/workflow__definition_name/en';
+import { workflow__delete } from '@/strings/messages/workflow__delete/en';
+import { workflow__delete_run_history } from '@/strings/messages/workflow__delete_run_history/en';
+import { workflow__deny } from '@/strings/messages/workflow__deny/en';
+import { workflow__discard } from '@/strings/messages/workflow__discard/en';
+import { workflow__divide_numbers } from '@/strings/messages/workflow__divide_numbers/en';
+import { workflow__download_zip } from '@/strings/messages/workflow__download_zip/en';
+import { workflow__drag_step } from '@/strings/messages/workflow__drag_step/en';
+import { workflow__drop_here } from '@/strings/messages/workflow__drop_here/en';
+import { workflow__duplicate } from '@/strings/messages/workflow__duplicate/en';
+import { workflow__dynamic_connection_review_scope } from '@/strings/messages/workflow__dynamic_connection_review_scope/en';
+import { workflow__edit_base_json } from '@/strings/messages/workflow__edit_base_json/en';
+import { workflow__edit_reference } from '@/strings/messages/workflow__edit_reference/en';
+import { workflow__else } from '@/strings/messages/workflow__else/en';
+import { workflow__empty_steps } from '@/strings/messages/workflow__empty_steps/en';
+import { workflow__end_exclusive } from '@/strings/messages/workflow__end_exclusive/en';
+import { workflow__endpoint } from '@/strings/messages/workflow__endpoint/en';
+import { workflow__equals } from '@/strings/messages/workflow__equals/en';
+import { workflow__error } from '@/strings/messages/workflow__error/en';
+import { workflow__execution_limits } from '@/strings/messages/workflow__execution_limits/en';
+import { workflow__execution_limits_hint } from '@/strings/messages/workflow__execution_limits_hint/en';
+import { workflow__experimental_notice } from '@/strings/messages/workflow__experimental_notice/en';
+import { workflow__export_definition } from '@/strings/messages/workflow__export_definition/en';
+import { workflow__export_secret_warning } from '@/strings/messages/workflow__export_secret_warning/en';
+import { workflow__expression } from '@/strings/messages/workflow__expression/en';
+import { workflow__fail_on_incomplete_audio } from '@/strings/messages/workflow__fail_on_incomplete_audio/en';
+import { workflow__failed } from '@/strings/messages/workflow__failed/en';
+import { workflow__file_name } from '@/strings/messages/workflow__file_name/en';
+import { workflow__finalizing_history } from '@/strings/messages/workflow__finalizing_history/en';
+import { workflow__fixed_choices } from '@/strings/messages/workflow__fixed_choices/en';
+import { workflow__fixed_connection_review_scope } from '@/strings/messages/workflow__fixed_connection_review_scope/en';
+import { workflow__fixed_value } from '@/strings/messages/workflow__fixed_value/en';
+import { workflow__folder } from '@/strings/messages/workflow__folder/en';
+import { workflow__folder_permission } from '@/strings/messages/workflow__folder_permission/en';
+import { workflow__for_each } from '@/strings/messages/workflow__for_each/en';
+import { workflow__forget_model_connection_reviews } from '@/strings/messages/workflow__forget_model_connection_reviews/en';
+import { workflow__format } from '@/strings/messages/workflow__format/en';
+import { workflow__format_number } from '@/strings/messages/workflow__format_number/en';
+import { workflow__get_field } from '@/strings/messages/workflow__get_field/en';
+import { workflow__graph } from '@/strings/messages/workflow__graph/en';
+import { workflow__graph_add } from '@/strings/messages/workflow__graph_add/en';
+import { workflow__graph_body } from '@/strings/messages/workflow__graph_body/en';
+import { workflow__graph_connect } from '@/strings/messages/workflow__graph_connect/en';
+import { workflow__graph_current } from '@/strings/messages/workflow__graph_current/en';
+import { workflow__graph_destination } from '@/strings/messages/workflow__graph_destination/en';
+import { workflow__graph_drag } from '@/strings/messages/workflow__graph_drag/en';
+import { workflow__graph_drop } from '@/strings/messages/workflow__graph_drop/en';
+import { workflow__graph_edit_notice } from '@/strings/messages/workflow__graph_edit_notice/en';
+import { workflow__graph_else } from '@/strings/messages/workflow__graph_else/en';
+import { workflow__graph_empty } from '@/strings/messages/workflow__graph_empty/en';
+import { workflow__graph_input } from '@/strings/messages/workflow__graph_input/en';
+import { workflow__graph_move } from '@/strings/messages/workflow__graph_move/en';
+import { workflow__graph_move_notice } from '@/strings/messages/workflow__graph_move_notice/en';
+import { workflow__graph_next } from '@/strings/messages/workflow__graph_next/en';
+import { workflow__graph_no_inputs } from '@/strings/messages/workflow__graph_no_inputs/en';
+import { workflow__graph_no_sources } from '@/strings/messages/workflow__graph_no_sources/en';
+import { workflow__graph_page_notice } from '@/strings/messages/workflow__graph_page_notice/en';
+import { workflow__graph_position } from '@/strings/messages/workflow__graph_position/en';
+import { workflow__graph_previous } from '@/strings/messages/workflow__graph_previous/en';
+import { workflow__graph_replace_notice } from '@/strings/messages/workflow__graph_replace_notice/en';
+import { workflow__graph_root } from '@/strings/messages/workflow__graph_root/en';
+import { workflow__graph_scope } from '@/strings/messages/workflow__graph_scope/en';
+import { workflow__graph_source } from '@/strings/messages/workflow__graph_source/en';
+import { workflow__graph_then } from '@/strings/messages/workflow__graph_then/en';
+import { workflow__graph_unknown_type } from '@/strings/messages/workflow__graph_unknown_type/en';
+import { workflow__greater_than } from '@/strings/messages/workflow__greater_than/en';
+import { workflow__header_names_values_hidden } from '@/strings/messages/workflow__header_names_values_hidden/en';
+import { workflow__historical_tool_call } from '@/strings/messages/workflow__historical_tool_call/en';
+import { workflow__historical_tool_result } from '@/strings/messages/workflow__historical_tool_result/en';
+import { workflow__history_contains_private_data } from '@/strings/messages/workflow__history_contains_private_data/en';
+import { workflow__history_preview_notice } from '@/strings/messages/workflow__history_preview_notice/en';
+import { workflow__history_save_failed } from '@/strings/messages/workflow__history_save_failed/en';
+import { workflow__if } from '@/strings/messages/workflow__if/en';
+import { workflow__image_connection_permission } from '@/strings/messages/workflow__image_connection_permission/en';
+import { workflow__image_generation } from '@/strings/messages/workflow__image_generation/en';
+import { workflow__image_inputs } from '@/strings/messages/workflow__image_inputs/en';
+import { workflow__image_inputs_help } from '@/strings/messages/workflow__image_inputs_help/en';
+import { workflow__image_model_selection_help } from '@/strings/messages/workflow__image_model_selection_help/en';
+import { workflow__image_outputs_help } from '@/strings/messages/workflow__image_outputs_help/en';
+import { workflow__image_strength } from '@/strings/messages/workflow__image_strength/en';
+import { workflow__incompatible_value } from '@/strings/messages/workflow__incompatible_value/en';
+import { workflow__increment } from '@/strings/messages/workflow__increment/en';
+import { workflow__initial_image } from '@/strings/messages/workflow__initial_image/en';
+import { workflow__initial_value } from '@/strings/messages/workflow__initial_value/en';
+import { workflow__input } from '@/strings/messages/workflow__input/en';
+import { workflow__input_preview } from '@/strings/messages/workflow__input_preview/en';
+import { workflow__input_response } from '@/strings/messages/workflow__input_response/en';
+import { workflow__insert_part } from '@/strings/messages/workflow__insert_part/en';
+import { workflow__interrupted } from '@/strings/messages/workflow__interrupted/en';
+import { workflow__interrupted_run_notice } from '@/strings/messages/workflow__interrupted_run_notice/en';
+import { workflow__interruption_recorded_at } from '@/strings/messages/workflow__interruption_recorded_at/en';
+import { workflow__iterable_hint } from '@/strings/messages/workflow__iterable_hint/en';
+import { workflow__join_text } from '@/strings/messages/workflow__join_text/en';
+import { workflow__json } from '@/strings/messages/workflow__json/en';
+import { workflow__json_notice } from '@/strings/messages/workflow__json_notice/en';
+import { workflow__keep_incomplete_audio } from '@/strings/messages/workflow__keep_incomplete_audio/en';
+import { workflow__key } from '@/strings/messages/workflow__key/en';
+import { workflow__language_code } from '@/strings/messages/workflow__language_code/en';
+import { workflow__last_saved_progress } from '@/strings/messages/workflow__last_saved_progress/en';
+import { workflow__latest_run } from '@/strings/messages/workflow__latest_run/en';
+import { workflow__less_than } from '@/strings/messages/workflow__less_than/en';
+import { workflow__limits_apply_next_run } from '@/strings/messages/workflow__limits_apply_next_run/en';
+import { workflow__literal_json } from '@/strings/messages/workflow__literal_json/en';
+import { workflow__literal_text } from '@/strings/messages/workflow__literal_text/en';
+import { workflow__live_image_preview } from '@/strings/messages/workflow__live_image_preview/en';
+import { workflow__loading } from '@/strings/messages/workflow__loading/en';
+import { workflow__local_audio_help } from '@/strings/messages/workflow__local_audio_help/en';
+import { workflow__local_image_help } from '@/strings/messages/workflow__local_image_help/en';
+import { workflow__local_image_unavailable } from '@/strings/messages/workflow__local_image_unavailable/en';
+import { workflow__loop_index } from '@/strings/messages/workflow__loop_index/en';
+import { workflow__loop_item } from '@/strings/messages/workflow__loop_item/en';
+import { workflow__loop_state } from '@/strings/messages/workflow__loop_state/en';
+import { workflow__loop_stop_hint } from '@/strings/messages/workflow__loop_stop_hint/en';
+import { workflow__mark_interrupted } from '@/strings/messages/workflow__mark_interrupted/en';
+import { workflow__mark_interrupted_notice } from '@/strings/messages/workflow__mark_interrupted_notice/en';
+import { workflow__max_tokens } from '@/strings/messages/workflow__max_tokens/en';
+import { workflow__model } from '@/strings/messages/workflow__model/en';
+import { workflow__model_candidates_failed } from '@/strings/messages/workflow__model_candidates_failed/en';
+import { workflow__model_id } from '@/strings/messages/workflow__model_id/en';
+import { workflow__model_tools } from '@/strings/messages/workflow__model_tools/en';
+import { workflow__model_tools_folder_help } from '@/strings/messages/workflow__model_tools_folder_help/en';
+import { workflow__model_tools_notice } from '@/strings/messages/workflow__model_tools_notice/en';
+import { workflow__more_results } from '@/strings/messages/workflow__more_results/en';
+import { workflow__move_down } from '@/strings/messages/workflow__move_down/en';
+import { workflow__move_up } from '@/strings/messages/workflow__move_up/en';
+import { workflow__multiply_numbers } from '@/strings/messages/workflow__multiply_numbers/en';
+import { workflow__name } from '@/strings/messages/workflow__name/en';
+import { workflow__negate_condition } from '@/strings/messages/workflow__negate_condition/en';
+import { workflow__new_part } from '@/strings/messages/workflow__new_part/en';
+import { workflow__new_sample } from '@/strings/messages/workflow__new_sample/en';
+import { workflow__new_workflow } from '@/strings/messages/workflow__new_workflow/en';
+import { workflow__next_value } from '@/strings/messages/workflow__next_value/en';
+import { workflow__no_documents } from '@/strings/messages/workflow__no_documents/en';
+import { workflow__no_end } from '@/strings/messages/workflow__no_end/en';
+import { workflow__no_results } from '@/strings/messages/workflow__no_results/en';
+import { workflow__no_run_history } from '@/strings/messages/workflow__no_run_history/en';
+import { workflow__not_empty } from '@/strings/messages/workflow__not_empty/en';
+import { workflow__not_selected } from '@/strings/messages/workflow__not_selected/en';
+import { workflow__number } from '@/strings/messages/workflow__number/en';
+import { workflow__number_range } from '@/strings/messages/workflow__number_range/en';
+import { workflow__object } from '@/strings/messages/workflow__object/en';
+import { workflow__on_conflict } from '@/strings/messages/workflow__on_conflict/en';
+import { workflow__open_folder } from '@/strings/messages/workflow__open_folder/en';
+import { workflow__open_results } from '@/strings/messages/workflow__open_results/en';
+import { workflow__operation } from '@/strings/messages/workflow__operation/en';
+import { workflow__output } from '@/strings/messages/workflow__output/en';
+import { workflow__output_preview } from '@/strings/messages/workflow__output_preview/en';
+import { workflow__overwrite } from '@/strings/messages/workflow__overwrite/en';
+import { workflow__page_id } from '@/strings/messages/workflow__page_id/en';
+import { workflow__parameters } from '@/strings/messages/workflow__parameters/en';
+import { workflow__parse_json } from '@/strings/messages/workflow__parse_json/en';
+import { workflow__part_copy_notice } from '@/strings/messages/workflow__part_copy_notice/en';
+import { workflow__partial_json } from '@/strings/messages/workflow__partial_json/en';
+import { workflow__partial_notice } from '@/strings/messages/workflow__partial_notice/en';
+import { workflow__parts } from '@/strings/messages/workflow__parts/en';
+import { workflow__path } from '@/strings/messages/workflow__path/en';
+import { workflow__preview_interval } from '@/strings/messages/workflow__preview_interval/en';
+import { workflow__preview_limit } from '@/strings/messages/workflow__preview_limit/en';
+import { workflow__preview_max_edge } from '@/strings/messages/workflow__preview_max_edge/en';
+import { workflow__preview_notice } from '@/strings/messages/workflow__preview_notice/en';
+import { workflow__preview_start } from '@/strings/messages/workflow__preview_start/en';
+import { workflow__range_limits_hint } from '@/strings/messages/workflow__range_limits_hint/en';
+import { workflow__read_file } from '@/strings/messages/workflow__read_file/en';
+import { workflow__read_only } from '@/strings/messages/workflow__read_only/en';
+import { workflow__read_write } from '@/strings/messages/workflow__read_write/en';
+import { workflow__reasoning_part } from '@/strings/messages/workflow__reasoning_part/en';
+import { workflow__redo } from '@/strings/messages/workflow__redo/en';
+import { workflow__reference_images } from '@/strings/messages/workflow__reference_images/en';
+import { workflow__refresh } from '@/strings/messages/workflow__refresh/en';
+import { workflow__refresh_image_models } from '@/strings/messages/workflow__refresh_image_models/en';
+import { workflow__remainder } from '@/strings/messages/workflow__remainder/en';
+import { workflow__remove_reference } from '@/strings/messages/workflow__remove_reference/en';
+import { workflow__repeat } from '@/strings/messages/workflow__repeat/en';
+import { workflow__request_input } from '@/strings/messages/workflow__request_input/en';
+import { workflow__result_files_unavailable } from '@/strings/messages/workflow__result_files_unavailable/en';
+import { workflow__result_unavailable } from '@/strings/messages/workflow__result_unavailable/en';
+import { workflow__result_view_limit } from '@/strings/messages/workflow__result_view_limit/en';
+import { workflow__results } from '@/strings/messages/workflow__results/en';
+import { workflow__retry_history_save } from '@/strings/messages/workflow__retry_history_save/en';
+import { workflow__role } from '@/strings/messages/workflow__role/en';
+import { workflow__run } from '@/strings/messages/workflow__run/en';
+import { workflow__run_activity_cannot_be_verified } from '@/strings/messages/workflow__run_activity_cannot_be_verified/en';
+import { workflow__run_has_no_active_owner } from '@/strings/messages/workflow__run_has_no_active_owner/en';
+import { workflow__run_history } from '@/strings/messages/workflow__run_history/en';
+import { workflow__run_is_active_or_awaiting_save } from '@/strings/messages/workflow__run_is_active_or_awaiting_save/en';
+import { workflow__run_notice } from '@/strings/messages/workflow__run_notice/en';
+import { workflow__run_part_notice } from '@/strings/messages/workflow__run_part_notice/en';
+import { workflow__run_snapshot } from '@/strings/messages/workflow__run_snapshot/en';
+import { workflow__running } from '@/strings/messages/workflow__running/en';
+import { workflow__runtime_type_check } from '@/strings/messages/workflow__runtime_type_check/en';
+import { workflow__save } from '@/strings/messages/workflow__save/en';
+import { workflow__save_as_part } from '@/strings/messages/workflow__save_as_part/en';
+import { workflow__save_copy } from '@/strings/messages/workflow__save_copy/en';
+import { workflow__save_error } from '@/strings/messages/workflow__save_error/en';
+import { workflow__saved } from '@/strings/messages/workflow__saved/en';
+import { workflow__saving_unavailable } from '@/strings/messages/workflow__saving_unavailable/en';
+import { workflow__search_query } from '@/strings/messages/workflow__search_query/en';
+import { workflow__select_models } from '@/strings/messages/workflow__select_models/en';
+import { workflow__select_step } from '@/strings/messages/workflow__select_step/en';
+import { workflow__selected } from '@/strings/messages/workflow__selected/en';
+import { workflow__settings } from '@/strings/messages/workflow__settings/en';
+import { workflow__share_structure } from '@/strings/messages/workflow__share_structure/en';
+import { workflow__share_structure_notice } from '@/strings/messages/workflow__share_structure_notice/en';
+import { workflow__shell_mount_notice } from '@/strings/messages/workflow__shell_mount_notice/en';
+import { workflow__shell_script } from '@/strings/messages/workflow__shell_script/en';
+import { workflow__shell_timeout_milliseconds } from '@/strings/messages/workflow__shell_timeout_milliseconds/en';
+import { workflow__source } from '@/strings/messages/workflow__source/en';
+import { workflow__start_value } from '@/strings/messages/workflow__start_value/en';
+import { workflow__state_notice } from '@/strings/messages/workflow__state_notice/en';
+import { workflow__stderr_limit_bytes } from '@/strings/messages/workflow__stderr_limit_bytes/en';
+import { workflow__stdout_limit_bytes } from '@/strings/messages/workflow__stdout_limit_bytes/en';
+import { workflow__step_executions } from '@/strings/messages/workflow__step_executions/en';
+import { workflow__step_reference } from '@/strings/messages/workflow__step_reference/en';
+import { workflow__steps } from '@/strings/messages/workflow__steps/en';
+import { workflow__stop } from '@/strings/messages/workflow__stop/en';
+import { workflow__stop_after_iteration } from '@/strings/messages/workflow__stop_after_iteration/en';
+import { workflow__stop_on_tool_failure } from '@/strings/messages/workflow__stop_on_tool_failure/en';
+import { workflow__structured_input } from '@/strings/messages/workflow__structured_input/en';
+import { workflow__subtract_numbers } from '@/strings/messages/workflow__subtract_numbers/en';
+import { workflow__system_prompt } from '@/strings/messages/workflow__system_prompt/en';
+import { workflow__temperature } from '@/strings/messages/workflow__temperature/en';
+import { workflow__temporary_results_notice } from '@/strings/messages/workflow__temporary_results_notice/en';
+import { workflow__text_generation } from '@/strings/messages/workflow__text_generation/en';
+import { workflow__text_preview_unavailable } from '@/strings/messages/workflow__text_preview_unavailable/en';
+import { workflow__then } from '@/strings/messages/workflow__then/en';
+import { workflow__time_limit } from '@/strings/messages/workflow__time_limit/en';
+import { workflow__timeout_includes_waiting } from '@/strings/messages/workflow__timeout_includes_waiting/en';
+import { workflow__timeout_seconds } from '@/strings/messages/workflow__timeout_seconds/en';
+import { workflow__tool } from '@/strings/messages/workflow__tool/en';
+import { workflow__tool_arguments } from '@/strings/messages/workflow__tool_arguments/en';
+import { workflow__tool_call_id } from '@/strings/messages/workflow__tool_call_id/en';
+import { workflow__tool_call_limit } from '@/strings/messages/workflow__tool_call_limit/en';
+import { workflow__tool_failure_policy } from '@/strings/messages/workflow__tool_failure_policy/en';
+import { workflow__tool_history_notice } from '@/strings/messages/workflow__tool_history_notice/en';
+import { workflow__tool_name } from '@/strings/messages/workflow__tool_name/en';
+import { workflow__tool_permission } from '@/strings/messages/workflow__tool_permission/en';
+import { workflow__tool_permission_notice } from '@/strings/messages/workflow__tool_permission_notice/en';
+import { workflow__tool_raw_arguments } from '@/strings/messages/workflow__tool_raw_arguments/en';
+import { workflow__tool_result_code } from '@/strings/messages/workflow__tool_result_code/en';
+import { workflow__tool_result_status } from '@/strings/messages/workflow__tool_result_status/en';
+import { workflow__tool_round_limit } from '@/strings/messages/workflow__tool_round_limit/en';
+import { workflow__tools_notice } from '@/strings/messages/workflow__tools_notice/en';
+import { workflow__total_loop_iterations } from '@/strings/messages/workflow__total_loop_iterations/en';
+import { workflow__undo } from '@/strings/messages/workflow__undo/en';
+import { workflow__unfinished_run } from '@/strings/messages/workflow__unfinished_run/en';
+import { workflow__unreadable_history } from '@/strings/messages/workflow__unreadable_history/en';
+import { workflow__unsaved } from '@/strings/messages/workflow__unsaved/en';
+import { workflow__untitled } from '@/strings/messages/workflow__untitled/en';
+import { workflow__use_current_model } from '@/strings/messages/workflow__use_current_model/en';
+import { workflow__use_default_limits } from '@/strings/messages/workflow__use_default_limits/en';
+import { workflow__validation } from '@/strings/messages/workflow__validation/en';
+import { workflow__value } from '@/strings/messages/workflow__value/en';
+import { workflow__value_evaluations } from '@/strings/messages/workflow__value_evaluations/en';
+import { workflow__value_sources } from '@/strings/messages/workflow__value_sources/en';
+import { workflow__view_result } from '@/strings/messages/workflow__view_result/en';
+import { workflow__waiting } from '@/strings/messages/workflow__waiting/en';
+import { workflow__workflows } from '@/strings/messages/workflow__workflows/en';
+import { workflow__write_file } from '@/strings/messages/workflow__write_file/en';
+import { workflow__written_files } from '@/strings/messages/workflow__written_files/en';
 
 /* eslint-disable local-rules-named-args/require-named-args -- This catalog contract accepts either supported message signature without weakening each message's exact type. */
 type BoundaryStringMessage = (() => string) | ((args: never) => string);
@@ -7101,6 +7414,319 @@ export const catalog = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
+  workflow__add_field,
+  workflow__add_item,
+  workflow__add_message,
+  workflow__add_numbers,
+  workflow__add_reference_image,
+  workflow__add_step,
+  workflow__add_text_part,
+  workflow__all_conditions,
+  workflow__allow,
+  workflow__any_condition,
+  workflow__append_messages,
+  workflow__apply,
+  workflow__apply_image_model_selection,
+  workflow__arithmetic,
+  workflow__array,
+  workflow__at_least,
+  workflow__at_most,
+  workflow__audio_connection_permission,
+  workflow__audio_generation_limit,
+  workflow__audio_outputs_help,
+  workflow__audio_reference_help,
+  workflow__back_to_chats,
+  workflow__back_to_editor,
+  workflow__backup_contains_content,
+  workflow__body,
+  workflow__boolean,
+  workflow__call_tool,
+  workflow__cancel,
+  workflow__cancelled,
+  workflow__choices_help,
+  workflow__choose_value,
+  workflow__clear_results,
+  workflow__close_result,
+  workflow__collect_results,
+  workflow__compare_numbers,
+  workflow__completed,
+  workflow__compose_json,
+  workflow__condition,
+  workflow__confirm_clear,
+  workflow__confirm_delete,
+  workflow__confirm_discard,
+  workflow__connection_permission,
+  workflow__connections_notice,
+  workflow__content,
+  workflow__continue,
+  workflow__continue_in_chat,
+  workflow__continue_with_error_output,
+  workflow__continue_without_history_save,
+  workflow__conversation,
+  workflow__conversation_import_help,
+  workflow__copy_conversation_notice,
+  workflow__copy_snapshot_to_edit,
+  workflow__copy_to_workflow,
+  workflow__count,
+  workflow__definition_name,
+  workflow__delete,
+  workflow__delete_run_history,
+  workflow__deny,
+  workflow__discard,
+  workflow__divide_numbers,
+  workflow__download_zip,
+  workflow__drag_step,
+  workflow__drop_here,
+  workflow__duplicate,
+  workflow__dynamic_connection_review_scope,
+  workflow__edit_base_json,
+  workflow__edit_reference,
+  workflow__else,
+  workflow__empty_steps,
+  workflow__end_exclusive,
+  workflow__endpoint,
+  workflow__equals,
+  workflow__error,
+  workflow__execution_limits,
+  workflow__execution_limits_hint,
+  workflow__experimental_notice,
+  workflow__export_definition,
+  workflow__export_secret_warning,
+  workflow__expression,
+  workflow__fail_on_incomplete_audio,
+  workflow__failed,
+  workflow__file_name,
+  workflow__finalizing_history,
+  workflow__fixed_choices,
+  workflow__fixed_connection_review_scope,
+  workflow__fixed_value,
+  workflow__folder,
+  workflow__folder_permission,
+  workflow__for_each,
+  workflow__forget_model_connection_reviews,
+  workflow__format,
+  workflow__format_number,
+  workflow__get_field,
+  workflow__graph,
+  workflow__graph_add,
+  workflow__graph_body,
+  workflow__graph_connect,
+  workflow__graph_current,
+  workflow__graph_destination,
+  workflow__graph_drag,
+  workflow__graph_drop,
+  workflow__graph_edit_notice,
+  workflow__graph_else,
+  workflow__graph_empty,
+  workflow__graph_input,
+  workflow__graph_move,
+  workflow__graph_move_notice,
+  workflow__graph_next,
+  workflow__graph_no_inputs,
+  workflow__graph_no_sources,
+  workflow__graph_page_notice,
+  workflow__graph_position,
+  workflow__graph_previous,
+  workflow__graph_replace_notice,
+  workflow__graph_root,
+  workflow__graph_scope,
+  workflow__graph_source,
+  workflow__graph_then,
+  workflow__graph_unknown_type,
+  workflow__greater_than,
+  workflow__header_names_values_hidden,
+  workflow__historical_tool_call,
+  workflow__historical_tool_result,
+  workflow__history_contains_private_data,
+  workflow__history_preview_notice,
+  workflow__history_save_failed,
+  workflow__if,
+  workflow__image_connection_permission,
+  workflow__image_generation,
+  workflow__image_inputs,
+  workflow__image_inputs_help,
+  workflow__image_model_selection_help,
+  workflow__image_outputs_help,
+  workflow__image_strength,
+  workflow__incompatible_value,
+  workflow__increment,
+  workflow__initial_image,
+  workflow__initial_value,
+  workflow__input,
+  workflow__input_preview,
+  workflow__input_response,
+  workflow__insert_part,
+  workflow__interrupted,
+  workflow__interrupted_run_notice,
+  workflow__interruption_recorded_at,
+  workflow__iterable_hint,
+  workflow__join_text,
+  workflow__json,
+  workflow__json_notice,
+  workflow__keep_incomplete_audio,
+  workflow__key,
+  workflow__language_code,
+  workflow__last_saved_progress,
+  workflow__latest_run,
+  workflow__less_than,
+  workflow__limits_apply_next_run,
+  workflow__literal_json,
+  workflow__literal_text,
+  workflow__live_image_preview,
+  workflow__loading,
+  workflow__local_audio_help,
+  workflow__local_image_help,
+  workflow__local_image_unavailable,
+  workflow__loop_index,
+  workflow__loop_item,
+  workflow__loop_state,
+  workflow__loop_stop_hint,
+  workflow__mark_interrupted,
+  workflow__mark_interrupted_notice,
+  workflow__max_tokens,
+  workflow__model,
+  workflow__model_candidates_failed,
+  workflow__model_id,
+  workflow__model_tools,
+  workflow__model_tools_folder_help,
+  workflow__model_tools_notice,
+  workflow__more_results,
+  workflow__move_down,
+  workflow__move_up,
+  workflow__multiply_numbers,
+  workflow__name,
+  workflow__negate_condition,
+  workflow__new_part,
+  workflow__new_sample,
+  workflow__new_workflow,
+  workflow__next_value,
+  workflow__no_documents,
+  workflow__no_end,
+  workflow__no_results,
+  workflow__no_run_history,
+  workflow__not_empty,
+  workflow__not_selected,
+  workflow__number,
+  workflow__number_range,
+  workflow__object,
+  workflow__on_conflict,
+  workflow__open_folder,
+  workflow__open_results,
+  workflow__operation,
+  workflow__output,
+  workflow__output_preview,
+  workflow__overwrite,
+  workflow__page_id,
+  workflow__parameters,
+  workflow__parse_json,
+  workflow__part_copy_notice,
+  workflow__partial_json,
+  workflow__partial_notice,
+  workflow__parts,
+  workflow__path,
+  workflow__preview_interval,
+  workflow__preview_limit,
+  workflow__preview_max_edge,
+  workflow__preview_notice,
+  workflow__preview_start,
+  workflow__range_limits_hint,
+  workflow__read_file,
+  workflow__read_only,
+  workflow__read_write,
+  workflow__reasoning_part,
+  workflow__redo,
+  workflow__reference_images,
+  workflow__refresh,
+  workflow__refresh_image_models,
+  workflow__remainder,
+  workflow__remove_reference,
+  workflow__repeat,
+  workflow__request_input,
+  workflow__result_files_unavailable,
+  workflow__result_unavailable,
+  workflow__result_view_limit,
+  workflow__results,
+  workflow__retry_history_save,
+  workflow__role,
+  workflow__run,
+  workflow__run_activity_cannot_be_verified,
+  workflow__run_has_no_active_owner,
+  workflow__run_history,
+  workflow__run_is_active_or_awaiting_save,
+  workflow__run_notice,
+  workflow__run_part_notice,
+  workflow__run_snapshot,
+  workflow__running,
+  workflow__runtime_type_check,
+  workflow__save,
+  workflow__save_as_part,
+  workflow__save_copy,
+  workflow__save_error,
+  workflow__saved,
+  workflow__saving_unavailable,
+  workflow__search_query,
+  workflow__select_models,
+  workflow__select_step,
+  workflow__selected,
+  workflow__settings,
+  workflow__share_structure,
+  workflow__share_structure_notice,
+  workflow__shell_mount_notice,
+  workflow__shell_script,
+  workflow__shell_timeout_milliseconds,
+  workflow__source,
+  workflow__start_value,
+  workflow__state_notice,
+  workflow__stderr_limit_bytes,
+  workflow__stdout_limit_bytes,
+  workflow__step_executions,
+  workflow__step_reference,
+  workflow__steps,
+  workflow__stop,
+  workflow__stop_after_iteration,
+  workflow__stop_on_tool_failure,
+  workflow__structured_input,
+  workflow__subtract_numbers,
+  workflow__system_prompt,
+  workflow__temperature,
+  workflow__temporary_results_notice,
+  workflow__text_generation,
+  workflow__text_preview_unavailable,
+  workflow__then,
+  workflow__time_limit,
+  workflow__timeout_includes_waiting,
+  workflow__timeout_seconds,
+  workflow__tool,
+  workflow__tool_arguments,
+  workflow__tool_call_id,
+  workflow__tool_call_limit,
+  workflow__tool_failure_policy,
+  workflow__tool_history_notice,
+  workflow__tool_name,
+  workflow__tool_permission,
+  workflow__tool_permission_notice,
+  workflow__tool_raw_arguments,
+  workflow__tool_result_code,
+  workflow__tool_result_status,
+  workflow__tool_round_limit,
+  workflow__tools_notice,
+  workflow__total_loop_iterations,
+  workflow__undo,
+  workflow__unfinished_run,
+  workflow__unreadable_history,
+  workflow__unsaved,
+  workflow__untitled,
+  workflow__use_current_model,
+  workflow__use_default_limits,
+  workflow__validation,
+  workflow__value,
+  workflow__value_evaluations,
+  workflow__value_sources,
+  workflow__view_result,
+  workflow__waiting,
+  workflow__workflows,
+  workflow__write_file,
+  workflow__written_files,
 } satisfies BoundaryStringCatalog;
 
 export type Strings = typeof catalog;

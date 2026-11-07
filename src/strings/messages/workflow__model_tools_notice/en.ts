@@ -1,0 +1,1 @@
+export const workflow__model_tools_notice = (): string => "Enabled tools may be called by the model. Each Wikipedia request and shell script requires a separate review. Historical calls are never executed again.";

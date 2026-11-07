@@ -3,7 +3,10 @@ import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime
 import { reactive, toRaw } from 'vue';
 import { generateId } from '@/01-models/id';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
-import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/01-models/types';
+import { copyImportedChatHistory } from '@/logic/imported-chat-history';
+import { BUILTIN_TOOL_KEYS, createDefaultToolConfigForBuiltinToolKey } from '@/features/tools/tool-config';
+import { cloneEndpoint } from '@/01-models/endpoint';
+import type { Chat, ChatMessage, Endpoint, LmParameters, ChatContent, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import { getEffectiveToolConfigsForChat, useChatTools } from '@/features/tools/composables/useChatTools';
 import { useToast } from '@/composables/useToast';
@@ -34,6 +37,7 @@ export interface AddToastOptions {
 }
 
 export type ChatLifecycleAdapter = {
+  createChatFromHistory({ messages, endpoint, modelId, lmParameters }: { messages: readonly ChatMessage[], endpoint: Endpoint, modelId: string | undefined, lmParameters: LmParameters | undefined }): Promise<Chat | null>,
   createChatWithoutSelecting({ groupId, modelId, systemPrompt }: {
     groupId: ChatGroupId | undefined, modelId: string | undefined, systemPrompt: SystemPrompt | undefined,
   }): Promise<Chat | null>,
@@ -70,11 +74,13 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
   async function createChat({
     activation,
+    imported,
     groupId,
     modelId,
     systemPrompt,
   }: {
     activation: 'activate' | 'preserve',
+    imported: { content: ChatContent, endpoint: Endpoint, lmParameters: LmParameters | undefined } | undefined,
     groupId: ChatGroupId | undefined,
     modelId: string | undefined,
     systemPrompt: SystemPrompt | undefined,
@@ -104,7 +110,15 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         id: chatId,
         title: null,
         groupId: groupId ?? null,
-        root: { items: [] },
+        root: imported?.content.root ?? { items: [] },
+        currentLeafId: imported?.content.currentLeafId,
+        ...(imported ? {
+          endpoint: imported.endpoint,
+          lmParameters: imported.lmParameters,
+          mounts: [],
+          toolConfigs: BUILTIN_TOOL_KEYS.map(key => createDefaultToolConfigForBuiltinToolKey({ key, status: 'disabled' })),
+          titleGeneration: 'disabled' as const,
+        } : {}),
         createdAt: Date.now(),
         updatedAt: Date.now(),
         debugEnabled: false,
@@ -128,7 +142,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
       // Provision only as part of creating this new chat. Changing a Chat Group
       // override must not retroactively add workspaces to existing member chats.
-      const effectiveToolConfigs = getEffectiveToolConfigsForChat({ chat });
+      const effectiveToolConfigs = imported ? [] : getEffectiveToolConfigsForChat({ chat });
       if (isLmToolEnabledInToolConfigs({ toolConfigs: effectiveToolConfigs, name: 'shell_execute' })) {
         try {
           await ensureChatWorkspaceMounted({ chat });
@@ -167,16 +181,35 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
   }
 
   function createNewChat({ groupId, modelId, systemPrompt }: { groupId: ChatGroupId | undefined, modelId: string | undefined, systemPrompt: SystemPrompt | undefined }): Promise<Chat | null> {
-    return createChat({ groupId, modelId, systemPrompt, activation: 'activate' });
+    return createChat({ groupId, modelId, systemPrompt, activation: 'activate', imported: undefined });
   }
   function createChatWithoutSelecting({ groupId, modelId, systemPrompt }: { groupId: ChatGroupId | undefined, modelId: string | undefined, systemPrompt: SystemPrompt | undefined }): Promise<Chat | null> {
-    return createChat({ groupId, modelId, systemPrompt, activation: 'preserve' });
+    return createChat({ groupId, modelId, systemPrompt, activation: 'preserve', imported: undefined });
+  }
+
+  async function createChatFromHistory({ messages, endpoint, modelId, lmParameters }: {
+    messages: readonly ChatMessage[], endpoint: Endpoint, modelId: string | undefined, lmParameters: LmParameters | undefined,
+  }): Promise<Chat | null> {
+    // Snapshot before any await. A copied transcript carries no mounts, enabled
+    // tools, title-generation request, active operation, or approval state.
+    const content = copyImportedChatHistory({ messages });
+    return createChat({
+      activation: 'preserve',
+      groupId: undefined,
+      modelId,
+      systemPrompt: { behavior: 'override', content: null },
+      imported: {
+        content,
+        endpoint: cloneEndpoint({ endpoint }),
+        lmParameters: lmParameters === undefined ? undefined : structuredClone(lmParameters),
+      },
+    });
   }
 
   async function createChatForEmptyHistory({ isCurrent }: { isCurrent(): boolean }): Promise<Chat | undefined> {
     const chat = await storageService.createChatIfHistoryEmpty({
       isCurrent,
-      create: async () => (await createChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined, activation: 'preserve' })) ?? undefined,
+      create: async () => (await createChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined, activation: 'preserve', imported: undefined })) ?? undefined,
     });
     if (chat === undefined) {
       // Another tab may have published a chat or chat group while this page
@@ -332,6 +365,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
   return {
     createNewChat,
+    createChatFromHistory,
     createChatWithoutSelecting,
     createChatForEmptyHistory,
     deleteChat,

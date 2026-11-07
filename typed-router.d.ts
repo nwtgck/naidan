@@ -152,6 +152,36 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/workflows': RouteRecordInfo<
+      '/workflows',
+      '/workflows',
+      Record<never, never>,
+      Record<never, never>,
+      | '/workflows/[workflowId]'
+      | '/workflows/runs/'
+      | '/workflows/runs/[runId]'
+    >,
+    '/workflows/[workflowId]': RouteRecordInfo<
+      '/workflows/[workflowId]',
+      '/workflows/:workflowId',
+      { workflowId: ParamValue<true> },
+      { workflowId: ParamValue<false> },
+      | never
+    >,
+    '/workflows/runs/': RouteRecordInfo<
+      '/workflows/runs/',
+      '/workflows/runs',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/workflows/runs/[runId]': RouteRecordInfo<
+      '/workflows/runs/[runId]',
+      '/workflows/runs/:runId',
+      { runId: ParamValue<true> },
+      { runId: ParamValue<false> },
+      | never
+    >,
   }
 
   /**
@@ -304,6 +334,41 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | never
+    }
+    'src/pages/workflows.vue': {
+      routes:
+        | '/workflows'
+        | '/workflows/[workflowId]'
+        | '/workflows/runs/'
+        | '/workflows/runs/[runId]'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/workflows/[workflowId].vue': {
+      routes:
+        | '/workflows/[workflowId]'
+      views:
+        | never
+      pathParamNames:
+        | 'workflowId'
+    }
+    'src/pages/workflows/runs/index.vue': {
+      routes:
+        | '/workflows/runs/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/workflows/runs/[runId].vue': {
+      routes:
+        | '/workflows/runs/[runId]'
+      views:
+        | never
+      pathParamNames:
+        | 'runId'
     }
   }
 

@@ -1,0 +1,1 @@
+export const workflow__image_outputs_help = (): string => "image is a PNG binary output; metadata contains dimensions and the requested seed. Save images inside a loop rather than collecting binary outputs into JSON. Stop discards the unfinished image.";

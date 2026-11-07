@@ -1,0 +1,1 @@
+export const workflow__image_model_selection_help = (): string => "Refreshing only lists local files. Apply the selection to fix the primary model, each component, and adapters. Execution never replaces missing files or downloads models.";

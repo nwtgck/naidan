@@ -1,0 +1,1 @@
+export const workflow__graph_edit_notice = (): string => "Steps run from top to bottom. Solid curves show data references; dashed lines show execution order. Open a loop or branch to edit its contents.";

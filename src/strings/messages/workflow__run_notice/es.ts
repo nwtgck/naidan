@@ -1,0 +1,1 @@
+export const workflow__run_notice = (): string => "Cada ejecución usa una copia fija de la definición. Con almacenamiento OPFS, la instantánea y las vistas previas limitadas se guardan en el historial. Los archivos de resultados son temporales salvo que se guarden o descarguen explícitamente. Recargar termina la ejecución; no se reanuda automáticamente.";

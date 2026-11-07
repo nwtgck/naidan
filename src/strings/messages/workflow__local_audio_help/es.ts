@@ -1,0 +1,1 @@
+export const workflow__local_audio_help = (): string => "Genera audio con un modelo de llama.cpp browser guardado localmente. La búsqueda solo lee metadatos locales; no descarga ni carga modelos para inferencia.";

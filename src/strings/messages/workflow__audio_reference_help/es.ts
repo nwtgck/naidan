@@ -1,0 +1,1 @@
+export const workflow__audio_reference_help = (): string => "Conecta una salida binaria de Leer archivo o de un paso de audio anterior. El audio de referencia no debe superar 16 MiB ni 30 segundos; no se recorta automáticamente.";

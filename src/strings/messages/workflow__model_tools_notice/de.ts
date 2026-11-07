@@ -1,0 +1,1 @@
+export const workflow__model_tools_notice = (): string => "Das Modell kann aktivierte Werkzeuge aufrufen. Jede Wikipedia-Anfrage und jedes Shell-Skript wird einzeln bestätigt. Frühere Aufrufe werden nicht erneut ausgeführt.";

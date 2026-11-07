@@ -1,0 +1,1 @@
+export const workflow__graph_replace_notice = (): string => "Apply replaces the selected expression, not the whole Step. Undo restores it. Edit the expression in the inspector to use a fixed value again.";

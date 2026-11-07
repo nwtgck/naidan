@@ -1,0 +1,1 @@
+export const workflow__confirm_clear = (): string => "Close the current result view? Saved run history and files already written to folders will remain. Temporary files follow their normal lifetime.";

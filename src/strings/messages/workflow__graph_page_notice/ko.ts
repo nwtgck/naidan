@@ -1,0 +1,1 @@
+export const workflow__graph_page_notice = (): string => "The diagram shows up to 40 Steps and 200 reference curves per page. All inputs, including references outside this page, remain available in the connection editor.";

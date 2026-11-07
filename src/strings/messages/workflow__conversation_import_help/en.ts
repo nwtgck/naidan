@@ -1,0 +1,1 @@
+export const workflow__conversation_import_help = (): string => "Copy completed text, reasoning, and tool history into an editable Workflow with a new input step? Models and tools will not run. Current effective system instructions and model settings are copied, but tool approvals are not. Conversations containing attachments are rejected rather than silently truncated.";

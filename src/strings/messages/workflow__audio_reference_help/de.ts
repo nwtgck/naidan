@@ -1,0 +1,1 @@
+export const workflow__audio_reference_help = (): string => "Eine Binärausgabe aus „Datei lesen“ oder einem vorherigen Audioschritt verbinden. Referenzaudio darf höchstens 16 MiB groß und 30 Sekunden lang sein; es wird nicht automatisch gekürzt.";

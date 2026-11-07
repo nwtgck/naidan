@@ -1,0 +1,1 @@
+export const workflow__run_has_no_active_owner = (): string => "Für diesen gespeicherten Lauf wurde kein aktiver Besitzer gefunden. Er kann als unterbrochen markiert werden; vor dem Speichern wird erneut geprüft.";

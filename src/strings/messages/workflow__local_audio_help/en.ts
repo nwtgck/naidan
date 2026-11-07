@@ -1,0 +1,1 @@
+export const workflow__local_audio_help = (): string => "Generate audio with a locally stored llama.cpp browser model. Model discovery reads local metadata only; it does not download or load a model for inference.";

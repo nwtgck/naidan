@@ -1,0 +1,1 @@
+export const workflow__mark_interrupted_notice = (): string => "Marcar esta execução como interrompida? Apenas o último progresso salvo será mantido. Isso não retoma nem repete etapas, não restaura arquivos temporários e não desfaz efeitos. O horário registrado é o da marcação, não o horário desconhecido da interrupção.";

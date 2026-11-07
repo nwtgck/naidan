@@ -1,0 +1,1 @@
+export const workflow__confirm_clear = (): string => "Die aktuelle Ergebnisansicht schließen? Gespeicherte Ausführungsverläufe und bereits in Ordner geschriebene Dateien bleiben erhalten. Für temporäre Dateien gilt die normale Lebensdauer.";

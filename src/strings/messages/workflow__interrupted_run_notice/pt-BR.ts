@@ -1,0 +1,1 @@
+export const workflow__interrupted_run_notice = (): string => "Este histórico foi marcado como interrompido. As prévias refletem o último progresso salvo, não necessariamente a última ação concluída. Nenhuma etapa foi retomada e nenhum arquivo temporário foi restaurado.";

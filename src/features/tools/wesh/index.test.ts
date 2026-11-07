@@ -272,4 +272,98 @@ abcd
 `,
     });
   });
+
+  it('clears the timeout after ordinary completion instead of leaving a live timer', async () => {
+    vi.useFakeTimers();
+    using clock = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4096, defaultStderrLimit: 4096 });
+    const result = await tool.execute({ args: { shell_script: 'echo hello', timeout_ms: 600000 } });
+    expect(result.status).toBe('success');
+    expect(vi.getTimerCount()).toBe(0);
+    void clock;
+  });
+
+  it.each(['resolve', 'reject'] as const)('drains the original execution after cancellation acknowledgements that %s', async cancellation => {
+    const gate = Promise.withResolvers<{ exitCode: number }>();
+    const controller = new AbortController();
+    vi.mocked(client.awaitExecution).mockReturnValue(gate.promise);
+    vi.mocked(client.cancelExecution).mockImplementation(async () => {
+      if (cancellation === 'reject') {
+        throw new Error('Cancellation request failed');
+      }
+      return true;
+    });
+    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4096, defaultStderrLimit: 4096 });
+    const settled = vi.fn();
+    const execution = tool.execute({ args: { shell_script: 'sleep 60' }, signal: controller.signal }).then(settled, settled);
+    await using pending = {
+      async [Symbol.asyncDispose]() {
+        controller.abort();
+        gate.resolve({ exitCode: 130 });
+        await execution;
+      },
+    };
+    await vi.waitFor(() => expect(client.awaitExecution).toHaveBeenCalledOnce());
+    controller.abort();
+    await vi.waitFor(() => expect(client.cancelExecution).toHaveBeenCalledOnce());
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(settled).not.toHaveBeenCalled();
+    expect(client.disposeExecution).not.toHaveBeenCalled();
+    gate.resolve({ exitCode: 130 });
+    await execution;
+    expect(settled).toHaveBeenCalledOnce();
+    expect(client.disposeExecution).toHaveBeenCalledExactlyOnceWith({ request: { executionId: 'exec-1' } });
+    void pending;
+  });
+
+  it('reports each truncated stream once without requiring callers to parse output text', async () => {
+    const onOutputLimit = vi.fn();
+    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
+      for (const stream of ['stdout', 'stderr', 'stdout', 'stderr'] as const) {
+        await onEvent?.({ event: { type: stream, chunk: encoder.encode('abcdef') } });
+      }
+      await onEvent?.({ event: { type: 'exit', exitCode: 0 } });
+      return { executionId: 'exec-1' };
+    });
+    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4, defaultStderrLimit: 4, onOutputLimit });
+    await tool.execute({ args: { shell_script: 'printf abcdef; printf abcdef >&2' } });
+    expect(onOutputLimit.mock.calls).toEqual([[{ stream: 'stdout' }], [{ stream: 'stderr' }]]);
+    expect(client.cancelExecution).toHaveBeenCalledOnce();
+  });
+
+  it('keeps timed-out executions owned until the original completion settles', async () => {
+    vi.useFakeTimers();
+    using clock = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    const gate = Promise.withResolvers<{ exitCode: number }>();
+    vi.mocked(client.awaitExecution).mockReturnValue(gate.promise);
+    const tool = createWeshTool({ client, mounts: [], name: 'shell_execute', description: undefined, defaultStdoutLimit: 4096, defaultStderrLimit: 4096 });
+    let settled = false;
+    const execution = tool.execute({ args: { shell_script: 'sleep 60', timeout_ms: 25 } }).then(result => {
+      settled = true;
+      return result;
+    });
+    await using pending = {
+      async [Symbol.asyncDispose]() {
+        gate.resolve({ exitCode: 130 });
+        await execution;
+      },
+    };
+    await vi.advanceTimersByTimeAsync(26);
+    expect(client.cancelExecution).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+    expect(client.disposeExecution).not.toHaveBeenCalled();
+    gate.resolve({ exitCode: 130 });
+    expect(await execution).toMatchObject({ status: 'error', code: 'timeout' });
+    expect(vi.getTimerCount()).toBe(0);
+    void clock;
+    void pending;
+  });
 });

@@ -1,0 +1,1 @@
+export const workflow__dynamic_connection_review_scope = (): string => "Diese Verbindung oder dieses Modell stammt aus einer Modellantwort, einer Datei, einer interaktiven Eingabe oder einer unbekannten Quelle. Erlaube genau diese Verbindung und dieses Modell nur für diesen Durchlauf. Künftige Durchläufe erfordern eine erneute Bestätigung.";

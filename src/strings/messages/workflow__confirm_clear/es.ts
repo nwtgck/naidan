@@ -1,0 +1,1 @@
+export const workflow__confirm_clear = (): string => "¿Cerrar la vista de resultados actual? El historial guardado y los archivos escritos en carpetas se conservarán. Los archivos temporales seguirán su ciclo de vida habitual.";

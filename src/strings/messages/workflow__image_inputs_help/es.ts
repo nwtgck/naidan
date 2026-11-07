@@ -1,0 +1,1 @@
+export const workflow__image_inputs_help = (): string => "Conecta salidas binarias PNG, JPEG o WebP. Hasta ocho referencias; 16 MiB por archivo, 64 MiB en total, 8.192 píxeles por lado y 16.777.216 píxeles en total. No se admiten imágenes animadas. El modelo debe admitir imágenes de entrada.";

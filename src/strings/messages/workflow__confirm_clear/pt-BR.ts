@@ -1,0 +1,1 @@
+export const workflow__confirm_clear = (): string => "Fechar a visualização atual dos resultados? O histórico salvo e os arquivos gravados em pastas serão mantidos. Os arquivos temporários seguirão seu ciclo de vida normal.";

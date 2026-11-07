@@ -1,30 +1,12 @@
+import { CalculatorArgsSchema, CalculatorOutputSchema } from './parameters';
 import { z } from 'zod';
 import type { Tool, ToolExecutionErrorCode, ToolExecutionEvent } from '@/01-models/tool';
 import {
   CALCULATOR_DEFAULT_RESULT_SIGNIFICANT_DIGITS,
-  CALCULATOR_MAX_INPUT_LENGTH,
-  CALCULATOR_MAX_RESULT_SIGNIFICANT_DIGITS,
   runCalculator,
 } from '@/features/calculator';
 import type { CalculatorOutputPolicy } from '@/features/calculator';
 import type { ToolApprovalContext } from '@/features/tools/approval';
-
-const CalculatorOutputSchema = z.discriminatedUnion('format', [
-  z.object({
-    format: z.literal('decimal'),
-    significantDigits: z.number().int().min(1).max(CALCULATOR_MAX_RESULT_SIGNIFICANT_DIGITS).optional()
-      .describe('Number of significant decimal digits. Defaults to 15.'),
-  }).strict(),
-  z.object({ format: z.literal('rational') }).strict(),
-]);
-
-const CalculatorArgsSchema = z.object({
-  expression: z.string().max(CALCULATOR_MAX_INPUT_LENGTH)
-    .refine(value => value.trim().length > 0, 'Expression must not be empty.')
-    .describe('A numeric expression or help query, such as "1 / 3", "pi * 2", "mean(1, 2, 3)", "help", or "help precision".'),
-  output: CalculatorOutputSchema.optional()
-    .describe('Output configuration. Defaults to decimal with 15 significant digits. Rational output preserves exact fractions and rejects approximate results.'),
-}).strict();
 
 function resolveOutputPolicy({ output }: {
   output: z.infer<typeof CalculatorOutputSchema> | undefined,

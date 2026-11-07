@@ -1,0 +1,1 @@
+export const workflow__share_structure_notice = (): string => "Removes entered content, names, model connections, folder references, and tool arguments. References and control structure are retained with fresh identifiers. This is a template, not a runnable backup; review it before sharing.";

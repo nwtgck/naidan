@@ -1,0 +1,1 @@
+export const workflow__tool_permission_notice = (): string => "Prüfen Sie die folgenden Argumente. Die Erlaubnis gilt nur für diesen Aufruf. Bereits erfolgte Shell-Änderungen werden durch Stoppen nicht rückgängig gemacht.";

@@ -1,0 +1,1 @@
+export const workflow__image_outputs_help = (): string => "image ist eine binäre PNG-Ausgabe; metadata enthält Abmessungen und den angeforderten Seed. Speichern Sie Bilder innerhalb einer Schleife, statt Binärdaten in JSON zu sammeln. Beim Stoppen wird das unvollständige Bild verworfen.";

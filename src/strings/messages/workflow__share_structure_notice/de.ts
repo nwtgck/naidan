@@ -1,0 +1,1 @@
+export const workflow__share_structure_notice = (): string => "Entfernt eingegebene Inhalte, Namen, Modellverbindungen, Ordnerverweise und Werkzeugargumente. Referenzen und Steuerstruktur bleiben mit neuen Kennungen erhalten. Dies ist eine Vorlage, keine ausführbare Sicherung. Vor dem Teilen prüfen.";
