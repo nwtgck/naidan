@@ -7,6 +7,7 @@ import StorageTab from './StorageTab.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 
 // Mock vue-router
 vi.mock('vue-router', async importOriginal => ({
@@ -18,7 +19,7 @@ vi.mock('vue-router', async importOriginal => ({
 // Mock dependencies
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
-    settings: ref({ endpoint: { type: 'openai', url: '' }, storageType: 'local', providerProfiles: [] }),
+    settings: ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '' }, storageType: 'local' }),
     save: vi.fn(),
     updateProviderProfiles: vi.fn(),
     availableModels: ref([]),
@@ -221,7 +222,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     const mockShowConfirm = vi.fn().mockResolvedValue(true);
 
     vi.mocked(useSettings).mockReturnValue({
-      settings: ref({ storageType: 'local', providerProfiles: [], endpoint: { type: 'openai', url: '' } }),
+      settings: ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
       initialized: ref(true),
