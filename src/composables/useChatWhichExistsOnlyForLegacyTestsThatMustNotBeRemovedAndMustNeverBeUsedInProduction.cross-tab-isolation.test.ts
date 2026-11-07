@@ -7,6 +7,13 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vites
 import { nextTick } from 'vue';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
+vi.unmock('../00-storage/service');
+vi.unmock('./useSettings');
+vi.unmock('./useToast');
+vi.unmock('./useConfirm');
+vi.unmock('../features/lm/openai');
+vi.unmock('../features/lm/ollama');
+
 // --- Shared State across "tabs" (modules) ---
 const STORAGE_KEY = '__CROSS_TAB_TEST_STORAGE__';
 const shared = globalThis as any;
@@ -79,12 +86,6 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   async function createTab() {
     vi.resetModules();
-    vi.unmock('../00-storage/service');
-    vi.unmock('./useSettings');
-    vi.unmock('./useToast');
-    vi.unmock('./useConfirm');
-    vi.unmock('../features/lm/openai');
-    vi.unmock('../features/lm/ollama');
 
     vi.doMock('../00-storage/service', () => ({
       storageService: {

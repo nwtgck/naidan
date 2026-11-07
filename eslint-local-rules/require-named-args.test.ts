@@ -650,11 +650,11 @@ target.onmessage = (event) => { void event; };
   });
 
   it('allows Vitest reporter object methods when their contextual signature comes from Vitest', async () => {
-    await expect(typedLint(`import type { Reporter } from 'vitest/reporters'; const reporter: Reporter = { onTestRunEnd(testModules, errors) { void testModules; void errors; } };`)).resolves.toHaveLength(0);
+    await expect(typedLint(`import type { Reporter } from 'vitest/node'; const reporter: Reporter = { onTestRunEnd(testModules, errors) { void testModules; void errors; } };`)).resolves.toHaveLength(0);
   }, 30_000);
 
   it('allows Vitest reporter class methods when they implement Vitest reporter signatures', async () => {
-    await expect(typedLint(`import type { Reporter } from 'vitest/reporters'; class FailedOnlyReporter implements Reporter { onTestRunEnd(testModules, errors) { void testModules; void errors; } }`)).resolves.toHaveLength(0);
+    await expect(typedLint(`import type { Reporter } from 'vitest/node'; class FailedOnlyReporter implements Reporter { onTestRunEnd(testModules, errors) { void testModules; void errors; } }`)).resolves.toHaveLength(0);
   }, 30_000);
 
 

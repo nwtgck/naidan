@@ -33,6 +33,10 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Stateful compiler plugins must register modules in every test process.
+    fsModuleCache: false,
+    // Preserve the existing test-owned mock cleanup policy.
+    clearMocks: false,
     setupFiles: ['./src/test-setup.test-support.ts'],
     include: [
       'src/logic/pwa/**/*.test.ts',

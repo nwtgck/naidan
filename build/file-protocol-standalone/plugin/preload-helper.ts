@@ -9,36 +9,58 @@ export function createVitePreloadHelperCompatibilityPlugin({ diagnostics }: Read
       if (id !== '\0vite/preload-helper.js') {
         return null;
       }
-      const importMetaResolveCall = 'dep = importMetaResolve(dep);';
+      const domCondition = 'if (__VITE_IS_MODERN__ && deps && deps.length > 0)';
+      const crossOrigin = 'link.crossOrigin = "";';
+      const dependencyRewrites = [
+        {
+          // Older Vite helpers keep dependencies as strings.
+          pattern: /dep = assetsURL\(dep, importerUrl\);\s+dep = importMetaResolve\(dep\);/g,
+          requiredPatterns: [/const isCss = dep\.endsWith\((["'])\.css\1\);/g],
+          href: 'link.href = dep;',
+          replacement: 'dep = assetsURL(dep, importerUrl); const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol && (!dep.endsWith(".css") || new URL(dep).protocol !== "file:")) return; if (!fileProtocol) dep = importMetaResolve(dep);',
+        },
+        {
+          // Vite 8.3 uses URL objects and shares in-flight CSS preload promises.
+          pattern: /depString = assetsURL\(depString, importerUrl\);\s+const dep = importMetaResolve\(depString\);\s+const isCss = isCssPreloadUrl\(dep\);/g,
+          requiredPatterns: [
+            /const isCss = isCssPreloadUrl\(dep\);/g,
+            /function isCssPreloadUrl\(url\) \{\s+return url\.pathname\.endsWith\("\.css"\);\s+\}/g,
+          ],
+          href: 'link.href = dep.href;',
+          replacement: 'depString = assetsURL(depString, importerUrl); const fileProtocol = new URL(document.baseURI).protocol === "file:"; const dep = fileProtocol ? new URL(depString) : importMetaResolve(depString); const isCss = isCssPreloadUrl(dep); if (fileProtocol && (!isCss || dep.protocol !== "file:")) return;',
+        },
+      ];
+      const matchingRewrites = dependencyRewrites.filter(rewrite => [...code.matchAll(rewrite.pattern)].length === 1);
+      const rewrite = matchingRewrites[0];
       if (
-        !code.includes('vite:preloadError')
-        || !code.includes('window.dispatchEvent')
-        || !code.includes('link.crossOrigin = ""')
-        || !code.includes('if (__VITE_IS_MODERN__ && deps && deps.length > 0)')
-        || code.split(importMetaResolveCall).length !== 2
+        matchingRewrites.length !== 1
+        || rewrite === undefined
+        || !code.includes('vite:preloadError')
+        || code.split('window.dispatchEvent').length !== 2
+        || code.split(crossOrigin).length !== 2
+        || code.split(domCondition).length !== 2
+        || [...code.matchAll(/\bimportMetaResolve\s*\(/g)].length !== 2
+        || rewrite.requiredPatterns.some(pattern => [...code.matchAll(pattern)].length !== 1)
+        || code.split(rewrite.href).length !== 2
       ) {
         throw new Error('Unexpected Vite preload helper shape; review Worker and file:// compatibility before upgrading Vite');
       }
       let transformed = code.replace('window.dispatchEvent', 'globalThis.dispatchEvent');
       transformed = transformed.replace(
-        'if (__VITE_IS_MODERN__ && deps && deps.length > 0)',
+        domCondition,
         'if (__VITE_IS_MODERN__ && typeof document !== "undefined" && deps && deps.length > 0)',
       );
-      // Vite resolves each dependency before deciding whether it is CSS. SystemJS
-      // exposes import.meta.resolve through _context.meta.resolve, which is async,
-      // so file: dependencies must not pass through that native-ESM assumption.
-      // JavaScript dependency loading belongs to SystemJS, while CSS must retain
-      // Vite's Dynamic Import timing and be linked by the UI Realm on demand.
-      transformed = transformed.replace(
-        importMetaResolveCall,
-        'const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol && (!dep.endsWith(".css") || new URL(dep).protocol !== "file:")) return; if (!fileProtocol) dep = importMetaResolve(dep);',
-      );
-      transformed = transformed.replace('link.crossOrigin = "";', 'if (!fileProtocol) link.crossOrigin = "";');
+      // SystemJS exposes import.meta.resolve through _context.meta.resolve, which
+      // is async. File dependencies must never pass through that native-ESM path.
+      // Keep Vite's CSS classification and waiting/deduplication behavior intact,
+      // but leave JavaScript dependency loading to SystemJS in the file UI realm.
+      transformed = transformed.replace(rewrite.pattern, rewrite.replacement);
+      transformed = transformed.replace(crossOrigin, `if (!fileProtocol) ${crossOrigin}`);
       if (
         transformed.includes('window.dispatchEvent')
-        || transformed.includes('if (__VITE_IS_MODERN__ && deps && deps.length > 0)')
-        || !transformed.includes('const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol && (!dep.endsWith(".css") || new URL(dep).protocol !== "file:")) return; if (!fileProtocol) dep = importMetaResolve(dep);')
-        || !transformed.includes('if (!fileProtocol) link.crossOrigin = "";')
+        || transformed.includes(domCondition)
+        || transformed.split(rewrite.replacement).length !== 2
+        || transformed.split(`if (!fileProtocol) ${crossOrigin}`).length !== 2
       ) {
         throw new Error('Vite preload helper compatibility transform did not replace every expected construct');
       }

@@ -17,7 +17,7 @@ describe('collectRenderedModuleLicenseDependencies', () => {
     expect(dependencies).toHaveLength(1);
     expect(dependencies[0]).toMatchObject({
       name: 'zod',
-      version: '4.4.3',
+      version: '4.6.7',
       license: 'MIT',
     });
     expect(dependencies[0]?.licenseText).toEqual(expect.any(String));

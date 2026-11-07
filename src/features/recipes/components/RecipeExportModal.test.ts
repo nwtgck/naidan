@@ -10,12 +10,6 @@ describe('RecipeExportModal.vue', () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 
-  beforeEach(() => {
-    vi.stubGlobal('crypto', {
-      randomUUID: () => Math.random().toString(36).substring(2),
-    });
-  });
-
   const defaultProps = {
     isOpen: true,
     groupName: 'Test Group',

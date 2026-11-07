@@ -117,7 +117,7 @@ export function createDocsModulesPlugin({ root, allowTestArticleTranslations = f
         if (!result?.code) {
           throw new Error(`Docs JSX transform produced no code: ${docsFile}`);
         }
-        return { code: result.code, map: result.map };
+        return { code: result.code, map: result.map ? JSON.stringify(result.map) : null };
       }
       return undefined;
     },

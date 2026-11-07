@@ -59,6 +59,7 @@ function normalizeParseErrorDetails({
     }
   }
 
+  // eslint-disable-next-line local-rules-switch/force-switch-for-union -- All other Babel diagnostics intentionally retain their copied details unchanged.
   if (error.reasonCode === 'InvalidLhs') {
     const ancestor = rawDetails.ancestor;
     if (isUnknownRecord(ancestor)) {
@@ -352,7 +353,6 @@ function findWrapperBindingInPattern({
     }
     return undefined;
   case 'MemberExpression':
-  case 'TSParameterProperty':
   case 'TSAsExpression':
   case 'TSSatisfiesExpression':
   case 'TSTypeAssertion':

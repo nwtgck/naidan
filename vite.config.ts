@@ -370,6 +370,11 @@ export default defineConfig(({ mode, command }) => {
     },
     test: {
       environment: 'jsdom',
+      // Boundary Strings and static Tailwind register state during transforms.
+      // Reusing transforms across processes skips the required registration.
+      fsModuleCache: false,
+      // Preserve the existing test-owned mock cleanup policy.
+      clearMocks: false,
       // Replay evaluates verified ESM bytes without Node's permanent import cache.
       // Node 22's V8 compilation cache also retains VM modules and captured
       // fixture state. Disable that optimization in test workers so completed
