@@ -50,9 +50,10 @@ mount's hash URL.
 The preview picker edits a pending selection; it does not mutate the URL. Title
 and description follow the inspected selection, while canonical remains the
 repository URL. Reload re-applies quant or chooses the recommended available model.
-Unknown/invalid model requests receive a centrally owned runtime `noindex` tag.
-Leaving the preview removes only that tag, not a deployment's separate robots
-policy. Unknown repositories are not in the sitemap. The shared initial response
+The app intentionally does not inject `noindex` for any model request, even
+unlisted or invalid ones: a crawler may retain a prior `noindex` after that
+repository is published. Deployment-owned robots directives are left untouched.
+Unknown repositories are not in the sitemap. The shared initial response
 cannot provide per-request robots/status decisions before JavaScript executes.
 
 ## Initial rendering and recovery

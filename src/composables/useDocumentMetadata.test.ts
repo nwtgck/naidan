@@ -318,10 +318,10 @@ describe('document metadata ownership', () => {
   });
 
   it.each([
-    { model: 'hf.co/LiquidAI/LFM2.5-230M-GGUF', quant: 'Q8_0', indexing: 'allowed' },
-    { model: 'hf.co/owner/Unlisted-GGUF', quant: undefined, indexing: 'noindex' },
-    { model: 'hf.co/owner/Unlisted-GGUF', quant: 'Q4_K_M', indexing: 'noindex' },
-  ] as const)('uses central copy and $indexing for $model with $quant', async ({ model, quant, indexing }) => {
+    { model: 'hf.co/LiquidAI/LFM2.5-230M-GGUF', quant: 'Q8_0' },
+    { model: 'hf.co/owner/Unlisted-GGUF', quant: undefined },
+    { model: 'hf.co/owner/Unlisted-GGUF', quant: 'Q4_K_M' },
+  ] as const)('uses central copy without adding noindex for $model with $quant', async ({ model, quant }) => {
     const previous = window.location.href;
     using _location = { [Symbol.dispose]: () => window.history.replaceState(undefined, '', previous) };
     const pathname = `/llama-cpp-browser/${model}`;
@@ -335,15 +335,33 @@ describe('document metadata ownership', () => {
     const metadata = modelLaunchMetadata({ repository: model.slice('hf.co/'.length), variant: quant });
     expectHead({ page: metadata, documentTitle: metadata.title });
     expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(`${SITE_METADATA.url}${pathname}/`);
-    expect(document.querySelector('meta[data-document-metadata-indexing]')?.getAttribute('content')).toBe(indexing === 'noindex' ? 'noindex' : undefined);
+    expect(document.querySelectorAll('meta[name="robots"]')).toHaveLength(1);
+    expect(document.querySelector('meta[data-host-policy]')?.getAttribute('content')).toBe('nofollow');
     await router.replace('/chat/created');
     await nextTick();
-    expect(document.querySelector('meta[data-document-metadata-indexing]')).toBeNull();
+    expect(document.querySelectorAll('meta[name="robots"]')).toHaveLength(1);
     expect(document.querySelector('meta[data-host-policy]')?.getAttribute('content')).toBe('nofollow');
     expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(SITE_METADATA.url);
   });
 
-  it('marks an invalid model request noindex without authorizing another repository', async () => {
+  it('never changes a deployment-owned noindex directive when navigating away from an unlisted model', async () => {
+    const previous = window.location.href;
+    using _location = { [Symbol.dispose]: () => window.history.replaceState(undefined, '', previous) };
+    window.history.replaceState(undefined, '', '/llama-cpp-browser/hf.co/owner/Unlisted-GGUF/');
+    document.head.insertAdjacentHTML('beforeend', '<meta name="robots" content="noindex" data-host-policy>');
+    const router = routerForPages();
+    await router.push({ path: '/', query: { 'llama-cpp-browser-model': 'hf.co/owner/Unlisted-GGUF' } });
+    using _owner = mountOwner({ router, introduction: presentationTestOnly.createHomeIntroduction({ router }), content: defineComponent({ template: '<div />' }) });
+    await nextTick();
+    expect(document.querySelectorAll('meta[name="robots"]')).toHaveLength(1);
+    expect(document.querySelector('meta[data-host-policy]')?.getAttribute('content')).toBe('noindex');
+    await router.replace('/chat/created');
+    await nextTick();
+    expect(document.querySelectorAll('meta[name="robots"]')).toHaveLength(1);
+    expect(document.querySelector('meta[data-host-policy]')?.getAttribute('content')).toBe('noindex');
+  });
+
+  it('does not add noindex or authorize another repository for an invalid model request', async () => {
     const previous = window.location.href;
     using _location = { [Symbol.dispose]: () => window.history.replaceState(undefined, '', previous) };
     window.history.replaceState(undefined, '', '/llama-cpp-browser/hf.co/owner/Model?quant=');
@@ -351,7 +369,7 @@ describe('document metadata ownership', () => {
     await router.push({ path: '/', query: { 'llama-cpp-browser-model': '' } });
     using _owner = mountOwner({ router, introduction: presentationTestOnly.createHomeIntroduction({ router }), content: defineComponent({ template: '<div />' }) });
     await nextTick();
-    expect(document.querySelector('meta[data-document-metadata-indexing]')?.getAttribute('content')).toBe('noindex');
+    expect(document.querySelector('meta[name="robots"]')).toBeNull();
     expect(document.querySelector('meta[name=description]')?.getAttribute('content')).not.toContain('Run Model');
   });
 });

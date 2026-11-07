@@ -1,16 +1,15 @@
 import { computed, hasInjectionContext, inject, onActivated, onDeactivated, onScopeDispose, provide, ref, shallowReactive, watchEffect, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import { START_LOCATION, type Router } from 'vue-router';
-import { HOME_METADATA, SITE_METADATA, applyDocumentCanonicalUrl, applyDocumentMetadata, applyDocumentIndexing, isHomeIntroductionActive, routeDocumentMetadata, type HomeIntroduction, type PageMetadata } from '@/logic/document-metadata';
+import { HOME_METADATA, SITE_METADATA, applyDocumentCanonicalUrl, applyDocumentMetadata, isHomeIntroductionActive, routeDocumentMetadata, type HomeIntroduction, type PageMetadata } from '@/logic/document-metadata';
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
 import { lazyStrings } from '@/strings';
 import { exactObject } from '@/utils/exact-object';
-import { findModelPageEntry } from '@/features/llama-cpp-browser/model-launch/page-entries';
 import { readModelPageRequest, modelPagePath } from '@/features/llama-cpp-browser/model-launch/page-url';
 import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
 
 type ScopedPageMetadata = Readonly<{ routePath: string, metadata: PageMetadata }>;
 type ScopedTitle = Readonly<{ routePath: string, title: string }>;
-type ModelPageDocument = Readonly<{ fallback: PageMetadata | undefined, canonicalUrl: string, indexing: 'allowed' | 'noindex' }>;
+type ModelPageDocument = Readonly<{ fallback: PageMetadata, canonicalUrl: string }>;
 
 function createDocumentMetadata({ router, document, homeIntroduction, finishHomeIntroduction }: {
   router: Router | undefined,
@@ -39,12 +38,7 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
     const request = readModelPageRequest({ pathname: document.location?.pathname ?? '', search: document.location?.search ?? '' });
     switch (request.kind) {
     case 'outside': return undefined;
-    case 'invalid': {
-      if (current.query['llama-cpp-browser-model'] !== '') {
-        return undefined;
-      }
-      return exactObject<ModelPageDocument>()({ fallback: undefined, canonicalUrl: SITE_METADATA.url, indexing: 'noindex' });
-    }
+    case 'invalid': return undefined;
     case 'model': {
       if (request.launchInput !== current.query['llama-cpp-browser-model']) {
         return undefined;
@@ -53,7 +47,6 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
       return exactObject<ModelPageDocument>()({
         fallback: modelLaunchMetadata({ repository: request.repository, variant: request.quantization }),
         canonicalUrl: new URL(pathname, SITE_METADATA.url).href,
-        indexing: findModelPageEntry({ pathname }) === undefined ? 'noindex' : 'allowed',
       });
     }
     default: {
@@ -97,7 +90,9 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
     applyDocumentMetadata({ document, page: page.value, documentTitle: documentTitle ?? page.value.title });
     const modelDocument = modelPageDocument.value;
     applyDocumentCanonicalUrl({ document, canonicalUrl: modelDocument?.canonicalUrl ?? SITE_METADATA.url });
-    applyDocumentIndexing({ document, indexing: modelDocument?.indexing ?? 'allowed' });
+    // Intentionally never add noindex for model URLs, including unlisted/invalid ones.
+    // Crawlers can retain an earlier noindex after a repository is published.
+    // Any deployment-owned robots directives are outside this composable's ownership.
   }
 
   watchEffect(apply, { flush: 'post' });
