@@ -1,0 +1,1 @@
+export const workflow__local_image_help = (): string => "Genera una imagen con stable-diffusion.cpp browser. Usa un bucle para varios prompts o semillas. Los modelos deben estar disponibles en la biblioteca local.";

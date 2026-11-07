@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { describe, it, expect } from 'vitest';
 import {
   buildSidebarItemsFromHierarchy,
@@ -38,6 +40,8 @@ import {
   toToolCallId,
   toVolumeId,
 } from '@/01-models/ids';
+
+installSecretEqualityTester();
 
 describe('MessageNode Mapping (Discriminated Union)', () => {
   it('should map user message with lmParameters and thinking: undefined', () => {
@@ -244,7 +248,7 @@ describe('Chat Mapping', () => {
       endpoint: {
         type: 'ollama',
         url: 'http://localhost:11434',
-        httpHeaders: [['X-Chat', 'true']],
+        httpHeaders: [['X-Chat', Secret.from({ value: 'true' })]],
       },
       modelId: 'chat-model',
       titleGeneration: 'disabled',
@@ -707,7 +711,7 @@ describe('Settings Mapping', () => {
       endpoint: {
         type: 'openai',
         url: 'https://api.example.test/v1',
-        httpHeaders: [['Authorization', 'Bearer token']],
+        httpHeaders: [['Authorization', Secret.from({ value: 'Bearer token' })]],
       },
       defaultModelId: 'gpt-4.1',
       titleGeneration: 'disabled',
@@ -718,7 +722,7 @@ describe('Settings Mapping', () => {
         endpoint: {
           type: 'ollama',
           url: 'http://localhost:11434',
-          httpHeaders: [['X-Profile', 'yes']],
+          httpHeaders: [['X-Profile', Secret.from({ value: 'yes' })]],
         },
         defaultModelId: 'llama3',
         titleModelId: 'llama3-title',

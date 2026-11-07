@@ -38,6 +38,10 @@ const NAIDAN_ID_TYPES = new Set([
   'ToolApprovalRequestId',
   'OPFSTmpOwnerScopeId',
   'OPFSTmpDirectoryId',
+  'WorkflowId',
+  'WorkflowStepId',
+  'WorkflowRunId',
+  'WorkflowOutputId',
   'NaidanId',
 ]);
 

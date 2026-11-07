@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
 import { receiveByteStream } from '@/utils/byte-stream-port';
@@ -18,6 +20,8 @@ import {
   naidanSysfsRemoteChatMetaPayloadSchema,
 } from '@/features/wesh/naidan-sysfs/remote-reader-schema';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+
+installSecretEqualityTester();
 
 describe('file-explorer.worker.impl', () => {
   let worker: ReturnType<typeof createFileExplorerWorker>;
@@ -1083,7 +1087,7 @@ describe('file-explorer.worker.impl', () => {
       endpoint: {
         type: 'openai',
         url: 'https://example.invalid/v1',
-        httpHeaders: [['Authorization', 'secret-token']],
+        httpHeaders: [['Authorization', Secret.from({ value: 'secret-token' })]],
       },
       modelId: 'gpt-5',
       titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -1127,7 +1131,7 @@ describe('file-explorer.worker.impl', () => {
       endpoint: {
         type: 'openai',
         url: 'https://example.invalid/v1',
-        httpHeaders: [['Authorization', 'group-secret-token']],
+        httpHeaders: [['Authorization', Secret.from({ value: 'group-secret-token' })]],
       },
       modelId: 'gpt-5',
       titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -1255,7 +1259,7 @@ describe('file-explorer.worker.impl', () => {
       endpoint: {
         type: 'openai',
         url: 'https://example.invalid/v1',
-        httpHeaders: [['Authorization', 'secret-token']],
+        httpHeaders: [['Authorization', Secret.from({ value: 'secret-token' })]],
       },
       modelId: 'gpt-5',
       titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },

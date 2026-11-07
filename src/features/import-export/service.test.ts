@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { STORAGE_KEY_PREFIX } from '@/constants';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,6 +14,8 @@ import type { Mocked } from 'vitest';
 import type { Settings, ChatMeta } from '@/01-models/types';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
+
+installSecretEqualityTester();
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
@@ -862,6 +866,50 @@ ${JSON.stringify({
       expect(settings.endpoint.type).toBe('transformers_js');
     });
 
+    it('exports legacy llama.cpp endpoints in the stable format without rewriting source storage', async () => {
+      localStorage.clear();
+      using _storageCleanup = {
+        [Symbol.dispose]() {
+          localStorage.clear();
+        },
+      };
+      const key = `${STORAGE_KEY_PREFIX}lsp:settings`;
+      const original = JSON.stringify({
+        ...createValidSettingsDto(),
+        endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } },
+        experimental: { llamaCppBrowser: { contextTokens: 8192 } },
+      });
+      localStorage.setItem(key, original);
+      const provider = new LocalStorageProvider();
+      mockStorage.dumpWithoutLock.mockImplementation(() => provider.dump());
+      const { stream } = await service.exportData({});
+      const reader = stream.getReader();
+      await using _readerCleanup = {
+        async [Symbol.asyncDispose]() {
+          await reader.cancel();
+          reader.releaseLock();
+        },
+      };
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        chunks.push(Uint8Array.from(value));
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks));
+      const settingsEntry = Object.values(zip.files).find(file => file.name.endsWith('/settings.json'));
+      if (!settingsEntry) {
+        throw new Error('Export must contain settings.');
+      }
+      const exported = JSON.parse(await settingsEntry.async('string'));
+      expect(exported.endpoint).toStrictEqual({ type: 'llama_cpp_browser' });
+      expect(exported.experimental.llamaCppBrowser).toStrictEqual({ contextTokens: 8192 });
+      expect(localStorage.getItem(key)).toBe(original);
+      expect(mockStorage.updateSettings).not.toHaveBeenCalled();
+    });
+
     it('sanitizes and truncates export filenames', async () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
@@ -1492,7 +1540,7 @@ ${JSON.stringify({
       expect(result.endpoint).toEqual({
         type: 'openai',
         url: 'http://imported',
-        httpHeaders: [['X-Test', 'imported']],
+        httpHeaders: [['X-Test', Secret.from({ value: 'imported' })]],
       });
     });
 

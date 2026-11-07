@@ -1,13 +1,17 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { describe, expect, it } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Endpoint } from '@/01-models/types';
-import { cloneImagePromptTranslationOverride, imagePromptTranslationEndpointLabel, resolveImagePromptTranslation } from './settings';
+import { areImagePromptTranslationOverridesEqual, cloneImagePromptTranslationOverride, imagePromptTranslationEndpointLabel, resolveImagePromptTranslation } from './settings';
+installSecretEqualityTester();
 const global = { endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: undefined } satisfies Endpoint, modelId: 'global-model', lmParameters: undefined };
 
 describe('image prompt translation inheritance', () => {
   it('defaults both fields to global and resolves session over workspace independently', () => {
     expect(resolveImagePromptTranslation({ session: undefined, workspace: undefined, global })).toEqual({ ...global, endpointSource: 'global', modelSource: 'global' });
-    const endpoint: Endpoint = { type: 'openai', url: 'https://example.test', httpHeaders: [['Authorization', 'secret']] };
+    const endpoint: Endpoint = { type: 'openai', url: 'https://example.test', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] };
     expect(resolveImagePromptTranslation({ session: { endpoint, modelId: undefined, lmParameters: undefined }, workspace: { endpoint: { type: 'llama_cpp_browser' }, modelId: 'workspace-model', lmParameters: undefined }, global }))
       .toEqual({ endpoint, modelId: 'workspace-model', endpointSource: 'session', modelSource: 'workspace' });
     expect(resolveImagePromptTranslation({ session: { endpoint: undefined, modelId: 'session-model', lmParameters: undefined }, workspace: { endpoint, modelId: 'workspace-model', lmParameters: undefined }, global }))
@@ -23,20 +27,20 @@ describe('image prompt translation inheritance', () => {
   });
 
   it('clones all headers rather than mutating inherited profiles or borrowing authentication across endpoints', () => {
-    const endpoint: Endpoint = { type: 'openai', url: 'https://example.test', httpHeaders: [['Authorization', 'old']] };
+    const endpoint: Endpoint = { type: 'openai', url: 'https://example.test', httpHeaders: [['Authorization', Secret.from({ value: 'old' })]] };
     const override = { endpoint, modelId: 'chosen', lmParameters: undefined };
     const value = cloneImagePromptTranslationOverride({ value: override });
     if (value?.endpoint?.type !== 'openai') {
       throw new Error('Expected HTTP endpoint.');
     }
-    value.endpoint.httpHeaders![0]![1] = 'new';
-    expect(endpoint.httpHeaders![0]![1]).toBe('old');
+    value.endpoint.httpHeaders![0]![1] = Secret.from({ value: 'new' });
+    expect(endpoint.httpHeaders![0]![1].reveal()).toBe('old');
     const target = resolveImagePromptTranslation({ session: { endpoint: { type: 'openai', url: 'https://other.test', httpHeaders: undefined }, modelId: undefined, lmParameters: undefined }, workspace: override, global });
     expect(target.endpoint).toEqual({ type: 'openai', url: 'https://other.test', httpHeaders: undefined });
   });
 
   it('does not display URL credentials, query tokens, paths or HTTP headers', () => {
-    const label = imagePromptTranslationEndpointLabel({ endpoint: { type: 'openai', url: 'https://user:password@example.test/private?key=secret', httpHeaders: [['Authorization', 'token']] } });
+    const label = imagePromptTranslationEndpointLabel({ endpoint: { type: 'openai', url: 'https://user:password@example.test/private?key=secret', httpHeaders: [['Authorization', Secret.from({ value: 'token' })]] } });
     expect(label).toBe('openai · example.test');
   });
 });
@@ -63,4 +67,17 @@ it('clones an unavailable session RPC value without inheriting another peer', ()
   }
   expect(target.endpoint.persistedType).toBe('naidan_rpc');
   expect(target.endpoint).not.toBe(endpoint);
+});
+
+it('uses the localized in-browser llama.cpp name in translation summaries', async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+  expect(imagePromptTranslationEndpointLabel({ endpoint: { type: 'llama_cpp_browser' } })).toBe('llama.cpp in the browser');
+});
+
+it('detects a credential-only change rather than comparing masked JSON', () => {
+  const left = { endpoint: { type: 'openai' as const, url: 'https://example.invalid', httpHeaders: [['X-Custom', Secret.from({ value: 'before' })]] as [name: string, value: Secret<string>][] }, modelId: 'model', lmParameters: undefined };
+  const right = { ...left, endpoint: { ...left.endpoint, httpHeaders: [['X-Custom', Secret.from({ value: 'after' })]] as [name: string, value: Secret<string>][] } };
+  expect(JSON.stringify(left)).toBe(JSON.stringify(right));
+  expect(areImagePromptTranslationOverridesEqual({ left, right })).toBe(false);
+  expect(areImagePromptTranslationOverridesEqual({ left, right: cloneImagePromptTranslationOverride({ value: left }) })).toBe(true);
 });

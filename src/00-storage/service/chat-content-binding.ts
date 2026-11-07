@@ -1,3 +1,4 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { chatContentToDomain, chatContentToDto } from '@/00-storage/mapper/mappers';
 import type { ChatContent, Endpoint } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
@@ -54,7 +55,7 @@ export function snapshotChatContent({ content }: { content: ChatContent }): Chat
 
 export function createChatContentWrite({ id, content, binding, isCurrent }: { id: ChatId, content: ChatContent | undefined, binding: ChatContentModelBinding | undefined, isCurrent(): boolean }): ChatContentWrite {
   const write = Object.freeze({}) as ChatContentWrite;
-  writes.set(write, { id, baseline: content === undefined ? undefined : chatContentFingerprint({ content }), binding: binding === undefined ? undefined : structuredClone(binding), isCurrent, tail: Promise.resolve() });
+  writes.set(write, { id, baseline: content === undefined ? undefined : chatContentFingerprint({ content }), binding: binding === undefined ? undefined : clonePlainData({ value: binding }), isCurrent, tail: Promise.resolve() });
   return write;
 }
 

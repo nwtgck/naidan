@@ -1,12 +1,15 @@
 import { computed, hasInjectionContext, inject, onActivated, onDeactivated, onScopeDispose, provide, ref, shallowReactive, watchEffect, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import { START_LOCATION, type Router } from 'vue-router';
-import { HOME_METADATA, applyDocumentMetadata, isHomeIntroductionActive, routeDocumentMetadata, type HomeIntroduction, type PageMetadata } from '@/logic/document-metadata';
+import { HOME_METADATA, SITE_METADATA, applyDocumentCanonicalUrl, applyDocumentMetadata, isHomeIntroductionActive, routeDocumentMetadata, type HomeIntroduction, type PageMetadata } from '@/logic/document-metadata';
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
 import { lazyStrings } from '@/strings';
 import { exactObject } from '@/utils/exact-object';
+import { readModelPageRequest, modelPagePath } from '@/features/llama-cpp-browser/model-launch/page-url';
+import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
 
 type ScopedPageMetadata = Readonly<{ routePath: string, metadata: PageMetadata }>;
 type ScopedTitle = Readonly<{ routePath: string, title: string }>;
+type ModelPageDocument = Readonly<{ fallback: PageMetadata, canonicalUrl: string }>;
 
 function createDocumentMetadata({ router, document, homeIntroduction, finishHomeIntroduction }: {
   router: Router | undefined,
@@ -27,6 +30,31 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
     return route.value !== undefined && routePath.replace(/\/+$/, '') === route.value.path.replace(/\/+$/, '');
   }
   const introduction = computed(() => isHomeIntroductionActive({ introduction: homeIntroduction.value, route: route.value }));
+  const modelPageDocument = computed<ModelPageDocument | undefined>(() => {
+    const current = route.value;
+    if (__BUILD_MODE_IS_STANDALONE__ || current?.path !== '/' || document.location?.protocol === 'file:') {
+      return undefined;
+    }
+    const request = readModelPageRequest({ pathname: document.location?.pathname ?? '', search: document.location?.search ?? '' });
+    switch (request.kind) {
+    case 'outside': return undefined;
+    case 'invalid': return undefined;
+    case 'model': {
+      if (request.launchInput !== current.query['llama-cpp-browser-model']) {
+        return undefined;
+      }
+      const pathname = modelPagePath({ modelId: request.modelId });
+      return exactObject<ModelPageDocument>()({
+        fallback: modelLaunchMetadata({ repository: request.repository, variant: request.quantization }),
+        canonicalUrl: new URL(pathname, SITE_METADATA.url).href,
+      });
+    }
+    default: {
+      const exhaustive: never = request;
+      return exhaustive;
+    }
+    }
+  });
   const page = computed(() => {
     if (introduction.value) {
       const title = lazyStrings.documentTitle__run_ai_on_your_device_directly_in_your_browser();
@@ -42,7 +70,7 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
         return value.metadata;
       }
     }
-    return routeDocumentMetadata({ route: route.value });
+    return modelPageDocument.value?.fallback ?? routeDocumentMetadata({ route: route.value });
   });
 
   function apply(): void {
@@ -60,6 +88,11 @@ function createDocumentMetadata({ router, document, homeIntroduction, finishHome
       }
     }
     applyDocumentMetadata({ document, page: page.value, documentTitle: documentTitle ?? page.value.title });
+    const modelDocument = modelPageDocument.value;
+    applyDocumentCanonicalUrl({ document, canonicalUrl: modelDocument?.canonicalUrl ?? SITE_METADATA.url });
+    // Intentionally never add noindex for model URLs, including unlisted/invalid ones.
+    // Crawlers can retain an earlier noindex after a repository is published.
+    // Any deployment-owned robots directives are outside this composable's ownership.
   }
 
   watchEffect(apply, { flush: 'post' });

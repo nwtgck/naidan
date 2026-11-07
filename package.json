@@ -1,11 +1,11 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.64.0",
+  "version": "0.65.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && tsc --noEmit -p pwa/tsconfig.json && npm run build:all",
+    "build": "npm run typecheck && npm run build:all",
     "build:all": "npm run build:standalone && npm run build:hosted",
     "build:standalone": "vite build --mode standalone --logLevel warn",
     "build:hosted": "vite build --mode hosted --logLevel warn",
@@ -16,7 +16,7 @@
     "strings:catalogs": "tsx scripts/generate-string-catalogs.ts",
     "strings:catalogs:check": "tsx scripts/generate-string-catalogs.ts --check",
     "strings:catalogs:test": "npm run test:only-failed -- --config build/boundary-strings/vitest.catalogs.config.ts",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
+    "typecheck": "vue-tsc -b && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint --fix",
     "lint:ci:strings-components": "eslint src/strings src/components --max-warnings 0 --concurrency off",
@@ -24,7 +24,8 @@
     "build:docs": "npm run typecheck:docs && vite build --config docs/vite.config.ts",
     "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
     "test:docs": "vitest run --config docs/vitest.config.ts docs",
-    "lint:docs": "eslint docs build/docs-dev-bridge.ts --max-warnings 0"
+    "lint:docs": "eslint docs build/docs-dev-bridge.ts --max-warnings 0",
+    "test:model-pages": "vitest run --config build/vitest.model-pages.config.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",

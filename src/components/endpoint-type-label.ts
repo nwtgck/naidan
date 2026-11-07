@@ -1,5 +1,5 @@
 import type { Endpoint } from '@/01-models/types';
-import { lazyStrings } from '@/strings';
+import { lazyStrings, ensureStrings } from '@/strings';
 import { ENDPOINT_PRESETS } from '@/constants';
 
 export function endpointTypeLabel({
@@ -14,13 +14,32 @@ export function endpointTypeLabel({
   case 'ollama':
     return 'Ollama';
   case 'llama_cpp_browser':
-    return 'llama.cpp browser';
+    return lazyStrings.llamaCppBrowser__endpoint_label();
   case 'transformers_js':
     return 'Transformers.js';
   case 'browser_provided_lm':
     return lazyStrings.SHARED__browser_provided();
   case 'unsupported_experimental_endpoint':
     return lazyStrings.SHARED__unsupported_experimental_endpoint();
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+}
+
+/** Resolve a complete label before storing it in a name or opening an imperative dialog. */
+export async function ensureEndpointTypeLabel({ endpointType }: {
+  endpointType: Endpoint['type'],
+}): Promise<string> {
+  switch (endpointType) {
+  case 'naidan_rpc': return 'Naidan RPC';
+  case 'openai': return 'OpenAI';
+  case 'ollama': return 'Ollama';
+  case 'transformers_js': return 'Transformers.js';
+  case 'llama_cpp_browser': return await ensureStrings.llamaCppBrowser__endpoint_label();
+  case 'browser_provided_lm': return await ensureStrings.SHARED__browser_provided();
+  case 'unsupported_experimental_endpoint': return await ensureStrings.SHARED__unsupported_experimental_endpoint();
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);

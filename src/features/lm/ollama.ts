@@ -1,3 +1,5 @@
+import type { Secret } from '@/utils/secret';
+import { revealHttpHeaders } from '@/01-models/endpoint';
 import { createMetricsReporter, createReceivedTextMeter } from '@/logic/generation-metrics/measurement';
 import { readOllamaMetrics } from './generation-metrics';
 /**
@@ -179,11 +181,11 @@ async function blobToBase64({ blob }: { blob: Blob }): Promise<string> {
 export class OllamaProvider implements LmProvider {
   private config: {
     endpoint: string,
-    headers?: [string, string][],
+    headers?: [name: string, value: Secret<string>][],
     fetcher: LmFetch,
   };
 
-  constructor({ endpoint, headers, fetcher }: { endpoint: string, headers?: [string, string][], fetcher?: LmFetch }) {
+  constructor({ endpoint, headers, fetcher }: { endpoint: string, headers?: [name: string, value: Secret<string>][], fetcher?: LmFetch }) {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
@@ -198,7 +200,7 @@ export class OllamaProvider implements LmProvider {
   }): AsyncIterable<ChatGenerationItem> {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
     const { endpoint, headers, fetcher } = this.config;
-    const requestHeaders = headers?.map(([name, value]): [string, string] => [name, value]);
+    const requestHeaders = headers?.map(([name, value]): [name: string, value: Secret<string>] => [name, value]);
     return createChatGenerationStream({
       signal,
       run: async ({ writer, signal }) => {
@@ -276,7 +278,7 @@ export class OllamaProvider implements LmProvider {
         async function request(): Promise<Response> {
           signal.throwIfAborted();
           try {
-            return await fetcher(url, { method: 'POST', headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])], body: JSON.stringify(body), signal });
+            return await fetcher(url, { method: 'POST', headers: [['Content-Type', 'application/json'], ...(revealHttpHeaders({ headers: requestHeaders }) ?? [])], body: JSON.stringify(body), signal });
           } catch (error) {
             if (signal.aborted) {
               throw error;
@@ -391,7 +393,7 @@ export class OllamaProvider implements LmProvider {
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
     let response: Response;
     try {
-      response = await fetcher(url, { signal, headers });
+      response = await fetcher(url, { signal, headers: revealHttpHeaders({ headers }) });
     } catch (e) {
       const isAbort = e instanceof Error && e.name === 'AbortError';
       if (!isAbort) {
@@ -433,7 +435,7 @@ export class OllamaProvider implements LmProvider {
     let response: Response;
 
     try {
-      response = await fetcher(url, { signal, headers });
+      response = await fetcher(url, { signal, headers: revealHttpHeaders({ headers }) });
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw error;
@@ -492,7 +494,7 @@ export class OllamaProvider implements LmProvider {
         method: 'POST',
         headers: [
           ['Content-Type', 'application/json'],
-          ...(headers ?? []),
+          ...(revealHttpHeaders({ headers }) ?? []),
         ],
         body: JSON.stringify({
           model,
@@ -564,7 +566,7 @@ export class OllamaProvider implements LmProvider {
         method: 'POST',
         headers: [
           ['Content-Type', 'application/json'],
-          ...(headers || []),
+          ...(revealHttpHeaders({ headers }) ?? []),
         ],
         body: JSON.stringify(body),
         signal,

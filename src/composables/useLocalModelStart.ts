@@ -1,4 +1,5 @@
-import { computed, onScopeDispose, reactive, readonly, shallowRef, toRaw, watch } from 'vue';
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { computed, onScopeDispose, reactive, readonly, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { generateId } from '@/01-models/id';
 import { idToRaw, type ChatGroupId, type ChatId } from '@/01-models/ids';
@@ -66,7 +67,7 @@ function createAttempt(): LocalLaunchAttempt {
   return {
     chatId: generateId<ChatId>(),
     chatGroupId: generateId<ChatGroupId>(),
-    titleGeneration: structuredClone(toRaw(useSettings().settings.value.titleGeneration)),
+    titleGeneration: clonePlainData({ value: useSettings().settings.value.titleGeneration }),
     isStorageCurrent: storageService.captureModelLaunchStorage(),
     promise: undefined,
     source: undefined,

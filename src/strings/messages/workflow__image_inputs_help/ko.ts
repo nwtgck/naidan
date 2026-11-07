@@ -1,0 +1,1 @@
+export const workflow__image_inputs_help = (): string => "PNG, JPEG, WebP 바이너리 출력을 연결하세요. 참조 이미지는 최대 8개이며 파일당 16 MiB, 전체 64 MiB, 한 변 8,192픽셀, 전체 16,777,216픽셀까지 가능합니다. 애니메이션 이미지는 사용할 수 없습니다. 모델도 이미지 입력을 지원해야 합니다.";

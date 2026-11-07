@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import type { Endpoint, EndpointType, HttpEndpoint, SupportedEndpoint } from '@/01-models/types';
 
 export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
@@ -114,12 +115,17 @@ export function cloneOptionalEndpoint({
   return endpoint === undefined ? undefined : cloneEndpoint({ endpoint });
 }
 
-function areHttpHeadersEqual({
+/** Authorized HTTP request boundary; never use this for diagnostics or comparison. */
+export function revealHttpHeaders({ headers }: { headers: readonly [name: string, value: Secret<string>][] | undefined }): [string, string][] | undefined {
+  return headers?.map(([name, value]) => [name, value.reveal()]);
+}
+
+export function areHttpHeadersEqual({
   leftHeaders,
   rightHeaders,
 }: {
-  leftHeaders: [string, string][] | undefined,
-  rightHeaders: [string, string][] | undefined,
+  leftHeaders: readonly [name: string, value: Secret<string>][] | undefined,
+  rightHeaders: readonly [name: string, value: Secret<string>][] | undefined,
 }): boolean {
   if (leftHeaders === rightHeaders) {
     return true;
@@ -132,10 +138,10 @@ function areHttpHeadersEqual({
     return false;
   }
   return leftHeaders.every(
-    ([name, value], index) => (
-      name === rightHeaders[index]?.[0]
-      && value === rightHeaders[index]?.[1]
-    ),
+    ([name, value], index) => {
+      const right = rightHeaders[index];
+      return right !== undefined && name === right[0] && Secret.equals(value, right[1]);
+    },
   );
 }
 

@@ -144,6 +144,43 @@ jobs:
           cd naidan-server.py
           ./run_test.sh
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        uses: $/.github/actions/retry-npm-ci
+        with:
+          node-image: node:22-bookworm
+
+      - name: Run typecheck
+        # Use the same project-reference and PWA checks as local builds.
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" \
+            -v "$PWD/naidan-server:/work/naidan-server:ro" \
+            -v "$PWD/package.json:/work/package.json:ro" \
+            -w /work \
+            -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
+            node:22-bookworm \
+            npm run typecheck
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -164,14 +201,8 @@ jobs:
         with:
           node-image: node:22-bookworm
 
-      - name: Ensure licenses.json exists
-        run: |
-          mkdir -p src/assets
-          echo '[{"name": "dummy-package-for-tests", "version": "0.0.0", "license": "DUMMY-LICENSE", "licenseText": "This is a placeholder for CI tests."}]' > src/assets/licenses.json
-
       - name: Run build
-        # Build type checking hit Node's ~4 GiB heap limit before bundling.
-        # Keep every check enabled; allow headroom only for this build step.
+        # Keep headroom for memory-intensive standalone and hosted bundles.
         env:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
@@ -187,7 +218,7 @@ jobs:
             -v "$PWD/package.json:/work/package.json:ro" \
             -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
-            node:22-bookworm npm run build
+            node:22-bookworm npm run build:all
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -369,13 +400,16 @@ jobs:
           path: docs-dist
 
       - name: Add Docs to this deployment only
-        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        # Model pages are already in Hosted. Docs remain deployment-only; do not repack the ZIP.
         run: |
           test -f dist/hosted/index.html
           test -f docs-dist/index.html
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
+          test -f dist/hosted/sitemap.xml
+          test ! -e dist/hosted/404.html
+          test -d dist/hosted/llama-cpp-browser
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/
@@ -459,13 +493,16 @@ jobs:
           path: docs-dist
 
       - name: Add Docs to this deployment only
-        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        # Model pages are already in Hosted. Docs remain deployment-only; do not repack the ZIP.
         run: |
           test -f dist/hosted/index.html
           test -f docs-dist/index.html
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
+          test -f dist/hosted/sitemap.xml
+          test ! -e dist/hosted/404.html
+          test -d dist/hosted/llama-cpp-browser
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/
@@ -562,13 +599,16 @@ jobs:
           path: docs-dist
 
       - name: Add Docs to this deployment only
-        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        # Model pages are already in Hosted. Docs remain deployment-only; do not repack the ZIP.
         run: |
           test -f dist/hosted/index.html
           test -f docs-dist/index.html
           test -f docs-dist/404.html
           test -f docs-dist/en/index.html
           test -f docs-dist/ja/index.html
+          test -f dist/hosted/sitemap.xml
+          test ! -e dist/hosted/404.html
+          test -d dist/hosted/llama-cpp-browser
           test ! -e dist/hosted/docs
           mkdir -p dist/hosted/docs
           cp -a docs-dist/. dist/hosted/docs/

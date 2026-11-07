@@ -1,3 +1,4 @@
+import type { Secret } from '@/utils/secret';
 import type { LmProvider } from '@/01-models/lm';
 import type { Endpoint, EndpointType, LlamaCppServerTimingsMode } from '@/01-models/types';
 import type { FakeLmDebugModeStatus } from '@/features/fake-lm/runtime/fakeLmDebugMode';
@@ -122,8 +123,8 @@ export async function prefetchLmProvider({ endpointType }: {
 }
 
 export function cloneEndpointHttpHeaders({ headers }: {
-  headers: [string, string][] | undefined,
-}): [string, string][] | undefined {
+  headers: [name: string, value: Secret<string>][] | undefined,
+}): [name: string, value: Secret<string>][] | undefined {
   return headers === undefined
     ? undefined
     : headers.map(([name, value]) => [name, value]);

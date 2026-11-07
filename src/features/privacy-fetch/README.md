@@ -117,7 +117,36 @@ Those injected scripts can access APIs such as `localStorage`, which fail inside
 
 Do not fix this by adding `allow-same-origin`.
 
-For the broker HTML only, development-injected scripts should be removed in the Vite dev server path. This should be a dev-only cleanup. It exists to preserve the same sandbox constraints used by the real broker.
+The development plugin bundles `broker-entry.ts` and its dependencies into one
+in-memory ES module at `/assets/privacy-fetch-broker/broker.js`. Only that asset
+namespace receives `Access-Control-Allow-Origin: *`; raw application and package
+source paths do not receive blanket CORS permission. The canonical broker HTML
+is served directly with its entry URL replaced, without Vite HTML injection.
+Hosted and standalone output are unchanged by this serve-only plugin.
+
+The plugin reuses Vite's filesystem watcher. Dependency module IDs are collected
+by the auxiliary compiler to select rebuilds, not to authorize HTTP requests.
+Builds are serialized; complete HTML and JavaScript are published together. New
+changes during a build queue another build. A failed build returns HTTP 503
+instead of silently serving the last successful output; editing or creating a
+file allows recovery. Recovery reloads the application even if the repaired
+output matches the previous successful bytes. Ordinary application HMR remains
+under Vite's control; broker changes use a full page reload.
+
+The auxiliary build uses library mode and disables code splitting. Unbundled
+imports or additional outputs, such as CSS and worker files, are rejected rather
+than receiving additional permissive URL rules. No source maps or generated
+bundle files are written to disk. Supporting new asset types or application-only
+build plugins requires an explicit review of this contract.
+
+### Broker startup failures
+
+The parent waits at most 30 seconds for a valid `ready` message from the expected
+iframe. A load error, where the browser provides one, can fail earlier. Startup
+failure rejects waiting requests, releases the iframe and listeners, and retires
+the shared client. The next explicit request can create a fresh broker. Requests
+are never automatically replayed. The startup deadline does not limit downloads
+or other requests after the broker has become ready.
 
 ## Public Hugging Face models
 
@@ -141,8 +170,10 @@ both realms support it, without checking browser names or versions. Otherwise,
 each consumer pull requests at most one 256 KiB transferred chunk; slow OPFS writes
 therefore stop further broker reads. Stream transfer is not a zero-copy guarantee.
 Worker API stream arguments and returns require both `WorkerTransfer` and
-`WorkerCapability<..., 'readable-stream-transfer'>`; capability markers are
-applied only in the successful probe branch. Body cancellation, request abort, and broker
+`WorkerCapability<..., typeof READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>`.
+The canonical symbol lives in `src/utils/worker-transport-capabilities.ts`;
+`await workerCapability(...)` issues the marker only after the transfer probe
+succeeds. Symbols and markers are local typing/control information, not wire data. Body cancellation, request abort, and broker
 disposal cancel the network reader. Errors use fixed messages so signed delivery
 URLs are not included in diagnostic error text. Standalone streams read the native response body on demand with the same
 fixed error messages. Existing buffered `privacyFetch` calls remain

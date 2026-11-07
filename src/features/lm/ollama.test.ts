@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { runProviderConversationForTest } from './provider.test-support';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OllamaProvider } from './ollama';
@@ -5,6 +7,8 @@ import type { LmFetch } from '@/features/lm/fetch';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import http from 'http';
 import type { AddressInfo } from 'net';
+
+installSecretEqualityTester();
 
 describe('OllamaProvider Integration Tests', () => {
   let server: http.Server | null = null;
@@ -474,7 +478,7 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({
         endpoint: baseUrl,
-        headers: [['X-Test', 'Ollama']],
+        headers: [['X-Test', Secret.from({ value: 'Ollama' })]],
       });
 
       await runProviderConversationForTest({ provider, messages: [], model: 'm', onChunk: () => {} });
@@ -673,7 +677,7 @@ describe('OllamaProvider runtime model management', () => {
     }));
     const provider = new OllamaProvider({
       endpoint: 'http://localhost:11434/',
-      headers: [['Authorization', 'Bearer token']],
+      headers: [['Authorization', Secret.from({ value: 'Bearer token' })]],
       fetcher,
     });
 
@@ -754,7 +758,7 @@ describe('OllamaProvider runtime model management', () => {
     }));
     const provider = new OllamaProvider({
       endpoint: 'http://localhost:11434/',
-      headers: [['X-API-Key', 'secret']],
+      headers: [['X-API-Key', Secret.from({ value: 'secret' })]],
       fetcher,
     });
 

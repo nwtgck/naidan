@@ -1,0 +1,1 @@
+export const workflow__run_activity_cannot_be_verified = (): string => "The owner of this run cannot be verified. It may still be active in another tab or an older version. Opening this history does not resume it.";

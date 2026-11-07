@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { createFileExplorerStreamClient } from './stream-client';
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { workerCapability, workerProxy } from '@/utils/worker-transport';
@@ -26,7 +27,6 @@ import {
 import {
   getFileExplorerRootMounts,
   normalizeFileExplorerRootMounts,
-  hasFileExplorerFileSystemHandles,
   mapFileExplorerRootToOpfsLocators,
 } from './root-transport';
 
@@ -57,9 +57,10 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const createRuntime = async ({ requestRoot }: {
-    requestRoot: FileExplorerRootDescriptor,
+  const createRuntime = async ({ prepared }: {
+    prepared: Parameters<IFileExplorerWorker['prepareSession']>[0],
   }) => {
+    const requestRoot = prepared.request.root;
     const managedVolumes = await createManagedVolumeRemoteAccess({ mounts: getFileExplorerRootMounts({ root: requestRoot }) });
     try {
       const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
@@ -67,10 +68,7 @@ export async function createFileExplorerWorkerClient({
       const stopObserving = observeManagedVolumeWorker({ worker: session.worker, connection: managedVolumes });
       try {
         const prepareResponse = await remote.prepareSession(
-          workerCapability({
-            value: { request: { root: requestRoot } },
-            capability: 'file-system-handle-clone',
-          }),
+          prepared,
           naidanSysfsRemoteReader
             ? workerProxy({ value: naidanSysfsRemoteReader })
             : undefined,
@@ -98,14 +96,16 @@ export async function createFileExplorerWorkerClient({
     }
   };
 
-  const runtime = hasFileExplorerFileSystemHandles({ root })
-    ? await runWithFileSystemHandleCloneFallback({
-      direct: () => createRuntime({ requestRoot: root }),
-      fallback: async () => createRuntime({
-        requestRoot: await mapFileExplorerRootToOpfsLocators({ root }),
+  const runtime = await runWithFileSystemHandleCloneFallback({
+    request: { request: { root } },
+    direct: ({ request: prepared }) => createRuntime({ prepared }),
+    fallback: async () => createRuntime({
+      prepared: await workerCapability({
+        value: { request: { root: await mapFileExplorerRootToOpfsLocators({ root }) } },
+        capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
       }),
-    })
-    : await createRuntime({ requestRoot: root });
+    }),
+  });
   const { session, remote, sessionId } = runtime;
   const streams = createFileExplorerStreamClient({ remote, sessionId, worker: session.worker });
 

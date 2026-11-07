@@ -1295,6 +1295,27 @@ describe('chat context target changes without weight reload', () => {
 });
 
 describe('temporary resident model cache', () => {
+  it.each(['opfs', 'host'] as const)('reuses a captured %s snapshot but reloads an equal-metadata replacement', async storageKind => {
+    vi.stubGlobal('FileReaderSync', class {
+      readAsArrayBuffer(): ArrayBuffer {
+        return new ArrayBuffer(1);
+      }
+    });
+    const file = new File(['x'], 'model.gguf', { lastModified: 123 });
+    const entry = { relativePath: 'model.gguf', file, storageKind, snapshotId: 'accepted-source' };
+    const modelId = storageKind === 'opfs' ? 'user/Model' : 'host/Models/owner/Model:Q4';
+    const location = storageKind === 'opfs' ? { kind: 'opfs-user' as const, rootName: 'Model' } : { kind: 'host' as const, directoryId: 'root', repository: 'owner/Model' };
+    const resolvedModel = { modelId, location, directory: { files: [entry], primaryFile: entry, projectorFile: undefined } };
+    const first = { ...request({ debug: 'off' }), modelId, resolvedModel };
+    await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
+    await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(1);
+    const replaced = { ...entry, snapshotId: 'replacement-source', file: new File(['y'], 'model.gguf', { lastModified: 123 }) };
+    await prepareSession({ request: { ...first, resolvedModel: { ...resolvedModel, directory: { files: [replaced], primaryFile: replaced, projectorFile: undefined } } }, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
+    expect(host.core!.api.llama_model_free).toHaveBeenCalledOnce();
+  });
+
   afterEach(() => vi.unstubAllGlobals());
 
   it('reuses the same registration but reloads replacement files with identical public ID, size and mtime', async () => {

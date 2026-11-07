@@ -1,9 +1,14 @@
+import { createHash } from 'node:crypto';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createRpcProtocolAdvertisement, NaidanRpcProtocolError } from '@/features/naidan-rpc';
 import { PipingRetirementError } from '@/features/naidan-piping-duplex';
 import { openPipingRpc, describePipingRpcProtocolFailure } from './piping';
 import { encodePeerKey } from '@/features/naidan-rpc-integration/runtime/identity';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex';
+
+installSecretEqualityTester();
 const calls = vi.hoisted(() => ({ connect: vi.fn(), pair: vi.fn(), prepare: vi.fn(), session: vi.fn() }));
 vi.mock('@/features/naidan-piping-duplex/naidan-piping-duplex-session', () => ({
   NaidanPipingDuplexSession: { pair: calls.pair, connectPinned: calls.connect, preparePinnedContact: calls.prepare },
@@ -75,7 +80,7 @@ it('passes reciprocal pinned identities and one stable purpose to the endpoint o
 it('does not treat relay credentials as part of the shared route namespace', async () => {
   const common = { identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal };
   await openPipingRpc({ ...common, settings });
-  await openPipingRpc({ ...common, settings: { ...settings, headers: [{ name: 'Authorization', value: 'secret' }] } });
+  await openPipingRpc({ ...common, settings: { ...settings, headers: [{ name: 'Authorization', value: Secret.from({ value: 'secret' }) }] } });
   const first = calls.connect.mock.calls[0]![0], second = calls.connect.mock.calls[1]![0];
   expect(first.purpose).toBe(second.purpose);
   expect(first.expectedPeer).toEqual(second.expectedPeer);
@@ -84,16 +89,16 @@ it('does not treat relay credentials as part of the shared route namespace', asy
 });
 
 it('bounds first-pairing input and still requires an explicit verifier', async () => {
-  await expect(openPipingRpc({ settings, identity: a, peerKey: undefined, code: 'a'.repeat(129), verifyPeer: async () => true, signal: new AbortController().signal })).rejects.toThrow();
-  await expect(openPipingRpc({ settings, identity: a, peerKey: undefined, code: '1234', verifyPeer: undefined, signal: new AbortController().signal })).rejects.toThrow();
+  await expect(openPipingRpc({ settings, identity: a, peerKey: undefined, code: Secret.from({ value: 'a'.repeat(129) }), verifyPeer: async () => true, signal: new AbortController().signal })).rejects.toThrow();
+  await expect(openPipingRpc({ settings, identity: a, peerKey: undefined, code: Secret.from({ value: '1234' }), verifyPeer: undefined, signal: new AbortController().signal })).rejects.toThrow();
   expect(calls.pair).not.toHaveBeenCalled();
 });
 
 it('uses reciprocal discovery routes for normalized Unicode meeting codes without bypassing comparison', async () => {
   const verifyPeer = vi.fn(async () => true);
   const common = { settings, peerKey: undefined, verifyPeer, signal: new AbortController().signal };
-  await openPipingRpc({ ...common, identity: a, code: '  cafe\u0301 家 🔌  ' });
-  await openPipingRpc({ ...common, identity: b, code: 'café 家 🔌' });
+  await openPipingRpc({ ...common, identity: a, code: Secret.from({ value: '  cafe\u0301 家 🔌  ' }) });
+  await openPipingRpc({ ...common, identity: b, code: Secret.from({ value: 'café 家 🔌' }) });
   const first = calls.pair.mock.calls[0]![0], second = calls.pair.mock.calls[1]![0];
   expect(first.code).toMatch(/^peer-[0-9a-f]{64}$/);
   expect(first.code).toBe(second.code);
@@ -107,7 +112,7 @@ it('uses reciprocal discovery routes for normalized Unicode meeting codes withou
 
 it('treats input resembling a pinned route as an ordinary meeting code requiring comparison', async () => {
   const code = 'peer-' + 'a'.repeat(64), verifyPeer = vi.fn(async () => true);
-  await openPipingRpc({ settings, identity: a, peerKey: undefined, code, verifyPeer, signal: new AbortController().signal });
+  await openPipingRpc({ settings, identity: a, peerKey: undefined, code: Secret.from({ value: code }), verifyPeer, signal: new AbortController().signal });
   expect(calls.pair).toHaveBeenCalledOnce();
   expect(calls.pair.mock.calls[0]![0].code).not.toBe(code);
   expect(calls.pair.mock.calls[0]![0].verifyPeer).toBe(verifyPeer);
@@ -119,7 +124,7 @@ it.each(['connect', 'pair'] as const)('%s advertises public RPC identity and acc
   await openPipingRpc({
     ...common,
     peerKey: mode === 'connect' ? encodePeerKey({ bytes: b.publicKey }) : undefined,
-    code: mode === 'pair' ? '1234' : undefined,
+    code: mode === 'pair' ? Secret.from({ value: '1234' }) : undefined,
     verifyPeer: mode === 'pair' ? async () => true : undefined,
   });
   const args = (mode === 'connect' ? calls.connect : calls.pair).mock.calls[0]![0];
@@ -438,4 +443,14 @@ it('does not reclassify authenticated successor metadata as a retryable setup in
   const error: unknown = await finishing;
   expect(error).toBeInstanceOf(NaidanRpcProtocolError);
   expect(describePipingRpcProtocolFailure({ error })).toContain('experimental revision 2');
+});
+
+it('derives pairing routes from the original secret and preserves the existing protocol hash', async () => {
+  const common = { settings, identity: a, peerKey: undefined, verifyPeer: async () => true, signal: new AbortController().signal };
+  for (const value of ['first-pairing-code', 'second-pairing-code']) {
+    await openPipingRpc({ ...common, code: Secret.from({ value }) });
+  }
+  const first = calls.pair.mock.calls[0]![0], second = calls.pair.mock.calls[1]![0];
+  expect(first.code).toBe('peer-' + createHash('sha256').update(JSON.stringify(['naidan-peer-rpc-pairing/v1', 'first-pairing-code'])).digest('hex'));
+  expect(second.code).not.toBe(first.code);
 });

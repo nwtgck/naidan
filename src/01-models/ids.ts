@@ -33,6 +33,10 @@ export type ChatGroupId = BrandedId<'ChatGroupId'>;
 export type AttachmentId = BrandedId<'AttachmentId'>;
 export type BinaryObjectId = BrandedId<'BinaryObjectId'>;
 export type VolumeId = BrandedId<'VolumeId'>;
+export type WorkflowOutputId = BrandedId<'WorkflowOutputId'>;
+export type WorkflowId = BrandedId<'WorkflowId'>;
+export type WorkflowStepId = BrandedId<'WorkflowStepId'>;
+export type WorkflowRunId = BrandedId<'WorkflowRunId'>;
 export type HostModelDirectoryId = BrandedId<'HostModelDirectoryId'>;
 export type LocalModelSourceId = BrandedId<'LocalModelSourceId'>;
 export type ImageGenerationId = BrandedId<'ImageGenerationId'>;
@@ -57,6 +61,18 @@ export type OPFSTmpOwnerScopeId = BrandedId<'OPFSTmpOwnerScopeId'>;
 export type OPFSTmpDirectoryId = BrandedId<'OPFSTmpDirectoryId'>;
 
 export type NaidanId = BrandedId<string>;
+
+export function toWorkflowId({ raw }: { raw: string }): WorkflowId {
+  return raw as unknown as WorkflowId;
+}
+
+export function toWorkflowStepId({ raw }: { raw: string }): WorkflowStepId {
+  return raw as unknown as WorkflowStepId;
+}
+
+export function toWorkflowRunId({ raw }: { raw: string }): WorkflowRunId {
+  return raw as unknown as WorkflowRunId;
+}
 
 export function toNaidanRpcRegistrationId({ raw }: { raw: string }): NaidanRpcRegistrationId {
   return raw as unknown as NaidanRpcRegistrationId;

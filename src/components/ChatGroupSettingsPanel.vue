@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import type { Secret } from '@/utils/secret';
+import { areScopedTitleGenerationsEqual } from '@/01-models/title-generation';
 import { preservesUnlistedModel } from '@/logic/unlisted-model-selection';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { ensureStrings, lazyStrings } from '@/strings';
-import { computed, onBeforeUnmount, onMounted, ref, watch, useId } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick, useId } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useChatGroups, type ToolConfigsUpdater } from '@/composables/chat/useChatGroups';
@@ -170,38 +172,6 @@ function cloneScopedTitleGeneration({
     };
 }
 
-function areScopedTitleGenerationsEqual({
-  left,
-  right,
-}: {
-  left: ScopedTitleGeneration | undefined,
-  right: ScopedTitleGeneration | undefined,
-}): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (left === undefined || right === undefined) {
-    return false;
-  }
-  if (typeof left === 'string' || typeof right === 'string') {
-    return left === right;
-  }
-  if (left.model !== right.model) {
-    if (left.model === 'same_scope' || right.model === 'same_scope') {
-      return false;
-    }
-    if (left.model.id !== right.model.id) {
-      return false;
-    }
-  }
-  if (!areLmParametersEqual({ left: left.lmParameters, right: right.lmParameters })) {
-    return false;
-  }
-  if (left.endpoint === 'same_scope' || right.endpoint === 'same_scope') {
-    return left.endpoint === right.endpoint;
-  }
-  return areEndpointsEqual({ left: left.endpoint, right: right.endpoint });
-}
 
 type TitleGenerationMode = 'inherit' | 'override' | 'disabled';
 
@@ -412,10 +382,10 @@ function titleReasoningLabel({
 // Keep select parsing exhaustive: adding an EndpointType must fail typechecking
 // until the UI value and label handling are reviewed.
 const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
+  llama_cpp_browser: true,
   openai: true,
   ollama: true,
   naidan_rpc: true,
-  llama_cpp_browser: true,
   transformers_js: true,
   browser_provided_lm: true,
 };
@@ -778,14 +748,14 @@ const localTitleEndpointUrl = computed({
 const localTitleEndpointHttpHeaders = computed(() => {
   const endpoint = activeTitleEndpoint.value;
   return endpoint !== undefined && isHttpEndpoint(endpoint)
-    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [string, string]) ?? []
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [name: string, value: Secret<string>]) ?? []
     : undefined;
 });
 
 function setLocalTitleEndpointHttpHeaders({
   httpHeaders,
 }: {
-  httpHeaders: [string, string][],
+  httpHeaders: [name: string, value: Secret<string>][],
 }): void {
   const endpoint = activeTitleEndpoint.value;
   if (endpoint === undefined || !isHttpEndpoint(endpoint)) {
@@ -1168,7 +1138,7 @@ const localEndpointUrl = computed({
   },
 });
 
-const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
+const localEndpointHttpHeaders = computed<[name: string, value: Secret<string>][] | undefined>({
   get: () => {
     const endpoint = localSettings.value.endpoint ?? settings.value.endpoint;
     return endpoint !== undefined && isHttpEndpoint(endpoint)
@@ -1484,9 +1454,14 @@ watch(
 
     // ChatGroup also owns its chat-item list. Watch only the settings draft so
     // sidebar activity does not repeatedly reconcile this form while it is open.
-    return draft === undefined ? undefined : JSON.stringify(draft);
+    return draft;
   },
-  () => {
+  (current, previous) => {
+    // Masked JSON cannot detect a credential-only update. The getter snapshots
+    // only editable settings, and the existing field comparison preserves drafts.
+    if (current !== undefined && previous !== undefined && createChanges({ previous, next: current }).length === 0) {
+      return;
+    }
     if (currentChatGroup.value?.id === editingChatGroupId.value) {
       syncLocalWithCurrent({ preserveDirty: true });
     }
@@ -1829,6 +1804,20 @@ async function restoreGroupName({ chatGroupId, expectedChange }: { chatGroupId: 
 
 // Presentation stays separate from raw draft values and the existing save commands.
 const connectionOpen = ref(false);
+const endpointTypeSelect = ref<InstanceType<typeof SettingsSelect> | null>(null);
+
+async function toggleConnection() {
+  connectionOpen.value = !connectionOpen.value;
+  if (!connectionOpen.value) {
+    return;
+  }
+  // The disclosure must be visible before the menu measures its anchor and focuses.
+  await nextTick();
+  if (connectionOpen.value) {
+    await endpointTypeSelect.value?.openMenu();
+  }
+}
+
 const connectionTrigger = ref<HTMLButtonElement | null>(null);
 const connectionDetailsId = useId();
 const toolsStatus = ref<{ pending: boolean, error: string | undefined, enabledCount: number }>({ pending: false, error: undefined, enabledCount: 0 });
@@ -1956,7 +1945,7 @@ defineExpose({
         <div class="scoped-settings-main">
           <div tw-class="min-w-0 space-y-2">
             <span class="scoped-field-label">{{ lazyStrings.ChatGroupSettingsPanel__endpoint_type() }}</span>
-            <button type="button" :aria-expanded="connectionOpen" :aria-controls="connectionDetailsId" ref="connectionTrigger" data-testid="group-setting-connection-trigger" class="scoped-connection-trigger" tw-class="group flex w-full min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800" @click="connectionOpen = !connectionOpen">
+            <button type="button" :aria-expanded="connectionOpen" :aria-controls="connectionDetailsId" ref="connectionTrigger" data-testid="group-setting-connection-trigger" class="scoped-connection-trigger" tw-class="group flex w-full min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800" @click="toggleConnection">
               <span tw-class="block min-w-0 flex-1"><span tw-class="block truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ scopedEndpointTypeLabel({ endpointType: effectiveEndpointType }) }}</span><span tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="localSettings.endpoint ? undefined : inheritedEndpointSource" /><span tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ endpointDetail({ endpoint: effectiveEndpoint }) }}</span></span></span><ChevronDownIcon :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200', connectionOpen && 'rotate-180']" />
             </button>
             <CspLmEndpointHint activity-for-display-only="connection" v-if="!connectionOpen && isHttpEndpoint(effectiveEndpoint)" :fake-lm-debug-mode-status="undefined" :endpoint="effectiveEndpoint" operation="models" presentation="compact" />
@@ -1972,7 +1961,7 @@ defineExpose({
           </div>
         </div>
         <SettingsCollapse :id="connectionDetailsId" :open="connectionOpen" :return-focus="connectionTrigger ?? undefined"><div tw-class="space-y-4 rounded-xl bg-gray-50/70 p-4 dark:bg-gray-800/25">
-          <div tw-class="max-w-sm space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatGroupSettingsPanel__endpoint_type() }}</span><SettingsSelect :model-value="localSettings.endpoint?.type || 'global'" :options="mainEndpointChoices" :label="lazyStrings.ChatGroupSettingsPanel__endpoint_type()" @update:model-value="value => changeMainType({ value })" data-testid="group-setting-endpoint-type-select" /></div>
+          <div tw-class="max-w-sm space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatGroupSettingsPanel__endpoint_type() }}</span><SettingsSelect ref="endpointTypeSelect" :model-value="localSettings.endpoint?.type || 'global'" :options="mainEndpointChoices" :label="lazyStrings.ChatGroupSettingsPanel__endpoint_type()" @update:model-value="value => changeMainType({ value })" data-testid="group-setting-endpoint-type-select" /></div>
           <RpcRegistrationSelect surface="settings" v-if="localSettings.endpoint?.type === 'naidan_rpc'" :model-value="localSettings.endpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: false })" />
           <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
           <template v-if="isHttpEndpoint(effectiveEndpoint)">

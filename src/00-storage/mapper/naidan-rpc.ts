@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import { normalizeNaidanRpcLabel, normalizeNaidanRpcTransport } from '@/01-models/naidan-rpc';
 import { idToRaw, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
@@ -17,7 +18,7 @@ export function rpcRegistrationToDto({ registration }: { registration: NaidanRpc
     peerPublicKey: idToRaw({ id: peerPublicKey }),
     localPublicKey,
     label: normalizeNaidanRpcLabel({ label }),
-    transport: { type, serverUrl, headers: headers.map(({ name, value }) => ({ name, value })) },
+    transport: { type, serverUrl, headers: headers.map(({ name, value }) => ({ name, value: value.reveal() })) },
     inboundAllowedMethods: [...new Set(inboundAllowedMethods)],
     connectOnStartup,
     revision,
@@ -33,7 +34,7 @@ export function rpcRegistrationFromDto({ value }: { value: unknown }): NaidanRpc
     peerPublicKey: toNaidanRpcPeerPublicKey({ raw: peerPublicKey }),
     localPublicKey,
     label: normalizeNaidanRpcLabel({ label }),
-    transport: normalizeNaidanRpcTransport({ transport }),
+    transport: normalizeNaidanRpcTransport({ transport: { ...transport, headers: transport.headers.map(({ name, value }) => ({ name, value: Secret.from({ value }) })) } }),
     inboundAllowedMethods: [...new Set(inboundAllowedMethods)],
     connectOnStartup,
     revision,

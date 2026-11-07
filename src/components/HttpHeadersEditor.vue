@@ -1,16 +1,17 @@
 <script setup lang="ts">
+import { Secret } from '@/utils/secret';
 import SettingsDisclosure from './SettingsDisclosure.vue';
 import { PlusIcon, Trash2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-const props = defineProps<{ modelValue: readonly [string, string][], testIdPrefix: string, namePlaceholder?: string, title?: string }>();
-const emit = defineEmits<{ (e: 'update:modelValue', headers: [string, string][]): void, (e: 'save'): void }>();
+const props = defineProps<{ modelValue: readonly [name: string, value: Secret<string>][], testIdPrefix: string, namePlaceholder?: string, title?: string }>();
+const emit = defineEmits<{ (e: 'update:modelValue', headers: [name: string, value: Secret<string>][]): void, (e: 'save'): void }>();
 
 function update({ index, field, value }: { index: number, field: 0 | 1, value: string }) {
-  emit('update:modelValue', props.modelValue.map((header, i) => i === index ? [field === 0 ? value : header[0], field === 1 ? value : header[1]] : [...header]));
+  emit('update:modelValue', props.modelValue.map((header, i) => i === index ? [field === 0 ? value : header[0], field === 1 ? Secret.from({ value }) : header[1]] : [...header]));
 }
 
 function add() {
-  emit('update:modelValue', [...props.modelValue.map(header => [...header] as [string, string]), ['', '']]);
+  emit('update:modelValue', [...props.modelValue.map(header => [...header] as [name: string, value: Secret<string>]), ['', Secret.from({ value: '' })]]);
 }
 
 function remove({ index }: { index: number }) {
@@ -26,7 +27,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div v-for="(header, index) in modelValue" :key="index" tw-class="flex items-start gap-2">
         <div tw-class="grid min-w-0 flex-1 grid-cols-2 gap-2">
           <input :value="header[0]" :aria-label="lazyStrings.HttpHeadersEditor__name()" :placeholder="namePlaceholder ?? lazyStrings.HttpHeadersEditor__name()" :data-testid="`${testIdPrefix}-name-input`" tw-class="min-h-10 min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" @input="update({ index, field: 0, value: ($event.target as HTMLInputElement).value })" @blur="emit('save')" />
-          <input :value="header[1]" :aria-label="lazyStrings.HttpHeadersEditor__value()" :placeholder="lazyStrings.HttpHeadersEditor__value()" :data-testid="`${testIdPrefix}-value-input`" tw-class="min-h-10 min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" @input="update({ index, field: 1, value: ($event.target as HTMLInputElement).value })" @blur="emit('save')" />
+          <input :value="header[1].reveal()" :aria-label="lazyStrings.HttpHeadersEditor__value()" :placeholder="lazyStrings.HttpHeadersEditor__value()" :data-testid="`${testIdPrefix}-value-input`" tw-class="min-h-10 min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" @input="update({ index, field: 1, value: ($event.target as HTMLInputElement).value })" @blur="emit('save')" />
         </div>
         <button type="button" :aria-label="lazyStrings.HttpHeadersEditor__remove_header()" :data-testid="`${testIdPrefix}-remove-button`" tw-class="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-gray-400 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30" @click="remove({ index })"><Trash2Icon tw-class="h-4 w-4" /></button>
       </div>

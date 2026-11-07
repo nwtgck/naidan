@@ -26,6 +26,7 @@ type PendingRequest = PromiseCallbacks<PrivacyFetchResponse> & {
 type Deferred<T> = ReturnType<typeof Promise.withResolvers<T>>;
 
 const PRIVACY_FETCH_BROKER_PATH = '/privacy-fetch-broker.html';
+const BROKER_STARTUP_TIMEOUT_MS = 30_000;
 
 let sharedPrivacyFetchBrokerClient: PrivacyFetchBrokerClient | undefined;
 let developmentMetaCspSessionSequence = 0;
@@ -86,6 +87,7 @@ function createBrokerIframe({
 
 function createPrivacyFetchBrokerClient({
   createBrokerIframeImpl,
+  onStartupFailure,
   windowObject,
   documentObject,
 }: {
@@ -94,6 +96,7 @@ function createPrivacyFetchBrokerClient({
   }: {
     documentObject: Document,
   }) => HTMLIFrameElement,
+  onStartupFailure?: () => void,
   windowObject: Window,
   documentObject: Document,
 }): PrivacyFetchBrokerClient {
@@ -102,6 +105,15 @@ function createPrivacyFetchBrokerClient({
   const activeStreams = new Set<() => void>();
   let disposed = false;
   let readyResolved = false;
+  let startupTimer: ReturnType<typeof setTimeout> | undefined;
+  let startupFailure: ReturnType<typeof createPrivacyFetchError> | undefined;
+
+  const clearStartupTimer = () => {
+    if (startupTimer !== undefined) {
+      clearTimeout(startupTimer);
+      startupTimer = undefined;
+    }
+  };
   let iframe: HTMLIFrameElement | undefined;
   let developmentMetaCspOwner: DevelopmentMetaCspSyncOwner | undefined;
   let developmentMetaCspSessionId: string | undefined;
@@ -167,7 +179,7 @@ function createPrivacyFetchBrokerClient({
   };
 
   const handleMessage: NonNullable<Window['onmessage']> = (event) => {
-    if (event.source !== iframe?.contentWindow) {
+    if (disposed || event.source !== iframe?.contentWindow) {
       return;
     }
 
@@ -195,6 +207,7 @@ function createPrivacyFetchBrokerClient({
       } finally {
         if (!readyResolved) {
           readyResolved = true;
+          clearStartupTimer();
           readyDeferred.resolve();
         }
       }
@@ -262,16 +275,14 @@ function createPrivacyFetchBrokerClient({
     }
   };
 
-  windowObject.addEventListener('message', handleMessage);
-  iframe = (createBrokerIframeImpl ?? createBrokerIframe)({ documentObject });
-  ensureIframeParentNode({ documentObject }).appendChild(iframe);
-
   const dispose = () => {
     if (disposed) {
       return;
     }
 
     disposed = true;
+    clearStartupTimer();
+    iframe?.removeEventListener('error', handleStartupError);
     try {
       unsubscribeDevelopmentMetaCsp?.();
     } catch {
@@ -309,6 +320,31 @@ function createPrivacyFetchBrokerClient({
     iframe?.remove();
     iframe = undefined;
   };
+
+  const failStartup = ({ message }: { message: string }) => {
+    if (disposed || readyResolved) {
+      return;
+    }
+    startupFailure = createPrivacyFetchError({ code: 'broker_unavailable', message });
+    readyDeferred.reject(startupFailure);
+    dispose();
+    // Retire only this failed singleton. The next explicit request can create a
+    // new iframe; never automatically replay requests or active streams.
+    onStartupFailure?.();
+  };
+
+  const handleStartupError = () => failStartup({ message: 'Privacy fetch broker iframe failed to load' });
+
+  windowObject.addEventListener('message', handleMessage);
+  try {
+    iframe = (createBrokerIframeImpl ?? createBrokerIframe)({ documentObject });
+    iframe.addEventListener('error', handleStartupError);
+    startupTimer = setTimeout(() => failStartup({ message: 'Privacy fetch broker did not become ready within 30 seconds' }), BROKER_STARTUP_TIMEOUT_MS);
+    ensureIframeParentNode({ documentObject }).appendChild(iframe);
+  } catch (error) {
+    dispose();
+    throw error;
+  }
 
   const waitForBrokerReady = async ({
     signal,
@@ -354,6 +390,9 @@ function createPrivacyFetchBrokerClient({
   return {
     // TODO: Unify fetch and fetchStream around the streaming transport, buffering only for callers that need the complete body.
     async fetchStream({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchStreamResponse> {
+      if (startupFailure !== undefined) {
+        throw startupFailure;
+      }
       if (disposed) {
         throw createPrivacyFetchError({ code: 'broker_disposed', message: 'Privacy fetch broker is disposed' });
       }
@@ -385,6 +424,9 @@ function createPrivacyFetchBrokerClient({
       return stream.response;
     },
     async fetch({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchResponse> {
+      if (startupFailure !== undefined) {
+        throw startupFailure;
+      }
       if (disposed) {
         throw createPrivacyFetchError({
           code: 'broker_disposed',
@@ -489,6 +531,11 @@ export function getPrivacyFetchBrokerClient(): PrivacyFetchBrokerClient {
     const client = createPrivacyFetchBrokerClient({
       windowObject: window,
       documentObject: document,
+      onStartupFailure: () => {
+        if (sharedPrivacyFetchBrokerClient === sharedClient) {
+          sharedPrivacyFetchBrokerClient = undefined;
+        }
+      },
     });
     const sharedClient: PrivacyFetchBrokerClient = {
       fetch: client.fetch,
@@ -521,5 +568,6 @@ if (import.meta.hot && import.meta.hot.data !== undefined) {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  BROKER_STARTUP_TIMEOUT_MS,
   createPrivacyFetchBrokerClient,
 };

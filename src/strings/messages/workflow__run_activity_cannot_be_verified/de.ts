@@ -1,0 +1,1 @@
+export const workflow__run_activity_cannot_be_verified = (): string => "Der Besitzer dieses Laufs kann nicht verifiziert werden. Er könnte noch in einem anderen Tab oder einer älteren Version aktiv sein. Das Öffnen des Verlaufs setzt ihn nicht fort.";

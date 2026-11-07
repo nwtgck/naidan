@@ -1,0 +1,1 @@
+export const workflow__local_image_help = (): string => "Generate one image with stable-diffusion.cpp browser. Use a loop for multiple prompts or seeds. Models must already be available in the local model library.";

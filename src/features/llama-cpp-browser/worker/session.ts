@@ -7,7 +7,7 @@ import { beginMemoryDiagnostics, sampleMemoryDiagnostics } from '@/features/llam
 import { openModelFileAccess } from './model-file-access';
 import { createBackendCensus } from './backend-census';
 import type { AudioBackend } from '@/features/audio-generation/types';
-import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
+import type { WorkerModelFile as ModelFile } from './model-transport-schema';
 import type { Core } from "@/features/llama-cpp-browser/runtime/core";
 import { mountReadOnlyFile } from "@/features/llama-cpp-browser/runtime/read-only-file";
 import { createModelReadCache } from "@/features/llama-cpp-browser/runtime/model-read-cache";
@@ -131,6 +131,9 @@ export async function invalidateStoredModel({ modelId }: { modelId: string }): P
 // This is resident-cache invalidation, not public identity protection. Reusing a
 // temporary name must load its current files, even when size/mtime are identical.
 async function sameModelFile({ previous, next }: { previous: ModelFile, next: ModelFile }): Promise<boolean> {
+  if ('snapshotId' in previous || 'snapshotId' in next) {
+    return 'snapshotId' in previous && 'snapshotId' in next && previous.storageKind === next.storageKind && previous.snapshotId === next.snapshotId;
+  }
   if (previous.storageKind === 'temp' || next.storageKind === 'temp') {
     return previous.storageKind === 'temp' && next.storageKind === 'temp' && previous.registrationRevision === next.registrationRevision;
   }

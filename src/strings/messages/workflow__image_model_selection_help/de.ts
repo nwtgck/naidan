@@ -1,0 +1,1 @@
+export const workflow__image_model_selection_help = (): string => "Aktualisieren zeigt nur lokale Dateien an. Übernehmen Sie die Auswahl, um Hauptmodell, Komponenten und Adapter festzulegen. Bei der Ausführung werden fehlende Dateien weder ersetzt noch Modelle heruntergeladen.";

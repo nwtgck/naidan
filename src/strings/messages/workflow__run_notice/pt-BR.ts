@@ -1,0 +1,1 @@
+export const workflow__run_notice = (): string => "Cada execução usa uma cópia fixa da definição. Com armazenamento OPFS, o snapshot e prévias limitadas são salvos no histórico. Os arquivos de resultados são temporários, a menos que sejam salvos ou baixados explicitamente. Recarregar encerra a execução, sem retomada automática.";

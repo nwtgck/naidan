@@ -1,0 +1,1 @@
+export const workflow__interrupted_run_notice = (): string => "Dieser Verlauf wurde als unterbrochen markiert. Vorschauen zeigen den zuletzt gespeicherten Fortschritt, nicht unbedingt die letzte abgeschlossene Aktion. Es wurden keine Schritte fortgesetzt oder temporären Dateien wiederhergestellt.";

@@ -1,3 +1,6 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
+import { toProviderProfileId } from '@/01-models/ids';
 import { toChatId, toMessageId, toBinaryObjectId, toToolCallId, toAttachmentId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateChatShareURL } from './chat-url-share';
@@ -6,6 +9,8 @@ import { EMPTY_LM_PARAMETERS, type Chat, type Settings } from '@/01-models/types
 
 import JSZip from 'jszip';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
+
+installSecretEqualityTester();
 
 // Define global constants that Vite normally provides
 (global as any).__APP_VERSION__ = '0.0.0-test';
@@ -176,5 +181,47 @@ describe('parts sharing binary references', () => {
     expect(serialized).toContain('cancelled');
     expect(serialized).toContain('partial');
     expect(content.root.items[0]!.parts[1]).toMatchObject({ text: imageText });
+  });
+
+  it('preserves original credentials in the existing share ZIP including nested title and profile settings', async () => {
+    const makeEndpoint = ({ value }: { value: string }): import('@/01-models/types').HttpEndpoint => ({ type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Credential', Secret.from({ value })]] });
+    const settings: Settings = {
+      storageType: 'local',
+      mounts: [],
+      endpoint: makeEndpoint({ value: 'global-original' }),
+      titleGeneration: { endpoint: makeEndpoint({ value: 'global-title-original' }), model: { id: 'title-model' }, lmParameters: EMPTY_LM_PARAMETERS },
+      providerProfiles: [{ id: toProviderProfileId({ raw: 'profile-share' }), name: 'Shared profile', endpoint: makeEndpoint({ value: 'profile-original' }) }],
+    };
+    const chat: Chat = {
+      id: toChatId({ raw: 'chat-share-secrets' }),
+      title: 'Shared',
+      root: { items: [] },
+      createdAt: 1,
+      updatedAt: 2,
+      debugEnabled: false,
+      endpoint: makeEndpoint({ value: 'chat-original' }),
+      titleGeneration: { endpoint: makeEndpoint({ value: 'chat-title-original' }), model: { id: 'title-model' }, lmParameters: EMPTY_LM_PARAMETERS },
+    };
+    vi.mocked(storageService.loadSettings).mockResolvedValue(settings);
+    vi.mocked(storageService.loadChat).mockResolvedValue(chat);
+    const url = new URL(await generateChatShareURL({ chatId: chat.id }));
+    const encoded = new URLSearchParams(url.hash.slice(url.hash.indexOf('?') + 1)).get('data-zip');
+    expect(encoded).not.toBeNull();
+    const zip = await JSZip.loadAsync(encoded!, { base64: true });
+    const settingsEntry = Object.values(zip.files).find(entry => entry.name.endsWith('/settings.json'));
+    const metasEntry = Object.values(zip.files).find(entry => entry.name.endsWith('/chat-metas.json'));
+    expect(settingsEntry).toBeDefined();
+    expect(metasEntry).toBeDefined();
+    const exportedSettings = await settingsEntry!.async('string');
+    const exportedMetas = await metasEntry!.async('string');
+    for (const value of ['global-original', 'global-title-original', 'profile-original']) {
+      expect(exportedSettings).toContain(value);
+    }
+    for (const value of ['chat-original', 'chat-title-original']) {
+      expect(exportedMetas).toContain(value);
+    }
+    expect(exportedSettings).not.toContain('[masked]');
+    expect(exportedMetas).not.toContain('[masked]');
+    expect(JSON.stringify({ settings, chat })).not.toContain('original');
   });
 });

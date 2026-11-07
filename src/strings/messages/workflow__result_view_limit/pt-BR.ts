@@ -1,0 +1,1 @@
+export const workflow__result_view_limit = (): string => "A mídia só é carregada ao abrir: imagens de até 16 MiB e áudio de até 64 MiB. Textos e conversas são exibidos até 2 MiB. Para resultados maiores, use os arquivos ou o ZIP.";

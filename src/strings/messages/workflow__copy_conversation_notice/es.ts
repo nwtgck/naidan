@@ -1,0 +1,1 @@
+export const workflow__copy_conversation_notice = (): string => "¿Copiar la conversación completada, incluidos los resultados de herramientas, a un chat nuevo? Se usarán los ajustes actuales del modelo de la aplicación, con las herramientas y los títulos automáticos desactivados. Los resultados originales no cambian. La copia no ejecuta modelos ni herramientas.";

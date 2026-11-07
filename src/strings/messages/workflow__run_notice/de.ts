@@ -1,0 +1,1 @@
+export const workflow__run_notice = (): string => "Jede Ausführung verwendet eine feste Kopie der Definition. Bei OPFS-Speicherung werden der Snapshot und begrenzte Vorschauen im Verlauf gespeichert. Ergebnisdateien sind temporär, bis sie ausdrücklich gespeichert oder heruntergeladen werden. Ein Neuladen beendet die Ausführung; sie wird nicht automatisch fortgesetzt.";

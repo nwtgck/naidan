@@ -1,0 +1,1 @@
+export const workflow__audio_outputs_help = (): string => "Outputs: audio (WAV file), metadata (actual format and finish reason), and complete (whether generation finished normally). Stopping the workflow always discards the current unfinished audio.";

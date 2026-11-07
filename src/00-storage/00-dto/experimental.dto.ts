@@ -64,8 +64,9 @@ export type ExperimentalToolConfigsDto = dtozod.infer<typeof ExperimentalToolCon
 /**
  * Experimental payload owned by ExperimentalTypeEndpointSchemaDto.
  *
- * `experimental_type` is a stable DTO-only envelope. Its concrete endpoint
- * identity is stored in this payload and mapped to a normal domain endpoint;
+ * `experimental_type` is a DTO-only envelope for experimental endpoint types
+ * and legacy llama_cpp_browser records. Its concrete endpoint identity is
+ * stored in this payload and mapped to a normal domain endpoint;
  * `experimental_type` itself must not appear in the domain model.
  *
  * The shared experimental reader isolates unreadable endpoint settings while
@@ -86,6 +87,7 @@ export const ExperimentalExperimentalTypeEndpointSchemaDto =
 
 export const ExperimentalHttpEndpointSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalTransformersJsEndpointSchemaDto = EmptyExperimentalSchemaDto;
+export const ExperimentalLlamaCppBrowserEndpointSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalReasoningSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalLmParametersSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalSystemPromptOverrideSchemaDto = EmptyExperimentalSchemaDto;

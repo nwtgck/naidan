@@ -1,3 +1,6 @@
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { SettingsSelectStub } from './settings-select.test-support';
 import { toProviderProfileId } from '@/01-models/ids';
 // Mock the dynamic import for licenses
@@ -20,6 +23,8 @@ import { storageService } from '@/00-storage/service';
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
 import type { ProviderProfile, Settings } from '@/01-models/types';
 import { TEST_ONLY as modelPresetTestOnly, type ModelPreset } from '@/features/llama-cpp-browser/model-preset';
+
+installSecretEqualityTester();
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -286,6 +291,28 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     expect(wrapper.getComponent({ name: 'LlamaCppBrowserManager' }).props('modelPreset')).toBeUndefined();
     expect(claim).not.toHaveBeenCalled();
+  });
+
+  it.each(['endpoint', 'titleGeneration'] as const)('detects credential-only %s edits without corrupting the saved value', async field => {
+    const endpoint = { type: 'openai' as const, url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'saved-value' })]] as [name: string, value: Secret<string>][] };
+    const state = ref<Settings>({ ...mockSettings, endpoint, titleGeneration: { endpoint, model: { id: 'title' }, lmParameters: EMPTY_LM_PARAMETERS } });
+    vi.mocked(useSettings).mockReturnValue({ ...useSettings(), settings: state });
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    const connection = wrapper.getComponent(ConnectionTab);
+    expect(connection.props('hasUnsavedChanges')).toBe(false);
+    const draft = connection.props('modelValue');
+    const replacement = { ...endpoint, httpHeaders: [['X-Custom', Secret.from({ value: 'edited-value' })]] as [name: string, value: Secret<string>][] };
+    connection.vm.$emit('update:modelValue', field === 'endpoint' ? { ...draft, endpoint: replacement } : { ...draft, titleGeneration: { endpoint: replacement, model: { id: 'title' }, lmParameters: EMPTY_LM_PARAMETERS } });
+    await nextTick();
+    expect(connection.props('hasUnsavedChanges')).toBe(true);
+    expect(endpoint.httpHeaders[0]?.[1].reveal()).toBe('saved-value');
+    expect(mockSave).not.toHaveBeenCalled();
   });
 
   it.each([false, true])('rebases the local default without losing unrelated Connection edits (dirty=%s)', async dirty => {
@@ -1429,7 +1456,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         endpoint: {
           type: 'openai' as const,
           url: 'http://headers:8080',
-          httpHeaders: [['X-From-Profile', 'val-1']] as [string, string][],
+          httpHeaders: [['X-From-Profile', Secret.from({ value: 'val-1' })]] as [name: string, value: Secret<string>][],
         },
       };
 
@@ -1474,7 +1501,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(connectionVm.form.endpoint).toEqual({
         type: 'openai',
         url: 'http://headers:8080',
-        httpHeaders: [['X-From-Profile', 'val-1']],
+        httpHeaders: [['X-From-Profile', Secret.from({ value: 'val-1' })]],
       });
 
       // 3. Remove header

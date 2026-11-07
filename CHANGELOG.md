@@ -20,6 +20,34 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-11-07
+
+### Added
+
+- Publish repository-specific browser model pages for Unsloth's Qwen3.8-Flash-Next and ISTA DASLab's Qwen3.8-27B GSQ-RCO, with explicit variant names in generated and live page metadata. Record editorial model naming for every published repository independently of the suggested-model catalog.
+- Publish browser model pages and sitemap entries for Google Gemma 4 12B QAT and LiquidAI LFM3-1.7B and LFM3-VL-2B without adding them to the suggested-model catalog.
+- Searchable repository-specific browser model pages, generated from the shared registry with local/on-device metadata, canonical URLs, and sitemap entries. Optional `?quant=` selects a quantization; unlisted repositories open the same preview through the static app fallback. Starting a chat returns to the existing fragment route without reloading. Model routes do not inject `noindex`, including for unlisted or invalid repositories.
+- Experimental workflows with shared step, JSON, and scoped graph editing, reusable parts, typed values, sequential text generation, branching, loops, interactive input, and folder-based file operations. Graph connections and moves validate scope and downstream types, preserve undo history, and protect unfinished inputs.
+- Workflow execution history with immutable definition snapshots, bounded progress checkpoints, individual workflow/run links, result browsing, and streamed archive downloads. Abandoned runs can be explicitly marked as interrupted without replay; per-run ownership locks protect active runs and pending completion saves. Composable arithmetic and boolean values support conditional loop completion and configurable execution-wide budgets.
+- Local Workflow audio and image generation through the existing browser engines, with typed dynamic inputs and sequential batching through loops. Audio generation supports reference voices and an explicit incomplete-output policy; image generation supports bounded initial/reference images and transient previews while fixing model and component file locations rather than substituting missing files.
+- Session- and run-scoped model connection approvals that preserve value origins, separate text/audio/image authority, and do not survive imports or history copies. Binary results remain usable when optional text previews cannot be decoded, and cancellation preserves completed outputs without publishing unfinished generation.
+- Explicit Workflow tool steps for calculator, Wikipedia search/page retrieval, and an isolated Wesh shell with one selected folder, plus bounded model-selected rounds using these tools and interactive choices. Typed arguments compose with model outputs and loops; external access is reviewed per call, historical tool records are never replayed, and tool failures or truncated shell output stop explicit steps unless error outputs are requested.
+- On-demand Workflow image, audio, and conversation viewers, fixed-choice input, and copying completed Workflow conversations into new chats. Copies do not inherit tool permissions or automatically generate responses or titles. Structure-only exports remove authored content and connection/folder bindings separately from full-fidelity backups.
+
+### Fixed
+
+- Fail Privacy Fetch requests when the sandboxed broker cannot start, release its resources, and allow the next request to try a fresh broker instead of waiting indefinitely.
+- Restore browser-local llama.cpp model operations in environments that cannot clone file-system handles to workers, using captured file snapshots without reopening model paths. Preserve source identity checks for resident-model reuse and prevent cancelled preparation from dispatching late work.
+- Check file-system-handle cloning before worker initialization or linked-folder downloads, retaining the confirmed download root and avoiding retries of already-started operations after remote clone errors.
+- Drain active shell-tool executions before releasing their execution records after cancellation, and clear completed shell-tool timeout timers.
+
+### Changed
+
+- Link README models and the English/Japanese browser-model guide shortlist to repository pages while preserving the existing link origins and Docs' current-origin handling. Hosted builds and ZIPs include model pages directly; standalone builds remain free of them. Model pages retain subdirectory mounts. Hosted archives include the final service worker and its precached universal offline download when available.
+- Persist llama.cpp browser endpoints with the stable `llama_cpp_browser` type on their next save while continuing to read existing `experimental_type` records without rewriting them on load. Other experimental endpoints and settings are unchanged.
+- Rename user-facing llama.cpp browser labels to “llama.cpp in the browser” (localized in each language) and list it first among concrete endpoint choices, without changing inherited choices or default connections.
+- Open the endpoint choices together with connection details in chat and chat-group overrides. Selecting an endpoint closes only the choices; clicking the connection summary again closes the details.
+
 ## [0.64.0] - 2026-11-06
 
 ### Added
@@ -31,6 +59,11 @@ All notable changes to Naidan are documented in this file.
 ### Changed
 
 - GitHub Release descriptions now use the curated `CHANGELOG.md` notes, including corrections to previously published releases.
+
+### Security
+
+- Protect connection header values and in-flight RPC pairing codes with `Secret<T>` to prevent accidental diagnostic disclosure, while preserving existing persistence, ZIP export, and chat URL sharing behavior.
+- Mask nested title-generation credentials in Wesh sysfs, including remote-reader payloads before they reach a worker.
 
 ## [0.63.0] - 2026-11-04
 
@@ -1062,7 +1095,8 @@ All notable changes to Naidan are documented in this file.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.64.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.65.0...develop
+[0.65.0]: https://github.com/nwtgck/naidan/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/nwtgck/naidan/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0

@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { endpointTypeDescription } from './endpoint-type-label';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
@@ -6,7 +8,7 @@ import SettingsSourceBadge from './SettingsSourceBadge.vue';
 vi.mock('../composables/chat/useChatMounts', () => ({ useChatMounts: vi.fn() }));
 import { SettingsSelectStub } from './settings-select.test-support';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mount, flushPromises, RouterLinkStub, enableAutoUnmount } from '@vue/test-utils';
+import { mount, flushPromises, RouterLinkStub, enableAutoUnmount, DOMWrapper } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, ref, toRef } from 'vue';
 import { EMPTY_LM_PARAMETERS, type ChatGroup, type Endpoint, type Settings } from '@/01-models/types';
@@ -21,6 +23,8 @@ import type { VolumeAccess } from '@/01-models/volume-access';
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+
+installSecretEqualityTester();
 
 // Unmount before the next fixture replaces shared refs; settle the owner's
 // existing asynchronous unmount save before the next test installs its mocks.
@@ -178,6 +182,19 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
+  it('synchronizes credential-only external changes without discarding an unsaved prompt', async () => {
+    mockGroup.endpoint = { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'before' })]] };
+    mockGroup.systemPrompt = { behavior: 'override', content: 'original prompt' };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    const prompt = wrapper.get<HTMLTextAreaElement>('[data-testid="group-setting-system-prompt-textarea"]');
+    await prompt.setValue('unsaved prompt');
+    mockGroup.endpoint = { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'after' })]] };
+    await nextTick();
+    expect(wrapper.get<HTMLInputElement>('[data-testid="group-setting-http-header-value-input"]').element.value).toBe('after');
+    expect(prompt.element.value).toBe('unsaved prompt');
+  });
+
   it('moves the warning between the collapsed endpoint summary and the URL without recreating the input', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, {
       global: { stubs: { ...globalStubs, CspLmEndpointHint: { props: ['endpoint', 'operation', 'presentation', 'activityForDisplayOnly'], template: '<button type="button" data-testid="url-warning-probe" :data-presentation="presentation" :data-activity="activityForDisplayOnly">Connection warning</button>' } } },
@@ -688,7 +705,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockSettings.endpoint = {
       type: 'openai',
       url: 'http://global-url/v1',
-      httpHeaders: [['X-Global', 'value']],
+      httpHeaders: [['X-Global', Secret.from({ value: 'value' })]],
     };
     mockGroup.endpoint = { type: 'transformers_js' };
 
@@ -704,7 +721,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
         endpoint: {
           type: 'ollama',
           url: 'http://global-url/v1',
-          httpHeaders: [['X-Global', 'value']],
+          httpHeaders: [['X-Global', Secret.from({ value: 'value' })]],
         },
       },
     });
@@ -763,7 +780,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockGroup.endpoint = {
       type: 'openai',
       url: 'http://old.test/v1',
-      httpHeaders: [['X-Old', 'value']],
+      httpHeaders: [['X-Old', Secret.from({ value: 'value' })]],
     };
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
@@ -786,7 +803,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockGroup.endpoint = {
       type: 'openai',
       url: 'http://example.test/v1',
-      httpHeaders: [['Authorization', 'Bearer token']],
+      httpHeaders: [['Authorization', Secret.from({ value: 'Bearer token' })]],
     };
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
@@ -1589,7 +1606,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       endpoint: {
         type: 'openai',
         url: 'https://global-title.example/v1',
-        httpHeaders: [['X-Global-Title', 'old']],
+        httpHeaders: [['X-Global-Title', Secret.from({ value: 'old' })]],
       },
       model: { id: 'global-title-model' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
@@ -1608,13 +1625,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
       endpoint: {
         type: 'openai',
         url: 'https://global-title.example/v1',
-        httpHeaders: [['X-Group-Title', 'next']],
+        httpHeaders: [['X-Group-Title', Secret.from({ value: 'next' })]],
       },
       model: { id: 'global-title-model' },
     });
     expect(mockSettings.titleGeneration).toMatchObject({
       endpoint: {
-        httpHeaders: [['X-Global-Title', 'old']],
+        httpHeaders: [['X-Global-Title', Secret.from({ value: 'old' })]],
       },
     });
   });
@@ -1676,6 +1693,108 @@ describe('ChatGroupSettingsPanel.vue', () => {
     wrapper.unmount();
   });
 
+  it('opens endpoint choices with the details and closes only the choices after selection', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { attachTo: document.body, global: { stubs: { ...globalStubs, SettingsSelect: false, teleport: false } } });
+    await flushPromises();
+    const summary = wrapper.get<HTMLButtonElement>('[data-testid="group-setting-connection-trigger"]');
+    const select = wrapper.get<HTMLButtonElement>('[data-testid="group-setting-endpoint-type-select"]');
+    const details = wrapper.get(`[id="${summary.attributes('aria-controls')}"]`);
+    const writesBeforeOpening = mockUpdateChatGroupMetadata.mock.calls.length;
+    expect(summary.attributes('aria-expanded')).toBe('false');
+    expect(select.attributes('aria-expanded')).toBe('false');
+
+    await summary.trigger('pointerdown');
+    await summary.trigger('click');
+    await flushPromises();
+    const menu = new DOMWrapper(document.getElementById(select.attributes('aria-controls')!)!);
+    expect(summary.attributes('aria-expanded')).toBe('true');
+    expect(details.attributes('aria-hidden')).toBe('false');
+    expect(select.attributes('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(menu.get('[data-testid="settings-select-option-global"]').element);
+    expect(wrapper.get('[data-testid="group-setting-title-endpoint-type-select"]').attributes('aria-expanded')).toBe('false');
+    expect(mockUpdateChatGroupMetadata.mock.calls).toHaveLength(writesBeforeOpening);
+
+    // Reselecting inheritance is presentation-only, not a materialized override.
+    await menu.get('[data-testid="settings-select-option-global"]').trigger('click');
+    await flushPromises();
+    expect(select.attributes('aria-expanded')).toBe('false');
+    expect(summary.attributes('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(select.element);
+    expect(mockGroup.endpoint).toBeUndefined();
+    expect(mockUpdateChatGroupMetadata.mock.calls).toHaveLength(writesBeforeOpening);
+
+    await select.trigger('click');
+    await menu.get('[data-testid="settings-select-option-llama_cpp_browser"]').trigger('click');
+    await flushPromises();
+    expect(mockGroup.endpoint).toEqual({ type: 'llama_cpp_browser' });
+    expect(select.attributes('aria-expanded')).toBe('false');
+    expect(summary.attributes('aria-expanded')).toBe('true');
+    expect(details.attributes('aria-hidden')).toBe('false');
+    expect(document.activeElement).toBe(select.element);
+
+    await summary.trigger('click');
+    expect(summary.attributes('aria-expanded')).toBe('false');
+    expect(details.attributes('aria-hidden')).toBe('true');
+    await summary.trigger('click');
+    await flushPromises();
+    expect(document.activeElement).toBe(menu.get('[data-testid="settings-select-option-llama_cpp_browser"]').element);
+    // Closing while focus is in the teleported menu returns it to the summary.
+    await summary.trigger('click');
+    await flushPromises();
+    expect(select.attributes('aria-expanded')).toBe('false');
+    expect(summary.attributes('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(summary.element);
+  });
+
+  it.each(['Escape', 'Tab', 'outside'] as const)('dismisses automatically opened choices with %s without collapsing details or saving', async dismissal => {
+    const wrapper = mount(ChatGroupSettingsPanel, { attachTo: document.body, global: { stubs: { ...globalStubs, SettingsSelect: false, teleport: false } } });
+    await flushPromises();
+    const summary = wrapper.get<HTMLButtonElement>('[data-testid="group-setting-connection-trigger"]');
+    const select = wrapper.get<HTMLButtonElement>('[data-testid="group-setting-endpoint-type-select"]');
+    const writesBeforeOpening = mockUpdateChatGroupMetadata.mock.calls.length;
+    await summary.trigger('click');
+    await flushPromises();
+    const menu = new DOMWrapper(document.getElementById(select.attributes('aria-controls')!)!);
+    if (dismissal === 'outside') {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    } else {
+      await menu.get('[aria-selected="true"]').trigger('keydown', { key: dismissal });
+    }
+    await flushPromises();
+    expect(select.attributes('aria-expanded')).toBe('false');
+    expect(summary.attributes('aria-expanded')).toBe('true');
+    expect(mockUpdateChatGroupMetadata.mock.calls).toHaveLength(writesBeforeOpening);
+    expect(mockGroup.endpoint).toBeUndefined();
+    if (dismissal !== 'outside') {
+      expect(document.activeElement).toBe(select.element);
+    }
+    expect(wrapper.emitted('close')).toBeUndefined();
+  });
+
+  it('does not open a stale menu after rapid toggles or unmounting', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { attachTo: document.body, global: { stubs: { ...globalStubs, SettingsSelect: false, teleport: false } } });
+    await flushPromises();
+    const summary = wrapper.get<HTMLButtonElement>('[data-testid="group-setting-connection-trigger"]');
+    const select = wrapper.get<HTMLButtonElement>('[data-testid="group-setting-endpoint-type-select"]');
+    summary.element.click();
+    summary.element.click();
+    await flushPromises();
+    expect(summary.attributes('aria-expanded')).toBe('false');
+    expect(select.attributes('aria-expanded')).toBe('false');
+    summary.element.click();
+    summary.element.click();
+    summary.element.click();
+    await flushPromises();
+    expect(summary.attributes('aria-expanded')).toBe('true');
+    expect(select.attributes('aria-expanded')).toBe('true');
+    await summary.trigger('click');
+    summary.element.click();
+    wrapper.unmount();
+    await flushPromises();
+    expect(document.querySelector('[role="listbox"][data-open="true"]')).toBeNull();
+  });
+
   it('keeps compatibility, experimental and disabled meanings in candidates, closed controls and summary', async () => {
     const cases: { endpoint: Endpoint, expected: string }[] = [
       { endpoint: { type: 'openai', url: 'https://main.example/v1' }, expected: await ensureStrings.ChatGroupSettingsPanel__openai_compatible() },
@@ -1705,7 +1824,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
         expect(control!.props('options').find(option => option.value === entry.endpoint.type)?.label).toBe(entry.expected);
         expect(control!.props('options').find(option => option.value === entry.endpoint.type)?.detail).toBe(description);
         expect(control!.get('button').text()).toContain(description);
-        expect(control!.props('options').filter(option => !['global', 'inherit', 'same_scope'].includes(option.value)).map(option => option.value)).toEqual(entry.endpoint.type === 'naidan_rpc' ? ['openai', 'ollama', 'naidan_rpc', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm'] : ['openai', 'ollama', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm']);
+        expect(control!.props('options').filter(option => !['global', 'inherit', 'same_scope'].includes(option.value)).map(option => option.value)).toEqual(entry.endpoint.type === 'naidan_rpc' ? ['llama_cpp_browser', 'openai', 'ollama', 'naidan_rpc', 'transformers_js', 'browser_provided_lm'] : ['llama_cpp_browser', 'openai', 'ollama', 'transformers_js', 'browser_provided_lm']);
       }
     }
   });

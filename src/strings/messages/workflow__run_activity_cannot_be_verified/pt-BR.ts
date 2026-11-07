@@ -1,0 +1,1 @@
+export const workflow__run_activity_cannot_be_verified = (): string => "Não é possível verificar o responsável por esta execução. Ela pode estar ativa em outra aba ou versão anterior. Abrir o histórico não a retoma.";

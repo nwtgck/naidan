@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION, READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { MessageChannel, type MessagePort as NodeMessagePort } from 'node:worker_threads';
 import * as Comlink from 'comlink';
 import { z } from 'zod';
@@ -35,12 +36,12 @@ interface TransferWorkerApi {
 }
 
 interface StreamCapabilityWorkerApi {
-  consume(request: WorkerTransfer<WorkerCapability<{ stream: ReadableStream<Uint8Array<ArrayBuffer>> }, 'readable-stream-transfer'>>): Promise<void>,
+  consume(request: WorkerTransfer<WorkerCapability<{ stream: ReadableStream<Uint8Array<ArrayBuffer>> }, typeof READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>>): Promise<void>,
 }
 
 interface CapabilityAndProxyWorkerApi {
   configure(
-    request: WorkerCapability<{ handle: FileSystemDirectoryHandle }, 'file-system-handle-clone'>,
+    request: WorkerCapability<{ handle: FileSystemDirectoryHandle }, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>,
     callback?: WorkerProxy<(value: number) => void>,
   ): Promise<void>,
 }
@@ -176,11 +177,11 @@ describe('worker transport', () => {
     expect(callback).toHaveBeenCalledWith(1);
   });
 
-  it('brands capability-sensitive values without changing runtime identity', () => {
-    const value = {} as FileSystemDirectoryHandle;
-    const branded: WorkerCapability<FileSystemDirectoryHandle, 'file-system-handle-clone'> = workerCapability({
+  it('brands a handle-free payload without changing runtime identity', async () => {
+    const value = { label: 'no handle' };
+    const branded: WorkerCapability<typeof value, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION> = await workerCapability({
       value,
-      capability: 'file-system-handle-clone',
+      capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
     });
 
     expect(branded).toBe(value);

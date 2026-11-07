@@ -1,3 +1,4 @@
+import { READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { isProjector } from './model-variants';
 import { scanDeletionTree, pruneEmptyDirectories } from '@/features/llama-cpp-browser/runtime/deletion-plan';
@@ -17,7 +18,7 @@ export type DownloadWriterApi = {
   open({ fileIndex, start }: { fileIndex: number, start: number }): Promise<void>,
   append({ bytes }: WorkerTransfer<{ bytes: Uint8Array<ArrayBuffer> }>): Promise<number>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callbacks must be top-level arguments.
-  consume(input: WorkerTransfer<WorkerCapability<{ stream: ReadableStream<Uint8Array<ArrayBuffer>> }, 'readable-stream-transfer'>>, onProgress: WorkerProxy<({ position }: { position: number }) => Promise<void>>): Promise<void>,
+  consume(input: WorkerTransfer<WorkerCapability<{ stream: ReadableStream<Uint8Array<ArrayBuffer>> }, typeof READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>>, onProgress: WorkerProxy<({ position }: { position: number }) => Promise<void>>): Promise<void>,
   stop(): Promise<void>,
   finishFile(): Promise<void>,
   pause(): Promise<void>,

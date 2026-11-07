@@ -1,0 +1,1 @@
+export const workflow__backup_contains_content = (): string => "Las exportaciones completas contienen el contenido introducido, los ajustes de conexión y posibles credenciales. Revísalas antes de compartirlas.";

@@ -1011,6 +1011,13 @@ describe('ChatPane UI States', () => {
     expect((textarea.element as HTMLTextAreaElement).disabled).toBe(false);
   });
 
+  it('keeps Workflow conversion actions out of the ordinary chat view', async () => {
+    mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'message' }), role: 'user', text: 'Existing conversation', createdAt: 1 })];
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-copy-to-workflow"]').exists()).toBe(false);
+  });
+
   it('shows the current chat group beside the model badge when the chat belongs to a group', () => {
     mockChatGroups.value = [
       {

@@ -1,0 +1,1 @@
+export const workflow__audio_reference_help = (): string => "Connect a binary output from Read file or an earlier audio step. Reference audio must be no larger than 16 MiB and no longer than 30 seconds; it is not trimmed automatically.";

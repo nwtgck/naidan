@@ -1,0 +1,1 @@
+export const workflow__share_structure_notice = (): string => "Remove o conteúdo inserido, nomes, conexões de modelos, referências a pastas e argumentos de ferramentas. As referências e a estrutura de controle são mantidas com novos identificadores. É um modelo para configuração, não um backup executável. Revise antes de compartilhar.";

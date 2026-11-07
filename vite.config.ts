@@ -15,7 +15,6 @@ import { createRequire } from 'node:module';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream';
 import { promisify } from 'node:util';
-import { createBuildDom } from './build/jsdom';
 import pkg from './package.json';
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
 import { createNaidanStandalonePlugin } from './build/file-protocol-standalone/plugin.js';
@@ -30,9 +29,11 @@ import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-cor
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import { createDocumentMetadataHtmlPlugin } from './build/document-metadata-html';
-import { createFragmentSitemapPlugin } from './build/fragment-sitemap';
+import { createModelPagesPlugin } from './build/model-pages';
+import { createHostedPackagePlugin } from './build/hosted-package';
+import { createModelPageDevPlugin } from './build/model-page-dev';
 import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
-import { createPrivacyFetchBrokerDevHeadersPlugin } from './build/privacy-fetch-broker-dev';
+import { createPrivacyFetchBrokerDevPlugin } from './build/privacy-fetch-broker-dev';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
 import { createZipPackages } from './build/zip-packages';
 import { standaloneZipDefinitions } from './build/standalone-zip-packages';
@@ -67,63 +68,6 @@ const standaloneBuildBudgets = {
 } as const;
 
 const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker';
-
-// Dev-server-only HTML cleanup for the privacy fetch broker page.
-// This targets only /privacy-fetch-broker.html, which runs inside a sandboxed
-// iframe without allow-same-origin so the broker fetch path keeps Origin: null.
-// Vite / Vue DevTools / Vue Inspector dev-injected scripts can execute inside that
-// sandbox and throw on localStorage or related same-origin APIs. We must not add
-// allow-same-origin because that breaks the Origin: null goal, so we strip only
-// those injected script elements from the HTML itself. Use jsdom here instead of
-// regex so removal is done at the script-element level.
-function stripPrivacyFetchBrokerDevInjectedScriptsPlugin(): import('vite').Plugin {
-  return {
-    name: 'strip-privacy-fetch-broker-dev-injected-scripts',
-    apply: 'serve',
-    enforce: 'post',
-    hotUpdate(options) {
-      if (
-        this.environment.name === 'client'
-        && this.environment.config.server.hmr !== false
-        && path.resolve(options.file) === path.resolve(this.environment.config.root, 'privacy-fetch-broker.html')
-      ) {
-        // The sandbox intentionally has no HMR client. A path-scoped HTML reload
-        // is ignored by the parent page, so recreate both execution contexts.
-        this.environment.hot.send({ type: 'full-reload' });
-        return [];
-      }
-      return options.modules;
-    },
-    transformIndexHtml(html, context) {
-      if (context.path !== '/privacy-fetch-broker.html') {
-        return html;
-      }
-
-      const dom = createBuildDom({ html, options: undefined });
-      const { document } = dom.window;
-      const devInjectedScriptSourceMarkers = [
-        '/@vite/client',
-        'virtual:vue-devtools-path',
-        'virtual:vue-inspector-path',
-        '/@id/virtual:vue-devtools-path',
-        '/@id/virtual:vue-inspector-path',
-      ];
-
-      for (const script of document.querySelectorAll('script[src]')) {
-        const src = script.getAttribute('src') ?? '';
-        if (devInjectedScriptSourceMarkers.some((marker) => src.includes(marker))) {
-          script.remove();
-        }
-      }
-
-      if (!html.includes('privacy-fetch-dev-injected-scripts-stripped') && document.body) {
-        document.body.appendChild(document.createComment(' privacy-fetch-dev-injected-scripts-stripped '));
-      }
-
-      return dom.serialize();
-    },
-  };
-}
 
 function ensureExistingPath(relativePath: string): string {
   const absolutePath = path.resolve(__dirname, relativePath);
@@ -280,7 +224,8 @@ export default defineConfig(({ mode, command }) => {
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
       createDocumentMetadataHtmlPlugin(),
-      createFragmentSitemapPlugin(),
+      createModelPagesPlugin(),
+      createModelPageDevPlugin(),
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
@@ -309,8 +254,7 @@ export default defineConfig(({ mode, command }) => {
           },
         },
       }),
-      stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
-      createPrivacyFetchBrokerDevHeadersPlugin(),
+      mode !== 'test' && createPrivacyFetchBrokerDevPlugin(),
       !isStandalone && !isHosted && viteStaticCopy({
         targets: [
           {
@@ -380,15 +324,11 @@ export default defineConfig(({ mode, command }) => {
           }),
         },
       }),
-      // Hosted: Zip the hosted build output
-      isHosted && zipPackagerPlugin({
-        outDir,
-        zipFileName: 'naidan-hosted.zip',
-        folderName: `naidan-hosted-${pkg.version}`,
-      }),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
       !isStandalone && VitePWA(pwaBuild.options),
+      // Package only after all output, compression and the generated worker exist.
+      createHostedPackagePlugin({ version: pkg.version, locales: UI_LOCALES }),
     ].filter((p): p is import('vite').PluginOption => !!p),
     build: {
       outDir,
@@ -449,21 +389,6 @@ export default defineConfig(({ mode, command }) => {
 });
 
 /**
- * Plugin to zip the build output
- */
-const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
-  outDir: string,
-  zipFileName: string,
-  folderName: string,
-}): Plugin => ({
-  name: `zip-packager-plugin-${zipFileName}`,
-  apply: 'build',
-  async closeBundle() {
-    await createZipPackage({ outDir, zipFileName, folderName });
-  },
-});
-
-/**
  * Copy the universal and locale-specific standalone packages to hosted output.
  */
 const copyZipPlugin = (): Plugin => ({
@@ -485,16 +410,3 @@ const copyZipPlugin = (): Plugin => ({
     }
   },
 });
-
-async function createZipPackage({ outDir, zipFileName, folderName }: {
-  outDir: string,
-  zipFileName: string,
-  folderName: string,
-}): Promise<void> {
-  await createZipPackages({
-    sourceDirectory: path.resolve(__dirname, outDir),
-    archiveDirectory: path.resolve(__dirname, 'dist'),
-    version: pkg.version,
-    packages: [{ zipFileName, folderName }],
-  });
-}

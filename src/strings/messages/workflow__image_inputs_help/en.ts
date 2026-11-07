@@ -1,0 +1,1 @@
+export const workflow__image_inputs_help = (): string => "Connect PNG, JPEG, or WebP binary outputs. Up to eight references; 16 MiB per file, 64 MiB total, 8,192 pixels per side and 16,777,216 pixels in total. Animated images are rejected. Model support is required.";

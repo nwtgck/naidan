@@ -1,3 +1,4 @@
+import { areEndpointsEqual } from '@/01-models/endpoint';
 import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
 import type {
   Chat,
@@ -40,6 +41,18 @@ export type ResolvedTitleGeneration =
       modelId: string,
       lmParameters: LmParameters | undefined,
     }>;
+
+export function areResolvedTitleGenerationsEqual({ left, right }: { left: ResolvedTitleGeneration, right: ResolvedTitleGeneration }): boolean {
+  if (left === 'disabled' || right === 'disabled') {
+    return left === right;
+  }
+  const { endpoint: leftEndpoint, modelId: leftModel, lmParameters: leftParameters, ...leftRest } = left;
+  const { endpoint: rightEndpoint, modelId: rightModel, lmParameters: rightParameters, ...rightRest } = right;
+  leftRest satisfies Record<PropertyKey, never>;
+  rightRest satisfies Record<PropertyKey, never>;
+  return areEndpointsEqual({ left: leftEndpoint, right: rightEndpoint })
+    && leftModel === rightModel && JSON.stringify(leftParameters) === JSON.stringify(rightParameters);
+}
 
 type ResolvedNormalGeneration = Readonly<{
   endpoint: Endpoint,

@@ -9,8 +9,35 @@ describe('shared Hugging Face repositories', () => {
     expect(names).toEqual([...names].sort());
     for (const entry of hfRepositories) {
       expect(entry.hfRepository).toMatch(/^[^/:]+\/[^/:]+$/);
-      expect(entry.sitemapQuantizations.length).toBeGreaterThan(0);
-      expect(new Set(entry.sitemapQuantizations).size).toBe(entry.sitemapQuantizations.length);
+    }
+  });
+
+  it('includes the requested Gemma 4 and LFM3 repositories in the published catalog', () => {
+    for (const hfRepository of [
+      'google/gemma-4-12B-it-qat-q4_0-gguf',
+      'LiquidAI/LFM3-1.7B-GGUF',
+      'LiquidAI/LFM3-VL-2B-GGUF',
+    ] as const) {
+      expect(getHfRepository({ hfRepository })).toMatchObject({ hfRepository, modelNaming: { kind: 'base-model-aligned' } });
+    }
+  });
+
+  it('identifies separately named quantizations without adding them to recommendations', () => {
+    expect(getHfRepository({ hfRepository: 'ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF' }).modelNaming).toEqual({
+      kind: 'custom-variant',
+      name: 'Qwen3.8-27B GSQ-RCO (ISTA DASLab)',
+    });
+    expect(getHfRepository({ hfRepository: 'unsloth/Qwen3.8-Flash-Next-GGUF' }).modelNaming).toEqual({
+      kind: 'custom-variant',
+      name: 'Qwen3.8-Flash-Next (Unsloth)',
+    });
+    expect(getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).modelNaming).toEqual({ kind: 'base-model-aligned' });
+    expect(getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).modelNaming).toEqual({ kind: 'base-model-aligned' });
+    for (const suggestion of modelSuggestions) {
+      for (const choice of suggestion.quantizationHints) {
+        expect(choice.hfRepository).not.toBe('ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF');
+        expect(choice.hfRepository).not.toBe('unsloth/Qwen3.8-Flash-Next-GGUF');
+      }
     }
   });
 
@@ -41,11 +68,10 @@ describe('shared Hugging Face repositories', () => {
     for (const suggestion of modelSuggestions) {
       const choice = preferredQuantizationHint({ suggestion });
       const entry = hfRepositories.find(entry => entry.hfRepository === choice.hfRepository);
-      expect(entry?.sitemapQuantizations).toContain(choice.preferredQuantization);
+      expect(entry?.hfRepository).toBe(choice.hfRepository);
     }
     expect(getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' })).toMatchObject({
       hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF',
-      sitemapQuantizations: ['Q4_K_M'],
     });
   });
 });

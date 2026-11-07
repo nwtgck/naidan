@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '../../../src/utils/worker-transport-capabilities';
 import type * as Comlink from "comlink";
 import { AutoTokenizer } from "@huggingface/transformers";
 
@@ -36,18 +37,17 @@ interface CapabilityApi {
 }
 wrapWorkerRemote<CapabilityApi>(endpoint);
 
-declare const workerCapabilityMarker: unique symbol;
-type WorkerCapability<T extends object, Capability extends string> = T & { readonly [workerCapabilityMarker]: Capability };
+import type { WorkerCapability } from '../../../src/utils/worker-transport';
 interface BrandedCapabilityApi {
-  run(request: WorkerCapability<{ handle: FileSystemDirectoryHandle; label: string }, 'file-system-handle-clone'>): Promise<void>;
+  run(request: WorkerCapability<{ handle: FileSystemDirectoryHandle; label: string }, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>): Promise<void>;
 }
 wrapWorkerRemote<BrandedCapabilityApi>(endpoint);
 interface UnsafeBrandedCapabilityApi {
-  run(request: WorkerCapability<{ handle: FileSystemDirectoryHandle; callback: () => void }, 'file-system-handle-clone'>): Promise<void>;
+  run(request: WorkerCapability<{ handle: FileSystemDirectoryHandle; callback: () => void }, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>): Promise<void>;
 }
 wrapWorkerRemote<UnsafeBrandedCapabilityApi>(endpoint);
 interface NestedCapabilityApi {
-  run(request: { nested: WorkerCapability<{ handle: FileSystemDirectoryHandle }, 'file-system-handle-clone'> }): Promise<void>;
+  run(request: { nested: WorkerCapability<{ handle: FileSystemDirectoryHandle }, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION> }): Promise<void>;
 }
 wrapWorkerRemote<NestedCapabilityApi>(endpoint);
 

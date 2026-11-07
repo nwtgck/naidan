@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
@@ -363,7 +364,7 @@ const fakeLmToExperimentalDto = ({
   }
 };
 
-const toolConfigToDomain = ({
+export const toolConfigToDomain = ({
   dto,
 }: {
   dto: ExperimentalToolConfigDto,
@@ -391,7 +392,7 @@ const toolConfigToDomain = ({
   }
 };
 
-const toolConfigToDto = ({
+export const toolConfigToDto = ({
   domain,
 }: {
   domain: ToolConfig,
@@ -850,7 +851,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     return exactObject<Extract<Endpoint, { type: 'openai' | 'ollama' }>>()({
       type,
       url,
-      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value]),
+      httpHeaders: httpHeaders?.map(([name, value]): [name: string, value: Secret<string>] => [name, Secret.from({ value })]),
     });
   }
   case 'transformers_js': {
@@ -863,6 +864,11 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<Endpoint, { type: 'transformers_js' }>>()({ type });
+  }
+  case 'llama_cpp_browser': {
+    const { type, experimental: _experimental, ...unhandled } = dto;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<Endpoint, { type: 'llama_cpp_browser' }>>()({ type });
   }
   case 'experimental_type': {
     const {
@@ -949,7 +955,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       type,
       experimental: undefined,
       url,
-      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value]),
+      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value.reveal()]),
     });
   }
   case 'transformers_js': {
@@ -968,9 +974,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
   case 'llama_cpp_browser': {
     const { type, ...unhandled } = endpoint;
     unhandled satisfies Record<PropertyKey, never>;
-    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'llama_cpp_browser' }>>()({ type });
-    const experimental = exactObject<ExperimentalEndpointDto>()({ endpoint: payload, unreadable: undefined });
-    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({ type: 'experimental_type', experimental });
+    return exactObject<Extract<EndpointDto, { type: 'llama_cpp_browser' }>>()({ type, experimental: undefined });
   }
   case 'browser_provided_lm': {
     const { type, ...unhandled } = endpoint;

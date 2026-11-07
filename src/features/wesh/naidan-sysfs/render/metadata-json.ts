@@ -1,25 +1,11 @@
-import type { ChatMeta, Endpoint, Mount } from '@/01-models/types';
-import { cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
+import type { ChatMeta, Mount } from '@/01-models/types';
 
-function maskEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
-  if (endpoint === undefined) {
-    return undefined;
-  }
-  const cloned = cloneEndpoint({ endpoint });
-  if (!isHttpEndpoint(cloned)) {
-    return cloned;
-  }
-  return {
-    ...cloned,
-    httpHeaders: cloned.httpHeaders?.map(([name]) => [name, '[masked]']),
-  };
-}
 
 function cloneMounts({ mounts }: { mounts: Mount[] | undefined }): Mount[] | undefined {
   return mounts?.map(mount => ({ ...mount }));
 }
 
-// Sensitive fields must be masked before rendering. Do not emit raw secret values here.
+// Domain Secret values mask themselves, including nested title-generation credentials.
 export function renderChatMetadataJson({ metadata }: { metadata: ChatMeta }): string {
   return JSON.stringify({
     id: metadata.id,
@@ -29,7 +15,7 @@ export function renderChatMetadataJson({ metadata }: { metadata: ChatMeta }): st
     createdAt: metadata.createdAt,
     updatedAt: metadata.updatedAt,
     debugEnabled: metadata.debugEnabled,
-    endpoint: maskEndpoint({ endpoint: metadata.endpoint }),
+    endpoint: metadata.endpoint,
     modelId: metadata.modelId,
     titleGeneration: metadata.titleGeneration,
     originChatId: metadata.originChatId,

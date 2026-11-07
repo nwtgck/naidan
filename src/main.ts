@@ -3,7 +3,8 @@
 import { createApp, shallowRef } from 'vue';
 import './style.css';
 import App from './App.vue';
-import { createRouter, createWebHashHistory } from 'vue-router';
+import { createRouter } from 'vue-router';
+import { createAppHistory } from '@/logic/startup/app-history';
 import { routes } from 'vue-router/auto-routes';
 import { useSettings } from './composables/useSettings';
 import { initializeThemeController } from './features/theme/composables/useTheme';
@@ -40,7 +41,7 @@ async function bootstrapApp(): Promise<void> {
     kind: 'initializing-foundation',
   });
   const router = createRouter({
-    history: createWebHashHistory(),
+    history: createAppHistory(),
     routes,
   });
   const navigationGate = createInitialNavigationGate({ router });

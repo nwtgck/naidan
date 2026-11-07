@@ -1,3 +1,4 @@
+import { modelForImageCandidate } from './logic/model-files';
 import { validateLinkedModelRoot } from '@/logic/model-directory-input';
 import { temporaryModelFiles } from '@/logic/temporary-model-files';
 import { hasTemporaryModelPathPrefix } from '@/01-models/temporary-model-files';
@@ -1187,7 +1188,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       const candidate = inventory.value.candidates.find(item => item.candidateKey === componentCandidateKeys.value[slot]);
       return candidate ? [{ slot, candidate }] : [];
     })];
-    return selectionsToUse.map(({ slot, candidate }) => modelForCandidate({ slot, candidate }));
+    return selectionsToUse.map(({ slot, candidate }) => modelForImageCandidate({ slot, candidate }));
   }
   function historyFileLocation({ file }: { file: File }): ImageGenerationModelFile {
     const metadata = { name: file.name, size: file.size, lastModified: file.lastModified };
@@ -1359,21 +1360,6 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     }
     return { primary: { slot, location: modelLocation({ candidate: selected.value }) }, components: savedComponents, loras: savedLoras };
   }
-  function modelForCandidate({ slot, candidate }: { slot: ModelSlot, candidate: ModelCandidate }): Request['models'][number] {
-    const file = candidate.files.find(entry => entry.relativePath === candidate.primaryRelativePath);
-    if (!file) {
-      throw new Error('Selected model file disappeared from the inventory');
-    }
-    // Preserve publication identity and shard membership; never copy weight bytes.
-    // Host files can change outside Naidan. Fresh File snapshots deliberately
-    // invalidate retained-model identity, even when an old receipt still matches.
-    const modelFilesReuseKey = modelLocation({ candidate }).kind === 'opfs' && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({
-      repository: candidate.repositoryKey,
-      path: candidate.primaryRelativePath,
-      files: candidate.files.map(entry => ({ relativePath: entry.relativePath, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
-    }) : undefined;
-    return { slot, ...(modelFilesReuseKey ? { modelFilesReuseKey } : {}), file: file.file, relativePath: candidate.primaryRelativePath, companions: candidate.files.filter(entry => entry.relativePath !== candidate.primaryRelativePath).map(({ relativePath, file }) => ({ relativePath, file })) };
-  }
   function benchmarkTargets({ selections: benchmarkSelections }: { selections: Readonly<Record<string, Partial<Record<ModelSlot, string>>>> }): ImageBenchmarkTarget[] {
     return inventory.value.candidates.flatMap(candidate => {
       const slot = primarySlot({ family: candidate.family });
@@ -1415,7 +1401,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         components,
         missing,
         issue,
-        models: !issue && missing.length === 0 ? members.map(item => modelForCandidate(item)) : undefined,
+        models: !issue && missing.length === 0 ? members.map(item => modelForImageCandidate(item)) : undefined,
       }];
     }).sort((a, b) => a.candidateKey < b.candidateKey ? -1 : a.candidateKey > b.candidateKey ? 1 : 0);
   }

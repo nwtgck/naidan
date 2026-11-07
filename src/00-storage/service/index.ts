@@ -1,3 +1,5 @@
+export { areModelBindingSnapshotsEqual } from './model-binding';
+import { cloneOptionalEndpoint } from '@/01-models/endpoint';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
 import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
@@ -829,7 +831,7 @@ export class StorageService {
           const current = await provider.loadChatMeta({ id });
           assertCurrent();
           this.observeChatMetaRead({ provider, id, meta: current });
-          const previousBinding = current === null ? undefined : { endpoint: structuredClone(current.endpoint), modelId: current.modelId };
+          const previousBinding = current === null ? undefined : { endpoint: cloneOptionalEndpoint({ endpoint: current.endpoint }), modelId: current.modelId };
           const updated = await updater({ current: current });
           assertCurrent();
           if (updated === undefined) {
@@ -1027,7 +1029,7 @@ export class StorageService {
             throw new ChatContentBindingChangedError();
           }
           const current = await provider.loadChatGroup({ id });
-          const previousBinding = current === null ? undefined : { endpoint: structuredClone(current.endpoint), modelId: current.modelId };
+          const previousBinding = current === null ? undefined : { endpoint: cloneOptionalEndpoint({ endpoint: current.endpoint }), modelId: current.modelId };
           const updated = await updater({ current: current });
           if (!isCurrent()) {
             throw new ChatContentBindingChangedError();

@@ -147,9 +147,25 @@ describe('hosted-only bicore image boundary', () => {
     // Storage is a caller-side capability. OPFS access is no longer rejected
     // merely because the image inference engine is absent from this build.
     expect(code).not.toContain('FileReaderSync');
-    expect(code).not.toContain('new Worker');
+    // Avoid a string-prefix false positive for shared transport errors such as
+    // `new WorkerCapabilityUnavailableError(...)`, while still forbidding
+    // actual Worker construction in this standalone bundle.
+    expect(code).not.toMatch(/\bnew\s+Worker\s*\(/);
     // Existing standalone llama packaging is covered by its own boundary;
     // this test asserts no SD capability probe was imported above.
+  }, 60_000);
+
+  it('keeps Workflow image editing and runtime validation available without leaking hosted model access', async () => {
+    vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', '/deliberately-missing-image-runtime');
+    const { files, workerModules } = await bundleView({ mode: 'standalone', entrySource: "export { default } from '@/features/workflow/components/WorkflowImageEditor.vue'; export { createWorkflowImageProvider } from '@/features/workflow/providers/local-image';", injectImageAsset: false });
+    const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
+    expect(modules.some(id => id.endsWith('/workflow/providers/local-image-standalone.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/workflow/logic/image-model-schema.ts'))).toBe(true);
+    for (const suffix of ['/workflow/providers/local-image.ts', '/workflow/logic/image-models.ts', '/logic/model-files.ts', '/logic/temporary-repositories.ts', '/inventory-worker/client.ts', '/inference/engine.ts']) {
+      expect(modules.some(id => id.endsWith(suffix))).toBe(false);
+    }
+    expect(workerModules).toEqual([]);
+    expect(Object.keys(files).some(name => name.startsWith('stable-diffusion-cpp-runtime/') || /\.wasm(\.|$)/.test(name))).toBe(false);
   }, 60_000);
 
   it('retains the hosted generation controller and real Worker implementation in hosted builds', async () => {

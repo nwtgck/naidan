@@ -1,3 +1,4 @@
+import type { Secret } from '@/utils/secret';
 import type { Attachment, Chat } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { UNKNOWN_STEPS } from '@/01-models/lm';
@@ -90,7 +91,7 @@ export async function handleImageGenerationForChat({
   model: string | undefined,
   availableModels: string[],
   endpointUrl: string,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpointHttpHeaders: [name: string, value: Secret<string>][] | undefined,
   storageType: 'opfs' | 'local' | 'memory',
   signal: AbortSignal | undefined,
   getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,

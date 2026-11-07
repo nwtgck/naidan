@@ -1,7 +1,11 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toChatId } from '@/01-models/ids';
 import type { ChatMeta } from '@/01-models/types';
 import { useChatMetadata } from './useChatMetadata';
+
+installSecretEqualityTester();
 
 const mocks = vi.hoisted(() => ({
   getLiveChatById: vi.fn(),
@@ -36,7 +40,7 @@ function createChatMeta(): ChatMeta {
     endpoint: {
       type: 'openai',
       url: 'https://stored.example/v1',
-      httpHeaders: [['X-Old', '1']],
+      httpHeaders: [['X-Old', Secret.from({ value: '1' })]],
     },
   };
 }
@@ -59,7 +63,7 @@ describe('useChatMetadata scoped setting compatibility', () => {
         endpoint: {
           type: 'openai',
           url: 'https://stored.example/v1',
-          httpHeaders: [['X-New', '2']],
+          httpHeaders: [['X-New', Secret.from({ value: '2' })]],
         },
       },
     });
@@ -73,7 +77,7 @@ describe('useChatMetadata scoped setting compatibility', () => {
         value: {
           type: 'openai',
           url: 'https://stored.example/v1',
-          httpHeaders: [['X-New', '2']],
+          httpHeaders: [['X-New', Secret.from({ value: '2' })]],
         },
       }],
     });

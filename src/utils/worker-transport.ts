@@ -1,3 +1,5 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION, READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION, type WorkerTransportCapability } from './worker-transport-capabilities';
+export type { WorkerTransportCapability } from './worker-transport-capabilities';
 import * as Comlink from 'comlink';
 import { z } from 'zod';
 
@@ -9,8 +11,6 @@ export interface WorkerTransferMarked {
   readonly [workerTransferMarker]: true,
 }
 export type WorkerTransfer<T extends object> = T & WorkerTransferMarked;
-
-export type WorkerTransportCapability = 'file-system-handle-clone' | 'readable-stream-transfer';
 
 declare const workerCapabilityMarker: unique symbol;
 export interface WorkerCapabilityMarked<Capability extends WorkerTransportCapability> {
@@ -78,17 +78,156 @@ export function workerTransfer<T extends object>({
   return Comlink.transfer(value, transferables) as WorkerTransfer<T>;
 }
 
-export function workerCapability<
+/** Only this boundary can issue the wire marker. Checking the actual handles
+ * avoids treating a handle-free request as evidence of handle cloning support. */
+export async function workerCapability<
   T extends object,
   Capability extends WorkerTransportCapability,
->({
-  value,
-  capability: _capability,
-}: {
-  value: T,
-  capability: Capability,
-}): WorkerCapability<T, Capability> {
+>({ value, capability }: {
+  value: T, capability: Capability,
+}): Promise<WorkerCapability<T, Capability>> {
+  let supported: boolean;
+  switch (capability) {
+  case FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION: {
+    const handles = fileSystemHandlesIn({ value });
+    supported = (await Promise.all(handles.map(handle => fileSystemHandleCloneSupport({ handle })))).every(Boolean);
+    break;
+  }
+  case READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION:
+    supported = await getReadableStreamTransferSupport() === 'supported';
+    break;
+  default: {
+    const exhaustive: never = capability;
+    throw new Error(`Unknown worker transport capability: ${String(exhaustive)}`);
+  }
+  }
+  if (!supported) {
+    throw new WorkerCapabilityUnavailableError({ capability });
+  }
   return value as WorkerCapability<T, Capability>;
+}
+
+class WorkerCapabilityUnavailableError extends Error {
+  readonly capability: WorkerTransportCapability;
+
+  constructor({ capability }: { capability: WorkerTransportCapability }) {
+    super(`Worker transport capability is unavailable: ${String(capability)}`);
+    this.name = 'WorkerCapabilityUnavailableError';
+    this.capability = capability;
+  }
+}
+
+/** Choose a wire representation before invoking application code. Do not wrap
+ * an RPC in a catch(DataCloneError): a remote failure must never replay writes. */
+export async function prepareWorkerCapability<T extends object, Fallback, Capability extends WorkerTransportCapability>({ value, capability, fallback }: {
+  value: T, capability: Capability, fallback: () => Promise<Fallback>,
+}): Promise<WorkerCapability<T, Capability> | Fallback> {
+  try {
+    return await workerCapability({ value, capability });
+  } catch (error) {
+    if (!(error instanceof WorkerCapabilityUnavailableError) || error.capability !== capability) {
+      throw error;
+    }
+    return fallback();
+  }
+}
+
+function isFileSystemHandle(value: unknown): value is FileSystemHandle {
+  return typeof value === 'object' && value !== null
+    && 'kind' in value && (value.kind === 'file' || value.kind === 'directory')
+    && 'name' in value && typeof value.name === 'string'
+    && 'isSameEntry' in value && typeof value.isSameEntry === 'function';
+}
+
+/** Traverse containers, not model/audio bytes. Neither a File snapshot nor an
+ * ArrayBuffer needs duplicating just to check the handles next to it. */
+function fileSystemHandlesIn({ value }: { value: unknown }): FileSystemHandle[] {
+  const pending: unknown[] = [value], seen = new Set<object>(), handles: FileSystemHandle[] = [];
+  while (pending.length) {
+    const current = pending.pop();
+    if (typeof current !== 'object' || current === null || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    if (isFileSystemHandle(current)) {
+      handles.push(current);
+    } else if (ArrayBuffer.isView(current) || current instanceof ArrayBuffer
+      || (typeof Blob !== 'undefined' && current instanceof Blob)
+      || current instanceof Date || current instanceof RegExp) {
+      continue;
+    } else if (current instanceof Map) {
+      for (const [key, entry] of current) {
+        pending.push(key, entry);
+      }
+    } else if (current instanceof Set) {
+      for (const entry of current) {
+        pending.push(entry);
+      }
+    } else {
+      for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(current))) {
+        if (!descriptor.enumerable) {
+          continue;
+        }
+        if (!('value' in descriptor)) {
+          throw new TypeError('Worker capability payloads must not contain accessors');
+        }
+        pending.push(descriptor.value);
+      }
+    }
+  }
+  return handles;
+}
+
+// Per-object and per-realm: directory success never certifies a file handle,
+// and permission/storage failures for one handle never poison other handles.
+let fileSystemHandleSupport = new WeakMap<FileSystemHandle, Promise<boolean>>();
+
+function fileSystemHandleCloneSupport({ handle }: { handle: FileSystemHandle }): Promise<boolean> {
+  let pending = fileSystemHandleSupport.get(handle);
+  if (!pending) {
+    pending = detectFileSystemHandleCloneSupport({ handle });
+    fileSystemHandleSupport.set(handle, pending);
+  }
+  return pending;
+}
+
+async function detectFileSystemHandleCloneSupport({ handle }: { handle: FileSystemHandle }): Promise<boolean> {
+  if (typeof MessageChannel === 'undefined') {
+    return false;
+  }
+  let channel: MessageChannel;
+  try {
+    channel = new MessageChannel();
+  } catch {
+    return false;
+  }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await new Promise<boolean>(resolve => {
+      timeout = setTimeout(() => resolve(false), 2000);
+      channel.port2.onmessageerror = () => resolve(false);
+      channel.port2.onmessage = (event: MessageEvent<unknown>) => {
+        const clone = event.data;
+        if (!isFileSystemHandle(clone) || clone.kind !== handle.kind || clone.name !== handle.name) {
+          resolve(false);
+          return;
+        }
+        void Promise.resolve().then(() => handle.isSameEntry(clone)).then(resolve, () => resolve(false));
+      };
+      try {
+        channel.port2.start();
+        channel.port1.postMessage(handle);
+      } catch {
+        resolve(false);
+      }
+    });
+  } finally {
+    clearTimeout(timeout);
+    channel.port2.onmessage = null;
+    channel.port2.onmessageerror = null;
+    channel.port1.close();
+    channel.port2.close();
+  }
 }
 
 export function releaseWorkerRemote<Api>({
@@ -235,4 +374,10 @@ export function createValidatedMessagePort<Incoming extends z.ZodType, Outgoing 
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   detectReadableStreamTransferSupport,
+  detectFileSystemHandleCloneSupport,
+  fileSystemHandlesIn,
+  resetCapabilitySupport() {
+    fileSystemHandleSupport = new WeakMap();
+    readableStreamTransferSupport = undefined;
+  },
 };

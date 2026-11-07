@@ -20,7 +20,7 @@ export function startPWAUpdateRuntime(): void {
       reload: () => reloadPWAPage({ location: window.location, history: window.history }),
     },
     pageBuildId: __PWA_BUILD_ID__,
-    baseUrl: new URL(import.meta.env.BASE_URL, window.location.href),
+    baseUrl: new URL(import.meta.env.BASE_URL, document.baseURI),
     onState: ({ next }) => setUpdateState({ next }),
     onOfflineReady: () => {
       void ensureStrings.PWAManager__app_ready_to_work_offline().then((message) => {

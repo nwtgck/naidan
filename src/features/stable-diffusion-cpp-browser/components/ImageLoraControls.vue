@@ -8,7 +8,7 @@ import { lazyStrings } from '@/strings';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 import type { SavedImageLoraChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 
-const props = defineProps<{ modelValue: ImageLoraSelection[], saved: readonly SavedImageLoraChoice[], disabled: boolean, active: boolean, embedded?: boolean }>();
+const props = defineProps<{ modelValue: ImageLoraSelection[], saved: readonly SavedImageLoraChoice[], disabled: boolean, active: boolean, sources: 'library' | 'library_and_files', embedded?: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: ImageLoraSelection[]] }>();
 const open = defineModel<boolean>('open', { default: false });
 const invalidFiles = ref(false);
@@ -33,7 +33,7 @@ function addSaved(): void {
 }
 
 function add({ event }: { event: Event }): void {
-  if (props.disabled || !(event.target instanceof HTMLInputElement)) {
+  if (props.disabled || props.sources === 'library' || !(event.target instanceof HTMLInputElement)) {
     return;
   }
   const files = Array.from(event.target.files ?? []);
@@ -49,7 +49,7 @@ function add({ event }: { event: Event }): void {
 }
 
 function change({ index, event, field }: { index: number, event: Event, field: 'enabled' | 'strength' }): void {
-  if (props.disabled || !(event.target instanceof HTMLInputElement)) {
+  if (props.disabled || props.sources === 'library' || !(event.target instanceof HTMLInputElement)) {
     return;
   }
   const input = event.target;
@@ -98,7 +98,7 @@ defineExpose({
       <ImageModelPicker :active="active" v-model="savedCandidateKey" :choices="choices" :disabled="disabled || !saved.length" :required="false" :label="lazyStrings.ImageLoraControls__saved_adapters()" :empty-label="lazyStrings.ImageLoraControls__choose_saved_adapter()" compact data-testid="image-lora-saved" />
       <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageLoraControls__saved_adapter_compatibility_unverified() }}</p>
       <button type="button" :disabled="disabled || !saved.some(candidate => candidate.candidateKey === savedCandidateKey)" @click="addSaved()" data-testid="image-lora-add-saved" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">{{ lazyStrings.ImageLoraControls__add_adapter() }}</button>
-      <label tw-class="block space-y-1 text-sm">
+      <label v-if="sources === 'library_and_files'" tw-class="block space-y-1 text-sm">
         <span :tw-class="['flex min-h-10 w-fit items-center gap-2 rounded-xl border border-gray-200/80 bg-white/70 px-3 py-2 text-xs font-medium text-gray-600 transition-colors focus-within:ring-2 focus-within:ring-blue-500/30 dark:border-gray-700/70 dark:bg-gray-800/50 dark:text-gray-300', disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:border-blue-200 hover:bg-blue-50/60 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/10']"><FileUpIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />{{ lazyStrings.ImageLoraControls__choose_files() }}<input type="file" multiple accept=".gguf,.safetensors" :disabled="disabled" @change="add({ event: $event })" data-testid="image-lora-files" tw-class="sr-only" /></span>
       </label>
       <p v-if="invalidFiles" role="alert" data-testid="image-lora-file-error" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files() }}</p>

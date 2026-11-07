@@ -1,0 +1,1 @@
+export const workflow__local_audio_help = (): string => "Audio mit einem lokal gespeicherten llama.cpp-browser-Modell erzeugen. Die Modellsuche liest nur lokale Metadaten; sie lädt kein Modell herunter oder zur Inferenz.";

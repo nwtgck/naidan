@@ -14,6 +14,7 @@ beforeEach(async () => {
   wrapper = mount(ImageLoraControls, {
     props: {
       active: true,
+      sources: 'library_and_files',
       modelValue: selections,
       saved: [],
       disabled: false,
@@ -117,4 +118,14 @@ it('never substitutes a different saved adapter when the selected inventory entr
   expect(add.element.matches(':disabled')).toBe(true);
   await add.trigger('click');
   expect(selections).toEqual([]);
+});
+
+it('supports library-only sources without exposing an unpersistable manual file input', async () => {
+  const file = new File(['adapter fixture'], 'style.gguf');
+  await wrapper!.setProps({ sources: 'library', saved: [{ candidateKey: 'one', label: file.name, detail: 'OPFS: one/style.gguf', file, relativePath: file.name }] });
+  expect(wrapper!.find('[data-testid="image-lora-files"]').exists()).toBe(false);
+  wrapper!.getComponent(ImageModelPicker).vm.$emit('update:modelValue', 'one');
+  await wrapper!.vm.$nextTick();
+  await wrapper!.get('[data-testid="image-lora-add-saved"]').trigger('click');
+  expect(selections[0]?.file).toBe(file);
 });

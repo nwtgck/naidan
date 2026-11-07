@@ -40,7 +40,22 @@ function getCapabilityMarker(type, checker) {
       return undefined;
     }
     const markerType = checker.getTypeOfSymbolAtLocation(property, declaration);
-    return getTypeName(markerType, checker).replace(/^"|"$/g, "");
+    // Unique symbols are nominal. Follow their declarations rather than
+    // accepting a spelling, Symbol description, alias, or unrelated lookalike.
+    const transportPath = declaration.getSourceFile().fileName.replace(/\\/g, "/");
+    const symbol = markerType.getSymbol();
+    const capabilityDeclaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+    const capabilityPath = capabilityDeclaration?.getSourceFile().fileName.replace(/\\/g, "/");
+    if (!(markerType.flags & ts.TypeFlags.UniqueESSymbol)
+        || !transportPath.endsWith("/src/utils/worker-transport.ts")
+        || capabilityPath !== transportPath.replace(/worker-transport\.ts$/, "worker-transport-capabilities.ts")) {
+      return "unrecognized-capability-symbol";
+    }
+    switch (symbol.getName()) {
+    case "FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION": return "file-system-handle-clone";
+    case "READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION": return "readable-stream-transfer";
+    default: return "unrecognized-capability-symbol";
+    }
   }
   return undefined;
 }

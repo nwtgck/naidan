@@ -1,3 +1,5 @@
+import { Secret } from '@/utils/secret';
+import { areNaidanRpcTransportsEqual, areNaidanRpcRegistrationsEqual } from '@/01-models/naidan-rpc';
 import { RpcConnectionPermits } from './connection-permits';
 import { RpcPeerClosedError } from './link-lifecycle';
 import type { RpcLinkHealth } from './link-lifecycle';
@@ -65,7 +67,7 @@ export type RpcManagerDependencies = {
   acquireOwner({ signal }: { signal: AbortSignal }): Promise<RpcOwnerLease>,
   open({ settings, identity, peerKey, code, verifyPeer, signal }: {
     settings: NaidanRpcTransportSettings, identity: NaidanPipingIdentity, peerKey: string | undefined,
-    code: string | undefined, verifyPeer: NaidanPipingPeerVerifier | undefined, signal: AbortSignal,
+    code: Secret<string> | undefined, verifyPeer: NaidanPipingPeerVerifier | undefined, signal: AbortSignal,
   }): Promise<RpcLink>,
   inference: InferenceDependencies,
   retireResources(): Promise<void>,
@@ -101,11 +103,21 @@ function copyRegistration({ registration }: { registration: NaidanRpcRegistratio
   return { id, peerPublicKey, localPublicKey, label, transport: validateRpcTransport({ value: transport }), inboundAllowedMethods: [...inboundAllowedMethods], connectOnStartup, revision };
 }
 
-function sessionSettings({ registration }: { registration: NaidanRpcRegistration }): string {
+function sessionSettings({ registration }: { registration: NaidanRpcRegistration }) {
   const { label: _label, connectOnStartup: _connectOnStartup, revision: _revision, ...settings } = copyRegistration({ registration });
   const { id, peerPublicKey, localPublicKey, transport, inboundAllowedMethods, ...rest } = settings;
   rest satisfies Record<PropertyKey, never>;
-  return JSON.stringify({ id, peerPublicKey, localPublicKey, transport, inboundAllowedMethods });
+  return { id, peerPublicKey, localPublicKey, transport, inboundAllowedMethods };
+}
+
+function sameSessionSettings({ left, right }: { left: NaidanRpcRegistration, right: NaidanRpcRegistration }): boolean {
+  const { id: leftId, peerPublicKey: leftPeer, localPublicKey: leftLocal, transport: leftTransport, inboundAllowedMethods: leftMethods, ...leftRest } = sessionSettings({ registration: left });
+  const { id: rightId, peerPublicKey: rightPeer, localPublicKey: rightLocal, transport: rightTransport, inboundAllowedMethods: rightMethods, ...rightRest } = sessionSettings({ registration: right });
+  leftRest satisfies Record<PropertyKey, never>;
+  rightRest satisfies Record<PropertyKey, never>;
+  return leftId === rightId && leftPeer === rightPeer && leftLocal === rightLocal
+    && areNaidanRpcTransportsEqual({ left: leftTransport, right: rightTransport })
+    && leftMethods.length === rightMethods.length && leftMethods.every((method, index) => method === rightMethods[index]);
 }
 
 function retryableAutomaticError({ error }: { error: unknown }): boolean {
@@ -474,7 +486,7 @@ export class NaidanPeerManager {
           }
           const record = byId.get(entry.registration.id);
           if (sameNaidanRpcRegistry({ left: this.requireRegistryAccess({ entry }), right: records.access }) && record && !entry.stale && entry.phase !== 'stopping' &&
-              sessionSettings({ registration: record }) === sessionSettings({ registration: entry.registration })) {
+              sameSessionSettings({ left: record, right: entry.registration })) {
             // Metadata is not session authority. Preserve both a running call
             // and any unsaved restriction when another page edits its name or
             // automatic policy, while advancing the common storage revision.
@@ -485,7 +497,7 @@ export class NaidanPeerManager {
             }
             continue;
           }
-          if (!sameNaidanRpcRegistry({ left: this.requireRegistryAccess({ entry }), right: records.access }) || !record || JSON.stringify(copyRegistration({ registration: record })) !== JSON.stringify(copyRegistration({ registration: entry.registration }))) {
+          if (!sameNaidanRpcRegistry({ left: this.requireRegistryAccess({ entry }), right: records.access }) || !record || !areNaidanRpcRegistrationsEqual({ left: copyRegistration({ registration: record }), right: copyRegistration({ registration: entry.registration }) })) {
             entry.stale = true;
             entry.removed = record === undefined;
             entry.failure = 'RPC settings changed. Reload and reconnect explicitly.';
@@ -1036,8 +1048,8 @@ export class NaidanPeerManager {
     if (!this.enabled || this.pairing) {
       throw new Error('RPC is disabled or another pairing is pending');
     }
-    let initial: { code: string; transport: NaidanRpcTransportSettings; verifyPeer: NaidanPipingPeerVerifier } | undefined = {
-      code: normalizeRpcPairingCode({ code }),
+    let initial: { code: Secret<string>; transport: NaidanRpcTransportSettings; verifyPeer: NaidanPipingPeerVerifier } | undefined = {
+      code: Secret.from({ value: normalizeRpcPairingCode({ code }) }),
       transport: validateRpcTransport({ value: settings }),
       verifyPeer,
     };
@@ -1444,7 +1456,7 @@ export class NaidanPeerManager {
           if (isSaved({ persistence: entry.persistence })) {
             await this.dependencies.storage.update({ access: this.requireRegistryAccess({ entry }), registration: next, expectedRevision: entry.registration.revision });
           }
-          if (sessionSettings({ registration: next }) !== sessionSettings({ registration: entry.registration })) {
+          if (!sameSessionSettings({ left: next, right: entry.registration })) {
             await this.blockEntry({ entry, error: new Error('Connection settings changed; reconnect explicitly') });
           }
           entry.registration = next;

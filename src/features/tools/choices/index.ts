@@ -15,7 +15,7 @@ const ChoiceSchema = z
   .max(200)
   .regex(/^[^\r\n]+$/, 'Choices must be single-line text.');
 
-const ChoicesArgsSchema = z.object({
+export const ChoicesArgsSchema = z.object({
   prompt: z
     .string()
     .trim()
@@ -35,7 +35,7 @@ const ChoicesArgsSchema = z.object({
 
 export type ChoicesArgs = z.infer<typeof ChoicesArgsSchema>;
 
-function renderChoicesResult({
+export function renderChoicesResult({
   index,
   choice,
 }: {

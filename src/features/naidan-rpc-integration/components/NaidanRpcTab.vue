@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Secret } from '@/utils/secret';
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import ToggleSwitch from '@/components/ToggleSwitch.vue';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
@@ -118,7 +119,7 @@ function choose({ id }: { id: NaidanRpcRegistrationId }): void {
   }
   label.value = view.registration.label;
   server.value = view.registration.transport.serverUrl;
-  headers.value = view.registration.transport.headers.map(({ name, value }) => ({ name, value }));
+  headers.value = view.registration.transport.headers.map(({ name, value }) => ({ name, value: value.reveal() }));
   methods.value = [...view.access.effective];
 }
 
@@ -131,7 +132,7 @@ function newConnection(): void {
 }
 
 function settings(): NaidanRpcTransportSettings {
-  return { type: 'naidan_piping_duplex', serverUrl: server.value, headers: headers.value.map(({ name, value }) => ({ name, value })) };
+  return { type: 'naidan_piping_duplex', serverUrl: server.value, headers: headers.value.map(({ name, value }) => ({ name, value: Secret.from({ value }) })) };
 }
 
 const verifyPeer: NaidanPipingPeerVerifier = ({ comparison, signal }) => new Promise(resolve => {

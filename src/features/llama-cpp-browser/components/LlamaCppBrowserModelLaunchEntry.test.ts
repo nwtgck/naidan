@@ -1,6 +1,9 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, h, ref, shallowRef } from 'vue';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
+import { createAppHistory } from '@/logic/startup/app-history';
+import { provideDocumentMetadata } from '@/composables/useDocumentMetadata';
+import { TEST_ONLY as presentationTestOnly } from '@/composables/useAppPresentation';
 import { provideAppEntry } from '@/composables/useAppEntry';
 import type { StartupState } from '@/logic/startup/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -300,5 +303,76 @@ describe('immediate model link presentation', () => {
     expect(wrapper.get('[data-testid="model-preview-quantization"]').text()).toContain(selector);
     expect(wrapper.find('img[src="x"]').exists()).toBe(false);
     expect(wrapper.find('[onerror]').exists()).toBe(false);
+  });
+});
+
+describe('repository model entry with the existing rich component', () => {
+  it.each([
+    { repository: 'LiquidAI/LFM2.5-230M-GGUF', heading: 'LFM2.5 230M', label: 'LFM2.5-230M', quant: 'Q4_K_M', initialQuant: 'Q4_K_M' },
+    { repository: 'owner/Unknown-GGUF', heading: 'Unknown', label: 'Unknown', quant: undefined, initialQuant: 'Q4_K_M' },
+    { repository: 'owner/Unknown-GGUF', heading: 'Unknown', label: 'Unknown', quant: 'Q8_0', initialQuant: 'Q8_0' },
+  ])('keeps $repository with quant=$quant, requires explicit launch and changes to a fragment only on chat navigation', async ({ repository, heading, label, quant, initialQuant }) => {
+    const previous = window.location.href;
+    const oldHead = document.head.innerHTML;
+    const pathname = `/llama-cpp-browser/hf.co/${repository}/`;
+    window.history.replaceState(undefined, '', pathname + (quant === undefined ? '' : `?quant=${quant}`));
+    document.head.innerHTML = '<base href="/">';
+    using _location = {
+      [Symbol.dispose]() {
+        document.head.innerHTML = oldHead;
+        window.history.replaceState(undefined, '', previous);
+      },
+    };
+    inspect.mockResolvedValue({
+      repository,
+      revision: 'a'.repeat(40),
+      projectors: [],
+      models: ['LFM2.5-Q4_K_M.gguf', 'LFM2.5-Q8_0.gguf'].map(path => ({ label: path, files: [{ path, size: 1024 ** 3 }], size: 1024 ** 3 })),
+    });
+    const history = createAppHistory();
+    using _history = { [Symbol.dispose]: () => history.destroy() };
+    const router = createRouter({
+      history,
+      routes: [
+        { path: '/', component: LlamaCppBrowserModelLaunchEntry, props: route => ({ input: route.query['llama-cpp-browser-model'] }) },
+        { path: '/chat/:id', component: { template: '<div data-testid="model-page-chat" />' } },
+      ],
+    });
+    const host = defineComponent({
+      setup() {
+        provideAppEntry({ startupState: shallowRef<StartupState>({ kind: 'ready', mainApp: LlamaCppBrowserModelLaunchEntry }) });
+        provideDocumentMetadata({ router, document, ...presentationTestOnly.createHomeIntroduction({ router }) });
+        return () => h(RouterView);
+      },
+    });
+    const wrapper = mount(host, { global: { plugins: [router], stubs: { Teleport: true } } });
+    using _wrapper = { [Symbol.dispose]: () => wrapper.unmount() };
+    await router.isReady();
+    await flushPromises();
+    expect(wrapper.get('h2').text()).toBe(heading);
+    expect(wrapper.get('[data-testid="start-preview-model"]').attributes('disabled')).toBeUndefined();
+    expect(modelLaunchCommand.value).toBeUndefined();
+    expect(window.location.pathname).toBe(pathname);
+    expect(window.location.hash).toBe('');
+    expect(document.title).toBe(`${label} ${initialQuant} — Local LLM on your device, in your browser | Naidan`);
+    expect(window.location.search).toBe(quant === undefined ? '' : `?quant=${quant}`);
+    expect(document.head.querySelector('meta[name="robots"]')).toBeNull();
+    await wrapper.get('[data-testid="model-preview-quantization"]').trigger('click');
+    await wrapper.get('[data-testid="quantization-option-LFM2.5-Q8_0.gguf"]').trigger('click');
+    await flushPromises();
+    expect(document.title).toBe(`${label} Q8_0 — Local LLM on your device, in your browser | Naidan`);
+    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(`https://naidan.nwtgck.org${pathname}`);
+    expect(window.location.pathname).toBe(pathname);
+    await wrapper.get('[data-testid="start-preview-model"]').trigger('click');
+    expect(modelLaunchCommand.value).toMatchObject({ kind: 'start', request: { requestedVariant: 'LFM2.5-Q8_0.gguf' } });
+    expect(window.location.pathname).toBe(pathname);
+    await router.replace('/chat/created');
+    await flushPromises();
+    expect(window.location.pathname).toBe('/');
+    expect(window.location.hash).toBe('#/chat/created');
+    expect(window.location.search).toBe('');
+    expect(document.head.querySelector('meta[name="robots"]')).toBeNull();
+    expect(wrapper.find('[data-testid="model-page-chat"]').exists()).toBe(true);
+    expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org');
   });
 });

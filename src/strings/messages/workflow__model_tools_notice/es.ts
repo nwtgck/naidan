@@ -1,0 +1,1 @@
+export const workflow__model_tools_notice = (): string => "El modelo puede usar las herramientas activadas. Cada solicitud a Wikipedia y cada script de shell requieren una confirmación independiente. Las llamadas históricas no se vuelven a ejecutar.";

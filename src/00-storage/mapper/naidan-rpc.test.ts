@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { expect, it } from 'vitest';
 import { reactive } from 'vue';
 import { rpcRegistrationFromDto, rpcRegistrationToDto } from './naidan-rpc';
@@ -5,6 +7,8 @@ import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import { cloneEndpoint, areEndpointsEqual, isConfiguredEndpoint } from '@/01-models/endpoint';
 import { ExperimentalNaidanRpcRegistrationSchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
+
+installSecretEqualityTester();
 const registration: NaidanRpcRegistration = {
   id: toNaidanRpcRegistrationId({ raw: 'registration-1' }),
   peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) }),
@@ -13,7 +17,7 @@ const registration: NaidanRpcRegistration = {
   label: 'Peer',
   revision: 0,
   inboundAllowedMethods: ['generateChat'],
-  transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'secret' }] },
+  transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: Secret.from({ value: 'secret' }) }] },
 };
 
 it('projects nested Vue proxies to a cloneable persistence record without losing headers', () => {
@@ -84,14 +88,14 @@ it('validates outgoing headers outside the DTO on both read and write', () => {
   const value = { ...dto, transport };
   expect(ExperimentalNaidanRpcRegistrationSchemaDto.parse(value)).toEqual(value);
   expect(() => rpcRegistrationFromDto({ value })).toThrow();
-  expect(() => rpcRegistrationToDto({ registration: { ...registration, transport } })).toThrow();
+  expect(() => rpcRegistrationToDto({ registration: { ...registration, transport: { ...transport, headers: transport.headers.map(({ name, value }) => ({ name, value: Secret.from({ value }) })) } } })).toThrow();
 });
 
 it('copies headers and method arrays so mutating the form cannot widen the saved record', () => {
-  const form = reactive({ ...registration, inboundAllowedMethods: ['generateChat'], transport: { ...registration.transport, headers: [{ name: 'Authorization', value: 'secret' }] } });
+  const form = reactive({ ...registration, inboundAllowedMethods: ['generateChat'], transport: { ...registration.transport, headers: [{ name: 'Authorization', value: Secret.from({ value: 'secret' }) }] } });
   const dto = rpcRegistrationToDto({ registration: form });
   form.inboundAllowedMethods.push('generateImage');
-form.transport.headers[0]!.value = 'changed';
+form.transport.headers[0]!.value = Secret.from({ value: 'changed' });
 expect(dto.inboundAllowedMethods).toEqual(['generateChat']);
 expect(dto.transport.headers[0]!.value).toBe('secret');
 });

@@ -1,3 +1,6 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
@@ -8,6 +11,8 @@ import { reactive } from 'vue';
 import type { Chat, ChatContent, ChatGroup, SidebarItem } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, type ChatGroupId, type ChatId } from '@/01-models/ids';
+
+installSecretEqualityTester();
 
 afterEach(() => {
   for (const providerChat of [mockLmChat]) {
@@ -33,9 +38,9 @@ const { mockGlobalSettings, mockSavedGlobalSettings } = vi.hoisted(() => {
 });
 
 function persistChatHierarchy({ chat, chatGroup }: { chat: Chat, chatGroup: ChatGroup }): void {
-  mockSavedChats.set(chat.id, JSON.parse(JSON.stringify(chat)) as Chat);
+  mockSavedChats.set(chat.id, clonePlainData({ value: chat }));
   const chatItem: SidebarItem = { id: `chat:${idToRaw({ id: chat.id })}`, type: 'chat', chat: { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, groupId: chat.groupId } };
-  const savedChatGroup = JSON.parse(JSON.stringify({ ...chatGroup, items: chat.groupId === chatGroup.id ? [chatItem] : [] })) as ChatGroup;
+  const savedChatGroup = clonePlainData({ value: { ...chatGroup, items: chat.groupId === chatGroup.id ? [chatItem] : [] } });
   mockSavedChatGroups.set(chatGroup.id, savedChatGroup);
   mockRootItems.splice(0, mockRootItems.length, { id: `chat_group:${idToRaw({ id: chatGroup.id })}`, type: 'chat_group', chatGroup: savedChatGroup });
   if (chat.groupId !== chatGroup.id) {
@@ -52,14 +57,14 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn<StorageService['loadChat']>().mockImplementation(async ({ id }) => {
       const saved = mockSavedChats.get(id);
-      return saved === undefined ? null : structuredClone(saved);
+      return saved === undefined ? null : clonePlainData({ value: saved });
     }),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn<StorageService['updateChatMeta']>().mockImplementation(async ({ id, updater }) => {
       const current = mockSavedChats.get(id) ?? null;
-      const updated = updater({ current });
+      const updated = await updater({ current });
       if (updated !== undefined) {
-        mockSavedChats.set(id, { ...current, ...JSON.parse(JSON.stringify(updated)), root: current?.root ?? { items: [] } });
+        mockSavedChats.set(id, { ...current, ...clonePlainData({ value: updated }), root: current?.root ?? { items: [] } });
       }
     }),
     loadChatMeta: vi.fn(),
@@ -74,13 +79,13 @@ vi.mock('../00-storage/service', () => ({
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     deleteChat: vi.fn(),
     updateChatGroup: vi.fn(),
-    listChatGroups: vi.fn().mockImplementation(async () => structuredClone([...mockSavedChatGroups.values()])),
+    listChatGroups: vi.fn().mockImplementation(async () => clonePlainData({ value: [...mockSavedChatGroups.values()] })),
     loadChatGroup: vi.fn().mockImplementation(async ({ id }) => {
       const saved = mockSavedChatGroups.get(id);
-      return saved === undefined ? null : structuredClone(saved);
+      return saved === undefined ? null : clonePlainData({ value: saved });
     }),
     loadSettings: vi.fn().mockImplementation(async () => structuredClone(mockSavedGlobalSettings)),
-    getSidebarStructure: vi.fn().mockImplementation(async () => structuredClone(mockRootItems)),
+    getSidebarStructure: vi.fn().mockImplementation(async () => clonePlainData({ value: mockRootItems })),
     deleteChatGroup: vi.fn(),
     notify: vi.fn(),
   },
@@ -287,7 +292,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       endpoint: {
         type: 'ollama',
         url: 'http://group-ollama:11434',
-        httpHeaders: [['X-Group-Header', 'group-val']],
+        httpHeaders: [['X-Group-Header', Secret.from({ value: 'group-val' })]],
       },
     };
 
@@ -450,7 +455,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       endpoint: {
         type: 'ollama',
         url: 'http://group-ollama:11434',
-        httpHeaders: [['X-Group-Header', 'group-val']],
+        httpHeaders: [['X-Group-Header', Secret.from({ value: 'group-val' })]],
       },
     };
 

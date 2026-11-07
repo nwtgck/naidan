@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { SettingsSelectStub } from './settings-select.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -11,13 +13,16 @@ import ReasoningSettings from './ReasoningSettings.vue';
 import { toProviderProfileId, toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
+installSecretEqualityTester();
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-const { mockFetchModels, mockSave } = vi.hoisted(() => ({
+const { mockFetchModels, mockSave, mockShowPrompt } = vi.hoisted(() => ({
   mockFetchModels: vi.fn(),
   mockSave: vi.fn(),
+  mockShowPrompt: vi.fn(),
 }));
 
 vi.mock('@/composables/useSettings', () => ({
@@ -37,7 +42,7 @@ vi.mock('@/composables/useConfirm', () => ({
 }));
 
 vi.mock('@/composables/usePrompt', () => ({
-  usePrompt: () => ({ showPrompt: vi.fn() }),
+  usePrompt: () => ({ showPrompt: mockShowPrompt }),
 }));
 
 function createSettings({ endpointType }: {
@@ -57,7 +62,7 @@ function createSettings({ endpointType }: {
         return {
           type: endpointType,
           url: 'https://ollama.example',
-          httpHeaders: [['X-Test', 'value']],
+          httpHeaders: [['X-Test', Secret.from({ value: 'value' })]],
         };
       default: {
         const _ex: never = endpointType;
@@ -96,6 +101,7 @@ const globalStubs = {
 beforeEach(() => {
   mockFetchModels.mockReset();
   mockSave.mockReset();
+  mockShowPrompt.mockReset();
   mockSave.mockResolvedValue(undefined);
   mockFetchModels.mockResolvedValue([]);
 });
@@ -285,7 +291,7 @@ describe('ConnectionTab Ollama management integration', () => {
       endpoint: {
         type: 'openai',
         url: 'https://title.example/v1',
-        httpHeaders: [['X-Title', 'old']],
+        httpHeaders: [['X-Title', Secret.from({ value: 'old' })]],
       },
       model: { id: 'title-model' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
@@ -309,7 +315,7 @@ describe('ConnectionTab Ollama management integration', () => {
       endpoint: {
         type: 'openai',
         url: 'https://title.example/v1',
-        httpHeaders: [['X-Title-Next', 'next']],
+        httpHeaders: [['X-Title-Next', Secret.from({ value: 'next' })]],
       },
       model: { id: 'title-model' },
     });
@@ -414,10 +420,10 @@ describe('ConnectionTab controlled settings contracts', () => {
     await wrapper.get('[data-testid="setting-parameters-disclosure"]').trigger('click');
     expect(wrapper.findAllComponents(ModelSelector)[1]!.element).toBe(titleElement);
     const headers = wrapper.findAllComponents(HttpHeadersEditor)[0]!;
-    headers.vm.$emit('update:modelValue', [['X-API-Key', 'draft-secret']]);
+    headers.vm.$emit('update:modelValue', [['X-API-Key', Secret.from({ value: 'draft-secret' })]]);
     headers.vm.$emit('save');
     await flushPromises();
-    expect(settings.endpoint).toMatchObject({ httpHeaders: [['X-API-Key', 'draft-secret']] });
+    expect(settings.endpoint).toMatchObject({ httpHeaders: [['X-API-Key', Secret.from({ value: 'draft-secret' })]] });
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockFetchModels).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="setting-save-button"]').trigger('click');
@@ -475,7 +481,7 @@ describe('ConnectionTab controlled settings contracts', () => {
     const settings = createSettings({ endpointType: 'openai' });
     const titleParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' as const }, temperature: 0.2 };
     settings.titleGeneration = status === 'disabled' ? 'disabled' : { endpoint: 'same_scope', model: 'same_scope', lmParameters: titleParameters };
-    settings.providerProfiles = [{ id: toProviderProfileId({ raw: 'saved-profile' }), name: 'Saved snapshot', endpoint: { type: 'openai', url: 'https://profile.example', httpHeaders: [['X-Profile', 'secret']] }, defaultModelId: 'profile-model', titleModelId: 'profile-title', systemPrompt: 'Profile prompt', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } } }];
+    settings.providerProfiles = [{ id: toProviderProfileId({ raw: 'saved-profile' }), name: 'Saved snapshot', endpoint: { type: 'openai', url: 'https://profile.example', httpHeaders: [['X-Profile', Secret.from({ value: 'secret' })]] }, defaultModelId: 'profile-model', titleModelId: 'profile-title', systemPrompt: 'Profile prompt', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } } }];
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: { ...globalStubs, SettingsSelect: false } } });
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -653,6 +659,7 @@ it('keeps helpful provider details and existing availability reasons in the main
   const selectors = wrapper.findAllComponents(SettingsSelect);
   for (const testId of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
     const options = selectors.find(select => select.attributes('data-testid') === testId)!.props('options');
+    expect(options.filter(option => option.value !== 'same_scope').map(option => option.value)).toEqual(['llama_cpp_browser', 'openai', 'ollama', 'naidan_rpc', 'transformers_js', 'browser_provided_lm']);
     expect(options.find(option => option.value === 'openai')?.detail).toBe('Connect to an OpenAI-compatible API');
     expect(options.find(option => option.value === 'ollama')?.detail).toBe('Connect to an Ollama server');
     expect(options.find(option => option.value === 'naidan_rpc')?.detail).toBe('Use models from a registered connection');
@@ -660,4 +667,24 @@ it('keeps helpful provider details and existing availability reasons in the main
     expect(options.find(option => option.value === 'transformers_js')?.detail).toBe('Run ONNX models in this browser');
     expect(options.find(option => option.value === 'browser_provided_lm')?.detail).toBeTruthy();
   }
+});
+
+it('uses the resolved in-browser name when suggesting a new profile name without saving on cancel', async () => {
+  const settings = createSettings({ endpointType: 'llama_cpp_browser' });
+  settings.defaultModelId = 'chat.gguf';
+  const wrapper = mount(ConnectionTab, {
+    props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false },
+    global: { stubs: globalStubs },
+  });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  mockShowPrompt.mockResolvedValueOnce(undefined);
+  await wrapper.get('[data-testid="setting-save-provider-profile-button"]').trigger('click');
+  await flushPromises();
+  expect(mockShowPrompt).toHaveBeenCalledWith(expect.objectContaining({ defaultValue: 'llama.cpp in the browser - chat.gguf' }));
+  expect(settings.providerProfiles).toEqual([]);
+  expect(mockSave).not.toHaveBeenCalled();
 });

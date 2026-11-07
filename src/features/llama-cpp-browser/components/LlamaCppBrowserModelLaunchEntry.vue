@@ -186,7 +186,10 @@ usePageDocumentMetadata({
       return exhaustive;
     }
     }
-    return { routePath, metadata: modelLaunchMetadata({ repository: repository.value, variant: requestedVariant.value }) };
+    // Picker commands retain the exact file selector; metadata uses a verified
+    // quantization label when the inspected catalog can identify it.
+    const variant = selectedQuantizationChoice({ choices: inspectedChoices.value, variant: displayedVariant.value })?.quantization ?? requestedVariant.value;
+    return { routePath, metadata: modelLaunchMetadata({ repository: repository.value, variant }) };
   }),
 });
 

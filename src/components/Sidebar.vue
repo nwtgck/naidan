@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { ref, watch, nextTick, computed, toRaw } from 'vue';
 import type { ObjectDirective } from 'vue';
@@ -226,7 +227,7 @@ defineEmits<{
   (e: 'open-settings'): void,
 }>();
 
-const sidebarItemsLocal = ref<SidebarItem[]>(JSON.parse(JSON.stringify(sidebarItems.value)));
+const sidebarItemsLocal = ref<SidebarItem[]>(clonePlainData({ value: sidebarItems.value }));
 const isDragging = ref(false);
 const dragHoverGroup = ref<ChatGroupId | null>(null);
 let dragHoverTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -487,8 +488,8 @@ function syncLocalItems() {
     return;
   }
   const previousRects = captureSidebarItemRects();
-  // Use JSON.parse/stringify for robust deep cloning of reactive objects in test environments
-  sidebarItemsLocal.value = JSON.parse(JSON.stringify(sidebarItems.value));
+  // Copy mutable sidebar data while preserving protected credentials.
+  sidebarItemsLocal.value = clonePlainData({ value: sidebarItems.value });
   animateSidebarItemMoves({ previousRects });
 }
 

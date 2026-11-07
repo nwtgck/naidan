@@ -4,8 +4,9 @@ import { storageService, type StorageService } from '@/00-storage/service';
 import { createChatContentWrite, snapshotChatContent } from '@/00-storage/service/chat-content-binding';
 import type { ChatDataStore } from '@/composables/chat/global/chat-data-store';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { Secret } from '@/utils/secret';
 import type { Chat, ChatGroup } from '@/01-models/types';
-import { toChatGroupId, toChatId } from '@/01-models/ids';
+import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -274,5 +275,45 @@ describe('useChatLifecycle', () => {
     expect(mockLoadData).not.toHaveBeenCalled();
     expect(mockCreatingChat.value).toBe(false);
     expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+  });
+
+  it('imports a completed transcript with disabled tools and titles, no mounts, no group, and no activation', async () => {
+    const messages = [{ id: toMessageId({ raw: 'old' }), role: 'assistant' as const, parts: [{ type: 'text' as const, text: 'answer', completeness: 'complete' as const }] }];
+    const endpoint = { type: 'openai' as const, url: 'https://chosen', httpHeaders: [['Authorization', Secret.from({ value: 'selected' })]] as [name: string, value: Secret<string>][] };
+    const created = await useChatLifecycle().createChatFromHistory({ messages, endpoint, modelId: 'selected-model', lmParameters: undefined });
+    expect(created?.root.items[0]?.parts).toEqual(messages[0]?.parts);
+    expect(created?.root.items[0]?.id).not.toBe(messages[0]?.id);
+    expect(created?.currentLeafId).toBe(created?.root.items[0]?.id);
+    expect(created?.endpoint).toEqual(endpoint);
+    expect(created?.endpoint?.type === 'openai' ? created.endpoint.httpHeaders?.[0]?.[1].reveal() : undefined).toBe('selected');
+    expect(created?.systemPrompt).toEqual({ behavior: 'override', content: null });
+    expect(created?.groupId).toBeNull();
+    expect(created?.mounts).toEqual([]);
+    expect(created?.titleGeneration).toBe('disabled');
+    expect(created?.toolConfigs?.length).toBeGreaterThan(0);
+    expect(created?.toolConfigs?.every(config => config.status === 'disabled')).toBe(true);
+    expect(mockEnsureChatWorkspaceMounted).not.toHaveBeenCalled();
+    expect(mockGetEffectiveToolConfigsForChat).not.toHaveBeenCalled();
+    expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+    expect(mockCurrentChatRef.value).toBeNull();
+    expect(mockUpdateChatContent).toHaveBeenCalledTimes(1);
+    endpoint.url = 'https://changed';
+    endpoint.httpHeaders[0] = ['Authorization', Secret.from({ value: 'changed' })];
+    messages[0]!.parts[0]!.text = 'changed';
+    expect(created?.endpoint?.type === 'openai' && created.endpoint.url).toBe('https://chosen');
+    expect(created?.endpoint?.type === 'openai' ? created.endpoint.httpHeaders?.[0]?.[1].reveal() : undefined).toBe('selected');
+    expect(created?.root.items[0]?.parts).toMatchObject([{ text: 'answer' }]);
+  });
+
+  it('rejects incomplete imported content before publishing any new chat', async () => {
+    await expect(useChatLifecycle().createChatFromHistory({
+      messages: [{ id: toMessageId({ raw: 'partial' }), role: 'assistant', parts: [{ type: 'text', text: 'partial', completeness: 'partial' }] }],
+      endpoint: { type: 'ollama', url: 'http://local' },
+      modelId: 'model',
+      lmParameters: undefined,
+    })).rejects.toThrow('complete');
+    expect(mockRegisterLiveInstance).not.toHaveBeenCalled();
+    expect(mockUpdateChatContent).not.toHaveBeenCalled();
+    expect(mockUpdateChatMeta).not.toHaveBeenCalled();
   });
 });

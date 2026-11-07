@@ -1,3 +1,7 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
+import { Secret } from '@/utils/secret';
+import { EMPTY_LM_PARAMETERS, type ChatMeta, type ChatGroup, type HttpEndpoint } from '@/01-models/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { STORAGE_KEY_PREFIX } from '@/constants';
@@ -8,7 +12,9 @@ import {
   naidanSysfsRemoteChatMetaPayloadSchema,
 } from './remote-reader-schema';
 import { NaidanSysfsProvider } from './provider';
-import { createNaidanSysfsRemoteReader, createRemoteNaidanSysfsStorageReader } from './storage-reader';
+import { createOpfsNaidanSysfsStorageReader, createNaidanSysfsRemoteReader, createRemoteNaidanSysfsStorageReader } from './storage-reader';
+
+installSecretEqualityTester();
 
 const legacyMetadata = {
   id: 'chat-legacy',
@@ -183,5 +189,90 @@ describe('Naidan sysfs current-format transfer boundary', () => {
       },
     };
     expect(naidanSysfsRemoteChatContentPayloadSchema.safeParse(content).success).toBe(false);
+  });
+
+  it('redacts all connection credentials before the structured-clone boundary without changing storage', async () => {
+    const endpoint = { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', 'main-credential']] };
+    const titleGeneration = {
+      endpoint: { ...endpoint, httpHeaders: [['X-Title', 'title-credential']] },
+      model: { id: 'title-model' },
+      lmParameters: { reasoning: {} },
+    };
+    const saved = new Map([
+      [`${STORAGE_KEY_PREFIX}lsp:chat_meta:chat-legacy`, JSON.stringify({ ...legacyMetadata, endpoint, titleGeneration })],
+      [`${STORAGE_KEY_PREFIX}lsp:chat_group:group-legacy`, JSON.stringify({ ...legacyGroup, endpoint, titleGeneration })],
+      [`${STORAGE_KEY_PREFIX}lsp:chat_content:chat-legacy`, JSON.stringify(legacyContent)],
+      [`${STORAGE_KEY_PREFIX}lsp:hierarchy`, JSON.stringify({ items: [{ type: 'chat_group', id: 'group-legacy', chat_ids: ['chat-legacy'] }] })],
+    ]);
+    for (const [key, text] of saved) {
+      localStorage.setItem(key, text);
+    }
+    const remote = createNaidanSysfsRemoteReader({ storageType: 'local' });
+    const payloads = [
+      await remote.loadChatMeta({ chatId: 'chat-legacy' }),
+      await remote.loadChat({ chatId: 'chat-legacy' }),
+      await remote.loadChatGroup({ chatGroupId: 'group-legacy' }),
+      await remote.listChatGroups(),
+      await remote.getSidebarStructure(),
+    ];
+    for (const payload of payloads) {
+      expect(payload).toBeDefined();
+      const wire = JSON.stringify(structuredClone(payload));
+      expect(wire).not.toContain('main-credential');
+      expect(wire).not.toContain('title-credential');
+      expect(wire).toContain('[masked]');
+      expect(wire).toContain('X-Custom');
+      expect(wire).toContain('X-Title');
+    }
+    const reader = createRemoteNaidanSysfsStorageReader({ remoteReader: remote });
+    const meta = await reader.loadChatMeta({ chatId: toChatId({ raw: 'chat-legacy' }) });
+    expect(meta?.endpoint).toMatchObject({ type: 'openai' });
+    if (meta?.endpoint?.type !== 'openai' || typeof meta.titleGeneration !== 'object' || meta.titleGeneration.endpoint === 'same_scope' || meta.titleGeneration.endpoint.type !== 'openai') {
+      throw new Error('Expected normalized HTTP endpoints');
+    }
+    expect(meta.endpoint.httpHeaders?.[0]?.[1].reveal()).toBe('[masked]');
+    expect(meta.titleGeneration.endpoint.httpHeaders?.[0]?.[1].reveal()).toBe('[masked]');
+    for (const [key, text] of saved) {
+      expect(localStorage.getItem(key)).toBe(text);
+    }
+  });
+
+  it('redacts direct OPFS reader results without changing the source domain objects', async () => {
+    const endpoint: HttpEndpoint = { type: 'openai', url: 'https://example.invalid', httpHeaders: [['X-Custom', Secret.from({ value: 'opfs-original' })]] };
+    const titleEndpoint: HttpEndpoint = { ...endpoint, httpHeaders: [['X-Title', Secret.from({ value: 'opfs-title-original' })]] };
+    const titleGeneration = { endpoint: titleEndpoint, model: { id: 'title' }, lmParameters: EMPTY_LM_PARAMETERS };
+    const metadata: ChatMeta = { id: toChatId({ raw: 'chat' }), title: 'Chat', createdAt: 1, updatedAt: 2, debugEnabled: false, endpoint, titleGeneration };
+    const group: ChatGroup = { id: toChatGroupId({ raw: 'group' }), name: 'Group', updatedAt: 2, isCollapsed: false, items: [], endpoint, titleGeneration };
+    vi.spyOn(OPFSStorageProvider.prototype, 'init').mockResolvedValue();
+    vi.spyOn(OPFSStorageProvider.prototype, 'loadChatMeta').mockResolvedValue(metadata);
+    vi.spyOn(OPFSStorageProvider.prototype, 'loadChat').mockResolvedValue({ ...metadata, root: { items: [] } });
+    vi.spyOn(OPFSStorageProvider.prototype, 'loadChatGroup').mockResolvedValue(group);
+    vi.spyOn(OPFSStorageProvider.prototype, 'listChatGroups').mockResolvedValue([group]);
+    vi.spyOn(OPFSStorageProvider.prototype, 'getSidebarStructure').mockResolvedValue([{ id: 'chat_group:group', type: 'chat_group', chatGroup: group }]);
+    const reader = await createOpfsNaidanSysfsStorageReader();
+    const sidebar = (await reader.getSidebarStructure())[0];
+    if (sidebar?.type !== 'chat_group') {
+      throw new Error('Expected group sidebar entry');
+    }
+    const values = [
+      await reader.loadChatMeta({ chatId: metadata.id }),
+      await reader.loadChat({ chatId: metadata.id }),
+      await reader.loadChatGroup({ chatGroupId: group.id }),
+      (await reader.listChatGroups())[0],
+      sidebar.chatGroup,
+    ];
+    for (const value of values) {
+      if (value?.endpoint?.type !== 'openai') {
+        throw new Error('Expected projected endpoint');
+      }
+      expect(value.endpoint.httpHeaders?.[0]?.[1].reveal()).toBe('[masked]');
+      const title = value.titleGeneration;
+      if (typeof title !== 'object' || title.endpoint === 'same_scope' || title.endpoint.type !== 'openai') {
+        throw new Error('Expected projected title endpoint');
+      }
+      expect(title.endpoint.httpHeaders?.[0]?.[1].reveal()).toBe('[masked]');
+    }
+    expect(endpoint.httpHeaders?.[0]?.[1].reveal()).toBe('opfs-original');
+    expect(titleEndpoint.httpHeaders?.[0]?.[1].reveal()).toBe('opfs-title-original');
   });
 });

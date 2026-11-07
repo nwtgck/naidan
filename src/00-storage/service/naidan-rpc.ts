@@ -1,5 +1,4 @@
 import { rpcRegistrationFromDto, rpcRegistrationToDto } from '@/00-storage/mapper/naidan-rpc';
-import { ExperimentalNaidanRpcTransportSchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 import type { NaidanRpcRegistration, NaidanRpcIdentity, NaidanRpcTransportSettings } from '@/01-models/naidan-rpc';
 import { normalizeNaidanRpcTransport } from '@/01-models/naidan-rpc';
 import type { NaidanRpcRegistrationId } from '@/01-models/ids';
@@ -84,8 +83,8 @@ export const naidanRpcStorage = {
   },
 };
 
-export function validateRpcTransport({ value }: { value: unknown }): NaidanRpcTransportSettings {
-  return normalizeNaidanRpcTransport({ transport: ExperimentalNaidanRpcTransportSchemaDto.parse(value) });
+export function validateRpcTransport({ value }: { value: NaidanRpcTransportSettings }): NaidanRpcTransportSettings {
+  return normalizeNaidanRpcTransport({ transport: value });
 }
 
 export type NaidanRpcStorage = typeof naidanRpcStorage;

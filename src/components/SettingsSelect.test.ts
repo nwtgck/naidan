@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mount, enableAutoUnmount, flushPromises } from '@vue/test-utils';
-import { nextTick, defineComponent, h } from 'vue';
+import { nextTick, defineComponent, h, ref } from 'vue';
 import SettingsSelect from './SettingsSelect.vue';
 import SettingsDisclosure from './SettingsDisclosure.vue';
+import SettingsCollapse from './SettingsCollapse.vue';
 
 enableAutoUnmount(afterEach);
 
@@ -109,5 +110,49 @@ describe.each(['default', 'compact'] as const)('SettingsSelect (%s)', size => {
     expect(wrapper.findComponent(SettingsSelect).get('button').attributes('aria-expanded')).toBe('false');
     expect(wrapper.get('[data-testid="draft"]').element).toBe(input);
     expect(document.activeElement).toBe(disclosure.get('button').element);
+  });
+});
+
+describe('explicit menu opening', () => {
+  it('opens idempotently and focuses the selected option without emitting a change', async () => {
+    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'ollama', options, label: 'Connection' } });
+    await wrapper.vm.openMenu();
+    const selected = document.activeElement;
+    expect(selected?.getAttribute('data-testid')).toBe('settings-select-option-ollama');
+    await wrapper.vm.openMenu();
+    expect(wrapper.get('button').attributes('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(selected);
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+  });
+
+  it('does not open when disabled or when an ancestor disclosure is closed', async () => {
+    const expanded = ref(false);
+    const disabled = ref(false);
+    const wrapper = mount(defineComponent({
+      setup: () => () => h(SettingsCollapse, { open: expanded.value }, () => h(SettingsSelect, { modelValue: 'ollama', options, label: 'Connection', disabled: disabled.value })),
+    }), { attachTo: document.body });
+    const select = wrapper.getComponent(SettingsSelect);
+    await select.vm.openMenu();
+    expect(select.get('button').attributes('aria-expanded')).toBe('false');
+    expanded.value = true;
+    disabled.value = true;
+    await nextTick();
+    await select.vm.openMenu();
+    expect(select.get('button').attributes('aria-expanded')).toBe('false');
+    disabled.value = false;
+    await nextTick();
+    await select.vm.openMenu();
+    expect(select.get('button').attributes('aria-expanded')).toBe('true');
+  });
+
+  it('cancels pending focus when a menu is closed before its opening tick finishes', async () => {
+    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'ollama', options, label: 'Connection' } });
+    const trigger = wrapper.get<HTMLButtonElement>('button');
+    trigger.element.focus();
+    const opened = wrapper.vm.openMenu();
+    trigger.element.click();
+    await opened;
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger.element);
   });
 });

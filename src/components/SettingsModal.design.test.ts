@@ -10,6 +10,8 @@ import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
 import { useSampleChat } from '@/composables/useSampleChat';
+import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
+import { toProviderProfileId } from '@/01-models/ids';
 
 vi.mock('vue-router', async (importActual) => {
   const actual = await importActual<typeof import('vue-router')>();
@@ -73,7 +75,7 @@ describe('SettingsModal Design Specifications', () => {
     (useRoute as Mock).mockReturnValue(currentRoute);
 
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({ endpoint: { type: 'openai', url: '' }, providerProfiles: [] }),
+      settings: ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }),
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
@@ -117,9 +119,11 @@ describe('SettingsModal Design Specifications', () => {
   it('uses capitalized labels for Provider Profiles (with uppercase class)', async () => {
     // Inject a profile to check the badge
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({
+      settings: ref<Settings>({
+        ...DEFAULT_SETTINGS,
+        storageType: 'local',
         endpoint: { type: 'openai', url: '' },
-        providerProfiles: [{ id: '1', name: 'Profile-1', endpoint: { type: 'ollama', url: '...' } }],
+        providerProfiles: [{ id: toProviderProfileId({ raw: '1' }), name: 'Profile-1', endpoint: { type: 'ollama', url: '...' } }],
       }),
       availableModels: ref([]),
       isFetchingModels: ref(false),

@@ -35,6 +35,7 @@ describe('model launch share URLs', () => {
   it.each([
     { baseUrl: 'file:///home/user/Naidan%20App/naidan.html?old=query#/chat/old', expected: 'file:///home/user/Naidan%20App/naidan.html' },
     { baseUrl: 'https://naidan.example/sub/app.html?old=query#/audio-generation', expected: 'https://naidan.example/sub/app.html' },
+    { baseUrl: 'https://naidan.pages.dev/llama-cpp-browser/hf.co/LiquidAI/LFM2.5-230M-GGUF/?old=query', expected: 'https://naidan.pages.dev/' },
   ])('preserves the installation location $expected', ({ baseUrl, expected }) => {
     const result = modelLaunchShareUrl({ baseUrl, catalog: catalog({ paths: ['Model-Q4_K_M.gguf'] }), mainFilePath: 'Model-Q4_K_M.gguf' });
     expect(result?.split('#')[0]).toBe(expected);

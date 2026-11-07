@@ -1,3 +1,4 @@
+import { appUrlFromLocation } from '@/logic/app-location';
 import { storageService } from '@/00-storage/service';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { ImportExportService, type IImportExportStorage } from './service';
@@ -181,7 +182,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
         return reject(new Error('Failed to encode ZIP to Base64'));
       }
 
-      const url = new URL(window.location.href);
+      const url = appUrlFromLocation({ href: window.location.href });
       url.search = '';
       url.hash = '';
 
