@@ -147,7 +147,10 @@ describe('hosted-only bicore image boundary', () => {
     // Storage is a caller-side capability. OPFS access is no longer rejected
     // merely because the image inference engine is absent from this build.
     expect(code).not.toContain('FileReaderSync');
-    expect(code).not.toContain('new Worker');
+    // Avoid a string-prefix false positive for shared transport errors such as
+    // `new WorkerCapabilityUnavailableError(...)`, while still forbidding
+    // actual Worker construction in this standalone bundle.
+    expect(code).not.toMatch(/\bnew\s+Worker\s*\(/);
     // Existing standalone llama packaging is covered by its own boundary;
     // this test asserts no SD capability probe was imported above.
   }, 60_000);
