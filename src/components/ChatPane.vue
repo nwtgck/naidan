@@ -71,7 +71,6 @@ import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import ChatApprovalPanel from '@/features/tools/components/chat-approval/ChatApprovalPanel.vue';
 import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoicesPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
-const WorkflowFromChatButton = defineAsyncComponent(() => import('@/features/workflow/components/WorkflowFromChatButton.vue'));
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
 import TransformersJsLoadingIndicator from '@/features/transformers-js/components/TransformersJsLoadingIndicator.vue';
@@ -1893,8 +1892,6 @@ watch(
       @open-chat-inspector="showChatInspector = true"
       @delete-chat="handleDeleteChat()"
     />
-
-    <WorkflowFromChatButton v-if="chat && activeMessages.length" :messages="activeMessages" :settings="resolvedSettings" :title="chat.title" :disabled="isChatStreaming" />
 
     <!-- Empty chats use the full preparation presentation; history keeps its
          preparation controls beside the existing composer. -->

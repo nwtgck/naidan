@@ -554,19 +554,6 @@ function createWorkspace() {
       setError({ reason });
     }
   }
-  async function importDefinition({ next, canApply }: { next: WorkflowDefinition, canApply?: () => boolean }): Promise<boolean> {
-    if (busy.value || dialogOpen.value) {
-      return false;
-    }
-    const observed = editing;
-    const normalized = parseWorkflowDefinition({ text: formatWorkflowDefinition({ definition: next }) });
-    if (!await confirmDiscard() || observed !== editing || canApply?.() === false) {
-      return false;
-    }
-    adopt({ next: normalized, snapshot: undefined, documentKind: 'workflow' });
-    return true;
-  }
-
   async function exportStructure(): Promise<void> {
     if (navigationLocked.value) {
       return;
@@ -1231,7 +1218,6 @@ function createWorkspace() {
     applyPartial,
     exportDefinition,
     exportStructure,
-    importDefinition,
     sample,
     respond,
     start,

@@ -2150,22 +2150,6 @@ describe('Integrated Workflow completion capabilities', () => {
     expect(mocks.loadLmProvider).not.toHaveBeenCalled();
   });
 
-  it('preserves drafts when a chat-copy source becomes stale while discard confirmation is open', async () => {
-    const state = workspace();
-    state.updateName({ name: 'keep existing work' });
-    const gate = Promise.withResolvers<boolean>();
-    using completion = { gate, [Symbol.dispose]: () => gate.resolve(false) };
-    mocks.confirm.mockImplementation(async () => completion.gate.promise);
-    let current = true;
-    const imported = state.importDefinition({ next: { name: 'from-chat', steps: [] }, canApply: () => current });
-    await vi.waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
-    current = false;
-    gate.resolve(true);
-    expect(await imported).toBe(false);
-    expect(state.definition.value.name).toBe('keep existing work');
-    expect(mocks.downloadBlob).not.toHaveBeenCalled();
-  });
-
   it('checkpoints a fixed-choice prompt and rejects a forged answer before resuming', async () => {
     using files = createWorkflowTestFileSystem();
     historyFileSystem({ files });

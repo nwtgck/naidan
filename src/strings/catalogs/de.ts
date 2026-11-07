@@ -3597,10 +3597,8 @@ import { workflow__continue_in_chat } from '@/strings/messages/workflow__continu
 import { workflow__continue_with_error_output } from '@/strings/messages/workflow__continue_with_error_output/de';
 import { workflow__continue_without_history_save } from '@/strings/messages/workflow__continue_without_history_save/de';
 import { workflow__conversation } from '@/strings/messages/workflow__conversation/de';
-import { workflow__conversation_import_help } from '@/strings/messages/workflow__conversation_import_help/de';
 import { workflow__copy_conversation_notice } from '@/strings/messages/workflow__copy_conversation_notice/de';
 import { workflow__copy_snapshot_to_edit } from '@/strings/messages/workflow__copy_snapshot_to_edit/de';
-import { workflow__copy_to_workflow } from '@/strings/messages/workflow__copy_to_workflow/de';
 import { workflow__count } from '@/strings/messages/workflow__count/de';
 import { workflow__definition_name } from '@/strings/messages/workflow__definition_name/de';
 import { workflow__delete } from '@/strings/messages/workflow__delete/de';
@@ -7460,10 +7458,8 @@ export const catalog = {
   workflow__continue_with_error_output,
   workflow__continue_without_history_save,
   workflow__conversation,
-  workflow__conversation_import_help,
   workflow__copy_conversation_notice,
   workflow__copy_snapshot_to_edit,
-  workflow__copy_to_workflow,
   workflow__count,
   workflow__definition_name,
   workflow__delete,

@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { createWorkflowTestFileSystem } from '@/00-storage/service/workflow-files.test-support';
 import { toToolCallId } from '@/01-models/ids';
+import { copyImportedChatHistory } from '@/logic/imported-chat-history';
 import { createOutputStoreFixture } from './output-store.test-support';
 import { workflowResultSources, archivedWorkflowResultSources, readWorkflowArchivedConversation, TEST_ONLY } from './result-view';
 import { exportWorkflowResults } from './files';
@@ -76,6 +77,32 @@ it('bounds index and textual result sizes before decoding', async () => {
   fs.setText({ path: 'result-0000.txt', text: 'a'.repeat(TEST_ONLY.textLimit + 1) });
   const sources = await archivedWorkflowResultSources({ directory: fs.root, signal: signal() });
   await expect(sources[0]!.load({ signal: signal() })).rejects.toThrow('display limit');
+});
+
+it('copies an archived conversation into an independent chat tree without retaining message IDs or aliases', async () => {
+  const messages = await readWorkflowArchivedConversation({
+    text: JSON.stringify([
+      { role: 'user', parts: [{ type: 'text', text: 'question' }] },
+      { role: 'assistant', parts: [{ type: 'reasoning', text: 'reason' }, { type: 'tool_call', id: 'old', name: 'shell_execute', arguments: '{"shell_script":"old command"}' }] },
+      { role: 'tool', parts: [{ type: 'tool_result', id: 'old', status: 'success', content: 'old response' }] },
+      { role: 'assistant', parts: [{ type: 'text', text: 'answer' }] },
+    ]),
+    signal: signal(),
+  });
+  const original = structuredClone(messages);
+  const copied = copyImportedChatHistory({ messages });
+  const nodes = [];
+  let next = copied.root.items[0];
+  while (next) {
+    nodes.push(next);
+    next = next.replies.items[0];
+  }
+  expect(nodes.map(node => node.role)).toEqual(messages.map(message => message.role));
+  expect(nodes.map(node => node.id).some(id => messages.some(message => message.id === id))).toBe(false);
+  expect(copied.currentLeafId).toBe(nodes.at(-1)?.id);
+  expect(nodes[1]?.parts).toEqual(messages[1]?.parts);
+  nodes[1]!.parts.splice(0);
+  expect(messages).toEqual(original);
 });
 
 it('does not reveal model settings through the generic result viewer', () => {
