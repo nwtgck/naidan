@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { readWorkflowImageFile, validateWorkflowImageDimensions } from './image-files';
 import { readWorkflowBinary } from './binary';
 import type { WorkflowOutput } from './output-store';
@@ -26,7 +27,7 @@ function binary({ bytes, declared }: { bytes: Uint8Array, declared: number }): W
 const signal = (): AbortSignal => new AbortController().signal;
 
 function encoded({ name }: { name: string }): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(readFileSync(new URL(`../../naidan-rpc-integration/codecs/fixtures/${name}`, import.meta.url)));
+  return new Uint8Array(readFileSync(resolve(process.cwd(), 'src/features/naidan-rpc-integration/codecs/fixtures', name)));
 }
 
 it.each([

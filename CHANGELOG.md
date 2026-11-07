@@ -29,16 +29,17 @@ All notable changes to Naidan are documented in this file.
 - Explicit Workflow tool steps for calculator, Wikipedia search/page retrieval, and an isolated Wesh shell with one selected folder, plus bounded model-selected rounds using these tools and interactive choices. Typed arguments compose with model outputs and loops; external access is reviewed per call, historical tool records are never replayed, and tool failures or truncated shell output stop explicit steps unless error outputs are requested.
 - On-demand Workflow image, audio, and conversation viewers, fixed-choice input, and explicit copying between complete text chats and editable workflows. Copies do not inherit tool permissions or automatically generate responses or titles. Structure-only exports remove authored content and connection/folder bindings separately from full-fidelity backups.
 
+### Fixed
+
+- Restore browser-local llama.cpp model operations in environments that cannot clone file-system handles to workers, using captured file snapshots without reopening model paths. Preserve source identity checks for resident-model reuse and prevent cancelled preparation from dispatching late work.
+- Check file-system-handle cloning before worker initialization or linked-folder downloads, retaining the confirmed download root and avoiding retries of already-started operations after remote clone errors.
+- Drain active shell-tool executions before releasing their execution records after cancellation, and clear completed shell-tool timeout timers.
+
 ### Changed
 
 - Persist llama.cpp browser endpoints with the stable `llama_cpp_browser` type on their next save while continuing to read existing `experimental_type` records without rewriting them on load. Other experimental endpoints and settings are unchanged.
 - Rename user-facing llama.cpp browser labels to “llama.cpp in the browser” (localized in each language) and list it first among concrete endpoint choices, without changing inherited choices or default connections.
 - Open the endpoint choices together with connection details in chat and chat-group overrides. Selecting an endpoint closes only the choices; clicking the connection summary again closes the details.
-
-### Fixed
-
-- Restore browser-local llama.cpp model operations in environments that cannot clone file-system handles to workers, using captured file snapshots without reopening model paths. Preserve source identity checks for resident-model reuse and prevent cancelled preparation from dispatching late work.
-- Check file-system-handle cloning before worker initialization or linked-folder downloads, retaining the confirmed download root and avoiding retries of already-started operations after remote clone errors.
 
 ## [0.64.0] - 2026-11-06
 
@@ -51,10 +52,6 @@ All notable changes to Naidan are documented in this file.
 ### Changed
 
 - GitHub Release descriptions now use the curated `CHANGELOG.md` notes, including corrections to previously published releases.
-
-### Fixed
-
-- Drain active shell-tool executions before releasing their execution records after cancellation, and clear completed shell-tool timeout timers.
 
 ## [0.63.0] - 2026-11-04
 

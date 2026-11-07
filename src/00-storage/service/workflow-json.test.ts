@@ -46,8 +46,11 @@ describe('Workflow editable JSON boundary', () => {
   it('uses the existing endpoint DTO for browser and HTTP models', () => {
     const browser: WorkflowValue = { type: 'model', modelId: 'model', endpoint: { type: 'llama_cpp_browser' } };
     const json = formatWorkflowValue({ value: browser });
-    expect(JSON.parse(json)).toMatchObject({ endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } } });
+    expect(JSON.parse(json)).toMatchObject({ endpoint: { type: 'llama_cpp_browser' } });
     expect(parseWorkflowValue({ text: json })).toEqual(browser);
+    const legacy = JSON.stringify({ type: 'model', modelId: 'model', endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } } });
+    expect(parseWorkflowValue({ text: legacy })).toEqual(browser);
+    expect(JSON.parse(formatWorkflowValue({ value: parseWorkflowValue({ text: legacy }) }))).toHaveProperty('endpoint.type', 'llama_cpp_browser');
     const http: WorkflowValue = { type: 'model', modelId: 'same', endpoint: { type: 'openai', url: 'http://localhost:1234', httpHeaders: [['Authorization', 'secret']] } };
     expect(parseWorkflowValue({ text: formatWorkflowValue({ value: http }) })).toEqual(http);
   });
