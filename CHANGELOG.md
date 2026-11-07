@@ -20,6 +20,8 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-11-07
+
 ### Added
 
 - Publish repository-specific browser model pages for Unsloth's Qwen3.8-Flash-Next and ISTA DASLab's Qwen3.8-27B GSQ-RCO, with explicit variant names in generated and live page metadata. Record editorial model naming for every published repository independently of the suggested-model catalog.
@@ -1093,7 +1095,8 @@ All notable changes to Naidan are documented in this file.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.64.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.65.0...develop
+[0.65.0]: https://github.com/nwtgck/naidan/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/nwtgck/naidan/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0
