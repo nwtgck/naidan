@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { STORAGE_KEY_PREFIX } from '@/constants';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -12,6 +14,8 @@ import type { Mocked } from 'vitest';
 import type { Settings, ChatMeta } from '@/01-models/types';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
+
+installSecretEqualityTester();
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
@@ -1536,7 +1540,7 @@ ${JSON.stringify({
       expect(result.endpoint).toEqual({
         type: 'openai',
         url: 'http://imported',
-        httpHeaders: [['X-Test', 'imported']],
+        httpHeaders: [['X-Test', Secret.from({ value: 'imported' })]],
       });
     });
 

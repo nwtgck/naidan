@@ -1,8 +1,10 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
 import type { WorkflowDefinition, WorkflowStep, WorkflowValue } from '@/01-models/workflow';
 import { idToRaw, type WorkflowStepId } from '@/01-models/ids';
 import { analyzeWorkflowTypes, type WorkflowValueBinding } from './value-types';
 import { workflowReferenceChoices } from './value-inputs';
 import { validateWorkflow } from './definition';
+import { formatWorkflowValue } from '@/00-storage/service/workflow-json';
 import { findWorkflowStep, moveWorkflowStep, type WorkflowDropTarget } from './editor';
 
 export type WorkflowGraphScope = {
@@ -102,7 +104,7 @@ function replaceBinding({ step, location, value }: { step: WorkflowStep, locatio
   if (key === undefined || typeof parent !== 'object' || parent === null || !Object.hasOwn(parent, key)) {
     throw new Error('The selected input no longer exists.');
   }
-  Object.defineProperty(parent, key, { value: structuredClone(value), enumerable: true, configurable: true, writable: true });
+  Object.defineProperty(parent, key, { value: clonePlainData({ value: value }), enumerable: true, configurable: true, writable: true });
 }
 
 function assertNoNewProblems({ before, after }: { before: WorkflowDefinition, after: WorkflowDefinition }): void {
@@ -130,14 +132,14 @@ export function editWorkflowGraph({ definition, edit }: { definition: WorkflowDe
   switch (edit.type) {
   case 'connect': {
     const input = analyzeWorkflowTypes({ definition }).valueBindings.get(edit.stepId)?.find(input => JSON.stringify(input.location) === JSON.stringify(edit.location));
-    if (!input || JSON.stringify(input.value) !== JSON.stringify(edit.previous)) {
+    if (!input || formatWorkflowValue({ value: input.value }) !== formatWorkflowValue({ value: edit.previous })) {
       throw new Error('The selected input changed. Select it again before connecting.');
     }
     const choice = workflowReferenceChoices({ scope: input.scope, expected: input.expected }).find(choice => JSON.stringify(choice.value) === JSON.stringify(edit.reference));
     if (!choice) {
       throw new Error('This output is not available or compatible at the selected input.');
     }
-    next = structuredClone(definition);
+    next = clonePlainData({ value: definition });
     const step = findWorkflowStep({ steps: next.steps, id: edit.stepId });
     if (!step) {
       throw new Error('The selected Step no longer exists.');

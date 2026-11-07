@@ -1,3 +1,4 @@
+import type { Secret } from '@/utils/secret';
 import type { ImageInferenceLocationPreference, RemoteImageModelEditorPreference } from './image-generation-preferences';
 import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 /**
@@ -62,10 +63,12 @@ export type SystemPrompt =
   | { behavior: 'override', content: string | null }
   | { behavior: 'append', content: string };
 
+export type HttpHeader = [name: string, value: Secret<string>];
+
 export type HttpEndpoint = {
   type: 'openai' | 'ollama',
   url: string,
-  httpHeaders?: [string, string][],
+  httpHeaders?: HttpHeader[],
 };
 
 export type TransformersJsEndpoint = {

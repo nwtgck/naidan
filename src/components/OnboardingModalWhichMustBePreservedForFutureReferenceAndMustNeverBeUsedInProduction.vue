@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { Secret } from '@/utils/secret';
 // Preserved for future reference. Production code must never import this component.
 import { retargetTitleGenerationToSameScope } from '@/01-models/title-generation';
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
@@ -11,7 +13,7 @@ import { useLayout } from '@/composables/useLayout';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { LmProvider } from '@/01-models/lm';
 import { loadLmProvider } from '@/features/lm/providerFactory';
-import { type Endpoint, type EndpointType, type Settings as SettingsType } from '@/01-models/types';
+import { type Endpoint, type EndpointType } from '@/01-models/types';
 import { ENDPOINT_PRESETS } from '@/constants';
 
 // IMPORTANT: ThemeToggle is part of the core onboarding UI.
@@ -403,7 +405,7 @@ function createEndpoint({
     return {
       type,
       url: url ?? '',
-      httpHeaders: httpHeaders.length > 0 ? httpHeaders : undefined,
+      httpHeaders: httpHeaders.length > 0 ? httpHeaders.map(([name, value]) => [name, Secret.from({ value })]) : undefined,
     };
   case 'transformers_js':
   case 'llama_cpp_browser':
@@ -588,7 +590,7 @@ async function handleFinish() {
   }
 
   try {
-    const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
+    const baseSettings = clonePlainData({ value: settings.value });
     const modelSettings = (() => {
       switch (type) {
       case 'naidan_rpc':

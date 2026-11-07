@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
@@ -42,7 +43,7 @@ async function handleDeleteProviderProfile({ id }: { id: ProviderProfileId }) {
   const newProfiles = [...props.profiles];
   newProfiles.splice(index, 1);
   emit('update:profiles', newProfiles);
-  await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(newProfiles)) });
+  await updateProviderProfiles({ profiles: clonePlainData({ value: newProfiles }) });
 
   addToast({
     message: await ensureStrings.ProviderProfilesTab__profile_was_deleted({ profileName: deletedProfile.name }),
@@ -51,7 +52,7 @@ async function handleDeleteProviderProfile({ id }: { id: ProviderProfileId }) {
       const restoredProfiles = [...newProfiles];
       restoredProfiles.splice(index, 0, deletedProfile);
       emit('update:profiles', restoredProfiles);
-      await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(restoredProfiles)) });
+      await updateProviderProfiles({ profiles: clonePlainData({ value: restoredProfiles }) });
     },
     duration: 5000,
   });
@@ -68,7 +69,7 @@ async function saveRename() {
   }
   const index = props.profiles.findIndex(p => p.id === editingProviderProfileId.value);
   if (index !== -1 && editingProviderProfileName.value.trim()) {
-    const newProfiles = JSON.parse(JSON.stringify(props.profiles)) as ProviderProfile[];
+    const newProfiles = clonePlainData({ value: props.profiles });
     const profile = newProfiles[index];
     if (profile) {
       profile.name = editingProviderProfileName.value.trim();

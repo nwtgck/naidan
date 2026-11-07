@@ -1,3 +1,6 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
+import type { HttpHeader } from '@/01-models/types';
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toImageGenerationRunId, toImageGenerationSessionId } from '@/01-models/ids';
@@ -6,6 +9,8 @@ import { imageGenerationCatalogToDomain, imageGenerationCatalogToDto, imageGener
 import { createImageGenerationStorageHarness, generationSessionFixture, generationRunFixture, generationDraftFixture } from './image-generation/index.test-support';
 import * as service from './image-generation';
 import { collectImageGenerationSessionMetadata } from './image-generation-export';
+
+installSecretEqualityTester();
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 const root = '/naidan-storage/experimental/image-generation';
 
@@ -95,7 +100,7 @@ describe('image generation session deletion', () => {
 describe('experimental translation and visibility persistence', () => {
   it('round-trips independent workspace and session overrides including private headers and open/closed visibility', async () => {
     const h = await setup();
-    const translation = { endpoint: { type: 'openai' as const, url: 'https://translator.test/v1', httpHeaders: [['Authorization', 'secret']] as [string, string][] }, modelId: 'model-a', lmParameters: undefined };
+    const translation = { endpoint: { type: 'openai' as const, url: 'https://translator.test/v1', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] as HttpHeader[] }, modelId: 'model-a', lmParameters: undefined };
     const next = { ...h.catalog, revision: 1, preferences: { ...h.catalog.preferences, assistantVisibility: 'open' as const, translation } };
     const dto = ExperimentalImageGenerationCatalogSchemaDto.parse(imageGenerationCatalogToDto({ catalog: next }));
     expect(imageGenerationCatalogToDomain({ dto })).toEqual(next);

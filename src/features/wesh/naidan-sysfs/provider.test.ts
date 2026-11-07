@@ -1,3 +1,6 @@
+import type { HttpEndpoint } from '@/01-models/types';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { describe, expect, it, vi } from 'vitest';
 import type { BinaryObject, ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 import { idToRaw } from '@/01-models/ids';
@@ -7,6 +10,8 @@ import { NaidanSysfsProvider } from './provider';
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from './constants';
 import { createNaidanSysfsBinaryObject } from './binary-object-metadata';
 import { toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId, toToolCallId, toVolumeId } from '@/01-models/ids';
+
+installSecretEqualityTester();
 
 function createReaderStub({
   metadata,
@@ -121,7 +126,7 @@ const sampleMetadata: ChatMeta = {
   endpoint: {
     type: 'openai',
     url: 'https://example.invalid/v1',
-    httpHeaders: [['Authorization', 'secret-token']],
+    httpHeaders: [['Authorization', Secret.from({ value: 'secret-token' })]],
   },
   modelId: 'gpt-5',
   titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -372,7 +377,7 @@ const sampleChatGroup: ChatGroup = {
   endpoint: {
     type: 'openai',
     url: 'https://example.invalid/v1',
-    httpHeaders: [['Authorization', 'group-secret-token']],
+    httpHeaders: [['Authorization', Secret.from({ value: 'group-secret-token' })]],
   },
   modelId: 'gpt-5',
   titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -993,5 +998,32 @@ describe('NaidanSysfsProvider', () => {
       { name: '1-chat-group-chat-group-1', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/1-chat-group-chat-group-1` },
     ]);
     expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/1-chat-group-chat-group-1` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1`);
+  });
+
+  it.each([
+    'chats/chat-1/metadata.json',
+    'chats/chat-1/metadata.md',
+    'chat-groups/chat-group-1/metadata.json',
+    'chat-groups/chat-group-1/metadata.md',
+  ])('masks both ordinary and title credentials in %s without changing source values', async path => {
+    const titleEndpoint: HttpEndpoint = { type: 'openai', url: 'https://title.example/v1', httpHeaders: [['X-Title', Secret.from({ value: 'nested-title-credential' })]] };
+    const titleGeneration = { endpoint: titleEndpoint, model: { id: 'title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
+    const metadata = { ...sampleMetadata, titleGeneration };
+    const chatGroup = { ...sampleChatGroup, titleGeneration };
+    const provider = new NaidanSysfsProvider({ reader: createReaderStub({ metadata, chatGroup }), visibility: 'current_chat_only', binaryObjectAccess: 'data', currentChatId: 'chat-1', currentChatGroupId: 'chat-group-1' });
+    const handle = await provider.open({ path: `${NAIDAN_SYSFS_ROOT_PATH}/${path}`, flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }, mode: undefined });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await handle.close();
+      },
+    };
+    const buffer = new Uint8Array(16384);
+    const { bytesRead } = await handle.read({ buffer });
+    const output = new TextDecoder().decode(buffer.subarray(0, bytesRead));
+    expect(output).toContain('[masked]');
+    expect(output).toContain('X-Title');
+    expect(output).not.toContain('secret-token');
+    expect(output).not.toContain('nested-title-credential');
+    expect(titleEndpoint.httpHeaders?.[0]?.[1].reveal()).toBe('nested-title-credential');
   });
 });

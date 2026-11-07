@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { endpointTypeDescription } from './endpoint-type-label';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
@@ -21,6 +23,8 @@ import type { VolumeAccess } from '@/01-models/volume-access';
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+
+installSecretEqualityTester();
 
 // Unmount before the next fixture replaces shared refs; settle the owner's
 // existing asynchronous unmount save before the next test installs its mocks.
@@ -178,6 +182,19 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
+  it('synchronizes credential-only external changes without discarding an unsaved prompt', async () => {
+    mockGroup.endpoint = { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'before' })]] };
+    mockGroup.systemPrompt = { behavior: 'override', content: 'original prompt' };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    const prompt = wrapper.get<HTMLTextAreaElement>('[data-testid="group-setting-system-prompt-textarea"]');
+    await prompt.setValue('unsaved prompt');
+    mockGroup.endpoint = { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: [['X-Custom', Secret.from({ value: 'after' })]] };
+    await nextTick();
+    expect(wrapper.get<HTMLInputElement>('[data-testid="group-setting-http-header-value-input"]').element.value).toBe('after');
+    expect(prompt.element.value).toBe('unsaved prompt');
+  });
+
   it('moves the warning between the collapsed endpoint summary and the URL without recreating the input', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, {
       global: { stubs: { ...globalStubs, CspLmEndpointHint: { props: ['endpoint', 'operation', 'presentation', 'activityForDisplayOnly'], template: '<button type="button" data-testid="url-warning-probe" :data-presentation="presentation" :data-activity="activityForDisplayOnly">Connection warning</button>' } } },
@@ -688,7 +705,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockSettings.endpoint = {
       type: 'openai',
       url: 'http://global-url/v1',
-      httpHeaders: [['X-Global', 'value']],
+      httpHeaders: [['X-Global', Secret.from({ value: 'value' })]],
     };
     mockGroup.endpoint = { type: 'transformers_js' };
 
@@ -704,7 +721,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
         endpoint: {
           type: 'ollama',
           url: 'http://global-url/v1',
-          httpHeaders: [['X-Global', 'value']],
+          httpHeaders: [['X-Global', Secret.from({ value: 'value' })]],
         },
       },
     });
@@ -763,7 +780,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockGroup.endpoint = {
       type: 'openai',
       url: 'http://old.test/v1',
-      httpHeaders: [['X-Old', 'value']],
+      httpHeaders: [['X-Old', Secret.from({ value: 'value' })]],
     };
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
@@ -786,7 +803,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockGroup.endpoint = {
       type: 'openai',
       url: 'http://example.test/v1',
-      httpHeaders: [['Authorization', 'Bearer token']],
+      httpHeaders: [['Authorization', Secret.from({ value: 'Bearer token' })]],
     };
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
@@ -1589,7 +1606,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       endpoint: {
         type: 'openai',
         url: 'https://global-title.example/v1',
-        httpHeaders: [['X-Global-Title', 'old']],
+        httpHeaders: [['X-Global-Title', Secret.from({ value: 'old' })]],
       },
       model: { id: 'global-title-model' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
@@ -1608,13 +1625,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
       endpoint: {
         type: 'openai',
         url: 'https://global-title.example/v1',
-        httpHeaders: [['X-Group-Title', 'next']],
+        httpHeaders: [['X-Group-Title', Secret.from({ value: 'next' })]],
       },
       model: { id: 'global-title-model' },
     });
     expect(mockSettings.titleGeneration).toMatchObject({
       endpoint: {
-        httpHeaders: [['X-Global-Title', 'old']],
+        httpHeaders: [['X-Global-Title', Secret.from({ value: 'old' })]],
       },
     });
   });

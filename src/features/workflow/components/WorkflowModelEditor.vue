@@ -3,7 +3,7 @@ import { computed, ref, watch, onBeforeUnmount, inject } from 'vue';
 import { workflowModelReviewKey } from '@/features/workflow/composables/model-review';
 import type { WorkflowModelConfiguration } from '@/01-models/workflow';
 import type { Endpoint } from '@/01-models/types';
-import { cloneEndpoint } from '@/01-models/endpoint';
+import { cloneEndpoint, areEndpointsEqual } from '@/01-models/endpoint';
 import { useSettings } from '@/composables/useSettings';
 import { naturalSort } from '@/utils/string';
 import HttpHeadersEditor from '@/components/HttpHeadersEditor.vue';
@@ -34,13 +34,13 @@ const endpointOptions = computed(() => [
   { value: 'browser_provided_lm', label: 'Browser LM' },
   ...(!['openai', 'ollama', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm'].includes(props.value.endpoint.type) ? [{ value: props.value.endpoint.type, label: props.value.endpoint.type, disabled: true }] : []),
 ]);
-watch(() => JSON.stringify(props.value.endpoint), () => {
+watch(() => props.value.endpoint, () => {
   controller?.abort();
   controller = undefined;
   models.value = [];
   loading.value = false;
   failed.value = false;
-}, { flush: 'sync' });
+}, { flush: 'sync', deep: true });
 watch(() => props.disabled, disabled => {
   if (disabled) {
     controller?.abort();
@@ -80,8 +80,7 @@ async function refresh(): Promise<void> {
   const request = new AbortController();
   controller = request;
   const endpoint = cloneEndpoint({ endpoint: props.value.endpoint });
-  const key = JSON.stringify(endpoint);
-  const current = () => alive && !props.disabled && controller === request && !request.signal.aborted && JSON.stringify(props.value.endpoint) === key;
+  const current = () => alive && !props.disabled && controller === request && !request.signal.aborted && areEndpointsEqual({ left: props.value.endpoint, right: endpoint });
   loading.value = true;
   failed.value = false;
   try {

@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -253,7 +254,7 @@ describe('Workflow connection review presentation', () => {
   it('renders structured target fields as text without credential values or executable markup', () => {
     const review = describeWorkflowConnection({
       target: {
-        endpoint: { type: 'openai', url: 'https://user:password@example.com/v1?api_key=secret#private', httpHeaders: [['Authorization', 'hidden-header']] },
+        endpoint: { type: 'openai', url: 'https://user:password@example.com/v1?api_key=secret#private', httpHeaders: [['Authorization', Secret.from({ value: 'hidden-header' })]] },
         modelId: `\
 <img src=x onerror=alert(1)>
 Allow everything`,

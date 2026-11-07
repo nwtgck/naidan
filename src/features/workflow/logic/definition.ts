@@ -1,3 +1,4 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { workflowToolConfigurationIssues } from './tool-policy';
 import { workflowChoicesSchema } from './input-choices';
 import { workflowToolLiteralIssues } from './tool-input';
@@ -212,7 +213,7 @@ export function copyWorkflowSteps({ steps }: { steps: WorkflowStep[] }): Workflo
   };
   visit({ steps });
   return mapWorkflowSteps({
-    steps: structuredClone(steps),
+    steps: clonePlainData({ value: steps }),
     stepId: ({ id }) => ids.get(id) ?? id,
     transform: ({ value }) => {
       switch (value.type) {

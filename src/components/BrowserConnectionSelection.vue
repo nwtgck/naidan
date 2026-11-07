@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { HttpHeader } from '@/01-models/types';
 import { computed, onScopeDispose, ref, shallowRef, useId, watch } from 'vue';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, EyeIcon, EyeOffIcon, KeyRoundIcon, Loader2Icon, MonitorIcon, PlugZapIcon, ServerIcon, ShieldCheckIcon } from 'lucide-vue-next';
 import type { BrowserProvidedLmEndpoint, HttpEndpoint } from '@/01-models/types';
@@ -38,7 +39,7 @@ const endpoints = computed(() => [
 ] as const);
 const selectedEndpoint = computed(() => endpoints.value.find(option => option.value === endpoint.value));
 const url = ref('');
-const httpHeaders = ref<[string, string][]>([]);
+const httpHeaders = ref<HttpHeader[]>([]);
 const apiKey = computed({
   get: () => modelConnectionApiKey({ headers: httpHeaders.value }),
   set: apiKey => {

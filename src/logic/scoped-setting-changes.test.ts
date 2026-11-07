@@ -1,3 +1,6 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import type { HttpHeader } from '@/01-models/types';
+import { Secret } from '@/utils/secret';
 import { describe, expect, it } from 'vitest';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
 import type { Chat, ChatGroup, ChatMeta } from '@/01-models/types';
@@ -11,6 +14,8 @@ import {
   normalizeLmParameters,
 } from './scoped-setting-changes';
 
+installSecretEqualityTester();
+
 function createChatMeta(): ChatMeta {
   return {
     id: toChatId({ raw: 'chat-1' }),
@@ -21,7 +26,7 @@ function createChatMeta(): ChatMeta {
     endpoint: {
       type: 'openai',
       url: 'https://example.test/v1',
-      httpHeaders: [['Authorization', 'Bearer old']],
+      httpHeaders: [['Authorization', Secret.from({ value: 'Bearer old' })]],
     },
     modelId: 'old-model',
     titleGeneration: { endpoint: 'same_scope', model: { id: 'old-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -263,9 +268,9 @@ describe('scoped setting changes', () => {
   });
 
   it('snapshots_nested_change_values_for_queued_updates', () => {
-    const headers: [string, string][] = [['Authorization', 'Bearer old']];
+    const headers: HttpHeader[] = [['Authorization', Secret.from({ value: 'Bearer old' })]];
     const stop = ['OLD'];
-    const titleEndpointHeaders: [string, string][] = [['X-Title', 'old']];
+    const titleEndpointHeaders: HttpHeader[] = [['X-Title', Secret.from({ value: 'old' })]];
     const changes = cloneScopedSettingChanges({
       changes: [
         {
@@ -286,22 +291,22 @@ describe('scoped setting changes', () => {
       ],
     });
 
-    headers[0]![1] = 'Bearer mutated';
+    headers[0]![1] = Secret.from({ value: 'Bearer mutated' });
     stop[0] = 'MUTATED';
-    titleEndpointHeaders[0]![1] = 'mutated';
+    titleEndpointHeaders[0]![1] = Secret.from({ value: 'mutated' });
 
     expect(changes).toEqual([
       {
         field: 'endpoint',
         behavior: 'override',
-        value: { type: 'openai', url: 'https://example.test/v1', httpHeaders: [['Authorization', 'Bearer old']] },
+        value: { type: 'openai', url: 'https://example.test/v1', httpHeaders: [['Authorization', Secret.from({ value: 'Bearer old' })]] },
       },
       { field: 'lm_param_stop', behavior: 'override', value: ['OLD'] },
       {
         field: 'title_generation',
         behavior: 'override',
         value: {
-          endpoint: { type: 'openai', url: 'https://title.example/v1', httpHeaders: [['X-Title', 'old']] },
+          endpoint: { type: 'openai', url: 'https://title.example/v1', httpHeaders: [['X-Title', Secret.from({ value: 'old' })]] },
           model: { id: 'title-model' },
           lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         },

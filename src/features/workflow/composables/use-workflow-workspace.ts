@@ -1,3 +1,4 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { shareWorkflowStructure } from '@/features/workflow/logic/sharing';
 import { workflowResultSources, type WorkflowResultSource } from '@/features/workflow/logic/result-view';
 import { createWorkflowModelTools } from '@/features/workflow/logic/model-tools';
@@ -304,7 +305,7 @@ function createWorkspace() {
     }
     // Copying history creates an unsaved document. It never edits the historical
     // definition, restores approval state, or starts model/file side effects.
-    adopt({ next: { ...structuredClone(snapshot.record.definition), steps: copyWorkflowSteps({ steps: snapshot.record.definition.steps }) }, snapshot: undefined, documentKind: 'workflow' });
+    adopt({ next: { ...clonePlainData({ value: snapshot.record.definition }), steps: copyWorkflowSteps({ steps: snapshot.record.definition.steps }) }, snapshot: undefined, documentKind: 'workflow' });
     return true;
   }
   async function refresh(): Promise<void> {
@@ -748,7 +749,7 @@ function createWorkspace() {
       controller = new AbortController();
       const signal = controller.signal;
       historyError.value = '';
-      const snapshot = structuredClone({ ...definition.value, executionLimits: resolveWorkflowExecutionLimits({ limits: definition.value.executionLimits }) });
+      const snapshot = clonePlainData({ value: { ...definition.value, executionLimits: resolveWorkflowExecutionLimits({ limits: definition.value.executionLimits }) } });
       const modelAuthorization = modelPermissions.beginRun();
       const audioAuthorization = audioPermissions.beginRun();
       const imageAuthorization = imagePermissions.beginRun();

@@ -1,3 +1,4 @@
+import { areModelBindingSnapshotsEqual } from '@/00-storage/service';
 import { useRestoredModelLaunch } from './useRestoredModelLaunch';
 import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef } from 'vue';
 import { useSettings } from '@/composables/useSettings';
@@ -450,7 +451,7 @@ export function useModelLaunchChat({ chat, resolved }: {
         const fresh = await observeLegacyModelDownload({ modelId: observed.effectiveModelId, signal });
         const confirmed = await storageService.captureModelBinding({ chatId: current.id, sourceModelId: observed.effectiveModelId, isSourceCurrent: isStorageCurrent });
         signal.throwIfAborted();
-        if (!isStorageCurrent() || fresh === undefined || confirmed === undefined || JSON.stringify(binding) !== JSON.stringify(confirmed)
+        if (!isStorageCurrent() || fresh === undefined || confirmed === undefined || !areModelBindingSnapshotsEqual({ left: binding, right: confirmed })
           || !sameLaunchTarget({ left: fresh.target, right: observed.target })
           || destinationKey({ destination: fresh.destination }) !== destinationKey({ destination: observed.destination })
           || (observed.expectedRoot !== undefined && (fresh.expectedRoot === undefined || !await observed.expectedRoot.isSameEntry(fresh.expectedRoot)))) {

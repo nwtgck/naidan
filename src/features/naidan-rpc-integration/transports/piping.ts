@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { PipingStatusError } from '@/features/naidan-piping-duplex/finite-transfer';
 import { NaidanPipingDuplexSession } from '@/features/naidan-piping-duplex/naidan-piping-duplex-session';
 import { RpcPeerClosedError } from '@/features/naidan-rpc-integration/runtime/link-lifecycle';
@@ -94,7 +95,7 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
   settings: NaidanRpcTransportSettings,
   identity: NaidanPipingIdentity,
   peerKey: string | undefined,
-  code: string | undefined,
+  code: Secret<string> | undefined,
   verifyPeer: NaidanPipingPeerVerifier | undefined,
   signal: AbortSignal,
 }): Promise<RpcLink> {
@@ -102,7 +103,7 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
   const piping = {
     baseUrl: transport.serverUrl,
     policy: transport.serverUrl.startsWith('https:') ? 'https-only' as const : 'allow-loopback-http' as const,
-    headers: transport.headers.map(({ name, value }) => ({ name, value })),
+    headers: transport.headers.map(({ name, value }) => ({ name, value: value.reveal() })),
     requestTimeoutMs: 120000,
     handshakeResponseTimeoutMs: 75_000,
   };
@@ -113,7 +114,7 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
   if (peerKey === undefined && (code === undefined || !verifyPeer)) {
     throw new Error('Pairing requires a shared code and explicit verifier');
   }
-  const normalized = peerKey === undefined ? normalizeRpcPairingCode({ code: code! }) : undefined;
+  const normalized = peerKey === undefined ? Secret.from({ value: normalizeRpcPairingCode({ code: code!.reveal() }) }) : undefined;
   signal.throwIfAborted();
   const physical = new AbortController();
   const forward = () => physical.abort(signal.reason);
@@ -272,7 +273,7 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
           signal: physical.signal,
         });
       } else {
-        const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(['naidan-peer-rpc-pairing/v1', normalized]))));
+        const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(['naidan-peer-rpc-pairing/v1', normalized!.reveal()]))));
         physical.signal.throwIfAborted();
         const rendezvousCode = 'peer-' + Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
         connection = await NaidanPipingDuplexSession.pair({ piping, code: rendezvousCode, identity, verifyPeer: verifyPeer!, signal: physical.signal, publicHandshakeData: createRpcProtocolAdvertisement() });

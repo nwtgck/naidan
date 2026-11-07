@@ -54,6 +54,11 @@ All notable changes to Naidan are documented in this file.
 
 - GitHub Release descriptions now use the curated `CHANGELOG.md` notes, including corrections to previously published releases.
 
+### Security
+
+- Protect connection header values and in-flight RPC pairing codes with `Secret<T>` to prevent accidental diagnostic disclosure, while preserving existing persistence, ZIP export, and chat URL sharing behavior.
+- Mask nested title-generation credentials in Wesh sysfs, including remote-reader payloads before they reach a worker.
+
 ## [0.63.0] - 2026-11-04
 
 ### Changed

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { areEndpointsEqual } from '@/01-models/endpoint';
+import { cloneSettingsTitleGeneration, areScopedTitleGenerationsEqual } from '@/01-models/title-generation';
+import { clonePlainData } from '@/utils/clone-plain-data';
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { cloneEndpoint } from '@/01-models/endpoint';
@@ -81,15 +84,15 @@ const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 const appVersion = __APP_VERSION__;
 const portableAppDownload = usePortableAppDownload({ version: appVersion });
 
-const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
-const initialFormState = ref(JSON.stringify(pickConnectionFields({ settings: form.value })));
+const form = ref<Settings>(clonePlainData({ value: settings.value }));
+const initialFormState = ref(pickConnectionFields({ settings: form.value }));
 const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
 function pickConnectionFields({ settings }: { settings: Settings }) {
   return {
-    endpoint: JSON.stringify(settings.endpoint),
+    endpoint: cloneEndpoint({ endpoint: settings.endpoint }),
     defaultModelId: settings.defaultModelId,
-    titleGeneration: JSON.stringify(settings.titleGeneration),
+    titleGeneration: cloneSettingsTitleGeneration({ source: settings.titleGeneration }),
     systemPrompt: settings.systemPrompt,
     lmParameters: JSON.stringify(settings.lmParameters),
   };
@@ -103,8 +106,8 @@ const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) =>
     form.value = { ...form.value, endpoint, defaultModelId: settings.value.defaultModelId };
     // Rebase only the two committed fields. Unrelated unsaved edits and their
     // original dirty baseline must survive switching the default model.
-    const initial = JSON.parse(initialFormState.value);
-    initialFormState.value = JSON.stringify({ ...initial, endpoint: JSON.stringify(endpoint), defaultModelId: settings.value.defaultModelId });
+    const initial = initialFormState.value;
+    initialFormState.value = { ...initial, endpoint: cloneEndpoint({ endpoint }), defaultModelId: settings.value.defaultModelId };
     break;
   }
   case 'changed': break;
@@ -118,8 +121,12 @@ const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) =>
 
 const hasUnsavedConnectionChanges = computed(() => {
   const current = pickConnectionFields({ settings: form.value });
-  const initial = JSON.parse(initialFormState.value || '{}');
-  return JSON.stringify(current) !== JSON.stringify(initial);
+  const initial = initialFormState.value;
+  return !areEndpointsEqual({ left: current.endpoint, right: initial.endpoint })
+    || current.defaultModelId !== initial.defaultModelId
+    || !areScopedTitleGenerationsEqual({ left: current.titleGeneration, right: initial.titleGeneration })
+    || current.systemPrompt !== initial.systemPrompt
+    || current.lmParameters !== initial.lmParameters;
 });
 
 let creatingLocalChatGroup = false;
@@ -326,8 +333,8 @@ async function handleCancel() {
 watch(() => props.isOpen, async (open) => {
   if (open) {
     setActiveFocusArea({ area: 'settings' });
-    form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
-    initialFormState.value = JSON.stringify(pickConnectionFields({ settings: form.value }));
+    form.value = clonePlainData({ value: settings.value }) as Settings;
+    initialFormState.value = pickConnectionFields({ settings: form.value });
 
     await nextTick();
     if (connectionTabRef.value) {
@@ -383,7 +390,7 @@ defineExpose({
             :available-models="availableModels"
             :is-fetching-models="isFetchingModels"
             :has-unsaved-changes="hasUnsavedConnectionChanges"
-            @save="initialFormState = JSON.stringify(pickConnectionFields({ settings: form }))"
+            @save="initialFormState = pickConnectionFields({ settings: form })"
             @go-to-profiles="activeTab = 'profiles'"
             @go-to-transformers-js="activeTab = 'transformers_js'"
           />

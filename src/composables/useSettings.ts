@@ -1,3 +1,4 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
 import { sameLocalModelBinding } from '@/00-storage/service/local-model-references';
 import { configureRpcFeature } from '@/features/naidan-rpc-integration/runtime/feature';
 import { canInitializeModelLaunchDefaults, type ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
@@ -1124,7 +1125,7 @@ export function useSettings(): UseSettingsApi {
   }
 
   function __testOnlySetSettings({ newSettings }: { newSettings: Settings }) {
-    _settings.value = JSON.parse(JSON.stringify(newSettings));
+    _settings.value = clonePlainData({ value: newSettings });
   }
 
   function __testOnlyReset() {

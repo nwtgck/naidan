@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from '@/features/lm/openai';
 import { OllamaProvider } from '@/features/lm/ollama';
@@ -5,6 +7,8 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { LmProvider } from '@/01-models/lm';
 import type { LmFetch } from './fetch';
 import { consumeProviderGenerationForTest } from './provider.test-support';
+
+installSecretEqualityTester();
 
 function request({ model }: { model: string }): Parameters<LmProvider['chat']>[0] {
   return { debug: undefined, messages: [], model, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined };
@@ -39,7 +43,7 @@ data: {"choices":[{"delta":{"content":"Hello"},"finish_reason":"stop"}]}
   it('should include custom headers in chat request', async () => {
     fetchMock.mockResolvedValueOnce(new Response('data: [DONE]\n\n'));
     const headers: [string, string][] = [['X-Custom-Header', 'test-value']];
-    const provider = new OpenAIProvider({ endpoint: 'http://localhost:8282/v1', headers, fetcher: fetchMock });
+    const provider = new OpenAIProvider({ endpoint: 'http://localhost:8282/v1', headers: headers.map(([name, value]) => [name, Secret.from({ value })]), fetcher: fetchMock });
     await consumeProviderGenerationForTest({ provider, request: request({ model: 'gpt-3.5' }) });
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chat/completions'), expect.objectContaining({ headers: expect.arrayContaining(headers) }));
   });
@@ -47,7 +51,7 @@ data: {"choices":[{"delta":{"content":"Hello"},"finish_reason":"stop"}]}
   it('should include custom headers in listModels request', async () => {
     fetchMock.mockResolvedValueOnce(Response.json({ data: [{ id: 'm1' }] }));
     const headers: [string, string][] = [['Authorization', 'Bearer secret']];
-    const provider = new OpenAIProvider({ endpoint: 'http://localhost:8282/v1', headers, fetcher: fetchMock });
+    const provider = new OpenAIProvider({ endpoint: 'http://localhost:8282/v1', headers: headers.map(([name, value]) => [name, Secret.from({ value })]), fetcher: fetchMock });
     expect(await provider.listModels({ signal: undefined })).toEqual(['m1']);
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/models'), expect.objectContaining({ headers }));
   });
@@ -108,7 +112,7 @@ describe('OllamaProvider', () => {
   it('should include custom headers in chat request', async () => {
     fetchMock.mockResolvedValueOnce(new Response('{"message":{"content":"Hi"},"done":true}\n'));
     const headers: [string, string][] = [['X-Custom', 'ollama-test']];
-    const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', headers, fetcher: fetchMock });
+    const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', headers: headers.map(([name, value]) => [name, Secret.from({ value })]), fetcher: fetchMock });
     await consumeProviderGenerationForTest({ provider, request: request({ model: 'llama3' }) });
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/chat'), expect.objectContaining({ headers: expect.arrayContaining(headers) }));
   });
@@ -116,7 +120,7 @@ describe('OllamaProvider', () => {
   it('should include custom headers in listModels request', async () => {
     fetchMock.mockResolvedValueOnce(Response.json({ models: [{ name: 'm1' }] }));
     const headers: [string, string][] = [['X-Header', 'val']];
-    const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', headers, fetcher: fetchMock });
+    const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', headers: headers.map(([name, value]) => [name, Secret.from({ value })]), fetcher: fetchMock });
     expect(await provider.listModels({ signal: undefined })).toEqual(['m1']);
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/tags'), expect.objectContaining({ headers }));
   });

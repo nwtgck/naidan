@@ -1,7 +1,11 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { describe, it, expect } from 'vitest';
 import { parseWorkflowDefinition, parseWorkflowJson, formatWorkflowDefinition, applyWorkflowStepJson, parseWorkflowValue, formatWorkflowValue } from './workflow-json';
 import { toWorkflowStepId } from '@/01-models/ids';
 import type { WorkflowStep, WorkflowValue } from '@/01-models/workflow';
+
+installSecretEqualityTester();
 
 describe('Workflow editable JSON boundary', () => {
   const step: WorkflowStep = { id: toWorkflowStepId({ raw: 'step' }), name: 'value', type: 'value', value: { type: 'literal', value: { type: 'article', title: 'keep', nested: { count: 1 } } } };
@@ -51,7 +55,7 @@ describe('Workflow editable JSON boundary', () => {
     const legacy = JSON.stringify({ type: 'model', modelId: 'model', endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } } });
     expect(parseWorkflowValue({ text: legacy })).toEqual(browser);
     expect(JSON.parse(formatWorkflowValue({ value: parseWorkflowValue({ text: legacy }) }))).toHaveProperty('endpoint.type', 'llama_cpp_browser');
-    const http: WorkflowValue = { type: 'model', modelId: 'same', endpoint: { type: 'openai', url: 'http://localhost:1234', httpHeaders: [['Authorization', 'secret']] } };
+    const http: WorkflowValue = { type: 'model', modelId: 'same', endpoint: { type: 'openai', url: 'http://localhost:1234', httpHeaders: [['Authorization', Secret.from({ value: 'secret' })]] } };
     expect(parseWorkflowValue({ text: formatWorkflowValue({ value: http }) })).toEqual(http);
   });
 });

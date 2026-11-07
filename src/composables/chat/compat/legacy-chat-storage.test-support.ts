@@ -1,3 +1,4 @@
+import { Secret } from '@/utils/secret';
 import { vi } from 'vitest';
 import { toRaw } from 'vue';
 import type { StorageService } from '@/00-storage/service';
@@ -15,6 +16,9 @@ function snapshotMetadata({ metadata }: { metadata: ChatMeta }): ChatMeta {
 }
 
 function cloneFixtureMetadata<T>({ value }: { value: T }): T {
+  if (value instanceof Secret) {
+    return value;
+  }
   if (Array.isArray(value)) {
     return value.map(value => cloneFixtureMetadata({ value })) as T;
   }

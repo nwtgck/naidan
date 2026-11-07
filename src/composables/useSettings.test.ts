@@ -1,3 +1,6 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import type { HttpHeader } from '@/01-models/types';
+import { Secret } from '@/utils/secret';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettings } from './useSettings';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type Settings } from '@/01-models/types';
@@ -11,6 +14,8 @@ import {
 } from '@/strings/runtime';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { ChangeListener } from '@/00-storage/service/synchronizer';
+
+installSecretEqualityTester();
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmRuntime, mockScheduledIdleTasks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
@@ -404,7 +409,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       endpoint: {
         type: 'openai' as const,
         url: 'http://example.test/v1',
-        httpHeaders: [['Authorization', 'Bearer old']] as [string, string][],
+        httpHeaders: [['Authorization', Secret.from({ value: 'Bearer old' })]] as HttpHeader[],
       },
       storageType: 'local' as const,
     };
@@ -417,7 +422,7 @@ describe('useSettings Initialization and Bootstrap', () => {
         endpoint: {
           type: 'openai',
           url: 'http://example.test/v1',
-          httpHeaders: [['Authorization', 'Bearer new']],
+          httpHeaders: [['Authorization', Secret.from({ value: 'Bearer new' })]],
         },
       },
       modelRefresh: 'await',
@@ -759,7 +764,7 @@ describe('useSettings Initialization and Bootstrap', () => {
         overrides: {
           url: 'http://override-url',
           type: 'ollama',
-          httpHeaders: [['X-Test', 'true']],
+          httpHeaders: [['X-Test', Secret.from({ value: 'true' })]],
         },
       });
 

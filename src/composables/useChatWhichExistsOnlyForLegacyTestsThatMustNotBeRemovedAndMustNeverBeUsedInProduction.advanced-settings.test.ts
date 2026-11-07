@@ -1,3 +1,6 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import type { StorageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
@@ -5,9 +8,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { reactive } from 'vue';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { useSettings } from './useSettings';
-import { idToRaw } from '@/01-models/ids';
+import { idToRaw, toProviderProfileId } from '@/01-models/ids';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+
+installSecretEqualityTester();
 
 afterEach(() => {
   for (const providerChat of [mockOpenAIChat, mockOllamaChat]) {
@@ -128,9 +133,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
       __testOnlySetSettings({
         newSettings: {
-          ...JSON.parse(JSON.stringify(settings.value)),
+          ...clonePlainData({ value: settings.value }),
           providerProfiles: [{
-            id: 'p1',
+            id: toProviderProfileId({ raw: 'p1' }),
             name: 'Profile 1',
             endpoint: { type: 'openai', url: 'http://global-openai' },
             systemPrompt: 'Profile Prompt',
@@ -160,9 +165,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
       __testOnlySetSettings({
         newSettings: {
-          ...JSON.parse(JSON.stringify(settings.value)),
+          ...clonePlainData({ value: settings.value }),
           providerProfiles: [{
-            id: 'p1',
+            id: toProviderProfileId({ raw: 'p1' }),
             name: 'Profile 1',
             endpoint: { type: 'openai', url: 'http://global-openai' },
             systemPrompt: 'Profile Prompt',
@@ -185,7 +190,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     it('merges Chat > Global parameters correctly, ignoring Profile at runtime', async () => {
       __testOnlySetSettings({
         newSettings: {
-          ...JSON.parse(JSON.stringify(settings.value)),
+          ...clonePlainData({ value: settings.value }),
           lmParameters: {
             ...EMPTY_LM_PARAMETERS,
             temperature: 0.1,
@@ -195,7 +200,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           },
           // Profile should be ignored at runtime
           providerProfiles: [{
-            id: 'p1',
+            id: toProviderProfileId({ raw: 'p1' }),
             name: 'P1',
             endpoint: { type: 'openai', url: 'http://global-openai' },
             lmParameters: {
@@ -328,7 +333,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
         endpoint: {
           type: 'openai',
           url: 'http://chat-specific-url',
-          httpHeaders: [['Authorization', 'Bearer secret']],
+          httpHeaders: [['Authorization', Secret.from({ value: 'Bearer secret' })]],
         },
       },
     });
@@ -345,7 +350,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(saved['endpoint']).toEqual({
       type: 'openai',
       url: 'http://chat-specific-url',
-      httpHeaders: [['Authorization', 'Bearer secret']],
+      httpHeaders: [['Authorization', Secret.from({ value: 'Bearer secret' })]],
     });
     expect(saved['endpointType']).toBeUndefined();
     expect(saved['endpointUrl']).toBeUndefined();
@@ -366,7 +371,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
         endpoint: {
           type: 'openai',
           url: 'http://chat-specific-url',
-          httpHeaders: [['Authorization', 'Bearer secret']],
+          httpHeaders: [['Authorization', Secret.from({ value: 'Bearer secret' })]],
         },
       },
     });
@@ -374,7 +379,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(currentChat.value?.endpoint).toEqual({
       type: 'openai',
       url: 'http://chat-specific-url',
-      httpHeaders: [['Authorization', 'Bearer secret']],
+      httpHeaders: [['Authorization', Secret.from({ value: 'Bearer secret' })]],
     });
 
     // Second updateChatMeta is from renameChat — capture its storage updater.
@@ -398,7 +403,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(saved['endpoint']).toEqual({
       type: 'openai',
       url: 'http://chat-specific-url',
-      httpHeaders: [['Authorization', 'Bearer secret']],
+      httpHeaders: [['Authorization', Secret.from({ value: 'Bearer secret' })]],
     });
     expect(saved['endpointType']).toBeUndefined();
     expect(saved['endpointUrl']).toBeUndefined();

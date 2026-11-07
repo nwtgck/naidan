@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { SettingsSelectStub } from './settings-select.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -10,6 +12,8 @@ import HttpHeadersEditor from './HttpHeadersEditor.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { toProviderProfileId, toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+
+installSecretEqualityTester();
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -58,7 +62,7 @@ function createSettings({ endpointType }: {
         return {
           type: endpointType,
           url: 'https://ollama.example',
-          httpHeaders: [['X-Test', 'value']],
+          httpHeaders: [['X-Test', Secret.from({ value: 'value' })]],
         };
       default: {
         const _ex: never = endpointType;
@@ -287,7 +291,7 @@ describe('ConnectionTab Ollama management integration', () => {
       endpoint: {
         type: 'openai',
         url: 'https://title.example/v1',
-        httpHeaders: [['X-Title', 'old']],
+        httpHeaders: [['X-Title', Secret.from({ value: 'old' })]],
       },
       model: { id: 'title-model' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
@@ -311,7 +315,7 @@ describe('ConnectionTab Ollama management integration', () => {
       endpoint: {
         type: 'openai',
         url: 'https://title.example/v1',
-        httpHeaders: [['X-Title-Next', 'next']],
+        httpHeaders: [['X-Title-Next', Secret.from({ value: 'next' })]],
       },
       model: { id: 'title-model' },
     });
@@ -416,10 +420,10 @@ describe('ConnectionTab controlled settings contracts', () => {
     await wrapper.get('[data-testid="setting-parameters-disclosure"]').trigger('click');
     expect(wrapper.findAllComponents(ModelSelector)[1]!.element).toBe(titleElement);
     const headers = wrapper.findAllComponents(HttpHeadersEditor)[0]!;
-    headers.vm.$emit('update:modelValue', [['X-API-Key', 'draft-secret']]);
+    headers.vm.$emit('update:modelValue', [['X-API-Key', Secret.from({ value: 'draft-secret' })]]);
     headers.vm.$emit('save');
     await flushPromises();
-    expect(settings.endpoint).toMatchObject({ httpHeaders: [['X-API-Key', 'draft-secret']] });
+    expect(settings.endpoint).toMatchObject({ httpHeaders: [['X-API-Key', Secret.from({ value: 'draft-secret' })]] });
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockFetchModels).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="setting-save-button"]').trigger('click');
@@ -477,7 +481,7 @@ describe('ConnectionTab controlled settings contracts', () => {
     const settings = createSettings({ endpointType: 'openai' });
     const titleParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' as const }, temperature: 0.2 };
     settings.titleGeneration = status === 'disabled' ? 'disabled' : { endpoint: 'same_scope', model: 'same_scope', lmParameters: titleParameters };
-    settings.providerProfiles = [{ id: toProviderProfileId({ raw: 'saved-profile' }), name: 'Saved snapshot', endpoint: { type: 'openai', url: 'https://profile.example', httpHeaders: [['X-Profile', 'secret']] }, defaultModelId: 'profile-model', titleModelId: 'profile-title', systemPrompt: 'Profile prompt', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } } }];
+    settings.providerProfiles = [{ id: toProviderProfileId({ raw: 'saved-profile' }), name: 'Saved snapshot', endpoint: { type: 'openai', url: 'https://profile.example', httpHeaders: [['X-Profile', Secret.from({ value: 'secret' })]] }, defaultModelId: 'profile-model', titleModelId: 'profile-title', systemPrompt: 'Profile prompt', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } } }];
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: { ...globalStubs, SettingsSelect: false } } });
     using _cleanupResource = {
       [Symbol.dispose]() {

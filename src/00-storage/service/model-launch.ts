@@ -1,3 +1,4 @@
+import { areOptionalEndpointsEqual } from '@/01-models/endpoint';
 import { retargetTitleGenerationToSameScope } from '@/01-models/title-generation';
 import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
 import type { IStorageProvider } from './interface';
@@ -68,7 +69,7 @@ function sessionFor({ provider }: { provider: IStorageProvider }): Map<ChatId, L
 }
 
 function sameBinding({ left, right }: { left: Pick<ChatMeta, 'endpoint' | 'modelId'>, right: Pick<ChatMeta, 'endpoint' | 'modelId'> }): boolean {
-  return JSON.stringify(left.endpoint) === JSON.stringify(right.endpoint) && left.modelId === right.modelId;
+  return areOptionalEndpointsEqual({ left: left.endpoint, right: right.endpoint }) && left.modelId === right.modelId;
 }
 
 export function observeModelLaunch({ provider, meta }: { provider: IStorageProvider, meta: ChatMeta }): void {

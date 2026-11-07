@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import type { LlamaCppServerTimingsMode } from '@/01-models/types';
@@ -8,6 +10,8 @@ import { consumeProviderGenerationForTest } from './provider.test-support';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useMetricsFakeTimersForTest } from './generation-metrics-stream.test-support';
 
+installSecretEqualityTester();
+
 const props = { default_generation_settings: { params: { timings_per_token: false } } };
 
 function completion() {
@@ -15,7 +19,7 @@ function completion() {
 }
 
 function run({ fetcher, mode = 'auto', signal, observer = vi.fn() }: { fetcher: LmFetch, mode?: LlamaCppServerTimingsMode, signal?: AbortSignal, observer?: GenerationMetricsObserver | null }) {
-  const provider = new OpenAIProvider({ endpoint: 'http://localhost:8080/proxy/v1', headers: [['Authorization', 'Bearer token']], fetcher, llamaCppServerTimings: mode });
+  const provider = new OpenAIProvider({ endpoint: 'http://localhost:8080/proxy/v1', headers: [['Authorization', Secret.from({ value: 'Bearer token' })]], fetcher, llamaCppServerTimings: mode });
   return consumeProviderGenerationForTest({
     provider,
     request: { debug: undefined, messages: [], model: 'fixture', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal, onGenerationMetrics: observer ?? undefined },

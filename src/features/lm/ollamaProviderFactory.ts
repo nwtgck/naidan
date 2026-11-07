@@ -1,3 +1,4 @@
+import type { HttpHeader } from '@/01-models/types';
 import type { FakeLmDebugModeStatus } from '@/features/fake-lm/runtime/fakeLmDebugMode';
 import { OllamaProvider } from '@/features/lm/ollama';
 import { createLmFetch } from '@/features/lm/fetchFactory';
@@ -5,7 +6,7 @@ import { cloneEndpointHttpHeaders } from '@/features/lm/providerFactory';
 
 export function createOllamaProvider({ endpointUrl, endpointHttpHeaders, fakeLmDebugModeStatus }: {
   endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpointHttpHeaders: HttpHeader[] | undefined,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): OllamaProvider {
   return new OllamaProvider({

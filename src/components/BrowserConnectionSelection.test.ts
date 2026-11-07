@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, type Ref } from 'vue';
@@ -8,6 +10,8 @@ import type { CspHintMessage, CspHintTarget } from '@/logic/csp-message-hints/ty
 import BrowserConnectionSelection from './BrowserConnectionSelection.vue';
 import ModelSelector from './ModelSelector.vue';
 import HttpHeadersEditor from './HttpHeadersEditor.vue';
+
+installSecretEqualityTester();
 
 const mocks = vi.hoisted(() => ({
   loadLmProvider: vi.fn(),
@@ -210,7 +214,7 @@ describe('browser model connection selection', () => {
     await trigger.trigger('click');
     await input.setValue('token-one');
     const headers = wrapper.getComponent(HttpHeadersEditor);
-    expect(headers.props('modelValue')).toEqual([['Authorization', 'Bearer token-one']]);
+    expect(headers.props('modelValue')).toEqual([['Authorization', Secret.from({ value: 'Bearer token-one' })]]);
     await headers.get('button[aria-expanded]').trigger('click');
     await headers.get('[data-testid="connection-header-value-input"]').setValue('Bearer token-two');
     expect(input.element.value).toBe('token-two');
@@ -223,7 +227,7 @@ describe('browser model connection selection', () => {
     expect(wrapper.get('#model-connection-key').element).toBe(input.element);
     expect(input.element.value).toBe('token-two');
     await headers.get('[data-testid="connection-header-add-button"]').trigger('click');
-    expect(headers.props('modelValue')).toEqual([['Authorization', 'Bearer token-two'], ['', '']]);
+    expect(headers.props('modelValue')).toEqual([['Authorization', Secret.from({ value: 'Bearer token-two' })], ['', Secret.from({ value: '' })]]);
     await headers.get('[data-testid="connection-header-remove-button"]').trigger('click');
     expect(input.element.value).toBe('');
     expect(mocks.loadLmProvider).not.toHaveBeenCalled();

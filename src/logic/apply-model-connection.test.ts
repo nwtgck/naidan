@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { EMPTY_LM_PARAMETERS, type Chat, type ChatGroup, type ChatMeta, type Endpoint } from '@/01-models/types';
@@ -5,6 +7,8 @@ import type { ChatDataStore } from '@/composables/chat/global/chat-data-store';
 import { createChatDataStore } from '@/composables/chat/global/chat-data-store';
 import type { storageService } from '@/00-storage/service';
 import { applyModelConnectionSelection } from './apply-model-connection';
+
+installSecretEqualityTester();
 
 const mocks = vi.hoisted(() => ({
   commitGlobal: vi.fn<({ endpoint, modelId, isCurrent }: { endpoint: Endpoint, modelId: string, isCurrent(): boolean }) => Promise<'applied' | 'changed'>>(),
@@ -90,8 +94,8 @@ describe('model connection selection application', () => {
     const beforeMetadata = structuredClone(stored);
     const beforeChatGroup = structuredClone(chatGroup);
     const beforeRoot = store.getLiveChatById({ chatId })?.root;
-    await applyModelConnectionSelection({ target: { kind: 'chat', chatId }, endpoint: { type: 'openai', url: 'https://chosen.example/v1', httpHeaders: [['Authorization', 'Bearer token']] }, modelId: 'chosen-model', isCurrent: () => true });
-    expect(stored).toEqual({ ...beforeMetadata, endpoint: { type: 'openai', url: 'https://chosen.example/v1', httpHeaders: [['Authorization', 'Bearer token']] }, modelId: 'chosen-model', updatedAt: expect.any(Number) });
+    await applyModelConnectionSelection({ target: { kind: 'chat', chatId }, endpoint: { type: 'openai', url: 'https://chosen.example/v1', httpHeaders: [['Authorization', Secret.from({ value: 'Bearer token' })]] }, modelId: 'chosen-model', isCurrent: () => true });
+    expect(stored).toEqual({ ...beforeMetadata, endpoint: { type: 'openai', url: 'https://chosen.example/v1', httpHeaders: [['Authorization', Secret.from({ value: 'Bearer token' })]] }, modelId: 'chosen-model', updatedAt: expect.any(Number) });
     const selected = store.getLiveChatById({ chatId });
     expect(selected?.root).toBe(beforeRoot);
     expect(selected?.root.items[0]?.parts).toEqual([{ type: 'text', text: 'Keep this message', completeness: 'complete' }]);

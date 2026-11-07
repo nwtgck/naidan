@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 // @vitest-environment node
 import { readFile } from 'node:fs/promises';
 import { expect, it, vi } from 'vitest';
@@ -14,6 +16,8 @@ import type { NaidanRpcRegistryAccess } from '@/00-storage/service/naidan-rpc';
 import { prepareTranscript, receiveEvents } from '@/features/naidan-rpc-integration/codecs/chat-wire';
 import { startPeerImage } from '@/features/naidan-rpc-integration/adapters/image-provider';
 import { promiseAllKeyed } from '@/utils/promise';
+
+installSecretEqualityTester();
 
 function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint8Array<ArrayBuffer> }) {
   const answer = 'Private streamed answer. '.repeat(4096);
@@ -73,7 +77,7 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
   const png = new Uint8Array(await readFile(new URL('../codecs/fixtures/loopback.png', import.meta.url)));
   const { first, second } = await promiseAllKeyed({ first: createNaidanPipingIdentity(), second: createNaidanPipingIdentity() });
   const a = endpoint({ identity: first, png }), b = endpoint({ identity: second, png });
-  const settings = { type: 'naidan_piping_duplex' as const, serverUrl: relay.origin, headers: [{ name: 'X-Relay-Test', value: 'authorized' }] };
+  const settings = { type: 'naidan_piping_duplex' as const, serverUrl: relay.origin, headers: [{ name: 'X-Relay-Test', value: Secret.from({ value: 'authorized' }) }] };
   const compared: Uint8Array[] = [];
   const verifier: NaidanPipingPeerVerifier = async ({ comparison }) => {
     compared.push(comparison.slice());
@@ -170,7 +174,7 @@ it('rejecting the full comparison over real HTTP never publishes trust or an inf
   const png = new Uint8Array(await readFile(new URL('../codecs/fixtures/loopback.png', import.meta.url)));
   const { first, second } = await promiseAllKeyed({ first: createNaidanPipingIdentity(), second: createNaidanPipingIdentity() });
   const a = endpoint({ identity: first, png }), b = endpoint({ identity: second, png });
-  const settings = { type: 'naidan_piping_duplex' as const, serverUrl: relay.origin, headers: [{ name: 'X-Relay-Test', value: 'authorized' }] };
+  const settings = { type: 'naidan_piping_duplex' as const, serverUrl: relay.origin, headers: [{ name: 'X-Relay-Test', value: Secret.from({ value: 'authorized' }) }] };
   const rejectPeer = vi.fn<NaidanPipingPeerVerifier>(async () => false);
   let other: Promise<unknown> | undefined;
   try {

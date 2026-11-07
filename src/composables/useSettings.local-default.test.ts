@@ -1,9 +1,15 @@
+import { clonePlainData } from '@/utils/clone-plain-data';
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import type { HttpHeader } from '@/01-models/types';
+import { Secret } from '@/utils/secret';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { useSettings } from './useSettings';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { storageService } from '@/00-storage/service';
+
+installSecretEqualityTester();
 const mocks = vi.hoisted(() => ({ update: vi.fn(), updateForStorage: vi.fn(), load: vi.fn<() => Promise<Settings | null>>(), listModels: vi.fn(async () => ['local-model']), loadProvider: vi.fn(), scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })), stored: undefined as Settings | undefined, storageGeneration: 0 }));
 vi.mock('@/00-storage/service', () => ({
   storageService: {
@@ -22,7 +28,7 @@ vi.mock('@/00-storage/service', () => ({
 }));
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: mocks.loadProvider, prefetchLmProvider: vi.fn() }));
 vi.mock('@/utils/idle-task', () => ({ scheduleIdleTask: mocks.scheduleIdleTask }));
-const original: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: [['X-Test', 'value']] }, defaultModelId: 'old-model', systemPrompt: 'Keep this setting' };
+const original: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: [['X-Test', Secret.from({ value: 'value' })]] }, defaultModelId: 'old-model', systemPrompt: 'Keep this setting' };
 const target = 'hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M';
 
 beforeEach(async () => {
@@ -30,7 +36,7 @@ beforeEach(async () => {
   vi.stubGlobal('navigator', { language: 'en', locks: { request: vi.fn() } });
   useSettings().TEST_ONLY.__testOnlyReset();
   useSettings().TEST_ONLY.__testOnlySetSettings({ newSettings: original });
-  mocks.stored = structuredClone(original);
+  mocks.stored = clonePlainData({ value: original });
   mocks.load.mockImplementation(async () => mocks.stored ?? null);
   mocks.update.mockImplementation(async ({ updater }: Parameters<typeof storageService.updateSettings>[0]) => {
     if (!mocks.stored) {
@@ -164,12 +170,12 @@ describe('explicit model connection selection', () => {
       await gate.promise;
       mocks.stored = await updater({ current: mocks.stored ?? null });
     });
-    const headers: [string, string][] = [['Authorization', 'Bearer selected-token']];
+    const headers: HttpHeader[] = [['Authorization', Secret.from({ value: 'Bearer selected-token' })]];
     const pending = api.commitGlobalModelConnection({ endpoint: { type: 'openai', url: 'https://chosen.example/v1', httpHeaders: headers }, modelId: 'chosen-model', isCurrent: () => true });
-    headers[0]![1] = 'Bearer edited-after-confirmation';
+    headers[0]![1] = Secret.from({ value: 'Bearer edited-after-confirmation' });
     gate.resolve();
     expect(await pending).toBe('applied');
-    expect(api.settings.value.endpoint).toEqual({ type: 'openai', url: 'https://chosen.example/v1', httpHeaders: [['Authorization', 'Bearer selected-token']] });
+    expect(api.settings.value.endpoint).toEqual({ type: 'openai', url: 'https://chosen.example/v1', httpHeaders: [['Authorization', Secret.from({ value: 'Bearer selected-token' })]] });
     expect(mocks.stored?.endpoint).toEqual(api.settings.value.endpoint);
   });
 });
@@ -178,7 +184,7 @@ describe('model launch global initialization', () => {
   function useBlankSettings() {
     const blank: Settings = { ...original, endpoint: { type: 'openai', url: '' }, defaultModelId: undefined };
     useSettings().TEST_ONLY.__testOnlySetSettings({ newSettings: blank });
-    mocks.stored = structuredClone(blank);
+    mocks.stored = clonePlainData({ value: blank });
     return useSettings();
   }
 
@@ -256,7 +262,7 @@ describe('temporary model global promotion', () => {
   function selectTemporaryDefault() {
     const settings: Settings = { ...original, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: sourceModelId };
     useSettings().TEST_ONLY.__testOnlySetSettings({ newSettings: settings });
-    mocks.stored = structuredClone(settings);
+    mocks.stored = clonePlainData({ value: settings });
     return useSettings();
   }
 
@@ -476,7 +482,7 @@ describe('saving a temporary model default', () => {
     const saved: Settings = { ...original, endpoint: match === 'endpoint' ? original.endpoint : { type: 'llama_cpp_browser' }, defaultModelId: match === 'empty' ? undefined : match === 'selector' ? 'temp/source:Q8_0' : sourceModelId, experimental: { locale: 'ja' } };
     const api = useSettings();
     api.TEST_ONLY.__testOnlySetSettings({ newSettings: saved });
-    mocks.stored = structuredClone(saved);
+    mocks.stored = clonePlainData({ value: saved });
     await api.promoteTemporaryModelDefault({ sourceModelId, modelId: 'user/source-2', isCurrent: () => true });
     expect(mocks.stored).toEqual({ ...saved, defaultModelId: match === 'matching' ? 'user/source-2' : saved.defaultModelId });
     expect(api.settings.value.defaultModelId).toBe(mocks.stored.defaultModelId);

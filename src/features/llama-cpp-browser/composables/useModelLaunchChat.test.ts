@@ -1,3 +1,4 @@
+import type { ModelBindingSnapshot } from '@/00-storage/service/model-binding';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import type { ChatModelLaunch } from '@/01-models/llama-cpp-browser-model-launch';
@@ -33,7 +34,7 @@ const capture = vi.fn(async () => ({ endpoint: settings.value.endpoint, modelId:
 const initialize = vi.fn(async () => 'applied' as const);
 const inspect = vi.fn();
 const observe = vi.fn();
-const captureBinding = vi.fn();
+const captureBinding = vi.fn<({ sourceModelId }: { sourceModelId: string }) => Promise<ModelBindingSnapshot>>();
 const prepare = vi.fn();
 const prepareModel = vi.fn();
 const returnHome = vi.fn(async () => {});
@@ -96,7 +97,8 @@ vi.mock('../hugging-face/storage', () => ({
 vi.mock('../model-launch/readiness', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/model-launch/readiness')>(), isModelLaunchTargetReady: vi.fn(async ({ target }) => installed.has(target.modelId)) }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect }) }));
 vi.mock('../model-launch/restore', () => ({ observeLegacyModelDownload: (args: unknown) => observe(args) }));
-vi.mock('@/00-storage/service', () => ({
+vi.mock('@/00-storage/service', async () => ({
+  areModelBindingSnapshotsEqual: (await import('@/00-storage/service/model-binding')).areModelBindingSnapshotsEqual,
   storageService: {
     getModelLaunch: () => launchEnabled ? activeLaunch : undefined,
     prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
@@ -104,7 +106,7 @@ vi.mock('@/00-storage/service', () => ({
       const version = storageVersion;
       return () => version === storageVersion;
     },
-    captureModelBinding: (args: unknown) => captureBinding(args),
+    captureModelBinding: (args: Parameters<typeof captureBinding>[0]) => captureBinding(args),
     loadChat: async () => currentChat.value,
     loadChatMeta: async () => currentChat.value,
     loadChatContent: async () => currentChat.value === null ? null : { root: currentChat.value.root },
@@ -128,6 +130,21 @@ function mountState() {
   scopes.push(scope);
   const state = scope.run(() => useModelLaunchChat({ chat: computed(() => currentChat.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' as const }, modelId: activeLaunch.target.modelId })) }))!;
   return { scope, state };
+}
+
+function bindingSnapshot({ sourceModelId, revision }: { sourceModelId: string, revision: number }): ModelBindingSnapshot {
+  const endpoint = { type: 'llama_cpp_browser' as const };
+  return {
+    chatId: currentChat.value!.id,
+    sourceModelId,
+    chat: { groupId: currentChat.value?.groupId ?? undefined, endpoint, modelId: sourceModelId },
+    chatGroup: undefined,
+    global: { endpoint, modelId: sourceModelId },
+    chatRevision: revision,
+    chatGroupRevision: 0,
+    chatGroupTarget: 'not-targeted',
+    isCurrent: () => true,
+  };
 }
 
 beforeEach(async () => {
@@ -182,7 +199,7 @@ beforeEach(async () => {
   initialize.mockResolvedValue('applied');
   inspect.mockResolvedValue(catalog);
   observe.mockReset().mockResolvedValue(undefined);
-  captureBinding.mockReset().mockImplementation(async ({ sourceModelId }: { sourceModelId: string }) => ({ sourceModelId, revision: 0 }));
+  captureBinding.mockReset().mockImplementation(async ({ sourceModelId }) => bindingSnapshot({ sourceModelId, revision: 0 }));
 });
 
 afterEach(() => scopes.splice(0).forEach(scope => scope.stop()));
@@ -1096,7 +1113,7 @@ describe('reload journal observation without launch authority', () => {
   it('rejects a changed current binding between the click and journal verification', async () => {
     const { state } = mountObserved({ observed: interrupted() });
     await flushPromises();
-    captureBinding.mockResolvedValueOnce({ revision: 1 }).mockResolvedValueOnce({ revision: 2 });
+    captureBinding.mockImplementationOnce(async ({ sourceModelId }) => bindingSnapshot({ sourceModelId, revision: 1 })).mockImplementationOnce(async ({ sourceModelId }) => bindingSnapshot({ sourceModelId, revision: 2 }));
     await state.adoptAndDownload();
     expect(state.error.value).toBe(true);
     expect(download).not.toHaveBeenCalled();
@@ -1127,7 +1144,7 @@ describe('reload journal observation without launch authority', () => {
     const { state } = mountObserved({ observed: interrupted() });
     await flushPromises();
     let revision = 1;
-    captureBinding.mockImplementation(async () => ({ revision }));
+    captureBinding.mockImplementation(async ({ sourceModelId }) => bindingSnapshot({ sourceModelId, revision }));
     await state.adoptAndDownload();
     await flushPromises();
     expect(state.job.value?.status).toBe('queued');

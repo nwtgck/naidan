@@ -1,3 +1,5 @@
+import { installSecretEqualityTester } from '@/utils/secret.test-support';
+import { Secret } from '@/utils/secret';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 import type { Settings } from '@/01-models/types';
@@ -9,6 +11,8 @@ import { fakeLmFetch } from '@/features/fake-lm/api/fakeLmFetch';
 import { createLmFetch } from '@/features/lm/fetchFactory';
 import { createOllamaProvider } from '@/features/lm/ollamaProviderFactory';
 import { consumeProviderGenerationForTest } from './provider.test-support';
+
+installSecretEqualityTester();
 
 const rpcManager = vi.hoisted(() => ({ get: vi.fn(), client: vi.fn() }));
 
@@ -45,7 +49,7 @@ describe('createOllamaProvider', () => {
   it('creates an Ollama management client using the fake LM fetch path', async () => {
     const provider = createOllamaProvider({
       endpointUrl: 'https://fake-lm.invalid',
-      endpointHttpHeaders: [['X-Test', 'value']],
+      endpointHttpHeaders: [['X-Test', Secret.from({ value: 'value' })]],
       fakeLmDebugModeStatus: 'enabled',
     });
 

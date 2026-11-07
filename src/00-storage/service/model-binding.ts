@@ -1,3 +1,5 @@
+import { cloneEndpoint, cloneOptionalEndpoint } from '@/01-models/endpoint';
+import { areOptionalEndpointsEqual } from '@/01-models/endpoint';
 import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
 import type { IStorageProvider } from './interface';
 import type { ChatContent, ChatMeta, Endpoint, MessageBranch, MessageNode } from '@/01-models/types';
@@ -48,9 +50,40 @@ async function ownerIsPresent({ provider, chatId, chatGroupId }: { provider: ISt
 }
 
 export function sameModelBindingFields({ left, right }: { left: { endpoint?: Endpoint, modelId?: string }, right: { endpoint?: Endpoint, modelId?: string } }): boolean {
-  return left.modelId === right.modelId && JSON.stringify(left.endpoint) === JSON.stringify(right.endpoint);
+  return left.modelId === right.modelId && areOptionalEndpointsEqual({ left: left.endpoint, right: right.endpoint });
 }
 
+
+/** Compare durable binding state; each capture intentionally has its own guard. */
+export function areModelBindingSnapshotsEqual({ left, right }: { left: ModelBindingSnapshot, right: ModelBindingSnapshot }): boolean {
+  const { chatId: leftId, sourceModelId: leftSource, chat: leftChat, chatGroup: leftGroup, global: leftGlobal, chatRevision: leftRevision, chatGroupRevision: leftGroupRevision, chatGroupTarget: leftTarget, isCurrent: _leftGuard, ...leftRest } = left;
+  const { chatId: rightId, sourceModelId: rightSource, chat: rightChat, chatGroup: rightGroup, global: rightGlobal, chatRevision: rightRevision, chatGroupRevision: rightGroupRevision, chatGroupTarget: rightTarget, isCurrent: _rightGuard, ...rightRest } = right;
+  leftRest satisfies Record<PropertyKey, never>;
+  rightRest satisfies Record<PropertyKey, never>;
+  const { groupId: leftMembership, endpoint: leftChatEndpoint, modelId: leftChatModel, ...leftChatRest } = leftChat;
+  const { groupId: rightMembership, endpoint: rightChatEndpoint, modelId: rightChatModel, ...rightChatRest } = rightChat;
+  const { endpoint: leftGlobalEndpoint, modelId: leftGlobalModel, ...leftGlobalRest } = leftGlobal;
+  const { endpoint: rightGlobalEndpoint, modelId: rightGlobalModel, ...rightGlobalRest } = rightGlobal;
+  leftChatRest satisfies Record<PropertyKey, never>;
+  rightChatRest satisfies Record<PropertyKey, never>;
+  leftGlobalRest satisfies Record<PropertyKey, never>;
+  rightGlobalRest satisfies Record<PropertyKey, never>;
+  if (leftId !== rightId || leftSource !== rightSource || leftRevision !== rightRevision
+    || leftGroupRevision !== rightGroupRevision || leftTarget !== rightTarget || leftMembership !== rightMembership
+    || leftChatModel !== rightChatModel || !areOptionalEndpointsEqual({ left: leftChatEndpoint, right: rightChatEndpoint })
+    || leftGlobalModel !== rightGlobalModel || !areOptionalEndpointsEqual({ left: leftGlobalEndpoint, right: rightGlobalEndpoint })) {
+    return false;
+  }
+  if (leftGroup === undefined || rightGroup === undefined) {
+    return leftGroup === rightGroup;
+  }
+  const { id: leftGroupId, endpoint: leftGroupEndpoint, modelId: leftGroupModel, ...leftGroupRest } = leftGroup;
+  const { id: rightGroupId, endpoint: rightGroupEndpoint, modelId: rightGroupModel, ...rightGroupRest } = rightGroup;
+  leftGroupRest satisfies Record<PropertyKey, never>;
+  rightGroupRest satisfies Record<PropertyKey, never>;
+  return leftGroupId === rightGroupId && leftGroupModel === rightGroupModel
+    && areOptionalEndpointsEqual({ left: leftGroupEndpoint, right: rightGroupEndpoint });
+}
 
 export async function captureModelBinding({ provider, chatId, sourceModelId, chatRevision, chatGroupRevision, isCurrent }: {
   provider: IStorageProvider, chatId: ChatId, sourceModelId: string, chatRevision: number, chatGroupRevision({ id }: { id: ChatGroupId }): number, isCurrent(): boolean,
@@ -71,9 +104,9 @@ export async function captureModelBinding({ provider, chatId, sourceModelId, cha
   return {
     chatId,
     sourceModelId,
-    chat: { groupId: chat.groupId ?? undefined, endpoint: structuredClone(chat.endpoint), modelId: chat.modelId },
-    chatGroup: chatGroup === null ? undefined : { id: chatGroup.id, endpoint: structuredClone(chatGroup.endpoint), modelId: chatGroup.modelId },
-    global: { endpoint: structuredClone(settings.endpoint), modelId: settings.defaultModelId || '' },
+    chat: { groupId: chat.groupId ?? undefined, endpoint: cloneOptionalEndpoint({ endpoint: chat.endpoint }), modelId: chat.modelId },
+    chatGroup: chatGroup === null ? undefined : { id: chatGroup.id, endpoint: cloneOptionalEndpoint({ endpoint: chatGroup.endpoint }), modelId: chatGroup.modelId },
+    global: { endpoint: cloneEndpoint({ endpoint: settings.endpoint }), modelId: settings.defaultModelId || '' },
     chatRevision,
     chatGroupRevision: chatGroup === null ? 0 : chatGroupRevision({ id: chatGroup.id }),
     chatGroupTarget: pair.sources.modelId === 'chat_group' && chatGroup !== null && pair.chatGroup.endpoint.type === 'llama_cpp_browser' && pair.chatGroup.modelId === sourceModelId ? 'candidate' : 'not-targeted',
