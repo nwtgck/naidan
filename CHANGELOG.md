@@ -39,7 +39,7 @@ All notable changes to Naidan are documented in this file.
 
 ### Changed
 
-- Link README models and the English/Japanese browser-model guide shortlist to repository pages while preserving the existing link origins and Docs' current-origin handling. Portable hosted and standalone packages do not include the public model-page overlay.
+- Link README models and the English/Japanese browser-model guide shortlist to repository pages while preserving the existing link origins and Docs' current-origin handling. Hosted builds and ZIPs include model pages directly; standalone builds remain free of them. Model pages retain subdirectory mounts. Hosted archives include the final service worker and its precached universal offline download when available.
 - Persist llama.cpp browser endpoints with the stable `llama_cpp_browser` type on their next save while continuing to read existing `experimental_type` records without rewriting them on load. Other experimental endpoints and settings are unchanged.
 - Rename user-facing llama.cpp browser labels to “llama.cpp in the browser” (localized in each language) and list it first among concrete endpoint choices, without changing inherited choices or default connections.
 - Open the endpoint choices together with connection details in chat and chat-group overrides. Selecting an endpoint closes only the choices; clicking the connection summary again closes the details.

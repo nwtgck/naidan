@@ -72,7 +72,7 @@ export async function requestModelPage({ server, method, url }: { server: ViteDe
       resolve();
       return response;
     });
-    server.middlewares(request, response, error => reject(error ?? new Error('Model page middleware ended without a response')));
+    server.middlewares(request, response, (error: unknown) => reject(error ?? new Error('Model page middleware ended without a response')));
   }).finally(() => socket.destroy());
   return { status: response.statusCode, contentType: response.getHeader('Content-Type'), length: response.getHeader('Content-Length'), location: response.getHeader('Location'), body };
 }

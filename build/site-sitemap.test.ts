@@ -11,7 +11,8 @@ import { modelSuggestions } from '../src/features/llama-cpp-browser/hugging-face
 import { listModelPageEntries, modelPageEntries } from '../src/features/llama-cpp-browser/model-launch/page-entries';
 import { modelIdFromPagePath } from '../src/features/llama-cpp-browser/model-launch/page-url';
 import { SITE_METADATA } from '../src/logic/document-metadata';
-import { createSiteSitemap, createSiteSitemapPlugin } from './site-sitemap';
+import { createSiteSitemap } from './site-sitemap';
+import { createModelPagesPlugin } from './model-pages';
 
 vi.mock('../src/features/llama-cpp-browser/hugging-face/model-suggestions', () => ({
   modelSuggestions: [],
@@ -78,15 +79,15 @@ describe('site sitemap', () => {
     ]);
   });
 
-  it.each(['hosted', 'standalone'])('does not publish absent model pages in a portable %s build', async mode => {
+  it.each(['hosted', 'standalone'])('publishes model URLs only with their HTML in a %s build', async mode => {
     const root = await mkdtemp(path.join(tmpdir(), 'naidan-site-sitemap-'));
     await using _fixture = { [Symbol.asyncDispose]: () => rm(root, { recursive: true, force: true }) };
-    await writeFile(path.join(root, 'index.html'), '<!doctype html><title>fixture</title>');
-    await build({ configFile: false, root, mode, logLevel: 'silent', publicDir: false, plugins: [createSiteSitemapPlugin()] });
+    await writeFile(path.join(root, 'index.html'), '<!doctype html><title>fixture</title><div id="app"></div>');
+    await build({ configFile: false, root, mode, logLevel: 'silent', publicDir: false, plugins: [createModelPagesPlugin()] });
     if (mode === 'standalone') {
       expect(() => readFileSync(path.join(root, 'dist/sitemap.xml'))).toThrow();
     } else {
-      expect(readFileSync(path.join(root, 'dist/sitemap.xml'), 'utf8')).toBe(createSiteSitemap({ entries: [] }));
+      expect(readFileSync(path.join(root, 'dist/sitemap.xml'), 'utf8')).toBe(createSiteSitemap({ entries: listModelPageEntries() }));
     }
   });
 });

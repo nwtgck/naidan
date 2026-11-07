@@ -1,4 +1,3 @@
-import type { Plugin } from 'vite';
 import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries';
 import { SITE_METADATA } from '../src/logic/document-metadata';
 
@@ -16,20 +15,6 @@ export function createSiteSitemap({ entries }: { entries: readonly ModelPageEntr
 ${[...new Set(urls)].map(url => `  <url><loc>${escapeXml({ value: url })}</loc></url>`).join('\n')}
 </urlset>
 `;
-}
-
-export function createSiteSitemapPlugin(): Plugin {
-  return {
-    name: 'site-sitemap',
-    apply(_config, { mode }) {
-      return mode !== 'standalone';
-    },
-    generateBundle() {
-      // Published model HTML is added only after packaging, together with its
-      // sitemap. A portable hosted ZIP must not advertise absent model pages.
-      this.emitFile({ type: 'asset', fileName: 'sitemap.xml', source: createSiteSitemap({ entries: [] }) });
-    },
-  };
 }
 
 export const TEST_ONLY = {

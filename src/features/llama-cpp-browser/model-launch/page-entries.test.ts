@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hfRepositories } from '@/features/llama-cpp-browser/hugging-face/model-repositories';
 import { findModelPageEntry, listModelPageEntries, modelPageEntries } from './page-entries';
-import { modelIdFromPagePath, modelPagePath, modelPageHref, readModelPageRequest } from './page-url';
+import { modelIdFromPagePath, modelPagePath, modelPageHref, modelPageLocation, readModelPageRequest } from './page-url';
 import { modelLaunchMetadata } from './document-metadata';
 import { SITE_METADATA } from '@/logic/document-metadata';
 
@@ -44,6 +44,16 @@ describe('model page publication registry', () => {
     expect(findModelPageEntry({ pathname: '/llama-cpp-browser/hf.co/owner/Unknown/' })).toBeUndefined();
   });
 
+  it('recognizes models relative to a hosted mount without changing their canonical identity', () => {
+    const mounted = `/my-naidan${pathname}`;
+    expect(modelIdFromPagePath({ pathname: mounted })).toBe(modelId);
+    expect(findModelPageEntry({ pathname: mounted })).toEqual(findModelPageEntry({ pathname }));
+    expect(modelPageLocation({ pathname: mounted })).toEqual({ appBase: '/my-naidan/', pathname });
+    expect(readModelPageRequest({ pathname: mounted, search: '?quant=Q8_0' })).toMatchObject({ kind: 'model', launchInput: `${modelId}:Q8_0` });
+    expect(modelPageLocation({ pathname: '/my-naidan/llama-cpp-browser' })).toEqual({ appBase: '/my-naidan/', pathname: '/llama-cpp-browser' });
+    expect(modelPageLocation({ pathname: '/my-naidan/llama-cpp-browser-extra/foo' })).toBeUndefined();
+  });
+
   it.each([
     'hf.co/../Model:Q4_K_M', 'hf.co/owner/../Model:Q4_K_M',
     'hf.co/owner/Model:imatrix/Q4_K_M', 'hf.co/owner/Model:Q4_K_M',
@@ -62,7 +72,7 @@ describe('model page publication registry', () => {
     '/llama-cpp-browser/hf.co/owner/Model%5Cfoo/',
     '/llama-cpp-browser/hf.co/owner/Model%ZZ/',
     '/llama-cpp-browser/hf.co/owner/Model/index.html',
-    '/nested/llama-cpp-browser/hf.co/owner/Model/',
+    '//other-origin/llama-cpp-browser/hf.co/owner/Model/',
   ])('does not decode unsafe request paths into a model ID: %s', input => {
     expect(modelIdFromPagePath({ pathname: input })).toBeUndefined();
   });

@@ -25,7 +25,6 @@
     "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
     "test:docs": "vitest run --config docs/vitest.config.ts docs",
     "lint:docs": "eslint docs build/docs-dev-bridge.ts --max-warnings 0",
-    "build:model-pages": "tsx scripts/build-model-pages.ts",
     "test:model-pages": "vitest run --config build/vitest.model-pages.config.ts"
   },
   "dependencies": {

@@ -1,15 +1,16 @@
 import { createWebHistory, type RouterHistory } from 'vue-router';
-import { readModelPageRequest } from './page-url';
+import { modelPageLocation, readModelPageRequest } from './page-url';
 
 const modelQuery = 'llama-cpp-browser-model';
 
 /** A presentation adapter; Vue Router still owns history state and popstate. */
 export function createModelPageHistory(): RouterHistory {
+  const appBase = modelPageLocation({ pathname: window.location.pathname })?.appBase ?? '/';
   // A pasted legacy route takes precedence, never combine two model selectors.
   if (window.location.hash.startsWith('#/')) {
-    window.history.replaceState(window.history.state, '', `/${window.location.hash}`);
+    window.history.replaceState(window.history.state, '', `${appBase}${window.location.hash}`);
   }
-  const initialPhysical = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const initialPhysical = `${window.location.pathname.slice(appBase.length - 1)}${window.location.search}${window.location.hash}`;
   const initialRequest = readModelPageRequest({ pathname: window.location.pathname, search: window.location.search });
   const initialInput = (() => {
     switch (initialRequest.kind) {
@@ -21,7 +22,7 @@ export function createModelPageHistory(): RouterHistory {
     }
     }
   })();
-  const delegate = createWebHistory('/');
+  const delegate = createWebHistory(appBase);
 
   function toLogical({ location }: { location: string }): string {
     const url = new URL(location, window.location.origin);
@@ -52,7 +53,7 @@ export function createModelPageHistory(): RouterHistory {
   }
 
   return {
-    base: '/',
+    base: delegate.base,
     get location() {
       return toLogical({ location: delegate.location });
     },
@@ -66,7 +67,7 @@ export function createModelPageHistory(): RouterHistory {
       delegate.replace(toPhysical({ location: to }), data);
     },
     createHref(to) {
-      return toPhysical({ location: to });
+      return delegate.createHref(toPhysical({ location: to }));
     },
     listen(callback) {
       return delegate.listen((to, from, information) => callback(toLogical({ location: to }), toLogical({ location: from }), information));

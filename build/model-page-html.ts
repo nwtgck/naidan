@@ -1,6 +1,51 @@
 import { createBuildDom } from './jsdom';
+import { MODEL_PAGE_PREFIX } from '../src/features/llama-cpp-browser/model-launch/page-url';
 import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries';
 import { applyDocumentCanonicalUrl, applyDocumentMetadata } from '../src/logic/document-metadata';
+
+/** Resolve before parser-discovered scripts/styles. Do not pin ZIPs to /. */
+function installHostedBase({ document, entry }: { document: Document, entry: ModelPageEntry | undefined }): void {
+  for (const previous of document.head.querySelectorAll('base, script[data-naidan-hosted-base]')) {
+    previous.remove();
+  }
+  const base = document.createElement('base');
+  base.setAttribute('data-naidan-hosted-base', '');
+  // A directory index has a useful no-JS base too, even under /my-naidan/.
+  base.setAttribute('href', entry === undefined ? './' : '../'.repeat(entry.pathname.split('/').filter(Boolean).length));
+  const bootstrap = document.createElement('script');
+  bootstrap.setAttribute('data-naidan-hosted-base', '');
+  // The namespace rule mirrors modelPageLocation; tests check both against
+  // the same mounted paths. No user text is interpolated into this script.
+  bootstrap.textContent = `\
+(function () {
+  if (location.protocol !== 'https:' && location.protocol !== 'http:') return;
+  var pathname = location.pathname;
+  var prefix = ${JSON.stringify(MODEL_PAGE_PREFIX)};
+  var index = pathname.indexOf(prefix);
+  if (index < 0 && pathname.endsWith(prefix.slice(0, -1))) {
+    index = pathname.length - prefix.length + 1;
+  }
+  var url = new URL(location.href);
+  if (index >= 0 && pathname.startsWith('/') && !pathname.startsWith('//')) {
+    url.pathname = pathname.slice(0, index + 1);
+  } else if (pathname.endsWith('/') || pathname.endsWith('/index.html')) {
+    url = new URL('./', url);
+  } else {
+    // An unmatched, non-directory path uses a root-hosted SPA fallback.
+    // Subdirectory mounts must expose their directory/index.html entry.
+    url.pathname = '/';
+  }
+  url.search = '';
+  url.hash = '';
+  document.querySelector('base[data-naidan-hosted-base]').href = url.href;
+})();`;
+  const charset = document.head.querySelector('meta[charset]');
+  if (charset) {
+    document.head.prepend(charset, base, bootstrap);
+  } else {
+    document.head.prepend(base, bootstrap);
+  }
+}
 
 function renderPublicHtml({ html, entry }: { html: string, entry: ModelPageEntry | undefined }): string {
   const dom = createBuildDom({ html, options: undefined });
@@ -10,19 +55,7 @@ function renderPublicHtml({ html, entry }: { html: string, entry: ModelPageEntry
     if (!app) {
       throw new Error('Model page template is missing #app');
     }
-    for (const existing of document.head.querySelectorAll('base')) {
-      existing.remove();
-    }
-    const base = document.createElement('base');
-    base.setAttribute('href', '/');
-    // The public app shell also handles unknown deep paths. Portable packages
-    // retain their original relative base; only this publication is decorated.
-    const charset = document.head.querySelector('meta[charset]');
-    if (charset) {
-      charset.after(base);
-    } else {
-      document.head.prepend(base);
-    }
+    installHostedBase({ document, entry });
     if (entry !== undefined) {
       applyDocumentMetadata({ document, page: entry.metadata, documentTitle: entry.metadata.title });
       applyDocumentCanonicalUrl({ document, canonicalUrl: entry.canonicalUrl });
@@ -38,7 +71,7 @@ function renderPublicHtml({ html, entry }: { html: string, entry: ModelPageEntry
       const notice = document.createElement('p');
       notice.textContent = 'JavaScript is required to run this model. Review the model and its size, then choose Run in your browser to prepare it and start a chat. If the app does not load, reload this page or open Naidan.';
       const home = document.createElement('a');
-      home.setAttribute('href', '/#/');
+      home.setAttribute('href', './#/');
       home.textContent = 'Open Naidan';
       main.append(heading, description, reference, notice, home);
       app.replaceChildren(main);
@@ -73,7 +106,7 @@ export function renderModelPageHtml({ html, entry }: { html: string, entry: Mode
   return renderPublicHtml({ html, entry });
 }
 
-/** Shared root response for Cloudflare's static SPA fallback, not per-request SSR. */
+/** Shared hosted entry, also used by a static server's SPA fallback. */
 export function renderPublicAppHtml({ html }: { html: string }): string {
   return renderPublicHtml({ html, entry: undefined });
 }

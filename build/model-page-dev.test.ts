@@ -45,7 +45,7 @@ describe('model page Vite development middleware', () => {
       const response = await requestModelPage({ server: dev.server, method: 'GET', url });
       expect(response.status).toBe(200);
       expect(response.body).toContain('src="/@vite/client"');
-      expect(response.body).toContain('<base href="/">');
+      expect(response.body).toContain('data-naidan-hosted-base');
       expect(response.body).not.toContain('This model page is not published');
     }
   });

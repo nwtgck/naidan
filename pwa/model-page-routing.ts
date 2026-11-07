@@ -1,5 +1,5 @@
-// Model pages are a publication overlay, not part of the offline app shell.
-// Both published and unknown repositories need the online response; never
+// Model entry navigations require the online response, even when the HTML
+// is in the automatic asset precache. For published and unknown models, never
 // substitute the cached root shell or mask a network failure.
 export function isModelPageNavigation({ url, scope, mode }: { url: URL, scope: URL, mode: RequestMode }): boolean {
   const root = new URL('llama-cpp-browser/', scope);

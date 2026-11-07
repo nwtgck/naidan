@@ -29,7 +29,8 @@ import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-cor
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import { createDocumentMetadataHtmlPlugin } from './build/document-metadata-html';
-import { createSiteSitemapPlugin } from './build/site-sitemap';
+import { createModelPagesPlugin } from './build/model-pages';
+import { createHostedPackagePlugin } from './build/hosted-package';
 import { createModelPageDevPlugin } from './build/model-page-dev';
 import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
 import { createPrivacyFetchBrokerDevPlugin } from './build/privacy-fetch-broker-dev';
@@ -223,7 +224,7 @@ export default defineConfig(({ mode, command }) => {
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
       createDocumentMetadataHtmlPlugin(),
-      createSiteSitemapPlugin(),
+      createModelPagesPlugin(),
       createModelPageDevPlugin(),
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
@@ -323,15 +324,11 @@ export default defineConfig(({ mode, command }) => {
           }),
         },
       }),
-      // Hosted: Zip the hosted build output
-      isHosted && zipPackagerPlugin({
-        outDir,
-        zipFileName: 'naidan-hosted.zip',
-        folderName: `naidan-hosted-${pkg.version}`,
-      }),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
       !isStandalone && VitePWA(pwaBuild.options),
+      // Package only after all output, compression and the generated worker exist.
+      createHostedPackagePlugin({ version: pkg.version, locales: UI_LOCALES }),
     ].filter((p): p is import('vite').PluginOption => !!p),
     build: {
       outDir,
@@ -392,21 +389,6 @@ export default defineConfig(({ mode, command }) => {
 });
 
 /**
- * Plugin to zip the build output
- */
-const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
-  outDir: string,
-  zipFileName: string,
-  folderName: string,
-}): Plugin => ({
-  name: `zip-packager-plugin-${zipFileName}`,
-  apply: 'build',
-  async closeBundle() {
-    await createZipPackage({ outDir, zipFileName, folderName });
-  },
-});
-
-/**
  * Copy the universal and locale-specific standalone packages to hosted output.
  */
 const copyZipPlugin = (): Plugin => ({
@@ -428,16 +410,3 @@ const copyZipPlugin = (): Plugin => ({
     }
   },
 });
-
-async function createZipPackage({ outDir, zipFileName, folderName }: {
-  outDir: string,
-  zipFileName: string,
-  folderName: string,
-}): Promise<void> {
-  await createZipPackages({
-    sourceDirectory: path.resolve(__dirname, outDir),
-    archiveDirectory: path.resolve(__dirname, 'dist'),
-    version: pkg.version,
-    packages: [{ zipFileName, folderName }],
-  });
-}

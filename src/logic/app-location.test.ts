@@ -12,6 +12,11 @@ describe('application URL identity', () => {
     expect(appUrlFromLocation({ href: 'https://example.test/llama-cpp-browser/hf.co/owner/Unknown?quant=Q8_0' }).pathname).toBe('/');
   });
 
+  it('keeps a hosted mount when generating app or share URLs from a model page', () => {
+    const result = appUrlFromLocation({ href: 'https://example.test/nested/app/llama-cpp-browser/hf.co/owner/Model?source=docs&quant=Q4_K_M' });
+    expect(result.href).toBe('https://example.test/nested/app/?source=docs');
+  });
+
   it.each([
     'file:///home/user/Naidan/index.html#/',
     'https://example.test/nested/app/index.html#/',

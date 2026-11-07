@@ -156,6 +156,29 @@ describe('model path history using the real Vue Router', () => {
     expect(window.location.href).toBe(new URL('/#/', window.location.origin).href);
   });
 
+  it.each(['/nested/app', '/space%20mount'])('retains the Hosted mount %s across model, chat and history navigation', async mount => {
+    const href = mount + entryHref;
+    using entry = await openEntry({ href });
+    expect(window.location.pathname + window.location.search).toBe(href);
+    expect(entry.initial.query['llama-cpp-browser-model']).toBe(modelId);
+    expect(entry.router.resolve(entry.router.currentRoute.value.fullPath).href).toBe(href);
+    expect(entry.router.resolve('/settings').href).toBe(`${mount}/#/settings`);
+    await entry.router.push('/settings');
+    expect(window.location.pathname).toBe(`${mount}/`);
+    entry.router.back();
+    await vi.waitFor(() => expect(entry.router.currentRoute.value.query['llama-cpp-browser-model']).toBe(modelId));
+    expect(window.location.pathname + window.location.search).toBe(href);
+    await entry.router.replace('/chat/mounted?settings=connection');
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(`${mount}/#/chat/mounted?settings=connection`);
+  });
+
+  it('keeps the mount when a fragment route is pasted onto a model path', async () => {
+    using entry = await openEntry({ href: `/nested/app${pathname}#/settings` });
+    expect(entry.router.currentRoute.value.path).toBe('/settings');
+    expect(window.location.pathname).toBe('/nested/app/');
+    expect(window.location.hash).toBe('#/settings');
+  });
+
   it('does not parse a malformed model path into a different repository', async () => {
     const href = '/llama-cpp-browser/hf.co/owner%2Fother/Model';
     using entry = await openEntry({ href });

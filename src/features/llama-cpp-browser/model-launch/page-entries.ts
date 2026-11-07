@@ -1,4 +1,4 @@
-// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Also loaded by the publication CLI and isolated Vite dev module graph, before app aliases.
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Also loaded by the Hosted Vite build and isolated Vite dev module graph, before app aliases.
 import { hfRepositories, type HfRepositoryEntry } from '../hugging-face/model-repositories';
 import { modelLaunchMetadata, modelLaunchLabel } from './document-metadata';
 import { modelIdFromPagePath, modelPagePath } from './page-url';
