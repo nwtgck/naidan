@@ -54,7 +54,7 @@ const effective = computed(() => resolveImagePromptTranslation({
   global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId, lmParameters: settings.value.lmParameters },
 }));
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: effective.value.endpoint }));
-const endpointTypes = ['naidan_rpc', 'inherit', 'openai', 'ollama', 'transformers_js', 'llama_cpp_browser', 'browser_provided_lm'] as const;
+const endpointTypes = ['inherit', 'llama_cpp_browser', 'openai', 'ollama', 'naidan_rpc', 'transformers_js', 'browser_provided_lm'] as const;
 const endpointOptions = computed(() => endpointTypes.filter(value => value !== 'naidan_rpc' || rpcEnabled.value));
 
 function endpointChoice({ event }: { event: Event }): void {
@@ -212,7 +212,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </label>
     <label tw-class="block space-y-1">
       <span>{{ lazyStrings.imageGeneration__translation_endpoint() }}</span>
-      <span tw-class="relative block"><select :value="draft.endpoint?.type ?? 'inherit'" @change="endpointChoice({ event: $event })" data-testid="translation-endpoint-choice" tw-class="appearance-none w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 pl-3 pr-9 py-2 text-[13px] text-gray-700 dark:text-gray-200 transition-colors hover:border-blue-200/80 dark:hover:border-blue-500/35 focus:outline-none focus:border-blue-400/60 focus:ring-2 focus:ring-blue-500/10"><option v-for="choice in endpointOptions" :key="choice" :value="choice">{{ choice === 'inherit' ? lazyStrings.imageGeneration__translation_inherit() : choice }}</option><option v-if="!rpcEnabled && draft.endpoint?.type === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option><option v-if="draft.endpoint?.type === 'unsupported_experimental_endpoint'" value="unsupported_experimental_endpoint">{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option></select><ChevronDownIcon tw-class="pointer-events-none absolute right-3 top-2 w-3 h-3 text-gray-400" /></span>
+      <span tw-class="relative block"><select :value="draft.endpoint?.type ?? 'inherit'" @change="endpointChoice({ event: $event })" data-testid="translation-endpoint-choice" tw-class="appearance-none w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 pl-3 pr-9 py-2 text-[13px] text-gray-700 dark:text-gray-200 transition-colors hover:border-blue-200/80 dark:hover:border-blue-500/35 focus:outline-none focus:border-blue-400/60 focus:ring-2 focus:ring-blue-500/10"><option v-for="choice in endpointOptions" :key="choice" :value="choice">{{ choice === 'inherit' ? lazyStrings.imageGeneration__translation_inherit() : choice === 'llama_cpp_browser' ? lazyStrings.llamaCppBrowser__endpoint_label() : choice }}</option><option v-if="!rpcEnabled && draft.endpoint?.type === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option><option v-if="draft.endpoint?.type === 'unsupported_experimental_endpoint'" value="unsupported_experimental_endpoint">{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option></select><ChevronDownIcon tw-class="pointer-events-none absolute right-3 top-2 w-3 h-3 text-gray-400" /></span>
     </label>
     <RpcRegistrationSelect v-if="draft.endpoint?.type === 'naidan_rpc'" v-model="draft.endpoint.registrationId" />
     <template v-if="httpEndpoint">

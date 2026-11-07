@@ -72,6 +72,14 @@ function createVueEslint() {
 }
 
 describe('validate-worker-api rule', () => {
+  it('accepts canonical unique-symbol aliases and rejects lookalikes, strings, widened symbols and counterfeit brands', async () => {
+    const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-capability-symbol-probe.ts')]);
+    expect(result.fatalErrorCount).toBe(0);
+    expect(result.messages).toHaveLength(6);
+    expect(result.messages.slice(0, 5).every(message => message.message.includes('unrecognized-capability-symbol'))).toBe(true);
+    expect(result.messages[5]!.message).toContain('capability-sensitive:FileSystemFileHandle');
+  }, 20_000);
+
   it('allows transferred native readable streams with validated chunk types', async () => {
     const [result] = await createEslint().lintFiles([path.join(fixtureRoot, 'worker-api-stream-probe.ts')]);
     const messages = result.messages.map(message => message.message);

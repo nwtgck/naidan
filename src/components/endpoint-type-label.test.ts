@@ -2,13 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
-import { endpointTypeLabel, endpointTypeDescription, endpointUrlPlaceholder } from './endpoint-type-label';
+import { endpointTypeLabel, ensureEndpointTypeLabel, endpointTypeDescription, endpointUrlPlaceholder } from './endpoint-type-label';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
 describe('endpointTypeLabel', () => {
+  it('uses the localized in-browser llama.cpp name', () => {
+    expect(endpointTypeLabel({ endpointType: 'llama_cpp_browser' })).toBe('llama.cpp in the browser');
+  });
+
   it('uses the browser-provided label', () => {
     expect(endpointTypeLabel({ endpointType: 'browser_provided_lm' })).toBe('Browser-provided');
   });
@@ -37,5 +41,11 @@ describe('endpointUrlPlaceholder', () => {
     expect(endpointUrlPlaceholder({ endpointType: 'ollama' })).toBe('http://localhost:11434');
     expect(endpointUrlPlaceholder({ endpointType: 'llama_cpp_browser' })).toBeUndefined();
     expect(endpointUrlPlaceholder({ endpointType: undefined })).toBeUndefined();
+  });
+});
+
+describe('ensureEndpointTypeLabel', () => {
+  it.each(['openai', 'ollama', 'naidan_rpc', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm', 'unsupported_experimental_endpoint'] as const)('resolves the same complete name for imperative use: %s', async endpointType => {
+    expect(await ensureEndpointTypeLabel({ endpointType })).toBe(endpointTypeLabel({ endpointType }));
   });
 });

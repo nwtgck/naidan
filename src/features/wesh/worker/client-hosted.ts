@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { z } from 'zod';
 import { backgroundWorkCoordinator, type ForegroundWorkLease } from '@/logic/background-work-coordinator';
 import { releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote, type WorkerRemote } from '@/utils/worker-transport';
@@ -22,8 +23,6 @@ import {
 } from './types';
 import {
   createWeshWorkerInitRequest,
-  hasWeshFileSystemHandles,
-  type WeshFileSystemHandleTransport,
 } from './init-request';
 import type { WeshMount } from '@/features/wesh/types';
 import { createManagedVolumeRemoteAccess, observeManagedVolumeWorker } from './managed-volume-access';
@@ -42,17 +41,9 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialCwd?: string | undefined,
 }): Promise<WeshWorkerClient> {
   const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
-  const createRuntime = async ({ transport }: {
-    transport: WeshFileSystemHandleTransport,
+  const createRuntime = async ({ initRequest }: {
+    initRequest: Parameters<IWeshWorker['init']>[0],
   }) => {
-    const initRequest = await createWeshWorkerInitRequest({
-      rootHandle,
-      mounts,
-      user,
-      initialEnv,
-      initialCwd,
-      transport,
-    });
     const managedVolumes = await createManagedVolumeRemoteAccess({ mounts });
     try {
       const worker = new Worker(
@@ -68,10 +59,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         // Keep the proxied reader as a separate top-level argument.
         // Putting it inside the init request object can fail structured clone in browsers.
         await remote.init(
-          workerCapability({
-            value: initRequest,
-            capability: 'file-system-handle-clone',
-          }),
+          initRequest,
           naidanSysfsRemoteReader
             ? workerProxy({ value: naidanSysfsRemoteReader })
             : undefined,
@@ -108,12 +96,16 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   };
 
   const createCompatibleRuntime = async () => {
-    if (!hasWeshFileSystemHandles({ rootHandle, mounts })) {
-      return createRuntime({ transport: 'direct' });
-    }
+    const request = await createWeshWorkerInitRequest({ rootHandle, mounts, user, initialEnv, initialCwd, transport: 'direct' });
     return runWithFileSystemHandleCloneFallback({
-      direct: () => createRuntime({ transport: 'direct' }),
-      fallback: () => createRuntime({ transport: 'opfs-locator' }),
+      request,
+      direct: ({ request: initRequest }) => createRuntime({ initRequest }),
+      fallback: async () => createRuntime({
+        initRequest: await workerCapability({
+          value: await createWeshWorkerInitRequest({ rootHandle, mounts, user, initialEnv, initialCwd, transport: 'opfs-locator' }),
+          capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
+        }),
+      }),
     });
   };
 

@@ -1538,6 +1538,8 @@ describe('read-only translation controls', () => {
         surface.unmount();
       },
     };
+    expect(surface.get('[data-testid="translation-endpoint-choice"]').findAll('option').map(option => option.attributes('value')).filter(value => value !== 'naidan_rpc')).toEqual(['inherit', 'llama_cpp_browser', 'openai', 'ollama', 'transformers_js', 'browser_provided_lm']);
+    expect(surface.get('[data-testid="translation-endpoint-choice"]').get('option[value="llama_cpp_browser"]').text()).toBe('llama.cpp in the browser');
     await surface.get('[data-testid="translation-endpoint-choice"]').setValue('ollama');
     await surface.get('[data-testid="translation-endpoint-url"]').setValue('http://workspace.test');
     await surface.get('[data-testid="translation-model-input"]').setValue('workspace-model');

@@ -1,1 +1,1 @@
-export const LlamaCppMemoryPanel__llama_cpp_browser = (): string => "llama.cpp browser";
+export const LlamaCppMemoryPanel__llama_cpp_browser = (): string => "llama.cpp in the browser";

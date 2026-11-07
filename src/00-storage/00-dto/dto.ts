@@ -29,6 +29,7 @@ import {
   ExperimentalHierarchySchemaDto,
   ExperimentalHttpEndpointSchemaDto,
   ExperimentalLmParametersSchemaDto,
+  ExperimentalLlamaCppBrowserEndpointSchemaDto,
   ExperimentalMessageBranchSchemaDto,
   ExperimentalMessageTextPartSchemaDto,
   ExperimentalMessageReasoningPartSchemaDto,
@@ -85,12 +86,17 @@ export const TransformersJsEndpointSchemaDto = dtozod.object({
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTransformersJsEndpointSchemaDto }),
 });
 
+export const LlamaCppBrowserEndpointSchemaDto = dtozod.object({
+  type: dtozod.literal('llama_cpp_browser'),
+
+  experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalLlamaCppBrowserEndpointSchemaDto }),
+});
+
 /**
- * Stable persisted envelope for endpoint implementations whose identity and
- * settings are still experimental. The concrete endpoint identifier belongs
- * to `experimental.endpoint.type` and is translated by the mapper into a domain
- * endpoint. This prevents every experimental endpoint rename or addition from
- * becoming a new top-level persisted discriminator.
+ * Persisted envelope for experimental endpoint implementations and older
+ * llama_cpp_browser records. The concrete endpoint identifier belongs to
+ * `experimental.endpoint.type` and is translated by the mapper into a domain
+ * endpoint. New llama_cpp_browser records use their own top-level discriminator.
  */
 export const ExperimentalTypeEndpointSchemaDto = dtozod.object({
   type: dtozod.literal('experimental_type'),
@@ -103,6 +109,7 @@ export const ExperimentalTypeEndpointSchemaDto = dtozod.object({
 export const EndpointSchemaDto = resolveMissingAsUndefined(dtozod.discriminatedUnion('type', [
   HttpEndpointSchemaDto,
   TransformersJsEndpointSchemaDto,
+  LlamaCppBrowserEndpointSchemaDto,
   ExperimentalTypeEndpointSchemaDto,
 ]));
 

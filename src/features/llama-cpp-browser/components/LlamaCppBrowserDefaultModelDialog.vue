@@ -128,7 +128,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             </div>
             <div v-if="current && current.endpoint.type !== 'llama_cpp_browser'" data-testid="llama-default-endpoint-change" tw-class="space-y-2">
               <p tw-class="text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__endpoint_type() }}</p>
-              <div tw-class="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-300"><span>{{ endpointTypeLabel({ endpointType: current.endpoint.type }) }}</span><ArrowRightIcon tw-class="w-4 h-4 text-gray-400" /><span tw-class="font-bold">llama.cpp browser</span></div>
+              <div tw-class="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-300"><span>{{ endpointTypeLabel({ endpointType: current.endpoint.type }) }}</span><ArrowRightIcon tw-class="w-4 h-4 text-gray-400" /><span tw-class="font-bold">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</span></div>
             </div>
             <p :id="`${id}-scope`" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__global_settings_scope() }}</p>
             <p v-if="failure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ failure === 'changed' ? lazyStrings.llamaCppBrowserDownloads__settings_changed_review_again() : lazyStrings.llamaCppBrowser__operation_failed() }}</p>

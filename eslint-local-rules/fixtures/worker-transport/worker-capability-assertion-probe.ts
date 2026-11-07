@@ -1,0 +1,11 @@
+import { workerCapability, type WorkerCapability } from '../../../src/utils/worker-transport';
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '../../../src/utils/worker-transport-capabilities';
+type Marked = WorkerCapability<{ handle: FileSystemFileHandle }, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>;
+type Alias = Marked;
+declare const input: { handle: FileSystemFileHandle };
+input as Marked;
+<Marked>input;
+input as unknown as Alias;
+input as Alias | undefined;
+input as { handle: FileSystemFileHandle };
+void workerCapability({ value: input, capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION });

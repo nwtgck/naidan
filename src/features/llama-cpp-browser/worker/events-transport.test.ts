@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exposeWorkerRemote, releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote, type WorkerCapability, type WorkerServerApi } from '@/utils/worker-transport';
@@ -43,10 +44,10 @@ function connect() {
   return wrapWorkerRemote<LlamaCppWorkerApi>({ endpoint: link.port2 });
 }
 
-function request(): WorkerCapability<WorkerGenerateCall, 'file-system-handle-clone'> {
+async function request(): Promise<WorkerCapability<WorkerGenerateCall, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>> {
   const modelId = 'temp/fixture';
   const entry = { relativePath: 'model.gguf', file: new File([new Uint8Array(24)], 'model.gguf', { lastModified: 1 }), storageKind: 'temp' as const, registrationRevision: 1 };
-  return workerCapability({ value: { generationId: 1, modelId, resolvedModel: { modelId, location: { kind: 'temp', rootPath: 'temp/fixture' }, directory: { files: [entry], primaryFile: entry, projectorFile: undefined } }, options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/profiles/', messages: [{ role: 'user', content: 'hi' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] }, capability: 'file-system-handle-clone' });
+  return await workerCapability({ value: { generationId: 1, modelId, resolvedModel: { modelId, location: { kind: 'temp', rootPath: 'temp/fixture' }, directory: { files: [entry], primaryFile: entry, projectorFile: undefined } }, options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/profiles/', messages: [{ role: 'user', content: 'hi' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] }, capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION });
 }
 
 describe('structured generation over the actual Comlink MessageChannel transport', () => {
@@ -69,7 +70,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
         releaseWorkerRemote({ remote });
       },
     };
-    const pending = remote.generate(request(), workerProxy({
+    const pending = remote.generate(await request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);
         if (event.type === 'tool_call_draft') {
@@ -105,7 +106,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
         releaseWorkerRemote({ remote });
       },
     };
-    const pending = remote.generate(request(), workerProxy({
+    const pending = remote.generate(await request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);
         if (event.type === 'reasoning') {
@@ -141,7 +142,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
         releaseWorkerRemote({ remote });
       },
     };
-    const pending = remote.generate(request(), workerProxy({
+    const pending = remote.generate(await request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);
       },
@@ -167,14 +168,14 @@ describe('structured generation over the actual Comlink MessageChannel transport
         releaseWorkerRemote({ remote });
       },
     };
-    await expect(remote.generate(request(), workerProxy({
+    await expect(remote.generate(await request(), workerProxy({
       value: async () => {
         throw new Error('private consumer details');
       },
     }), workerProxy({ value: () => {} }))).rejects.toThrow('worker-failed');
     expect(after).toBe(false);
     native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
-    expect(await remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).toHaveProperty('finishReason', 'stop');
+    expect(await remote.generate({ ...await request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).toHaveProperty('finishReason', 'stop');
   });
 
   it.each(['complete', 'cancel', 'delivery-failure'] as const)('retains request ownership across paired delivery/decode on %s', async outcome => {
@@ -197,7 +198,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: 'first', reasoningContent: '', toolCalls: [], finishReason: 'length' };
     });
     const remote = connect();
-    const pending = remote.generate(request(), workerProxy({
+    const pending = remote.generate(await request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);
         await deliveryGate.promise;
@@ -216,7 +217,7 @@ describe('structured generation over the actual Comlink MessageChannel transport
     };
     await started.promise;
     await vi.waitFor(() => expect(events).toHaveLength(1));
-    await expect(remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).rejects.toThrow('busy');
+    await expect(remote.generate({ ...await request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).rejects.toThrow('busy');
     if (outcome === 'cancel') {
       await remote.cancelGeneration({ generationId: 1 });
     }
@@ -240,6 +241,6 @@ describe('structured generation over the actual Comlink MessageChannel transport
     }
     expect(events).toEqual([{ type: 'text', text: 'first' }]);
     native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
-    await expect(remote.generate({ ...request(), generationId: 3 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).resolves.toHaveProperty('finishReason', 'stop');
+    await expect(remote.generate({ ...await request(), generationId: 3 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).resolves.toHaveProperty('finishReason', 'stop');
   });
 });

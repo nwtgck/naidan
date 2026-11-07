@@ -15,9 +15,10 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-const { mockFetchModels, mockSave } = vi.hoisted(() => ({
+const { mockFetchModels, mockSave, mockShowPrompt } = vi.hoisted(() => ({
   mockFetchModels: vi.fn(),
   mockSave: vi.fn(),
+  mockShowPrompt: vi.fn(),
 }));
 
 vi.mock('@/composables/useSettings', () => ({
@@ -37,7 +38,7 @@ vi.mock('@/composables/useConfirm', () => ({
 }));
 
 vi.mock('@/composables/usePrompt', () => ({
-  usePrompt: () => ({ showPrompt: vi.fn() }),
+  usePrompt: () => ({ showPrompt: mockShowPrompt }),
 }));
 
 function createSettings({ endpointType }: {
@@ -96,6 +97,7 @@ const globalStubs = {
 beforeEach(() => {
   mockFetchModels.mockReset();
   mockSave.mockReset();
+  mockShowPrompt.mockReset();
   mockSave.mockResolvedValue(undefined);
   mockFetchModels.mockResolvedValue([]);
 });
@@ -653,6 +655,7 @@ it('keeps helpful provider details and existing availability reasons in the main
   const selectors = wrapper.findAllComponents(SettingsSelect);
   for (const testId of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
     const options = selectors.find(select => select.attributes('data-testid') === testId)!.props('options');
+    expect(options.filter(option => option.value !== 'same_scope').map(option => option.value)).toEqual(['llama_cpp_browser', 'openai', 'ollama', 'naidan_rpc', 'transformers_js', 'browser_provided_lm']);
     expect(options.find(option => option.value === 'openai')?.detail).toBe('Connect to an OpenAI-compatible API');
     expect(options.find(option => option.value === 'ollama')?.detail).toBe('Connect to an Ollama server');
     expect(options.find(option => option.value === 'naidan_rpc')?.detail).toBe('Use models from a registered connection');
@@ -660,4 +663,24 @@ it('keeps helpful provider details and existing availability reasons in the main
     expect(options.find(option => option.value === 'transformers_js')?.detail).toBe('Run ONNX models in this browser');
     expect(options.find(option => option.value === 'browser_provided_lm')?.detail).toBeTruthy();
   }
+});
+
+it('uses the resolved in-browser name when suggesting a new profile name without saving on cancel', async () => {
+  const settings = createSettings({ endpointType: 'llama_cpp_browser' });
+  settings.defaultModelId = 'chat.gguf';
+  const wrapper = mount(ConnectionTab, {
+    props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false },
+    global: { stubs: globalStubs },
+  });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  mockShowPrompt.mockResolvedValueOnce(undefined);
+  await wrapper.get('[data-testid="setting-save-provider-profile-button"]').trigger('click');
+  await flushPromises();
+  expect(mockShowPrompt).toHaveBeenCalledWith(expect.objectContaining({ defaultValue: 'llama.cpp in the browser - chat.gguf' }));
+  expect(settings.providerProfiles).toEqual([]);
+  expect(mockSave).not.toHaveBeenCalled();
 });

@@ -805,6 +805,7 @@ describe('Settings Mapping', () => {
         unreadable: undefined,
         hostModelDirectories: undefined,
         liveConversationModelId: undefined,
+        translation: undefined,
         llamaCppBrowser: undefined,
         browserImageGeneration: undefined,
         naidanRpc: undefined,

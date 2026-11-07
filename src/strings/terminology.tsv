@@ -15,6 +15,7 @@ folder	user-visible folder,file explorer folder,folder settings	フォルダ
 header	HTTP header,request header,response header,UI header	ヘッダー	
 installer	software installer	インストーラー	
 interface	user interface,software interface,LM interface	インターフェース	
+llama.cpp in the browser	endpoint name,settings navigation,model provider	ブラウザ内のllama.cpp	llama_cpp_browserのユーザー向け名称。ブラウザ提供モデルとは区別する。識別子やファイル名は変更しない。
 mapper	mapping component,data mapper	マッパー	
 memory	system memory,video memory,in-memory storage	メモリ	
 parameter	LM parameter,query parameter,configuration parameter	パラメータ	

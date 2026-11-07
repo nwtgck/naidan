@@ -3,7 +3,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { downloadImageRecipeInWorker } from './client';
 import { imageModelRecipes } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 const remote = vi.hoisted(() => ({ download: vi.fn(), cancel: vi.fn(), release: vi.fn(), wrap: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: remote.wrap, releaseWorkerRemote: remote.release, workerProxy: ({ value }: { value: unknown }) => value, workerCapability: ({ value }: { value: unknown }) => value }));
+// Keep the actual capability admission path: this suite mocks only the remote
+// Worker lifecycle, not the transport's preflight and fallback contracts.
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
+  wrapWorkerRemote: remote.wrap,
+  releaseWorkerRemote: remote.release,
+  workerProxy: ({ value }: { value: unknown }) => value,
+}));
 let worker: EventTarget & { terminate: ReturnType<typeof vi.fn> };
 const construct = vi.fn();
 
@@ -70,11 +77,18 @@ it('terminates a crashed worker without waiting indefinitely for its RPC', async
 
 it('allows graceful checkpointing on pause before applying the bounded termination fallback', async () => {
   vi.useFakeTimers();
-  remote.download.mockImplementation(() => new Promise(() => undefined));
+  const started = Promise.withResolvers<void>();
+  remote.download.mockImplementation(() => {
+    started.resolve();
+    return new Promise(() => undefined);
+  });
   const controller = new AbortController();
   const running = downloadImageRecipeInWorker({ files, signal: controller.signal, onProgress() {} });
   const result = expect(running).rejects.toThrow('Download paused');
-  await Promise.resolve();
+  // The capability preflight is asynchronous. Abort only after the remote
+  // operation actually started, so this tests graceful checkpointing rather
+  // than cancellation during admission.
+  await started.promise;
   controller.abort();
   expect(remote.cancel).toHaveBeenCalledOnce();
   expect(worker.terminate).not.toHaveBeenCalled();

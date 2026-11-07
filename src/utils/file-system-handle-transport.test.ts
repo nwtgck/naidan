@@ -1,9 +1,10 @@
+import { installHandleCloneProbe, probeHandle } from './worker-capability-probe.test-support';
+import { TEST_ONLY as transportTest } from './worker-transport';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createFileSystemDirectoryHandleReferenceResolver,
   createOpfsDirectoryHandleLocator,
   runWithFileSystemHandleCloneFallback,
-  TEST_ONLY,
 } from './file-system-handle-transport';
 
 class MockDirectoryHandle {
@@ -41,30 +42,43 @@ class MockDirectoryHandle {
 
 describe('file system handle transport', () => {
   beforeEach(() => {
-    TEST_ONLY.resetFileSystemHandleCloneCapability();
+    transportTest.resetCapabilitySupport();
     vi.unstubAllGlobals();
   });
 
   it('uses and caches the direct path when handles can be cloned', async () => {
+    using probe = installHandleCloneProbe();
+    const request = { handle: probeHandle() };
     const direct = vi.fn().mockResolvedValue('direct');
     const fallback = vi.fn().mockResolvedValue('fallback');
 
-    await expect(runWithFileSystemHandleCloneFallback({ direct, fallback })).resolves.toBe('direct');
-    await expect(runWithFileSystemHandleCloneFallback({ direct, fallback })).resolves.toBe('direct');
+    await expect(runWithFileSystemHandleCloneFallback({ request, direct, fallback })).resolves.toBe('direct');
+    await expect(runWithFileSystemHandleCloneFallback({ request, direct, fallback })).resolves.toBe('direct');
 
     expect(direct).toHaveBeenCalledTimes(2);
     expect(fallback).not.toHaveBeenCalled();
+    expect(probe.probes).toHaveLength(1);
   });
 
-  it('falls back on DataCloneError and caches the missing capability', async () => {
-    const direct = vi.fn().mockRejectedValue(new DOMException('Cannot clone handle', 'DataCloneError'));
+  it('selects fallback before application work and caches only the checked handle', async () => {
+    using probe = installHandleCloneProbe({ mode: () => 'unsupported' });
+    const request = { handle: probeHandle() };
+    const direct = vi.fn().mockResolvedValue('direct');
     const fallback = vi.fn().mockResolvedValue('fallback');
-
-    await expect(runWithFileSystemHandleCloneFallback({ direct, fallback })).resolves.toBe('fallback');
-    await expect(runWithFileSystemHandleCloneFallback({ direct, fallback })).resolves.toBe('fallback');
-
-    expect(direct).toHaveBeenCalledOnce();
+    await expect(runWithFileSystemHandleCloneFallback({ request, direct, fallback })).resolves.toBe('fallback');
+    await expect(runWithFileSystemHandleCloneFallback({ request, direct, fallback })).resolves.toBe('fallback');
+    expect(probe.probes).toHaveLength(1);
+    expect(direct).not.toHaveBeenCalled();
     expect(fallback).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries a DataCloneError from application work after a successful probe', async () => {
+    using _probe = installHandleCloneProbe();
+    const error = new DOMException('Remote reply cannot be cloned', 'DataCloneError');
+    const direct = vi.fn().mockRejectedValue(error), fallback = vi.fn();
+    await expect(runWithFileSystemHandleCloneFallback({ request: { handle: probeHandle() }, direct, fallback })).rejects.toBe(error);
+    expect(direct).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
   });
 
   it('does not hide unrelated direct-path errors', async () => {
@@ -72,6 +86,7 @@ describe('file system handle transport', () => {
     const fallback = vi.fn().mockResolvedValue('fallback');
 
     await expect(runWithFileSystemHandleCloneFallback({
+      request: {},
       direct: async () => {
         throw error;
       },

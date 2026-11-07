@@ -137,3 +137,29 @@ it('opens Workflow from Quick Access without replacing other destinations', asyn
   expect(router.currentRoute.value.path).toBe('/workflows');
   expect(wrapper.find('[data-testid="sidebar-workflow-link"]').exists()).toBe(false);
 });
+
+it('opens translation from Quick Access without replacing other special pages', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/translation', component: { template: '<div />' } },
+      { path: '/audio-generation', component: { template: '<div />' } },
+      { path: '/image-generation', component: { template: '<div />' } },
+      { path: '/live-conversation', component: { template: '<div />' } },
+    ],
+  });
+  await router.push('/');
+  await router.isReady();
+  wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
+  await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
+  const link = wrapper.get('[data-testid="sidebar-translation-link"]');
+  expect(link.attributes('href')).toBe('/translation');
+  expect(wrapper.find('[data-testid="sidebar-audio-generation-link"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="sidebar-image-generation-link"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="sidebar-live-conversation-link"]').exists()).toBe(true);
+  await link.trigger('click');
+  await flushPromises();
+  expect(router.currentRoute.value.path).toBe('/translation');
+  expect(wrapper.find('[data-testid="sidebar-translation-link"]').exists()).toBe(false);
+});

@@ -6,7 +6,7 @@ import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { WorkflowIcon, TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, AudioLinesIcon, ImageIcon, MicIcon } from 'lucide-vue-next';
+import { WorkflowIcon, TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, AudioLinesIcon, ImageIcon, MicIcon, LanguagesIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 import ModelDownloads from './ModelDownloads.vue';
 
@@ -122,6 +122,15 @@ defineExpose({
           >
             <MicIcon tw-class="w-4 h-4 shrink-0" />
             <span>{{ lazyStrings.liveConversation__live_conversation() }}</span>
+          </RouterLink>
+          <RouterLink
+            to="/translation"
+            @click="showOpfsMenu = false"
+            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
+            data-testid="sidebar-translation-link"
+          >
+            <LanguagesIcon tw-class="w-4 h-4 shrink-0" />
+            <span>{{ lazyStrings.translation__translation() }}</span>
           </RouterLink>
           <RouterLink
             to="/image-generation"

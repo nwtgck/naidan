@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { z } from 'zod';
 
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
@@ -152,7 +153,7 @@ export interface IWeshWorker {
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   init(
-    request: WorkerCapability<WeshWorkerInitRequest, 'file-system-handle-clone'>,
+    request: WorkerCapability<WeshWorkerInitRequest, typeof FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
     managedVolumeRemoteAccess?: WorkerProxy<ManagedVolumeRemoteAccess>,
   ): Promise<void>,

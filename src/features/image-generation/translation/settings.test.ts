@@ -1,5 +1,6 @@
 import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { describe, expect, it } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Endpoint } from '@/01-models/types';
 import { cloneImagePromptTranslationOverride, imagePromptTranslationEndpointLabel, resolveImagePromptTranslation } from './settings';
 const global = { endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: undefined } satisfies Endpoint, modelId: 'global-model', lmParameters: undefined };
@@ -63,4 +64,9 @@ it('clones an unavailable session RPC value without inheriting another peer', ()
   }
   expect(target.endpoint.persistedType).toBe('naidan_rpc');
   expect(target.endpoint).not.toBe(endpoint);
+});
+
+it('uses the localized in-browser llama.cpp name in translation summaries', async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+  expect(imagePromptTranslationEndpointLabel({ endpoint: { type: 'llama_cpp_browser' } })).toBe('llama.cpp in the browser');
 });

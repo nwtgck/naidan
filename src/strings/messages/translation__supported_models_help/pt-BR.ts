@@ -1,0 +1,1 @@
+export const translation__supported_models_help = (): string => "PLaMo 3 Translate é compatível. O modelo de prompt de tradução é verificado ao selecionar um modelo. A biblioteca compartilhada também mostra modelos para outros usos.";

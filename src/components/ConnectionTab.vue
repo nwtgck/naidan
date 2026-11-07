@@ -26,7 +26,7 @@ import SettingsCollapse from './SettingsCollapse.vue';
 import SettingsDisclosure from './SettingsDisclosure.vue';
 import HttpHeadersEditor from './HttpHeadersEditor.vue';
 import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
-import { endpointTypeLabel, endpointTypeDescription, endpointUrlPlaceholder } from './endpoint-type-label';
+import { endpointTypeLabel, ensureEndpointTypeLabel, endpointTypeDescription, endpointUrlPlaceholder } from './endpoint-type-label';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
@@ -858,7 +858,7 @@ async function handleCreateProviderProfile() {
   const name = await showPrompt({
     title: await ensureStrings.ConnectionTab__create_new_profile(),
     message: await ensureStrings.ConnectionTab__give_configuration_a_name(),
-    defaultValue: `${endpointTypeLabel({ endpointType: form.value.endpoint.type })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
+    defaultValue: `${await ensureEndpointTypeLabel({ endpointType: form.value.endpoint.type })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
     confirmButtonText: await ensureStrings.ConnectionTab__create(),
     bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
@@ -938,6 +938,7 @@ type EndpointChoice = { value: TitleEndpointTypeSelectValue, label: string | und
 function endpointChoices({ current, title }: { current: TitleEndpointTypeSelectValue, title: boolean }): EndpointChoice[] {
   const transformersUnavailable = getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available';
   const choices: EndpointChoice[] = [
+    { value: 'llama_cpp_browser', label: lazyStrings.llamaCppBrowser__endpoint_label(), detail: endpointTypeDescription({ endpointType: 'llama_cpp_browser' }), disabled: getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available' },
     { value: 'openai', label: lazyStrings.ConnectionTab__openai_compatible(), detail: endpointTypeDescription({ endpointType: 'openai' }) },
     { value: 'ollama', label: lazyStrings.ConnectionTab__ollama(), detail: endpointTypeDescription({ endpointType: 'ollama' }) },
   ];
@@ -945,7 +946,6 @@ function endpointChoices({ current, title }: { current: TitleEndpointTypeSelectV
     choices.push({ value: 'naidan_rpc', label: rpcEnabled.value ? lazyStrings.naidanRpc__title() : lazyStrings.naidanRpc__disabled(), detail: endpointTypeDescription({ endpointType: 'naidan_rpc' }), disabled: !rpcEnabled.value });
   }
   choices.push(
-    { value: 'llama_cpp_browser', label: lazyStrings.llamaCppBrowser__endpoint_label(), detail: endpointTypeDescription({ endpointType: 'llama_cpp_browser' }), disabled: getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available' },
     { value: 'transformers_js', label: lazyStrings.ConnectionTab__transformers_js_experimental(), detail: !title && transformersUnavailable ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : endpointTypeDescription({ endpointType: 'transformers_js' }), disabled: transformersUnavailable },
     { value: 'browser_provided_lm', label: lazyStrings.SHARED__browser_provided(), detail: !title && !isPromptApiSupported.value ? lazyStrings.ConnectionTab__browser_api_not_available() : endpointTypeDescription({ endpointType: 'browser_provided_lm' }) },
   );

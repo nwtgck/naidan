@@ -14,14 +14,14 @@ import { localRepositoryDirectories } from './local-repository-layout';
 
 const pendingName = modelImportPendingName;
 export type { ModelFile, StoredModelFile } from '@/logic/model-file-system';
-export type ModelDirectory = { files: ModelFile[], primaryFile: ModelFile, projectorFile: ModelFile | undefined };
+export type ModelDirectory<Entry = ModelFile> = { files: Entry[], primaryFile: Entry, projectorFile: Entry | undefined };
 export type ModelRootLocation =
   | { kind: 'opfs-user', rootName: string }
   | { kind: 'hugging-face', repository: string }
   | { kind: 'host', directoryId: string, repository: string }
   | { kind: 'local-files', rootPath: string, sourceId: string, rootName: string, savedRootName?: string }
   | { kind: 'temp', rootPath: string };
-export type ResolvedModel = { modelId: string, location: ModelRootLocation, directory: ModelDirectory };
+export type ResolvedModel<Entry = ModelFile> = { modelId: string, location: ModelRootLocation, directory: ModelDirectory<Entry> };
 
 export function validSegment({ name }: { name: string }): boolean {
   return isModelSourceSegment({ name });

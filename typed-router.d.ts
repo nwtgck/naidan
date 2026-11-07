@@ -138,6 +138,20 @@ declare module 'vue-router/auto-routes' {
       { tab: ParamValue<false> },
       | never
     >,
+    '/translation': RouteRecordInfo<
+      '/translation',
+      '/translation',
+      Record<never, never>,
+      Record<never, never>,
+      | '/translation/models'
+    >,
+    '/translation/models': RouteRecordInfo<
+      '/translation/models',
+      '/translation/models',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/workflows': RouteRecordInfo<
       '/workflows',
       '/workflows',
@@ -303,6 +317,23 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'tab'
+    }
+    'src/pages/translation.vue': {
+      routes:
+        | '/translation'
+        | '/translation/models'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/translation/models.vue': {
+      routes:
+        | '/translation/models'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/workflows.vue': {
       routes:

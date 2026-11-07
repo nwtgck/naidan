@@ -31,6 +31,25 @@ All notable changes to Naidan are documented in this file.
 
 ### Changed
 
+- Persist llama.cpp browser endpoints with the stable `llama_cpp_browser` type on their next save while continuing to read existing `experimental_type` records without rewriting them on load. Other experimental endpoints and settings are unchanged.
+- Rename user-facing llama.cpp browser labels to “llama.cpp in the browser” (localized in each language) and list it first among concrete endpoint choices, without changing inherited choices or default connections.
+- Open the endpoint choices together with connection details in chat and chat-group overrides. Selecting an endpoint closes only the choices; clicking the connection summary again closes the details.
+
+### Fixed
+
+- Restore browser-local llama.cpp model operations in environments that cannot clone file-system handles to workers, using captured file snapshots without reopening model paths. Preserve source identity checks for resident-model reuse and prevent cancelled preparation from dispatching late work.
+- Check file-system-handle cloning before worker initialization or linked-folder downloads, retaining the confirmed download root and avoiding retries of already-started operations after remote clone errors.
+
+## [0.64.0] - 2026-11-06
+
+### Added
+
+- Added a translation workspace in Quick Access with an inline model catalog and model drawer, initially supporting PLaMo 3 Translate GGUF models with automatic or manual translation, searchable language selection, streamed output, cancellation, Japanese style, reference context, and terminology controls.
+- Translation prepares the selected model independently of text edits, supports automatic translation during input composition with an adjustable delay, and retains the previous output until replacement text arrives.
+- Translation remembers only the selected model and automatic-translation preferences (enabled state and input delay) in experimental settings. The previous boolean-only auto-translation preference is discarded. Languages are controlled by the `from` / `to` URL parameters; previous experimental language preferences are discarded. Source text, output, context, and terminology are not persisted, and the default chat model is unchanged.
+
+### Changed
+
 - GitHub Release descriptions now use the curated `CHANGELOG.md` notes, including corrections to previously published releases.
 
 ### Fixed
@@ -1067,7 +1086,8 @@ All notable changes to Naidan are documented in this file.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.63.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.64.0...develop
+[0.64.0]: https://github.com/nwtgck/naidan/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/nwtgck/naidan/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/nwtgck/naidan/compare/v0.60.0...v0.61.0

@@ -1,3 +1,4 @@
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import {
   releaseWorkerRemote,
   workerCapability,
@@ -309,7 +310,7 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
   let result: DebugFileProtocolStandaloneWeshCommandProbeResult | undefined;
   let operationError: unknown;
   try {
-    await wesh.init(workerCapability({
+    await wesh.init(await workerCapability({
       value: {
         rootHandle: 'readonly',
         mounts: [],
@@ -317,7 +318,7 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
         initialEnv: {},
         initialCwd: '/',
       },
-      capability: 'file-system-handle-clone',
+      capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
     }));
     const started = await wesh.startExecution(
       { script: 'ls -1 /' },
