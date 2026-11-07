@@ -22,6 +22,7 @@ All notable changes to Naidan are documented in this file.
 
 ### Added
 
+- Publish browser model pages and sitemap entries for Google Gemma 4 12B QAT and LiquidAI LFM3-1.7B and LFM3-VL-2B without adding them to the suggested-model catalog.
 - Searchable repository-specific browser model pages, generated from the shared registry with local/on-device metadata, canonical URLs, and sitemap entries. Optional `?quant=` selects a quantization; unlisted repositories open the same preview through the static app fallback. Starting a chat returns to the existing fragment route without reloading. Model routes do not inject `noindex`, including for unlisted or invalid repositories.
 - Experimental workflows with shared step, JSON, and scoped graph editing, reusable parts, typed values, sequential text generation, branching, loops, interactive input, and folder-based file operations. Graph connections and moves validate scope and downstream types, preserve undo history, and protect unfinished inputs.
 - Workflow execution history with immutable definition snapshots, bounded progress checkpoints, individual workflow/run links, result browsing, and streamed archive downloads. Abandoned runs can be explicitly marked as interrupted without replay; per-run ownership locks protect active runs and pending completion saves. Composable arithmetic and boolean values support conditional loop completion and configurable execution-wide budgets.

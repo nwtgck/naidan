@@ -12,6 +12,16 @@ describe('shared Hugging Face repositories', () => {
     }
   });
 
+  it('includes the requested Gemma 4 and LFM3 repositories in the published catalog', () => {
+    for (const hfRepository of [
+      'google/gemma-4-12B-it-qat-q4_0-gguf',
+      'LiquidAI/LFM3-1.7B-GGUF',
+      'LiquidAI/LFM3-VL-2B-GGUF',
+    ] as const) {
+      expect(getHfRepository({ hfRepository })).toEqual({ hfRepository });
+    }
+  });
+
   it('keeps the recommendation order independent of repository name order', () => {
     expect(modelSuggestions.map(suggestion => suggestion.id)).toEqual([
       'gemma-4-e2b',
