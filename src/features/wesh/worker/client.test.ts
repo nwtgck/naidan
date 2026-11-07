@@ -1,5 +1,6 @@
+import { installHandleCloneProbe } from '@/utils/worker-capability-probe.test-support';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Comlink from 'comlink';
 
 vi.mock('comlink', () => {
@@ -12,7 +13,17 @@ vi.mock('comlink', () => {
 });
 
 describe('createFileProtocolCompatibleWeshWorkerClient', () => {
+  let capabilityProbe: ReturnType<typeof installHandleCloneProbe>;
+  let cloneable = true;
+
+  afterEach(() => {
+    capabilityProbe[Symbol.dispose]();
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
+    cloneable = true;
+    capabilityProbe = installHandleCloneProbe({ mode: () => cloneable ? 'supported' : 'unsupported' });
     vi.resetModules();
     vi.clearAllMocks();
   });
@@ -82,11 +93,11 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     expect(terminate).toHaveBeenCalledTimes(1);
   });
 
-  it('retries with OPFS locators when directory handles cannot be cloned', async () => {
+  it('selects OPFS locators before initializing a Worker when handles cannot be cloned', async () => {
+    cloneable = false;
     const firstTerminate = vi.fn();
     const secondTerminate = vi.fn();
     const workers = [
-      { terminate: firstTerminate } as unknown as Worker,
       { terminate: secondTerminate } as unknown as Worker,
     ];
     class WorkerMock {
@@ -118,7 +129,6 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       [Comlink.releaseProxy]: release,
     } as unknown as Comlink.Remote<import('./types').IWeshWorker>);
     vi.mocked(Comlink.wrap)
-      .mockReturnValueOnce(createRemote({ init: firstInit, release: vi.fn() }))
       .mockReturnValueOnce(createRemote({ init: secondInit, release: secondRelease }));
 
     const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
@@ -140,8 +150,9 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       initialCwd: undefined,
     });
 
-    expect(firstInit).toHaveBeenCalledOnce();
-    expect(firstTerminate).toHaveBeenCalledOnce();
+    expect(firstInit).not.toHaveBeenCalled();
+    expect(firstTerminate).not.toHaveBeenCalled();
+    expect(Comlink.wrap).toHaveBeenCalledOnce();
     expect(secondInit).toHaveBeenCalledWith({
       rootHandle: {
         kind: 'opfs-directory',

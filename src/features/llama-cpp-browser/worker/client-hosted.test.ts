@@ -1,3 +1,5 @@
+import { installHandleCloneProbe } from '@/utils/worker-capability-probe.test-support';
+import { TEST_ONLY as capabilityTest } from '@/utils/worker-transport';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import type { DeletionPlan } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
@@ -36,7 +38,11 @@ class TestWorker extends EventTarget {
   }
 }
 
+let capabilityProbe: ReturnType<typeof installHandleCloneProbe>;
+
 beforeEach(() => {
+  capabilityProbe = installHandleCloneProbe();
+  capabilityTest.resetCapabilitySupport();
   memoryHistoryTest.reset();
   vi.clearAllMocks();
   TestWorker.instances = [];
@@ -52,12 +58,22 @@ beforeEach(() => {
   transport.remote.generateAudio.mockResolvedValue(audioResult());
   transport.remote.importModel.mockReset();
   transport.remote.importDirectory.mockReset();
+  transport.remote.prepareModel.mockReset();
+  transport.remote.prepareModel.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
+  capabilityProbe[Symbol.dispose]();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+
+async function waitForCall({ received }: { received: () => boolean }): Promise<void> {
+  for (let turns = 0; !received() && turns < 100; turns++) {
+    await Promise.resolve();
+  }
+  expect(received()).toBe(true);
+}
 
 describe('hosted Worker lifetime', () => {
   it('passively receives memory checkpoints without calling the worker API', () => {
@@ -194,6 +210,7 @@ describe('cooperative generation cancellation', () => {
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: generationInput(), onEvent: chunk, onProgress: progress, signal: controller.signal });
     const rejectCheck = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     const call = transport.remote.generate.mock.calls[0]!;
     const onEvent = call[1] as ({ event }: { event: { type: 'text'; text: string } }) => Promise<void>;
     const onProgress = call[2] as ({ phase, completed, total }: { phase: string, completed: number, total: number }) => void;
@@ -223,6 +240,7 @@ describe('cooperative generation cancellation', () => {
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: generationInput(), onEvent: () => {}, onProgress: () => {}, signal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     controller.abort();
     await vi.advanceTimersByTimeAsync(4999);
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
@@ -239,6 +257,7 @@ describe('cooperative generation cancellation', () => {
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: generationInput(), onEvent: () => {}, onProgress: () => {}, signal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     controller.abort();
     await rejected;
     expect(client.canReuse()).toBe(false);
@@ -273,6 +292,7 @@ describe('concurrent native failure and cancellation ownership', () => {
       }
     })();
     const rejected = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => operation === 'generate' ? transport.remote.generate.mock.calls.length > 0 : transport.remote.prepareModel.mock.calls.length > 0 });
     controller.abort();
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
     gate.reject(new LlamaCppBrowserError({ code: 'runtime-error' }));
@@ -314,6 +334,7 @@ describe('host snapshots of native operations', () => {
     });
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     await vi.advanceTimersByTimeAsync(15000);
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'operation-waiting', lastStage: 'media-encode', lastEvent: 'native-node-start', nativeNode: 42, nativeOpName: 'GGML_OP_MUL_MAT', nativeTensorShape: [768, 240, 1, 1] }));
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private failure', cancelable: true }));
@@ -332,6 +353,7 @@ describe('host snapshots of native operations', () => {
     });
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: { ...generationInput(), debug: 'off' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     await vi.advanceTimersByTimeAsync(60000);
     expect(debug).not.toHaveBeenCalled();
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private failure', cancelable: true }));
@@ -351,6 +373,7 @@ describe('host snapshots of native operations', () => {
     });
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     report({ diagnostic: { event: 'operation-start', stage: 'media-encode', mediaType: 'image' } });
     report({ diagnostic: { event: 'operation-complete', stage: 'media-encode', mediaType: 'image', elapsedMs: 20 } });
     report({ diagnostic: { event: 'operation-start', stage: 'media-decode', mediaType: 'image', batchIndex: 1, batchCount: 1, batchTokens: 64 } });
@@ -378,6 +401,7 @@ describe('host snapshots of native operations', () => {
     });
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: generationInput(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     TestWorker.instances[0]?.dispatchEvent(new ErrorEvent('error', { message: 'private error with path and image content', cancelable: true }));
     await expect(pending).rejects.toThrow('worker-failed');
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'worker-error', lastStage: 'image-evaluate', lastEvent: 'operation-start', tokens: 101, failureKind: 'webgpu-dispatch-limit' }));
@@ -395,6 +419,7 @@ describe('host snapshots of native operations', () => {
     });
     const client = createLlamaCppWorkerClient();
     const pending = client.generate({ request: { ...generationInput(), debug: 'on' }, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     await vi.advanceTimersByTimeAsync(14999);
     expect(debug).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
@@ -527,6 +552,7 @@ describe('hosted audio transport', () => {
     const progress = vi.fn();
     const pending = client.generateAudio({ request: audioInput(), onProgress: progress, cancellationSignal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     const onProgress = transport.remote.generateAudio.mock.calls[0]?.[1] as (progress: Progress) => void;
     controller.abort();
     expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: 1 });
@@ -548,6 +574,7 @@ describe('hosted audio transport', () => {
     const controller = new AbortController();
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     controller.abort();
     await vi.advanceTimersByTimeAsync(4999);
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
@@ -568,6 +595,7 @@ describe('hosted audio finish transport', () => {
       finish.abort();
     }
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: abort.signal, completionSignal: finish.signal });
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     if (!preRequested) {
       finish.abort();
     }
@@ -588,6 +616,7 @@ describe('hosted audio finish transport', () => {
     const client = createLlamaCppWorkerClient();
     const finish = new AbortController();
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: undefined, completionSignal: finish.signal });
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     finish.abort();
     await vi.advanceTimersByTimeAsync(60000);
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
@@ -605,6 +634,7 @@ describe('hosted audio finish transport', () => {
     const client = createLlamaCppWorkerClient();
     const finish = new AbortController();
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: undefined, completionSignal: finish.signal });
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     finish.abort();
     gate.resolve(audioResult());
     await pending;
@@ -627,6 +657,7 @@ describe('hosted audio finish transport', () => {
     const abort = new AbortController();
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: abort.signal, completionSignal: finish.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     finish.abort();
     abort.abort();
     expect(transport.remote.cancelGeneration).toHaveBeenCalledExactlyOnceWith({ generationId: 1 });
@@ -645,6 +676,7 @@ describe('generation-scoped preview delivery', () => {
     captures.request();
     const onPreview = vi.fn(async () => {});
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: undefined, preview: { requests: captures.requests, onPreview } });
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     await vi.waitFor(() => expect(transport.remote.requestAudioPreview).toHaveBeenCalled());
     expect(transport.remote.requestAudioPreview).toHaveBeenLastCalledWith({ generationId: 1, requestVersion: 1 });
     const deliver = transport.remote.generateAudio.mock.calls.at(-1)![3] as (event: AudioPreviewEvent) => Promise<void>;
@@ -674,6 +706,7 @@ describe('generation-scoped preview delivery', () => {
     const abort = new AbortController();
     const onPreview = vi.fn();
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: abort.signal, preview: { requests: captures.requests, onPreview } });
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     captures.request();
     const deliver = transport.remote.generateAudio.mock.calls.at(-1)![3] as (event: unknown) => Promise<void>;
     await expect(deliver({ result: audioResult(), requestVersion: 1 })).rejects.toThrow();
@@ -695,6 +728,7 @@ describe('generation-scoped preview delivery', () => {
     const captures = createAudioPreviewRequests();
     const onPreview = vi.fn();
     const pending = client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: undefined, preview: { requests: captures.requests, onPreview } });
+    await waitForCall({ received: () => transport.remote.generateAudio.mock.calls.length > 0 });
     captures.request();
     gate.resolve(audioResult());
     await pending;
@@ -728,6 +762,7 @@ describe('model preparation transport', () => {
     const controller = new AbortController();
     const pending = client.prepareModel({ request: { modelId: 'user/local.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/local.gguf' }), options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: controller.signal });
     const rejected = expect(pending).rejects.toThrow('aborted');
+    await waitForCall({ received: () => transport.remote.prepareModel.mock.calls.length > 0 });
     controller.abort();
     expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: transport.remote.prepareModel.mock.calls[0]![0].generationId });
     gate.resolve();
@@ -787,6 +822,7 @@ describe('measured partial memory evidence', () => {
     });
     const pending = client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onMemoryDiagnostics: receive, signal: control.signal });
     const rejected = expect(pending).rejects.toThrow();
+    await waitForCall({ received: () => transport.remote.generate.mock.calls.length > 0 });
     if (mode === 'dispose') {
       client.dispose();
     }

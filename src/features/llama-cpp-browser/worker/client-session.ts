@@ -1,3 +1,6 @@
+import { createModelTransport } from './model-transport';
+import type { WorkerResolvedModel } from './model-transport-schema';
+import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { liveControlSchema, liveEventSchema, liveResultSchema, type LiveRequest, type LiveResult } from '@/features/llama-cpp-browser/live-types';
 import { liveRequestSchema } from './live-protocol';
 import { observeMeasurementMemory } from './memory-observation';
@@ -7,9 +10,9 @@ import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorDetails } from '@/features/llama-cpp-browser/error-details';
-import { workerCapability, workerProxy, type WorkerRemote } from '@/utils/worker-transport';
+import { prepareWorkerCapability, workerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
-import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
+import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type PortableLiveCall, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
 // Both transports share cancellation, validation and callback lifetime rules.
 export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTransport, getAssetBaseURL }: {
@@ -19,6 +22,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   getAssetBaseURL: () => string | undefined,
 }): LlamaCppWorkerClient {
   const stopObservingMemory = observeWorkerMemory({ worker });
+  const modelTransport = createModelTransport();
   let disposed = false;
   const disposeListeners = new Set<() => void>();
   let lastOperation: Diagnostic | undefined;
@@ -82,6 +86,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     disposal = completion.promise;
     stopObservingMemory();
     disposed = true;
+    modelTransport.clear();
     debugEnabled = false;
     stopWaiting();
     pendingOperations.clear();
@@ -192,6 +197,40 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       rejectActive = undefined;
     }
   }
+  function assertTransportCurrent({ signal }: { signal: AbortSignal | undefined }): void {
+    signal?.throwIfAborted();
+    if (disposed) {
+      throw new LlamaCppBrowserError({ code: 'worker-failed' });
+    }
+  }
+  async function prepareModelCall<T extends { resolvedModel: WorkerResolvedModel }>({ request, signal }: { request: T, signal: AbortSignal | undefined }) {
+    const prepared = await modelTransport.prepare({ request, signal });
+    // Cancellation/retirement can happen while feature detection is pending.
+    // Never dispatch an operation after its cancel message or Worker disposal.
+    assertTransportCurrent({ signal });
+    return prepared;
+  }
+  async function prepareLiveCall({ request, generationId, signal }: { request: LiveRequest, generationId: number, signal: AbortSignal | undefined }) {
+    const prepared = await prepareWorkerCapability({
+      value: { request, generationId },
+      capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
+      fallback: async (): Promise<PortableLiveCall> => {
+        switch (request.type) {
+        case 'command': return { request, generationId };
+        case 'open': return {
+          request: { ...request, prepare: { ...request.prepare, resolvedModel: await modelTransport.portable({ model: request.prepare.resolvedModel, signal }) } },
+          generationId,
+        };
+        default: {
+          const exhaustive: never = request;
+          throw new Error(String(exhaustive));
+        }
+        }
+      },
+    });
+    assertTransportCurrent({ signal });
+    return prepared;
+  }
   async function importWithCancellation({ call, onProgress, signal }: {
     call: ({ generationId, report }: { generationId: number, report: Parameters<LlamaCppWorkerApi['importModel']>[1] }) => Promise<LocalModel>,
     onProgress: ({ progress }: { progress: Progress }) => void,
@@ -239,7 +278,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       let accepting = true;
       try {
         return liveResultSchema.parse(await invoke<LiveResult>({
-          call: () => remote.live(workerCapability({ value: { request: accepted, generationId }, capability: 'file-system-handle-clone' }), workerProxy({
+          call: async () => remote.live(await prepareLiveCall({ request: accepted, generationId, signal }), workerProxy({
             // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink event proxy.
             value: async (event: unknown) => {
               if (accepting && !disposed && !signal?.aborted) {
@@ -293,6 +332,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       const timer = setTimeout(abort, 10000);
       try {
         await invoke({ call: () => remote.release(), signal: controller.signal, onAbort: undefined, abortTimeoutMs: undefined });
+        modelTransport.clear();
       } finally {
         clearTimeout(timer);
         signal?.removeEventListener('abort', abort);
@@ -311,14 +351,44 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       call: ({ generationId, report }) => remote.importDirectory({ directory, generationId }, report),
     }),
     removeModel: async ({ plan, signal }) => {
-      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel(workerCapability({ value: { plan: deletionPlanSchema.parse(plan) }, capability: 'file-system-handle-clone' })), signal, onAbort: undefined, abortTimeoutMs: undefined }));
+      const accepted = deletionPlanSchema.parse(plan);
+      return deletionResultSchema.parse(await invoke({
+        call: async () => {
+          const prepared = await prepareWorkerCapability({
+            value: { plan: accepted },
+            capability: FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION,
+            fallback: async () => undefined,
+          });
+          assertTransportCurrent({ signal });
+          if (prepared !== undefined) {
+            return remote.removeModel(prepared);
+          }
+          // Delete using the original handles, not path-reconstructed ones.
+          // Retire resident readers before mutating files on the main thread.
+          await remote.release();
+          modelTransport.clear();
+          assertTransportCurrent({ signal });
+          const { removeStoredModel, withModelMutationLock } = await import('@/features/llama-cpp-browser/runtime/model-store');
+          assertTransportCurrent({ signal });
+          return withModelMutationLock({
+            signal,
+            operation: () => {
+              assertTransportCurrent({ signal });
+              return removeStoredModel({ plan: accepted });
+            },
+          });
+        },
+        signal,
+        onAbort: undefined,
+        abortTimeoutMs: undefined,
+      }));
     },
     prepareModel: async ({ request, onProgress, signal }) => {
       const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
         await invoke({
-          call: () => remote.prepareModel(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }), workerProxy({
+          call: async () => remote.prepareModel(await prepareModelCall({ request: accepted, signal }), workerProxy({
             value: ({ ...event }) => {
               if (acceptingEvents && !disposed && !signal?.aborted) {
                 onProgress({ progress: progressSchema.parse(event) });
@@ -353,8 +423,8 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
             case 'vision': {
               const { visionAdmissionSchema } = await import('@/features/llama-cpp-browser/performance/vision-admission-schema');
               signal?.throwIfAborted();
-              const admission = visionAdmissionSchema.parse(await remote.prepareVision(workerCapability({
-                value: {
+              const admission = visionAdmissionSchema.parse(await remote.prepareVision(await prepareModelCall({
+                request: {
                   modelId: accepted.modelId,
                   resolvedModel: accepted.resolvedModel,
                   options: accepted.options,
@@ -362,7 +432,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
                   assetBaseURL: accepted.assetBaseURL,
                   generationId: accepted.generationId,
                 },
-                capability: 'file-system-handle-clone',
+                signal,
               }), workerProxy({
                 // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink progress proxy.
                 value: (progress: Progress) => {
@@ -394,7 +464,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
               throw new Error(String(exhaustive));
             }
             }
-            return remote.generate(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
+            return remote.generate(await prepareModelCall({ request: accepted, signal }),
               workerProxy({
                 value: async ({ event }) => {
                   if (acceptingEvents && !disposed) {
@@ -510,8 +580,8 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       const unsubscribePreview = preview?.requests.subscribe({ listener: requestPreview });
       try {
         const result = await invoke({
-          call: () => {
-            const pending = remote.generateAudio(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
+          call: async () => {
+            const pending = remote.generateAudio(await prepareModelCall({ request: accepted, signal: cancellationSignal }),
               workerProxy({
                 value: ({ ...event }) => {
                   if (acceptingEvents && !disposed && !cancellationSignal?.aborted) {

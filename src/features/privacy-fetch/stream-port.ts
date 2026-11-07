@@ -1,3 +1,4 @@
+import { READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import { z } from 'zod';
 import { getReadableStreamTransferSupport, type WorkerTransfer, type WorkerCapability, workerCapability, exposeWorkerRemote, releaseWorkerRemote, workerTransfer, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createPrivacyFetchError, isPrivacyFetchError } from './errors';
@@ -11,7 +12,7 @@ type StreamApi = {
   headers(): Promise<StreamReply>,
   read(): Promise<StreamReply>,
   transferSupport(): Promise<'supported' | 'unsupported'>,
-  transferBody(): Promise<WorkerTransfer<WorkerCapability<ReadableStream<Uint8Array<ArrayBuffer>>, 'readable-stream-transfer'>>>,
+  transferBody(): Promise<WorkerTransfer<WorkerCapability<ReadableStream<Uint8Array<ArrayBuffer>>, typeof READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION>>>,
   completed(): Promise<void>,
   cancel(): Promise<void>,
 };
@@ -227,7 +228,7 @@ export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
           },
           cancel,
         }, { highWaterMark: 0 });
-        return workerTransfer({ value: workerCapability({ value: stream, capability: 'readable-stream-transfer' }), transferables: [stream] });
+        return workerTransfer({ value: await workerCapability({ value: stream, capability: READABLE_STREAM_TRANSFER_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION }), transferables: [stream] });
       },
       async read(): Promise<StreamReply> {
         if (pulling || mode === 'stream') {

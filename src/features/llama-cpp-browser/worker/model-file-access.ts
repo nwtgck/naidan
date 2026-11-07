@@ -1,4 +1,4 @@
-import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
+import type { WorkerModelFile as ModelFile } from './model-transport-schema';
 import type { ModelFileSource } from '@/features/llama-cpp-browser/runtime/model-file-source';
 import { maximumModelReadBytes, maximumModelReadTailBytes } from '@/features/llama-cpp-browser/runtime/model-file-source';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
@@ -15,9 +15,12 @@ declare const FileReaderSync: { new(): {
   readAsArrayBuffer(blob: Blob): ArrayBuffer,
 } };
 
-/** Native host and temporary files have no OPFS sync handle. Read bounded slices directly
- * from their File snapshot in this Worker; never stage model bytes in OPFS. */
+/** Native host, temporary and portable files use bounded snapshot reads.
+ * Clone-capable OPFS files keep their existing synchronous access handles. */
 export async function openModelFileAccess({ entry }: { entry: ModelFile }): Promise<ModelFileAccess> {
+  if ('snapshotId' in entry) {
+    return openSnapshotAccess({ file: entry.file });
+  }
   switch (entry.storageKind) {
   case 'host': case 'temp': {
     if (typeof FileReaderSync !== 'function') {
@@ -38,47 +41,7 @@ export async function openModelFileAccess({ entry }: { entry: ModelFile }): Prom
     if (file.size !== entry.file.size || file.lastModified !== entry.file.lastModified) {
       throw new LlamaCppBrowserError({ code: 'storage-error' });
     }
-    const reader = new FileReaderSync();
-    let closed = false;
-    return {
-      getSize: () => file.size,
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Native filesystem reader ABI.
-      read(destination, { at }) {
-        if (closed || !Number.isSafeInteger(at) || at < 0) {
-          throw new LlamaCppBrowserError({ code: 'storage-error' });
-        }
-        const size = Math.min(destination.length, Math.max(0, file.size - at));
-        // The mounted reader's cache bounds each call; also bound direct callers.
-        const length = Math.min(size, maximumModelReadBytes);
-        const bytes = new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + length)));
-        if (bytes.length !== length) {
-          throw new LlamaCppBrowserError({ code: 'storage-error' });
-        }
-        destination.set(bytes);
-        return bytes.length;
-      },
-      readWithTail({ destination, offset, tail }) {
-        if (closed || !Number.isSafeInteger(offset) || offset < 0) {
-          throw new LlamaCppBrowserError({ code: 'storage-error' });
-        }
-        const bodyLength = Math.min(destination.length, Math.max(0, file.size - offset), maximumModelReadBytes);
-        const tailLength = bodyLength === destination.length && bodyLength > 0
-          ? Math.min(tail.length, maximumModelReadTailBytes, file.size - offset - bodyLength) : 0;
-        const length = bodyLength + tailLength;
-        const bytes = new Uint8Array(reader.readAsArrayBuffer(file.slice(offset, offset + length)));
-        if (bytes.length !== length) {
-          throw new LlamaCppBrowserError({ code: 'storage-error' });
-        }
-        // Keep only the small tail in the caller-owned cache. Retaining a view
-        // of this ArrayBuffer would keep the entire large read alive.
-        destination.set(bytes.subarray(0, bodyLength));
-        tail.set(bytes.subarray(bodyLength));
-        return bytes.length;
-      },
-      close() {
-        closed = true;
-      },
-    };
+    return openSnapshotAccess({ file });
   }
   case 'opfs': {
     const handle = entry.handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<ModelFileAccess> };
@@ -92,6 +55,55 @@ export async function openModelFileAccess({ entry }: { entry: ModelFile }): Prom
     throw new Error(String(exhaustive));
   }
   }
+}
+
+/** File-backed, bounded reads. Invalidated snapshots fail instead of reopening
+ * the same path, and no whole model is copied into an ArrayBuffer. */
+function openSnapshotAccess({ file }: { file: File }): ModelFileAccess {
+  if (typeof FileReaderSync !== 'function') {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
+  const reader = new FileReaderSync();
+  let closed = false;
+  return {
+    getSize: () => file.size,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Native filesystem reader ABI.
+    read(destination, { at }) {
+      if (closed || !Number.isSafeInteger(at) || at < 0) {
+        throw new LlamaCppBrowserError({ code: 'storage-error' });
+      }
+      const size = Math.min(destination.length, Math.max(0, file.size - at));
+      // The mounted reader's cache bounds each call; also bound direct callers.
+      const length = Math.min(size, maximumModelReadBytes);
+      const bytes = new Uint8Array(reader.readAsArrayBuffer(file.slice(at, at + length)));
+      if (bytes.length !== length) {
+        throw new LlamaCppBrowserError({ code: 'storage-error' });
+      }
+      destination.set(bytes);
+      return bytes.length;
+    },
+    readWithTail({ destination, offset, tail }) {
+      if (closed || !Number.isSafeInteger(offset) || offset < 0) {
+        throw new LlamaCppBrowserError({ code: 'storage-error' });
+      }
+      const bodyLength = Math.min(destination.length, Math.max(0, file.size - offset), maximumModelReadBytes);
+      const tailLength = bodyLength === destination.length && bodyLength > 0
+        ? Math.min(tail.length, maximumModelReadTailBytes, file.size - offset - bodyLength) : 0;
+      const length = bodyLength + tailLength;
+      const bytes = new Uint8Array(reader.readAsArrayBuffer(file.slice(offset, offset + length)));
+      if (bytes.length !== length) {
+        throw new LlamaCppBrowserError({ code: 'storage-error' });
+      }
+      // Keep only the small tail in the caller-owned cache. Retaining a view
+      // of this ArrayBuffer would keep the entire large read alive.
+      destination.set(bytes.subarray(0, bodyLength));
+      tail.set(bytes.subarray(bodyLength));
+      return bytes.length;
+    },
+    close() {
+      closed = true;
+    },
+  };
 }
 
 export const TEST_ONLY = {

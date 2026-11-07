@@ -13,14 +13,15 @@ export type ModelFile = { relativePath: string, file: File } & (
 );
 export type StoredModelFile = Extract<ModelFile, { handle: FileSystemFileHandle }>;
 
-const fileSchema = z.custom<File>(value => typeof File !== 'undefined' && value instanceof File && Number.isSafeInteger(value.size) && value.size >= 0);
+export const modelFileSnapshotSchema = z.custom<File>(value => typeof File !== 'undefined' && value instanceof File && Number.isSafeInteger(value.size) && value.size >= 0);
 const handleSchema = z.custom<FileSystemFileHandle>(value => typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'file' && 'getFile' in value && typeof value.getFile === 'function');
-const commonShape = { relativePath: z.string(), file: fileSchema };
+const commonShape = { relativePath: z.string(), file: modelFileSnapshotSchema };
+export const temporaryModelFileSchema = z.object({ ...commonShape, storageKind: z.literal('temp'), registrationRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER) }).strict();
 // Source-specific path admission and publication policy remain with each caller.
 export const modelFileSchema = z.discriminatedUnion('storageKind', [
   z.object({ ...commonShape, storageKind: z.literal('opfs'), handle: handleSchema }).strict(),
   z.object({ ...commonShape, storageKind: z.literal('host'), handle: handleSchema }).strict(),
-  z.object({ ...commonShape, storageKind: z.literal('temp'), registrationRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER) }).strict(),
+  temporaryModelFileSchema,
 ]) satisfies z.ZodType<ModelFile>;
 
 /** Capture a snapshot without changing either engine's publication rules. */
