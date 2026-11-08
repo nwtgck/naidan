@@ -57,7 +57,7 @@ function findViteWorkerQueryImports(code: string, id = '<unknown>'): ViteWorkerQ
     sourceType: 'unambiguous',
     sourceFilename: id,
     allowAwaitOutsideFunction: true,
-    plugins: ['dynamicImport', 'importMeta', 'topLevelAwait', 'typescript', 'jsx'],
+    plugins: ['typescript', 'jsx'],
   });
   const records: ViteWorkerQueryRecord[] = [];
   const seen = new Set<string>();

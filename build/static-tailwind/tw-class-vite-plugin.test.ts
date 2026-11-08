@@ -44,7 +44,7 @@ function createFixture(): string {
   writeFile({
     root,
     relativePath: 'package.json',
-    content: JSON.stringify({ devDependencies: { tailwindcss: '4.3.2' } }),
+    content: JSON.stringify({ devDependencies: { tailwindcss: '4.3.3' } }),
   });
   writeFile({ root, relativePath: 'src/style.css', content: '@import "tailwindcss" source(none);\n' });
   writeFile({
@@ -1760,7 +1760,7 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     const context = createHotUpdateContext({ environmentName: 'client', reloads: [], sentPayloads: [], onSend: undefined });
     const originalRead = fs.readFileSync;
     let reads = 0;
-    const read = vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
+    const read = vi.spyOn(fs, 'readFileSync').mockImplementation((...args: [path: Parameters<typeof fs.readFileSync>[0], options?: unknown]) => {
       const result = Reflect.apply(originalRead, fs, args) as ReturnType<typeof fs.readFileSync>;
       if (args[0] === entry && args[1] === 'utf8') {
         reads += 1;
@@ -1818,7 +1818,7 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     const originalRead = fs.readFileSync;
     const updates: unknown[] = [];
     let themeReads = 0;
-    using _reads = vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
+    using _reads = vi.spyOn(fs, 'readFileSync').mockImplementation((...args: [path: Parameters<typeof fs.readFileSync>[0], options?: unknown]) => {
       const source = Reflect.apply(originalRead, fs, args) as ReturnType<typeof originalRead>;
       if (args[0] === theme && args[1] === 'utf8' && ++themeReads === 4) {
         // The snapshot, validator, baseline and global compiler consumed red.

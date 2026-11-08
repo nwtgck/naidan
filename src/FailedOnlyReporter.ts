@@ -1,5 +1,4 @@
-import type { Reporter } from 'vitest/reporters';
-import type { TestCase, Vitest } from 'vitest/node';
+import type { Reporter, TestCase, Vitest } from 'vitest/node';
 
 interface LogAny {
   type: string,

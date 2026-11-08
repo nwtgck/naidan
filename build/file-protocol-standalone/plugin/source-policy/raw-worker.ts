@@ -13,7 +13,7 @@ import { isBabelNode, isBabelNodeType, staticMemberPropertyName } from './babel-
 import { babelTraverse } from '../../babel-runtime.js';
 
 type WorkerResolution = Readonly<{kind: WorkerConstructorKind; calleeForm: string}>;
-type BabelNodePath = NodePath<unknown>;
+type BabelNodePath = NodePath<Node>;
 type SyntheticMemberPath = Readonly<{
   syntheticMember: true;
   objectPath: BabelNodePath;
@@ -87,7 +87,7 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
     // not turn a compatibility policy into a parser failure. Final output shape
     // validation remains strict elsewhere.
     allowUndeclaredExports: true,
-    plugins: ['dynamicImport', 'importMeta', 'topLevelAwait', 'typescript', 'jsx'],
+    plugins: ['typescript', 'jsx'],
   });
   const constructors: RawWorkerConstructorRecord[] = [];
   const recorded = new Set<string>();
@@ -102,7 +102,8 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
       'TSTypeAssertion',
       'ParenthesizedExpression',
     ].includes(isBabelNode(current.node) ? current.node.type : '')) {
-      current = current.get('expression');
+      const expression = current.get('expression');
+      current = expression.node ? expression : undefined;
     }
     return current;
   }
@@ -521,7 +522,8 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
       const constructorArgs = args[1];
       let workerUrlArgument = null;
       if (constructorArgs?.isArrayExpression?.()) {
-        workerUrlArgument = constructorArgs.get('elements')[0];
+        const firstArgument = constructorArgs.get('elements')[0];
+        workerUrlArgument = firstArgument?.node ? firstArgument : null;
       }
       for (const resolution of resolutions) {
         record(callPath.node, { ...resolution, calleeForm: `Reflect.construct:${resolution.calleeForm}` }, workerUrlArgument, {

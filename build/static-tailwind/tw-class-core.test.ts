@@ -515,7 +515,7 @@ describe('candidate validation', () => {
     const validator = await createTailwindCandidateValidator({
       projectRoot,
       cssEntryPath: path.join(projectRoot, 'src/style.css'),
-      expectedTailwindVersion: '4.3.2',
+      expectedTailwindVersion: '4.3.3',
       onDependency: undefined,
     });
     const result = validator.classify({ candidates: ['flex', 'group/card', 'not-prose', 'bg-reed-500'] });

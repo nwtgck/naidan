@@ -62,7 +62,7 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
   const ort = await import(/* @vite-ignore */ ortUrl) as { InferenceSession: { create(...args: unknown[]): Promise<unknown> } };
   const released = vi.fn(async () => undefined);
   const sessions = vi.spyOn(ort.InferenceSession, 'create').mockImplementation(async () => ({ inputNames: [], outputNames: [], release: released }));
-  const mutations = vi.fn();
+  const mutations = vi.fn<() => void>();
   const reads: string[] = [];
   const base = `models/huggingface.co/${archive.summary.modelId}/resolve/${archive.summary.revision}/`;
   const blobs = new Map<string, Blob>();

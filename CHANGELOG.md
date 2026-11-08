@@ -20,6 +20,10 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Update application and development dependencies.
+
 ## [0.65.0] - 2026-11-07
 
 ### Added

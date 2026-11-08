@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 import { audioNativeFixture } from '@/features/audio-generation/test-utils/native.test-support';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import type { NativeChat, ChatPromptPart, ChatParams } from '@/features/llama-cpp-browser/runtime/chat-bindings';
@@ -9,7 +9,7 @@ import type { GenerateInput } from '@/features/llama-cpp-browser/types';
 export function liveNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   const base = audioNativeFixture({ pointerBytes });
   const state = { position: 0, streamRows: 0, throwTemplate: false, audioChunks: 0 };
-  const templateDisposals: ReturnType<typeof vi.fn>[] = [];
+  const templateDisposals: Mock<() => void>[] = [];
   const constants: Record<string, number> = {
     MTMD_GEN_AUDIO_TYPE_LFM3A: 4,
     MTMD_HELPER_GEN_AUDIO_OUTTYPE_PCM: 0,
@@ -123,7 +123,7 @@ export function liveNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     if (includePrompt) {
       promptParts.push({ text: '<assistant>', isInput: false });
     }
-    const dispose = vi.fn();
+    const dispose = vi.fn<() => void>();
     templateDisposals.push(dispose);
     const result = {
       prompt: promptParts.map(part => part.text).join(''),

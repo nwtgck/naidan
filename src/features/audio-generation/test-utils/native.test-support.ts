@@ -115,7 +115,7 @@ export function audioNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     llama_sampler_chain_add: vi.fn(async (_chain: bigint, _sampler: bigint) => {}),
     llama_sampler_free: vi.fn(async (_sampler: bigint) => {}),
   };
-  const module = { addFunction: vi.fn(() => 9), removeFunction: vi.fn() };
+  const module = { addFunction: vi.fn(() => 9), removeFunction: vi.fn<Core['module']['removeFunction']>() };
   const core = {
     api,
     module,

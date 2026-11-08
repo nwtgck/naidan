@@ -22,7 +22,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe.sequential('String catalog CLI boundary', () => {
+describe('String catalog CLI boundary', { concurrent: false }, () => {
   it.each([
     { args: ['--help'], exitCode: 0 },
     { args: ['--chekc'], exitCode: 1 },

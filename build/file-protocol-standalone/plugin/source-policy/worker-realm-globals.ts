@@ -279,7 +279,7 @@ function globalObjectPropertyChain(node: Node | null | undefined): GlobalObjectP
     if (!propertyName) {
       return null;
     }
-    segments.unshift({ name: propertyName, optional: current.optional === true });
+    segments.unshift({ name: propertyName, optional: current.type === 'OptionalMemberExpression' && current.optional === true });
     current = current.object;
   }
   if (current?.type !== 'Identifier' || !['globalThis', 'self'].includes(current.name)) {
@@ -398,7 +398,7 @@ function findWorkerRealmGlobalReferences(
     sourceType: 'unambiguous',
     sourceFilename: id,
     allowAwaitOutsideFunction: true,
-    plugins: ['dynamicImport', 'importMeta', 'topLevelAwait', 'typescript', 'jsx'],
+    plugins: ['typescript', 'jsx'],
   });
   const targetGlobals = new Set<string>(uiOnlyGlobals);
   const safeGuardIdentifiers = new Set<string>();
@@ -490,7 +490,7 @@ function findWorkerRealmGlobalReferences(
           const parent = referencePath.parentPath;
           const memberDereference = (parent?.isMemberExpression?.() || parent?.isOptionalMemberExpression?.())
             && parent.node.object === referencePath.node
-            && parent.node.optional !== true;
+            && (!parent.isOptionalMemberExpression() || parent.node.optional !== true);
           const directInvocation = (
             ((parent?.isCallExpression?.() || parent?.isOptionalCallExpression?.() || parent?.isNewExpression?.())
               && parent.node.callee === referencePath.node

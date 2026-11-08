@@ -19,7 +19,7 @@ afterEach(() => {
 export function installProductionRuntimeStartupPlatform({ origin }: { origin: string }) {
   for (const [name, value] of [
     ['Blob', NodeBlob],
-    ['crypto', { subtle: webcrypto.subtle, randomUUID: globalThis.crypto.randomUUID.bind(globalThis.crypto) }],
+    ['crypto', { subtle: webcrypto.subtle, getRandomValues: webcrypto.getRandomValues.bind(webcrypto), randomUUID: globalThis.crypto.randomUUID.bind(globalThis.crypto) }],
   ] as const) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
     Object.defineProperty(globalThis, name, { configurable: true, value });

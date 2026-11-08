@@ -37,12 +37,12 @@ export function createLiveControllerFixture() {
   });
   const finish = vi.fn(async (_request: { action: 'send' | 'discard' }) => {});
   const capture = vi.fn<typeof openLiveCapture>(async () => ({ finish }));
-  const player = { activate: vi.fn(async () => {}), begin: vi.fn(), append: vi.fn(async (_chunk: { pcm: Float32Array, sampleRate: number }) => {}), mute: vi.fn(), stop: vi.fn(), close: vi.fn(async () => {}) };
+  const player = { activate: vi.fn(async () => {}), begin: vi.fn<ReturnType<typeof createLivePlayback>['begin']>(), append: vi.fn(async (_chunk: { pcm: Float32Array, sampleRate: number }) => {}), mute: vi.fn<ReturnType<typeof createLivePlayback>['mute']>(), stop: vi.fn<ReturnType<typeof createLivePlayback>['stop']>(), close: vi.fn(async () => {}) };
   const playback = vi.fn<typeof createLivePlayback>(() => player);
   const tools = { tools: [{ type: 'function' as const, function: { name: 'shell_execute', description: 'test shell', parameters: { type: 'object' } } }], execute: vi.fn(async () => 'result'), close: vi.fn(async () => {}) };
   const wesh = vi.fn<typeof openLiveWesh>(async () => tools);
   const decodeFile = vi.fn<typeof decodeLiveAudioFile>(async () => new Float32Array([0.1, 0.2]));
-  const onChange = vi.fn();
+  const onChange = vi.fn<Parameters<typeof createLiveController>[0]['onChange']>();
   const controller = createLiveController({ engine: { runLiveSession }, capture, playback, wesh, decodeFile, onChange });
   return {
     controller,

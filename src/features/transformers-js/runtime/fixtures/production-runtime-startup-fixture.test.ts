@@ -7,6 +7,11 @@ beforeEach(() => {
   platform = installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
 });
 
+it('keeps native random-byte generation available in the startup platform', () => {
+  const bytes = new Uint8Array(32);
+  expect(crypto.getRandomValues(bytes)).toBe(bytes);
+});
+
 it('rejects a wrong ready identity after a valid lease rather than returning the direct API', async () => {
   await expect(initializeProductionEntryFixture({
     initialize: async ({ requestRuntimeModule }) => {

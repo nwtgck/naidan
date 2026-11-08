@@ -41,7 +41,7 @@ type Metadata = Pick<z.ZodType['_zod'], Slots>;
 
 interface SchemaToken {
   readonly [dtoSchemaBrand]: true;
-  readonly _zod: { readonly optin?: 'optional' | undefined; readonly optout?: 'optional' | undefined };
+  readonly _zod: { readonly optin?: Metadata['optin']; readonly optout?: Metadata['optout'] };
 }
 export interface DtoSchema extends SchemaToken {
   readonly _zod: Metadata;
