@@ -210,3 +210,109 @@ it.each(['f32', 'f16'])('records unique BF16 conversion bytes for %s without gra
   }
   expect(emit).not.toHaveBeenCalled();
 });
+
+it.each(['prefix', 'suffix'] as const)('recognizes source-tagged %s placement, conversion, native timings and executed graph segments', format => {
+  const emit = vi.fn();
+  const meter = createRunPerformance({ enabled: true, request: requestFixture(), emit, checkpoint: vi.fn(), now: () => 0 });
+  const line = ({ sourceFile, message }: { sourceFile: string, message: string }): string => format === 'prefix' ? `${sourceFile}:111 - ${message}\n` : `${message} --- ${sourceFile}:111\n`;
+  meter.log({ message: line({ sourceFile: 'model_manager.cpp', message: 'browser-weight-conversion-v1 target=f32 tensors=118 source_bytes=2741886976 destination_bytes=5483773952 extra_bytes=2741886976' }) });
+  meter.log({ message: line({ sourceFile: 'compute_workspace.cpp', message: 'browser-placement-v1 ' + Object.entries(placementFields).map(([key, value]) => `${key}=${value}`).join(' ') }) });
+  meter.log({ message: line({ sourceFile: 'image.cpp', message: 'get_learned_condition completed, taking 0.25s' }) });
+  meter.log({ message: line({ sourceFile: 'image.cpp', message: 'sampling completed, taking 0.50s' }) });
+  meter.phase({ next: 'sampling' });
+  meter.log({ message: line({ sourceFile: 'vae.hpp', message: 'computing vae decode graph completed, taking 0.02s' }) });
+  meter.phase({ next: 'decoding' });
+  meter.log({ message: line({ sourceFile: 'vae.hpp', message: 'computing vae decode graph completed, taking 0.04s' }) });
+  for (const runner of ['qwen3vl', 'z_image', 'minimax_h3', 'wan_vae', 'sol_h3_vae', 'minimax_h3_image_vae', 'p_h3_image_vae', 'minimax_h3_video_vae', 'private_runner']) {
+    meter.log({ message: line({ sourceFile: format === 'prefix' ? 'ggml_runner.cpp' : 'execution_engine.cpp', message: `${runner} executing segment 1/1: graph` }) });
+  }
+  // A graph-construction boundary does not count as executing a graph segment.
+  meter.log({ message: line({ sourceFile: 'util.h', message: 'graph-stage-v1 runner=qwen3vl stage=graph event=begin' }) });
+  meter.finish({ outcome: 'failed' });
+  expect(emit.mock.calls.find(([entry]) => entry.fields.metric === 'weight-conversion')![0].fields).toMatchObject({ target: 'f32', tensors: 118, sourceBytes: 2741886976, destinationBytes: 5483773952, extraBytes: 2741886976 });
+  expect(emit.mock.calls.find(([entry]) => entry.fields.metric === 'graph-placement-summary')![0].fields).toMatchObject({ allocationReports: 1, invalidReports: 0, coverage: 'observed-allocations' });
+  expect(emit.mock.calls.at(-1)![0].fields).toMatchObject({
+    nativeConditionReports: 1,
+    nativeConditionMs: 250,
+    nativeSamplingReports: 1,
+    nativeSamplingMs: 500,
+    nativePreviewDecodeReports: 1,
+    nativePreviewDecodeMs: 20,
+    nativeFinalDecodeReports: 1,
+    nativeFinalDecodeMs: 40,
+    textGraphStarts: 1,
+    diffusionGraphStarts: 2,
+    vaeGraphStarts: 5,
+    otherGraphStarts: 1,
+  });
+  expect(JSON.stringify(emit.mock.calls)).not.toContain('private_runner');
+});
+
+it('does not infer measurements from a wrong source, an unknown wrapper or multiline native text', () => {
+  const emit = vi.fn();
+  const meter = createRunPerformance({ enabled: true, request: requestFixture(), emit, checkpoint: vi.fn(), now: () => 0 });
+  const conversion = 'browser-weight-conversion-v1 target=f32 tensors=2 source_bytes=2064 destination_bytes=4128 extra_bytes=2064';
+  const placement = 'browser-placement-v1 ' + Object.entries(placementFields).map(([key, value]) => `${key}=${value}`).join(' ');
+  for (const message of [
+    `${conversion} --- other.cpp:111\n`,
+    `prefix ${conversion} --- model_manager.cpp:111\n`,
+    `${conversion} --- model_manager.cpp:111\nextra`,
+    `${placement} --- other.cpp:111\n`,
+    `prefix ${placement} --- compute_workspace.cpp:111\n`,
+    `${placement} --- compute_workspace.cpp:111\n\n`,
+    'get_learned_condition completed, taking 0.25s --- other.cpp:111\n',
+    `\
+image.cpp:111 - sampling completed, taking 0.25s
+extra`,
+    'computing vae decode graph completed, taking 0.02s --- image.cpp:111\n',
+    'qwen3vl executing segment 1/1: graph --- util.h:111\n',
+  ]) {
+    meter.log({ message });
+  }
+  meter.finish({ outcome: 'failed' });
+  expect(emit.mock.calls.some(([entry]) => entry.fields.metric === 'weight-conversion')).toBe(false);
+  expect(emit.mock.calls.find(([entry]) => entry.fields.metric === 'graph-placement-summary')![0].fields).toMatchObject({ allocationReports: 0, invalidReports: 0, coverage: 'not-observed' });
+  expect(emit.mock.calls.at(-1)![0].fields).toMatchObject({ nativeConditionReports: 0, nativeSamplingReports: 0, nativePreviewDecodeReports: 0, textGraphStarts: 0 });
+});
+
+it.each(['prefix', 'suffix'] as const)('counts executed %s graph-cut segments without exporting their native labels', format => {
+  const emit = vi.fn();
+  const meter = createRunPerformance({ enabled: true, request: requestFixture(), emit, checkpoint: vi.fn(), now: () => 0 });
+  const line = ({ message }: { message: string }): string => format === 'prefix' ? `ggml_runner.cpp:970 - ${message}\n` : `${message} --- execution_engine.cpp:688\n`;
+  for (const [index, group] of ['llm.text.prelude', 'llm.text.layers.0', 'ggml_runner.final'].entries()) {
+    meter.log({ message: line({ message: `qwen3vl executing segment ${index + 1}/3: ${group}` }) });
+  }
+  for (const group of ['label with words', 'private/path', '']) {
+    meter.log({ message: line({ message: `qwen3vl executing segment 1/1: ${group}` }) });
+  }
+  meter.finish({ outcome: 'failed' });
+  expect(emit.mock.calls.at(-1)![0].fields).toMatchObject({ textGraphStarts: 3, diffusionGraphStarts: 0, vaeGraphStarts: 0, otherGraphStarts: 0 });
+  const exported = JSON.stringify(emit.mock.calls);
+  expect(exported).not.toContain('llm.text.');
+  expect(exported).not.toContain('ggml_runner.final');
+  expect(exported).not.toContain('private/path');
+});
+
+it('preserves current-format measurements before raw-log throttling', () => {
+  const buffer = createImageDiagnosticBuffer();
+  const trace = createImageTrace({ debug: 'on', secrets: [], listener: buffer.append, now: () => 0 });
+  const meter = createRunPerformance({ enabled: true, request: requestFixture(), emit: trace.emit, checkpoint: vi.fn(), now: () => 0 });
+  for (let i = 0; i < 100; i++) {
+    trace.native({ message: 'ordinary native log', level: 1 });
+  }
+  const messages = [
+    'browser-weight-conversion-v1 target=f32 tensors=118 source_bytes=2741886976 destination_bytes=5483773952 extra_bytes=2741886976 --- model_manager.cpp:313\n',
+    'browser-placement-v1 ' + Object.entries(placementFields).map(([key, value]) => `${key}=${value}`).join(' ') + ' --- compute_workspace.cpp:91\n',
+  ];
+  for (const message of messages) {
+    meter.log({ message });
+    trace.native({ message, level: 1 });
+  }
+  meter.finish({ outcome: 'failed' });
+  const text = buffer.text();
+  expect(text).not.toContain('browser-weight-conversion-v1');
+  expect(text).not.toContain('browser-placement-v1');
+  expect(text).toContain('"metric":"weight-conversion"');
+  expect(text).toContain('"destinationBytes":5483773952');
+  expect(text).toContain('"allocationReports":1');
+});

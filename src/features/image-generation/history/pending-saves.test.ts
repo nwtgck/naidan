@@ -17,16 +17,24 @@ function publication() {
 it('keeps cloned metadata and the original immutable bytes after a view detaches', async () => {
   const store = createPendingImageHistory({ maxEntries: 2, byteLimit: 100 });
   const source = reactive(publication()), save = vi.fn().mockRejectedValueOnce(new Error('full')).mockResolvedValue(undefined);
+  source.record.result.sampling = { sampler: { id: 0, name: 'euler' }, scheduler: { id: 11, name: 'flux' } };
+  source.record.result.resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
   const listener = vi.fn();
   const stop = store.subscribe({ listener });
   const id = store.retain({ ...source, save });
   const blob = source.files[0]!.blob;
   source.record.request.parameters.prompt = 'changed';
+  source.record.result.sampling.sampler.name = 'changed';
+  source.record.result.resolvedParameters.steps = 99;
   await expect(store.retry({ id })).rejects.toThrow('full');
   stop();
   const visible = store.list();
 visible[0]!.record.request.parameters.prompt = 'mutated view';
+visible[0]!.record.result.sampling!.scheduler.name = 'mutated view';
+visible[0]!.record.result.resolvedParameters!.vaeTileSize = 32;
 expect(store.list()[0]?.record.request.parameters.prompt).toBe('a small tree');
+expect(store.list()[0]?.record.result.sampling).toEqual({ sampler: { id: 0, name: 'euler' }, scheduler: { id: 11, name: 'flux' } });
+expect(store.list()[0]?.record.result.resolvedParameters).toEqual({ steps: 6, guidance: 1, vaeTileSize: 16 });
 await store.retry({ id });
 expect(save).toHaveBeenCalledTimes(2);
 expect(save.mock.calls[0]![0].publication).toBe(save.mock.calls[1]![0].publication);

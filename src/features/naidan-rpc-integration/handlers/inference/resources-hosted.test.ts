@@ -22,7 +22,9 @@ const mocks = vi.hoisted(() => {
     configuration: {
       kind: 'available',
       sourceCommit: commit,
+      runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: false },
       artifacts: [{
+        bf16WeightRetention: false,
         profile,
         modulePath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.mjs`,
         wasmPath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.wasm.gz`,
@@ -63,7 +65,7 @@ function candidate({ path, roles }: { path: string, roles: ModelCandidate['roles
 function request(): PeerImageInput {
   return {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/model/model.gguf' }, expected: { size: 16, lastModified: 123 } } }, components: [], loras: [] },
-    parameters: { prompt: 'test', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
+    parameters: { prompt: 'test', negativePrompt: '', width: 256, height: 256, stepsPreference: 4, guidancePreference: 7, vaeTileSizePreference: 32, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
     preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 },
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
@@ -81,6 +83,8 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('window', { location: { href: 'https://local.example/' } });
   vi.clearAllMocks();
+  mocks.configuration.runtimeFeatures.bf16WeightRetention = false;
+  mocks.configuration.artifacts[0]!.bf16WeightRetention = false;
   mocks.scan.mockResolvedValue({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] });
   mocks.create.mockReturnValue({ generate: mocks.generate, dispose: mocks.dispose });
   mocks.generate.mockResolvedValue({ png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
@@ -98,6 +102,31 @@ it('reads catalogs without creating an engine or downloading anything', async ()
   const catalog = await resource().listImageModels({ signal: new AbortController().signal });
   expect(catalog[0]?.selection?.primary.file.expected).toEqual({ size: 16, lastModified: 123 });
   expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('resolves peer execution precision from the receiving artifact instead of the caller: %s', async bf16WeightRetention => {
+  mocks.configuration.runtimeFeatures.bf16WeightRetention = bf16WeightRetention;
+  mocks.configuration.artifacts[0]!.bf16WeightRetention = bf16WeightRetention;
+  await generate({ input: request() });
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters.bf16WeightType).toBe(bf16WeightRetention ? 'bf16' : 'f32');
+  expect(actual.artifact.bf16WeightRetention).toBe(bf16WeightRetention);
+});
+
+it.each([0, 0.5, -0.25])('keeps the legacy RPC precision only for active LoRAs without retrying or changing strength: %s', async strength => {
+  mocks.configuration.runtimeFeatures.bf16WeightRetention = true;
+  mocks.configuration.artifacts[0]!.bf16WeightRetention = true;
+  const model = candidate({ path: 'model.gguf', roles: ['model'] }), lora = candidate({ path: 'lora.gguf', roles: [] });
+  lora.classes = ['lora'];
+  mocks.scan.mockResolvedValue({ candidates: [model, lora] });
+  const input = request();
+  input.modelSelection.loras.push({ file: { location: { kind: 'opfs', path: 'models/user/model/lora.gguf' } }, strength });
+  await generate({ input });
+  expect(mocks.generate).toHaveBeenCalledOnce();
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters.bf16WeightType).toBe(strength === 0 ? 'bf16' : 'f32');
+  expect(actual.loras[0]?.strength).toBe(strength);
+  expect(actual.artifact.bf16WeightRetention).toBe(true);
 });
 
 it('preserves readable model references at the peer boundary', async () => {
@@ -466,4 +495,43 @@ it('rejects an oversized image inventory rather than providing a misleading trun
   mocks.scan.mockResolvedValue({ candidates: Array.from({ length: 257 }, (_, index) => candidate({ path: `${index}.gguf`, roles: ['model'] })) });
   await expect(resource().listImageModels({ signal: new AbortController().signal })).rejects.toThrow();
   expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('uses the receiving model family to select explicit automatic H3 tile 16', async () => {
+  const model = candidate({ path: 'model.gguf', roles: ['model'] });
+  model.family = 'minimax-h3-image';
+  mocks.scan.mockResolvedValue({ candidates: [model] });
+  const input = request();
+  input.parameters.vaeTileSizePreference = 'auto';
+  await generate({ input });
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters.vaeTileSize).toBe(16);
+});
+
+it('resolves automatic sampling from the verified primary and returns the resolved request', async () => {
+  const model = { ...candidate({ path: 'model.gguf', roles: ['model'] }), family: 'minimax-h3-image' as const };
+  const vae = { ...candidate({ path: 'vae.gguf', roles: ['vae'] }), family: 'qwen-image-2.1' as const, variant: 'base' as const };
+  mocks.scan.mockResolvedValue({ candidates: [vae, model] });
+  const input = request();
+  input.parameters.stepsPreference = 'auto';
+  input.parameters.guidancePreference = 'auto';
+  input.parameters.vaeTileSizePreference = 'auto';
+  input.modelSelection.components = [{ slot: 'vae', file: { location: { kind: 'opfs', path: 'models/user/model/vae.gguf' }, expected: { size: 16, lastModified: 123 } } }];
+  const sampling = { sampler: { id: 0 }, scheduler: { id: 11, name: 'flux' } };
+  mocks.generate.mockResolvedValueOnce({ png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', sampling });
+  const result = await generate({ input });
+  expect(result).toMatchObject({ resolvedParameters: { steps: 6, guidance: 1, vaeTileSize: 16 }, sampling });
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters).toMatchObject({ steps: 6, guidance: 1, vaeTileSize: 16 });
+  expect(actual.parameters).not.toHaveProperty('stepsPreference');
+});
+
+it('preserves fixed request values independently of model recommendations', async () => {
+  const model = { ...candidate({ path: 'model.gguf', roles: ['model'] }), family: 'minimax-h3-image' as const };
+  mocks.scan.mockResolvedValue({ candidates: [model] });
+  const input = request();
+  input.parameters.stepsPreference = 37;
+  input.parameters.guidancePreference = 2.5;
+  input.parameters.vaeTileSizePreference = 64;
+  expect(await generate({ input })).toMatchObject({ resolvedParameters: { steps: 37, guidance: 2.5, vaeTileSize: 64 } });
 });

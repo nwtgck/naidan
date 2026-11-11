@@ -441,9 +441,27 @@ describe('Image Generation composition and lifetime', () => {
     expect(h.generation.parameters.value.seed).toBe('43');
     expect(h.generation.seedMode.value).toBe('fixed');
     expect(h.restored.mock.lastCall?.[0].modelSelection).toBeUndefined();
+    expect(h.restored.mock.lastCall?.[0].vaeTileSizePreference).toBe(32);
     await h.view.generate();
     const latest = h.view.runState.value?.run;
     expect(latest?.sources).toEqual([{ role: 'settings', sessionId: tile.sessionId, assetId: tile.id }]);
+  });
+
+  it('reuses confirmed provider values instead of the accepted run projection', async () => {
+    const h = await ready();
+    await h.view.generate();
+    await h.view.inspect({ tile: h.view.tiles.value[0]! });
+    const selected = h.view.details.value!;
+    const accepted = structuredClone(selected.run.request.parameters);
+    selected.asset.result.resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
+    await h.view.reuse({ kind: 'settings' });
+    expect(h.restored.mock.lastCall?.[0]).toMatchObject({
+      stepsPreference: 6,
+      guidancePreference: 1,
+      vaeTileSizePreference: 16,
+      request: { parameters: { steps: 6, guidance: 1, vaeTileSize: 16 } },
+    });
+    expect(selected.run.request.parameters).toEqual(accepted);
   });
 
   it('keeps the requested temporary run count when OPFS is not selected', async () => {

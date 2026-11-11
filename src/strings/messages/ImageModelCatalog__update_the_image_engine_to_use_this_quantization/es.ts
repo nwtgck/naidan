@@ -1,0 +1,1 @@
+export const ImageModelCatalog__update_the_image_engine_to_use_this_quantization = (): string => 'Actualiza el motor de generación de imágenes para descargar y usar esta cuantización en la aplicación.';

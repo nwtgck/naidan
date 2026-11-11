@@ -52,7 +52,7 @@ export function createNativePreviewControl({ core, callback, runId, initial }: {
       revision = control.revision;
       if (running) {
         // Deliberately narrow exception to the host helper's general busy guard.
-        // The reviewed generated export calls util.cpp's six scalar assignments:
+        // The reviewed generated export updates scalar flags and resets preview info:
         // no graph/context access, allocation, callback invocation or suspension.
         // Never use core.api/ccall or any other native export to re-enter a run.
         writeLive();

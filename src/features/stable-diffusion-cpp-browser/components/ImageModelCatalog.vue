@@ -7,7 +7,7 @@ import { lazyStrings } from '@/strings';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/download-plan';
-import { imageModelRecipes, imageRecipeLink, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from '@/features/stable-diffusion-cpp-browser/model-recipes';
+import { imageModelRecipes, imageRecipeLink, selectedRecipeFiles, imageRecipeUnavailableReason, type ImageRecipeUnavailableReason, type ImageRecipeFile, type ImageRecipeSelection } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 import { imageCatalogLoras, type ImageCatalogLora } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 import type { ImageDownloadQueueEntry, ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
@@ -45,7 +45,7 @@ const cards = computed(() => imageModelRecipes.map(recipe => {
   const selections = selection({ recipeId: recipe.id });
   const files = selectedRecipeFiles({ recipe, selections });
   const availability = props.view.recipeAvailability({ recipeId: recipe.id, selections });
-  return { recipe, files, availability, selections, loras: imageCatalogLoras.filter(item => item.recipeId === recipe.id), bytes: files.reduce((sum, file) => sum + file.approximateBytes, 0) };
+  return { recipe, files, availability, selections, unsupportedReason: imageRecipeUnavailableReason({ files, runtimeFeatures: props.view.runtimeFeatures.value }), loras: imageCatalogLoras.filter(item => item.recipeId === recipe.id), bytes: files.reduce((sum, file) => sum + file.approximateBytes, 0) };
 }));
 const layoutFile = computed(() => imageCatalogLoras.find(item => item.id === downloadLoraId.value)?.source ?? cards.value.find(card => card.recipe.id === downloadRecipeId.value)?.files[0]);
 // Detect storage without opening it. Host folders and manual model files have
@@ -78,7 +78,22 @@ function roleLabel({ role }: { role: ImageRecipeFile['role'] }): string | undefi
 }
 
 function optionLabel({ file }: { file: ImageRecipeFile }): string {
+  if (/(?:[-_.])int8_convrot(?=\.|$)/i.test(file.path)) {
+    return 'INT8 ConvRot';
+  }
   return /(?:[-_.])(Q\d[A-Z0-9_]*|BF16|FP16|F16)(?=\.|$)/i.exec(file.path)?.[1]?.toUpperCase() ?? 'safetensors';
+}
+
+function unsupportedReason({ reason }: { reason: ImageRecipeUnavailableReason }): string | undefined {
+  switch (reason) {
+  case 'int8-convrot': return lazyStrings.ImageModelCatalog__int8_convrot_download_and_use_are_unavailable();
+  case 'engine-update-required': return lazyStrings.ImageModelCatalog__update_the_image_engine_to_use_this_quantization();
+  case undefined: return undefined;
+  default: {
+    const exhaustive: never = reason;
+    throw new Error(String(exhaustive));
+  }
+  }
 }
 
 function detailedOptionLabel({ file }: { file: ImageRecipeFile }): string | undefined {
@@ -98,6 +113,10 @@ function change({ recipeId, role, value }: { recipeId: string, role: ImageRecipe
 }
 
 async function download({ recipeId }: { recipeId: string }): Promise<void> {
+  const recipe = imageModelRecipes.find(item => item.id === recipeId);
+  if (!recipe || imageRecipeUnavailableReason({ files: selectedRecipeFiles({ recipe, selections: selection({ recipeId }) }), runtimeFeatures: props.view.runtimeFeatures.value }) !== undefined) {
+    return;
+  }
   if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) {
     await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
   }
@@ -110,7 +129,8 @@ async function downloadLora({ id }: { id: string }): Promise<void> {
 }
 
 function select({ recipeId }: { recipeId: string }): void {
-  if (props.disabled || importing.value || scanState.value === 'scanning') {
+  const recipe = imageModelRecipes.find(item => item.id === recipeId);
+  if (!recipe || imageRecipeUnavailableReason({ files: selectedRecipeFiles({ recipe, selections: selection({ recipeId }) }), runtimeFeatures: props.view.runtimeFeatures.value }) !== undefined || props.disabled || importing.value || scanState.value === 'scanning') {
     return;
   }
   props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
@@ -169,9 +189,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                     <SettingsFormSelect :aria-labelledby="id + card.recipe.id" :aria-label="roleLabel({ role: card.recipe.components[0]!.role })" :model-value="card.selections[card.recipe.components[0]!.role] ?? card.recipe.components[0]!.defaultOptionId" :disabled="downloadDisabled || card.recipe.components[0]!.options.length === 1" @update:model-value="change({ recipeId: card.recipe.id, role: card.recipe.components[0]!.role, value: $event })" :data-testid="'recipe-option-' + card.recipe.id + '-' + card.recipe.components[0]!.role" presentation="inline" :options="card.recipe.components[0]!.options.map(file => ({ value: file.id, label: optionLabel({ file }) }))" :label="roleLabel({ role: card.recipe.components[0]!.role })" />
                   </div>
                 </div>
-                <button v-if="card.availability.available === card.availability.total" type="button" :disabled="disabled || importing || scanState === 'scanning' || card.availability.selected" @click="select({ recipeId: card.recipe.id })" :data-testid="'recipe-use-local-' + card.recipe.id" tw-class="ml-auto group inline-flex min-h-9 max-w-full items-center justify-center gap-2 rounded-lg border border-gray-200/90 bg-white/80 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700/80 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-gray-800">{{ card.availability.selected ? lazyStrings.stableDiffusionCppBrowser__selected() : lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
-                <button v-else type="button" :disabled="downloadDisabled || importing || downloadDestinationUnavailable" @click="download({ recipeId: card.recipe.id })" :data-testid="'recipe-download-selected-' + card.recipe.id" tw-class="ml-auto group inline-flex min-h-9 max-w-full items-center justify-center gap-2 rounded-lg border border-gray-200/90 bg-white/80 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700/80 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-gray-800"><DownloadIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
+                <button v-if="card.availability.available === card.availability.total" type="button" :disabled="disabled || importing || scanState === 'scanning' || card.availability.selected || card.unsupportedReason !== undefined" @click="select({ recipeId: card.recipe.id })" :data-testid="'recipe-use-local-' + card.recipe.id" tw-class="ml-auto group inline-flex min-h-9 max-w-full items-center justify-center gap-2 rounded-lg border border-gray-200/90 bg-white/80 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700/80 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-gray-800">{{ card.availability.selected ? lazyStrings.stableDiffusionCppBrowser__selected() : lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
+                <button v-else type="button" :disabled="downloadDisabled || importing || downloadDestinationUnavailable || card.unsupportedReason !== undefined" @click="download({ recipeId: card.recipe.id })" :data-testid="'recipe-download-selected-' + card.recipe.id" tw-class="ml-auto group inline-flex min-h-9 max-w-full items-center justify-center gap-2 rounded-lg border border-gray-200/90 bg-white/80 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700/80 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-gray-800"><DownloadIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.llamaCppBrowserDownloads__download() }}</button>
               </div>
+              <p v-if="card.unsupportedReason !== undefined" :data-testid="'recipe-unsupported-' + card.recipe.id" tw-class="mt-2 text-xs text-amber-700 dark:text-amber-400">{{ unsupportedReason({ reason: card.unsupportedReason }) }}</p>
               <p v-if="scanState === 'scanning'" role="status" data-testid="image-catalog-scan-status" tw-class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageModelCatalog__checking_saved_models() }}</p>
               <div data-testid="image-recipe-metadata" tw-class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
                 <span tw-class="tabular-nums">{{ card.availability.available === card.availability.total ? formatDownloadBytes({ bytes: card.availability.bytes }) : lazyStrings.llamaCppBrowserDownloads__approximately_size({ size: formatDownloadBytes({ bytes: card.bytes }) }) }} · {{ lazyStrings.stableDiffusionCppBrowser__file_count({ count: card.files.length }) }}</span>
@@ -179,7 +200,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                 <button type="button" :aria-expanded="!!detailsOpen[card.recipe.id]" :aria-controls="id + card.recipe.id + '-details'" :data-testid="'recipe-details-toggle-' + card.recipe.id" @click="detailsOpen[card.recipe.id] = !detailsOpen[card.recipe.id]" tw-class="inline-flex items-center gap-1 rounded-md px-1 py-1 text-xs hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.llamaCppBrowserDownloads__details() }}<ChevronDownIcon :tw-class="['w-3 h-3 transition-transform motion-reduce:transition-none', { 'rotate-180': detailsOpen[card.recipe.id] }]" /></button>
               </div>
               <!-- Keep full-width guidance outside the inline metadata and Details toolbar. -->
-              <CspMessageHint v-if="(card.availability.available !== card.availability.total || card.loras.some(lora => !view.loraAvailable({ id: lora.id }))) && !(downloadState === 'failed' && (downloadRecipeId === card.recipe.id || card.loras.some(lora => downloadLoraId === lora.id)))" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
+              <CspMessageHint v-if="card.unsupportedReason === undefined && (card.availability.available !== card.availability.total || card.loras.some(lora => !view.loraAvailable({ id: lora.id }))) && !(downloadState === 'failed' && (downloadRecipeId === card.recipe.id || card.loras.some(lora => downloadLoraId === lora.id)))" :target="{ kind: 'huggingface-download' }" activity-for-display-only="download" presentation="compact" />
               <ImageCatalogDownloadStatus v-if="downloadRecipeId === card.recipe.id && downloadState !== 'idle'" :view="view" :disabled="downloadDisabled || importing" :local-input-disabled="disabled" />
               <div :id="id + card.recipe.id + '-details'" class="catalog-disclosure" :class="{ 'catalog-disclosure-open': detailsOpen[card.recipe.id] }" :inert="detailsOpen[card.recipe.id] ? undefined : true" :aria-hidden="!detailsOpen[card.recipe.id]" data-testid="image-recipe-details">
                 <SettingsSelectScope :active="!!detailsOpen[card.recipe.id]" :return-focus="undefined">

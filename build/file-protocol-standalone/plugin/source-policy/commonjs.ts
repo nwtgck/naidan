@@ -18,7 +18,7 @@ function findCommonJsRequireCalls(code: string, id = '<unknown>'): CommonJsRequi
     sourceType: 'unambiguous',
     sourceFilename: id,
     allowAwaitOutsideFunction: true,
-    plugins: ['dynamicImport', 'importMeta', 'topLevelAwait', 'typescript', 'jsx'],
+    plugins: ['typescript', 'jsx'],
   });
   const calls: CommonJsRequireCall[] = [];
   function visit(node: Node | null | undefined): void {

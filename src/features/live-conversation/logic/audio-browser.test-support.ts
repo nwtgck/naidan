@@ -1,16 +1,16 @@
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 
 /** Deliberately local Web Audio fakes. Tests assert ownership and packet order,
  * not real hardware, browser permissions or device latency. */
 export function liveAudioBrowserFixture() {
-  const track = { stop: vi.fn(), onended: undefined as (() => void) | undefined };
+  const track = { stop: vi.fn<MediaStreamTrack['stop']>(), onended: undefined as (() => void) | undefined };
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
   const permission = Promise.withResolvers<typeof stream>();
   const media = { getUserMedia: vi.fn(() => permission.promise) };
   const contexts: FakeAudioContext[] = [];
   const nodes: FakeWorklet[] = [];
   const buffers: Float32Array[] = [];
-  const sourceNodes: { start: ReturnType<typeof vi.fn>, stop: ReturnType<typeof vi.fn>, disconnect: ReturnType<typeof vi.fn>, onended: (() => void) | null }[] = [];
+  const sourceNodes: { start: Mock<AudioBufferSourceNode['start']>, stop: Mock<AudioBufferSourceNode['stop']>, disconnect: Mock<AudioNode['disconnect']>, onended: (() => void) | null }[] = [];
   class FakeAudioContext {
     sampleRate = 48000;
     currentTime = 0;
@@ -23,8 +23,8 @@ export function liveAudioBrowserFixture() {
     close = vi.fn(async () => {
       this.state = 'closed';
     });
-    createGain = vi.fn(() => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }));
-    createMediaStreamSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
+    createGain = vi.fn(() => ({ gain: { value: 1 }, connect: vi.fn<AudioNode['connect']>(), disconnect: vi.fn<AudioNode['disconnect']>() }));
+    createMediaStreamSource = vi.fn(() => ({ connect: vi.fn<AudioNode['connect']>(), disconnect: vi.fn<AudioNode['disconnect']>() }));
     createBuffer = vi.fn((_channels: number, length: number, rate: number) => ({
       duration: length / rate,
       copyToChannel: vi.fn((pcm: Float32Array) => {
@@ -32,7 +32,7 @@ export function liveAudioBrowserFixture() {
       }),
     }));
     createBufferSource = vi.fn(() => {
-      const node = { buffer: undefined, connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn(), onended: null as (() => void) | null };
+      const node = { buffer: undefined, connect: vi.fn<AudioNode['connect']>(), disconnect: vi.fn<AudioNode['disconnect']>(), start: vi.fn<AudioBufferSourceNode['start']>(), stop: vi.fn<AudioBufferSourceNode['stop']>(), onended: null as (() => void) | null };
       sourceNodes.push(node);
       return node;
     });
@@ -45,15 +45,15 @@ export function liveAudioBrowserFixture() {
     port = {
       onmessage: undefined as (({ data }: { data: unknown }) => void) | undefined,
       onmessageerror: null as (() => void) | null,
-      close: vi.fn(),
-      start: vi.fn(),
+      close: vi.fn<MessagePort['close']>(),
+      start: vi.fn<MessagePort['start']>(),
       postMessage: vi.fn((message: unknown) => {
         if (message === 'finish') {
           this.deliver({ data: { type: 'finished' } });
         }
       }),
     };
-    connect = vi.fn(); disconnect = vi.fn(); onprocessorerror: (() => void) | undefined;
+    connect = vi.fn<AudioNode['connect']>(); disconnect = vi.fn<AudioNode['disconnect']>(); onprocessorerror: (() => void) | undefined;
 
     constructor() {
       nodes.push(this);

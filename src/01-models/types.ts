@@ -462,7 +462,7 @@ export type BrowserImageGenerationSettings = {
   keepPreviews?: 'enabled' | 'disabled',
   maxPreviews?: number,
   maxResults?: number,
-  bf16WeightType?: 'f32' | 'f16',
+  bf16WeightType?: 'f32' | 'f16' | 'bf16',
 };
 
 /** Visible defaults for the browser image editor; absent settings remain absent on disk. */

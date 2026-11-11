@@ -97,6 +97,16 @@ it('selects locally without altering the form and emits reuse or image actions o
   expect(json.findAll('span').length).toBeGreaterThan(0);
 });
 
+it('shows the saved explicit BF16 weight storage without rewriting the historical request', async () => {
+  const { view, record } = fixture();
+  record.request.parameters.bf16WeightType = 'bf16';
+  view.selected.value = record;
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, downloadPreferences, onDownloadPreferencesChange, view, disabled: false, recordDeleteDisabled: false, editorDisabled: false, active: true } });
+  expect(wrapper.get('[data-testid="image-history-bf16-weight-type"]').text()).toBe('BF16');
+  expect(wrapper.text()).toContain('BF16 weight storage');
+  expect(record.request.parameters.bf16WeightType).toBe('bf16');
+});
+
 it('copies the exact full prompt from the compact read-only card and reports clipboard failure', async () => {
   const { view, record } = fixture();
   const prompt = `\
@@ -524,4 +534,14 @@ it('keeps readable records usable and labels partial counts without treating rea
   await flushPromises();
   expect(wrapper.find('[data-testid="image-history-partial"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="image-history-empty"]').exists()).toBe(true);
+});
+
+it('shows reported sampling separately from the requested auto history values', () => {
+  const { view, record } = fixture();
+  record.result.sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
+  view.selected.value = record;
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, downloadPreferences, onDownloadPreferencesChange, view, disabled: false, recordDeleteDisabled: false, editorDisabled: false, active: true } });
+  expect(wrapper.get('[data-testid="image-sampling-sampler"]').text()).toBe('native-method');
+  expect(wrapper.get('[data-testid="image-sampling-scheduler"]').text()).toBe('flux');
+  expect(record.request.parameters).toMatchObject({ sampler: 'auto', scheduler: 'auto' });
 });

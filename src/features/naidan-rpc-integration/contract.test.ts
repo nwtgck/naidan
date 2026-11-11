@@ -134,7 +134,7 @@ it('passes arbitrary modelId strings without imposing source grammar or length l
 });
 
 it('does not throw while validating a malformed or oversized seed', () => {
-  const value = { prompt: 'tree', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 1, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 };
+  const value = { prompt: 'tree', negativePrompt: '', width: 256, height: 256, stepsPreference: 4, guidancePreference: 1, vaeTileSizePreference: 32, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 };
   expect(peerImageParametersSchema.safeParse(value).success).toBe(true);
   for (const seed of ['x', '', '-1', '9'.repeat(100), '9223372036854775808']) {
     expect(peerImageParametersSchema.safeParse({ ...value, seed }).success).toBe(false);

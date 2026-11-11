@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ImageSamplingReceipt from './ImageSamplingReceipt.vue';
 import { computed, ref, shallowRef, watch } from 'vue';
 import { StarIcon } from 'lucide-vue-next';
 import { idToRaw } from '@/01-models/ids';
@@ -18,7 +19,10 @@ import ImageDownloadMenu from './ImageDownloadMenu.vue';
 const props = defineProps<{ view: ImageGenerationWorkspaceView, active: boolean }>();
 const queue = shallowRef<ImageGenerationTile[]>([]), feedback = ref('');
 const current = computed(() => props.view.inspectedTile.value);
-const requestJson = computed(() => props.view.details.value ? JSON.stringify({ ...props.view.details.value.run.request, actualSeed: current.value?.seed }, undefined, 2) : '');
+const requestJson = computed(() => {
+  const selected = props.view.details.value;
+  return selected ? JSON.stringify({ ...selected.run.request, parameters: { ...selected.run.request.parameters, ...selected.asset.result.resolvedParameters }, actualSeed: current.value?.seed }, undefined, 2) : '';
+});
 const requestHtml = computed(() => jsonToHighlightedHtml({ json: requestJson.value, highlight: true, keyStyle: 'raw' }));
 const lineageHtml = computed(() => jsonToHighlightedHtml({ json: JSON.stringify(props.view.details.value?.run.sources ?? [], undefined, 2), highlight: true, keyStyle: 'raw' }));
 
@@ -106,7 +110,7 @@ async function download({ format, includeMetadata }: { format: ImageDownloadForm
     }
     const blob = await imageGenerationDownloadBlob({
       png,
-      request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
+      request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, ...selected.asset.result.resolvedParameters, seed: selected.asset.seed } },
       image: { kind: 'final', width: selected.asset.result.width, height: selected.asset.result.height },
       format,
       includeMetadata,
@@ -162,6 +166,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { queue, index } }) |
           <ImageGenerationCopyButton :text="requestJson" :label="lazyStrings.imageGeneration__copy_settings()" show-label />
           <AllowedHtmlView as="pre" :html="requestHtml" data-testid="workspace-request-json" tw-class="max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed font-mono text-gray-700 dark:text-gray-300" />
         </ImageSettingsSection>
+        <ImageSamplingReceipt :sampling="view.details.value?.asset.result.sampling" />
         <ImageSettingsSection v-if="view.details.value?.run.sources.length" :title="lazyStrings.imageGeneration__lineage()" :summary="undefined" compact><AllowedHtmlView as="pre" :html="lineageHtml" tw-class="overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed font-mono text-gray-700 dark:text-gray-300" /></ImageSettingsSection>
       </section>
     </template>

@@ -1,5 +1,5 @@
 import { computed, ref, type Ref } from 'vue';
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import type { HostModelDirectoryChoice } from '@/composables/useHostModelDirectories';
 import type { useSettings } from '@/composables/useSettings';
@@ -7,7 +7,18 @@ import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-fac
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/repository-input';
 import { TEST_ONLY as destinationTest } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 
-const previewTest = vi.hoisted(() => ({
+const previewTest: {
+  inspect: Mock,
+  installed: Mock,
+  permission: Mock,
+  add: Mock,
+  reconnect: Mock,
+  rootRead: Mock,
+  settings: Ref<Settings> | undefined,
+  entries: Ref<HostModelDirectoryChoice[]> | undefined,
+  busy: Ref<boolean> | undefined,
+  root: FileSystemDirectoryHandle | undefined,
+} = vi.hoisted(() => ({
   inspect: vi.fn(),
   installed: vi.fn(),
   permission: vi.fn(),

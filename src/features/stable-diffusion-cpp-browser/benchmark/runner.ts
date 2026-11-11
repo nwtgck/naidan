@@ -183,6 +183,9 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
                   run.record.status = 'succeeded';
                   run.record.modelVersion = result.modelVersion;
                   run.record.uniformOutput = result.uniformOutput;
+                  if (result.sampling) {
+                    run.record.sampling = { sampler: { ...result.sampling.sampler }, scheduler: { ...result.sampling.scheduler } };
+                  }
                   run.record.image = { status: 'not-requested', bytes: result.png.size };
                   if (plan.protocol.keepImages) {
                     if (imageBytes + result.png.size <= MAX_BENCHMARK_IMAGE_BYTES) {

@@ -4,7 +4,7 @@ import type { ImageBenchmarkView } from './benchmark-view';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 
 export function useImageBenchmark({ generation: _generation }: { generation: ImageGenerationView }): ImageBenchmarkView {
-  const form = createBenchmarkForm();
+  const form = createBenchmarkForm({ runtimeFeatures: undefined });
   return {
     ...form,
     available: computed(() => false),

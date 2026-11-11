@@ -76,7 +76,7 @@ it('shows all static recipes without networking or remote resources when opened'
   }
   await flushPromises();
   const titles = wrapper.findAll('[data-testid="image-recipe-heading"] h4').map(item => item.text());
-  expect(titles).toHaveLength(9);
+  expect(titles).toHaveLength(10);
   expect(titles.slice(1, 3)).toEqual(['Qwen Image 2.1', 'Qwen Image 2.1 Turbo']);
   expect(wrapper.text()).toContain('Z-Image-Turbo');
   expect(wrapper.text()).toContain('Qwen Image 2.1');
@@ -86,6 +86,7 @@ it('shows all static recipes without networking or remote resources when opened'
   expect(wrapper.text()).toContain('Anima Turbo 1.1');
   expect(wrapper.text()).toContain('Krea 2 Turbo');
   expect(wrapper.text()).toContain('ERNIE-Image-Turbo');
+  expect(wrapper.text()).toContain('MiniMax-H3-Image');
   expect(wrapper.findAll('[data-testid^="recipe-recommended-"]').map(mark => mark.attributes('data-testid'))).toEqual([
     'recipe-recommended-z-image-turbo', 'recipe-recommended-qwen-image-2.1', 'recipe-recommended-anima-turbo-1.1', 'recipe-recommended-krea2-turbo',
   ]);
@@ -129,7 +130,7 @@ it('keeps connection guidance outside the metadata toolbar without replacing its
 it('uses only explicit, referrer-free browser links with pinned revisions except the provisional Turbo source', () => {
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: createDisabledImageLibrary() } });
   const downloads = wrapper.findAll('[data-testid^="recipe-download-selected-"]');
-  expect(downloads).toHaveLength(9);
+  expect(downloads).toHaveLength(10);
   for (const link of wrapper.findAll('a')) {
     const url = new URL(link.attributes('href')!);
     expect(url.origin).toBe('https://huggingface.co');
@@ -146,6 +147,109 @@ it('uses only explicit, referrer-free browser links with pinned revisions except
   for (const button of downloads) {
     expect(button.element.tagName).toBe('BUTTON');
   }
+});
+
+it('defaults H3 to BF16 and keeps INT8 source links visible while blocking only the selected unsupported option', async () => {
+  const fetch = vi.fn(), xhr = vi.fn(), worker = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  vi.stubGlobal('XMLHttpRequest', xhr);
+  vi.stubGlobal('Worker', worker);
+  const view = createDisabledImageLibrary();
+  view.downloadRecipe = vi.fn();
+  view.chooseRecipe = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
+  const card = wrapper.get('[data-testid="image-recipe-minimax-h3-image"]');
+  const selector = card.get<HTMLSelectElement>('[data-testid="recipe-option-minimax-h3-image-diffusion"]');
+  expect(selector.element.value).toBe('default');
+  expect(selector.findAll('option').map(option => option.text())).toEqual(['BF16', 'Q4_K_M', 'INT8 ConvRot']);
+  expect(card.find('[data-testid="recipe-unsupported-minimax-h3-image"]').exists()).toBe(false);
+  expect(card.find('[data-testid="recipe-recommended-minimax-h3-image"]').exists()).toBe(false);
+  const button = card.get<HTMLButtonElement>('[data-testid="recipe-download-selected-minimax-h3-image"]');
+  expect(button.element.disabled).toBe(false);
+  await selector.setValue('int8-convrot');
+  expect(card.get('[data-testid="recipe-unsupported-minimax-h3-image"]').text()).toContain('cannot be downloaded or used in the app');
+  expect(button.element.disabled).toBe(true);
+  await button.trigger('click');
+  await card.get('[data-testid="recipe-details-toggle-minimax-h3-image"]').trigger('click');
+  const sources = card.findAll('[data-testid="image-catalog-source"]');
+  expect(sources.map(source => source.attributes('href'))).toEqual([
+    'https://huggingface.co/Comfy-Org/MiniMax-H3-Image/blob/892de7cb61df49753bf15145a711154803a355cb/diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors',
+    'https://huggingface.co/Comfy-Org/MiniMax-H3-Image/blob/892de7cb61df49753bf15145a711154803a355cb/vae/minimax_h3_image_vae_fp16.safetensors',
+    'https://huggingface.co/leejet/MiniMax-H3-GGUF/blob/d9c4c6312b4728a68a15a35626d84775a6523783/qwen3vl_32b_minimax_h3-Q4_K_M.gguf',
+  ]);
+  expect(card.get('[data-testid="recipe-detail-option-minimax-h3-image-diffusion"]').element.matches(':disabled')).toBe(false);
+  expect(card.get('[data-testid="recipe-detail-option-minimax-h3-image-vae"]').element.matches(':disabled')).toBe(true);
+  expect(card.get('[data-testid="recipe-detail-option-minimax-h3-image-lm"]').element.matches(':disabled')).toBe(true);
+  expect(view.downloadRecipe).not.toHaveBeenCalled();
+  expect(view.chooseRecipe).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(xhr).not.toHaveBeenCalled();
+  expect(worker).not.toHaveBeenCalled();
+  await selector.setValue('default');
+  expect(card.find('[data-testid="recipe-unsupported-minimax-h3-image"]').exists()).toBe(false);
+  expect(button.element.disabled).toBe(false);
+  expect(card.findAll('[data-testid="image-catalog-source"]')[0]!.attributes('href')).toContain('/diffusion_models/minimax_h3_image_pruned_bf16.safetensors');
+  await button.trigger('click');
+  expect(view.downloadRecipe).toHaveBeenCalledExactlyOnceWith({ recipeId: 'minimax-h3-image', selections: { diffusion: 'default' } });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('allows a saved BF16 selection and does not mistake saved INT8 files for runtime support', async () => {
+  const view = createDisabledImageLibrary();
+  const availability = ref({ available: 3, total: 3, selected: false, bytes: 59621227498 });
+  view.recipeAvailability = () => availability.value;
+  view.chooseRecipe = vi.fn();
+  view.downloadRecipe = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
+  const card = wrapper.get('[data-testid="image-recipe-minimax-h3-image"]');
+  const button = card.get<HTMLButtonElement>('[data-testid="recipe-use-local-minimax-h3-image"]');
+  expect(button.element.disabled).toBe(false);
+  await card.get('[data-testid="recipe-option-minimax-h3-image-diffusion"]').setValue('int8-convrot');
+  expect(button.element.disabled).toBe(true);
+  expect(card.get('[data-testid="recipe-unsupported-minimax-h3-image"]').text()).toContain('INT8 ConvRot');
+  await button.trigger('click');
+  expect(view.chooseRecipe).not.toHaveBeenCalled();
+  expect(view.downloadRecipe).not.toHaveBeenCalled();
+  expect(wrapper.emitted('selected')).toBeUndefined();
+  await card.get('[data-testid="recipe-option-minimax-h3-image-diffusion"]').setValue('default');
+  expect(button.element.disabled).toBe(false);
+  await button.trigger('click');
+  expect(view.chooseRecipe).toHaveBeenCalledExactlyOnceWith({ recipeId: 'minimax-h3-image', selections: { diffusion: 'default' } });
+});
+
+it.each([0, 3])('gates H3 Q4 actions by engine features with %i local files and keeps source links available', async available => {
+  const fetch = vi.fn(), worker = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  vi.stubGlobal('Worker', worker);
+  const view = createDisabledImageLibrary(), originalShapes = ref(false);
+  view.runtimeFeatures = computed(() => ({ ggufOriginalShapes: originalShapes.value, bf16WeightRetention: false }));
+  view.recipeAvailability = () => ({ available, total: 3, selected: false, bytes: 0 });
+  view.downloadRecipe = vi.fn();
+  view.chooseRecipe = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
+  const card = wrapper.get('[data-testid="image-recipe-minimax-h3-image"]');
+  const selector = card.get('[data-testid="recipe-option-minimax-h3-image-diffusion"]');
+  await selector.setValue('q4-k-m');
+  const button = card.get<HTMLButtonElement>(available === 3 ? '[data-testid="recipe-use-local-minimax-h3-image"]' : '[data-testid="recipe-download-selected-minimax-h3-image"]');
+  expect(button.element.disabled).toBe(true);
+  expect(card.get('[data-testid="recipe-unsupported-minimax-h3-image"]').text()).toContain('Update the image generation engine');
+  await button.trigger('click');
+  await card.get('[data-testid="recipe-details-toggle-minimax-h3-image"]').trigger('click');
+  expect(card.findAll('[data-testid="image-catalog-source"]')[0]!.attributes('href')).toBe('https://huggingface.co/Abiray/MiniMax-H3-Image-GGUF/blob/96a59945b9c55796f1bcfd1fd455212706ecefba/MiniMax-H3-Image-Pruned-Q4_K_M.gguf');
+  expect(view.downloadRecipe).not.toHaveBeenCalled();
+  expect(view.chooseRecipe).not.toHaveBeenCalled();
+  originalShapes.value = true;
+  await flushPromises();
+  expect(button.element.disabled).toBe(false);
+  expect(card.find('[data-testid="recipe-unsupported-minimax-h3-image"]').exists()).toBe(false);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(worker).not.toHaveBeenCalled();
+  await button.trigger('click');
+  const action = available === 3 ? view.chooseRecipe : view.downloadRecipe;
+  expect(action).toHaveBeenCalledExactlyOnceWith({ recipeId: 'minimax-h3-image', selections: { diffusion: 'q4-k-m' } });
+  await selector.setValue('int8-convrot');
+  expect(button.element.disabled).toBe(true);
+  expect(card.get('[data-testid="recipe-unsupported-minimax-h3-image"]').text()).toContain('INT8 ConvRot');
 });
 
 it('labels the SDXL primary as a checkpoint and shows its explicit external VAE', async () => {

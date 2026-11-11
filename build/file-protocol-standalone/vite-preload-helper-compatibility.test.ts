@@ -24,7 +24,7 @@ type TestGlobal = {
   testPreload?: TestPreload;
 };
 
-function createPlugin(): Plugin {
+function createPlugin({ diagnostics }: Readonly<{ diagnostics: Record<string, unknown> | undefined }>): Plugin {
   const plugins = createNaidanStandalonePlugin({
     workers: [{
       name: 'test-worker',
@@ -32,6 +32,7 @@ function createPlugin(): Plugin {
       virtualId: 'virtual:file-protocol-standalone/worker/test-worker',
     }],
     systemRuntimePath: '/tmp/system.min.js',
+    diagnostics,
     sourceAudit: {
       mode: 'external',
       evidence: 'focused test evidence',
@@ -106,13 +107,13 @@ globalThis.testPreload = preload;
 `;
 }
 
-async function transformFixture(): Promise<string> {
-  const plugin = createPlugin();
+async function transformFixture({ fixture }: Readonly<{ fixture: string }>): Promise<string> {
+  const plugin = createPlugin({ diagnostics: undefined });
   const hook = plugin.transform;
   if (typeof hook !== 'function') {
     throw new Error('Expected transform hook');
   }
-  const result = await hook.call({} as never, createVitePreloadHelperFixture(), '\0vite/preload-helper.js');
+  const result = await hook.call({} as never, fixture, '\0vite/preload-helper.js');
   if (typeof result === 'string') {
     return result;
   }
@@ -123,8 +124,8 @@ async function transformFixture(): Promise<string> {
 }
 
 
-function createSystemJsVitePreloadHelperFixture(): string {
-  return createVitePreloadHelperFixture()
+function createSystemJsVitePreloadHelperFixture({ fixture }: Readonly<{ fixture: string }>): string {
+  return fixture
     .replace(
       'return globalThis.testImportMetaResolve(specifier);',
       'if (import.meta.resolve) return import.meta.resolve(specifier); return specifier;',
@@ -135,29 +136,10 @@ function createSystemJsVitePreloadHelperFixture(): string {
     );
 }
 
-async function transformSystemJsFixture(): Promise<string> {
-  const plugin = createPlugin();
-  const hook = plugin.transform;
-  if (typeof hook !== 'function') {
-    throw new Error('Expected transform hook');
-  }
-  const compatibilityResult = await hook.call(
-    {} as never,
-    createSystemJsVitePreloadHelperFixture(),
-    '\0vite/preload-helper.js',
-  );
-  const compatibilityCode = typeof compatibilityResult === 'string'
-    ? compatibilityResult
-    : compatibilityResult !== null
-      && compatibilityResult !== undefined
-      && typeof compatibilityResult === 'object'
-      && 'code' in compatibilityResult
-      && typeof compatibilityResult.code === 'string'
-      ? compatibilityResult.code
-      : undefined;
-  if (compatibilityCode === undefined) {
-    throw new Error('Expected compatibility transform output');
-  }
+async function transformSystemJsFixture({ fixture }: Readonly<{ fixture: string }>): Promise<string> {
+  const compatibilityCode = await transformFixture({
+    fixture: createSystemJsVitePreloadHelperFixture({ fixture }),
+  });
 
   const transformed = await transformAsync(compatibilityCode, {
     filename: 'vite-preload-helper.js',
@@ -276,7 +258,7 @@ function evaluatePreload({
     'document',
     'Event',
     'globalThis',
-    `${code}\nreturn globalThis.testPreload;`,
+    `${code.replaceAll('import.meta.resolve', 'globalThis.testImportMetaResolve').replaceAll('import.meta.url', '"https://example.test/assets/preload-helper.js"')}\nreturn globalThis.testPreload;`,
   ) as (document: Document | undefined, eventConstructor: typeof Event, testGlobal: TestGlobal) => TestPreload | undefined;
   const preload = evaluate(document, eventConstructor, testGlobal);
   if (preload === undefined) {
@@ -285,7 +267,7 @@ function evaluatePreload({
   return preload;
 }
 
-function readInstalledVitePreloadFunctionSource(): string {
+function readInstalledVitePreloadHelperSource(): string {
   const viteEntry = require.resolve('vite');
   const chunksDirectory = path.join(path.dirname(viteEntry), 'chunks');
   const marker = 'function preload(baseModule, deps, importerUrl)';
@@ -305,7 +287,27 @@ function readInstalledVitePreloadFunctionSource(): string {
   if (preloadEnd <= preloadStart) {
     throw new Error('Unable to bound installed Vite preload helper source');
   }
-  return viteNodeSource.slice(preloadStart, preloadEnd);
+  const cssStart = viteNodeSource.indexOf('function isCssPreloadUrl(');
+  const cssEnd = viteNodeSource.indexOf('function toRelativePath(', cssStart);
+  const preloadOnceStart = viteNodeSource.indexOf('function preloadOnce(');
+  if (cssStart < 0 || cssEnd <= cssStart || preloadOnceStart < 0 || preloadOnceStart >= preloadStart) {
+    throw new Error('Unable to bound installed Vite preload support functions');
+  }
+  return [
+    viteNodeSource.slice(cssStart, cssEnd),
+    viteNodeSource.slice(preloadOnceStart, preloadEnd),
+  ].join('\n');
+}
+
+function createInstalledVitePreloadHelperFixture(): string {
+  return `\
+const __VITE_IS_MODERN__ = true;
+const scriptRel = 'modulepreload';
+const assetsURL = (dep, importerUrl) => new URL(dep, importerUrl).href;
+const seen = {};
+${readInstalledVitePreloadHelperSource()}
+globalThis.testPreload = preload;
+`;
 }
 
 function readInstalledViteCssPostPluginSource(): string {
@@ -526,35 +528,31 @@ describe('Vite preload helper file-protocol compatibility', () => {
   });
 
   it('pins the installed Vite preload helper source contract that the compatibility transform relies on', () => {
-    const preloadSource = readInstalledVitePreloadFunctionSource();
+    const preloadSource = readInstalledVitePreloadHelperSource();
 
     expect(preloadSource).toContain('if (__VITE_IS_MODERN__ && deps && deps.length > 0)');
-    expect(preloadSource).toContain('dep = assetsURL(dep, importerUrl);');
-    expect(preloadSource).toContain('dep = importMetaResolve(dep);');
-    expect(preloadSource).toContain('const isCss = dep.endsWith(".css");');
+    expect(preloadSource).toContain('depString = assetsURL(depString, importerUrl);');
+    expect(preloadSource).toContain('const dep = importMetaResolve(depString);');
+    expect(preloadSource).toContain('const isCss = isCssPreloadUrl(dep);');
+    expect(preloadSource).toContain('return url.pathname.endsWith(".css");');
+    expect(preloadSource).toContain('return preloadOnce(seen, dep.href, () => {');
+    expect(preloadSource).toContain('link.href = dep.href;');
     expect(preloadSource).toContain('link.crossOrigin = "";');
     expect(preloadSource).toContain('window.dispatchEvent(e);');
-    expect(preloadSource.split('dep = importMetaResolve(dep);')).toHaveLength(2);
-    expect(preloadSource.indexOf('dep = assetsURL(dep, importerUrl);'))
-      .toBeLessThan(preloadSource.indexOf('dep = importMetaResolve(dep);'));
-    expect(preloadSource.indexOf('dep = importMetaResolve(dep);'))
-      .toBeLessThan(preloadSource.indexOf('const isCss = dep.endsWith(".css");'));
+    expect(preloadSource.split('const dep = importMetaResolve(depString);')).toHaveLength(2);
+    expect(preloadSource.indexOf('depString = assetsURL(depString, importerUrl);'))
+      .toBeLessThan(preloadSource.indexOf('const dep = importMetaResolve(depString);'));
+    expect(preloadSource.indexOf('const dep = importMetaResolve(depString);'))
+      .toBeLessThan(preloadSource.indexOf('const isCss = isCssPreloadUrl(dep);'));
   });
 
   it('applies the compatibility transform to the installed Vite preload implementation', async () => {
-    const plugin = createPlugin();
+    const plugin = createPlugin({ diagnostics: undefined });
     const hook = plugin.transform;
     if (typeof hook !== 'function') {
       throw new Error('Expected transform hook');
     }
-    const installedFixture = `\
-const __VITE_IS_MODERN__ = true;
-const scriptRel = 'modulepreload';
-const assetsURL = (dep, importerUrl) => new URL(dep, importerUrl).href;
-const seen = {};
-${readInstalledVitePreloadFunctionSource()}
-export { preload as testPreload };
-`;
+    const installedFixture = createInstalledVitePreloadHelperFixture();
     const result = await Promise.resolve(hook.call(
       {} as never,
       installedFixture,
@@ -563,13 +561,18 @@ export { preload as testPreload };
     const code = typeof result === 'string' ? result : result?.code;
 
     expect(code).toContain('typeof document !== "undefined"');
-    expect(code).toContain('new URL(document.baseURI).protocol === "file:"; if (fileProtocol && (!dep.endsWith(".css") || new URL(dep).protocol !== "file:")) return; if (!fileProtocol) dep = importMetaResolve(dep);');
+    expect(code).toContain('const dep = fileProtocol ? new URL(depString) : importMetaResolve(depString); const isCss = isCssPreloadUrl(dep); if (fileProtocol && (!isCss || dep.protocol !== "file:")) return;');
     expect(code).toContain('globalThis.dispatchEvent(e);');
     expect(code).not.toContain('window.dispatchEvent(e);');
   });
+});
 
+describe.each([
+  { name: 'legacy string helper', fixture: createVitePreloadHelperFixture() },
+  { name: 'installed URL helper', fixture: createInstalledVitePreloadHelperFixture() },
+])('Vite preload helper file-protocol compatibility: $name', ({ fixture }) => {
   it('loads local file CSS without SystemJS-style asynchronous meta resolution and skips JavaScript preloads', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
@@ -597,7 +600,7 @@ export { preload as testPreload };
   });
 
   it('skips non-file dependencies for the file-protocol UI runtime', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
@@ -623,7 +626,7 @@ export { preload as testPreload };
   });
 
   it('waits for local file stylesheet load before continuing the dynamic import', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
@@ -644,7 +647,7 @@ export { preload as testPreload };
   });
 
   it('preserves stylesheet preloading for HTTP resources', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'https://example.test/index.html',
     });
@@ -670,7 +673,7 @@ export { preload as testPreload };
   });
 
   it('runs the base module without DOM preloads in a Worker realm', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     let resolveCalls = 0;
     const preload = evaluatePreload({
       code,
@@ -691,7 +694,7 @@ export { preload as testPreload };
   });
 
   it('does not duplicate an existing HTTP stylesheet link', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM(
       '<!doctype html><html><head><link rel="stylesheet" href="./assets/MainApp.css"></head><body></body></html>',
       { url: 'https://example.test/index.html' },
@@ -714,7 +717,7 @@ export { preload as testPreload };
   });
 
   it('preserves HTTP JavaScript modulepreload behavior', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'https://example.test/index.html',
     });
@@ -738,7 +741,7 @@ export { preload as testPreload };
   });
 
   it('preserves HTTP preload failure dispatch and concrete CSS URL', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'https://example.test/index.html',
     });
@@ -765,7 +768,7 @@ export { preload as testPreload };
   });
 
   it('preserves Vite preloadError cancellation for HTTP resources', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'https://example.test/index.html',
     });
@@ -788,23 +791,36 @@ export { preload as testPreload };
     )).resolves.toBe('loaded-after-cancel');
   });
 
-  it('fails closed when the Vite preload helper shape changes', async () => {
-    const plugin = createPlugin();
+  it.each([
+    { name: 'missing crossorigin', pattern: /link\.crossOrigin = "";/, replacement: 'link.dataset.crossOriginPolicy = "vite-changed";' },
+    { name: 'duplicate crossorigin', pattern: /link\.crossOrigin = "";/, replacement: '$& $&' },
+    { name: 'duplicate error dispatch', pattern: /window\.dispatchEvent\(e\);/, replacement: '$& $&' },
+    { name: 'duplicate DOM condition', pattern: /if \(__VITE_IS_MODERN__ && deps && deps.length > 0\)/, replacement: '$& {} $&' },
+    { name: 'duplicate resolution', pattern: /(?:const dep|dep) = importMetaResolve\([^;]+;/, replacement: '$& $&' },
+    { name: 'changed resolution', pattern: /importMetaResolve\(dep/, replacement: 'unreviewedResolve(dep' },
+    { name: 'changed asset resolution order', pattern: /(?:depString|dep) = assetsURL\([^;]+;/, replacement: '$& unreviewedDependencyTransform();' },
+    { name: 'changed CSS classification', pattern: /const isCss = [^;]+;/, replacement: 'const isCss = true;' },
+    { name: 'changed link href', pattern: /link\.href = dep(?:\.href)?;/, replacement: 'link.href = "changed";' },
+  ])('fails closed for $name without claiming diagnostic success', ({ pattern, replacement }) => {
+    const diagnostics: Record<string, unknown> = {};
+    const plugin = createPlugin({ diagnostics });
     const hook = plugin.transform;
     if (typeof hook !== 'function') {
       throw new Error('Expected transform hook');
     }
-    const incompatible = createVitePreloadHelperFixture().replace(
-      'link.crossOrigin = "";',
-      'link.dataset.crossOriginPolicy = "vite-changed";',
-    );
+    const incompatible = fixture.replace(pattern, replacement);
+    expect(incompatible).not.toBe(fixture);
 
     expect(() => hook.call({} as never, incompatible, '\0vite/preload-helper.js'))
       .toThrow('Unexpected Vite preload helper shape');
+    expect(diagnostics.vitePreloadHelperRealmNeutral).toBeUndefined();
+    expect(diagnostics.vitePreloadHelperSkipsDomOutsideUiRealm).toBeUndefined();
+    expect(diagnostics.vitePreloadHelperSkipsFileScriptPreloads).toBeUndefined();
+    expect(diagnostics.vitePreloadHelperOmitsFileCrossorigin).toBeUndefined();
   });
 
   it('loads local CSS under special-character file paths without resolving JavaScript preloads', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/Naidan%20%E6%97%A5%E6%9C%AC%E8%AA%9E%20%23%20%25%20%5B%20%5D/index.html',
     });
@@ -830,7 +846,7 @@ export { preload as testPreload };
   });
 
   it('keeps Worker dynamic-import failures observable without a document', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const events: Event[] = [];
     const preload = evaluatePreload({
       code,
@@ -855,7 +871,7 @@ export { preload as testPreload };
   });
 
   it('keeps file UI application-import failures observable after skipping dependency preloads', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
@@ -883,7 +899,7 @@ export { preload as testPreload };
   });
 
   it('preserves Vite seen-cache deduplication across repeated HTTP preloads', async () => {
-    const code = await transformFixture();
+    const code = await transformFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'https://example.test/index.html',
     });
@@ -909,7 +925,7 @@ export { preload as testPreload };
   });
 
   it('does not rewrite application modules that merely contain preload-like text', async () => {
-    const plugin = createPlugin();
+    const plugin = createPlugin({ diagnostics: undefined });
     const hook = plugin.transform;
     if (typeof hook !== 'function') {
       throw new Error('Expected transform hook');
@@ -923,7 +939,7 @@ export { preload as testPreload };
   });
 
   it('keeps the final System.register helper away from asynchronous meta.resolve for file dependencies', async () => {
-    const code = await transformSystemJsFixture();
+    const code = await transformSystemJsFixture({ fixture });
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
@@ -947,5 +963,117 @@ export { preload as testPreload };
     )).resolves.toBe('systemjs-loaded');
     expect(resolveCalls).toBe(0);
     expect(linkEvents.appendedLinks()).toBe(1);
+  });
+});
+
+describe('installed Vite URL preload behavior', () => {
+  it('rejects a changed URL CSS classifier', async () => {
+    const fixture = createInstalledVitePreloadHelperFixture().replace(
+      'return url.pathname.endsWith(".css");',
+      'return true;',
+    );
+    await expect(transformFixture({ fixture })).rejects.toThrow('Unexpected Vite preload helper shape');
+  });
+
+  it('rejects mixed legacy and URL helper shapes', async () => {
+    const fixture = `${createVitePreloadHelperFixture()}\n${createInstalledVitePreloadHelperFixture()}`;
+    await expect(transformFixture({ fixture })).rejects.toThrow('Unexpected Vite preload helper shape');
+  });
+
+  it('loads file CSS with query and fragment suffixes while skipping scripts and remote CSS', async () => {
+    const code = await transformFixture({ fixture: createInstalledVitePreloadHelperFixture() });
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: 'file:///tmp/naidan/index.html',
+    });
+    using cleanup = {
+      [Symbol.dispose]() {
+        dom.window.close();
+      },
+    };
+    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'load' });
+    let resolveCalls = 0;
+    const preload = evaluatePreload({
+      code,
+      document: dom.window.document,
+      eventConstructor: dom.window.Event,
+      resolve: specifier => {
+        resolveCalls += 1;
+        return Promise.resolve(specifier);
+      },
+    });
+
+    await expect(preload(
+      async () => 'loaded',
+      ['./MainApp.css?v=2#theme', './lazy.js?name=style.css', 'https://example.test/remote.css?v=2#theme'],
+      'file:///tmp/naidan/assets/endpoint.js',
+    )).resolves.toBe('loaded');
+    expect(resolveCalls).toBe(0);
+    expect(linkEvents.appendedLinks()).toBe(1);
+    const stylesheet = dom.window.document.querySelector('link');
+    expect(stylesheet?.href).toBe('file:///tmp/naidan/assets/MainApp.css?v=2#theme');
+    expect(stylesheet?.rel).toBe('stylesheet');
+    expect(stylesheet?.getAttribute('crossorigin')).toBeNull();
+  });
+
+  it.each([
+    { protocol: 'file:', eventType: 'load' },
+    { protocol: 'file:', eventType: 'error' },
+    { protocol: 'https:', eventType: 'load' },
+    { protocol: 'https:', eventType: 'error' },
+  ] as const)('shares pending CSS $eventType results across parallel $protocol imports', async ({ protocol, eventType }) => {
+    const code = await transformFixture({ fixture: createInstalledVitePreloadHelperFixture() });
+    const baseUrl = protocol === 'file:' ? 'file:///tmp/naidan/' : 'https://example.test/';
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+      url: `${baseUrl}index.html`,
+    });
+    using cleanup = {
+      [Symbol.dispose]() {
+        dom.window.close();
+      },
+    };
+    const imported: string[] = [];
+    const events: Event[] = [];
+    const preload = evaluatePreload({
+      code,
+      document: dom.window.document,
+      eventConstructor: dom.window.Event,
+      resolve: specifier => specifier,
+      dispatchEvent: event => {
+        events.push(event);
+        return true;
+      },
+    });
+    const first = preload(async () => {
+      imported.push('first');
+      return 'first';
+    }, ['./shared.css?v=1#theme'], `${baseUrl}assets/first.js`);
+    const second = preload(async () => {
+      imported.push('second');
+      return 'second';
+    }, ['./shared.css?v=1#theme'], `${baseUrl}assets/second.js`);
+    const outcomes = Promise.allSettled([first, second]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(imported).toEqual([]);
+    const links = dom.window.document.querySelectorAll('link');
+    expect(links).toHaveLength(1);
+    links[0]?.dispatchEvent(new dom.window.Event(eventType));
+
+    if (eventType === 'load') {
+      await expect(outcomes).resolves.toEqual([
+        { status: 'fulfilled', value: 'first' },
+        { status: 'fulfilled', value: 'second' },
+      ]);
+      expect(imported).toEqual(['first', 'second']);
+      expect(events).toHaveLength(0);
+    } else {
+      const error = new Error(`Unable to preload CSS for ${baseUrl}assets/shared.css?v=1#theme`);
+      await expect(outcomes).resolves.toEqual([
+        { status: 'rejected', reason: error },
+        { status: 'rejected', reason: error },
+      ]);
+      expect(imported).toEqual([]);
+      expect(events.map(event => event.type)).toEqual(['vite:preloadError', 'vite:preloadError']);
+    }
   });
 });

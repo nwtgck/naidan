@@ -4,6 +4,8 @@
  * Quantized weights are publisher-provided files; Naidan never asks the user to convert or re-split.
  * Keep paths relative to EACH repository, including split_files/ and vae/.
  */
+import type { ImageRuntimeFeatures } from './types';
+
 export type ImageRecipeFile = {
   role: 'model' | 'diffusion' | 'vae' | 'lm';
   repository: string;
@@ -11,9 +13,12 @@ export type ImageRecipeFile = {
   path: string;
   directory: string;
   approximateBytes: number;
+  // A known limitation belongs to the chosen file, not every model variant.
+  unsupportedReason?: 'int8-convrot';
+  requiredRuntimeFeature?: keyof ImageRuntimeFeatures;
 };
 export type ImageModelRecipe = {
-  id: 'z-image-turbo' | 'qwen-image-2.1' | 'qwen-image-2.1-turbo' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
+  id: 'z-image-turbo' | 'qwen-image-2.1' | 'qwen-image-2.1-turbo' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo' | 'minimax-h3-image';
   title: string;
   recommendation?: 'maintainer-tested';
   files: readonly ImageRecipeFile[];
@@ -124,6 +129,19 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
       { role: 'lm', repository: 'unsloth/Ministral-3-3B-Instruct-2512-GGUF', revision: '7f116d3df13bc7d3820b2ff1d5c273133b5accaa', path: 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf', directory: 'Ministral-3-3B-Instruct-2512-GGUF', approximateBytes: 2150000000 },
     ],
   },
+  {
+    id: 'minimax-h3-image',
+    title: 'MiniMax-H3-Image',
+    // Original paths, file sizes and immutable revisions checked on 2026-11-11.
+    // Keep original BF16 as the first choice; the known unsupported INT8 ConvRot
+    // file remains an explicit option rather than a silent format substitution.
+    source: 'https://github.com/leejet/stable-diffusion.cpp/blob/32d516c0197ed5ca31305b8575e14eb1451fad33/docs/minimax_h3_image.md',
+    files: [
+      { role: 'diffusion', repository: 'Comfy-Org/MiniMax-H3-Image', revision: '892de7cb61df49753bf15145a711154803a355cb', path: 'diffusion_models/minimax_h3_image_pruned_bf16.safetensors', directory: 'MiniMax-H3-Image', approximateBytes: 40234657162 },
+      { role: 'vae', repository: 'Comfy-Org/MiniMax-H3-Image', revision: '892de7cb61df49753bf15145a711154803a355cb', path: 'vae/minimax_h3_image_vae_fp16.safetensors', directory: 'MiniMax-H3-Image', approximateBytes: 1168505312 },
+      { role: 'lm', repository: 'leejet/MiniMax-H3-GGUF', revision: 'd9c4c6312b4728a68a15a35626d84775a6523783', path: 'qwen3vl_32b_minimax_h3-Q4_K_M.gguf', directory: 'MiniMax-H3-GGUF', approximateBytes: 18218065024 },
+    ],
+  },
 ];
 
 export type ImageRecipeComponent = {
@@ -164,6 +182,12 @@ export const imageModelRecipes: readonly ImageModelRecipe[] = reviewedRecipes.ma
     if ((recipe.id === 'qwen-image-2.1' || recipe.id === 'qwen-image-2.1-turbo') && file.role === 'lm') {
       options.push({ ...file, id: 'q8-0', path: 'Qwen3VL-8B-Instruct-Q8_0.gguf', approximateBytes: 8710000000 });
     }
+    if (recipe.id === 'minimax-h3-image' && file.role === 'diffusion') {
+      // This publisher preserves flattened F32 tensors' original dimensions in
+      // GGUF metadata. Admit it only with an engine that restores those shapes.
+      options.push({ ...file, id: 'q4-k-m', repository: 'Abiray/MiniMax-H3-Image-GGUF', revision: '96a59945b9c55796f1bcfd1fd455212706ecefba', path: 'MiniMax-H3-Image-Pruned-Q4_K_M.gguf', directory: 'MiniMax-H3-Image-GGUF', approximateBytes: 11573106144, requiredRuntimeFeature: 'ggufOriginalShapes' });
+      options.push({ ...file, id: 'int8-convrot', path: 'diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors', approximateBytes: 20979314802, unsupportedReason: 'int8-convrot' });
+    }
     return { role: file.role, defaultOptionId: 'default', options };
   }),
 }));
@@ -180,6 +204,43 @@ export function selectedRecipeFiles({ recipe, selections }: { recipe: ImageModel
     const { id: _id, ...file } = option;
     return file;
   });
+}
+
+/** File availability and a selected variant's known runtime limitation are
+ * independent. This check uses only the reviewed static catalog, without I/O. */
+export function imageRecipeUnsupportedReason({ files }: { files: readonly ImageRecipeFile[] }): ImageRecipeFile['unsupportedReason'] {
+  return files.find(file => file.unsupportedReason !== undefined)?.unsupportedReason;
+}
+
+export type ImageRecipeUnavailableReason = ImageRecipeFile['unsupportedReason'] | 'engine-update-required';
+
+/** Catalog gating uses verified build metadata, never probes the engine or
+ * infers support from a filename. Native mount checks remain authoritative. */
+export function imageRecipeUnavailableReason({ files, runtimeFeatures }: { files: readonly ImageRecipeFile[], runtimeFeatures: ImageRuntimeFeatures }): ImageRecipeUnavailableReason {
+  const unsupported = imageRecipeUnsupportedReason({ files });
+  if (unsupported !== undefined) {
+    return unsupported;
+  }
+  for (const file of files) {
+    switch (file.requiredRuntimeFeature) {
+    case 'ggufOriginalShapes':
+      if (!runtimeFeatures.ggufOriginalShapes) {
+        return 'engine-update-required';
+      }
+      break;
+    case 'bf16WeightRetention':
+      if (!runtimeFeatures.bf16WeightRetention) {
+        return 'engine-update-required';
+      }
+      break;
+    case undefined: break;
+    default: {
+      const exhaustive: never = file.requiredRuntimeFeature;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+  return undefined;
 }
 
 /** Ordinary browser navigation, never a background fetch. */

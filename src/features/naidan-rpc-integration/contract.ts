@@ -1,5 +1,6 @@
 import { temporaryFilePathSchema } from '@/01-models/temporary-model-files';
 import { z } from 'zod';
+import { imageGenerationSamplingSchema } from '@/01-models/image-generation-history';
 import { modelIdSchema } from '@/features/llama-cpp-browser/types';
 import { contract, describeMethods, methodDescriptorSchema, methodNames, procedure, rpc } from '@/features/naidan-rpc';
 import type { NaidanRpcClient, NaidanRpcImplementation } from '@/features/naidan-rpc';
@@ -83,12 +84,22 @@ export const peerImageParametersSchema = z.object({
   negativePrompt: z.string().max(4096),
   width: z.number().int().min(128).max(2048).multipleOf(64),
   height: z.number().int().min(128).max(2048).multipleOf(64),
-  steps: z.number().int().min(1).max(100),
-  guidance: z.number().finite().min(0).max(30),
+  // Required intent fields deliberately replace the old numeric names. A peer
+  // with the earlier image contract rejects the request before inference,
+  // rather than stripping an unfamiliar tile preference and running defaults.
+  stepsPreference: z.union([z.literal('auto'), z.number().int().min(1).max(100)]),
+  guidancePreference: z.union([z.literal('auto'), z.number().finite().min(0).max(30)]),
+  vaeTileSizePreference: z.union([z.literal('auto'), z.number().int().min(16).max(256).multipleOf(8)]),
   seed: z.string().regex(/^(0|[1-9][0-9]*)$/).max(19).refine(value => /^[0-9]{1,19}$/.test(value) && BigInt(value) <= 9223372036854775807n),
   sampler: z.string().min(1).max(64),
   scheduler: z.string().min(1).max(64),
   distilledGuidance: z.number().finite().min(0).max(30),
+});
+
+export const peerImageResolvedParametersSchema = z.object({
+  steps: z.number().int().min(1).max(100),
+  guidance: z.number().finite().min(0).max(30),
+  vaeTileSize: z.number().int().min(16).max(256).multipleOf(8),
 });
 
 export const peerImagePreviewSchema = z.object({
@@ -259,6 +270,8 @@ export const peerImageEventSchema = z.discriminatedUnion('type', [
     height: z.number().int().positive().max(2048),
     modelVersion: z.string().max(1024),
     uniformOutput: z.boolean(),
+    resolvedParameters: peerImageResolvedParametersSchema,
+    sampling: imageGenerationSamplingSchema.optional(),
   }),
 ]);
 

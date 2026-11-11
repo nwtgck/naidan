@@ -5,7 +5,7 @@ import type { InspectionProgress } from './inventory-worker/types';
 import type { CatalogDownloadProgress } from './logic/catalog-download';
 import type { ImageRecipeSelection } from './model-recipes';
 import type { ComputedRef, Ref, ShallowRef } from 'vue';
-import type { ModelSlot, Request } from './types';
+import type { ImageRuntimeFeatures, ModelSlot, Request } from './types';
 import type { BrowserImageModelSelection } from '@/01-models/types';
 import type { ImageLoraSelection } from './lora-form';
 import type { ImageGenerationModelFile } from '@/01-models/image-generation-history';
@@ -35,6 +35,7 @@ export type ImageBenchmarkTarget = {
   missing: ModelSlot[]; issue: string | undefined;
 };
 export type ImageLibraryView = {
+  runtimeFeatures: ComputedRef<ImageRuntimeFeatures>;
   captureModelSelection({ loras }: { loras: readonly ImageLoraSelection[] }): BrowserImageModelSelection | undefined;
   restoreModelSelection({ selection }: { selection: BrowserImageModelSelection }): { loras: ImageLoraSelection[], missing: string[], missingInactive: string[] };
   hostDirectories: HostModelDirectoriesView;

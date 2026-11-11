@@ -47,7 +47,7 @@ function analyzeImportScriptsCalls(code: string, id = '<unknown>'): ImportScript
     sourceType: 'unambiguous',
     sourceFilename: id,
     allowAwaitOutsideFunction: true,
-    plugins: ['dynamicImport', 'importMeta', 'topLevelAwait', 'typescript', 'jsx'],
+    plugins: ['typescript', 'jsx'],
   });
   const calls: ImportScriptsCall[] = [];
   const safeGuardIdentifiers = new Set<string>();

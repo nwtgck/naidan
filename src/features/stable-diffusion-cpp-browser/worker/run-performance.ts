@@ -1,4 +1,5 @@
 import type { ImageDiagnosticInput, createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+import { parseImageNativeLog, type ImageNativeLog } from '@/features/stable-diffusion-cpp-browser/native-log';
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { MeasurementPoint, MeasurementOutcome } from './gpu-performance';
 export type PerformancePhase = 'runtime' | 'model-header' | 'model-load' | 'prepare' | 'conditioning' | 'sampling' | 'decoding' | 'encoding' | 'cleanup';
@@ -26,11 +27,11 @@ const emptyPlacement = () => ({
   scheduledWebgpuToCpuBf16WeightUseBytes: 0,
 });
 
-function parsePlacement({ message }: { message: string }): ReturnType<typeof emptyPlacement> | 'invalid' | undefined {
-  if (!/^compute_workspace\.cpp:\d+\s+- browser-placement-v1\b/.test(message)) {
+function parsePlacement({ log }: { log: ImageNativeLog }): ReturnType<typeof emptyPlacement> | 'invalid' | undefined {
+  if (log.sourceFile !== 'compute_workspace.cpp' || !/^browser-placement-v1\b/.test(log.message)) {
     return undefined;
   }
-  const match = /^compute_workspace\.cpp:\d+\s+- browser-placement-v1 nodes=(\d+) cpu=(\d+) webgpu=(\d+) other=(\d+) bf16=(\d+) inspected=(\d+) cpu_bf16=(\d+) webgpu_bf16=(\d+) other_bf16=(\d+) cpu_unsupported_bf16=(\d+) webgpu_weights=(\d+) host_weights=(\d+) other_weights=(\d+) webgpu_cpu_bf16=(\d+) webgpu_cpu_bf16_use_bytes=(\d+)\s*$/.exec(message);
+  const match = /^browser-placement-v1 nodes=(\d+) cpu=(\d+) webgpu=(\d+) other=(\d+) bf16=(\d+) inspected=(\d+) cpu_bf16=(\d+) webgpu_bf16=(\d+) other_bf16=(\d+) cpu_unsupported_bf16=(\d+) webgpu_weights=(\d+) host_weights=(\d+) other_weights=(\d+) webgpu_cpu_bf16=(\d+) webgpu_cpu_bf16_use_bytes=(\d+)\s*$/.exec(log.message);
   if (!match) {
     return 'invalid';
   }
@@ -66,8 +67,11 @@ function parsePlacement({ message }: { message: string }): ReturnType<typeof emp
   };
 }
 
-function parseWeightConversion({ message }: { message: string }) {
-  const match = /^model_manager\.cpp:\d+\s+- browser-weight-conversion-v1 target=(f32|f16) tensors=(\d+) source_bytes=(\d+) destination_bytes=(\d+) extra_bytes=(\d+)\s*$/.exec(message);
+function parseWeightConversion({ log }: { log: ImageNativeLog }) {
+  if (log.sourceFile !== 'model_manager.cpp') {
+    return undefined;
+  }
+  const match = /^browser-weight-conversion-v1 target=(f32|f16) tensors=(\d+) source_bytes=(\d+) destination_bytes=(\d+) extra_bytes=(\d+)\s*$/.exec(log.message);
   if (!match) {
     return undefined;
   }
@@ -263,10 +267,14 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       if (!enabled || closed || message.length > 2048) {
         return;
       }
+      const log = parseImageNativeLog({ message });
+      if (!log) {
+        return;
+      }
       // Parse before the raw-log rate limiter. An allocation snapshot reports
       // scheduling and original weight operands, not completed kernels or real
       // readbacks; compare its windows with independent WebGPU API measurements.
-      const placement = parsePlacement({ message });
+      const placement = parsePlacement({ log });
       if (placement !== undefined) {
         if (placement === 'invalid') {
           placementTotal.invalidReports++;
@@ -281,7 +289,7 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       }
       // Registration counts each converted parameter once. Preserve this small
       // report even if raw native logs are throttled during model loading.
-      const conversion = parseWeightConversion({ message });
+      const conversion = parseWeightConversion({ log });
       if (conversion !== undefined) {
         report({ metric: 'weight-conversion', fields: { ...conversion, weightBytesMeaning: 'unique-parameter-payload-not-allocation-or-peak' } });
         return;
@@ -289,15 +297,15 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       // Anchored, pinned diagnostic formats. Changes in upstream remain missing
       // information, never guessed timings or disclosure of prompt/model text.
       let value: RegExpExecArray | null;
-      if ((value = /^image\.cpp:\d+\s+- get_learned_condition completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(message))) {
+      if (log.sourceFile === 'image.cpp' && (value = /^get_learned_condition completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(log.message))) {
         conditionMs += Number(value[1]) * 1000;
         conditionReports++;
       }
-      if ((value = /^image\.cpp:\d+\s+- sampling completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(message))) {
+      if (log.sourceFile === 'image.cpp' && (value = /^sampling completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(log.message))) {
         samplingMs += Number(value[1]) * 1000;
         samplingReports++;
       }
-      if ((value = /^vae\.hpp:\d+\s+- computing vae decode graph completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(message))) {
+      if (log.sourceFile === 'vae.hpp' && (value = /^computing vae decode graph completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(log.message))) {
         switch (phase) {
         case 'sampling': previewMs += Number(value[1]) * 1000;
           previewReports++;
@@ -312,13 +320,13 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
         }
         }
       }
-      if ((value = /^ggml_runner\.cpp:\d+\s+- ([a-z0-9_]+) executing segment \d+\/\d+: graph\s*$/.exec(message))) {
+      if ((log.sourceFile === 'ggml_runner.cpp' || log.sourceFile === 'execution_engine.cpp') && (value = /^([a-z0-9_]+) executing segment \d+\/\d+: [A-Za-z0-9_.-]+\s*$/.exec(log.message))) {
         const name = value[1];
-        if (name === 'z_image' || name === 'qwen_image_2_1') {
+        if (name === 'z_image' || name === 'qwen_image_2_1' || name === 'minimax_h3') {
           diffusionGraphs++;
         } else if (name === 'qwen3' || name === 'qwen3vl') {
           textGraphs++;
-        } else if (name === 'vae' || name === 'wan_vae') {
+        } else if (name === 'vae' || name === 'wan_vae' || name === 'sol_h3_vae' || name === 'minimax_h3_image_vae' || name === 'p_h3_image_vae' || name === 'minimax_h3_video_vae') {
           vaeGraphs++;
         } else {
           otherGraphs++;

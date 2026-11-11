@@ -1,0 +1,1 @@
+export const imageGeneration__model_parameter_inspection_failed = (): string => 'No se pudo inspeccionar el modelo para determinar los ajustes automáticos. Inspecciona el modelo de nuevo o introduce valores numéricos.';

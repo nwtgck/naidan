@@ -20,6 +20,20 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-11-11
+
+### Added
+
+- MiniMax-H3-Image models in the browser image-model catalog, with matching text encoder and VAE components.
+- BF16 image-model weight retention on compatible browser runtimes, selected by default with F16 and F32 alternatives.
+- Compact Auto/Fixed controls for image-generation steps, guidance, and VAE tile size. Automatic values follow the selected model; explicit values remain fixed across model changes and draft or history reuse.
+- Native sampler and scheduler choices recorded with generated images and shown in results and history.
+
+### Changed
+
+- Update application and development dependencies.
+- Image-generation RPC resolves automatic settings on the provider and retains confirmed request values for reuse, exports, and comparisons. Connected image-generation peers must use compatible versions of the updated request format.
+
 ## [0.65.0] - 2026-11-07
 
 ### Added
@@ -1095,7 +1109,8 @@ All notable changes to Naidan are documented in this file.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.65.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.66.0...develop
+[0.66.0]: https://github.com/nwtgck/naidan/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/nwtgck/naidan/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/nwtgck/naidan/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.63.0

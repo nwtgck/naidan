@@ -83,8 +83,9 @@ function imageInput(): ReceiveValue<typeof naidanPeerContract.methods.generateIm
       negativePrompt: '',
       width: 256,
       height: 256,
-      steps: 4,
-      guidance: 7,
+      stepsPreference: 4,
+      guidancePreference: 7,
+      vaeTileSizePreference: 32,
       seed: '42',
       sampler: 'auto',
       scheduler: 'auto',
@@ -136,7 +137,7 @@ it('projects added input, result, item and progress fields across mismatched pee
   const progress = vi.fn(() => {
     observed.resolve();
   });
-  const completed = { type: 'completed' as const, seed: '42', width: 256, height: 256, modelVersion: 'test', uniformOutput: false };
+  const completed = { type: 'completed' as const, seed: '42', width: 256, height: 256, modelVersion: 'test', uniformOutput: false, resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } };
   let received: ReceiveValue<typeof current.input> | undefined;
   const { caller, transport, signal } = peers({
     exposure: expose({
@@ -397,4 +398,29 @@ it('transfers an unknown image hint version without rejecting the manual catalog
   await call.closed;
   expect(items[0]).toEqual(item);
   expect(items[0]!.selectionHints).toEqual({ version: 2 });
+});
+
+it.each(['legacy-provider', 'legacy-caller'] as const)('rejects the earlier numeric image contract before inference (%s)', async direction => {
+  const current = naidanPeerContract.methods.generateImage;
+  const legacyParameters = peerImageParametersSchema.omit({ stepsPreference: true, guidancePreference: true, vaeTileSizePreference: true }).extend({
+    steps: z.number().int().min(1).max(100),
+    guidance: z.number().finite().min(0).max(30),
+  });
+  const legacyContract = contract({
+    name: naidanPeerContract.name,
+    methods: { generateImage: procedure({ input: current.input.extend({ parameters: legacyParameters }), result: current.result, notifications: current.notifications }) },
+  });
+  const invoked = vi.fn((): never => {
+    throw new Error('An incompatible image contract reached inference');
+  });
+  const providerContract = direction === 'legacy-provider' ? legacyContract : contract({ name: naidanPeerContract.name, methods: { generateImage: current } });
+  const { caller } = peers({ exposure: expose({ contract: providerContract, allowedMethods: ['generateImage'], implementation: { generateImage: invoked } }) });
+  const input = imageInput();
+  const { stepsPreference: _steps, guidancePreference: _guidance, vaeTileSizePreference: _tile, ...shared } = input.parameters;
+  const call = direction === 'legacy-provider'
+    ? caller.client({ contract: naidanPeerContract }).generateImage({ input, on: { progress: undefined }, signal: undefined, timeoutMs: undefined })
+    : caller.client({ contract: legacyContract }).generateImage({ input: { ...input, parameters: { ...shared, steps: 4, guidance: 7 } }, on: { progress: undefined }, signal: undefined, timeoutMs: undefined });
+  await expect(call.result).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+  await expect(call.closed).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+  expect(invoked).not.toHaveBeenCalled();
 });

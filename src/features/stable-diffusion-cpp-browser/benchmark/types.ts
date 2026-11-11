@@ -1,3 +1,5 @@
+import { imageGenerationSamplingSchema } from '@/01-models/image-generation-history';
+import type { VaeTileSizePreference, ImageModelParameterPreference } from '@/01-models/image-generation';
 import { z } from 'zod';
 import { artifactSchema, parametersSchema, previewSettingsSchema, requestSchema, weightResidencySchema, modelSlotSchema } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Request, Parameters } from '@/features/stable-diffusion-cpp-browser/types';
@@ -14,8 +16,10 @@ export const protocolSchema = z.object({
   keepImages: z.boolean(),
 }).strict();
 export type BenchmarkProtocol = z.infer<typeof protocolSchema>;
-export type ParameterChange = { [K in keyof Parameters]: { key: K, value: Parameters[K] } }[keyof Parameters];
-export type BenchmarkModelPlan = { target: ImageBenchmarkTarget, request: Request, overrides: Partial<Parameters>, preset: string | undefined };
+// Authoring intent stays outside the immutable numeric Worker request.
+export type BenchmarkParameters = Parameters & { vaeTileSizePreference?: VaeTileSizePreference, stepsPreference?: ImageModelParameterPreference, guidancePreference?: ImageModelParameterPreference };
+export type ParameterChange = { [K in keyof BenchmarkParameters]-?: { key: K, value: Exclude<BenchmarkParameters[K], undefined> } }[keyof BenchmarkParameters];
+export type BenchmarkModelPlan = { target: ImageBenchmarkTarget, request: Request, overrides: Partial<BenchmarkParameters>, preset: string | undefined };
 export type BenchmarkPlan = { id: string, createdAt: string, appVersion: string, notes: string, protocol: BenchmarkProtocol, models: BenchmarkModelPlan[] };
 const nonnegative = z.number().finite().nonnegative();
 const fieldsSchema = z.record(z.string().max(64), z.union([z.number().finite(), z.string().max(512), z.boolean(), z.array(z.number().finite()).max(8)]));
@@ -43,6 +47,7 @@ export const runRecordSchema = z.object({
   skipReason: z.string().optional(),
   modelVersion: z.string().max(256).optional(),
   uniformOutput: z.boolean().optional(),
+  sampling: imageGenerationSamplingSchema.optional(),
   image: z.object({ status: z.enum(['not-requested', 'retained', 'budget-exceeded', 'no-output']), bytes: nonnegative }),
   previewFrames: nonnegative,
   hiddenObserved: z.boolean(),

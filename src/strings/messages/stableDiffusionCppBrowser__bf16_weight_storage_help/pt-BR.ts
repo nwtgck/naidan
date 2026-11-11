@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__bf16_weight_storage_help = (): string => "F32 preserva os valores BF16 e dobra a memória dos pesos. F16 usa menos memória, mas pode perder precisão e faixa numérica. BF16 mantém os pesos de matrizes e embeddings compatíveis; pesos de normalização e vieses ainda podem usar F32. A quantização existente não muda.";

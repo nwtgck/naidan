@@ -1,19 +1,26 @@
 // @vitest-environment node
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { z } from 'zod';
 import { pathToFileURL } from 'node:url';
 import { attachCore, mountReadOnlyFile, schema, type Core } from 'stable-diffusion-cpp-browser-core/stable-diffusion-cpp/examples/runtime';
 import type createNativeModule from 'stable-diffusion-cpp-browser-core/stable-diffusion-cpp/profiles/webgpu-wasm32-asyncify/test/core.d.ts';
 import { createModelFileReadCache, createModelFileSource, type SyncBlobReader } from './gguf-file';
+import { assertImageRuntimeContract } from '@/features/stable-diffusion-cpp-browser/runtime-contract';
+import type { NativeApi } from './core-types';
 
 // Exercises the installed ABI and real CPU arithmetic with self-authored native
 // tensors. It does not create model contexts, generate images or run GPU kernels.
 let native: Awaited<ReturnType<typeof createNativeModule>>;
 let core: Core;
+let imageApi: NativeApi;
 const nativeDiagnostics: string[] = [];
+const bf16WeightRetention = z.object({ capabilities: z.object({ bf16WeightRetention: z.boolean().optional() }) }).parse(JSON.parse(readFileSync(path.resolve('node_modules/stable-diffusion-cpp-browser-core/stable-diffusion-cpp-browser-core/manifest.json'), 'utf8'))).capabilities.bf16WeightRetention === true;
 
 beforeAll(async () => {
+  assertImageRuntimeContract({ schema, bf16WeightRetention });
   const root = path.resolve('node_modules/stable-diffusion-cpp-browser-core/stable-diffusion-cpp-browser-core');
   const folder = path.join(root, 'profiles/webgpu-wasm32-asyncify/test');
   const imported: unknown = await import(/* @vite-ignore */ pathToFileURL(path.join(folder, 'core.mjs')).href);
@@ -31,11 +38,73 @@ beforeAll(async () => {
     },
   });
   core = attachCore(native, schema, { suspension: 'asyncify' });
+  // The semantic schema check above binds this consumer view to the installed
+  // binary even while an older dependency's declarations are still installed.
+  imageApi = core.api as unknown as NativeApi;
   expect(native._sdc_abi_version()).toBe(2);
   expect(core.pointerBytes).toBe(4);
 }, 30_000);
 
 describe('installed image core contracts on CPU', () => {
+  it.skipIf(!bf16WeightRetention)('checks the advertised BF16 retention version and explicit enum while preserving F32 initialization', async () => {
+    expect(await imageApi.sd_browser_bf16_retention_version?.()).toBeGreaterThanOrEqual(1);
+    const params = core.allocRecord('sd_ctx_params_t');
+    using _cleanup = {
+      [Symbol.dispose]() {
+        core.free(params);
+      },
+    };
+    await imageApi.sd_ctx_params_init(params);
+    expect(Number(core.getField('sd_ctx_params_t', params, 'webgpu_bf16_type'))).toBe(core.constant('SD_TYPE_F32'));
+    core.setField('sd_ctx_params_t', params, 'webgpu_bf16_type', core.constant('SD_TYPE_BF16'));
+    expect(Number(core.getField('sd_ctx_params_t', params, 'webgpu_bf16_type'))).toBe(core.constant('SD_TYPE_BF16'));
+    await imageApi.sd_ctx_params_init(params);
+    expect(Number(core.getField('sd_ctx_params_t', params, 'webgpu_bf16_type'))).toBe(core.constant('SD_TYPE_F32'));
+  });
+
+  it('resets failed generation outputs and accepts null result owners through the real bridge', async () => {
+    const params = core.allocRecord('sd_img_gen_params_t');
+    const resultOut = core.alloc(core.pointerBytes);
+    using _cleanup = {
+      [Symbol.dispose]() {
+        core.free(resultOut);
+        core.free(params);
+      },
+    };
+    await imageApi.sd_img_gen_params_init(params);
+    core.bytes(resultOut, core.pointerBytes).fill(0xa5);
+    expect(await imageApi.generate_image(0n, params, resultOut)).toBe(0);
+    const bytes = core.bytes(resultOut, core.pointerBytes);
+    expect(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0, true)).toBe(0);
+    expect(await imageApi.generate_image(0n, params, 0n)).toBe(0);
+    await imageApi.free_sd_image_generation_result(0n);
+  });
+
+  it('uses image-pixel tile fields while retaining exact signed generation-progress counters', async () => {
+    const params = core.allocRecord('sd_img_gen_params_t');
+    const progress = core.allocRecord('sd_generation_progress_t');
+    using _cleanup = {
+      [Symbol.dispose]() {
+        core.free(progress);
+        core.free(params);
+      },
+    };
+    await imageApi.sd_img_gen_params_init(params);
+    const tile = core.fieldAddress('sd_img_gen_params_t', params, 'vae_tiling_params');
+    expect(core.getField('sd_tiling_params_t', tile, 'tile_size_w')).toBe(0);
+    expect(core.getField('sd_tiling_params_t', tile, 'tile_size_h')).toBe(0);
+    core.setField('sd_tiling_params_t', tile, 'tile_size_w', 256);
+    core.setField('sd_tiling_params_t', tile, 'tile_size_h', 384);
+    expect(core.getField('sd_tiling_params_t', tile, 'tile_size_w')).toBe(256);
+    expect(core.getField('sd_tiling_params_t', tile, 'tile_size_h')).toBe(384);
+    core.setField('sd_generation_progress_t', progress, 'completed', 9007199254740993n);
+    core.setField('sd_generation_progress_t', progress, 'total', 0n);
+    expect(core.getField('sd_generation_progress_t', progress, 'completed')).toBe(9007199254740993n);
+    expect(core.getField('sd_generation_progress_t', progress, 'total')).toBe(0n);
+    core.setField('sd_generation_progress_t', progress, 'completed', -1n);
+    expect(core.getField('sd_generation_progress_t', progress, 'completed')).toBe(-1n);
+  });
+
   it('initializes and resets the real context record without retaining previous pointers or options', async () => {
     const params = core.allocRecord('sd_ctx_params_t');
     const backend = core.utf8('WebGPU');

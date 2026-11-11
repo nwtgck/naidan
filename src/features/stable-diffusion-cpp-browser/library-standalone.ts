@@ -5,6 +5,7 @@ import { imageModelRecipes } from './model-recipes';
 /** Display-only state. No file access, model inspection, Worker or native imports. */
 export function createDisabledImageLibrary(): ImageLibraryView {
   return {
+    runtimeFeatures: computed(() => ({ ggufOriginalShapes: false, bf16WeightRetention: false })),
     captureModelSelection() {
       return undefined;
     },

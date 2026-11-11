@@ -16,12 +16,85 @@ export type WeightMetadata = {
   tensors: TensorInfo[];
   split: { index: number, count: number, tensors: number } | undefined;
   unsupported: string | undefined;
+  requiresGgufOriginalShapes: boolean;
 };
 export type Inspection = { status: 'weights', value: WeightMetadata } | { status: 'unknown' | 'invalid' | 'lfs-pointer', reason: string };
 const metadataRecord = z.record(z.string(), z.string());
 const safeUnsigned = z.number().int().nonnegative().refine(Number.isSafeInteger);
 const tensorSchema = z.object({ dtype: z.string().min(1).max(64), shape: z.array(safeUnsigned).max(64), data_offsets: z.tuple([safeUnsigned, safeUnsigned]) });
 const dtypeBytes: Readonly<Record<string, number>> = { F64: 8, F32: 4, F16: 2, BF16: 2, I64: 8, I32: 4, I16: 2, I8: 1, U64: 8, U32: 4, U16: 2, U8: 1, BOOL: 1, F8_E4M3: 1, F8_E5M2: 1 };
+// GGUF on-disk block layouts from ggml.h / ggml-common.h. Used only when
+// validating Comfy original shapes; unknown types are never guessed.
+const ggufBlocks: Readonly<Record<number, readonly [number, number]>> = {
+  0: [1, 4],
+  1: [1, 2],
+  2: [32, 18],
+  3: [32, 20],
+  6: [32, 22],
+  7: [32, 24],
+  8: [32, 34],
+  9: [32, 36],
+  10: [256, 84],
+  11: [256, 110],
+  12: [256, 144],
+  13: [256, 176],
+  14: [256, 210],
+  15: [256, 292],
+  16: [256, 66],
+  17: [256, 74],
+  18: [256, 98],
+  19: [256, 50],
+  20: [32, 18],
+  21: [256, 110],
+  22: [256, 82],
+  23: [256, 136],
+  24: [1, 1],
+  25: [1, 2],
+  26: [1, 4],
+  27: [1, 8],
+  28: [1, 8],
+  29: [256, 56],
+  30: [1, 2],
+  34: [256, 54],
+  35: [256, 66],
+  39: [32, 17],
+  40: [64, 36],
+  41: [128, 18],
+  42: [64, 18],
+};
+const originalShapePrefix = 'comfy.gguf.orig_shape.';
+const maxGgmlElements = (1n << 63n) - 1n;
+
+function ggufOriginalShapeLayout({ descriptorShape, originalShape, dtype }: { descriptorShape: readonly number[], originalShape: readonly number[], dtype: number }): { bytes: bigint, changesGgmlShape: boolean } {
+  const count = originalShape.reduce((total, dimension) => total * BigInt(dimension), 1n);
+  if (descriptorShape.reduce((total, dimension) => total * BigInt(dimension), 1n) !== count) {
+    throw new Error('GGUF original shape element count disagrees with its descriptor');
+  }
+  const originalNe = [...originalShape].reverse();
+  if (descriptorShape.length !== 1 && (descriptorShape.length !== originalNe.length || descriptorShape.some((dimension, index) => dimension !== originalNe[index]))) {
+    throw new Error('GGUF original shape contradicts a multidimensional descriptor');
+  }
+  const block = ggufBlocks[dtype];
+  if (!block) {
+    throw new Error('Unsupported GGUF dtype for original shape validation');
+  }
+  const [blockElements, blockBytes] = block;
+  if (descriptorShape[0]! % blockElements !== 0 || originalNe[0]! % blockElements !== 0) {
+    throw new Error('GGUF original shape violates quantization row block alignment');
+  }
+  const descriptorBytes = count / BigInt(blockElements) * BigInt(blockBytes);
+  const rowElements = BigInt(originalNe[0]!);
+  const originalBytes = rowElements / BigInt(blockElements) * BigInt(blockBytes) * (count / rowElements);
+  if (descriptorBytes !== originalBytes) {
+    throw new Error('GGUF original shape changes tensor storage bytes');
+  }
+  return {
+    bytes: originalBytes,
+    // Leading PyTorch singleton dimensions are trailing GGML ones. They do not
+    // require a new native loader when the four physical axes already agree.
+    changesGgmlShape: Array.from({ length: 4 }, (_value, index) => (descriptorShape[index] ?? 1) !== (originalNe[index] ?? 1)).some(Boolean),
+  };
+}
 
 function checkedSize({ value }: { value: bigint }): number {
   if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -48,6 +121,9 @@ async function inspectGguf({ file, signal }: { file: ModelMetadataFile, signal: 
   let window: Uint8Array<ArrayBuffer> = new Uint8Array(0);
   const metadata = new Map<string, string | number | boolean>();
   const keys = new Set<string>();
+  const originalShapes = new Map<string, number[]>();
+  let alignmentPosition: number | undefined;
+  let alignmentType: number | undefined;
   async function checkpoint(): Promise<void> {
     signal?.throwIfAborted();
     if (++items > maxItems * 2) {
@@ -154,6 +230,25 @@ async function inspectGguf({ file, signal }: { file: ModelMetadataFile, signal: 
     }
     return undefined;
   }
+  async function originalShape({ type }: { type: number }): Promise<number[]> {
+    if (type !== 9) {
+      throw new Error('GGUF original shape must be an integer array');
+    }
+    const element = await u32(), count = await u64();
+    if (count < 1 || count > 4 || ![0, 1, 2, 3, 4, 5, 10, 11].includes(element)) {
+      throw new Error('Invalid GGUF original shape array type or rank');
+    }
+    const shape: number[] = [];
+    let elements = 1n;
+    for (let i = 0; i < count; i++) {
+      const dimension = await value({ type: element, retain: true });
+      if (typeof dimension !== 'number' || !Number.isSafeInteger(dimension) || dimension <= 0 || (elements *= BigInt(dimension)) > maxGgmlElements) {
+        throw new Error('Invalid GGUF original shape dimension or element count');
+      }
+      shape.push(dimension);
+    }
+    return shape;
+  }
   if (await u32() !== 0x46554747 || ![2, 3].includes(await u32())) {
     throw new Error('Expected little-endian GGUF v2/v3');
   }
@@ -167,13 +262,30 @@ async function inspectGguf({ file, signal }: { file: ModelMetadataFile, signal: 
       throw new Error('Duplicate or empty GGUF metadata key');
     }
     keys.add(key);
+    const type = await u32();
+    if (key.startsWith(originalShapePrefix)) {
+      const name = key.slice(originalShapePrefix.length);
+      if (!name || originalShapes.size >= 100_000) {
+        throw new Error('Empty GGUF original shape tensor name or inspection limit reached');
+      }
+      originalShapes.set(name, await originalShape({ type }));
+      continue;
+    }
+    if (key === 'general.alignment') {
+      alignmentType = type;
+      alignmentPosition = offset;
+      await value({ type, retain: false });
+      continue;
+    }
     const retain = /^(general\.(architecture|name|basename|finetune)|split\.|qwen[\w.]*\.(embedding_length|block_count)|clip\.)/.test(key);
-    const item = await value({ type: await u32(), retain });
+    const item = await value({ type, retain });
     if (item !== undefined) {
       metadata.set(key, item);
     }
   }
   const tensors: TensorInfo[] = [], names = new Set<string>();
+  const originalRanges: { offset: bigint, bytes: bigint }[] = [];
+  let requiresGgufOriginalShapes = false;
   for (let i = 0; i < tensorCount; i++) {
     await checkpoint();
     const name = await string({ retain: true });
@@ -193,14 +305,43 @@ async function inspectGguf({ file, signal }: { file: ModelMetadataFile, signal: 
       }
       shape.push(dim);
     }
-    const dtype = String(await u32());
+    const dtype = await u32();
     const tensorOffset = await u64();
     if (tensorOffset >= file.size) {
       throw new Error('GGUF tensor offset outside file');
     }
-    // Normalize shapes to conventional [out, in, ...], unlike GGML's ne order.
-    tensors.push({ name, shape: shape.reverse(), dtype });
+    const original = originalShapes.get(name);
+    if (original) {
+      const layout = ggufOriginalShapeLayout({ descriptorShape: shape, originalShape: original, dtype });
+      originalRanges.push({ offset: BigInt(tensorOffset), bytes: layout.bytes });
+      requiresGgufOriginalShapes ||= layout.changesGgmlShape;
+    }
+    // Comfy arrays already use PyTorch order; reverse only ordinary GGML ne.
+    tensors.push({ name, shape: original ? [...original] : shape.reverse(), dtype: String(dtype) });
   }
+  if (originalRanges.length) {
+    if (alignmentType !== undefined && alignmentType !== 4) {
+      throw new Error('Invalid GGUF alignment for original shape validation');
+    }
+    const descriptorEnd = offset;
+    let alignment = 32;
+    if (alignmentPosition !== undefined) {
+      offset = alignmentPosition;
+      alignment = await u32();
+      offset = descriptorEnd;
+    }
+    if (alignment <= 0 || (BigInt(alignment) & (BigInt(alignment) - 1n)) !== 0n) {
+      throw new Error('Invalid GGUF alignment for original shape validation');
+    }
+    const boundary = BigInt(alignment), dataStart = (BigInt(offset) + boundary - 1n) / boundary * boundary;
+    for (const range of originalRanges) {
+      if (range.offset % boundary !== 0n || dataStart + range.offset + range.bytes > BigInt(file.size)) {
+        throw new Error('GGUF original shape tensor storage exceeds file bounds or alignment');
+      }
+    }
+  }
+  // Shared shard metadata may describe tensors in a different file. Unmatched
+  // shapes have been checked for bounded syntax/product, but change no tensor.
   let split: WeightMetadata['split'];
   if (['split.no', 'split.count', 'split.tensors.count'].some(key => metadata.has(key))) {
     const index = metadata.get('split.no'), count = metadata.get('split.count'), total = metadata.get('split.tensors.count');
@@ -209,7 +350,7 @@ async function inspectGguf({ file, signal }: { file: ModelMetadataFile, signal: 
     }
     split = { index, count, tensors: total };
   }
-  return { format: 'gguf', metadata, tensors, split, unsupported: undefined };
+  return { format: 'gguf', metadata, tensors, split, unsupported: undefined, requiresGgufOriginalShapes };
 }
 
 async function inspectSafetensors({ file, headerSize, signal }: { file: ModelMetadataFile, headerSize: number, signal: AbortSignal | undefined }): Promise<WeightMetadata> {
@@ -276,7 +417,7 @@ async function inspectSafetensors({ file, headerSize, signal }: { file: ModelMet
   if (cursor !== file.size - 8 - headerSize) {
     throw new Error('Unindexed safetensors payload');
   }
-  return { format: 'safetensors', metadata, tensors, split: undefined, unsupported };
+  return { format: 'safetensors', metadata, tensors, split: undefined, unsupported, requiresGgufOriginalShapes: false };
 }
 
 export async function inspectWeightFile({ file, signal }: { file: ModelMetadataFile, signal: AbortSignal | undefined }): Promise<Inspection> {

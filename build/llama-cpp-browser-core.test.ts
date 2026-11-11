@@ -52,6 +52,7 @@ describe('shared browser core package integration', () => {
     }
   });
 
+  // Compressing and verifying every real Wasm profile can exceed 5s on busy CI workers.
   it('reads the combined inventory and emits the available verified Hosted Wasm payloads without retired CPU64', async () => {
     const files = new Map<string, Uint8Array>();
     const hook = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).runtimeAssetsPlugin.generateBundle;
@@ -86,7 +87,7 @@ describe('shared browser core package integration', () => {
       }
       expect(Buffer.from(schema)).toEqual(readFileSync(q8SchemaPath));
     }
-  });
+  }, 30_000);
 
   it.each(profiles)('loads the package source for %s at the same virtual dev boundary used by production', async profile => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-dev-'));

@@ -122,6 +122,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div tw-class="space-y-2">
         <h3 tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.ImageEngineState__runtime_and_model() }}</h3>
         <dl tw-class="grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
+          <div tw-class="min-w-0"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage() }}</dt><dd data-testid="image-engine-bf16-weight-type" tw-class="font-medium">{{ state.snapshot.value.requested.bf16WeightType.toUpperCase() }}</dd></div>
           <div tw-class="min-w-0"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageEngineState__detail_label({ detail: 'model' }) }}</dt><dd tw-class="font-medium break-words">{{ state.snapshot.value.modelVersion || lazyStrings.ImageEngineState__unknown_model() }}</dd></div>
           <div tw-class="min-w-0"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageEngineState__detail_label({ detail: 'profile' }) }}</dt><dd tw-class="font-medium break-words">{{ state.snapshot.value.profile }}</dd></div>
           <div tw-class="min-w-0"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageEngineState__detail_label({ detail: 'source' }) }}</dt><dd tw-class="font-mono break-all">{{ state.snapshot.value.source }}</dd></div>

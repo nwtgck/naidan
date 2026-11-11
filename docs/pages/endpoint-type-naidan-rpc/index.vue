@@ -7,6 +7,7 @@ import type { CommonMessages, NaidanRpcMessages } from '../../messages/types';
 import type { DocsLocale } from '../../navigation/routes';
 
 const props = defineProps<{ s: NaidanRpcMessages; locale: DocsLocale; common: CommonMessages }>();
+const pipingServerExamplesUrl = 'https://github.com/nwtgck/piping-server#public-servers';
 
 const steps = computed(() => ({
   enable: { title: props.s.enable_peer_connection_heading, body: props.s.enable_peer_connection_instructions, caption: props.s.enable_peer_connection_figure_caption },
@@ -30,7 +31,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 :id="`rpc-${key}`">{{ step.title }}</h2>
       <p><RenderText :node="step.body()" /></p>
       <p v-if="key === 'pair'">{{ s.use_the_current_version_on_both_devices }}</p>
-      <p v-if="key === 'pair'" class="relay-origin"><RenderText :node="s.piping_server_relay_example({ locale, href: 'https://github.com/nwtgck/piping-server#public-servers', serverSample: s.sample_relay_origin })" /></p>
+      <p v-if="key === 'pair'" class="relay-origin"><RenderText :node="s.piping_server_relay_example({ locale, href: pipingServerExamplesUrl, serverSample: s.sample_relay_origin })" /></p>
       <figure class="guide-figure"><NaidanRpcStep :stage="key" :messages="s" /><figcaption class="caption"><RenderText :node="step.caption()" /></figcaption></figure>
     </section>
 

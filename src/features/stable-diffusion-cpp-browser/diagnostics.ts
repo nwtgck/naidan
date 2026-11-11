@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseImageNativeLog } from './native-log';
 
 export const imageDiagnosticSchema = z.object({
   event: z.enum(['request', 'start', 'complete', 'progress', 'native', 'file-summary', 'file-read', 'gpu', 'waiting', 'failed', 'cancelled', 'dropped']),
@@ -52,7 +53,7 @@ export function imageErrorContext({ error }: { error: unknown }): { errorType: '
 // window. Keep them out of the general verbose budget: a dropped begin would
 // falsely locate a stall in the preceding stage. Sanitization and export caps
 // still apply, and similar text inside an arbitrary native log is not exempt.
-const graphStageMessage = /^util\.h:\d+[ \t]+- graph-stage-v1 runner=[^\r\n]+ stage=[a-z]+(?:-[a-z]+)* event=(?:begin|end|failed)\r?\n?$/;
+const graphStageMessage = /^graph-stage-v1 runner=[a-zA-Z0-9_-]+ stage=[a-z]+(?:-[a-z]+)* event=(?:begin|end|failed)$/;
 
 /** Synchronous delivery matters: the next Wasm call may occupy the Worker
  * indefinitely. No promise/Comlink acknowledgement is queued for native logs. */
@@ -91,7 +92,8 @@ export function createImageTrace({ debug, secrets, listener, now }: {
       throw new Error(String(exhaustive));
     }
     }
-    if (level === 0 && graphStageMessage.test(message)) {
+    const parsed = level === 0 ? parseImageNativeLog({ message }) : undefined;
+    if (level === 0 && parsed?.sourceFile === 'util.h' && graphStageMessage.test(parsed.message)) {
       emit({ event: 'native', stage, message, fields: { level } });
       return;
     }

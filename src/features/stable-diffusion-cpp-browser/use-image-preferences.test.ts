@@ -7,6 +7,7 @@ import { createImageForm } from '@/features/image-generation/form';
 import { useImagePreferences } from './use-image-preferences';
 import { useImageLibrary } from './use-image-library';
 import { scanImageRepositories } from './logic/model-candidates';
+import type { ImageRuntimeFeatures } from './types';
 import type { LocalImageRepository } from './logic/repository-store';
 import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights.test-support';
 
@@ -28,17 +29,17 @@ function repositories(): LocalImageRepository[] {
   return files.map((file, index) => ({ repositoryKey: `user/${index}`, repositoryLabel: `repo ${index}`, files: [{ relativePath: file.name, file }] }));
 }
 
-function harness({ saved, initialized, entries }: { saved: BrowserImageGenerationSettings | undefined, initialized: boolean, entries: LocalImageRepository[] }) {
+function harness({ saved, initialized, entries, runtimeFeatures }: { saved: BrowserImageGenerationSettings | undefined, initialized: boolean, entries: LocalImageRepository[], runtimeFeatures?: ImageRuntimeFeatures }) {
   const scope = effectScope();
   scopes.push(scope);
   return scope.run(() => {
     const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, experimental: { browserImageGeneration: saved, locale: 'en' } });
     const ready = ref(initialized), localModels = ref(true), restoring = ref(false), seedMode = ref<'random' | 'fixed'>('random'), historyEnabled = ref(true);
     let generation = 0;
-    const form = createImageForm({ profile: 'webgpu-wasm32-asyncify' });
+    const form = createImageForm({ profile: 'webgpu-wasm32-asyncify', runtimeFeatures });
     const download = vi.fn(), onSelection = vi.fn(), restored = vi.fn(), failed = vi.fn();
     const list = vi.fn(async () => entries);
-    const library = useImageLibrary({ blocked: () => restoring.value, downloadsBlocked: () => false, onSelection, dependencies: { list, scan: scanImageRepositories, import: vi.fn(), download } });
+    const library = useImageLibrary({ runtimeFeatures, blocked: () => restoring.value, downloadsBlocked: () => false, onSelection, dependencies: { list, scan: scanImageRepositories, import: vi.fn(), download } });
     const updateExperimental = vi.fn(async ({ updater }: { updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => {
       settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
     });
@@ -129,13 +130,45 @@ it('lets an explicit session configuration supersede deferred global model defau
   expect(h.restored).not.toHaveBeenCalled();
 });
 
-it('hydrates once before saving and stores only approved preferences after explicit edits', async () => {
-  const h = harness({ initialized: false, entries: [], saved: { width: 512, height: 768, seedMode: 'fixed', seed: '9007199254740993', debug: 'on', imageDownload: { format: 'webp', metadata: 'include' }, preview: { enabled: 'enabled', interval: 5 }, maxResults: 31, bf16WeightType: 'f16' } });
+it.each([false, true])('keeps a capability-aware new precision through missing-preference hydration without saving it: %s', async bf16WeightRetention => {
+  const h = harness({ saved: undefined, initialized: false, entries: [], runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention } });
+  const expected = bf16WeightRetention ? 'bf16' : 'f32';
+  expect(h.form.parameters.value.bf16WeightType).toBe(expected);
+  h.ready.value = true;
+  await settled();
+  expect(h.form.parameters.value.bf16WeightType).toBe(expected);
+  expect(h.updateExperimental).not.toHaveBeenCalled();
+  h.form.parameters.value.width = 512;
+  await settled();
+  expect(h.settings.value.experimental?.browserImageGeneration?.bf16WeightType).toBeUndefined();
+  expect(h.form.parameters.value.bf16WeightType).toBe(expected);
+});
+
+it.each(['f32', 'f16', 'bf16'] as const)('preserves saved explicit %s instead of replacing it with the supported-engine default', async bf16WeightType => {
+  const h = harness({ saved: { bf16WeightType }, initialized: false, entries: [], runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: true } });
+  expect(h.form.parameters.value.bf16WeightType).toBe('bf16');
+  h.ready.value = true;
+  await settled();
+  expect(h.form.parameters.value.bf16WeightType).toBe(bf16WeightType);
+  expect(h.updateExperimental).not.toHaveBeenCalled();
+});
+
+it('preserves an explicit precision edit while waiting for an initial empty preference store', async () => {
+  const h = harness({ saved: undefined, initialized: false, entries: [], runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: true } });
+  h.form.parameters.value.bf16WeightType = 'f32';
+  h.ready.value = true;
+  await settled();
+  expect(h.form.parameters.value.bf16WeightType).toBe('f32');
+  expect(h.updateExperimental).not.toHaveBeenCalled();
+});
+
+it.each(['f32', 'f16', 'bf16'] as const)('hydrates %s once before saving and stores only approved preferences after explicit edits', async bf16WeightType => {
+  const h = harness({ initialized: false, entries: [], saved: { width: 512, height: 768, seedMode: 'fixed', seed: '9007199254740993', debug: 'on', imageDownload: { format: 'webp', metadata: 'include' }, preview: { enabled: 'enabled', interval: 5 }, maxResults: 31, bf16WeightType } });
   await settled();
   expect(h.updateExperimental).not.toHaveBeenCalled();
   h.ready.value = true;
   await settled();
-  expect(h.form.parameters.value).toMatchObject({ width: 512, height: 768, seed: '9007199254740993', bf16WeightType: 'f16' });
+  expect(h.form.parameters.value).toMatchObject({ width: 512, height: 768, seed: '9007199254740993', bf16WeightType });
   expect(h.form.debug.value).toBe('on');
   expect(h.seedMode.value).toBe('fixed');
   expect(h.form.imageDownloadPreferences.value).toEqual({ format: 'webp', metadata: 'include' });

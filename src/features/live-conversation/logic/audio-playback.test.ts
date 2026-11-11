@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { assert, describe, expect, it, vi } from 'vitest';
 import { createLivePlayback } from './audio-playback';
 import { liveAudioBrowserFixture } from './audio-browser.test-support';
 
@@ -19,7 +19,9 @@ describe('live playback bounded independent lifecycle', () => {
     pcm.fill(0);
     await player.append({ pcm: new Float32Array([0.1]), sampleRate: 24000 });
     expect(Array.from(f.buffers[0]!)).toEqual([0.25, 0.5]);
-    expect(f.sourceNodes[1]?.start.mock.calls[0]?.[0]).toBeGreaterThan(f.sourceNodes[0]?.start.mock.calls[0]?.[0]);
+    const firstStart = f.sourceNodes[0]?.start.mock.calls[0]?.[0];
+    assert.isDefined(firstStart);
+    expect(f.sourceNodes[1]?.start.mock.calls[0]?.[0]).toBeGreaterThan(firstStart);
     f.sourceNodes[0]?.onended?.();
     f.sourceNodes[1]?.onended?.();
     expect(onPlaying).toHaveBeenLastCalledWith({ playing: false });

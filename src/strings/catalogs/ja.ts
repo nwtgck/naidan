@@ -1161,16 +1161,24 @@ import { ImageLoraControls__selected_adapters } from '@/strings/messages/ImageLo
 import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/ja';
 import { ImageModelCatalog__checking_saved_models } from '@/strings/messages/ImageModelCatalog__checking_saved_models/ja';
 import { ImageModelCatalog__download_queue } from '@/strings/messages/ImageModelCatalog__download_queue/ja';
+import { ImageModelCatalog__int8_convrot_download_and_use_are_unavailable } from '@/strings/messages/ImageModelCatalog__int8_convrot_download_and_use_are_unavailable/ja';
 import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/ja';
 import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog__queued/ja';
 import { ImageModelCatalog__recommended } from '@/strings/messages/ImageModelCatalog__recommended/ja';
 import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/ja';
 import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/ja';
+import { ImageModelCatalog__update_the_image_engine_to_use_this_quantization } from '@/strings/messages/ImageModelCatalog__update_the_image_engine_to_use_this_quantization/ja';
 import { ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model } from '@/strings/messages/ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model/ja';
 import { ImageModelLocalFileRecovery__could_not_open_local_image_model_files } from '@/strings/messages/ImageModelLocalFileRecovery__could_not_open_local_image_model_files/ja';
+import { ImageModelNumberInput__automatic } from '@/strings/messages/ImageModelNumberInput__automatic/ja';
+import { ImageModelNumberInput__fixed } from '@/strings/messages/ImageModelNumberInput__fixed/ja';
+import { ImageModelNumberInput__model_recommended_value } from '@/strings/messages/ImageModelNumberInput__model_recommended_value/ja';
+import { ImageModelNumberInput__naidan_standard_value } from '@/strings/messages/ImageModelNumberInput__naidan_standard_value/ja';
 import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/ja';
 import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/ja';
 import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/ja';
+import { ImageNumberPreferenceMenu__change_with_model } from '@/strings/messages/ImageNumberPreferenceMenu__change_with_model/ja';
+import { ImageNumberPreferenceMenu__keep_using_this_number } from '@/strings/messages/ImageNumberPreferenceMenu__keep_using_this_number/ja';
 import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/ja';
 import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/ja';
 import { ImagePendingHistory__download_image } from '@/strings/messages/ImagePendingHistory__download_image/ja';
@@ -1193,6 +1201,10 @@ import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/Im
 import { ImageRemoteModelConfiguration__select_automatically } from '@/strings/messages/ImageRemoteModelConfiguration__select_automatically/ja';
 import { ImageRepositoryImport__choose_files } from '@/strings/messages/ImageRepositoryImport__choose_files/ja';
 import { ImageRepositoryImport__drop_help } from '@/strings/messages/ImageRepositoryImport__drop_help/ja';
+import { ImageSamplingReceipt__name_not_reported } from '@/strings/messages/ImageSamplingReceipt__name_not_reported/ja';
+import { ImageSamplingReceipt__used_for_generation } from '@/strings/messages/ImageSamplingReceipt__used_for_generation/ja';
+import { ImageVaeTileSizeInput__automatic } from '@/strings/messages/ImageVaeTileSizeInput__automatic/ja';
+import { ImageVaeTileSizeInput__fixed } from '@/strings/messages/ImageVaeTileSizeInput__fixed/ja';
 import { ImportExportModal__add_new } from '@/strings/messages/ImportExportModal__add_new/ja';
 import { ImportExportModal__analyzing_file } from '@/strings/messages/ImportExportModal__analyzing_file/ja';
 import { ImportExportModal__append_keeps_current_data } from '@/strings/messages/ImportExportModal__append_keeps_current_data/ja';
@@ -2776,6 +2788,7 @@ import { imageGeneration__lineage } from '@/strings/messages/imageGeneration__li
 import { imageGeneration__load_more } from '@/strings/messages/imageGeneration__load_more/ja';
 import { imageGeneration__loading } from '@/strings/messages/imageGeneration__loading/ja';
 import { imageGeneration__manage_tags } from '@/strings/messages/imageGeneration__manage_tags/ja';
+import { imageGeneration__model_parameter_inspection_failed } from '@/strings/messages/imageGeneration__model_parameter_inspection_failed/ja';
 import { imageGeneration__more_execution } from '@/strings/messages/imageGeneration__more_execution/ja';
 import { imageGeneration__name } from '@/strings/messages/imageGeneration__name/ja';
 import { imageGeneration__new_session } from '@/strings/messages/imageGeneration__new_session/ja';
@@ -2866,6 +2879,7 @@ import { imageGeneration__translation_source_text } from '@/strings/messages/ima
 import { imageGeneration__translation_start } from '@/strings/messages/imageGeneration__translation_start/ja';
 import { imageGeneration__translation_waiting } from '@/strings/messages/imageGeneration__translation_waiting/ja';
 import { imageGeneration__unfavorite } from '@/strings/messages/imageGeneration__unfavorite/ja';
+import { imageGeneration__vae_tile_inspection_failed } from '@/strings/messages/imageGeneration__vae_tile_inspection_failed/ja';
 import { imageGeneration__view_translation } from '@/strings/messages/imageGeneration__view_translation/ja';
 import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/ja';
 import { imageGeneration__visual_progress } from '@/strings/messages/imageGeneration__visual_progress/ja';
@@ -3216,8 +3230,11 @@ import { stableDiffusionCppBrowser__advanced_parameters } from '@/strings/messag
 import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters_help/ja';
 import { stableDiffusionCppBrowser__apply_recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__apply_recommended_settings/ja';
 import { stableDiffusionCppBrowser__artifact_not_installed } from '@/strings/messages/stableDiffusionCppBrowser__artifact_not_installed/ja';
+import { stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine } from '@/strings/messages/stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine/ja';
 import { stableDiffusionCppBrowser__bf16_weight_conversion } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion/ja';
 import { stableDiffusionCppBrowser__bf16_weight_conversion_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion_help/ja';
+import { stableDiffusionCppBrowser__bf16_weight_storage } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_storage/ja';
+import { stableDiffusionCppBrowser__bf16_weight_storage_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_storage_help/ja';
 import { stableDiffusionCppBrowser__cancel } from '@/strings/messages/stableDiffusionCppBrowser__cancel/ja';
 import { stableDiffusionCppBrowser__cancel_wait_help } from '@/strings/messages/stableDiffusionCppBrowser__cancel_wait_help/ja';
 import { stableDiffusionCppBrowser__cancelled } from '@/strings/messages/stableDiffusionCppBrowser__cancelled/ja';
@@ -5022,16 +5039,24 @@ export const catalog = {
   ImageLoraControls__strength,
   ImageModelCatalog__checking_saved_models,
   ImageModelCatalog__download_queue,
+  ImageModelCatalog__int8_convrot_download_and_use_are_unavailable,
   ImageModelCatalog__optional_lora,
   ImageModelCatalog__queued,
   ImageModelCatalog__recommended,
   ImageModelCatalog__reference_style_lora_help,
   ImageModelCatalog__saved_choose_in_lora_controls,
+  ImageModelCatalog__update_the_image_engine_to_use_this_quantization,
   ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model,
   ImageModelLocalFileRecovery__could_not_open_local_image_model_files,
+  ImageModelNumberInput__automatic,
+  ImageModelNumberInput__fixed,
+  ImageModelNumberInput__model_recommended_value,
+  ImageModelNumberInput__naidan_standard_value,
   ImageModelPicker__choose_a_model,
   ImageModelPicker__search_choices,
   ImageModelPicker__use_built_in_component,
+  ImageNumberPreferenceMenu__change_with_model,
+  ImageNumberPreferenceMenu__keep_using_this_number,
   ImagePendingHistory__discard,
   ImagePendingHistory__discard_warning,
   ImagePendingHistory__download_image,
@@ -5054,6 +5079,10 @@ export const catalog = {
   ImageRemoteModelConfiguration__select_automatically,
   ImageRepositoryImport__choose_files,
   ImageRepositoryImport__drop_help,
+  ImageSamplingReceipt__name_not_reported,
+  ImageSamplingReceipt__used_for_generation,
+  ImageVaeTileSizeInput__automatic,
+  ImageVaeTileSizeInput__fixed,
   ImportExportModal__add_new,
   ImportExportModal__analyzing_file,
   ImportExportModal__append_keeps_current_data,
@@ -6637,6 +6666,7 @@ export const catalog = {
   imageGeneration__load_more,
   imageGeneration__loading,
   imageGeneration__manage_tags,
+  imageGeneration__model_parameter_inspection_failed,
   imageGeneration__more_execution,
   imageGeneration__name,
   imageGeneration__new_session,
@@ -6727,6 +6757,7 @@ export const catalog = {
   imageGeneration__translation_start,
   imageGeneration__translation_waiting,
   imageGeneration__unfavorite,
+  imageGeneration__vae_tile_inspection_failed,
   imageGeneration__view_translation,
   imageGeneration__viewing_other,
   imageGeneration__visual_progress,
@@ -7077,8 +7108,11 @@ export const catalog = {
   stableDiffusionCppBrowser__advanced_parameters_help,
   stableDiffusionCppBrowser__apply_recommended_settings,
   stableDiffusionCppBrowser__artifact_not_installed,
+  stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine,
   stableDiffusionCppBrowser__bf16_weight_conversion,
   stableDiffusionCppBrowser__bf16_weight_conversion_help,
+  stableDiffusionCppBrowser__bf16_weight_storage,
+  stableDiffusionCppBrowser__bf16_weight_storage_help,
   stableDiffusionCppBrowser__cancel,
   stableDiffusionCppBrowser__cancel_wait_help,
   stableDiffusionCppBrowser__cancelled,

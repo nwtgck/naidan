@@ -10,7 +10,7 @@ import type { LmFetch } from './fetch';
 export function createMetricsStreamForTest({ protocol = 'sse', observer }: { protocol?: 'sse' | 'ndjson', observer?: GenerationMetricsObserver } = {}) {
   let source!: ReadableStreamDefaultController<Uint8Array>;
   let closed = false;
-  const canceled = vi.fn();
+  const canceled = vi.fn<UnderlyingSourceCancelCallback>();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       source = controller;

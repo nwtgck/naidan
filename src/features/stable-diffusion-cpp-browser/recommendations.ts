@@ -2,7 +2,7 @@ import type { PreviewSettings, Parameters } from './types';
 import type { ModelCandidate } from './logic/model-candidates';
 export type ImageModelFacts = Pick<ModelCandidate, 'family' | 'variant' | 'evidence'>;
 export type ImageGenerationRecommendation = {
-  id: 'z-image-turbo' | 'z-image-base' | 'qwen-image-2.1' | 'qwen-image-2.1-turbo' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
+  id: 'z-image-turbo' | 'z-image-base' | 'qwen-image-2.1' | 'qwen-image-2.1-turbo' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo' | 'minimax-h3-image';
   title: string;
   parameters: Omit<Parameters, 'prompt' | 'negativePrompt' | 'seed'>;
   preview: Pick<PreviewSettings, 'mode' | 'interval' | 'startStep' | 'maxEdge'>;
@@ -124,6 +124,18 @@ const presets = {
     preview: { mode: 'vae', interval: 2, startStep: 4, maxEdge: 256 },
     sources: [{ label: 'stable-diffusion.cpp · ERNIE-Image', url: `${upstream}/docs/ernie_image.md` }],
   },
+  'minimax-h3-image': {
+    id: 'minimax-h3-image',
+    title: 'MiniMax-H3-Image',
+    checkedAt: '2026-11-11',
+    recommendedFields: ['width', 'height', 'steps', 'guidance', 'sampler', 'scheduler'],
+    // The PDD architecture supplies its six-step sampling contract. Applying it
+    // must not change precision, memory policy or the user's composition size.
+    applicableFields: ['width', 'height', 'steps', 'guidance', 'sampler', 'scheduler'],
+    parameters: { ...browserDefaults, width: 1024, height: 1024, steps: 6, guidance: 1, sampler: 'euler', scheduler: 'discrete' },
+    preview: { mode: 'vae', interval: 2, startStep: 2, maxEdge: 256 },
+    sources: [{ label: 'stable-diffusion.cpp · MiniMax-H3-Image', url: 'https://github.com/leejet/stable-diffusion.cpp/blob/32d516c0197ed5ca31305b8575e14eb1451fad33/docs/minimax_h3_image.md' }],
+  },
 } as const satisfies Record<ImageGenerationRecommendation['id'], ImageGenerationRecommendation>;
 
 /** Tensor structure identifies a family; only metadata/receipts select variants.
@@ -133,6 +145,9 @@ export function recommendationForSelection({ model }: { model: ImageModelFacts |
     return undefined;
   }
   switch (model.family) {
+  // These values belong to the recognized image/PDD architecture, rather than
+  // a guessed Turbo release, so metadata-stripped weights keep the same hint.
+  case 'minimax-h3-image': return presets['minimax-h3-image'];
   case 'z-image':
     switch (model.variant) {
     case 'turbo': return presets['z-image-turbo'];

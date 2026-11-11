@@ -193,6 +193,21 @@ it('keeps recovered output facts unknown without inventing a successful model re
     output: { png, width: 256, height: 256, reported: undefined },
   });
   expect(recovered.record.result).toMatchObject({ confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined });
+  expect(recovered.record.result).not.toHaveProperty('resolvedParameters');
   expect(recovered.record.request).toEqual(snapshot.request);
   expect(recovered.files.find(file => file.binaryObjectId === recovered.record.result.binaryObjectId)?.blob).toBe(png);
+});
+
+it('records observed sampling and effective parameters without rewriting requests and freezes the receipts', () => {
+  const request = source(), snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), locateFile, createdAt: 1 });
+  const sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
+  const resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
+  const saved = finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false, sampling, resolvedParameters }, previews: [], elapsedMs: 5 });
+  sampling.scheduler.name = 'changed-after-reply';
+  resolvedParameters.steps = 99;
+  expect(saved.record.result.sampling?.scheduler.name).toBe('flux');
+  expect(saved.record.result.resolvedParameters).toEqual({ steps: 6, guidance: 1, vaeTileSize: 16 });
+  expect(saved.record.request).toBe(snapshot.request);
+  expect(saved.record.request.parameters.steps).toBe(request.parameters.steps);
+  expect(saved.record.request.parameters).toMatchObject({ sampler: 'auto', scheduler: 'auto' });
 });

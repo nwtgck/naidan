@@ -14,7 +14,7 @@ function output(): ImageExecutionOutput {
   view.setUint32(12, 0x49484452);
   view.setUint32(16, 256);
   view.setUint32(20, 256);
-  return { png: new Blob([bytes], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false };
+  return { png: new Blob([bytes], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', uniformOutput: false, resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } };
 }
 
 async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[]> {
@@ -49,7 +49,7 @@ it('produces two concurrently consumed streams with exactly one native job', asy
   expect(budget.reserved).toBe(0);
   const result = await promiseAllKeyed({ image: collectBytes({ readable: response.image, limit: 100, signal: lifetime.signal }), events: collect({ stream: response.events }) });
   expect(result.image.length).toBe(33);
-  expect(result.events).toEqual([{ type: 'completed', seed: '42', width: 256, height: 256, modelVersion: 'test', uniformOutput: false }]);
+  expect(result.events).toEqual([{ type: 'completed', seed: '42', width: 256, height: 256, modelVersion: 'test', uniformOutput: false, resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } }]);
   expect(run).toHaveBeenCalledOnce();
   expect(budget.reserved).toBe(0);
 });
