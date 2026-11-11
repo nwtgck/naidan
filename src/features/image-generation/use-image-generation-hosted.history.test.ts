@@ -1,3 +1,5 @@
+import { inspectImageInventory } from '@/features/stable-diffusion-cpp-browser/inventory-worker/client';
+import type { ModelInventory } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, h, nextTick, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
@@ -153,6 +155,7 @@ beforeEach(async () => {
   mocks.query.mockResolvedValue({ items: [], total: 0, warnings: [], warningCount: 0 });
   mocks.save.mockResolvedValue(undefined);
   mocks.generate.mockResolvedValue(result());
+  vi.mocked(inspectImageInventory).mockReset();
   mocks.inspectEngine.mockReset().mockResolvedValue({ status: 'ready', snapshot: engineSnapshotFixture() });
   mocks.remove.mockReset().mockResolvedValue(undefined);
   mocks.prepareFiles.mockResolvedValue(undefined);
@@ -1913,4 +1916,160 @@ it('reports remote catalog activity even with model configuration collapsed and 
   editor.unmount();
   editor = undefined;
   expect(activity).toHaveBeenLastCalledWith({ active: false, enabled: true });
+});
+
+function inspectedPrimary({ file, family }: { file: File, family: 'minimax-h3-image' | 'sd-checkpoint' }): ModelInventory {
+  return { candidates: [{ candidateKey: 'manual', repositoryKey: 'manual', primaryRelativePath: file.name, files: [{ relativePath: file.name, file }], format: 'gguf', size: file.size, family, classes: [], roles: ['model', 'diffusion'], evidence: [], issue: undefined, turboHint: false, variant: 'unknown' }], issues: [] };
+}
+
+it('starts with automatic H3 tiles and records a numeric request without changing authoring intent', async () => {
+  mocks.facts = { family: 'minimax-h3-image', variant: 'base', evidence: [] };
+  const view = open();
+  expect(view.vaeTileSizePreference.value).toBe('auto');
+  expect(view.resolvedVaeTileSize.value).toBe(16);
+  expect(view.captureDraft!()).toMatchObject({ vaeTileSizePreference: 'auto', request: { parameters: { vaeTileSize: 16 } } });
+  await view.generate({ submission: undefined });
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters.vaeTileSize).toBe(16);
+  expect(actual.parameters).not.toHaveProperty('vaeTileSizePreference');
+  expect(view.results.value[0]?.parameters.vaeTileSize).toBe(16);
+  expect(view.vaeTileSizePreference.value).toBe('auto');
+});
+
+it('keeps explicit tile 32 through H3 presets, generation and history reuse', async () => {
+  mocks.facts = { family: 'minimax-h3-image', variant: 'base', evidence: [] };
+  const view = open();
+  view.vaeTileSizePreference.value = 32;
+  view.applyRecommendedSettings();
+  expect(view.vaeTileSizePreference.value).toBe(32);
+  await view.generate({ submission: undefined });
+  expect(mocks.generate.mock.calls[0]![0].request.parameters.vaeTileSize).toBe(32);
+  const record = mocks.save.mock.calls[0]![0].record;
+  view.vaeTileSizePreference.value = 'auto';
+  await view.reuseHistory({ record });
+  expect(view.vaeTileSizePreference.value).toBe(32);
+});
+
+it('restores automatic draft metadata while treating an old numeric 32 draft as fixed', async () => {
+  const view = open(), draft = view.captureDraft!()!;
+  expect(draft.vaeTileSizePreference).toBe('auto');
+  view.vaeTileSizePreference.value = 64;
+  await view.restoreDraft!({ draft });
+  expect(view.vaeTileSizePreference.value).toBe('auto');
+  delete draft.vaeTileSizePreference;
+  draft.request.parameters.vaeTileSize = 32;
+  await view.restoreDraft!({ draft });
+  expect(view.vaeTileSizePreference.value).toBe(32);
+});
+
+it('preserves tile intent through broad sampling presets', () => {
+  const view = open();
+  view.vaeTileSizePreference.value = 64;
+  view.parameters.value.vaeTileSize = 64;
+  view.applyRecommendedSettings();
+  expect(view.vaeTileSizePreference.value).toBe(64);
+  expect(view.parameters.value.vaeTileSize).toBe(64);
+});
+
+it('waits for manual H3 identification before freezing an automatic numeric request', async () => {
+  const view = open(), file = ggufFile(), pending = Promise.withResolvers<ModelInventory>();
+  view.library.useManualFiles();
+  view.files.value = { model: file };
+  vi.mocked(inspectImageInventory).mockReturnValueOnce(pending.promise);
+  const inspection = view.inspectManualFiles();
+  const generation = view.generate({ submission: undefined });
+  await flushPromises();
+  expect(mocks.generate).not.toHaveBeenCalled();
+  pending.resolve(inspectedPrimary({ file, family: 'minimax-h3-image' }));
+  await inspection;
+  await generation;
+  expect(mocks.generate.mock.calls[0]![0].request.parameters.vaeTileSize).toBe(16);
+});
+
+it('does not use standard tile 32 after a manual inspection failure', async () => {
+  const view = open();
+  view.library.useManualFiles();
+  view.files.value = { model: ggufFile() };
+  vi.mocked(inspectImageInventory).mockRejectedValueOnce(new Error('header read failed'));
+  await view.generate({ submission: undefined });
+  expect(mocks.generate).not.toHaveBeenCalled();
+  expect(view.invalid.value).toBe(true);
+  expect(view.failure.value).toContain('tile');
+});
+
+it('abandons a pending automatic submission if the primary file changes', async () => {
+  const view = open(), file = ggufFile(), pending = Promise.withResolvers<ModelInventory>();
+  view.library.useManualFiles();
+  view.files.value = { model: file };
+  vi.mocked(inspectImageInventory).mockReturnValueOnce(pending.promise);
+  const generation = view.generate({ submission: undefined });
+  view.files.value = { model: new File([ggufFile()], 'another.gguf') };
+  pending.resolve(inspectedPrimary({ file, family: 'minimax-h3-image' }));
+  await generation;
+  expect(mocks.generate).not.toHaveBeenCalled();
+});
+
+it('identifies the active primary again when switching layouts with both files retained', async () => {
+  const view = open(), model = ggufFile(), diffusion = new File([ggufFile()], 'h3.gguf');
+  view.library.useManualFiles();
+  view.files.value = { model, diffusion };
+  vi.mocked(inspectImageInventory).mockResolvedValueOnce(inspectedPrimary({ file: model, family: 'sd-checkpoint' }));
+  await view.inspectManualFiles();
+  expect(view.resolvedVaeTileSize.value).toBe(32);
+  vi.mocked(inspectImageInventory).mockResolvedValueOnce(inspectedPrimary({ file: diffusion, family: 'minimax-h3-image' }));
+  view.layout.value = 'components';
+  await nextTick();
+  await view.generate({ submission: undefined });
+  expect(mocks.generate.mock.calls[0]![0].request.parameters.vaeTileSize).toBe(16);
+});
+
+it('keeps local tile intent out of remote drafts and does not overwrite it on remote restore', async () => {
+  const { view } = await remoteView();
+  view.vaeTileSizePreference.value = 64;
+  const draft = view.captureDraft!()!;
+  expect(draft).not.toHaveProperty('vaeTileSizePreference');
+  expect(draft.request.parameters).not.toHaveProperty('vaeTileSize');
+  await view.restoreDraft!({ draft });
+  expect(view.vaeTileSizePreference.value).toBe(64);
+  view.inferenceLocation!.kind.value = 'local';
+  expect(view.vaeTileSizePreference.value).toBe(64);
+});
+
+it('waits for a replacement inspection of the same primary instead of using an aborted result', async () => {
+  const view = open(), file = ggufFile(), first = Promise.withResolvers<ModelInventory>(), second = Promise.withResolvers<ModelInventory>();
+  view.library.useManualFiles();
+  view.files.value = { model: file };
+  vi.mocked(inspectImageInventory).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const generation = view.generate({ submission: undefined });
+  const replacement = view.inspectManualFiles();
+  first.resolve(inspectedPrimary({ file, family: 'sd-checkpoint' }));
+  await flushPromises();
+  expect(mocks.generate).not.toHaveBeenCalled();
+  second.resolve(inspectedPrimary({ file, family: 'minimax-h3-image' }));
+  await replacement;
+  await generation;
+  expect(mocks.generate.mock.calls[0]![0].request.parameters.vaeTileSize).toBe(16);
+});
+
+it('does not require automatic tile identification when VAE tiling is disabled', async () => {
+  const view = open();
+  view.library.useManualFiles();
+  view.files.value = { model: ggufFile() };
+  view.parameters.value.vaeTiling = false;
+  await view.generate({ submission: undefined });
+  expect(inspectImageInventory).not.toHaveBeenCalled();
+  expect(mocks.generate).toHaveBeenCalledOnce();
+});
+
+it('abandons a pending automatic submission even if the layout changes away and back', async () => {
+  const view = open(), file = ggufFile(), pending = Promise.withResolvers<ModelInventory>();
+  view.library.useManualFiles();
+  view.files.value = { model: file, diffusion: file };
+  vi.mocked(inspectImageInventory).mockReturnValueOnce(pending.promise);
+  const generation = view.generate({ submission: undefined });
+  view.layout.value = 'components';
+  view.layout.value = 'checkpoint';
+  pending.resolve(inspectedPrimary({ file, family: 'minimax-h3-image' }));
+  await generation;
+  expect(mocks.generate).not.toHaveBeenCalled();
 });

@@ -1195,6 +1195,9 @@ import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/Im
 import { ImageRemoteModelConfiguration__select_automatically } from '@/strings/messages/ImageRemoteModelConfiguration__select_automatically/es';
 import { ImageRepositoryImport__choose_files } from '@/strings/messages/ImageRepositoryImport__choose_files/es';
 import { ImageRepositoryImport__drop_help } from '@/strings/messages/ImageRepositoryImport__drop_help/es';
+import { ImageVaeTileSizeInput__automatic } from '@/strings/messages/ImageVaeTileSizeInput__automatic/es';
+import { ImageVaeTileSizeInput__fixed } from '@/strings/messages/ImageVaeTileSizeInput__fixed/es';
+import { ImageVaeTileSizeInput__match_model } from '@/strings/messages/ImageVaeTileSizeInput__match_model/es';
 import { ImportExportModal__add_new } from '@/strings/messages/ImportExportModal__add_new/es';
 import { ImportExportModal__analyzing_file } from '@/strings/messages/ImportExportModal__analyzing_file/es';
 import { ImportExportModal__append_keeps_current_data } from '@/strings/messages/ImportExportModal__append_keeps_current_data/es';
@@ -2868,6 +2871,7 @@ import { imageGeneration__translation_source_text } from '@/strings/messages/ima
 import { imageGeneration__translation_start } from '@/strings/messages/imageGeneration__translation_start/es';
 import { imageGeneration__translation_waiting } from '@/strings/messages/imageGeneration__translation_waiting/es';
 import { imageGeneration__unfavorite } from '@/strings/messages/imageGeneration__unfavorite/es';
+import { imageGeneration__vae_tile_inspection_failed } from '@/strings/messages/imageGeneration__vae_tile_inspection_failed/es';
 import { imageGeneration__view_translation } from '@/strings/messages/imageGeneration__view_translation/es';
 import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/es';
 import { imageGeneration__visual_progress } from '@/strings/messages/imageGeneration__visual_progress/es';
@@ -5061,6 +5065,9 @@ export const catalog = {
   ImageRemoteModelConfiguration__select_automatically,
   ImageRepositoryImport__choose_files,
   ImageRepositoryImport__drop_help,
+  ImageVaeTileSizeInput__automatic,
+  ImageVaeTileSizeInput__fixed,
+  ImageVaeTileSizeInput__match_model,
   ImportExportModal__add_new,
   ImportExportModal__analyzing_file,
   ImportExportModal__append_keeps_current_data,
@@ -6734,6 +6741,7 @@ export const catalog = {
   imageGeneration__translation_start,
   imageGeneration__translation_waiting,
   imageGeneration__unfavorite,
+  imageGeneration__vae_tile_inspection_failed,
   imageGeneration__view_translation,
   imageGeneration__viewing_other,
   imageGeneration__visual_progress,

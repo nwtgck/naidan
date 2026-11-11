@@ -33,6 +33,34 @@ describe('session draft checkpoints', () => {
     expect((await service.listImageGenerationRuns({ store: h.store, sessionId: h.session.id })).items).toEqual([]);
   });
 
+  it.each(['auto', 16, 32, 64] as const)('round-trips tile preference %s without replacing the numeric request fallback', async vaeTileSizePreference => {
+    const h = await setup();
+    h.draft.vaeTileSizePreference = vaeTileSizePreference;
+    h.draft.request.parameters.vaeTileSize = 32;
+    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
+    expect(dto.vaeTileSizePreference).toBe(vaeTileSizePreference);
+    expect(dto.request.parameters.vaeTileSize).toBe(32);
+    expect(imageGenerationDraftToDomain({ dto })).toEqual(h.draft);
+    await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
+    const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
+    expect(loaded?.vaeTileSizePreference).toBe(vaeTileSizePreference);
+    expect(loaded?.request.parameters.vaeTileSize).toBe(32);
+  });
+
+  it('leaves legacy numeric 32 without preference metadata instead of inferring auto', async () => {
+    const h = await setup();
+    h.draft.request.parameters.vaeTileSize = 32;
+    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
+    expect(Object.hasOwn(dto, 'vaeTileSizePreference')).toBe(false);
+    expect(Object.hasOwn(imageGenerationDraftToDomain({ dto }), 'vaeTileSizePreference')).toBe(false);
+    await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
+    const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
+    expect(loaded?.vaeTileSizePreference).toBeUndefined();
+    expect(loaded?.request.parameters.vaeTileSize).toBe(32);
+    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, vaeTileSizePreference: 'recommended' }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftSchemaDto.parse({ ...dto, futurePreference: 'future' })).not.toHaveProperty('futurePreference');
+  });
+
   it('stores a pending inference location without relaxing the accepted run contract', async () => {
     const h = await setup();
     h.draft.inferenceLocation = { kind: 'naidan_rpc', registration: undefined };
@@ -132,6 +160,7 @@ it('keeps unavailable draft routes through the real publication snapshot and que
   const rawA = { kind: 'unavailable' as const };
   const rawB = { kind: 'local' as const };
   h.draft.inferenceLocation = rawA;
+  h.draft.vaeTileSizePreference = 'auto';
   h.draft.request.runtime = undefined;
   h.draft.request.imageInputs = { ...h.draft.request.imageInputs, initImage: undefined, referenceImages: [] };
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -144,14 +173,18 @@ it('keeps unavailable draft routes through the real publication snapshot and que
   void publishing.catch(() => {});
   h.draft.request.parameters.prompt = 'later caller mutation';
   h.draft.inferenceLocation = rawB;
+  h.draft.vaeTileSizePreference = 32;
   release.resolve();
   await held;
   await publishing;
   const first = JSON.parse((await fs.file({ path: h.path })).text);
   expect(first.inferenceLocation).toEqual(rawA);
+  expect(first.vaeTileSizePreference).toBe('auto');
   expect(first.request.parameters.prompt).not.toBe('later caller mutation');
   const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
   expect(loaded?.inferenceLocation).toEqual(rawA);
+  expect(loaded?.vaeTileSizePreference).toBe('auto');
   await storage.publishImageGeneration({ store: h.store, publication: { type: 'draft', draft: { ...h.draft, revision: 1 }, expectedRevision: 0 }, files: [] });
   expect(JSON.parse((await fs.file({ path: h.path })).text).inferenceLocation).toEqual(rawB);
+  expect(JSON.parse((await fs.file({ path: h.path })).text).vaeTileSizePreference).toBe(32);
 });

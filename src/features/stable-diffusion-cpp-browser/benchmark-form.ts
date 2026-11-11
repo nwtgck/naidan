@@ -1,14 +1,15 @@
 import { ref, shallowRef } from 'vue';
 import { createImageForm } from '@/features/image-generation/form';
-import type { ImageRuntimeFeatures, ModelSlot, Parameters, Progress, ImageInputs } from './types';
-import type { BenchmarkProtocol, BenchmarkRun, BenchmarkPlan, ParameterChange } from './benchmark/types';
+import type { ImageRuntimeFeatures, ModelSlot, Progress, ImageInputs } from './types';
+import type { BenchmarkProtocol, BenchmarkRun, BenchmarkPlan, ParameterChange, BenchmarkParameters } from './benchmark/types';
 import type { ImageLoraSelection } from './lora-form';
 
 /** Shared presentation state, also used by the unavailable standalone facade.
  * No engine/configuration imports, network access or model reads. */
 export function createBenchmarkForm({ runtimeFeatures }: { runtimeFeatures: ImageRuntimeFeatures | undefined }) {
-  const common = ref<Parameters>({
+  const common = ref<BenchmarkParameters>({
     ...createImageForm({ profile: 'webgpu-wasm32-asyncify', runtimeFeatures }).parameters.value,
+    vaeTileSizePreference: 'auto',
     prompt: 'A fluffy cat curled up asleep by a window in soft morning light. Small potted plants and warm wooden furnishings create a quiet, soothing scene. Gentle warm colors and soft shadows.',
     width: 512,
     height: 512,
@@ -20,7 +21,7 @@ export function createBenchmarkForm({ runtimeFeatures }: { runtimeFeatures: Imag
   const strategy = ref<'shared' | 'model-defaults'>('model-defaults');
   const includePrompts = ref(false), notes = ref(''), selected = ref<string[]>([]);
   const includeInputImages = ref<'omit' | 'include'>('omit');
-  const overrides = ref<Record<string, Partial<Parameters>>>({});
+  const overrides = ref<Record<string, Partial<BenchmarkParameters>>>({});
   const componentSelections = ref<Record<string, Partial<Record<ModelSlot, string>>>>({});
   const loras = shallowRef<Record<string, ImageLoraSelection[]>>({});
   const imageInputs = shallowRef<Record<string, ImageInputs>>({});

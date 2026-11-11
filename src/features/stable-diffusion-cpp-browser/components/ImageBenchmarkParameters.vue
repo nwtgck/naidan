@@ -3,12 +3,12 @@ import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import { useId } from 'vue';
 import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
+import ImageVaeTileSizeInput from '@/features/image-generation/components/ImageVaeTileSizeInput.vue';
 import { lazyStrings } from '@/strings';
 import { samplerOptions, schedulerOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
-import type { Parameters } from '@/features/stable-diffusion-cpp-browser/types';
-import type { ParameterChange } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
-const props = defineProps<{ values: Parameters, overrides: Partial<Parameters> | undefined, disabled: boolean, bf16RetentionSupported: boolean }>();
-const emit = defineEmits<{ change: [change: ParameterChange], inherit: [key: keyof Parameters] }>();
+import type { BenchmarkParameters, ParameterChange } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
+const props = defineProps<{ values: BenchmarkParameters, overrides: Partial<BenchmarkParameters> | undefined, disabled: boolean, bf16RetentionSupported: boolean }>();
+const emit = defineEmits<{ change: [change: ParameterChange], inherit: [key: keyof BenchmarkParameters] }>();
 const id = useId();
 
 function text({ event }: { event: Event }): string {
@@ -34,7 +34,7 @@ function resolution({ edge }: { edge: number }): void {
 
 
 
-function setOverride({ key, event }: { key: keyof Parameters, event: Event }): void {
+function setOverride({ key, event }: { key: keyof BenchmarkParameters, event: Event }): void {
   if (!checked({ event })) {
     emit('inherit', key);
   } else {
@@ -65,6 +65,8 @@ function setOverride({ key, event }: { key: keyof Parameters, event: Event }): v
     case 'vaeTiling': emit('change', { key, value: props.values.vaeTiling });
       break;
     case 'vaeTileSize': emit('change', { key, value: props.values.vaeTileSize });
+      break;
+    case 'vaeTileSizePreference': emit('change', { key, value: props.values.vaeTileSizePreference ?? props.values.vaeTileSize });
       break;
     case 'flashAttention': emit('change', { key, value: props.values.flashAttention });
       break;
@@ -162,8 +164,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
         <div tw-class="space-y-1" data-parameter="vaeTileSize">
           <label :id="id + '-label-vaeTileSize'" :for="id + '-vaeTileSize'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__vae_tile_size() }}</label>
-          <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'vaeTileSize')" :aria-describedby="id + '-label-vaeTileSize'" @change="setOverride({ key: 'vaeTileSize', event: $event })" :data-testid="'override-vaeTileSize'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-          <input :id="id + '-vaeTileSize'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'vaeTileSize')" :data-testid="'parameter-vaeTileSize'" :value="props.values.vaeTileSize" type="number" min="16" max="256" step="8" @input="emit('change', { key: 'vaeTileSize', value: numeric({ event: $event }) })" tw-class="block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed" />
+          <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="(Object.hasOwn(props.overrides, 'vaeTileSizePreference') || Object.hasOwn(props.overrides, 'vaeTileSize'))" :aria-describedby="id + '-label-vaeTileSize'" @change="setOverride({ key: 'vaeTileSizePreference', event: $event })" :data-testid="'override-vaeTileSize'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
+          <ImageVaeTileSizeInput :id="id + '-vaeTileSize'" :disabled="disabled || props.overrides !== undefined && !(Object.hasOwn(props.overrides, 'vaeTileSizePreference') || Object.hasOwn(props.overrides, 'vaeTileSize'))" input-test-id="parameter-vaeTileSize" :preference="props.values.vaeTileSizePreference ?? props.values.vaeTileSize" :value="props.values.vaeTileSize" @change="emit('change', { key: 'vaeTileSizePreference', value: $event })" />
         </div>
         <div tw-class="space-y-1" data-parameter="flashAttention">
           <label :id="id + '-label-flashAttention'" :for="id + '-flashAttention'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__flash_attention() }}</label>

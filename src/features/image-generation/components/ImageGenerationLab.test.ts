@@ -431,7 +431,8 @@ it('leaves explicit generation parameters untouched and releases after success w
   await flushPromises();
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
   await wrapper.get('[data-testid="image-seed-mode"]').setValue('fixed');
-  Object.assign(wrapper.vm.TEST_ONLY.parameters.value, { prompt: 'test', guidance: 3.25, seed: '99', qwenVaePolicy: 'native', vaeTileSize: 64 });
+  Object.assign(wrapper.vm.TEST_ONLY.parameters.value, { prompt: 'test', guidance: 3.25, seed: '99', qwenVaePolicy: 'native' });
+  await wrapper.get('[data-testid="image-vae-tile-size"]').setValue('64');
   await wrapper.get('[data-testid="image-retain-model"]').setValue(false);
   await flushPromises();
   await wrapper.vm.TEST_ONLY.generate({ submission: undefined });

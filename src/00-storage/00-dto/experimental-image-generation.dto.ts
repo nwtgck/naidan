@@ -245,6 +245,7 @@ export const ExperimentalImageGenerationDraftSchemaDto = resolveMissingAsUndefin
   revision: ExperimentalImageGenerationRevisionSchemaDto,
   updatedAt: ExperimentalImageGenerationTimestampSchemaDto,
   request: ExperimentalImageGenerationDraftRequestSchemaDto,
+  vaeTileSizePreference: dtozod.union([dtozod.literal('auto'), dtozod.number()]).optional(),
   inferenceLocation: missingAsUndefined(ExperimentalImageInferenceLocationPreferenceSchemaDto),
   layout: dtozod.enum(['checkpoint', 'components']),
   modelSelection: missingAsUndefined(ExperimentalBrowserImageModelSelectionSchemaDto),

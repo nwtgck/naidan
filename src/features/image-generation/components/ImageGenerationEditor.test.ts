@@ -112,6 +112,20 @@ it('connects independent width and height hints without changing other draft fie
   expect(view.applyRecommendedSettings).toHaveBeenCalledOnce();
 });
 
+it('edits the VAE tile preference while displaying its resolved model-specific number', async () => {
+  const view = useImageGeneration();
+  view.draftDisabled = computed(() => false);
+  view.resolvedVaeTileSize = computed(() => view.vaeTileSizePreference.value === 'auto' ? 16 : view.vaeTileSizePreference.value);
+  wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
+  const input = wrapper.get<HTMLInputElement>('[data-testid="image-vae-tile-size"]');
+  expect(input.element.value).toBe('16');
+  await input.trigger('focus');
+  expect(view.vaeTileSizePreference.value).toBe('auto');
+  await input.setValue('16');
+  expect(view.vaeTileSizePreference.value).toBe(16);
+  expect(wrapper.get('[data-testid="vae-tile-size-preference"]').text()).toBe('Fixed');
+});
+
 it('renders Qwen Turbo resolution and guidance hints without suggesting unsupported sampling values', () => {
   const view = useImageGeneration();
   view.draftDisabled = computed(() => false);

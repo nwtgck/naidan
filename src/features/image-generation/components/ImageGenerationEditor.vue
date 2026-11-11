@@ -3,6 +3,7 @@ import SettingsSelectScope from '@/components/SettingsSelectScope.vue';
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import ImageRecommendedFieldHint from './ImageRecommendedFieldHint.vue';
+import ImageVaeTileSizeInput from './ImageVaeTileSizeInput.vue';
 import { imageRecommendedHint, applyImageRecommendedField, type ImageRecommendedField } from '@/features/image-generation/recommended-fields';
 import type { ImageGenerationRecommendation } from '@/features/stable-diffusion-cpp-browser/recommendations';
 import { computed, ref, useId, watch } from 'vue';
@@ -25,7 +26,7 @@ defineSlots<{ 'prompt-actions'({ field, text }: { field: 'prompt' | 'negativePro
 const emit = defineEmits<{ manageModels: [] }>();
 const id = useId();
 const configurationOpen = ref(false);
-const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
+const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, vaeTileSizePreference, resolvedVaeTileSize, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
 const remote = computed(() => props.view.inferenceLocation?.kind.value === 'naidan_rpc');
 const bf16RetentionUnavailable = computed(() => {
@@ -269,8 +270,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <div tw-class="flex flex-wrap items-center justify-between gap-2"><label tw-class="min-h-10 cursor-pointer text-sm flex gap-2 items-center">
               <SettingsChoiceControl presentation="switch"><input :id="id + '-recommended-vaeTiling'" v-model="parameters.vaeTiling" type="checkbox" role="switch" /></SettingsChoiceControl>{{ lazyStrings.stableDiffusionCppBrowser__vae_tiling() }}</label><ImageRecommendedFieldHint :recommendation="recommendation" field="vaeTiling" :current="parameters.vaeTiling" :input-id="id + '-recommended-vaeTiling'" :context="context" :disabled="draftDisabled" :busy="busy" @apply="applyRecommendedField" /></div>
             <div tw-class="text-sm space-y-1">
-              <div tw-class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1"><label :for="id + '-recommended-vaeTileSize'">{{ lazyStrings.stableDiffusionCppBrowser__vae_tile_size() }}</label><ImageRecommendedFieldHint :recommendation="recommendation" field="vaeTileSize" :current="parameters.vaeTileSize" :input-id="id + '-recommended-vaeTileSize'" :context="context" :disabled="draftDisabled" :busy="busy" @apply="applyRecommendedField" /></div>
-              <input :id="id + '-recommended-vaeTileSize'" v-model.number="parameters.vaeTileSize" type="number" min="16" max="256" step="8" required tw-class="outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-gray-800 dark:text-gray-100  transition-colors hover:border-blue-200/80 dark:hover:border-blue-500/35" />
+              <label :for="id + '-recommended-vaeTileSize'">{{ lazyStrings.stableDiffusionCppBrowser__vae_tile_size() }}</label>
+              <ImageVaeTileSizeInput :id="id + '-recommended-vaeTileSize'" :preference="vaeTileSizePreference" :value="resolvedVaeTileSize" :disabled="draftDisabled" input-test-id="image-vae-tile-size" @change="vaeTileSizePreference = $event" />
             </div>
             <div tw-class="flex flex-wrap items-center justify-between gap-2"><label tw-class="min-h-10 cursor-pointer text-sm flex gap-2 items-center">
               <SettingsChoiceControl presentation="switch"><input :id="id + '-recommended-flashAttention'" v-model="parameters.flashAttention" type="checkbox" role="switch" /></SettingsChoiceControl>{{ lazyStrings.stableDiffusionCppBrowser__flash_attention() }}</label><ImageRecommendedFieldHint :recommendation="recommendation" field="flashAttention" :current="parameters.flashAttention" :input-id="id + '-recommended-flashAttention'" :context="context" :disabled="draftDisabled" :busy="busy" @apply="applyRecommendedField" /></div>

@@ -1,3 +1,4 @@
+import { resolveVaeTileSize } from '@/features/image-generation/vae-tile-size';
 import { temporaryModelFiles } from '@/logic/temporary-model-files';
 import { temporaryImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/temporary-repositories';
 import { imageModelLocation } from '@/features/stable-diffusion-cpp-browser/logic/model-location';
@@ -254,7 +255,9 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           parameters: {
             ...input.parameters,
             vaeTiling: true,
-            vaeTileSize: 32,
+            // Tile controls are not in the RPC wire contract. Resolve the
+            // receiver's policy from its own verified model selection.
+            vaeTileSize: resolveVaeTileSize({ preference: 'auto', family: selectedModels[0]?.candidate.family }),
             flashAttention: false,
             // RPC has no precision control. Preserve its existing F32 default
             // for active LoRAs, whose immediate application cannot modify retained BF16.

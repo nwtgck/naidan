@@ -496,3 +496,12 @@ it('rejects an oversized image inventory rather than providing a misleading trun
   await expect(resource().listImageModels({ signal: new AbortController().signal })).rejects.toThrow();
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
+it('uses the receiving model family to select explicit automatic H3 tile 16', async () => {
+  const model = candidate({ path: 'model.gguf', roles: ['model'] });
+  model.family = 'minimax-h3-image';
+  mocks.scan.mockResolvedValue({ candidates: [model] });
+  await generate({ input: request() });
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters.vaeTileSize).toBe(16);
+});

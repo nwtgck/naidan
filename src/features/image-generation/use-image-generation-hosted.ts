@@ -1,3 +1,4 @@
+import { resolveVaeTileSize } from './vae-tile-size';
 import { copyRemoteImageModelEditor } from './remote-image-model-editor';
 import { imageSelectionParameters } from './selection-parameters';
 import { remoteImageRecommendation } from './recommended-fields';
@@ -46,7 +47,7 @@ import { downloadImageBlob, imageGenerationDownloadBlob, type ImageGenerationExp
 export function useImageGeneration(): ImageGenerationView {
   const configuration = configurationSchema.parse(rawConfiguration);
   const form = createImageForm({ profile: initialProfile(), runtimeFeatures: getImageRuntimeFeatures({ configuration }) });
-  const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results } = form;
+  const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, vaeTileSizePreference, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results } = form;
   const controller = shallowRef<AbortController>();
   const seedMode = ref<'random' | 'fixed'>('random');
   const benchmarkActive = ref(false);
@@ -146,6 +147,8 @@ export function useImageGeneration(): ImageGenerationView {
   const manualFacts = shallowRef<ImageModelFacts>();
   const manualInspectionState = ref<'idle' | 'scanning' | 'failed'>('idle');
   let manualInspection: AbortController | undefined;
+  let manualInspectionPromise: Promise<void> | undefined;
+  let manualSelectionRevision = 0;
   function recordDiagnostic({ diagnostic }: { diagnostic: ImageDiagnostic }): void {
     if (disposed) {
       return;
@@ -211,10 +214,22 @@ export function useImageGeneration(): ImageGenerationView {
   const recommendation = computed(() => remote.value
     ? remoteImageRecommendation({ recommendation: recommendationForSelection({ model: inferenceLocation.selectedFacts.value }) })
     : recommendationForSelection({ model: library.selectedCandidateKey.value ? library.selectedFacts.value : manualFacts.value }));
+  const resolvedVaeTileSize = computed(() => resolveVaeTileSize({
+    preference: vaeTileSizePreference.value,
+    family: remote.value ? inferenceLocation.selectedFacts.value?.family : library.selectedCandidateKey.value ? library.selectedFacts.value?.family : manualFacts.value?.family,
+  }));
   // Adapters and input images belong to the selected base model; do not carry
   // them silently to another model with a different conditioning contract.
   watch([library.selectedCandidateKey, layout, () => files.value.model, () => files.value.diffusion], () => {
     restoredModels = undefined;
+    manualSelectionRevision++;
+    // Inspection belongs to the active primary selection, including layout.
+    // A result from the other retained slot must never choose this model's tile.
+    manualInspection?.abort();
+    manualInspection = undefined;
+    manualInspectionPromise = undefined;
+    manualFacts.value = undefined;
+    manualInspectionState.value = 'idle';
     if (preferenceFilesMissing && !preferenceRestoring.value && (library.selectedFacts.value || files.value.model || files.value.diffusion)) {
       clearHistoryMissingFiles();
     }
@@ -223,7 +238,23 @@ export function useImageGeneration(): ImageGenerationView {
       form.imageInputs.value = emptyImageInputs();
     }
   }, { flush: 'sync' });
-  async function inspectManualFiles(): Promise<void> {
+  watch(layout, () => {
+    if (!remote.value && !library.selectedCandidateKey.value) {
+      void inspectManualFiles();
+    }
+  });
+  function inspectManualFiles(): Promise<void> {
+    const pending = inspectManualFilesOnce();
+    manualInspectionPromise = pending;
+    const clear = () => {
+      if (manualInspectionPromise === pending) {
+        manualInspectionPromise = undefined;
+      }
+    };
+    void pending.then(clear, clear);
+    return pending;
+  }
+  async function inspectManualFilesOnce(): Promise<void> {
     if (formDisabled.value || disposed) {
       return;
     }
@@ -276,7 +307,7 @@ export function useImageGeneration(): ImageGenerationView {
     // Resolution belongs to the composition the user chose. Applying a model
     // preset changes sampling settings without resizing that composition.
     if (preset.applicableFields) {
-      const fields = preset.applicableFields.filter(field => field !== 'width' && field !== 'height' && field !== 'bf16WeightType'
+      const fields = preset.applicableFields.filter(field => field !== 'width' && field !== 'height' && field !== 'bf16WeightType' && field !== 'vaeTileSize'
         && (!preset.recommendedFieldsOnly || preset.recommendedFields?.includes(field)));
       parameters.value = { ...parameters.value, ...Object.fromEntries(fields.map(field => [field, preset.parameters[field]])) };
     } else if (preset.recommendedFieldsOnly) {
@@ -285,11 +316,11 @@ export function useImageGeneration(): ImageGenerationView {
       const fields = preset.recommendedFields ?? [];
       parameters.value = {
         ...parameters.value,
-        ...Object.fromEntries(fields.filter(field => field !== 'width' && field !== 'height' && field !== 'bf16WeightType').map(field => [field, preset.parameters[field]])),
+        ...Object.fromEntries(fields.filter(field => field !== 'width' && field !== 'height' && field !== 'bf16WeightType' && field !== 'vaeTileSize').map(field => [field, preset.parameters[field]])),
       };
     } else {
-      // Precision is the runtime/user choice, not a model sampling preset.
-      const { width: _width, height: _height, bf16WeightType: _bf16WeightType, ...settings } = preset.parameters;
+      // Precision and tile intent are user/runtime choices, not sampling presets.
+      const { width: _width, height: _height, bf16WeightType: _bf16WeightType, vaeTileSize: _vaeTileSize, ...settings } = preset.parameters;
       parameters.value = { ...parameters.value, ...settings };
     }
     if (!busy.value && !preset.recommendedFieldsOnly) {
@@ -588,7 +619,8 @@ export function useImageGeneration(): ImageGenerationView {
       const snapshot = inferenceLocation.captureDraftRequest({ seed: parameters.value.seed });
       return {
         inferenceLocation: { kind: 'local' },
-        request: { ...snapshot.request, parameters: { ...parameters.value } },
+        vaeTileSizePreference: vaeTileSizePreference.value,
+        request: { ...snapshot.request, parameters: { ...parameters.value, vaeTileSize: resolvedVaeTileSize.value } },
         layout: layout.value,
         modelSelection: library.captureModelSelection({ loras: form.loras.value }),
         remoteModelEditor: undefined,
@@ -638,7 +670,7 @@ export function useImageGeneration(): ImageGenerationView {
         models,
         loras: imageLoraHistorySelections({ selections: form.loras.value }),
         imageInputs: form.imageInputs.value,
-        parameters: { ...parameters.value },
+        parameters: { ...parameters.value, vaeTileSize: resolvedVaeTileSize.value },
         preview: { ...preview.value },
         weightResidency: weightResidency.value,
         gpuBudgetMiB: gpuBudgetMiB.value === '' ? undefined : gpuBudgetMiB.value,
@@ -654,6 +686,7 @@ export function useImageGeneration(): ImageGenerationView {
     });
     return {
       inferenceLocation: inferenceLocation.captureLocation(),
+      vaeTileSizePreference: vaeTileSizePreference.value,
       request: snapshot.request,
       layout: layout.value,
       modelSelection: library.captureModelSelection({ loras: form.loras.value }),
@@ -706,6 +739,11 @@ export function useImageGeneration(): ImageGenerationView {
     }) : await restoreUnfinishedDraft({ draft });
     if (!restored || disposed || revision !== storageRevision.value) {
       return;
+    }
+    // Only new metadata carries automatic intent. Legacy numeric drafts are fixed,
+    // even when their value equals the current browser standard.
+    if (draft.inferenceLocation?.kind !== 'naidan_rpc' && draft.request.runtime?.profile !== 'naidan-rpc') {
+      vaeTileSizePreference.value = draft.vaeTileSizePreference ?? draft.request.parameters.vaeTileSize ?? 32;
     }
     seedMode.value = draft.seedMode;
     debug.value = draft.debug;
@@ -890,6 +928,7 @@ export function useImageGeneration(): ImageGenerationView {
         }
       })();
       parameters.value = restored.parameters;
+      vaeTileSizePreference.value = restored.parameters.vaeTileSize;
       seedMode.value = 'fixed';
       preview.value = restored.preview;
       profile.value = request.runtime.profile;
@@ -1035,6 +1074,32 @@ export function useImageGeneration(): ImageGenerationView {
     if (!supported.value || !artifact.value || formDisabled.value || historyActions.missingFiles.value.length || library.importing.value || disposed) {
       return;
     }
+    if (parameters.value.vaeTiling && vaeTileSizePreference.value === 'auto' && !library.selectedCandidateKey.value) {
+      const selectedFiles = files.value, selectedLayout = layout.value, selectedRevision = manualSelectionRevision;
+      // A second inspection can supersede the first without changing the File.
+      // Wait for the current owner rather than accepting an aborted result.
+      let pending = manualInspectionPromise ?? (!manualFacts.value ? inspectManualFiles() : undefined);
+      do {
+        await pending;
+        if (disposed || formDisabled.value || remote.value || library.selectedCandidateKey.value || files.value !== selectedFiles || layout.value !== selectedLayout || manualSelectionRevision !== selectedRevision) {
+          return;
+        }
+        pending = manualInspectionPromise;
+      } while (pending);
+      if (parameters.value.vaeTiling && vaeTileSizePreference.value === 'auto') {
+        switch (manualInspectionState.value) {
+        case 'idle': break;
+        case 'failed': case 'scanning':
+          invalid.value = true;
+          failure.value = await ensureStrings.imageGeneration__vae_tile_inspection_failed();
+          return;
+        default: {
+          const exhaustive: never = manualInspectionState.value;
+          throw new Error(String(exhaustive));
+        }
+        }
+      }
+    }
     historySaving.status.value = 'idle';
     historySaving.error.value = '';
     activeHistoryId = undefined;
@@ -1073,7 +1138,7 @@ export function useImageGeneration(): ImageGenerationView {
       }
       }
     })();
-    const requestedParameters = { ...parameters.value, seed };
+    const requestedParameters = { ...parameters.value, seed, vaeTileSize: resolvedVaeTileSize.value };
     if (requestedParameters.seed === '-1') {
       invalid.value = true;
       return;
@@ -1523,7 +1588,7 @@ export function useImageGeneration(): ImageGenerationView {
     finalGallery.clear();
     clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, inferenceLocation, captureDraft, restoreDraft, resetDraft, draftRestoreDisabled, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, setRetainModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, resolvedVaeTileSize, inferenceLocation, captureDraft, restoreDraft, resetDraft, draftRestoreDisabled, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, setRetainModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

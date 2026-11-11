@@ -1205,6 +1205,9 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
         await generation.restoreDraft({
           draft: {
             ...current,
+            // Reuse the recorded numeric request as a fixed choice, not the
+            // previous editor's automatic intent.
+            vaeTileSizePreference: selected.run.request.parameters.vaeTileSize ?? 32,
             request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
             seedMode: 'fixed',
             files: [],

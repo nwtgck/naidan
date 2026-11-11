@@ -67,6 +67,20 @@ it('retains a snapshot even if the original file changes afterwards', async () =
   expect(await snapshot.metadata.find(entry => entry.path === 'session.json')!.blob.text()).toContain('雨の夜景');
 });
 
+it.each(['auto', 32] as const)('retains draft tile preference %s and its numeric fallback in archive metadata', async vaeTileSizePreference => {
+  const h = await setup();
+  const draft = generationDraftFixture({ sessionId: h.session.id });
+  draft.revision = 1;
+  draft.vaeTileSizePreference = vaeTileSizePreference;
+  draft.request.parameters.vaeTileSize = 16;
+  await service.saveImageGenerationDraft({ store: h.store, draft, expectedRevision: 0, writeInputs: async () => {} });
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  const metadata = JSON.parse(await snapshot.metadata.find(entry => entry.path === 'draft.json')!.blob.text());
+  expect(metadata.vaeTileSizePreference).toBe(vaeTileSizePreference);
+  expect(metadata.request.parameters.vaeTileSize).toBe(16);
+  expect((await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id }))?.vaeTileSizePreference).toBe(vaeTileSizePreference);
+});
+
 it.each(['draft', 'asset', 'annotations'])('exports %s file snapshots with future fields without rewriting canonical data', async kind => {
   const h = await setup();
   const part = kind === 'draft' ? 'draft.json' : kind === 'asset' ? 'assets/aa/asset-aa.json' : 'annotations/aa/asset-aa.json';

@@ -248,6 +248,15 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       }
       const next = { ...form.overrides.value[id] };
       delete next[key];
+      switch (key) {
+      case 'vaeTileSizePreference': delete next.vaeTileSize;
+        break;
+      case 'prompt': case 'negativePrompt': case 'width': case 'height': case 'steps': case 'guidance': case 'seed': case 'sampler': case 'scheduler': case 'distilledGuidance': case 'vaeTiling': case 'vaeTileSize': case 'flashAttention': case 'bf16WeightType': case 'qwenVaePolicy': case 'conditioningCacheSize': case 'modelArguments': break;
+      default: {
+        const exhaustive: never = key;
+        throw new Error(String(exhaustive));
+      }
+      }
       form.overrides.value = { ...form.overrides.value, [id]: next };
     },
     chooseComponent({ targetId, slot, candidateKey }) {

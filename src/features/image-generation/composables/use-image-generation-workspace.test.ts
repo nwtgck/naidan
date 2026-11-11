@@ -441,6 +441,7 @@ describe('Image Generation composition and lifetime', () => {
     expect(h.generation.parameters.value.seed).toBe('43');
     expect(h.generation.seedMode.value).toBe('fixed');
     expect(h.restored.mock.lastCall?.[0].modelSelection).toBeUndefined();
+    expect(h.restored.mock.lastCall?.[0].vaeTileSizePreference).toBe(32);
     await h.view.generate();
     const latest = h.view.runState.value?.run;
     expect(latest?.sources).toEqual([{ role: 'settings', sessionId: tile.sessionId, assetId: tile.id }]);
