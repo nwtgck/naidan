@@ -178,7 +178,6 @@ it('re-exports the same completed measurement without source images and does not
   expect(JSON.stringify(snapshot.runs.map(run => run.record))).toBe(originalRecords);
 });
 
-
 it('preserves optional native sampling receipts in manifest and per-run JSON without rewriting auto', async () => {
   const snapshot = await snapshotFixture();
   snapshot.runs[0]!.record.sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };

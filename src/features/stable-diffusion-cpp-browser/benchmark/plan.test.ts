@@ -153,7 +153,6 @@ it('resolves automatic tiles for each target after inheritance and manual overri
   expect(plan.models[0]!.request.parameters).not.toHaveProperty('vaeTileSizePreference');
 });
 
-
 it('resolves steps and CFG preferences per model after manual and automatic overrides', () => {
   const h3 = targetFixture({ id: 'h3' }), base = targetFixture({ id: 'base' });
   h3.facts = { family: 'minimax-h3-image', variant: 'unknown', evidence: [] };

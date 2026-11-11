@@ -1172,12 +1172,13 @@ import { ImageModelLocalFileRecovery__add_image_model_files_then_select_the_mode
 import { ImageModelLocalFileRecovery__could_not_open_local_image_model_files } from '@/strings/messages/ImageModelLocalFileRecovery__could_not_open_local_image_model_files/de';
 import { ImageModelNumberInput__automatic } from '@/strings/messages/ImageModelNumberInput__automatic/de';
 import { ImageModelNumberInput__fixed } from '@/strings/messages/ImageModelNumberInput__fixed/de';
-import { ImageModelNumberInput__match_model } from '@/strings/messages/ImageModelNumberInput__match_model/de';
 import { ImageModelNumberInput__model_recommended_value } from '@/strings/messages/ImageModelNumberInput__model_recommended_value/de';
 import { ImageModelNumberInput__naidan_standard_value } from '@/strings/messages/ImageModelNumberInput__naidan_standard_value/de';
 import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/de';
 import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/de';
 import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/de';
+import { ImageNumberPreferenceMenu__change_with_model } from '@/strings/messages/ImageNumberPreferenceMenu__change_with_model/de';
+import { ImageNumberPreferenceMenu__keep_using_this_number } from '@/strings/messages/ImageNumberPreferenceMenu__keep_using_this_number/de';
 import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/de';
 import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/de';
 import { ImagePendingHistory__download_image } from '@/strings/messages/ImagePendingHistory__download_image/de';
@@ -1204,7 +1205,6 @@ import { ImageSamplingReceipt__name_not_reported } from '@/strings/messages/Imag
 import { ImageSamplingReceipt__used_for_generation } from '@/strings/messages/ImageSamplingReceipt__used_for_generation/de';
 import { ImageVaeTileSizeInput__automatic } from '@/strings/messages/ImageVaeTileSizeInput__automatic/de';
 import { ImageVaeTileSizeInput__fixed } from '@/strings/messages/ImageVaeTileSizeInput__fixed/de';
-import { ImageVaeTileSizeInput__match_model } from '@/strings/messages/ImageVaeTileSizeInput__match_model/de';
 import { ImportExportModal__add_new } from '@/strings/messages/ImportExportModal__add_new/de';
 import { ImportExportModal__analyzing_file } from '@/strings/messages/ImportExportModal__analyzing_file/de';
 import { ImportExportModal__append_keeps_current_data } from '@/strings/messages/ImportExportModal__append_keeps_current_data/de';
@@ -5050,12 +5050,13 @@ export const catalog = {
   ImageModelLocalFileRecovery__could_not_open_local_image_model_files,
   ImageModelNumberInput__automatic,
   ImageModelNumberInput__fixed,
-  ImageModelNumberInput__match_model,
   ImageModelNumberInput__model_recommended_value,
   ImageModelNumberInput__naidan_standard_value,
   ImageModelPicker__choose_a_model,
   ImageModelPicker__search_choices,
   ImageModelPicker__use_built_in_component,
+  ImageNumberPreferenceMenu__change_with_model,
+  ImageNumberPreferenceMenu__keep_using_this_number,
   ImagePendingHistory__discard,
   ImagePendingHistory__discard_warning,
   ImagePendingHistory__download_image,
@@ -5082,7 +5083,6 @@ export const catalog = {
   ImageSamplingReceipt__used_for_generation,
   ImageVaeTileSizeInput__automatic,
   ImageVaeTileSizeInput__fixed,
-  ImageVaeTileSizeInput__match_model,
   ImportExportModal__add_new,
   ImportExportModal__analyzing_file,
   ImportExportModal__append_keeps_current_data,
