@@ -20,6 +20,8 @@ All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-11-11
+
 ### Added
 
 - MiniMax-H3-Image models in the browser image-model catalog, with matching text encoder and VAE components.
@@ -1107,7 +1109,8 @@ All notable changes to Naidan are documented in this file.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.65.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.66.0...develop
+[0.66.0]: https://github.com/nwtgck/naidan/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/nwtgck/naidan/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/nwtgck/naidan/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/nwtgck/naidan/compare/v0.62.0...v0.63.0
