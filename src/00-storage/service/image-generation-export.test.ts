@@ -67,6 +67,20 @@ it('retains a snapshot even if the original file changes afterwards', async () =
   expect(await snapshot.metadata.find(entry => entry.path === 'session.json')!.blob.text()).toContain('雨の夜景');
 });
 
+it('retains reported execution values in canonical asset metadata without changing the accepted run', async () => {
+  const h = await setup();
+  const asset = generationAssetFixture({ id: 'asset-bb', run: h.run, index: 1 });
+  asset.result.resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
+  asset.result.sampling = { sampler: { id: 9, name: 'native-method' }, scheduler: { id: 7, name: 'flux' } };
+  await service.commitImageGenerationAsset({ store: h.store, asset, writeImages: async () => {} });
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  const metadata = JSON.parse(await snapshot.metadata.find(entry => entry.path === 'assets/bb/asset-bb.json')!.blob.text());
+  expect(metadata.result.resolvedParameters).toEqual(asset.result.resolvedParameters);
+  expect(metadata.result.sampling).toEqual(asset.result.sampling);
+  const run = JSON.parse(await snapshot.metadata.find(entry => entry.path === 'runs/aa/run-aa.json')!.blob.text());
+  expect(run.request.parameters).toEqual(h.run.request.parameters);
+});
+
 it.each(['auto', 32] as const)('retains draft tile preference %s and its numeric fallback in archive metadata', async vaeTileSizePreference => {
   const h = await setup();
   const draft = generationDraftFixture({ sessionId: h.session.id });
@@ -79,6 +93,23 @@ it.each(['auto', 32] as const)('retains draft tile preference %s and its numeric
   expect(metadata.vaeTileSizePreference).toBe(vaeTileSizePreference);
   expect(metadata.request.parameters.vaeTileSize).toBe(16);
   expect((await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id }))?.vaeTileSizePreference).toBe(vaeTileSizePreference);
+});
+
+it.each([
+  { stepsPreference: 'auto', guidancePreference: 'auto' },
+  { stepsPreference: 20, guidancePreference: 7 },
+] as const)('retains model-following preferences in archive metadata: %j', async preferences => {
+  const h = await setup();
+  const draft = generationDraftFixture({ sessionId: h.session.id });
+  Object.assign(draft, preferences);
+  draft.revision = 1;
+  draft.request.parameters.steps = 6;
+  draft.request.parameters.guidance = 1;
+  await service.saveImageGenerationDraft({ store: h.store, draft, expectedRevision: 0, writeInputs: async () => {} });
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  const metadata = JSON.parse(await snapshot.metadata.find(entry => entry.path === 'draft.json')!.blob.text());
+  expect(metadata).toMatchObject({ ...preferences, request: { parameters: { steps: 6, guidance: 1 } } });
+  expect(await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id })).toMatchObject(preferences);
 });
 
 it.each(['draft', 'asset', 'annotations'])('exports %s file snapshots with future fields without rewriting canonical data', async kind => {

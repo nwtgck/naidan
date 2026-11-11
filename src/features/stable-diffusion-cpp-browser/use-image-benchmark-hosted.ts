@@ -249,6 +249,10 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       const next = { ...form.overrides.value[id] };
       delete next[key];
       switch (key) {
+      case 'stepsPreference': delete next.steps;
+        break;
+      case 'guidancePreference': delete next.guidance;
+        break;
       case 'vaeTileSizePreference': delete next.vaeTileSize;
         break;
       case 'prompt': case 'negativePrompt': case 'width': case 'height': case 'steps': case 'guidance': case 'seed': case 'sampler': case 'scheduler': case 'distilledGuidance': case 'vaeTiling': case 'vaeTileSize': case 'flashAttention': case 'bf16WeightType': case 'qwenVaePolicy': case 'conditioningCacheSize': case 'modelArguments': break;

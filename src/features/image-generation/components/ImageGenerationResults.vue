@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import ImageRecoveredOutputs from './ImageRecoveredOutputs.vue';
+import ImageSamplingReceipt from './ImageSamplingReceipt.vue';
 import { computed, nextTick, ref, useId, watch } from 'vue';
 import ImageGenerationProgress from './ImageGenerationProgress.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
@@ -131,6 +132,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p v-if="result.uniformOutput" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__uniform_image_warning() }}</p>
             <p tw-class="text-sm line-clamp-2 break-words">{{ result.parameters.prompt }}</p>
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ result.modelVersion }} · {{ result.parameters.width }} × {{ result.parameters.height }} · {{ lazyStrings.stableDiffusionCppBrowser__seed() }}: {{ result.parameters.seed }} · {{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ formatElapsed({ elapsedMs: result.elapsedMs }) }}</p>
+            <ImageSamplingReceipt :sampling="result.sampling" />
             <div tw-class="flex flex-wrap items-center gap-3 text-sm">
               <!-- Exporting retained pixels does not depend on the selected inference profile. -->
               <ImageDownloadMenu :preferences="view.imageDownloadPreferences" :on-preferences-change="view.setImageDownloadPreferences" :active="active" :disabled="false" :on-download="options => view.downloadResult({ resultId: result.id, ...options })" data-testid="image-result-download" />

@@ -215,3 +215,14 @@ it('keeps uniform outputs as successful evidence and bounds retained PNG bytes w
   expect(rows.filter(r => r.png)).toHaveLength(4);
   expect(rows.slice(4).every(r => r.record.image.status === 'budget-exceeded' && r.record.uniformOutput && r.record.status === 'succeeded')).toBe(true);
 });
+
+it('records native sampling receipts while preserving requested auto values', async () => {
+  const sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
+  const h = harness({ behavior: async ({ request }) => ({ png: new Blob(['png'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture', uniformOutput: false, sampling }) });
+  await h.runner.start({ plan: planFixture({ mode: 'fresh-each', repeats: 1 }) });
+  sampling.scheduler.name = 'changed-after-reply';
+  const snapshot = h.runner.snapshot()!;
+  expect(snapshot.runs.every(run => run.record.sampling?.scheduler.name === 'flux')).toBe(true);
+  expect(snapshot.plan.models.every(model => model.request.parameters.scheduler === 'auto')).toBe(true);
+  expect(benchmarkManifest({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: 'now' }).runs[0]?.sampling?.scheduler.name).toBe('flux');
+});

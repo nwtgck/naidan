@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
-import { useId } from 'vue';
+import { computed, useId } from 'vue';
+import type { ImageModelFacts } from '@/features/stable-diffusion-cpp-browser/recommendations';
+import { imageModelParameterDefaults } from '@/features/image-generation/model-parameter-defaults';
+import ImageModelNumberInput from '@/features/image-generation/components/ImageModelNumberInput.vue';
 import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 import ImageVaeTileSizeInput from '@/features/image-generation/components/ImageVaeTileSizeInput.vue';
 import { lazyStrings } from '@/strings';
 import { samplerOptions, schedulerOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
 import type { BenchmarkParameters, ParameterChange } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
-const props = defineProps<{ values: BenchmarkParameters, overrides: Partial<BenchmarkParameters> | undefined, disabled: boolean, bf16RetentionSupported: boolean }>();
+const props = defineProps<{ values: BenchmarkParameters, overrides: Partial<BenchmarkParameters> | undefined, disabled: boolean, bf16RetentionSupported: boolean, modelFacts?: ImageModelFacts }>();
 const emit = defineEmits<{ change: [change: ParameterChange], inherit: [key: keyof BenchmarkParameters] }>();
 const id = useId();
+const modelDefaults = computed(() => imageModelParameterDefaults({ model: props.modelFacts }));
 
 function text({ event }: { event: Event }): string {
   return event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement ? event.target.value : '';
@@ -47,6 +51,10 @@ function setOverride({ key, event }: { key: keyof BenchmarkParameters, event: Ev
     case 'width': emit('change', { key, value: props.values.width });
       break;
     case 'height': emit('change', { key, value: props.values.height });
+      break;
+    case 'stepsPreference': emit('change', { key, value: props.values.stepsPreference ?? props.values.steps });
+      break;
+    case 'guidancePreference': emit('change', { key, value: props.values.guidancePreference ?? props.values.guidance });
       break;
     case 'steps': emit('change', { key, value: props.values.steps });
       break;
@@ -114,13 +122,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
       <div tw-class="space-y-1" data-parameter="steps">
         <label :id="id + '-label-steps'" :for="id + '-steps'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</label>
-        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'steps')" :aria-describedby="id + '-label-steps'" @change="setOverride({ key: 'steps', event: $event })" :data-testid="'override-steps'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-        <input :id="id + '-steps'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'steps')" :data-testid="'parameter-steps'" :value="props.values.steps" type="number" min="1" max="100" step="1" @input="emit('change', { key: 'steps', value: numeric({ event: $event }) })" tw-class="block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed" />
+        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="(Object.hasOwn(props.overrides, 'stepsPreference') || Object.hasOwn(props.overrides, 'steps'))" :aria-describedby="id + '-label-steps'" @change="setOverride({ key: 'stepsPreference', event: $event })" :data-testid="'override-steps'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
+        <ImageModelNumberInput :id="id + '-steps'" :label="lazyStrings.stableDiffusionCppBrowser__steps()" :disabled="disabled || props.overrides !== undefined && !(Object.hasOwn(props.overrides, 'stepsPreference') || Object.hasOwn(props.overrides, 'steps'))" :preference="props.values.stepsPreference ?? props.values.steps" :value="modelDefaults.steps.value" :minimum="1" :maximum="100" :step="1" :origin="modelDefaults.steps.origin" input-test-id="parameter-steps" @change="emit('change', { key: 'stepsPreference', value: $event })" />
       </div>
       <div tw-class="space-y-1" data-parameter="guidance">
         <label :id="id + '-label-guidance'" :for="id + '-guidance'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__guidance() }}</label>
-        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'guidance')" :aria-describedby="id + '-label-guidance'" @change="setOverride({ key: 'guidance', event: $event })" :data-testid="'override-guidance'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-        <input :id="id + '-guidance'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'guidance')" :data-testid="'parameter-guidance'" :value="props.values.guidance" type="number" min="0" max="30" step="0.1" @input="emit('change', { key: 'guidance', value: numeric({ event: $event }) })" tw-class="block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed" />
+        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="(Object.hasOwn(props.overrides, 'guidancePreference') || Object.hasOwn(props.overrides, 'guidance'))" :aria-describedby="id + '-label-guidance'" @change="setOverride({ key: 'guidancePreference', event: $event })" :data-testid="'override-guidance'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
+        <ImageModelNumberInput :id="id + '-guidance'" :label="lazyStrings.stableDiffusionCppBrowser__guidance()" :disabled="disabled || props.overrides !== undefined && !(Object.hasOwn(props.overrides, 'guidancePreference') || Object.hasOwn(props.overrides, 'guidance'))" :preference="props.values.guidancePreference ?? props.values.guidance" :value="modelDefaults.guidance.value" :minimum="0" :maximum="30" :step="0.1" :origin="modelDefaults.guidance.origin" input-test-id="parameter-guidance" @change="emit('change', { key: 'guidancePreference', value: $event })" />
       </div>
       <div tw-class="space-y-1" data-parameter="seed">
         <label :id="id + '-label-seed'" :for="id + '-seed'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__seed() }}</label>

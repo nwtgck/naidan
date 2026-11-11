@@ -49,3 +49,32 @@ it('keeps a legacy numeric override visibly fixed until inheritance is requested
   await wrapper.get('[data-testid="override-vaeTileSize"]').setValue(false);
   expect(wrapper.emitted('inherit')).toEqual([['vaeTileSizePreference']]);
 });
+
+it.each(['steps', 'guidance'] as const)('uses %s preference rather than materializing an inherited automatic number', async field => {
+  const preferenceKey = field === 'steps' ? 'stepsPreference' : 'guidancePreference';
+  const value = field === 'steps' ? 6 : 1;
+  wrapper = mount(ImageBenchmarkParameters, { props: { values: { ...parametersFixture(), [field]: value, [preferenceKey]: 'auto' }, overrides: {}, disabled: false, bf16RetentionSupported: true, modelFacts: { family: 'minimax-h3-image', variant: 'unknown', evidence: [] } } });
+  const input = wrapper.get<HTMLInputElement>(`[data-testid="parameter-${field}"]`);
+  expect(input.element.value).toBe(String(value));
+  expect(input.attributes('disabled')).toBeDefined();
+  await wrapper.get(`[data-testid="override-${field}"]`).setValue(true);
+  expect(wrapper.emitted('change')).toEqual([[{ key: preferenceKey, value: 'auto' }]]);
+  await wrapper.setProps({ overrides: { [preferenceKey]: 'auto' } });
+  await input.setValue(String(value));
+  expect(wrapper.emitted('change')?.at(-1)).toEqual([{ key: preferenceKey, value }]);
+  await wrapper.get(`[data-testid="override-${field}"]`).setValue(false);
+  expect(wrapper.emitted('inherit')).toEqual([[preferenceKey]]);
+});
+
+it('labels Qwen Base step 20 as a browser standard and keeps legacy numeric CFG visibly fixed', () => {
+  wrapper = mount(ImageBenchmarkParameters, { props: { values: { ...parametersFixture(), stepsPreference: 'auto', guidance: 6 }, overrides: { guidance: 6 }, disabled: false, bf16RetentionSupported: true, modelFacts: { family: 'qwen-image-2.1', variant: 'base', evidence: [] } } });
+  expect(wrapper.get('[data-testid="parameter-steps-origin"]').text()).toBe('Naidan standard value');
+  expect(wrapper.get('[data-testid="parameter-guidance-preference"]').text()).toBe('Fixed');
+  expect(wrapper.get('[data-testid="override-guidance"]').element).toHaveProperty('checked', true);
+});
+
+it('projects shared automatic values from browser standards instead of legacy numeric fallbacks', () => {
+  wrapper = mount(ImageBenchmarkParameters, { props: { values: { ...parametersFixture(), steps: 8, guidance: 6, stepsPreference: 'auto', guidancePreference: 'auto' }, overrides: undefined, disabled: false, bf16RetentionSupported: true } });
+  expect(wrapper.get<HTMLInputElement>('[data-testid="parameter-steps"]').element.value).toBe('20');
+  expect(wrapper.get<HTMLInputElement>('[data-testid="parameter-guidance"]').element.value).toBe('7');
+});

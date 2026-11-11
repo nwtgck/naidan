@@ -1,4 +1,6 @@
 import { z } from 'zod';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- The Vite build configuration also imports this schema without the app alias.
+import { imageGenerationSamplingSchema } from '../../01-models/image-generation-history';
 import { validModelPath } from './logic/model-path';
 import { profileOptions, samplerOptions, schedulerOptions, defaultPreviewSettings } from './form-options';
 export { defaultPreviewSettings } from './form-options';
@@ -206,6 +208,7 @@ export const responseSchema = z.object({
   height: z.number().int().min(128).max(2048),
   modelVersion: z.string().max(256),
   uniformOutput: z.boolean().default(false),
+  sampling: imageGenerationSamplingSchema.optional(),
 });
 export const workerResultSchema = z.union([cancelledResultSchema, responseSchema]);
 export type WorkerResult = z.infer<typeof workerResultSchema>;

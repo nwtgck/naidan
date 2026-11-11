@@ -35,7 +35,7 @@ function png({ width = 256, height = 256 } = {}): Uint8Array<ArrayBuffer> {
 function input(): PeerImageInput {
   return {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/checkpoint.gguf' } } }, components: [], loras: [] },
-    parameters: { prompt: 'test', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
+    parameters: { prompt: 'test', negativePrompt: '', width: 256, height: 256, stepsPreference: 4, guidancePreference: 7, vaeTileSizePreference: 32, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
     preview: { enabled: true, interval: 1, startStep: 1, mode: 'projection', maxEdge: 64 },
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
@@ -52,7 +52,7 @@ function stream<T>({ values }: { values: T[] }): ReadableStream<T> {
   });
 }
 
-const terminal: PeerImageEvent = { type: 'completed', seed: '42', width: 256, height: 256, modelVersion: 'test-v1', uniformOutput: false };
+const terminal: PeerImageEvent = { type: 'completed', seed: '42', width: 256, height: 256, modelVersion: 'test-v1', uniformOutput: false, resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } };
 
 function mockClient({ image = stream({ values: [png()] }), events = stream({ values: [terminal] }), closed = Promise.resolve() }: {
   image?: ReadableStream<Uint8Array>, events?: ReadableStream<PeerImageEvent>, closed?: Promise<void>,
@@ -227,7 +227,7 @@ it('uses the real typed RPC transport and invokes provider computation exactly o
     stop.abort();
     pair.close();
   });
-  const generateImage = vi.fn(async () => ({ png: new Blob([png()], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test-v1' }));
+  const generateImage = vi.fn(async () => ({ png: new Blob([png()], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test-v1', resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } }));
   const unexpected = (): never => {
     throw new Error('Unexpected resource');
   };
@@ -312,7 +312,7 @@ it('delivers a preview larger than one RPC item without aborting the native job'
         png: new Blob([preview], { type: 'image/png' }),
       },
     });
-    return { png: new Blob([png()], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' };
+    return { png: new Blob([png()], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } };
   });
   const unexpected = (): never => {
     throw new Error('Unexpected resource');
@@ -365,4 +365,55 @@ it('retains unknown reported metadata when event delivery fails after complete i
 eventsController!.error(new Error('Lost event stream'));
 expect(await job.result).toMatchObject({ status: 'interrupted', recoverable: { width: 256, reported: undefined } });
 expect(fixture.generateImage).toHaveBeenCalledOnce();
+});
+
+it('accepts provider-resolved automatic request values and native sampling choices', async () => {
+  const value = input();
+  value.parameters.stepsPreference = 'auto';
+  value.parameters.guidancePreference = 'auto';
+  value.parameters.vaeTileSizePreference = 'auto';
+  const resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
+  const sampling = { sampler: { id: 0, name: 'euler' }, scheduler: { id: 11, name: 'flux' } };
+  const fixture = mockClient({ events: stream({ values: [{ ...terminal, resolvedParameters, sampling }] }) });
+  expect(await start({ client: fixture.client, value }).result).toMatchObject({ status: 'completed', output: { resolvedParameters, sampling } });
+  expect(fixture.generateImage.mock.calls[0]![0].input.parameters).not.toHaveProperty('steps');
+});
+
+it.each(['steps', 'guidance', 'vaeTileSize'] as const)('does not confirm an output that changes fixed %s', async field => {
+  const fixture = mockClient({ events: stream({ values: [{ ...terminal, resolvedParameters: { ...terminal.resolvedParameters, [field]: field === 'steps' ? 6 : field === 'guidance' ? 1 : 16 } }] }) });
+  const result = await start({ client: fixture.client }).result;
+  expect(result.status).not.toBe('completed');
+  if (result.status === 'interrupted') {
+    expect(result.recoverable).not.toHaveProperty('resolvedParameters');
+    expect(result.recoverable.reported).toBeUndefined();
+  }
+});
+
+it('keeps resolved request values unconfirmed when final RPC completion fails', async () => {
+  const fixture = mockClient({ closed: Promise.reject(new Error('Disconnected')) });
+  const result = await start({ client: fixture.client }).result;
+  expect(result.status).toBe('interrupted');
+  if (result.status === 'interrupted') {
+    expect(result.recoverable).not.toHaveProperty('resolvedParameters');
+    expect(result.recoverable).not.toHaveProperty('sampling');
+  }
+});
+
+it('accepts native img2img preview totals independently of resolved request steps', async () => {
+  const value = input();
+  value.parameters.stepsPreference = 30;
+  const bytes = png({ width: 64, height: 64 });
+  const fixture = mockClient({
+    events: stream({
+      values: [
+        { type: 'preview-start', revision: 1, step: 2, steps: 13, width: 64, height: 64, mode: 'projection', byteLength: bytes.length },
+        { type: 'preview-chunk', data: btoa(String.fromCharCode(...bytes)) },
+        { type: 'preview-end' },
+        { ...terminal, resolvedParameters: { steps: 30, guidance: 7, vaeTileSize: 32 } },
+      ],
+    }),
+  });
+  const job = start({ client: fixture.client, value });
+  expect(await job.result).toMatchObject({ status: 'completed', output: { resolvedParameters: { steps: 30 } } });
+  expect(job.onPreview).toHaveBeenCalledWith({ frame: expect.objectContaining({ step: 2, steps: 13 }) });
 });

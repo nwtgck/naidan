@@ -86,3 +86,12 @@ it('updates already-open details when a running measurement produces its final P
   expect(wrapper.get('img').attributes('src')).toBe('blob:benchmark-1');
   expect(URL.createObjectURL).toHaveBeenCalledWith(png);
 });
+
+it('shows reported sampling even when image retention was disabled', async () => {
+  wrapper = mount(ImageBenchmarkResult, { props: { runId: 'm001-r001', png: undefined, imageStatus: 'not-requested', sampling: { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } } } });
+  expect(wrapper.find('[data-testid="image-sampling-receipt"]').exists()).toBe(false);
+  await toggle({ open: true });
+  expect(wrapper.get('[data-testid="image-sampling-sampler"]').text()).toBe('native-method');
+  expect(wrapper.get('[data-testid="image-sampling-scheduler"]').text()).toBe('flux');
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+});

@@ -305,7 +305,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           trace.emit({ event: 'cancelled', stage: 'worker', message: 'Generation stopped; native context retained after cleanup', fields: { modelResident: true } });
           return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
         }
-        const { modelVersion, uniformOutput, ...image } = generated;
+        const { modelVersion, uniformOutput, sampling, ...image } = generated;
         await previews.finish();
         if (failed) {
           throw new Error('Image runtime aborted during preview encoding');
@@ -327,7 +327,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           outcome = 'cancelled';
           return cancelledResultSchema.parse({ cancelled: true, modelResident: true });
         }
-        const response = responseSchema.parse({ ...output, modelVersion, uniformOutput });
+        const response = responseSchema.parse({ ...output, modelVersion, uniformOutput, ...(sampling ? { sampling } : {}) });
         outcome = 'complete';
         return response;
       } catch (error) {

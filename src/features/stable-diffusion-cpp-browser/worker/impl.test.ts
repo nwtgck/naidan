@@ -501,3 +501,12 @@ for (const failure of ['device-lost', 'uncaptured', 'error-scope', 'abort'] as c
     expect(mocks.close).not.toHaveBeenCalled();
   });
 }
+
+it('returns the typed native sampling receipt separately from encoded pixels', async () => {
+  loaded();
+  const sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
+  mocks.generate.mockResolvedValue({ ...pixels(), sampling });
+  const result = await createImageWorker({ reportDiagnostic: undefined }).generate(requestFixture(), vi.fn());
+  expect(result).toHaveProperty('sampling', sampling);
+  expect(mocks.encode.mock.calls[0]![0].image).not.toHaveProperty('sampling');
+});

@@ -1,4 +1,5 @@
 import { resolveVaeTileSize } from '@/features/image-generation/vae-tile-size';
+import { imageModelParameterDefaults, resolveImageModelParameter } from '@/features/image-generation/model-parameter-defaults';
 import { temporaryModelFiles } from '@/logic/temporary-model-files';
 import { temporaryImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/temporary-repositories';
 import { imageModelLocation } from '@/features/stable-diffusion-cpp-browser/logic/model-location';
@@ -15,7 +16,7 @@ import { configurationSchema, requestSchema, workerResultSchema, resolveBf16Weig
 import type { Request, ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import rawConfiguration from 'virtual:stable-diffusion-cpp-browser/config';
 import type { OwnedInferenceResources } from './resources';
-import { imageModelSelectionSchema, imageCatalogItemSchema } from '@/features/naidan-rpc-integration/contract';
+import { imageModelSelectionSchema, imageCatalogItemSchema, peerImageParametersSchema, peerImageResolvedParametersSchema } from '@/features/naidan-rpc-integration/contract';
 import type { PeerImageFile, PeerImageCatalogItem } from '@/features/naidan-rpc-integration/contract';
 import { NaidanRpcError } from '@/features/naidan-rpc';
 import { createImageGenerationFailure, readImageGenerationNativeFailureContext } from '@/features/naidan-rpc-integration/handlers/inference/image-generation-failure';
@@ -243,6 +244,14 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         profile = artifact.profile;
         stage = 'input';
         reason = 'invalid-input';
+        const { stepsPreference, guidancePreference, vaeTileSizePreference, ...parameters } = peerImageParametersSchema.parse(input.parameters);
+        const primary = selectedModels[0]!.candidate;
+        const defaults = imageModelParameterDefaults({ model: primary });
+        const resolvedParameters = peerImageResolvedParametersSchema.parse({
+          steps: resolveImageModelParameter({ preference: stepsPreference, fallback: defaults.steps.value }),
+          guidance: resolveImageModelParameter({ preference: guidancePreference, fallback: defaults.guidance.value }),
+          vaeTileSize: resolveVaeTileSize({ preference: vaeTileSizePreference, family: primary.family }),
+        });
         const request = requestSchema.parse({
           artifact,
           models,
@@ -253,11 +262,9 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           preview: input.preview,
           imageInputs: { initImage: input.imageInputs.initial, referenceImages: input.imageInputs.references, strength: input.imageInputs.strength },
           parameters: {
-            ...input.parameters,
+            ...parameters,
+            ...resolvedParameters,
             vaeTiling: true,
-            // Tile controls are not in the RPC wire contract. Resolve the
-            // receiver's policy from its own verified model selection.
-            vaeTileSize: resolveVaeTileSize({ preference: 'auto', family: selectedModels[0]?.candidate.family }),
             flashAttention: false,
             // RPC has no precision control. Preserve its existing F32 default
             // for active LoRAs, whose immediate application cannot modify retained BF16.
@@ -380,7 +387,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           throw new DOMException('Image generation cancelled', 'AbortError');
         }
         preparedModels.commit();
-        return result;
+        return { ...result, resolvedParameters };
       } catch (error) {
         signal.throwIfAborted();
         if (error instanceof DOMException && error.name === 'AbortError') {

@@ -1568,3 +1568,76 @@ it.each(['projection', 'vae'] as const)('excludes input VAE tile progress and fi
   expect(onProgress.mock.calls.some(([{ event }]) => event.phase === 'sampling' && event.steps === 4)).toBe(false);
   expect(onPreview.mock.calls.map(([{ capture }]) => ({ step: capture.step, steps: capture.steps }))).toEqual([{ step: 1, steps: 13 }]);
 });
+
+it.each([4, 8] as const)('copies native sampling names and ids at pointer width %s without changing requested auto', async pointerBytes => {
+  const h = harness({ pointerBytes, outcome: 'success', channels: 3 }), request = requestFixture();
+  const samplerName = 700000n, schedulerName = 700100n;
+  h.strings.set(samplerName, 'native-sampler-outside-editor');
+  h.strings.set(schedulerName, 'flux');
+  h.api.sd_sample_method_name = vi.fn(async () => samplerName);
+  h.api.sd_scheduler_name = vi.fn(async () => schedulerName);
+  const result = await runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn() });
+  expect(h.api.sd_sample_method_name).toHaveBeenCalledExactlyOnceWith(2);
+  expect(h.api.sd_get_default_scheduler).toHaveBeenCalledExactlyOnceWith(200000n, 2);
+  expect(h.api.sd_scheduler_name).toHaveBeenCalledExactlyOnceWith(3);
+  expect(result.sampling).toEqual({ sampler: { id: 2, name: 'native-sampler-outside-editor' }, scheduler: { id: 3, name: 'flux' } });
+  expect(request.parameters).toMatchObject({ sampler: 'auto', scheduler: 'auto' });
+  expect(h.core.readUtf8).toHaveBeenCalledWith(samplerName, 129);
+  expect(h.core.readUtf8).toHaveBeenCalledWith(schedulerName, 129);
+  expect(h.core.free).not.toHaveBeenCalledWith(samplerName);
+  expect(h.core.free).not.toHaveBeenCalledWith(schedulerName);
+});
+
+it('records native sampling ids without requiring optional name getters', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  const result = await runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() });
+  expect(result.sampling).toEqual({ sampler: { id: 2 }, scheduler: { id: 3 } });
+});
+
+it('observes fresh native sampling values on every retained-context run', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  const session = createImageGenerationSession(h), request = requestFixture();
+  h.api.sd_sample_method_name = vi.fn(async id => h.core.utf8('native-' + id));
+  h.api.sd_scheduler_name = vi.fn(async id => h.core.utf8('schedule-' + id));
+  const first = await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  vi.mocked(h.api.sd_get_default_sample_method).mockResolvedValueOnce(6);
+  vi.mocked(h.api.sd_get_default_scheduler).mockResolvedValueOnce(7);
+  const second = await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  expect(first).toHaveProperty('sampling.sampler.name', 'native-2');
+  expect(second).toHaveProperty('sampling.sampler.name', 'native-6');
+  expect(second).toHaveProperty('sampling.scheduler.name', 'schedule-7');
+  expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
+  expect(h.api.sd_get_default_scheduler).toHaveBeenLastCalledWith(200000n, 6);
+  await session.close();
+});
+
+it.each(['', 'x'.repeat(129)])('omits an invalid native sampling name without inventing a UI enum', async name => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  h.strings.set(700000n, name);
+  h.api.sd_sample_method_name = vi.fn(async () => 700000n);
+  const result = await runImageGeneration({ ...h, request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() });
+  expect(result.sampling?.sampler).toEqual({ id: 2 });
+});
+
+it.each([
+  ['sd_sample_method_name', new TypeError('Missing sampler name export')],
+  ['sd_sample_method_name', new WebAssembly.RuntimeError('Sampler name trap')],
+  ['sd_scheduler_name', new TypeError('Missing scheduler name export')],
+  ['sd_scheduler_name', new WebAssembly.RuntimeError('Scheduler name trap')],
+] as const)('retires a failed optional native naming boundary without cleanup: %s', async (functionName, failure) => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 }), request = requestFixture();
+  request.debug = 'on';
+  h.api[functionName] = vi.fn(async () => {
+    throw failure;
+  });
+  const onDiagnostic = vi.fn();
+  await expect(runImageGeneration({ ...h, request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic })).rejects.toThrow(failure.message);
+  expect(h.api.generate_image).not.toHaveBeenCalled();
+  expect(h.api.sd_set_graph_diagnostics).toHaveBeenCalledExactlyOnceWith(1);
+  expect(h.api.sd_set_preview_callback).not.toHaveBeenCalled();
+  expect(h.core.module._sdc_sd_set_preview_callback).not.toHaveBeenCalled();
+  expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
+  expect(h.core.free).not.toHaveBeenCalled();
+  expect(h.events).not.toContain('unmount');
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ event: 'failed', fields: expect.objectContaining({ nativeCall: functionName, workerTerminationRequired: true }) }));
+});

@@ -2,16 +2,21 @@ vi.mock('@/components/SettingsSelect.vue', async () => ({
   default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
 }));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { computed, ref } from 'vue';
+import { computed, effectScope, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
-import { recommendationForSelection } from '@/features/stable-diffusion-cpp-browser/recommendations';
+import { useImageInferenceLocation } from '@/features/image-generation/composables/use-image-inference-location';
+import { toBinaryObjectId } from '@/01-models/ids';
+import { recommendationForSelection, type ImageModelFacts } from '@/features/stable-diffusion-cpp-browser/recommendations';
 import ImageGenerationEditor from './ImageGenerationEditor.vue';
+import { imageModelParameterDefaults } from '@/features/image-generation/model-parameter-defaults';
 import ImageRecommendedFieldHint from './ImageRecommendedFieldHint.vue';
 import ImageSettingsSection from './ImageSettingsSection.vue';
 import ImageModelConfiguration from '@/features/stable-diffusion-cpp-browser/components/ImageModelConfiguration.vue';
 import { ExternalLinkIcon } from 'lucide-vue-next';
+
+vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ subscribeRpcState: () => () => {}, getRpcManager: vi.fn(), configureRpcFeature: vi.fn(async () => {}) }));
 
 let wrapper: VueWrapper | undefined;
 
@@ -126,17 +131,51 @@ it('edits the VAE tile preference while displaying its resolved model-specific n
   expect(wrapper.get('[data-testid="vae-tile-size-preference"]').text()).toBe('Fixed');
 });
 
-it('renders Qwen Turbo resolution and guidance hints without suggesting unsupported sampling values', () => {
+it('allows a remote VAE tile preference without exposing local runtime controls', async () => {
+  using scope = {
+    value: effectScope(),
+    [Symbol.dispose]() {
+      this.value.stop();
+    },
+  };
+  const view = useImageGeneration(), disabled = ref(false);
+  view.draftDisabled = computed(() => disabled.value);
+  view.inferenceLocation = scope.value.run(() => useImageInferenceLocation({ form: view, blocked: () => false, identifyInput: () => toBinaryObjectId({ raw: 'input-image' }) }))!;
+  view.inferenceLocation.kind.value = 'naidan_rpc';
+  view.resolvedVaeTileSize = computed(() => view.vaeTileSizePreference.value === 'auto' ? 16 : view.vaeTileSizePreference.value);
+  wrapper = mount(ImageGenerationEditor, { props: { view, active: true }, global: { stubs: { ImageInferenceLocation: true, ImageRemoteModelConfiguration: true } } });
+  const input = wrapper.get<HTMLInputElement>('[data-testid="image-vae-tile-size"]');
+  expect(input.element.value).toBe('16');
+  expect(wrapper.get('[data-testid="vae-tile-size-preference"]').text()).toBe('Auto');
+  await input.setValue('24');
+  expect(view.vaeTileSizePreference.value).toBe(24);
+  for (const key of ['bf16-weight-type', 'weight-residency', 'memory-budget', 'qwen-vae-policy']) {
+    expect(wrapper.find(`[data-testid="image-${key}"]`).exists()).toBe(false);
+  }
+  disabled.value = true;
+  await flushPromises();
+  expect(input.element.matches(':disabled')).toBe(true);
+});
+
+it('shows reviewed Qwen Turbo CFG and a browser-standard step count without unsupported sampling hints', () => {
   const view = useImageGeneration();
+  const model = { family: 'qwen-image-2.1' as const, variant: 'turbo' as const, evidence: [] };
   view.draftDisabled = computed(() => false);
-  view.recommendation = computed(() => recommendationForSelection({ model: { family: 'qwen-image-2.1', variant: 'turbo', evidence: [] } }));
+  view.recommendation = computed(() => recommendationForSelection({ model }));
+  view.modelParameterDefaults = computed(() => imageModelParameterDefaults({ model }));
+  view.resolvedSteps = computed(() => view.stepsPreference.value === 'auto' ? view.modelParameterDefaults.value.steps.value : view.stepsPreference.value);
+  view.resolvedGuidance = computed(() => view.guidancePreference.value === 'auto' ? view.modelParameterDefaults.value.guidance.value : view.guidancePreference.value);
   wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
   const hints = wrapper.findAllComponents(ImageRecommendedFieldHint);
-  for (const [field, expected] of [['width', 1024], ['height', 1024], ['guidance', 1]] as const) {
+  for (const field of ['width', 'height']) {
     const hint = hints.find(item => item.props('field') === field)!;
-    expect(hint.get('[data-testid="recommended-field-hint"]').text()).toContain(String(expected));
+    expect(hint.get('[data-testid="recommended-field-hint"]').text()).toContain('1024');
   }
-  expect(hints.find(item => item.props('field') === 'steps')?.find('[data-testid="recommended-field-hint"]').exists()).toBe(false);
+  expect(hints.some(item => item.props('field') === 'steps' || item.props('field') === 'guidance')).toBe(false);
+  expect(wrapper.get<HTMLInputElement>('[data-testid="image-steps"]').element.value).toBe('20');
+  expect(wrapper.get('[data-testid="image-steps-origin"]').text()).toBe('Naidan standard value');
+  expect(wrapper.get<HTMLInputElement>('[data-testid="image-guidance"]').element.value).toBe('1');
+  expect(wrapper.get('[data-testid="image-guidance-origin"]').text()).toBe('Model recommendation');
 });
 
 it('keeps recommendation evidence compact and marks every external source without losing referrer protection', () => {
@@ -163,4 +202,32 @@ it('uses a compact section for unresolved file diagnostics and preserves the ful
   const section = wrapper.findAllComponents(ImageSettingsSection).find(item => item.attributes('data-testid') === 'image-inspection-issues');
   expect(section?.props('compact')).toBe(true);
   expect(wrapper.get('[data-testid="image-inspection-issue"]').text()).toBe(issue);
+});
+
+it('changes step and CFG intent only on numeric edits and follows model values only while automatic', async () => {
+  const view = useImageGeneration(), model = ref<ImageModelFacts>({ family: 'minimax-h3-image', variant: 'unknown', evidence: [] });
+  view.draftDisabled = computed(() => false);
+  view.modelParameterDefaults = computed(() => imageModelParameterDefaults({ model: model.value }));
+  view.resolvedSteps = computed(() => view.stepsPreference.value === 'auto' ? view.modelParameterDefaults.value.steps.value : view.stepsPreference.value);
+  view.resolvedGuidance = computed(() => view.guidancePreference.value === 'auto' ? view.modelParameterDefaults.value.guidance.value : view.guidancePreference.value);
+  wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
+  const steps = wrapper.get<HTMLInputElement>('[data-testid="image-steps"]'), guidance = wrapper.get<HTMLInputElement>('[data-testid="image-guidance"]');
+  expect(steps.element.value).toBe('6');
+  expect(guidance.element.value).toBe('1');
+  await steps.trigger('focus');
+  expect(view.stepsPreference.value).toBe('auto');
+  model.value = { family: 'z-image', variant: 'base', evidence: [] };
+  await flushPromises();
+  expect(steps.element.value).toBe('50');
+  expect(guidance.element.value).toBe('5');
+  await steps.setValue('50');
+  await guidance.setValue('5');
+  expect(view.stepsPreference.value).toBe(50);
+  expect(view.guidancePreference.value).toBe(5);
+  model.value = { family: 'minimax-h3-image', variant: 'unknown', evidence: [] };
+  await flushPromises();
+  expect(steps.element.value).toBe('50');
+  expect(guidance.element.value).toBe('5');
+  expect(wrapper.get('[data-testid="image-steps-preference"]').text()).toBe('Fixed');
+  expect(wrapper.get('[data-testid="image-guidance-preference"]').text()).toBe('Fixed');
 });

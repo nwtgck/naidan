@@ -152,3 +152,17 @@ it('resolves automatic tiles for each target after inheritance and manual overri
   expect(plan.models.map(model => model.request.parameters.vaeTileSize)).toEqual([16, 32]);
   expect(plan.models[0]!.request.parameters).not.toHaveProperty('vaeTileSizePreference');
 });
+
+
+it('resolves steps and CFG preferences per model after manual and automatic overrides', () => {
+  const h3 = targetFixture({ id: 'h3' }), base = targetFixture({ id: 'base' });
+  h3.facts = { family: 'minimax-h3-image', variant: 'unknown', evidence: [] };
+  base.facts = { family: 'z-image', variant: 'base', evidence: [] };
+  const common = { ...parametersFixture(), stepsPreference: 'auto' as const, guidancePreference: 'auto' as const };
+  const plan = createBenchmarkPlan({ ...input(), common, targets: [h3, base] });
+  expect(plan.models.map(model => [model.request.parameters.steps, model.request.parameters.guidance])).toEqual([[6, 1], [50, 5]]);
+  expect(plan.models[0]!.request.parameters).not.toHaveProperty('stepsPreference');
+  expect(benchmarkParameters({ common, target: h3, strategy: 'model-defaults', overrides: { stepsPreference: 20, guidancePreference: 7 } }).parameters).toMatchObject({ steps: 20, guidance: 7 });
+  expect(benchmarkParameters({ common, target: h3, strategy: 'shared', overrides: { steps: 20, guidance: 7 } }).parameters).toMatchObject({ steps: 20, guidance: 7, stepsPreference: 20, guidancePreference: 7 });
+  expect(benchmarkParameters({ common: { ...common, stepsPreference: 20, guidancePreference: 7 }, target: h3, strategy: 'shared', overrides: { stepsPreference: 'auto', guidancePreference: 'auto' } }).parameters).toMatchObject({ steps: 6, guidance: 1 });
+});

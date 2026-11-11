@@ -36,6 +36,11 @@ const functions = {
   str_to_scheduler: ['signed', 'enum scheduler_t', [['pointer', 'const char *']]],
 } as const satisfies Record<string, readonly [returnKind: string, returnType: string, parameters: readonly ValueContract[]]>;
 
+const optionalFunctions = {
+  sd_sample_method_name: ['pointer', 'const char *', [['signed', 'enum sample_method_t']]],
+  sd_scheduler_name: ['pointer', 'const char *', [['signed', 'enum scheduler_t']]],
+} as const satisfies Record<string, readonly [returnKind: string, returnType: string, parameters: readonly ValueContract[]]>;
+
 const records = {
   sd_ctx_params_t: {
     webgpu_bf16_type: ['signed', 'enum sd_type_t'],
@@ -96,9 +101,13 @@ export function assertImageRuntimeContract({ schema, bf16WeightRetention }: { sc
     ...functions,
     sd_browser_bf16_retention_version: ['unsigned', 'uint32_t', []],
   } as const : functions;
-  for (const [name, [returnKind, returnType, parameters]] of Object.entries(requiredFunctions)) {
+  for (const [name, [returnKind, returnType, parameters]] of Object.entries({ ...requiredFunctions, ...optionalFunctions })) {
     const actual = functionMap.get(name);
     if (!actual) {
+      // Old generated schemas can omit observational naming APIs.
+      if (Object.hasOwn(optionalFunctions, name)) {
+        continue;
+      }
       throw new Error('Image core is missing a required upstream function: ' + name);
     }
     if (actual.returnKind !== returnKind || actual.returnType !== returnType || actual.parameters.length !== parameters.length

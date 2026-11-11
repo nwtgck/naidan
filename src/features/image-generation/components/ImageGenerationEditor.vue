@@ -4,6 +4,7 @@ import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import ImageRecommendedFieldHint from './ImageRecommendedFieldHint.vue';
 import ImageVaeTileSizeInput from './ImageVaeTileSizeInput.vue';
+import ImageModelNumberInput from './ImageModelNumberInput.vue';
 import { imageRecommendedHint, applyImageRecommendedField, type ImageRecommendedField } from '@/features/image-generation/recommended-fields';
 import type { ImageGenerationRecommendation } from '@/features/stable-diffusion-cpp-browser/recommendations';
 import { computed, ref, useId, watch } from 'vue';
@@ -26,7 +27,7 @@ defineSlots<{ 'prompt-actions'({ field, text }: { field: 'prompt' | 'negativePro
 const emit = defineEmits<{ manageModels: [] }>();
 const id = useId();
 const configurationOpen = ref(false);
-const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, vaeTileSizePreference, resolvedVaeTileSize, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
+const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, vaeTileSizePreference, resolvedVaeTileSize, stepsPreference, guidancePreference, resolvedSteps, resolvedGuidance, modelParameterDefaults, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
 const remote = computed(() => props.view.inferenceLocation?.kind.value === 'naidan_rpc');
 const bf16RetentionUnavailable = computed(() => {
@@ -206,8 +207,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <p v-if="resolutionInvalid" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300" data-testid="image-resolution-warning">{{ lazyStrings.ImageGenerationEditor__resolution_must_use_supported_dimensions() }}</p>
         </section>
         <div tw-class="grid grid-cols-2 gap-3">
-          <div tw-class="text-sm space-y-1"><div tw-class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1"><label :for="id + '-recommended-steps'">{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</label><ImageRecommendedFieldHint :recommendation="recommendation" field="steps" :current="parameters.steps" :input-id="id + '-recommended-steps'" :context="context" :disabled="draftDisabled" :busy="busy" @apply="applyRecommendedField" /></div><input :id="id + '-recommended-steps'" v-model.number="parameters.steps" data-testid="image-steps" type="number" min="1" max="100" step="1" required tw-class="outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 text-gray-800 dark:text-gray-100  transition-colors hover:border-blue-200/80 dark:hover:border-blue-500/35" /></div>
-          <div tw-class="text-sm space-y-1"><div tw-class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1"><label :for="id + '-recommended-guidance'">{{ lazyStrings.stableDiffusionCppBrowser__guidance() }}</label><ImageRecommendedFieldHint :recommendation="recommendation" field="guidance" :current="parameters.guidance" :input-id="id + '-recommended-guidance'" :context="context" :disabled="draftDisabled" :busy="busy" @apply="applyRecommendedField" /></div><input :id="id + '-recommended-guidance'" v-model.number="parameters.guidance" data-testid="image-guidance" type="number" min="0" max="30" step="0.1" required tw-class="outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50 block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 text-gray-800 dark:text-gray-100  transition-colors hover:border-blue-200/80 dark:hover:border-blue-500/35" /></div>
+          <div tw-class="text-sm space-y-1"><label :for="id + '-recommended-steps'">{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</label><ImageModelNumberInput :id="id + '-recommended-steps'" :label="lazyStrings.stableDiffusionCppBrowser__steps()" :preference="stepsPreference" :value="resolvedSteps" :minimum="1" :maximum="100" :step="1" :origin="modelParameterDefaults.steps.origin" :disabled="draftDisabled" input-test-id="image-steps" @change="stepsPreference = $event" /></div>
+          <div tw-class="text-sm space-y-1"><label :for="id + '-recommended-guidance'">{{ lazyStrings.stableDiffusionCppBrowser__guidance() }}</label><ImageModelNumberInput :id="id + '-recommended-guidance'" :label="lazyStrings.stableDiffusionCppBrowser__guidance()" :preference="guidancePreference" :value="resolvedGuidance" :minimum="0" :maximum="30" :step="0.1" :origin="modelParameterDefaults.guidance.origin" :disabled="draftDisabled" input-test-id="image-guidance" @change="guidancePreference = $event" /></div>
         </div>
         <div tw-class="space-y-1.5">
           <label :for="id + '-seed'" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__seed() }}</label>
@@ -235,6 +236,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             </div>
           </div>
         </ImageSettingsSection>
+      </fieldset>
+      <fieldset v-if="remote" :disabled="draftDisabled" tw-class="min-w-0 text-sm space-y-1">
+        <label :for="id + '-remote-vaeTileSize'">{{ lazyStrings.stableDiffusionCppBrowser__vae_tile_size() }}</label>
+        <ImageVaeTileSizeInput :id="id + '-remote-vaeTileSize'" :preference="vaeTileSizePreference" :value="resolvedVaeTileSize" :disabled="draftDisabled" input-test-id="image-vae-tile-size" @change="vaeTileSizePreference = $event" />
       </fieldset>
       <fieldset v-if="!remote" :disabled="draftDisabled" tw-class="min-w-0 space-y-2">
         <ImageSettingsSection :title="lazyStrings.stableDiffusionCppBrowser__runtime_settings()" :summary="parameters.bf16WeightType.toUpperCase() + ' · ' + profile">
@@ -287,8 +292,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div v-if="recommendation" tw-class="flex flex-wrap items-start gap-2" data-testid="image-recommendation">
           <ImageSettingsSection :title="lazyStrings.stableDiffusionCppBrowser__recommended_settings()" :summary="recommendation.title" tw-class="basis-64 flex-1 min-w-0">
             <p tw-class="flex flex-wrap gap-x-3 text-xs text-gray-500 dark:text-gray-400">
-              <span v-if="imageRecommendedHint({ recommendation, field: 'steps' })">{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ recommendation.parameters.steps }}</span>
-              <span v-if="imageRecommendedHint({ recommendation, field: 'guidance' })">{{ lazyStrings.stableDiffusionCppBrowser__guidance() }} {{ recommendation.parameters.guidance }}</span>
+              <span v-if="modelParameterDefaults.steps.origin === 'recommended'">{{ lazyStrings.stableDiffusionCppBrowser__steps() }} {{ modelParameterDefaults.steps.value }}</span>
+              <span v-if="modelParameterDefaults.guidance.origin === 'recommended'">{{ lazyStrings.stableDiffusionCppBrowser__guidance() }} {{ modelParameterDefaults.guidance.value }}</span>
               <span v-if="imageRecommendedHint({ recommendation, field: 'sampler' })">{{ recommendation.parameters.sampler }}</span>
             </p>
             <p v-if="!recommendation.recommendedFieldsOnly" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__recommended_preview_summary() }} {{ recommendation.preview.mode === 'vae' ? lazyStrings.stableDiffusionCppBrowser__preview_vae() : lazyStrings.stableDiffusionCppBrowser__preview_projection() }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_interval() }} {{ recommendation.preview.interval }} · {{ lazyStrings.stableDiffusionCppBrowser__preview_after_step() }} {{ recommendation.preview.startStep }}</p>

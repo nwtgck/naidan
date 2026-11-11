@@ -1,3 +1,4 @@
+import { imageModelParameterDefaults, resolveImageModelParameter } from '@/features/image-generation/model-parameter-defaults';
 import { protocolSchema, MAX_BENCHMARK_RUNS } from './types';
 import type { BenchmarkPlan, BenchmarkParameters } from './types';
 import { resolveVaeTileSize } from '@/features/image-generation/vae-tile-size';
@@ -11,8 +12,8 @@ import { imageLoraRequests, type ImageLoraSelection } from '@/features/stable-di
 export function benchmarkParameters({ common, target, strategy, overrides }: {
   common: BenchmarkParameters, target: ImageBenchmarkTarget, strategy: 'shared' | 'model-defaults', overrides: Partial<BenchmarkParameters>,
 }): { parameters: BenchmarkParameters, preset: string | undefined } {
-  // Keep dimensions, step count, prompt and seed common by default. Only the
-  // model-specific sampling/CFG contract varies, visibly and in exported JSON.
+  // Keep dimensions, prompt and seed shared. Fixed steps/CFG and inherited
+  // automatic choices are resolved after applying this sampling strategy.
   let modelValues: Partial<Parameters> = {}, preset: string | undefined;
   switch (strategy) {
   case 'model-defaults': {
@@ -38,7 +39,21 @@ export function benchmarkParameters({ common, target, strategy, overrides }: {
   // Resolve after inheritance and target overrides. A legacy numeric override
   // remains fixed, even when the shared authoring choice is automatic.
   const preference = overrides.vaeTileSizePreference ?? (Object.hasOwn(overrides, 'vaeTileSize') ? overrides.vaeTileSize : common.vaeTileSizePreference) ?? parameters.vaeTileSize;
-  return { parameters: { ...parameters, ...(parameters.vaeTileSizePreference !== undefined ? { vaeTileSizePreference: preference } : {}), vaeTileSize: resolveVaeTileSize({ preference, family: target.facts.family }) }, preset };
+  const defaults = imageModelParameterDefaults({ model: target.facts });
+  const stepsPreference = overrides.stepsPreference ?? (Object.hasOwn(overrides, 'steps') ? overrides.steps : common.stepsPreference) ?? parameters.steps;
+  const guidancePreference = overrides.guidancePreference ?? (Object.hasOwn(overrides, 'guidance') ? overrides.guidance : common.guidancePreference) ?? parameters.guidance;
+  return {
+    parameters: {
+      ...parameters,
+      ...(parameters.stepsPreference !== undefined ? { stepsPreference } : {}),
+      ...(parameters.guidancePreference !== undefined ? { guidancePreference } : {}),
+      steps: resolveImageModelParameter({ preference: stepsPreference, fallback: defaults.steps.value }),
+      guidance: resolveImageModelParameter({ preference: guidancePreference, fallback: defaults.guidance.value }),
+      ...(parameters.vaeTileSizePreference !== undefined ? { vaeTileSizePreference: preference } : {}),
+      vaeTileSize: resolveVaeTileSize({ preference, family: target.facts.family }),
+    },
+    preset,
+  };
 }
 
 export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol, targets, common, overrides, loras, imageInputs, strategy, artifact, baseUrl, preview, weightResidency, gpuBudgetMiB }: {
@@ -75,7 +90,7 @@ export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol
     }
     const changes = { ...overrides[target.candidateKey] };
     const resolved = benchmarkParameters({ common, target, strategy, overrides: changes });
-    const { vaeTileSizePreference: _vaeTileSizePreference, ...numericParameters } = resolved.parameters;
+    const { vaeTileSizePreference: _vaeTileSizePreference, stepsPreference: _stepsPreference, guidancePreference: _guidancePreference, ...numericParameters } = resolved.parameters;
     const request = requestSchema.parse({ artifact, baseUrl, models: target.models, loras: imageLoraRequests({ selections: loras[target.candidateKey] ?? [] }), imageInputs: imageInputs[target.candidateKey] ?? emptyImageInputs(), parameters: numericParameters, debug: 'on', preview, weightResidency, gpuBudgetMiB });
     // -1 would resolve to different random seeds; never silently substitute one.
     if (request.parameters.seed === '-1') {

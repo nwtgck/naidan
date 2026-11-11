@@ -70,3 +70,16 @@ it('rejects duplicate declarations instead of using an ambiguous record or signa
 it.each([undefined, {}, { abiVersion: 1 }, { ...imageRuntimeSchemaFixture(), pointerRepresentation: 'number' }])('rejects malformed or incompatible schema values', schema => {
   expect(() => assertImageRuntimeContract({ schema })).toThrow('incompatible generated API schema');
 });
+
+it.each([
+  ['sd_sample_method_name', 'enum sample_method_t'],
+  ['sd_scheduler_name', 'enum scheduler_t'],
+])('validates optional %s naming APIs when present without requiring an updated artifact', (name, cType) => {
+  const schema = imageRuntimeSchemaFixture();
+  expect(() => assertImageRuntimeContract({ schema })).not.toThrow();
+  const getter = { name, returnKind: 'pointer', returnType: 'const char *', parameters: [{ kind: 'signed', cType }] };
+  schema.functions.push(getter);
+  expect(() => assertImageRuntimeContract({ schema })).not.toThrow();
+  getter.parameters[0]!.kind = 'pointer';
+  expect(() => assertImageRuntimeContract({ schema })).toThrow('incompatible upstream function: ' + name);
+});

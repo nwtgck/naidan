@@ -1,3 +1,4 @@
+import type { ImageGenerationSampling } from '@/01-models/image-generation-history';
 import type { NativePerformanceSignal } from './run-performance';
 import { imageErrorContext, type ImageDiagnosticInput, type createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import { cancelControlSchema, previewControlSchema, type CancelControl, type CancelledResult, type PreviewControl, type Request, type Progress, type ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
@@ -83,7 +84,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
   let poisoned = false, closed = false, failed = false;
   let inspection: Promise<ImageEngineInspection> | undefined;
   let artifact: Request['artifact'] | undefined;
-  let nativeCall: 'sd_browser_bf16_retention_version' | 'new_sd_ctx' | 'generate_image' | undefined;
+  let nativeCall: 'sd_browser_bf16_retention_version' | 'new_sd_ctx' | 'generate_image' | 'sd_sample_method_name' | 'sd_scheduler_name' | undefined;
   let nativePhase: 'model' | 'sampling' | 'decoding' = 'model';
   let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, samplingSteps: number | undefined, samplingPass: number | undefined, cancelRequested: boolean }) | undefined;
   const keep = ({ pointer }: { pointer: bigint }) => {
@@ -91,6 +92,20 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     return pointer;
   };
   const text = ({ value }: { value: string }) => keep({ pointer: core.utf8(value) });
+  async function samplingName({ functionName, id }: { functionName: 'sd_sample_method_name' | 'sd_scheduler_name', id: number }): Promise<{ name?: string }> {
+    const getter = core.api[functionName];
+    if (!getter) {
+      return {};
+    }
+    nativeCall = functionName;
+    const pointer = await getter(id);
+    // Names are borrowed static strings. Copy a bounded value now; never free
+    // their pointer or map an unlisted native method into an editor enum.
+    const name = pointer === 0n ? undefined : core.readUtf8(pointer, 129) ?? undefined;
+    nativeCall = undefined;
+    return name && name.length <= 128 ? { name } : {};
+  }
+
   const emit: Emit = ({ ...event }): void => {
     try {
       active?.onDiagnostic?.(event);
@@ -481,7 +496,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     }
     modelVersion = core.readUtf8(await core.api.sd_get_model_version_name(context), 256) ?? 'Unknown';
   }
-  async function generate({ run: { ...run } }: { run: Run }): Promise<(ImagePixels & { modelVersion: string, uniformOutput: boolean }) | CancelledResult> {
+  async function generate({ run: { ...run } }: { run: Run }): Promise<(ImagePixels & { modelVersion: string, uniformOutput: boolean, sampling?: ImageGenerationSampling }) | CancelledResult> {
     if (closed || failed || poisoned || active) {
       throw new Error('Image session is busy, failed or released');
     }
@@ -515,7 +530,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     };
     const text = ({ value }: { value: string }) => keep({ pointer: core.utf8(value) });
     let generationResult = 0n;
-    let result: (ImagePixels & { modelVersion: string, uniformOutput: boolean }) | CancelledResult | undefined;
+    let result: (ImagePixels & { modelVersion: string, uniformOutput: boolean, sampling?: ImageGenerationSampling }) | CancelledResult | undefined;
     let failure: { error: unknown } | undefined;
     try {
       await installCallbacks();
@@ -621,6 +636,10 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (sampleMethod < 0 || sampleMethod >= core.constant('SAMPLE_METHOD_COUNT') || sampleScheduler < 0 || sampleScheduler >= core.constant('SCHEDULER_COUNT')) {
         throw new Error('The selected sampling method or scheduler is unavailable');
       }
+      const sampling: ImageGenerationSampling = {
+        sampler: { id: sampleMethod, ...await samplingName({ functionName: 'sd_sample_method_name', id: sampleMethod }) },
+        scheduler: { id: sampleScheduler, ...await samplingName({ functionName: 'sd_scheduler_name', id: sampleScheduler }) },
+      };
       core.setField('sd_sample_params_t', sample, 'sample_method', sampleMethod);
       core.setField('sd_sample_params_t', sample, 'scheduler', sampleScheduler);
       core.setField('sd_sample_params_t', sample, 'sample_steps', steps);
@@ -674,7 +693,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       }
       const stats = imagePixelStatistics(output);
       emit({ event: 'native', stage: 'encoding', message: 'Native pixels before canvas/PNG encoding (uniform colour is not proof of failure)', fields: stats });
-      result = { ...output, modelVersion, uniformOutput: stats.uniformOutput };
+      result = { ...output, modelVersion, uniformOutput: stats.uniformOutput, sampling };
     } catch (error) {
       if (error === cancelledRun && nativeCall === undefined && context) {
         result = { cancelled: true, modelResident: true };

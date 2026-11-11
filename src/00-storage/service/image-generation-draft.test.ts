@@ -1,3 +1,4 @@
+import * as dtozod from '@/utils/dtozod';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { idToRaw, toImageGenerationSessionId, toHostModelDirectoryId } from '@/01-models/ids';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
@@ -45,6 +46,51 @@ describe('session draft checkpoints', () => {
     const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
     expect(loaded?.vaeTileSizePreference).toBe(vaeTileSizePreference);
     expect(loaded?.request.parameters.vaeTileSize).toBe(32);
+  });
+
+  it.each([
+    { stepsPreference: 'auto', guidancePreference: 'auto' },
+    { stepsPreference: 20, guidancePreference: 7 },
+    { stepsPreference: 'auto', guidancePreference: 0 },
+    { stepsPreference: 8, guidancePreference: 'auto' },
+  ] as const)('round-trips model-following preferences without changing numeric request fallback: %j', async preferences => {
+    const h = await setup();
+    Object.assign(h.draft, preferences, { vaeTileSizePreference: 'auto' });
+    h.draft.request.parameters.steps = 20;
+    h.draft.request.parameters.guidance = 7;
+    const json = JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft })));
+    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(json);
+    expect(dto).toMatchObject({ ...preferences, vaeTileSizePreference: 'auto', request: { parameters: { steps: 20, guidance: 7 } } });
+    expect(imageGenerationDraftToDomain({ dto })).toEqual(h.draft);
+    await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
+    const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
+    expect(loaded).toEqual(h.draft);
+    // Readers predating the optional intent fields still retain the numeric
+    // request they understand instead of rejecting the whole checkpoint.
+    const { stepsPreference: _stepsPreference, guidancePreference: _guidancePreference, ...legacyShape } = ExperimentalImageGenerationDraftSchemaDto.shape;
+    const legacy = dtozod.object(legacyShape).parse(json);
+    expect(legacy).not.toHaveProperty('stepsPreference');
+    expect(legacy).not.toHaveProperty('guidancePreference');
+    expect(legacy.request.parameters).toMatchObject({ steps: 20, guidance: 7 });
+  });
+
+  it('preserves absent legacy step and CFG preferences without inferring automatic intent', async () => {
+    const h = await setup();
+    h.draft.request.parameters.steps = 20;
+    h.draft.request.parameters.guidance = 7;
+    const dto = ExperimentalImageGenerationDraftSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationDraftToDto({ draft: h.draft }))));
+    const restored = imageGenerationDraftToDomain({ dto });
+    for (const value of [dto, restored]) {
+      expect(Object.hasOwn(value, 'stepsPreference')).toBe(false);
+      expect(Object.hasOwn(value, 'guidancePreference')).toBe(false);
+    }
+    await service.saveImageGenerationDraft({ store: h.store, draft: h.draft, expectedRevision: undefined, writeInputs: async () => {} });
+    const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
+    expect(loaded).not.toHaveProperty('stepsPreference');
+    expect(loaded).not.toHaveProperty('guidancePreference');
+    expect(loaded?.request.parameters).toMatchObject({ steps: 20, guidance: 7 });
+    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, stepsPreference: 'recommended' }).success).toBe(false);
+    expect(ExperimentalImageGenerationDraftSchemaDto.safeParse({ ...dto, guidancePreference: 'recommended' }).success).toBe(false);
   });
 
   it('leaves legacy numeric 32 without preference metadata instead of inferring auto', async () => {
@@ -161,6 +207,8 @@ it('keeps unavailable draft routes through the real publication snapshot and que
   const rawB = { kind: 'local' as const };
   h.draft.inferenceLocation = rawA;
   h.draft.vaeTileSizePreference = 'auto';
+  h.draft.stepsPreference = 'auto';
+  h.draft.guidancePreference = 'auto';
   h.draft.request.runtime = undefined;
   h.draft.request.imageInputs = { ...h.draft.request.imageInputs, initImage: undefined, referenceImages: [] };
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -174,17 +222,21 @@ it('keeps unavailable draft routes through the real publication snapshot and que
   h.draft.request.parameters.prompt = 'later caller mutation';
   h.draft.inferenceLocation = rawB;
   h.draft.vaeTileSizePreference = 32;
+  h.draft.stepsPreference = 20;
+  h.draft.guidancePreference = 7;
   release.resolve();
   await held;
   await publishing;
   const first = JSON.parse((await fs.file({ path: h.path })).text);
   expect(first.inferenceLocation).toEqual(rawA);
   expect(first.vaeTileSizePreference).toBe('auto');
+  expect(first).toMatchObject({ stepsPreference: 'auto', guidancePreference: 'auto' });
   expect(first.request.parameters.prompt).not.toBe('later caller mutation');
   const loaded = await service.loadImageGenerationDraft({ store: h.store, sessionId: h.session.id });
   expect(loaded?.inferenceLocation).toEqual(rawA);
   expect(loaded?.vaeTileSizePreference).toBe('auto');
+  expect(loaded).toMatchObject({ stepsPreference: 'auto', guidancePreference: 'auto' });
   await storage.publishImageGeneration({ store: h.store, publication: { type: 'draft', draft: { ...h.draft, revision: 1 }, expectedRevision: 0 }, files: [] });
   expect(JSON.parse((await fs.file({ path: h.path })).text).inferenceLocation).toEqual(rawB);
-  expect(JSON.parse((await fs.file({ path: h.path })).text).vaeTileSizePreference).toBe(32);
+  expect(JSON.parse((await fs.file({ path: h.path })).text)).toMatchObject({ vaeTileSizePreference: 32, stepsPreference: 20, guidancePreference: 7 });
 });

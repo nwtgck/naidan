@@ -21,3 +21,18 @@ right.run.request.models[0]!.file.size++;
   right.run.request.runtime.profile = 'webgpu-wasm32-jspi';
   expect(compareImageGenerationImages({ left, right }).filter(value => !value.same).map(value => value.key)).toEqual(['models', 'loras', 'inputs', 'runtime']);
 });
+
+it.each(['left', 'right'] as const)('compares confirmed provider parameters on the %s while preserving legacy requests', side => {
+  const run = generationRunFixture({ id: 'run-aa', sessionId: toImageGenerationSessionId({ raw: 'session-aa' }), count: 1, seed: '42' });
+  delete run.request.parameters.vaeTileSize;
+  const left = { run, asset: generationAssetFixture({ id: 'left-aa', run, index: 0 }) };
+  const right = structuredClone(left);
+  const images = { left, right };
+  images[side].asset.result.resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
+  const before = structuredClone(run.request.parameters);
+  const compared = compareImageGenerationImages({ left, right });
+  expect(compared.find(value => value.key === 'steps')?.[side]).toBe('6');
+  expect(compared.find(value => value.key === 'guidance')?.[side]).toBe('1');
+  expect(compared.find(value => value.key === 'vaeTileSize')?.[side]).toBe('16');
+  expect(run.request.parameters).toEqual(before);
+});

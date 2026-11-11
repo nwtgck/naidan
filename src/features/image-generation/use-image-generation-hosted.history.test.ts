@@ -41,7 +41,7 @@ const mocks = vi.hoisted(() => {
     download: vi.fn(),
     setTransfer: vi.fn(),
     models,
-    facts: { family: 'z-image' as 'z-image' | 'qwen-image-2.1' | 'minimax-h3-image', variant: 'turbo' as 'turbo' | 'base', evidence: [] as string[] },
+    facts: { family: 'z-image' as 'z-image' | 'qwen-image-2.1' | 'minimax-h3-image', variant: 'turbo' as 'turbo' | 'base' | 'unknown', evidence: [] as string[] },
     storageType: 'opfs',
     listeners: new Set<({ event }: { event: { type: 'migration', timestamp: number } }) => void>(),
     select(value: { family: 'z-image' | 'qwen-image-2.1', turbo: boolean }) {
@@ -96,7 +96,7 @@ vi.mock('@/features/stable-diffusion-cpp-browser/use-image-library', async () =>
         ...transfers,
         ready: computed(() => true),
         selectedModels: () => mocks.models,
-        selectedFacts: computed(() => mocks.facts),
+        selectedFacts: computed(() => library.selectedCandidateKey.value ? mocks.facts : undefined),
         prepareHistoryFiles: () => mocks.prepareFiles(),
         restoreModelSelection() {
           library.selectedCandidateKey.value = 'missing-primary';
@@ -136,6 +136,10 @@ function open(): ImageGenerationView {
     throw new Error('Missing image owner');
   }
   active.parameters.value = parametersFixture();
+  // Existing scenarios describe explicit numeric inputs. New following-mode
+  // scenarios opt in below rather than inferring intent from fixture numbers.
+  active.stepsPreference.value = active.parameters.value.steps;
+  active.guidancePreference.value = active.parameters.value.guidance;
   return active;
 }
 
@@ -239,7 +243,7 @@ describe('hosted image history integration with a synthetic inference client', (
     await generation;
     expect(view.parameters.value.prompt).toBe('draft during save');
     expect(view.parameters.value.seed).toBe('99');
-    const next = { ...view.parameters.value };
+    const next = { ...view.parameters.value, steps: view.resolvedSteps.value, guidance: view.resolvedGuidance.value };
     await view.generate({ submission: undefined });
     expect(mocks.generate.mock.calls[1]![0].request.parameters).toEqual(next);
     expect(mocks.save).toHaveBeenCalledOnce();
@@ -380,7 +384,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(resultsPanel.find('[data-testid="image-pending-result"]').exists()).toBe(false);
     expect(view.results.value.map(result => result.id)).toEqual([previous.id]);
     expect(resultsPanel.get('[data-testid="image-live-preview"]').text()).toContain('unfinished');
-    view.parameters.value.steps = NaN;
+    view.stepsPreference.value = NaN;
     await view.generate({ submission: undefined });
     expect(view.invalid.value).toBe(true);
     expect(mocks.generate).toHaveBeenCalledTimes(2);
@@ -398,7 +402,7 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(resultsPanel.get('[data-testid="image-live-diagnostics"]').attributes()).toHaveProperty('open');
     expect(diagnostics.text()).toContain('VAE decoding failed');
     expect(scroll).toHaveBeenCalledOnce();
-    view.parameters.value.steps = 8;
+    view.stepsPreference.value = 8;
     const next = Promise.withResolvers<ReturnType<typeof result>>();
     mocks.generate.mockReturnValueOnce(next.promise);
     const generation = view.generate({ submission: undefined });
@@ -416,12 +420,12 @@ describe('hosted image history integration with a synthetic inference client', (
   it('distinguishes invalid inputs, cancellation and save failure from inference failure', async () => {
     const view = open();
     resultsPanel = mount(ImageGenerationResults, { props: { view, active: true } });
-    view.parameters.value.steps = NaN;
+    view.stepsPreference.value = NaN;
     await view.generate({ submission: undefined });
     await flushPromises();
     expect(view.invalid.value).toBe(true);
     expect(resultsPanel.find('[data-testid="image-failed-result"]').exists()).toBe(false);
-    view.parameters.value.steps = 8;
+    view.stepsPreference.value = 8;
     view.preview.value.enabled = true;
     mocks.generate.mockImplementationOnce(async ({ onPreview }) => {
       onPreview({
@@ -1232,26 +1236,35 @@ describe('hosted image history integration with a synthetic inference client', (
     const view = open();
     view.parameters.value.width = 768;
     view.parameters.value.height = 448;
-    view.parameters.value.steps = 50;
-    view.parameters.value.guidance = 10;
+    view.stepsPreference.value = 50;
+    view.guidancePreference.value = 10;
     view.parameters.value.bf16WeightType = bf16WeightType;
     mocks.select({ family: 'z-image', turbo: true });
     await nextTick();
-    expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1, bf16WeightType });
-    view.parameters.value.steps = 60;
+    expect(view.parameters.value).toMatchObject({ width: 768, height: 448, bf16WeightType });
+    expect([view.resolvedSteps.value, view.resolvedGuidance.value]).toEqual([50, 10]);
+    view.stepsPreference.value = 60;
     view.applyRecommendedSettings();
     await nextTick();
     expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1, bf16WeightType });
   });
 
-  it('sets Turbo guidance to one on Qwen selection without resetting size, and keeps Base at six', () => {
+  it('follows verified Qwen variants only in auto mode without resetting size or fixed guidance', () => {
+    mocks.facts = { family: 'qwen-image-2.1', variant: 'turbo', evidence: [] };
     const view = open();
+    view.stepsPreference.value = 'auto';
+    view.guidancePreference.value = 'auto';
     view.parameters.value.width = 1024;
     view.parameters.value.height = 1024;
-    mocks.select({ family: 'qwen-image-2.1', turbo: true });
-    expect(view.parameters.value).toMatchObject({ width: 1024, height: 1024, guidance: 1 });
-    mocks.select({ family: 'qwen-image-2.1', turbo: false });
-    expect(view.parameters.value).toMatchObject({ width: 1024, height: 1024, guidance: 6 });
+    expect([view.resolvedSteps.value, view.resolvedGuidance.value]).toEqual([20, 1]);
+    mocks.facts = { family: 'qwen-image-2.1', variant: 'base', evidence: [] };
+    view.library.selectedCandidateKey.value = 'qwen-base';
+    expect(view.resolvedGuidance.value).toBe(6);
+    view.guidancePreference.value = 2.5;
+    mocks.facts = { family: 'qwen-image-2.1', variant: 'turbo', evidence: [] };
+    view.library.selectedCandidateKey.value = 'qwen-turbo';
+    expect(view.resolvedGuidance.value).toBe(2.5);
+    expect(view.parameters.value).toMatchObject({ width: 1024, height: 1024 });
   });
 
   it('applies only Turbo guidance without silently replacing the user’s size or custom sampling settings', () => {
@@ -1595,7 +1608,7 @@ function rpcBinding() {
         }),
         events: new ReadableStream({
           start(controller) {
-            controller.enqueue({ type: 'completed' as const, seed: input.parameters.seed, width: 256, height: 256, modelVersion: 'remote-version', uniformOutput: false });
+            controller.enqueue({ type: 'completed' as const, seed: input.parameters.seed, width: 256, height: 256, modelVersion: 'remote-version', uniformOutput: false, resolvedParameters: { steps: input.parameters.stepsPreference === 'auto' ? 6 : input.parameters.stepsPreference, guidance: input.parameters.guidancePreference === 'auto' ? 1 : input.parameters.guidancePreference, vaeTileSize: input.parameters.vaeTileSizePreference === 'auto' ? 16 : input.parameters.vaeTileSizePreference }, sampling: { sampler: { id: 0, name: 'euler' }, scheduler: { id: 11, name: 'flux' } } });
             controller.close();
           },
         }),
@@ -1627,8 +1640,8 @@ async function remoteView() {
 
 it('does not suggest or apply a retained local model preset to a remote model', async () => {
   const { view } = await remoteView();
-  view.parameters.value.steps = 37;
-  view.parameters.value.guidance = 7;
+  view.stepsPreference.value = 37;
+  view.guidancePreference.value = 7;
   const before = { ...view.parameters.value };
   expect(view.recommendation.value).toBeUndefined();
   view.applyRecommendedSettings();
@@ -1880,8 +1893,8 @@ it('does not apply the next run retention policy to a previous resident when acc
 
 it('keeps local selection events out of remote sampling settings and reference images', async () => {
   const { view } = await remoteView();
-  view.parameters.value.steps = 37;
-  view.parameters.value.guidance = 7;
+  view.stepsPreference.value = 37;
+  view.guidancePreference.value = 7;
   const image = new File(['reference'], 'reference.png');
   view.imageInputs.value.referenceImages = [image];
   const before = { ...view.parameters.value };
@@ -2023,16 +2036,22 @@ it('identifies the active primary again when switching layouts with both files r
   expect(mocks.generate.mock.calls[0]![0].request.parameters.vaeTileSize).toBe(16);
 });
 
-it('keeps local tile intent out of remote drafts and does not overwrite it on remote restore', async () => {
+it('keeps remote tile intent in drafts and treats legacy numeric tiles as fixed', async () => {
   const { view } = await remoteView();
   view.vaeTileSizePreference.value = 64;
   const draft = view.captureDraft!()!;
-  expect(draft).not.toHaveProperty('vaeTileSizePreference');
-  expect(draft.request.parameters).not.toHaveProperty('vaeTileSize');
+  expect(draft).toMatchObject({ vaeTileSizePreference: 64, request: { parameters: { vaeTileSize: 64 } } });
+  view.vaeTileSizePreference.value = 'auto';
   await view.restoreDraft!({ draft });
   expect(view.vaeTileSizePreference.value).toBe(64);
-  view.inferenceLocation!.kind.value = 'local';
+  delete draft.vaeTileSizePreference;
+  await view.restoreDraft!({ draft });
   expect(view.vaeTileSizePreference.value).toBe(64);
+  delete draft.request.parameters.vaeTileSize;
+  await view.restoreDraft!({ draft });
+  expect(view.vaeTileSizePreference.value).toBe('auto');
+  view.inferenceLocation!.kind.value = 'local';
+  expect(view.vaeTileSizePreference.value).toBe('auto');
 });
 
 it('waits for a replacement inspection of the same primary instead of using an aborted result', async () => {
@@ -2072,4 +2091,105 @@ it('abandons a pending automatic submission even if the layout changes away and 
   pending.resolve(inspectedPrimary({ file, family: 'minimax-h3-image' }));
   await generation;
   expect(mocks.generate).not.toHaveBeenCalled();
+});
+
+it('projects H3 automatic steps and CFG into numeric requests and compatible draft fallbacks', async () => {
+  mocks.facts = { family: 'minimax-h3-image', variant: 'unknown', evidence: [] };
+  const view = open();
+  view.stepsPreference.value = 'auto';
+  view.guidancePreference.value = 'auto';
+  const unchanged = { ...view.parameters.value, conditioningCacheSize: 3, flashAttention: true };
+  view.parameters.value = unchanged;
+  const draft = view.captureDraft!()!;
+  expect(draft).toMatchObject({ stepsPreference: 'auto', guidancePreference: 'auto', request: { parameters: { steps: 6, guidance: 1 } } });
+  await view.generate({ submission: undefined });
+  expect(mocks.generate.mock.calls[0]![0].request.parameters).toEqual({ ...unchanged, steps: 6, guidance: 1, vaeTileSize: 16 });
+  expect(view.parameters.value).toEqual(unchanged);
+  view.stepsPreference.value = 37;
+  view.guidancePreference.value = 2.5;
+  await view.restoreDraft!({ draft });
+  expect([view.stepsPreference.value, view.guidancePreference.value]).toEqual(['auto', 'auto']);
+  delete draft.stepsPreference;
+  delete draft.guidancePreference;
+  await view.restoreDraft!({ draft });
+  expect([view.stepsPreference.value, view.guidancePreference.value]).toEqual([6, 1]);
+});
+
+it('keeps numeric history steps and CFG fixed when reusing them under another selected model', async () => {
+  const view = open();
+  view.stepsPreference.value = 37;
+  view.guidancePreference.value = 2.5;
+  await view.generate({ submission: undefined });
+  const record = mocks.save.mock.calls[0]![0].record;
+  view.stepsPreference.value = 'auto';
+  view.guidancePreference.value = 'auto';
+  await view.reuseHistory({ record });
+  expect([view.stepsPreference.value, view.guidancePreference.value]).toEqual([37, 2.5]);
+});
+
+it('sends remote automatic intent and saves its numeric draft projection', async () => {
+  const h = await remoteView(), view = h.view, catalog = imageCatalogFixture({ family: 'minimax-h3-image', variant: 'unknown' });
+  view.stepsPreference.value = 'auto';
+  view.guidancePreference.value = 'auto';
+  const location = view.inferenceLocation!;
+  location.catalog.value = catalog;
+  location.catalogFresh.value = true;
+  location.choosePrimary({ id: remoteImageFileKey({ file: catalog[0]!.file }) });
+  expect([view.resolvedSteps.value, view.resolvedGuidance.value]).toEqual([6, 1]);
+  const draft = view.captureDraft!()!;
+  expect(draft).toMatchObject({ stepsPreference: 'auto', guidancePreference: 'auto', request: { parameters: { steps: 6, guidance: 1 } } });
+  await view.generate({ submission: undefined });
+  expect(h.generateImage.mock.calls[0]![0].input.parameters).toMatchObject({ stepsPreference: 'auto', guidancePreference: 'auto', vaeTileSizePreference: 'auto' });
+  expect(h.generateImage.mock.calls[0]![0].input.parameters).not.toHaveProperty('steps');
+  expect(view.results.value[0]?.parameters).toMatchObject({ steps: 6, guidance: 1, vaeTileSize: 16 });
+  view.stepsPreference.value = 37;
+  view.guidancePreference.value = 2.5;
+  await view.restoreDraft!({ draft });
+  expect([view.stepsPreference.value, view.guidancePreference.value]).toEqual(['auto', 'auto']);
+  delete draft.stepsPreference;
+  delete draft.guidancePreference;
+  await view.restoreDraft!({ draft });
+  expect([view.stepsPreference.value, view.guidancePreference.value]).toEqual([6, 1]);
+});
+
+it('does not change fixed steps and CFG when switching to a remote model', async () => {
+  const h = await remoteView(), view = h.view, catalog = imageCatalogFixture({ family: 'z-image', variant: 'turbo' });
+  view.stepsPreference.value = 37;
+  view.guidancePreference.value = 2.5;
+  const location = view.inferenceLocation!;
+  location.catalog.value = catalog;
+  location.catalogFresh.value = true;
+  location.choosePrimary({ id: remoteImageFileKey({ file: catalog[0]!.file }) });
+  await view.generate({ submission: undefined });
+  expect(h.generateImage.mock.calls[0]![0].input.parameters).toMatchObject({ stepsPreference: 37, guidancePreference: 2.5 });
+});
+
+it('retains native sampling observations separately from the requested auto strings', async () => {
+  const view = open(), sampling = { sampler: { id: 0, name: 'euler' }, scheduler: { id: 11, name: 'flux' } };
+  mocks.generate.mockResolvedValueOnce({ ...result(), sampling });
+  await view.generate({ submission: undefined });
+  expect(view.results.value[0]?.sampling).toEqual(sampling);
+  expect(mocks.save.mock.calls[0]![0].record.result.sampling).toEqual(sampling);
+  expect(mocks.save.mock.calls[0]![0].record.request.parameters).toMatchObject({ sampler: 'auto', scheduler: 'auto' });
+  sampling.scheduler.name = 'changed later';
+  expect(view.results.value[0]?.sampling?.scheduler.name).toBe('flux');
+});
+
+it('uses confirmed remote request values for results, history and reuse instead of the catalog projection', async () => {
+  const h = await remoteView(), view = h.view;
+  view.stepsPreference.value = 'auto';
+  view.guidancePreference.value = 'auto';
+  view.vaeTileSizePreference.value = 'auto';
+  // This manual remote selection has no catalog evidence. Its draft displays
+  // Naidan standards, while the mock provider owns H3's actual model facts.
+  expect(view.captureDraft!()?.request.parameters).toMatchObject({ steps: 20, guidance: 7, vaeTileSize: 32 });
+  await view.generate({ submission: undefined });
+  expect(view.results.value[0]?.parameters).toMatchObject({ steps: 6, guidance: 1, vaeTileSize: 16 });
+  expect(view.results.value[0]?.sampling).toMatchObject({ scheduler: { id: 11, name: 'flux' } });
+  const record = mocks.save.mock.calls[0]![0].record;
+  expect(record.request.parameters).toMatchObject({ steps: 6, guidance: 1, vaeTileSize: 16 });
+  expect(record.result).toMatchObject({ resolvedParameters: { steps: 6, guidance: 1, vaeTileSize: 16 }, sampling: { scheduler: { id: 11, name: 'flux' } } });
+  expect([view.stepsPreference.value, view.guidancePreference.value, view.vaeTileSizePreference.value]).toEqual(['auto', 'auto', 'auto']);
+  await view.reuseHistory({ record });
+  expect([view.stepsPreference.value, view.guidancePreference.value, view.vaeTileSizePreference.value]).toEqual([6, 1, 16]);
 });

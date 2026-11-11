@@ -34,7 +34,7 @@ it('shares selection-time values while applying native arguments only locally', 
   expect(local.guidance).toBe(remote.guidance);
   expect(local.modelArguments).toBe('qwen_image_2_1_prefix_cache=false');
   expect(remote.modelArguments).toBe('');
-  expect(imageSelectionParameters({ parameters, family: 'z-image', turbo: true, location: 'naidan_rpc' })).toMatchObject({ steps: 8, guidance: 1 });
+  expect(imageSelectionParameters({ parameters, family: 'z-image', turbo: true, location: 'naidan_rpc' })).toBe(parameters);
   expect(imageSelectionParameters({ parameters, family: 'unknown', turbo: false, location: 'naidan_rpc' })).toBe(parameters);
 });
 

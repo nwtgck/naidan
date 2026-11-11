@@ -65,7 +65,7 @@ function candidate({ path, roles }: { path: string, roles: ModelCandidate['roles
 function request(): PeerImageInput {
   return {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/model/model.gguf' }, expected: { size: 16, lastModified: 123 } } }, components: [], loras: [] },
-    parameters: { prompt: 'test', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
+    parameters: { prompt: 'test', negativePrompt: '', width: 256, height: 256, stepsPreference: 4, guidancePreference: 7, vaeTileSizePreference: 32, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
     preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 },
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
@@ -501,7 +501,37 @@ it('uses the receiving model family to select explicit automatic H3 tile 16', as
   const model = candidate({ path: 'model.gguf', roles: ['model'] });
   model.family = 'minimax-h3-image';
   mocks.scan.mockResolvedValue({ candidates: [model] });
-  await generate({ input: request() });
+  const input = request();
+  input.parameters.vaeTileSizePreference = 'auto';
+  await generate({ input });
   const actual: Request = mocks.generate.mock.calls[0]![0].request;
   expect(actual.parameters.vaeTileSize).toBe(16);
+});
+
+it('resolves automatic sampling from the verified primary and returns the resolved request', async () => {
+  const model = { ...candidate({ path: 'model.gguf', roles: ['model'] }), family: 'minimax-h3-image' as const };
+  const vae = { ...candidate({ path: 'vae.gguf', roles: ['vae'] }), family: 'qwen-image-2.1' as const, variant: 'base' as const };
+  mocks.scan.mockResolvedValue({ candidates: [vae, model] });
+  const input = request();
+  input.parameters.stepsPreference = 'auto';
+  input.parameters.guidancePreference = 'auto';
+  input.parameters.vaeTileSizePreference = 'auto';
+  input.modelSelection.components = [{ slot: 'vae', file: { location: { kind: 'opfs', path: 'models/user/model/vae.gguf' }, expected: { size: 16, lastModified: 123 } } }];
+  const sampling = { sampler: { id: 0 }, scheduler: { id: 11, name: 'flux' } };
+  mocks.generate.mockResolvedValueOnce({ png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test', sampling });
+  const result = await generate({ input });
+  expect(result).toMatchObject({ resolvedParameters: { steps: 6, guidance: 1, vaeTileSize: 16 }, sampling });
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters).toMatchObject({ steps: 6, guidance: 1, vaeTileSize: 16 });
+  expect(actual.parameters).not.toHaveProperty('stepsPreference');
+});
+
+it('preserves fixed request values independently of model recommendations', async () => {
+  const model = { ...candidate({ path: 'model.gguf', roles: ['model'] }), family: 'minimax-h3-image' as const };
+  mocks.scan.mockResolvedValue({ candidates: [model] });
+  const input = request();
+  input.parameters.stepsPreference = 37;
+  input.parameters.guidancePreference = 2.5;
+  input.parameters.vaeTileSizePreference = 64;
+  expect(await generate({ input })).toMatchObject({ resolvedParameters: { steps: 37, guidance: 2.5, vaeTileSize: 64 } });
 });

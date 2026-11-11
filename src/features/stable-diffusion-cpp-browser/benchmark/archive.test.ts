@@ -177,3 +177,17 @@ it('re-exports the same completed measurement without source images and does not
   expect(snapshot.plan.models[0]!.request.imageInputs.referenceImages[0]).toBe(file);
   expect(JSON.stringify(snapshot.runs.map(run => run.record))).toBe(originalRecords);
 });
+
+
+it('preserves optional native sampling receipts in manifest and per-run JSON without rewriting auto', async () => {
+  const snapshot = await snapshotFixture();
+  snapshot.runs[0]!.record.sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
+  const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: 'now', signal: new AbortController().signal });
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const manifest = manifestSchema.parse(JSON.parse(await zip.file('manifest.json')!.async('string')));
+  expect(manifest.runs[0]!.sampling?.scheduler.name).toBe('flux');
+  expect(manifest.runs[1]!).not.toHaveProperty('sampling');
+  expect(manifest.models[0]!.request.parameters.scheduler).toBe('auto');
+  const record = JSON.parse(await zip.file('models/m001/runs/r001/result.json')!.async('string'));
+  expect(record.sampling.scheduler.name).toBe('flux');
+});

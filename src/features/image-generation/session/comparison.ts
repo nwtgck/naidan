@@ -7,6 +7,7 @@ export function compareImageGenerationImages({ left, right }: { left: ImageGener
   function fields({ image }: { image: ImageGenerationComparisonImage }): Record<string, unknown> {
     return {
       ...image.run.request.parameters,
+      ...image.asset.result.resolvedParameters,
       seed: image.asset.seed,
       models: image.run.request.models,
       loras: image.run.request.loras,
@@ -18,7 +19,7 @@ export function compareImageGenerationImages({ left, right }: { left: ImageGener
     };
   }
   const a = fields({ image: left }), b = fields({ image: right });
-  return Object.keys(a).map(key => ({ key, left: JSON.stringify(a[key]) ?? '', right: JSON.stringify(b[key]) ?? '', same: JSON.stringify(a[key]) === JSON.stringify(b[key]) }));
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].map(key => ({ key, left: JSON.stringify(a[key]) ?? '', right: JSON.stringify(b[key]) ?? '', same: JSON.stringify(a[key]) === JSON.stringify(b[key]) }));
 }
 
 export const TEST_ONLY = {

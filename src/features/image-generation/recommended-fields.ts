@@ -46,9 +46,9 @@ export function applyImageRecommendedField({ parameters, recommendation, field }
   return { ...parameters, [field]: recommendation.parameters[field] };
 }
 
-/** Native-only fields must neither be advertised nor applied remotely. */
+/** Expose only fields supported by the peer image contract. */
 export function remoteImageRecommendation({ recommendation }: { recommendation: ImageGenerationRecommendation | undefined }): ImageGenerationRecommendation | undefined {
-  return recommendation && { ...recommendation, applicableFields: ['width', 'height', 'steps', 'guidance', 'sampler', 'scheduler', 'distilledGuidance'] };
+  return recommendation && { ...recommendation, applicableFields: ['width', 'height', 'steps', 'guidance', 'sampler', 'scheduler', 'distilledGuidance', 'vaeTileSize'] };
 }
 
 export const TEST_ONLY = {

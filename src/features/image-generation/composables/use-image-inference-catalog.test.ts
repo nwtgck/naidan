@@ -95,7 +95,9 @@ it('automatically loads only for an active enabled connected remote editor, once
   expect(h.listImageModels).toHaveBeenCalledOnce();
   expect(h.location.editor.value).toMatchObject({ primary: { family: 'z-image' }, automaticSlots: ['vae', 'lm'] });
   expect(h.location.ready.value).toBe(true);
-  expect(h.form.parameters.value).toMatchObject({ steps: 8, guidance: 1 });
+  // Catalog selection must not materialize model defaults over numeric input.
+  expect(h.form.parameters.value).toMatchObject({ steps: 20, guidance: 7 });
+  expect([h.form.stepsPreference.value, h.form.guidancePreference.value]).toEqual(['auto', 'auto']);
   h.location.setCatalogActivity({ active: false, enabled: true });
   h.location.setCatalogActivity({ active: true, enabled: true });
   await h.location.refresh({ fromStorage: false });

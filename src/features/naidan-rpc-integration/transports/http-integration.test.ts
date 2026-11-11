@@ -30,7 +30,7 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
       return { content: answer, reasoningContent: '', toolCalls: [], finishReason: 'stop' };
     }),
     listImageModels: vi.fn(async () => []),
-    generateImage: vi.fn(async () => ({ png: new Blob([png], { type: 'image/png' }), width: 128, height: 128, modelVersion: 'fixture', uniformOutput: false })),
+    generateImage: vi.fn(async () => ({ png: new Blob([png], { type: 'image/png' }), width: 128, height: 128, modelVersion: 'fixture', uniformOutput: false, resolvedParameters: { steps: 1, guidance: 1, vaeTileSize: 32 } })),
   };
   const saved = new Map<NaidanRpcRegistration['id'], NaidanRpcRegistration>();
   const access: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: toNaidanRpcRegistryId({ raw: 'http-registry-example' }), persistence: 'durable' };
@@ -122,7 +122,7 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
       client,
       input: {
         modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/test.safetensors' } } }, components: [], loras: [] },
-        parameters: { prompt: 'Private image prompt.', negativePrompt: '', width: 128, height: 128, seed: '7', steps: 1, guidance: 1, sampler: 'auto', scheduler: 'auto', distilledGuidance: 1 },
+        parameters: { prompt: 'Private image prompt.', negativePrompt: '', width: 128, height: 128, seed: '7', stepsPreference: 1, guidancePreference: 1, vaeTileSizePreference: 32, sampler: 'auto', scheduler: 'auto', distilledGuidance: 1 },
         preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 0 },
         imageInputs: { initial: undefined, references: [], strength: 0.5 },
       },

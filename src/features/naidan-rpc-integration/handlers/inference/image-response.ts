@@ -1,5 +1,5 @@
 import type { PeerImageEvent } from '@/features/naidan-rpc-integration/contract';
-import { PEER_IMAGE_PREVIEW_CHUNK_BYTES } from '@/features/naidan-rpc-integration/contract';
+import { PEER_IMAGE_PREVIEW_CHUNK_BYTES, peerImageResolvedParametersSchema } from '@/features/naidan-rpc-integration/contract';
 import type { ImageExecutionOutput, ImageExecutionPreview } from '@/features/image-generation/execution/types';
 import type { InferenceBudget } from './budget';
 import { validatePng } from '@/features/naidan-rpc-integration/codecs/png';
@@ -196,7 +196,7 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
         if (!output) {
           throw new Error('Image computation did not produce a result');
         }
-        yield { type: 'completed', seed, width, height, modelVersion: output.modelVersion, uniformOutput: output.uniformOutput ?? false };
+        yield { type: 'completed', seed, width, height, modelVersion: output.modelVersion, uniformOutput: output.uniformOutput ?? false, resolvedParameters: peerImageResolvedParametersSchema.parse(output.resolvedParameters), ...(output.sampling ? { sampling: output.sampling } : {}) };
         return;
       } else {
         await new Promise<void>(resolve => {

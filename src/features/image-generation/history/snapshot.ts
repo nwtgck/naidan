@@ -1,10 +1,10 @@
-import type { RecoverableImageExecutionOutput } from '@/features/image-generation/execution/types';
+import type { ImageExecutionOutput, RecoverableImageExecutionOutput } from '@/features/image-generation/execution/types';
 import { copyImageGenerationRuntime } from '@/01-models/image-generation-remote';
 import { generateId } from '@/01-models/id';
 import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationModelFile, ImageGenerationRecord } from '@/01-models/image-generation-history';
 import { exactObject } from '@/utils/exact-object';
-import type { Request, PreviewFrame, Response } from '@/features/stable-diffusion-cpp-browser/types';
+import type { Request, PreviewFrame } from '@/features/stable-diffusion-cpp-browser/types';
 
 export type HistoryBinaryFile = { binaryObjectId: BinaryObjectId, blob: Blob, name: string };
 export type ImageGenerationSnapshot = {
@@ -94,7 +94,7 @@ export function snapshotImageGeneration({ request, sourceCommit, locateFile, cre
 
 export function finishImageGenerationSnapshot({ snapshot, result, previews, elapsedMs }: {
   snapshot: ImageGenerationSnapshot,
-  result: Response,
+  result: ImageExecutionOutput,
   previews: PreviewFrame[],
   elapsedMs: number,
 }): { record: ImageGenerationRecord, files: HistoryBinaryFile[] } {
@@ -107,7 +107,7 @@ export function finishImageGenerationSnapshot({ snapshot, result, previews, elap
       id,
       createdAt,
       request,
-      result: { binaryObjectId: finalId, width: result.width, height: result.height, modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs },
+      result: { binaryObjectId: finalId, width: result.width, height: result.height, modelVersion: result.modelVersion, uniformOutput: result.uniformOutput ?? false, elapsedMs, ...(result.sampling ? { sampling: { sampler: { ...result.sampling.sampler }, scheduler: { ...result.sampling.scheduler } } } : {}), ...(result.resolvedParameters ? { resolvedParameters: { ...result.resolvedParameters } } : {}) },
       previews: previews.map(frame => {
         const binaryObjectId = generateId<BinaryObjectId>();
         files.push({ binaryObjectId, blob: frame.png, name: `preview-step-${frame.step}.png` });

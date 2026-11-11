@@ -72,6 +72,7 @@ export type ImageGenerationDraftRequest = Omit<ImageGenerationRecord['request'],
 };
 
 export type VaeTileSizePreference = 'auto' | number;
+export type ImageModelParameterPreference = 'auto' | number;
 
 /** An editable checkpoint, independent of immutable generation requests. */
 export type ImageGenerationSessionDraft = {
@@ -81,6 +82,9 @@ export type ImageGenerationSessionDraft = {
   request: ImageGenerationDraftRequest,
   /** Absent legacy drafts retain their recorded numeric tile as a fixed choice. */
   vaeTileSizePreference?: VaeTileSizePreference,
+  /** Missing intent metadata preserves legacy numeric requests on reuse. */
+  stepsPreference?: ImageModelParameterPreference,
+  guidancePreference?: ImageModelParameterPreference,
   inferenceLocation: ImageInferenceLocationPreference | undefined,
   seedMode: 'random' | 'fixed',
   layout: 'checkpoint' | 'components',

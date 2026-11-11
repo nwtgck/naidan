@@ -107,3 +107,11 @@ describe('image experiment boundary', () => {
     expect(responseSchema.safeParse({ png: new Blob(['x'], { type: 'text/html' }), width: 256, height: 256, modelVersion: 'fixture' }).success).toBe(false);
   });
 });
+
+it('accepts optional native sampling receipts without forcing raw names into editor enums', () => {
+  const result = { png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' };
+  expect(responseSchema.parse(result)).not.toHaveProperty('sampling');
+  const sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
+  expect(responseSchema.parse({ ...result, sampling })).toHaveProperty('sampling', sampling);
+  expect(responseSchema.safeParse({ ...result, sampling: { ...sampling, sampler: { id: -1 } } }).success).toBe(false);
+});

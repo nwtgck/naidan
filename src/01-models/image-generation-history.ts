@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { BinaryObjectId, HostModelDirectoryId, ImageGenerationId, NaidanRpcRegistrationId, NaidanRpcPeerPublicKey } from './ids';
 
 /** Shared by the image workspace and its public persistence service. */
@@ -37,6 +38,16 @@ export type ImageGenerationLocalRuntime = {
   gpuBudgetMiB: number | undefined,
 };
 export type ImageGenerationRuntime = ImageGenerationLocalRuntime | ImageGenerationRemoteRuntime;
+
+/** Native choices reported after the loaded context resolves the request. Names
+ * remain raw strings because the engine supports more values than the editor. */
+const imageGenerationSamplingChoiceSchema = z.object({ id: z.number().int().min(0).max(2147483647), name: z.string().min(1).max(128).optional() });
+export const imageGenerationSamplingSchema = z.object({ sampler: imageGenerationSamplingChoiceSchema, scheduler: imageGenerationSamplingChoiceSchema });
+export type ImageGenerationSampling = z.infer<typeof imageGenerationSamplingSchema>;
+
+/** Provider-confirmed request values before backend compatibility policies,
+ * kept separately from the accepted request. */
+export type ImageGenerationResolvedParameters = { steps: number, guidance: number, vaeTileSize: number };
 
 export type ImageGenerationParameters = {
   prompt: string,
@@ -94,6 +105,8 @@ export type ImageGenerationRecord = {
     width: number,
     height: number,
     elapsedMs: number,
+    sampling?: ImageGenerationSampling,
+    resolvedParameters?: ImageGenerationResolvedParameters,
   } & (
     | { confirmation?: 'confirmed', modelVersion: string, uniformOutput: boolean }
     | { confirmation: 'unconfirmed', modelVersion?: string, uniformOutput?: boolean }

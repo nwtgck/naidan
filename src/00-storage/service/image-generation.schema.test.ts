@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ExperimentalImageGenerationAssetAnnotationsSchemaDto, ExperimentalImageGenerationCatalogSchemaDto, ExperimentalImageGenerationRunSchemaDto, type ExperimentalImageGenerationRunDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
-import { imageGenerationRunToDomain, imageGenerationRunToDto } from '@/00-storage/mapper/image-generation';
+import { ExperimentalImageGenerationAssetAnnotationsSchemaDto, ExperimentalImageGenerationCatalogSchemaDto, ExperimentalImageGenerationRunSchemaDto, ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationAssetSchemaDto, type ExperimentalImageGenerationRunDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { imageGenerationRunToDomain, imageGenerationRunToDto, imageGenerationAssetToDomain, imageGenerationAssetToDto } from '@/00-storage/mapper/image-generation';
 import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import { toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
 import { generationAssetFixture, generationRunFixture } from './image-generation/index.test-support';
@@ -24,6 +24,36 @@ describe('Image Generation persistence contracts', () => {
     if (bf16WeightType === undefined) {
       expect(json.request.parameters).not.toHaveProperty('bf16WeightType');
     }
+  });
+
+  it.each(['steps', 'guidance'] as const)('keeps accepted history %s numeric rather than persisting authoring auto in the request', field => {
+    const dto = imageGenerationRunToDto({ run: runFixture() });
+    const parsed = ExperimentalImageGenerationRunSchemaDto.parse(dto);
+    expect(typeof parsed.request.parameters[field]).toBe('number');
+    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, [field]: 'auto' } } }).success).toBe(false);
+  });
+
+  it.each(['confirmed', 'unconfirmed'] as const)('round-trips optional execution receipts including names outside UI choices: %s', confirmation => {
+    const run = runFixture();
+    const asset = generationAssetFixture({ id: 'asset-aa', run, index: 0 });
+    const record = { id: toImageGenerationId({ raw: 'legacy-aa' }), createdAt: run.createdAt, request: run.request, result: asset.result, previews: asset.previews };
+    record.request.parameters.sampler = 'auto';
+    record.request.parameters.scheduler = 'auto';
+    record.result.confirmation = confirmation;
+    const legacyDto = ExperimentalImageGenerationSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationToDto({ record }))));
+    expect(imageGenerationToDomain({ dto: legacyDto }).result).not.toHaveProperty('sampling');
+    expect(imageGenerationToDomain({ dto: legacyDto }).result).not.toHaveProperty('resolvedParameters');
+    record.result.sampling = { sampler: { id: 9, name: 'flux' }, scheduler: { id: 7 } };
+    record.result.resolvedParameters = { steps: 6, guidance: 1, vaeTileSize: 16 };
+    const dto = ExperimentalImageGenerationSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationToDto({ record }))));
+    const restored = imageGenerationToDomain({ dto });
+    expect(restored).toEqual(record);
+    expect(restored.request.parameters).toMatchObject({ sampler: 'auto', scheduler: 'auto' });
+    expect(restored.result.sampling).toEqual({ sampler: { id: 9, name: 'flux' }, scheduler: { id: 7 } });
+    const assetDto = ExperimentalImageGenerationAssetSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationAssetToDto({ asset }))));
+    expect(imageGenerationAssetToDomain({ dto: assetDto }).result.sampling).toEqual(record.result.sampling);
+    expect(imageGenerationAssetToDomain({ dto: assetDto }).result.resolvedParameters).toEqual(record.result.resolvedParameters);
+    expect(ExperimentalImageGenerationAssetSchemaDto.safeParse({ ...assetDto, result: { ...assetDto.result, resolvedParameters: { steps: 'auto', guidance: 1, vaeTileSize: 16 } } }).success).toBe(false);
   });
 
   it('round-trips exact large seeds and the complete request through JSON serialization', () => {

@@ -10,6 +10,8 @@ export function createBenchmarkForm({ runtimeFeatures }: { runtimeFeatures: Imag
   const common = ref<BenchmarkParameters>({
     ...createImageForm({ profile: 'webgpu-wasm32-asyncify', runtimeFeatures }).parameters.value,
     vaeTileSizePreference: 'auto',
+    stepsPreference: 'auto',
+    guidancePreference: 'auto',
     prompt: 'A fluffy cat curled up asleep by a window in soft morning light. Small potted plants and warm wooden furnishings create a quiet, soothing scene. Gentle warm colors and soft shadows.',
     width: 512,
     height: 512,

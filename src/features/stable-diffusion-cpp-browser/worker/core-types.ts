@@ -19,6 +19,9 @@ export interface NativeApi {
   sd_get_model_version_name(context: bigint): Promise<bigint>;
   sd_get_default_sample_method(context: bigint): Promise<number>;
   sd_get_default_scheduler(context: bigint, sampler: number): Promise<number>;
+  /** Optional borrowed names; missing observers must not block generation. */
+  sd_sample_method_name?(sampler: number): Promise<bigint>;
+  sd_scheduler_name?(scheduler: number): Promise<bigint>;
   str_to_sample_method(name: bigint): Promise<number>;
   str_to_scheduler(name: bigint): Promise<number>;
   sd_set_log_callback(callback: bigint, data: bigint): Promise<void>;

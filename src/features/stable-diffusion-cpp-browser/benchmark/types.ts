@@ -1,4 +1,5 @@
-import type { VaeTileSizePreference } from '@/01-models/image-generation';
+import { imageGenerationSamplingSchema } from '@/01-models/image-generation-history';
+import type { VaeTileSizePreference, ImageModelParameterPreference } from '@/01-models/image-generation';
 import { z } from 'zod';
 import { artifactSchema, parametersSchema, previewSettingsSchema, requestSchema, weightResidencySchema, modelSlotSchema } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Request, Parameters } from '@/features/stable-diffusion-cpp-browser/types';
@@ -16,7 +17,7 @@ export const protocolSchema = z.object({
 }).strict();
 export type BenchmarkProtocol = z.infer<typeof protocolSchema>;
 // Authoring intent stays outside the immutable numeric Worker request.
-export type BenchmarkParameters = Parameters & { vaeTileSizePreference?: VaeTileSizePreference };
+export type BenchmarkParameters = Parameters & { vaeTileSizePreference?: VaeTileSizePreference, stepsPreference?: ImageModelParameterPreference, guidancePreference?: ImageModelParameterPreference };
 export type ParameterChange = { [K in keyof BenchmarkParameters]-?: { key: K, value: Exclude<BenchmarkParameters[K], undefined> } }[keyof BenchmarkParameters];
 export type BenchmarkModelPlan = { target: ImageBenchmarkTarget, request: Request, overrides: Partial<BenchmarkParameters>, preset: string | undefined };
 export type BenchmarkPlan = { id: string, createdAt: string, appVersion: string, notes: string, protocol: BenchmarkProtocol, models: BenchmarkModelPlan[] };
@@ -46,6 +47,7 @@ export const runRecordSchema = z.object({
   skipReason: z.string().optional(),
   modelVersion: z.string().max(256).optional(),
   uniformOutput: z.boolean().optional(),
+  sampling: imageGenerationSamplingSchema.optional(),
   image: z.object({ status: z.enum(['not-requested', 'retained', 'budget-exceeded', 'no-output']), bytes: nonnegative }),
   previewFrames: nonnegative,
   hiddenObserved: z.boolean(),

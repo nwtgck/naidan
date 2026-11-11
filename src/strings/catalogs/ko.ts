@@ -1170,6 +1170,11 @@ import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/mess
 import { ImageModelCatalog__update_the_image_engine_to_use_this_quantization } from '@/strings/messages/ImageModelCatalog__update_the_image_engine_to_use_this_quantization/ko';
 import { ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model } from '@/strings/messages/ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model/ko';
 import { ImageModelLocalFileRecovery__could_not_open_local_image_model_files } from '@/strings/messages/ImageModelLocalFileRecovery__could_not_open_local_image_model_files/ko';
+import { ImageModelNumberInput__automatic } from '@/strings/messages/ImageModelNumberInput__automatic/ko';
+import { ImageModelNumberInput__fixed } from '@/strings/messages/ImageModelNumberInput__fixed/ko';
+import { ImageModelNumberInput__match_model } from '@/strings/messages/ImageModelNumberInput__match_model/ko';
+import { ImageModelNumberInput__model_recommended_value } from '@/strings/messages/ImageModelNumberInput__model_recommended_value/ko';
+import { ImageModelNumberInput__naidan_standard_value } from '@/strings/messages/ImageModelNumberInput__naidan_standard_value/ko';
 import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/ko';
 import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/ko';
 import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/ko';
@@ -1195,6 +1200,8 @@ import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/Im
 import { ImageRemoteModelConfiguration__select_automatically } from '@/strings/messages/ImageRemoteModelConfiguration__select_automatically/ko';
 import { ImageRepositoryImport__choose_files } from '@/strings/messages/ImageRepositoryImport__choose_files/ko';
 import { ImageRepositoryImport__drop_help } from '@/strings/messages/ImageRepositoryImport__drop_help/ko';
+import { ImageSamplingReceipt__name_not_reported } from '@/strings/messages/ImageSamplingReceipt__name_not_reported/ko';
+import { ImageSamplingReceipt__used_for_generation } from '@/strings/messages/ImageSamplingReceipt__used_for_generation/ko';
 import { ImageVaeTileSizeInput__automatic } from '@/strings/messages/ImageVaeTileSizeInput__automatic/ko';
 import { ImageVaeTileSizeInput__fixed } from '@/strings/messages/ImageVaeTileSizeInput__fixed/ko';
 import { ImageVaeTileSizeInput__match_model } from '@/strings/messages/ImageVaeTileSizeInput__match_model/ko';
@@ -2781,6 +2788,7 @@ import { imageGeneration__lineage } from '@/strings/messages/imageGeneration__li
 import { imageGeneration__load_more } from '@/strings/messages/imageGeneration__load_more/ko';
 import { imageGeneration__loading } from '@/strings/messages/imageGeneration__loading/ko';
 import { imageGeneration__manage_tags } from '@/strings/messages/imageGeneration__manage_tags/ko';
+import { imageGeneration__model_parameter_inspection_failed } from '@/strings/messages/imageGeneration__model_parameter_inspection_failed/ko';
 import { imageGeneration__more_execution } from '@/strings/messages/imageGeneration__more_execution/ko';
 import { imageGeneration__name } from '@/strings/messages/imageGeneration__name/ko';
 import { imageGeneration__new_session } from '@/strings/messages/imageGeneration__new_session/ko';
@@ -5040,6 +5048,11 @@ export const catalog = {
   ImageModelCatalog__update_the_image_engine_to_use_this_quantization,
   ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model,
   ImageModelLocalFileRecovery__could_not_open_local_image_model_files,
+  ImageModelNumberInput__automatic,
+  ImageModelNumberInput__fixed,
+  ImageModelNumberInput__match_model,
+  ImageModelNumberInput__model_recommended_value,
+  ImageModelNumberInput__naidan_standard_value,
   ImageModelPicker__choose_a_model,
   ImageModelPicker__search_choices,
   ImageModelPicker__use_built_in_component,
@@ -5065,6 +5078,8 @@ export const catalog = {
   ImageRemoteModelConfiguration__select_automatically,
   ImageRepositoryImport__choose_files,
   ImageRepositoryImport__drop_help,
+  ImageSamplingReceipt__name_not_reported,
+  ImageSamplingReceipt__used_for_generation,
   ImageVaeTileSizeInput__automatic,
   ImageVaeTileSizeInput__fixed,
   ImageVaeTileSizeInput__match_model,
@@ -6651,6 +6666,7 @@ export const catalog = {
   imageGeneration__load_more,
   imageGeneration__loading,
   imageGeneration__manage_tags,
+  imageGeneration__model_parameter_inspection_failed,
   imageGeneration__more_execution,
   imageGeneration__name,
   imageGeneration__new_session,
