@@ -10,6 +10,8 @@ export interface NativeApi {
   free_sd_ctx(context: bigint): Promise<void>;
   sd_cancel_generation(context: bigint, mode: number): Promise<void>;
   sd_ctx_supports_image_generation(context: bigint): Promise<number>;
+  /** Optional until the verified artifact advertises BF16 weight retention. */
+  sd_browser_bf16_retention_version?(): Promise<number>;
   /** Optional observational API: absence must not prevent image generation. */
   sd_ctx_get_runtime_info?(context: bigint, output: bigint, bytes: bigint): Promise<number>;
   sd_ctx_get_memory_info?(context: bigint, output: bigint, bytes: bigint): Promise<number>;
@@ -17,15 +19,19 @@ export interface NativeApi {
   sd_get_model_version_name(context: bigint): Promise<bigint>;
   sd_get_default_sample_method(context: bigint): Promise<number>;
   sd_get_default_scheduler(context: bigint, sampler: number): Promise<number>;
+  /** Optional borrowed names; missing observers must not block generation. */
+  sd_sample_method_name?(sampler: number): Promise<bigint>;
+  sd_scheduler_name?(scheduler: number): Promise<bigint>;
   str_to_sample_method(name: bigint): Promise<number>;
   str_to_scheduler(name: bigint): Promise<number>;
   sd_set_log_callback(callback: bigint, data: bigint): Promise<void>;
   sd_set_graph_diagnostics(enabled: number): Promise<void>;
   sd_set_progress_callback(callback: bigint, data: bigint): Promise<void>;
+  sd_set_generation_progress_callback(context: bigint, callback: bigint, data: bigint): Promise<void>;
   sd_set_preview_callback(callback: bigint, mode: number, interval: number, denoised: number, noisy: number, data: bigint): Promise<void>;
   sd_list_devices(buffer: bigint, bytes: bigint): Promise<bigint>;
-  generate_image(context: bigint, parameters: bigint, imagesOut: bigint, countOut: bigint): Promise<number>;
-  free_sd_images(images: bigint, count: number): Promise<void>;
+  generate_image(context: bigint, parameters: bigint, resultOut: bigint): Promise<number>;
+  free_sd_image_generation_result(result: bigint): Promise<void>;
 }
 export interface CoreModule {
   HEAPU8: Uint8Array<ArrayBuffer>;

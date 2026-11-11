@@ -53,6 +53,17 @@ const ImageGenerationImageSchemaDto = dtozod.object({
   name: dtozod.string(),
 });
 
+const ImageGenerationSamplingSchemaDto = dtozod.object({
+  sampler: dtozod.object({ id: dtozod.number(), name: dtozod.string().optional() }),
+  scheduler: dtozod.object({ id: dtozod.number(), name: dtozod.string().optional() }),
+});
+
+const ImageGenerationResolvedParametersSchemaDto = dtozod.object({
+  steps: dtozod.number(),
+  guidance: dtozod.number(),
+  vaeTileSize: dtozod.number(),
+});
+
 export const ExperimentalImageGenerationSchemaDto = dtozod.object({
   id: ImageHistoryRawIdSchemaDto,
   createdAt: dtozod.number(),
@@ -71,7 +82,7 @@ export const ExperimentalImageGenerationSchemaDto = dtozod.object({
       vaeTiling: dtozod.boolean().optional(),
       vaeTileSize: dtozod.number().optional(),
       flashAttention: dtozod.boolean().optional(),
-      bf16WeightType: dtozod.enum(['f32', 'f16']).optional(),
+      bf16WeightType: dtozod.enum(['f32', 'f16', 'bf16']).optional(),
       qwenVaePolicy: dtozod.enum(['bounded', 'native']).optional(),
       conditioningCacheSize: dtozod.number().optional(),
       modelArguments: dtozod.string().optional(),
@@ -110,6 +121,8 @@ export const ExperimentalImageGenerationSchemaDto = dtozod.object({
       confirmation: dtozod.literal('confirmed').optional(),
       modelVersion: dtozod.string(),
       uniformOutput: dtozod.boolean(),
+      sampling: ImageGenerationSamplingSchemaDto.optional(),
+      resolvedParameters: ImageGenerationResolvedParametersSchemaDto.optional(),
     }),
     dtozod.object({
       binaryObjectId: ImageHistoryRawIdSchemaDto,
@@ -119,6 +132,8 @@ export const ExperimentalImageGenerationSchemaDto = dtozod.object({
       confirmation: dtozod.literal('unconfirmed'),
       modelVersion: dtozod.string().optional(),
       uniformOutput: dtozod.boolean().optional(),
+      sampling: ImageGenerationSamplingSchemaDto.optional(),
+      resolvedParameters: ImageGenerationResolvedParametersSchemaDto.optional(),
     }),
   ]),
   previews: dtozod.array(dtozod.object({
@@ -245,6 +260,9 @@ export const ExperimentalImageGenerationDraftSchemaDto = resolveMissingAsUndefin
   revision: ExperimentalImageGenerationRevisionSchemaDto,
   updatedAt: ExperimentalImageGenerationTimestampSchemaDto,
   request: ExperimentalImageGenerationDraftRequestSchemaDto,
+  vaeTileSizePreference: dtozod.union([dtozod.literal('auto'), dtozod.number()]).optional(),
+  stepsPreference: dtozod.union([dtozod.literal('auto'), dtozod.number()]).optional(),
+  guidancePreference: dtozod.union([dtozod.literal('auto'), dtozod.number()]).optional(),
   inferenceLocation: missingAsUndefined(ExperimentalImageInferenceLocationPreferenceSchemaDto),
   layout: dtozod.enum(['checkpoint', 'components']),
   modelSelection: missingAsUndefined(ExperimentalBrowserImageModelSelectionSchemaDto),

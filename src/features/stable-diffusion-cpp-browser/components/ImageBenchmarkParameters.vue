@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
-import { useId } from 'vue';
+import { computed, useId } from 'vue';
+import type { ImageModelFacts } from '@/features/stable-diffusion-cpp-browser/recommendations';
+import { imageModelParameterDefaults } from '@/features/image-generation/model-parameter-defaults';
+import ImageModelNumberInput from '@/features/image-generation/components/ImageModelNumberInput.vue';
 import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
+import ImageVaeTileSizeInput from '@/features/image-generation/components/ImageVaeTileSizeInput.vue';
 import { lazyStrings } from '@/strings';
 import { samplerOptions, schedulerOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
-import type { Parameters } from '@/features/stable-diffusion-cpp-browser/types';
-import type { ParameterChange } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
-const props = defineProps<{ values: Parameters, overrides: Partial<Parameters> | undefined, disabled: boolean }>();
-const emit = defineEmits<{ change: [change: ParameterChange], inherit: [key: keyof Parameters] }>();
+import type { BenchmarkParameters, ParameterChange } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
+const props = defineProps<{ values: BenchmarkParameters, overrides: Partial<BenchmarkParameters> | undefined, disabled: boolean, bf16RetentionSupported: boolean, modelFacts?: ImageModelFacts }>();
+const emit = defineEmits<{ change: [change: ParameterChange], inherit: [key: keyof BenchmarkParameters] }>();
 const id = useId();
+const modelDefaults = computed(() => imageModelParameterDefaults({ model: props.modelFacts }));
 
 function text({ event }: { event: Event }): string {
   return event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement ? event.target.value : '';
@@ -34,7 +38,7 @@ function resolution({ edge }: { edge: number }): void {
 
 
 
-function setOverride({ key, event }: { key: keyof Parameters, event: Event }): void {
+function setOverride({ key, event }: { key: keyof BenchmarkParameters, event: Event }): void {
   if (!checked({ event })) {
     emit('inherit', key);
   } else {
@@ -47,6 +51,10 @@ function setOverride({ key, event }: { key: keyof Parameters, event: Event }): v
     case 'width': emit('change', { key, value: props.values.width });
       break;
     case 'height': emit('change', { key, value: props.values.height });
+      break;
+    case 'stepsPreference': emit('change', { key, value: props.values.stepsPreference ?? props.values.steps });
+      break;
+    case 'guidancePreference': emit('change', { key, value: props.values.guidancePreference ?? props.values.guidance });
       break;
     case 'steps': emit('change', { key, value: props.values.steps });
       break;
@@ -65,6 +73,8 @@ function setOverride({ key, event }: { key: keyof Parameters, event: Event }): v
     case 'vaeTiling': emit('change', { key, value: props.values.vaeTiling });
       break;
     case 'vaeTileSize': emit('change', { key, value: props.values.vaeTileSize });
+      break;
+    case 'vaeTileSizePreference': emit('change', { key, value: props.values.vaeTileSizePreference ?? props.values.vaeTileSize });
       break;
     case 'flashAttention': emit('change', { key, value: props.values.flashAttention });
       break;
@@ -112,13 +122,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
       <div tw-class="space-y-1" data-parameter="steps">
         <label :id="id + '-label-steps'" :for="id + '-steps'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__steps() }}</label>
-        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'steps')" :aria-describedby="id + '-label-steps'" @change="setOverride({ key: 'steps', event: $event })" :data-testid="'override-steps'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-        <input :id="id + '-steps'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'steps')" :data-testid="'parameter-steps'" :value="props.values.steps" type="number" min="1" max="100" step="1" @input="emit('change', { key: 'steps', value: numeric({ event: $event }) })" tw-class="block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed" />
+        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="(Object.hasOwn(props.overrides, 'stepsPreference') || Object.hasOwn(props.overrides, 'steps'))" :aria-describedby="id + '-label-steps'" @change="setOverride({ key: 'stepsPreference', event: $event })" :data-testid="'override-steps'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
+        <ImageModelNumberInput :id="id + '-steps'" :label="lazyStrings.stableDiffusionCppBrowser__steps()" :disabled="disabled || props.overrides !== undefined && !(Object.hasOwn(props.overrides, 'stepsPreference') || Object.hasOwn(props.overrides, 'steps'))" :preference="props.values.stepsPreference ?? props.values.steps" :value="modelDefaults.steps.value" :minimum="1" :maximum="100" :step="1" :origin="modelDefaults.steps.origin" input-test-id="parameter-steps" @change="emit('change', { key: 'stepsPreference', value: $event })" />
       </div>
       <div tw-class="space-y-1" data-parameter="guidance">
         <label :id="id + '-label-guidance'" :for="id + '-guidance'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__guidance() }}</label>
-        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'guidance')" :aria-describedby="id + '-label-guidance'" @change="setOverride({ key: 'guidance', event: $event })" :data-testid="'override-guidance'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-        <input :id="id + '-guidance'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'guidance')" :data-testid="'parameter-guidance'" :value="props.values.guidance" type="number" min="0" max="30" step="0.1" @input="emit('change', { key: 'guidance', value: numeric({ event: $event }) })" tw-class="block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed" />
+        <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="(Object.hasOwn(props.overrides, 'guidancePreference') || Object.hasOwn(props.overrides, 'guidance'))" :aria-describedby="id + '-label-guidance'" @change="setOverride({ key: 'guidancePreference', event: $event })" :data-testid="'override-guidance'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
+        <ImageModelNumberInput :id="id + '-guidance'" :label="lazyStrings.stableDiffusionCppBrowser__guidance()" :disabled="disabled || props.overrides !== undefined && !(Object.hasOwn(props.overrides, 'guidancePreference') || Object.hasOwn(props.overrides, 'guidance'))" :preference="props.values.guidancePreference ?? props.values.guidance" :value="modelDefaults.guidance.value" :minimum="0" :maximum="30" :step="0.1" :origin="modelDefaults.guidance.origin" input-test-id="parameter-guidance" @change="emit('change', { key: 'guidancePreference', value: $event })" />
       </div>
       <div tw-class="space-y-1" data-parameter="seed">
         <label :id="id + '-label-seed'" :for="id + '-seed'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__seed() }}</label>
@@ -129,10 +139,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <ImageSettingsSection compact :title="lazyStrings.stableDiffusionCppBrowser__runtime_settings()" :summary="undefined">
       <div tw-class="grid min-w-0 gap-3 sm:grid-cols-2">
         <div tw-class="space-y-1" data-parameter="bf16WeightType">
-          <label :id="id + '-label-bf16WeightType'" :for="id + '-bf16WeightType'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</label>
+          <label :id="id + '-label-bf16WeightType'" :for="id + '-bf16WeightType'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage() }}</label>
           <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'bf16WeightType')" :aria-describedby="id + '-label-bf16WeightType'" @change="setOverride({ key: 'bf16WeightType', event: $event })" data-testid="override-bf16WeightType" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-          <SettingsFormSelect :id="id + '-bf16WeightType'" :disabled="disabled || (props.overrides !== undefined && !Object.hasOwn(props.overrides, 'bf16WeightType'))" data-testid="parameter-bf16WeightType" :model-value="props.values.bf16WeightType" @update:model-value="emit('change', { key: 'bf16WeightType', value: $event })" :options="[{ value: 'f32', label: 'F32' }, { value: 'f16', label: 'F16' }]" :label="lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion()" />
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion_help() }}</p>
+          <SettingsFormSelect :id="id + '-bf16WeightType'" :disabled="disabled || (props.overrides !== undefined && !Object.hasOwn(props.overrides, 'bf16WeightType'))" data-testid="parameter-bf16WeightType" :model-value="props.values.bf16WeightType" @update:model-value="emit('change', { key: 'bf16WeightType', value: $event })" :options="[{ value: 'bf16', label: 'BF16', disabled: !bf16RetentionSupported }, { value: 'f32', label: 'F32' }, { value: 'f16', label: 'F16' }]" :label="lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage()" />
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage_help() }}</p>
+          <p v-if="!bf16RetentionSupported" data-testid="benchmark-bf16-retention-unavailable" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine() }}</p>
         </div>
         <div tw-class="space-y-1" data-parameter="sampler">
           <label :id="id + '-label-sampler'" :for="id + '-sampler'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__sampler() }}</label>
@@ -161,8 +172,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
         <div tw-class="space-y-1" data-parameter="vaeTileSize">
           <label :id="id + '-label-vaeTileSize'" :for="id + '-vaeTileSize'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__vae_tile_size() }}</label>
-          <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'vaeTileSize')" :aria-describedby="id + '-label-vaeTileSize'" @change="setOverride({ key: 'vaeTileSize', event: $event })" :data-testid="'override-vaeTileSize'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-          <input :id="id + '-vaeTileSize'" :disabled="props.overrides !== undefined && !Object.hasOwn(props.overrides, 'vaeTileSize')" :data-testid="'parameter-vaeTileSize'" :value="props.values.vaeTileSize" type="number" min="16" max="256" step="8" @input="emit('change', { key: 'vaeTileSize', value: numeric({ event: $event }) })" tw-class="block w-full rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 text-sm text-gray-800 dark:text-gray-100 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed" />
+          <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="(Object.hasOwn(props.overrides, 'vaeTileSizePreference') || Object.hasOwn(props.overrides, 'vaeTileSize'))" :aria-describedby="id + '-label-vaeTileSize'" @change="setOverride({ key: 'vaeTileSizePreference', event: $event })" :data-testid="'override-vaeTileSize'" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
+          <ImageVaeTileSizeInput :id="id + '-vaeTileSize'" :disabled="disabled || props.overrides !== undefined && !(Object.hasOwn(props.overrides, 'vaeTileSizePreference') || Object.hasOwn(props.overrides, 'vaeTileSize'))" input-test-id="parameter-vaeTileSize" :preference="props.values.vaeTileSizePreference ?? props.values.vaeTileSize" :value="props.values.vaeTileSize" @change="emit('change', { key: 'vaeTileSizePreference', value: $event })" />
         </div>
         <div tw-class="space-y-1" data-parameter="flashAttention">
           <label :id="id + '-label-flashAttention'" :for="id + '-flashAttention'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__flash_attention() }}</label>

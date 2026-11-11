@@ -1,0 +1,1 @@
+export const imageGeneration__vae_tile_inspection_failed = (): string => "The model could not be inspected, so the automatic tile size cannot be determined. Inspect the model again or enter a fixed tile size.";

@@ -1,0 +1,1 @@
+export const imageGeneration__vae_tile_inspection_failed = (): string => "Das Modell konnte nicht geprüft werden. Die automatische Kachelgröße kann daher nicht bestimmt werden. Prüfe das Modell erneut oder gib eine feste Kachelgröße ein.";

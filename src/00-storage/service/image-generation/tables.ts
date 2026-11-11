@@ -42,7 +42,7 @@ function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto })
 
 function summarizeAsset({ record }: { record: ExperimentalImageGenerationAssetDto }): ExperimentalImageGenerationAssetSummaryDto {
   const { result, previews, ...metadata } = record;
-  const { binaryObjectId, width, height, confirmation, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, ...unhandled } = result;
+  const { binaryObjectId, width, height, confirmation, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, sampling: _sampling, resolvedParameters: _resolvedParameters, ...unhandled } = result;
   unhandled satisfies Record<PropertyKey, never>;
   return exactObject<ExperimentalImageGenerationAssetSummaryDto>()({
     ...metadata,

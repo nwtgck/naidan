@@ -5,14 +5,15 @@ import { ensureStrings } from '@/strings';
 import { createBenchmarkForm } from './benchmark-form';
 import type { ImageBenchmarkView } from './benchmark-view';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
-import { configurationSchema } from './types';
+import { configurationSchema, getImageRuntimeFeatures } from './types';
 import { createImageEngineClient } from '@/features/stable-diffusion-cpp-browser/inference/engine';
 import { createBenchmarkRunner } from './benchmark/runner';
 import { createBenchmarkPlan, benchmarkParameters } from './benchmark/plan';
 import { benchmarkArchiveBlob } from './benchmark/archive';
 
 export function useImageBenchmark({ generation }: { generation: ImageGenerationView }): ImageBenchmarkView {
-  const form = createBenchmarkForm(), config = configurationSchema.parse(rawConfiguration);
+  const config = configurationSchema.parse(rawConfiguration);
+  const form = createBenchmarkForm({ runtimeFeatures: getImageRuntimeFeatures({ configuration: config }) });
   let disposed = false;
   const seen = new Set<string>();
   let exportControl: AbortController | undefined;
@@ -247,6 +248,19 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       }
       const next = { ...form.overrides.value[id] };
       delete next[key];
+      switch (key) {
+      case 'stepsPreference': delete next.steps;
+        break;
+      case 'guidancePreference': delete next.guidance;
+        break;
+      case 'vaeTileSizePreference': delete next.vaeTileSize;
+        break;
+      case 'prompt': case 'negativePrompt': case 'width': case 'height': case 'steps': case 'guidance': case 'seed': case 'sampler': case 'scheduler': case 'distilledGuidance': case 'vaeTiling': case 'vaeTileSize': case 'flashAttention': case 'bf16WeightType': case 'qwenVaePolicy': case 'conditioningCacheSize': case 'modelArguments': break;
+      default: {
+        const exhaustive: never = key;
+        throw new Error(String(exhaustive));
+      }
+      }
       form.overrides.value = { ...form.overrides.value, [id]: next };
     },
     chooseComponent({ targetId, slot, candidateKey }) {

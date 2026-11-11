@@ -562,14 +562,14 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
       }
       return { binaryObjectId, name: file.name };
     };
-    // Native-only options are deliberately absent: they are not remote settings
-    // and this request must not claim that the provider applied local defaults.
-    const { prompt, negativePrompt, width, height, steps, guidance, sampler, scheduler, distilledGuidance } = form.parameters.value;
+    // Keep only remote-supported controls. The numeric values are a draft
+    // projection; the provider confirms its model-dependent request on success.
+    const { prompt, negativePrompt, width, height, sampler, scheduler, distilledGuidance } = form.parameters.value;
     const inputs = form.imageInputs.value;
     return {
       inputFiles,
       request: {
-        parameters: { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler, distilledGuidance },
+        parameters: { prompt, negativePrompt, width, height, steps: form.resolvedSteps.value, guidance: form.resolvedGuidance.value, vaeTileSize: form.resolvedVaeTileSize.value, seed, sampler, scheduler, distilledGuidance },
         preview: { ...form.preview.value },
         models: [],
         loras: [],
@@ -600,7 +600,9 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     if (runtimeSnapshot.profile !== 'naidan-rpc' || !runtimeSnapshot.modelSelection || !ready.value) {
       throw new Error('Choose an explicit remote model configuration');
     }
-    const parameters = peerImageParametersSchema.parse(captured.request.parameters), preview = peerImagePreviewSchema.parse(captured.request.preview);
+    const { steps: _steps, guidance: _guidance, vaeTileSize: _vaeTileSize, ...numeric } = captured.request.parameters;
+    const parameters = peerImageParametersSchema.parse({ ...numeric, stepsPreference: form.stepsPreference.value, guidancePreference: form.guidancePreference.value, vaeTileSizePreference: form.vaeTileSizePreference.value });
+    const preview = peerImagePreviewSchema.parse(captured.request.preview);
     const inputs = form.imageInputs.value;
     const input = {
       modelSelection: imageModelSelectionSchema.parse(runtimeSnapshot.modelSelection),

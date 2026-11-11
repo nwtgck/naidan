@@ -1,18 +1,19 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
-import { imageModelRecipes, imageRecipeLayout, imageRecipeLink, selectedRecipeFiles } from './model-recipes';
+import { imageModelRecipes, imageRecipeLayout, imageRecipeLink, selectedRecipeFiles, imageRecipeUnsupportedReason, imageRecipeUnavailableReason } from './model-recipes';
 import { imageDownloadSourceSchema, imageFileIdentity, imageFileIdentitySchema } from './logic/catalog-source';
 import type { CatalogFetch } from './download-worker/fetch-types';
 import { validModelPath } from './logic/model-path';
 import { scanImageRepositories } from './logic/model-candidates';
 import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, sdCheckpointTensors, sdVaeTensors, flux2KleinTensors, flux2VaeTensors, animaTensors, wanVaeTensors, krea2Tensors, ernieImageTensors, ministralTextTensors } from './test-utils/weights.test-support';
+import { minimaxH3ImageTensors, minimaxH3ImageVaeTensors, minimaxH3PrunedTextTensors } from './test-utils/minimax-h3-weights.test-support';
 
 it('lists revision-pinned component and checkpoint recipes with original inner paths', () => {
-  expect(imageModelRecipes.map(recipe => recipe.id)).toEqual(['z-image-turbo', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'z-image-base', 'sdxl-base-1.0', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo']);
+  expect(imageModelRecipes.map(recipe => recipe.id)).toEqual(['z-image-turbo', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'z-image-base', 'sdxl-base-1.0', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo', 'minimax-h3-image']);
   for (const recipe of imageModelRecipes) {
     const sdxl = recipe.id === 'sdxl-base-1.0';
     expect(recipe.files.map(file => file.role)).toEqual(sdxl ? ['model', 'vae'] : ['diffusion', 'vae', 'lm']);
-    expect(new Set(recipe.files.map(file => file.repository)).size).toBe(recipe.id === 'anima-turbo-1.1' ? 1 : sdxl || recipe.id === 'flux2-klein-4b' ? 2 : 3);
+    expect(new Set(recipe.files.map(file => file.repository)).size).toBe(recipe.id === 'anima-turbo-1.1' ? 1 : sdxl || recipe.id === 'flux2-klein-4b' || recipe.id === 'minimax-h3-image' ? 2 : 3);
     expect(new Set(recipe.files.map(file => `${file.repository}/${file.path}`)).size).toBe(recipe.files.length);
     for (const file of recipe.files) {
       if (recipe.id === 'qwen-image-2.1-turbo' && file.role === 'diffusion') {
@@ -30,6 +31,44 @@ it('lists revision-pinned component and checkpoint recipes with original inner p
   }
   expect(imageModelRecipes[0]!.files[1]!.path).toBe('split_files/vae/ae.safetensors');
   expect(imageModelRecipes[1]!.files[1]!.path).toBe('vae/qwen_image_2.1_vae_bf16.safetensors');
+});
+
+it('defaults H3 to original BF16 and keeps known unsupported INT8 as an explicit pinned option', () => {
+  const recipe = imageModelRecipes.find(recipe => recipe.id === 'minimax-h3-image')!;
+  expect(recipe).toMatchObject({
+    title: 'MiniMax-H3-Image',
+    source: 'https://github.com/leejet/stable-diffusion.cpp/blob/32d516c0197ed5ca31305b8575e14eb1451fad33/docs/minimax_h3_image.md',
+  });
+  expect(recipe.recommendation).toBeUndefined();
+  expect(recipe.files).toEqual([
+    { role: 'diffusion', repository: 'Comfy-Org/MiniMax-H3-Image', revision: '892de7cb61df49753bf15145a711154803a355cb', path: 'diffusion_models/minimax_h3_image_pruned_bf16.safetensors', directory: 'MiniMax-H3-Image', approximateBytes: 40234657162 },
+    { role: 'vae', repository: 'Comfy-Org/MiniMax-H3-Image', revision: '892de7cb61df49753bf15145a711154803a355cb', path: 'vae/minimax_h3_image_vae_fp16.safetensors', directory: 'MiniMax-H3-Image', approximateBytes: 1168505312 },
+    { role: 'lm', repository: 'leejet/MiniMax-H3-GGUF', revision: 'd9c4c6312b4728a68a15a35626d84775a6523783', path: 'qwen3vl_32b_minimax_h3-Q4_K_M.gguf', directory: 'MiniMax-H3-GGUF', approximateBytes: 18218065024 },
+  ]);
+  expect(recipe.components.map(component => component.options.map(option => option.id))).toEqual([['default', 'q4-k-m', 'int8-convrot'], ['default'], ['default']]);
+  expect(selectedRecipeFiles({ recipe, selections: {} })).toEqual(recipe.files);
+  expect(recipe.files.reduce((sum, file) => sum + file.approximateBytes, 0)).toBe(59621227498);
+  expect(imageRecipeUnsupportedReason({ files: recipe.files })).toBeUndefined();
+  const int8 = selectedRecipeFiles({ recipe, selections: { diffusion: 'int8-convrot' } });
+  expect(int8[0]).toEqual({ ...recipe.files[0], path: 'diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors', approximateBytes: 20979314802, unsupportedReason: 'int8-convrot' });
+  expect(int8.slice(1)).toEqual(recipe.files.slice(1));
+  expect(int8.reduce((sum, file) => sum + file.approximateBytes, 0)).toBe(40365885138);
+  expect(imageRecipeUnsupportedReason({ files: int8 })).toBe('int8-convrot');
+  expect(imageModelRecipes.flatMap(item => item.files).some(file => file.unsupportedReason !== undefined)).toBe(false);
+});
+
+it('pins the image-specific H3 Q4 option and requires verified original-shape support independently of the model variant', () => {
+  const recipe = imageModelRecipes.find(recipe => recipe.id === 'minimax-h3-image')!;
+  const files = selectedRecipeFiles({ recipe, selections: { diffusion: 'q4-k-m' } });
+  expect(files[0]).toEqual({ role: 'diffusion', repository: 'Abiray/MiniMax-H3-Image-GGUF', revision: '96a59945b9c55796f1bcfd1fd455212706ecefba', path: 'MiniMax-H3-Image-Pruned-Q4_K_M.gguf', directory: 'MiniMax-H3-Image-GGUF', approximateBytes: 11573106144, requiredRuntimeFeature: 'ggufOriginalShapes' });
+  expect(files.slice(1)).toEqual(recipe.files.slice(1));
+  expect(files.reduce((sum, file) => sum + file.approximateBytes, 0)).toBe(30959676480);
+  expect(imageRecipeUnsupportedReason({ files })).toBeUndefined();
+  expect(imageRecipeUnavailableReason({ files, runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: false } })).toBe('engine-update-required');
+  expect(imageRecipeUnavailableReason({ files, runtimeFeatures: { ggufOriginalShapes: true, bf16WeightRetention: false } })).toBeUndefined();
+  expect(imageRecipeUnavailableReason({ files: recipe.files, runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: false } })).toBeUndefined();
+  const int8 = selectedRecipeFiles({ recipe, selections: { diffusion: 'int8-convrot' } });
+  expect(imageRecipeUnavailableReason({ files: int8, runtimeFeatures: { ggufOriginalShapes: true, bf16WeightRetention: false } })).toBe('int8-convrot');
 });
 
 it('limits the provisional main revision to the six known Abiray Turbo weights', () => {
@@ -92,6 +131,7 @@ it('recognizes every catalog layout without flattening paths or merging reposito
       case 'anima-turbo-1.1': return { family: 'anima', diffusion: animaTensors, vae: wanVaeTensors, vaeClass: 'vae-wan16', architecture: 'qwen3', width: 1024, layers: 28, lmClass: 'lm-qwen3-06b' };
       case 'krea2-turbo': return { family: 'krea2', diffusion: krea2Tensors, vae: wanVaeTensors, vaeClass: 'vae-wan16', architecture: 'qwen3vl', width: 2560, layers: 36, lmClass: 'lm-qwen3vl-4b' };
       case 'ernie-image-turbo': return { family: 'ernie-image', diffusion: ernieImageTensors, vae: flux2VaeTensors, vaeClass: 'vae-flux32', architecture: 'mistral3', width: 3072, layers: 26, lmClass: 'lm-ministral3-3b' };
+      case 'minimax-h3-image': return { family: 'minimax-h3-image', diffusion: minimaxH3ImageTensors, vae: minimaxH3ImageVaeTensors, vaeClass: 'vae-minimax-h3-image', architecture: '', width: 5120, layers: 50, lmClass: 'lm-minimax-h3-pruned-50' };
       default: {
         const exhaustive: never = recipe.id;
         throw new Error(String(exhaustive));
@@ -103,7 +143,7 @@ it('recognizes every catalog layout without flattening paths or merging reposito
       const name = entry.path.split('/').at(-1)!;
       const file = entry.role === 'model' ? safetensorsFixture({ name, tensors: sdCheckpointTensors }).file : entry.role === 'vae'
         ? safetensorsFixture({ name, tensors: facts.vae }).file
-        : ggufFixture({ name, tensors: entry.role === 'diffusion' ? facts.diffusion : facts.architecture === 'mistral3' ? ministralTextTensors : qwenTextTensors({ width: facts.width, layers: facts.layers }), metadata: entry.role === 'lm' ? { 'general.architecture': facts.architecture } : {}, extraBytes: 0 }).file;
+        : ggufFixture({ name, tensors: entry.role === 'diffusion' ? facts.diffusion : recipe.id === 'minimax-h3-image' ? minimaxH3PrunedTextTensors : facts.architecture === 'mistral3' ? ministralTextTensors : qwenTextTensors({ width: facts.width, layers: facts.layers }), metadata: entry.role === 'lm' && facts.architecture ? { 'general.architecture': facts.architecture } : {}, extraBytes: 0 }).file;
       return { repositoryKey: `user/${entry.directory}`, repositoryLabel: entry.directory, files: [{ relativePath: entry.path, file }] };
     });
     const inventory = await scanImageRepositories({ repositories, signal: undefined });

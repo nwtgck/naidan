@@ -1,4 +1,5 @@
 import { compareImageGenerationSessions } from '@/01-models/image-generation';
+import { isRemoteImageRuntime } from '@/01-models/image-generation-remote';
 import { imagePendingSessionUses } from '@/features/image-generation/session/pending-session-uses';
 import { useImageSessionPresentation } from './use-image-session-presentation';
 import { createImageTranslationMemory } from '@/features/image-generation/translation/memory';
@@ -1202,10 +1203,18 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
         if (!current || !generation.restoreDraft) {
           return 'unavailable';
         }
+        // A remote provider confirms its model-resolved values per output;
+        // the immutable accepted run still holds the caller's projection.
+        const parameters = { ...selected.run.request.parameters, ...selected.asset.result.resolvedParameters };
         await generation.restoreDraft({
           draft: {
             ...current,
-            request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
+            // Reuse the recorded numeric request as a fixed choice, not the
+            // previous editor's automatic intent.
+            vaeTileSizePreference: parameters.vaeTileSize ?? (isRemoteImageRuntime({ runtime: selected.run.request.runtime }) ? 'auto' : 32),
+            stepsPreference: parameters.steps,
+            guidancePreference: parameters.guidance,
+            request: { ...selected.run.request, parameters: { ...parameters, seed: selected.asset.seed } },
             seedMode: 'fixed',
             files: [],
             modelSelection: undefined,

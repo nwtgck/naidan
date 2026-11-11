@@ -2,7 +2,7 @@
 import { computed, onErrorCaptured, ref } from 'vue';
 import { lazyStrings } from '@/strings';
 import { rawConfiguration, useImageLibrary } from '@/features/image-generation/providers/local-environment';
-import { configurationSchema } from '@/features/stable-diffusion-cpp-browser/types';
+import { configurationSchema, getImageRuntimeFeatures } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageRepositoryImport from './ImageRepositoryImport.vue';
 
@@ -21,6 +21,7 @@ onErrorCaptured(() => {
 const view = (() => {
   try {
     return props.view ?? useImageLibrary({
+      runtimeFeatures: configuration.success ? getImageRuntimeFeatures({ configuration: configuration.data }) : undefined,
       blocked: () => disabled.value,
       downloadsBlocked: () => true,
       onSelection() {},

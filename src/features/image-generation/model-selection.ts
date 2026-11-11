@@ -26,7 +26,7 @@ export type ResolvedImageComponent = {
 export function imagePrimarySlot({ family }: { family: ImageFamily }): PrimarySlot | undefined {
   switch (family) {
   case 'sd-checkpoint': return 'model';
-  case 'z-image': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': return 'diffusion';
+  case 'z-image': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'minimax-h3-image': return 'diffusion';
   case 'unknown': return undefined;
   default: {
     const exhaustive: never = family;

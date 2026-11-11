@@ -136,8 +136,8 @@ watch(identity, ([active, chatId, storeId, sessionId], _previous, onCleanup) => 
             model: model?.label ?? '',
             width: parameters.width,
             height: parameters.height,
-            steps: parameters.steps,
-            guidance: parameters.guidance,
+            steps: view.editor.resolvedSteps.value,
+            guidance: view.editor.resolvedGuidance.value,
             count: view.count.value,
           };
         },

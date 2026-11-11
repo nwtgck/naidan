@@ -182,3 +182,18 @@ it('reports a new archive failure on retry and preserves failed generation recor
   expect((await exportedManifest()).runs).toEqual(original);
   expect(mocks.create).toHaveBeenCalledOnce();
 });
+
+it('distinguishes a per-model automatic tile choice from inheriting the common fixed value', () => {
+  const { bench } = setup(), target = targetFixture({ id: 'a' });
+  target.facts = { family: 'minimax-h3-image', variant: 'unknown', evidence: [] };
+  bench.setCommon({ change: { key: 'vaeTileSizePreference', value: 32 } });
+  bench.change({ id: 'a', change: { key: 'vaeTileSizePreference', value: 'auto' } });
+  expect(bench.effective({ target }).vaeTileSize).toBe(16);
+  bench.inherit({ id: 'a', key: 'vaeTileSizePreference' });
+  expect(bench.effective({ target }).vaeTileSize).toBe(32);
+  bench.setCommon({ change: { key: 'vaeTileSizePreference', value: 'auto' } });
+  bench.overrides.value = { a: { vaeTileSize: 32 } };
+  expect(bench.effective({ target })).toMatchObject({ vaeTileSize: 32, vaeTileSizePreference: 32 });
+  bench.inherit({ id: 'a', key: 'vaeTileSizePreference' });
+  expect(bench.effective({ target })).toMatchObject({ vaeTileSize: 16, vaeTileSizePreference: 'auto' });
+});

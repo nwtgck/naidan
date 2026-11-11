@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
-import { componentRequirements, type ImageFamily } from './model-configuration';
+import { componentRequirements, knownImageFamily, type ImageFamily } from './model-configuration';
 import { chooseInitialImagePrimary, chooseImageCompanion, imagePrimarySlot, reconcileImageComponents } from './model-selection';
 import { imageSelectionCandidate as candidate } from './model-selection.test-support';
 
-it.each<ImageFamily>(['z-image', 'qwen-image-2.1', 'flux1', 'flux2-klein-4b', 'anima', 'krea2', 'ernie-image', 'sd-checkpoint'])('resolves the existing component rules for %s', family => {
+it.each<ImageFamily>(['z-image', 'qwen-image-2.1', 'flux1', 'flux2-klein-4b', 'anima', 'krea2', 'ernie-image', 'minimax-h3-image', 'sd-checkpoint'])('resolves the existing component rules for %s', family => {
   const primary = candidate({ key: 'main', family, roles: [imagePrimarySlot({ family })!] });
   const components = componentRequirements({ family }).map((requirement, index) => candidate({ key: requirement.slot, roles: [requirement.slot], classes: requirement.accepts.slice(0, 1), tieBreakRank: index + 1 }));
   const candidates = [primary, ...components];
@@ -12,6 +12,22 @@ it.each<ImageFamily>(['z-image', 'qwen-image-2.1', 'flux1', 'flux2-klein-4b', 'a
   expect(resolved.ready).toBe(true);
   expect(resolved.missingRequiredSlots).toEqual([]);
   expect(resolved.components.filter(component => component.key !== undefined).map(component => component.slot)).toEqual(componentRequirements({ family }).filter(requirement => requirement.required).map(requirement => requirement.slot));
+});
+
+it('retains H3 Image family facts and requires its dedicated image VAE and pruned encoder', () => {
+  expect(knownImageFamily({ family: 'minimax-h3-image' })).toBe('minimax-h3-image');
+  const main = candidate({ key: 'main', family: 'minimax-h3-image', roles: ['diffusion'] });
+  const vae = candidate({ key: 'image-vae', roles: ['vae'], classes: ['vae-minimax-h3-image'] });
+  const lm = candidate({ key: 'pruned-lm', roles: ['lm'], classes: ['lm-minimax-h3-pruned-50'] });
+  const otherVae = candidate({ key: 'wan-vae', roles: ['vae'], classes: ['vae-wan16'], totalBytes: 1 });
+  const otherLm = candidate({ key: 'other-qwen', roles: ['lm'], classes: ['lm-qwen3vl-8b'], totalBytes: 1 });
+  const candidates = [main, vae, lm, otherVae, otherLm];
+  const resolved = reconcileImageComponents({ primaryKey: 'main', candidates, choices: {}, previous: {}, recipe: undefined });
+  expect(resolved).toMatchObject({ ready: true, components: [{ slot: 'vae', key: 'image-vae', required: true }, { slot: 'lm', key: 'pruned-lm', required: true }] });
+  expect(reconcileImageComponents({ primaryKey: 'main', candidates, choices: {}, previous: { lm: 'pruned-lm' }, recipe: { lm: '' } })).toMatchObject({ ready: false, missingRequiredSlots: ['lm'] });
+  const unsupported = { ...main, issue: 'INT8 ConvRot is unavailable' };
+  expect(chooseInitialImagePrimary({ candidates: [unsupported, vae, lm] })).toBeUndefined();
+  expect(reconcileImageComponents({ primaryKey: 'main', candidates: [unsupported, vae, lm], choices: {}, previous: {}, recipe: undefined }).ready).toBe(false);
 });
 
 it('selects initial primary by total bytes then supplied source rank, not arrival or transport keys', () => {

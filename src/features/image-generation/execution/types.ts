@@ -1,4 +1,4 @@
-import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
+import type { ImageGenerationSampling, ImageGenerationResolvedParameters, ImageGenerationRecord } from '@/01-models/image-generation-history';
 import type { ImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 
 /** Image execution carries pixels and progress, never a native artifact, model
@@ -25,6 +25,9 @@ export type ImageExecutionOutput = {
   height: number,
   modelVersion: string,
   uniformOutput?: boolean,
+  sampling?: ImageGenerationSampling,
+  /** Provider-confirmed request values, before backend compatibility policies. */
+  resolvedParameters?: ImageGenerationResolvedParameters,
 };
 /** Pixels can survive an interrupted delivery without execution metadata.
  * This is not a normal output and must never count toward a successful run. */

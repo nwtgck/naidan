@@ -1,0 +1,1 @@
+export const imageGeneration__vae_tile_inspection_failed = (): string => "No se pudo inspeccionar el modelo para determinar el tamaño automático de los mosaicos. Vuelve a inspeccionarlo o introduce un tamaño fijo.";

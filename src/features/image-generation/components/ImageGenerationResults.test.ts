@@ -427,3 +427,12 @@ Reported details:
   wrapper = mount(ImageGenerationResults, { props: { view, active: true, presentation: 'settings', persistence: 'workspace' } });
   expect(wrapper.get('[data-testid="image-generation-failure-detail"]').element.textContent).toBe(detail);
 });
+
+it('shows the completed image sampling receipt without replacing the current form auto choices', () => {
+  const view = useImageGeneration();
+  view.supported = computed(() => true);
+  view.results.value = [{ id: 1, url: 'blob:sampled', parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 1, sampling: { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } } }];
+  wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
+  expect(wrapper.get('[data-testid="image-sampling-scheduler"]').text()).toBe('flux');
+  expect(view.parameters.value).toMatchObject({ sampler: 'auto', scheduler: 'auto' });
+});

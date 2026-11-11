@@ -95,7 +95,7 @@ export async function inspectImageEngine({ core, context, profile, source, model
           maxVram: parameterText({ field: 'max_vram' }),
           flashAttention: Number(parameter({ field: 'flash_attn' })) === 1,
           diffusionFlashAttention: Number(parameter({ field: 'diffusion_flash_attn' })) === 1,
-          bf16WeightType: bf16Type === core.constant('SD_TYPE_F32') ? 'f32' : bf16Type === core.constant('SD_TYPE_F16') ? 'f16' : 'other',
+          bf16WeightType: bf16Type === core.constant('SD_TYPE_F32') ? 'f32' : bf16Type === core.constant('SD_TYPE_F16') ? 'f16' : bf16Type === core.constant('SD_TYPE_BF16') ? 'bf16' : 'other',
           conditioningCacheSize: Number(parameter({ field: 'conditioning_cache_size' })),
         },
       }),

@@ -6,6 +6,7 @@ import { inspectWeightFile, readModelJson, type TensorInfo, type WeightMetadata 
 import { relativeCompanionPath } from './model-path';
 import { parseGgufSplitPath } from '@/utils/gguf-file-paths';
 import { hasLoraTensors } from './lora-metadata';
+import { hasMinimaxH3ImageStructure, hasMinimaxH3ImageVaeStructure, minimaxH3PrunedTextEmbedding } from './minimax-h3-metadata';
 import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
 import { chooseImageCompanion, type ImageSelectionCandidate } from '@/features/image-generation/model-selection';
@@ -85,13 +86,21 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
     family = 'ernie-image';
     roles.push('diffusion');
     evidence.push('ERNIE image adaLN; hidden 4096, latent 128, text 3072');
+  } else if (hasMinimaxH3ImageStructure({ tensors })) {
+    family = 'minimax-h3-image';
+    roles.push('diffusion');
+    evidence.push('MiniMax H3 Image projections: hidden 5376, patch input 96, text 5120, image output 576; no audio tensors');
   } else if (!flux2Modulation && has({ pattern: /(^|\.)double_blocks\.0\.img_attn\./ }) && has({ pattern: /(^|\.)single_blocks\.0\./ })) {
     family = 'flux1';
     roles.push('diffusion');
     evidence.push('FLUX double/single transformer blocks');
   }
   const vaeOutput = find({ suffix: 'decoder.conv_out.weight' });
-  if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 16 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 32) {
+  if (hasMinimaxH3ImageVaeStructure({ tensors })) {
+    classes.push('vae-minimax-h3-image');
+    roles.push('vae');
+    evidence.push('MiniMax H3 Image VAE: decoder patch input 24, hidden 1024, output 768; RGB encoder');
+  } else if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 16 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 32) {
     classes.push('vae-flux16');
     roles.push('vae');
     evidence.push('2D VAE: latent 16, RGB output, encoder 32');
@@ -151,6 +160,9 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
       classes.push('lm-qwen3vl-8b');
     } else if (q3vl && width === 2560 && layers === 36) {
       classes.push('lm-qwen3vl-4b');
+    } else if (minimaxH3PrunedTextEmbedding({ tensors, architecture, modelType: config?.model_type, textModelType: config?.text_config?.model_type })) {
+      classes.push('lm-minimax-h3-pruned-50');
+      evidence.push('Qwen3-VL structure: 50 text layers, hidden 5120; 27 vision layers and 3 DeepStack mergers; no final norm');
     } else if (ministral3 && width === 3072 && layers === 26) {
       classes.push('lm-ministral3-3b');
     } else if (architecture || config?.model_type || config?.text_config?.model_type || !((width === 2560 && layers === 36) || (width === 1024 && layers === 28) || (width === 4096 && layers === 36) || (width === 3072 && layers === 26))) {
@@ -181,7 +193,7 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   const variant = (() => {
     switch (family) {
     case 'z-image': return /\bturbo\b/i.test(training) ? 'turbo' : /\bbase\b/i.test(training) ? 'base' : 'unknown';
-    case 'sd-checkpoint': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'unknown': return 'unknown';
+    case 'sd-checkpoint': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'minimax-h3-image': case 'unknown': return 'unknown';
     default: {
       const exhaustive: never = family;
       throw new Error(String(exhaustive));
@@ -339,7 +351,7 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
             facts.variant = 'turbo';
             facts.evidence.push('Turbo variant: verified catalog download receipt');
             break;
-          case 'sdxl-base-1.0': break;
+          case 'sdxl-base-1.0': case 'minimax-h3-image': break;
           default: {
             const exhaustive: never = recipe.id;
             throw new Error(String(exhaustive));

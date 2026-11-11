@@ -1,13 +1,17 @@
-import type { ImageGenerationParameters } from '@/01-models/image-generation-history';
-import { ref, shallowRef } from 'vue';
+import type { ImageGenerationParameters, ImageGenerationSampling } from '@/01-models/image-generation-history';
+import { computed, ref, shallowRef, type Ref } from 'vue';
+import type { ImageModelFacts } from '@/features/stable-diffusion-cpp-browser/recommendations';
+import { imageModelParameterDefaults, resolveImageModelParameter } from './model-parameter-defaults';
+import type { VaeTileSizePreference, ImageModelParameterPreference } from '@/01-models/image-generation';
+import { resolveVaeTileSize } from './vae-tile-size';
 import { defaultPreviewSettings } from '@/features/stable-diffusion-cpp-browser/form-options';
-import type { PreviewFrame, PreviewSettings, Artifact, Parameters, WeightResidency, ModelSlot, Progress } from '@/features/stable-diffusion-cpp-browser/types';
+import { resolveBf16WeightType, type ImageRuntimeFeatures, type PreviewFrame, type PreviewSettings, type Artifact, type Parameters, type WeightResidency, type ModelSlot, type Progress } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 import type { ImageDownloadPreferences } from './use-image-generation-types';
 import { emptyImageInputs } from './image-input-form';
 
 /** Shared visible form state, including the disabled standalone page. */
-export function createImageForm({ profile: initialProfile }: { profile: Artifact['profile'] }) {
+export function createImageForm({ profile: initialProfile, runtimeFeatures, modelFacts }: { profile: Artifact['profile'], runtimeFeatures?: ImageRuntimeFeatures, modelFacts?: Readonly<Ref<ImageModelFacts | undefined>> }) {
   const profile = ref(initialProfile);
   const debug = ref<'off' | 'on'>('off');
   const diagnosticText = ref('');
@@ -17,7 +21,15 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const files = shallowRef<Partial<Record<ModelSlot, File>>>({});
   const loras = shallowRef<ImageLoraSelection[]>([]);
   const imageInputs = shallowRef(emptyImageInputs());
-  const parameters = ref<Parameters>({ prompt: '', negativePrompt: '', width: 256, height: 256, steps: 20, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32', qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' });
+  const parameters = ref<Parameters>({ prompt: '', negativePrompt: '', width: 256, height: 256, steps: 20, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: resolveBf16WeightType({ value: undefined, bf16WeightRetention: runtimeFeatures?.bf16WeightRetention === true }), qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' });
+  // Intent is independent of the numeric request/draft compatibility field.
+  const stepsPreference = ref<ImageModelParameterPreference>('auto');
+  const guidancePreference = ref<ImageModelParameterPreference>('auto');
+  const modelParameterDefaults = computed(() => imageModelParameterDefaults({ model: modelFacts?.value }));
+  const resolvedSteps = computed(() => resolveImageModelParameter({ preference: stepsPreference.value, fallback: modelParameterDefaults.value.steps.value }));
+  const resolvedGuidance = computed(() => resolveImageModelParameter({ preference: guidancePreference.value, fallback: modelParameterDefaults.value.guidance.value }));
+  const vaeTileSizePreference = ref<VaeTileSizePreference>('auto');
+  const resolvedVaeTileSize = computed(() => resolveVaeTileSize({ preference: vaeTileSizePreference.value, family: modelFacts?.value?.family }));
   const imageDownloadPreferences = ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' });
   function setImageDownloadPreferences({ preferences }: { preferences: ImageDownloadPreferences }): void {
     imageDownloadPreferences.value = { ...preferences };
@@ -45,8 +57,8 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const invalid = ref(false);
   const cancelled = ref(false);
   const stopping = ref(false);
-  const results = shallowRef<{ url: string, parameters: ImageGenerationParameters, modelVersion: string, uniformOutput: boolean, elapsedMs: number, id: number }[]>([]);
-  return { imageDownloadPreferences, setImageDownloadPreferences, retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, progress, latestRun, failure, invalid, cancelled, stopping, results };
+  const results = shallowRef<{ url: string, parameters: ImageGenerationParameters, sampling?: ImageGenerationSampling, modelVersion: string, uniformOutput: boolean, elapsedMs: number, id: number }[]>([]);
+  return { imageDownloadPreferences, setImageDownloadPreferences, retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, loras, imageInputs, parameters, stepsPreference, guidancePreference, modelParameterDefaults, resolvedSteps, resolvedGuidance, vaeTileSizePreference, resolvedVaeTileSize, weightResidency, gpuBudgetMiB, progress, latestRun, failure, invalid, cancelled, stopping, results };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

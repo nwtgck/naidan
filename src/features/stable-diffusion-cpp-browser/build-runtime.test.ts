@@ -8,6 +8,7 @@ import { gunzipSync } from 'node:zlib';
 import type { PluginContext } from 'rolldown';
 import { runtimeAssetMiddleware } from '../../../build/runtime-asset-middleware.test-support';
 import { assertStandaloneImageModule, createStableDiffusionCppBrowserBuild, readImageArtifacts } from './build-runtime';
+import { imageRuntimeSchemaFixture } from './test-utils/runtime-schema.test-support';
 const directories: string[] = [];
 
 afterEach(() => {
@@ -88,7 +89,7 @@ describe('lazy image runtime assets', () => {
   });
 });
 
-function fixture({ omitFunction }: { omitFunction?: string } = {}) {
+function fixture({ omitFunction, mutateSchema }: { omitFunction?: string, mutateSchema?: (schema: ReturnType<typeof imageRuntimeSchemaFixture>) => void } = {}) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'naidan-image-artifact-'));
   directories.push(directory);
   const sourceCommit = 'a'.repeat(40);
@@ -106,7 +107,10 @@ function fixture({ omitFunction }: { omitFunction?: string } = {}) {
     }
     profiles[profile] = { variants: { browser: { sourceCommit, sourceDirty: false, profile, variant: 'browser', configuration: { webgpu: true, pthreads: false, memory64: profile.includes('wasm64'), jspi: profile.endsWith('jspi'), asyncify: profile.endsWith('asyncify') }, validation: { compiled: true, browserSmoke: true, fixtureOnly: true, realModelInference: false } } } };
   }
-  const schema = Buffer.from(JSON.stringify({ abiVersion: 2, functions: ['sd_ctx_params_init', 'sd_img_gen_params_init', 'new_sd_ctx', 'free_sd_ctx', 'generate_image', 'free_sd_images', 'sd_get_model_version_name', 'sd_get_default_sample_method', 'sd_get_default_scheduler', 'sd_cancel_generation', 'sd_set_log_callback', 'sd_set_graph_diagnostics', 'sd_set_progress_callback', 'sd_set_preview_callback', 'sd_ctx_supports_image_generation', 'str_to_sample_method', 'str_to_scheduler'].filter(name => name !== omitFunction).map(name => ({ name })), records: ['sd_ctx_params_t', 'sd_img_gen_params_t', 'sd_image_t', 'sd_sample_params_t', 'sd_guidance_params_t', 'sd_tiling_params_t'].map(name => ({ name })) }));
+  const contract = imageRuntimeSchemaFixture();
+  contract.functions = contract.functions.filter(entry => entry.name !== omitFunction);
+  mutateSchema?.(contract);
+  const schema = Buffer.from(JSON.stringify(contract));
   const schemaSha256 = createHash('sha256').update(schema).digest('hex');
   add({ relative: 'api/schema.json', data: schema });
   for (const relative of ['api/schema.mjs', 'examples/runtime/index.mjs', 'examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs']) {
@@ -140,6 +144,38 @@ describe('optional image build integration', () => {
 
   it('does not silently ignore an explicit invalid install path', () => {
     expect(() => readImageArtifacts({ rootDir: '/missing', mode: 'hosted', artifactDir: '/invalid-image-artifacts' })).toThrow('does not exist');
+  });
+
+  it('defaults old manifests to limited GGUF support and exposes the verified original-shape capability', () => {
+    const { directory } = fixture();
+    expect(readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory }).configuration).toMatchObject({ kind: 'available', runtimeFeatures: { ggufOriginalShapes: false } });
+    changeImageManifest({ directory, change: json => json.replace('"upstreamApi":true', '"upstreamApi":true,"ggufOriginalShapes":true') });
+    expect(readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory }).configuration).toMatchObject({ kind: 'available', runtimeFeatures: { ggufOriginalShapes: true } });
+  });
+
+  it('binds BF16 retention claims to each verified artifact and requires the advertised optional API', () => {
+    const legacy = fixture();
+    const old = readImageArtifacts({ rootDir: legacy.directory, mode: 'hosted', artifactDir: legacy.directory }).configuration;
+    expect(old).toMatchObject({ kind: 'available', runtimeFeatures: { bf16WeightRetention: false } });
+    changeImageManifest({ directory: legacy.directory, change: json => json.replace('"upstreamApi":true', '"upstreamApi":true,"bf16WeightRetention":true') });
+    expect(() => readImageArtifacts({ rootDir: legacy.directory, mode: 'hosted', artifactDir: legacy.directory })).toThrow('sd_browser_bf16_retention_version');
+    const { directory } = fixture({ mutateSchema: schema => schema.functions.push({ name: 'sd_browser_bf16_retention_version', returnType: 'uint32_t', returnKind: 'unsigned', parameters: [] }) });
+    changeImageManifest({ directory, change: json => json.replace('"upstreamApi":true', '"upstreamApi":true,"bf16WeightRetention":true') });
+    const { configuration } = readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory });
+    expect(configuration).toMatchObject({ kind: 'available', runtimeFeatures: { bf16WeightRetention: true } });
+    if (configuration.kind !== 'available') {
+      throw new Error('Expected verified artifacts');
+    }
+    expect(configuration.artifacts).toHaveLength(3);
+    expect(configuration.artifacts.every(artifact => artifact.bf16WeightRetention === true)).toBe(true);
+  });
+
+  it('rejects an invalid original-shape capability or a capability from a mismatched source', () => {
+    const { directory, sourceCommit } = fixture();
+    changeImageManifest({ directory, change: json => json.replace('"upstreamApi":true', '"upstreamApi":true,"ggufOriginalShapes":"true"') });
+    expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('runtime ABI 2');
+    changeImageManifest({ directory, change: json => json.replace('"ggufOriginalShapes":"true"', '"ggufOriginalShapes":true').replaceAll(sourceCommit, 'b'.repeat(40)) });
+    expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('Mixed runtime source commits');
   });
 
   it('validates source-bound artifacts and keeps notices separate from emitted runtime assets', async () => {
@@ -234,4 +270,26 @@ it('rejects image artifacts without the preview setter before accepting the runt
 it('rejects image artifacts without the opt-in graph diagnostic setter', () => {
   const { directory } = fixture({ omitFunction: 'sd_set_graph_diagnostics' });
   expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('missing a required upstream function: sd_set_graph_diagnostics');
+});
+
+it('rejects a source-bound ABI 2 package using the legacy image result signature', () => {
+  const { directory } = fixture({
+    mutateSchema(schema) {
+      const generate = schema.functions.find(entry => entry.name === 'generate_image')!;
+    generate.parameters[2]!.cType = 'sd_image_t **';
+    generate.parameters.push({ kind: 'pointer', cType: 'int *' });
+    },
+  });
+  expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('incompatible upstream function: generate_image');
+});
+
+it('rejects a package whose result owner or pixel tile fields are incompatible', () => {
+  for (const [record, field] of [['sd_image_result_t', 'image'], ['sd_tiling_params_t', 'tile_size_w']] as const) {
+    const { directory } = fixture({
+      mutateSchema(schema) {
+      schema.records.find(entry => entry.name === record)!.fields.find(entry => entry.name === field)!.kind = 'pointer';
+      },
+    });
+    expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('incompatible record field: ' + record + '.' + field);
+  }
 });

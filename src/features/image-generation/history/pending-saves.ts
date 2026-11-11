@@ -18,7 +18,20 @@ unhandledPublication satisfies Record<PropertyKey, never>;
 const { id, createdAt, request, result, previews, ...rest } = record;
   rest satisfies Record<PropertyKey, never>;
   const snapshot = copyImageGenerationSnapshot({ snapshot: { id, createdAt, request, inputFiles: files } });
-  return { record: { id, createdAt, request: snapshot.request, result: { ...result }, previews: previews.map(image => ({ ...image })) }, files: snapshot.inputFiles };
+  return {
+    record: {
+      id,
+      createdAt,
+      request: snapshot.request,
+      result: {
+        ...result,
+        ...(result.sampling ? { sampling: { sampler: { ...result.sampling.sampler }, scheduler: { ...result.sampling.scheduler } } } : {}),
+        ...(result.resolvedParameters ? { resolvedParameters: { ...result.resolvedParameters } } : {}),
+      },
+      previews: previews.map(image => ({ ...image })),
+    },
+    files: snapshot.inputFiles,
+  };
 }
 
 /** Direct generation has no workspace submission. Its completed pixels still

@@ -8,6 +8,7 @@ import { createGzipAsset } from '../../../build/gzip-asset';
 import { z } from 'zod';
 import type { Plugin } from 'vite';
 import { profileSchema, configurationSchema, type Configuration, type Artifact } from './types';
+import { assertImageRuntimeContract } from './runtime-contract';
 
 const virtualId = 'virtual:stable-diffusion-cpp-browser/config';
 const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegative().refine(Number.isSafeInteger), sha256: z.string().regex(/^[0-9a-f]{64}$/) });
@@ -18,7 +19,7 @@ const imageManifestSchema = z.object({
   runtime: z.literal('stable-diffusion-cpp'),
   abiVersion: z.literal(2),
   schemaSha256: z.string().regex(/^[0-9a-f]{64}$/),
-  capabilities: z.object({ ggufFileOffsetBits: z.literal(64), callerOwnedRandomAccess: z.literal(true), upstreamApi: z.literal(true) }),
+  capabilities: z.object({ ggufFileOffsetBits: z.literal(64), callerOwnedRandomAccess: z.literal(true), upstreamApi: z.literal(true), ggufOriginalShapes: z.boolean().default(false), bf16WeightRetention: z.boolean().default(false) }),
   sourceCommit: z.string(),
   experimental: z.literal(true),
   files: z.array(fileSchema),
@@ -101,19 +102,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
   if (createHash('sha256').update(schemaBytes).digest('hex') !== image.schemaSha256) {
     throw new Error('Image binding schema fingerprint mismatch');
   }
-  const schema = z.object({ abiVersion: z.literal(2), functions: z.array(z.object({ name: z.string() })), records: z.array(z.object({ name: z.string() })) }).parse(JSON.parse(schemaBytes.toString('utf8')));
-  const functions = new Set(schema.functions.map(entry => entry.name));
-  for (const name of ['sd_ctx_params_init', 'sd_img_gen_params_init', 'new_sd_ctx', 'free_sd_ctx', 'generate_image', 'free_sd_images', 'sd_get_model_version_name', 'sd_get_default_sample_method', 'sd_get_default_scheduler', 'sd_cancel_generation', 'sd_set_log_callback', 'sd_set_graph_diagnostics', 'sd_set_progress_callback', 'sd_set_preview_callback', 'sd_ctx_supports_image_generation', 'str_to_sample_method', 'str_to_scheduler']) {
-    if (!functions.has(name)) {
-      throw new Error('Image core is missing a required upstream function: ' + name);
-    }
-  }
-  const records = new Set(schema.records.map(entry => entry.name));
-  for (const name of ['sd_ctx_params_t', 'sd_img_gen_params_t', 'sd_image_t', 'sd_sample_params_t', 'sd_guidance_params_t', 'sd_tiling_params_t']) {
-    if (!records.has(name)) {
-      throw new Error('Image core is missing a required record: ' + name);
-    }
-  }
+  assertImageRuntimeContract({ schema: JSON.parse(schemaBytes.toString('utf8')), bf16WeightRetention: image.capabilities.bf16WeightRetention });
   for (const name of ['api/schema.mjs', 'examples/runtime/index.mjs', 'examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs']) {
     if (!entries.has(name)) {
       throw new Error('Missing image host helper');
@@ -156,13 +145,13 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
         return wasm;
       },
     }));
-    artifacts.push({ profile, modulePath, wasmPath, helpersPath, schemaSha256: image.schemaSha256, wasmBytes: wasmEntry.bytes, wasmSha256: wasmEntry.sha256 });
+    artifacts.push({ profile, modulePath, wasmPath, helpersPath, schemaSha256: image.schemaSha256, wasmBytes: wasmEntry.bytes, wasmSha256: wasmEntry.sha256, bf16WeightRetention: image.capabilities.bf16WeightRetention });
   }
   if (!entries.has('LICENSE') || ![...entries.keys()].some(name => name.startsWith('licenses/'))) {
     throw new Error('Missing runtime notices');
   }
   return {
-    configuration: configurationSchema.parse({ kind: 'available', sourceCommit: root.sourceCommit, artifacts }),
+    configuration: configurationSchema.parse({ kind: 'available', sourceCommit: root.sourceCommit, artifacts, runtimeFeatures: { ggufOriginalShapes: image.capabilities.ggufOriginalShapes, bf16WeightRetention: image.capabilities.bf16WeightRetention } }),
     files,
     nativeLicenseSource: {
       runtime: 'stable-diffusion-cpp',
@@ -183,7 +172,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
 
 const standaloneUiFiles = new Set([
   // Shared schemas and local-only form observers do not load a native engine.
-  'types.ts', 'diagnostics.ts', 'logic/model-path.ts', 'use-image-preferences.ts',
+  'types.ts', 'diagnostics.ts', 'native-log.ts', 'logic/model-path.ts', 'use-image-preferences.ts',
   'use-image-engine-state.ts', 'lora-form.ts', 'recommendations.ts',
   'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'benchmark-form.ts', 'use-image-benchmark-standalone.ts',
   'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',

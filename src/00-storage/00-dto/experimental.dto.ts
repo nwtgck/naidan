@@ -248,7 +248,7 @@ export const ExperimentalBrowserImageGenerationSettingsSchemaDto = resolveMissin
   keepPreviews: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
   maxPreviews: missingAsUndefined(dtozod.number()),
   maxResults: missingAsUndefined(dtozod.number()),
-  bf16WeightType: missingAsUndefined(dtozod.enum(['f32', 'f16'])),
+  bf16WeightType: missingAsUndefined(dtozod.enum(['f32', 'f16', 'bf16'])),
 }));
 
 export const ExperimentalTranslationAutoTranslateSchemaDto = resolveMissingAsUndefined(dtozod.object({

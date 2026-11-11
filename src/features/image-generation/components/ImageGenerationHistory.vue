@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ImageSamplingReceipt from './ImageSamplingReceipt.vue';
 import { computed, ref, useId, watch, type Ref } from 'vue';
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsLeftIcon, ChevronsRightIcon, CopyIcon, LoaderCircleIcon } from 'lucide-vue-next';
 import { ensureStrings, lazyStrings } from '@/strings';
@@ -248,10 +249,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <dd>{{ (selected.result.elapsedMs / 1000).toFixed(1) }} s</dd>
               </div>
               <div v-if="selected.request.parameters.bf16WeightType !== undefined">
-                <dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</dt>
-                <dd>{{ selected.request.parameters.bf16WeightType.toUpperCase() }}</dd>
+                <dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage() }}</dt>
+                <dd data-testid="image-history-bf16-weight-type">{{ selected.request.parameters.bf16WeightType.toUpperCase() }}</dd>
               </div>
             </dl>
+            <ImageSamplingReceipt :sampling="selected.result.sampling" />
             <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationHistory__reuse_does_not_download_models() }}</p>
           </ImageSettingsSection>
           <ImageSettingsSection :title="lazyStrings.ImageGenerationHistory__requested_settings()" :summary="undefined">

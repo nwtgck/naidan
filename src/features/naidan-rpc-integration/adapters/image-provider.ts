@@ -147,7 +147,9 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
           }
           switch (event.type) {
           case 'preview-start':
-            if (!preview.enabled || part || event.revision <= revision || event.steps !== parameters.steps || event.step > event.steps) {
+            // Native denoising progress can use fewer steps for img2img. The
+            // requested step count is confirmed separately on completion.
+            if (!preview.enabled || part || event.revision <= revision || event.step > event.steps) {
               throw new Error('Invalid preview sequence');
             }
             revision = event.revision;
@@ -196,6 +198,11 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
             if (part || event.seed !== parameters.seed || event.width !== parameters.width || event.height !== parameters.height) {
               throw new Error('Image confirmation differs from the request');
             }
+            if (typeof parameters.stepsPreference === 'number' && event.resolvedParameters.steps !== parameters.stepsPreference
+              || typeof parameters.guidancePreference === 'number' && event.resolvedParameters.guidance !== parameters.guidancePreference
+              || typeof parameters.vaeTileSizePreference === 'number' && event.resolvedParameters.vaeTileSize !== parameters.vaeTileSizePreference) {
+              throw new Error('Image parameters differ from the fixed request');
+            }
             completed = event;
             break;
           default: {
@@ -242,6 +249,8 @@ export function startPeerImage({ client, input, signal, onProgress, onPreview }:
           height: completed.height,
           modelVersion: completed.modelVersion,
           uniformOutput: completed.uniformOutput,
+          resolvedParameters: { ...completed.resolvedParameters },
+          ...(completed.sampling ? { sampling: { sampler: { ...completed.sampling.sampler }, scheduler: { ...completed.sampling.scheduler } } } : {}),
         },
       };
     } catch (error) {

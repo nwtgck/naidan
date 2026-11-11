@@ -1,7 +1,7 @@
 import { onScopeDispose, watch, type Ref } from 'vue';
 import { DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS, type BrowserImageGenerationSettings, type BrowserImageModelSelection, type Settings } from '@/01-models/types';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
-import { parametersSchema, previewSettingsSchema } from './types';
+import { parametersSchema, previewSettingsSchema, resolveBf16WeightType } from './types';
 import type { createImageForm } from '@/features/image-generation/form';
 import type { ImageLibraryView } from './library-view';
 
@@ -32,6 +32,8 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     restoring.value = false;
   }
   const defaults = DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS;
+  const initialBf16WeightType = form.parameters.value.bf16WeightType;
+  let precisionHydrated = false;
   function snapshot(): BrowserImageGenerationSettings {
     const parameters = form.parameters.value;
     const width = parametersSchema.shape.width.safeParse(parameters.width);
@@ -168,8 +170,12 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
         width: width ?? defaults.width,
         height: height ?? defaults.height,
         seed: seed ?? defaults.seed,
-        bf16WeightType: bf16WeightType ?? defaults.bf16WeightType,
+        bf16WeightType: resolveBf16WeightType({
+          value: bf16WeightType ?? (!precisionHydrated && form.parameters.value.bf16WeightType !== initialBf16WeightType ? form.parameters.value.bf16WeightType : undefined),
+          bf16WeightRetention: library.runtimeFeatures.value.bf16WeightRetention,
+        }),
       };
+      precisionHydrated = true;
       seedMode.value = savedSeedMode ?? defaults.seedMode;
       form.debug.value = debug ?? defaults.debug;
       historyEnabled.value = (historyPersistence ?? defaults.historyPersistence) === 'enabled';

@@ -31,14 +31,14 @@ function source<T>({ values }: { values: T[] }): ReadableStream<T> {
 function setup() {
   const request: PeerImageInput = {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/test.gguf' } } }, components: [], loras: [] },
-    parameters: { prompt: 'Original', negativePrompt: '', seed: '42', width: 256, height: 256, steps: 4, guidance: 7, sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
+    parameters: { prompt: 'Original', negativePrompt: '', seed: '42', width: 256, height: 256, stepsPreference: 4, guidancePreference: 7, vaeTileSizePreference: 32, sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
     preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 64 },
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
   const closed = Promise.withResolvers<void>(), cancel = vi.fn();
   const generateImage = vi.fn<NaidanPeerClient['generateImage']>(({ input, on }) => {
     on.progress?.({ value: { phase: 'computing', completed: 1, total: 4 } });
-    const event: PeerImageEvent = { type: 'completed', seed: input.parameters.seed, width: 256, height: 256, modelVersion: 'version', uniformOutput: false };
+    const event: PeerImageEvent = { type: 'completed', seed: input.parameters.seed, width: 256, height: 256, modelVersion: 'version', uniformOutput: false, resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } };
     return { result: Promise.resolve({ image: source({ values: [png()] }), events: source({ values: [event] }) }), closed: closed.promise, cancel };
   });
   const unexpected = vi.fn((): never => {

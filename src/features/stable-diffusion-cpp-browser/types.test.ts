@@ -1,8 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { parametersSchema, requestSchema, responseSchema } from './types';
-import { ggufFile, parametersFixture, requestFixture } from './test-fixtures';
+import { configurationSchema, parametersSchema, requestSchema, responseSchema, resolveBf16WeightType } from './types';
+import { artifactFixture, ggufFile, parametersFixture, requestFixture } from './test-fixtures';
 
 describe('image experiment boundary', () => {
+  it.each([false, true])('resolves only an unspecified precision from the verified runtime feature: %s', bf16WeightRetention => {
+    expect(resolveBf16WeightType({ value: undefined, bf16WeightRetention })).toBe(bf16WeightRetention ? 'bf16' : 'f32');
+    for (const value of ['bf16', 'f32', 'f16'] as const) {
+      expect(resolveBf16WeightType({ value, bf16WeightRetention })).toBe(value);
+    }
+    // Old wire/history omissions are deliberately independent of runtime policy.
+    const { bf16WeightType: _precision, ...legacy } = parametersFixture();
+    expect(parametersSchema.parse(legacy).bf16WeightType).toBe('f32');
+  });
+
+  it('keeps F32 as the legacy default and accepts BF16 retention only with its source-bound artifact claim', () => {
+    const request = requestFixture();
+    const { bf16WeightType: _legacy, ...withoutPrecision } = request.parameters;
+    expect(parametersSchema.parse(withoutPrecision).bf16WeightType).toBe('f32');
+    request.parameters.bf16WeightType = 'bf16';
+    expect(requestSchema.safeParse(request).success).toBe(false);
+    request.artifact.bf16WeightRetention = true;
+    expect(requestSchema.parse(request).parameters.bf16WeightType).toBe('bf16');
+    request.artifact.bf16WeightRetention = false;
+    expect(requestSchema.safeParse(request).success).toBe(false);
+  });
+
+  it('rejects a feature claim detached from the selected artifact or its source commit', () => {
+    const artifact = artifactFixture(), sourceCommit = 'a'.repeat(40);
+    const configuration = { kind: 'available', sourceCommit, artifacts: [artifact] };
+    expect(configurationSchema.parse(configuration).kind).toBe('available');
+    expect(configurationSchema.safeParse({ ...configuration, runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: true } }).success).toBe(false);
+    artifact.bf16WeightRetention = true;
+    expect(configurationSchema.safeParse(configuration).success).toBe(false);
+    expect(configurationSchema.safeParse({ ...configuration, runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: true } }).success).toBe(true);
+    expect(configurationSchema.safeParse({ ...configuration, sourceCommit: 'b'.repeat(40), runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: true } }).success).toBe(false);
+  });
+
   it('accepts an unsharded GGUF without reading its bytes', () => {
     expect(requestSchema.parse(requestFixture()).models[0]?.file.size).toBe(24);
   });
@@ -73,4 +106,12 @@ describe('image experiment boundary', () => {
     expect(requestSchema.safeParse({ ...base, artifact: { ...base.artifact, helpersPath: base.artifact.helpersPath.replace('a'.repeat(40), 'b'.repeat(40)) } }).success).toBe(false);
     expect(responseSchema.safeParse({ png: new Blob(['x'], { type: 'text/html' }), width: 256, height: 256, modelVersion: 'fixture' }).success).toBe(false);
   });
+});
+
+it('accepts optional native sampling receipts without forcing raw names into editor enums', () => {
+  const result = { png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' };
+  expect(responseSchema.parse(result)).not.toHaveProperty('sampling');
+  const sampling = { sampler: { id: 17, name: 'native-method' }, scheduler: { id: 8, name: 'flux' } };
+  expect(responseSchema.parse({ ...result, sampling })).toHaveProperty('sampling', sampling);
+  expect(responseSchema.safeParse({ ...result, sampling: { ...sampling, sampler: { id: -1 } } }).success).toBe(false);
 });

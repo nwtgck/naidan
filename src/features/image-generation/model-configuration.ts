@@ -3,8 +3,8 @@ import type { RemoteImageModelSelection } from '@/01-models/image-generation-his
 type ComponentSlot = RemoteImageModelSelection['components'][number]['slot'];
 type ModelSlot = RemoteImageModelSelection['primary']['slot'] | ComponentSlot;
 
-export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image' | 'unknown';
-export type ComponentClass = 'vae-flux16' | 'vae-flux32' | 'vae-sd4' | 'vae-qwen21' | 'vae-wan16' | 'lm-qwen3-4b' | 'lm-qwen3-06b' | 'lm-qwen3vl-8b' | 'lm-qwen3vl-4b' | 'lm-ministral3-3b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae' | 'lora';
+export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image' | 'minimax-h3-image' | 'unknown';
+export type ComponentClass = 'vae-flux16' | 'vae-flux32' | 'vae-sd4' | 'vae-qwen21' | 'vae-wan16' | 'vae-minimax-h3-image' | 'lm-qwen3-4b' | 'lm-qwen3-06b' | 'lm-qwen3vl-8b' | 'lm-qwen3vl-4b' | 'lm-ministral3-3b' | 'lm-minimax-h3-pruned-50' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae' | 'lora';
 
 export function componentRequirements({ family }: { family: ImageFamily }): { slot: ComponentSlot, accepts: ComponentClass[], required: boolean }[] {
   switch (family) {
@@ -15,6 +15,7 @@ export function componentRequirements({ family }: { family: ImageFamily }): { sl
   case 'anima': return [{ slot: 'vae', accepts: ['vae-wan16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-06b'], required: true }];
   case 'krea2': return [{ slot: 'vae', accepts: ['vae-wan16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3vl-4b'], required: true }];
   case 'ernie-image': return [{ slot: 'vae', accepts: ['vae-flux32'], required: true }, { slot: 'lm', accepts: ['lm-ministral3-3b'], required: true }];
+  case 'minimax-h3-image': return [{ slot: 'vae', accepts: ['vae-minimax-h3-image'], required: true }, { slot: 'lm', accepts: ['lm-minimax-h3-pruned-50'], required: true }];
   case 'sd-checkpoint': return [{ slot: 'vae', accepts: ['vae-sd4'], required: false }];
   case 'unknown': return [];
   default: {
@@ -47,7 +48,7 @@ export function componentMatch({ candidate, requirement }: { candidate: { family
 export function knownImageFamily({ family }: { family: string | undefined }): ImageFamily {
   switch (family) {
   case 'sd-checkpoint': case 'z-image': case 'qwen-image-2.1': case 'flux1':
-  case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': return family;
+  case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'minimax-h3-image': return family;
   default: return 'unknown';
   }
 }

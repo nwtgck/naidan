@@ -256,7 +256,7 @@ describe('hosted-only bicore image boundary', () => {
     await expect(bundleView({ mode: 'standalone', entrySource: undefined, injectImageAsset: true })).rejects.toThrow('Image runtime asset');
   }, 60_000);
 
-  it.each(['components/ImageEngineState.vue', 'components/ImageModelConfiguration.vue', 'lora-catalog.ts', 'component-label.ts', 'components/ImageBenchmarkResult.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageLoraControls.vue'])('allows passive presentation module %s', relative => {
+  it.each(['native-log.ts', 'components/ImageEngineState.vue', 'components/ImageModelConfiguration.vue', 'lora-catalog.ts', 'component-label.ts', 'components/ImageBenchmarkResult.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageLoraControls.vue'])('allows passive presentation module %s', relative => {
     expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, relative) + '?anything' })).not.toThrow();
   });
 

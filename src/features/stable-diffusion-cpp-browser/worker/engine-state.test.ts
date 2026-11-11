@@ -19,7 +19,14 @@ function harness() {
     recordSize: vi.fn(() => 128),
     free: vi.fn(),
     getField: vi.fn((record, _pointer, field) => fields.get(record + ':' + field) ?? 0),
-    constant: vi.fn(name => name === 'SD_TYPE_F32' ? 0 : 1),
+    constant: vi.fn(name => {
+      switch (name) {
+      case 'SD_TYPE_F32': return 0;
+      case 'SD_TYPE_F16': return 1;
+      case 'SD_TYPE_BF16': return 30;
+      default: return -1;
+      }
+    }),
     readUtf8: vi.fn(() => 'WebGPU'),
   };
   const inspect = () => inspectImageEngine({ core, context: 1n, profile: 'webgpu-wasm64-jspi', source: 'a'.repeat(40), modelVersion: 'Loaded model', fileReadCacheBytes: 32 });
@@ -54,6 +61,14 @@ it('does no allocation or native call while busy or without the optional getters
   expect(await h.inspect()).toEqual({ status: 'unavailable', reason: 'unsupported' });
   expect(h.core.allocRecord).not.toHaveBeenCalled();
   expect(h.core.api.sd_ctx_get_runtime_info).not.toHaveBeenCalled();
+});
+
+it('reports explicit native BF16 retention separately from F32, F16, and unknown enum values', async () => {
+  const h = harness();
+  for (const [type, expected] of [[0, 'f32'], [1, 'f16'], [30, 'bf16'], [999, 'other']] as const) {
+    h.fields.set('sd_ctx_params_t:webgpu_bf16_type', type);
+    expect(await h.inspect()).toMatchObject({ status: 'ready', snapshot: { requested: { bf16WeightType: expected } } });
+  }
 });
 
 it('does not publish uninitialized/refused records and allows a subsequent successful observation', async () => {

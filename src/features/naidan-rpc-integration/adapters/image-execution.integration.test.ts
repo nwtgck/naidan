@@ -31,7 +31,7 @@ function image(): Blob {
 function input(): PeerImageInput {
   return {
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/user/checkpoint.gguf' } } }, components: [], loras: [] },
-    parameters: { prompt: 'Original', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
+    parameters: { prompt: 'Original', negativePrompt: '', width: 256, height: 256, stepsPreference: 4, guidancePreference: 7, vaeTileSizePreference: 32, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 },
     preview: { enabled: false, interval: 1, startStep: 1, mode: 'projection', maxEdge: 64 },
     imageInputs: { initial: undefined, references: [], strength: 0.5 },
   };
@@ -60,7 +60,7 @@ async function setup() {
   });
   const generateImage = vi.fn<ReadOnlyInferenceResources['generateImage']>(async ({ onProgress }) => {
     onProgress({ value: { phase: 'computing', completed: 2, total: 4 } });
-    return { png: image(), width: 256, height: 256, modelVersion: 'test' };
+    return { png: image(), width: 256, height: 256, modelVersion: 'test', resolvedParameters: { steps: 4, guidance: 7, vaeTileSize: 32 } };
   });
   const resources: ReadOnlyInferenceResources = { generateImage, generateChat: unexpected, listChatModels: unexpected, listImageModels: unexpected };
   const inference = { resources, inputBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }), deliveryBudget: createInferenceBudget({ capacity: 64 * 1024 * 1024 }) };

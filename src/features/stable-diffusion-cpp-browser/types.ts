@@ -1,4 +1,6 @@
 import { z } from 'zod';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- The Vite build configuration also imports this schema without the app alias.
+import { imageGenerationSamplingSchema } from '../../01-models/image-generation-history';
 import { validModelPath } from './logic/model-path';
 import { profileOptions, samplerOptions, schedulerOptions, defaultPreviewSettings } from './form-options';
 export { defaultPreviewSettings } from './form-options';
@@ -26,6 +28,9 @@ export const artifactSchema = z.object({
   schemaSha256: hashSchema,
   wasmBytes: z.number().int().positive().max(100 * 1024 * 1024),
   wasmSha256: hashSchema,
+  // Source-bound feature claim from the verified image manifest. Older
+  // artifacts omit it and retain their existing F32/F16-only contract.
+  bf16WeightRetention: z.boolean().optional(),
 }).superRefine((value, context) => {
   const prefix = value.modulePath.slice(0, value.modulePath.lastIndexOf('/') + 1);
   const sourcePrefix = prefix.slice(0, prefix.slice(0, -1).lastIndexOf('/') + 1);
@@ -33,10 +38,37 @@ export const artifactSchema = z.object({
     context.addIssue({ code: 'custom', message: 'Image runtime members must share a source and profile' });
   }
 });
+export const imageRuntimeFeaturesSchema = z.object({ ggufOriginalShapes: z.boolean().default(false), bf16WeightRetention: z.boolean().default(false) });
+export type ImageRuntimeFeatures = z.infer<typeof imageRuntimeFeaturesSchema>;
+
+/** Resolve only a new or unspecified runtime choice. Explicit and stored
+ * values remain unchanged, including BF16 restored on an older engine. */
+export function resolveBf16WeightType({ value, bf16WeightRetention }: { value: Parameters['bf16WeightType'] | undefined, bf16WeightRetention: boolean }): Parameters['bf16WeightType'] {
+  return value ?? (bf16WeightRetention ? 'bf16' : 'f32');
+}
+
 export const configurationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('unavailable'), reason: z.enum(['not-installed', 'standalone']) }),
-  z.object({ kind: z.literal('available'), sourceCommit: z.string().regex(/^[0-9a-f]{40}$/), artifacts: z.array(artifactSchema).min(1) }),
+  z.object({ kind: z.literal('available'), sourceCommit: z.string().regex(/^[0-9a-f]{40}$/), artifacts: z.array(artifactSchema).min(1), runtimeFeatures: imageRuntimeFeaturesSchema.default({ ggufOriginalShapes: false, bf16WeightRetention: false }) }).superRefine((value, context) => {
+    for (const [index, artifact] of value.artifacts.entries()) {
+      if (!artifact.modulePath.startsWith(`stable-diffusion-cpp-runtime/${value.sourceCommit}/`) || (artifact.bf16WeightRetention ?? false) !== value.runtimeFeatures.bf16WeightRetention) {
+        context.addIssue({ code: 'custom', path: ['artifacts', index], message: 'Image runtime feature claims must match their source-bound artifacts' });
+      }
+    }
+  }),
 ]);
+
+export function getImageRuntimeFeatures({ configuration }: { configuration: Configuration }): ImageRuntimeFeatures {
+  switch (configuration.kind) {
+  case 'available': return configuration.runtimeFeatures;
+  case 'unavailable': return { ggufOriginalShapes: false, bf16WeightRetention: false };
+  default: {
+    const exhaustive: never = configuration;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
 export const samplerSchema = z.enum(samplerOptions);
 export const schedulerSchema = z.enum(schedulerOptions);
 export const previewSettingsSchema = z.object({
@@ -91,7 +123,7 @@ export const parametersSchema = z.object({
   vaeTiling: z.boolean(),
   vaeTileSize: z.number().int().min(16).max(256).multipleOf(8),
   flashAttention: z.boolean(),
-  bf16WeightType: z.enum(['f32', 'f16']).default('f32'),
+  bf16WeightType: z.enum(['f32', 'f16', 'bf16']).default('f32'),
   qwenVaePolicy: z.enum(['bounded', 'native']).default('bounded'),
   conditioningCacheSize: z.number().int().min(0).max(32),
   modelArguments: z.string().max(4096).refine(value => !value.includes('\0')),
@@ -164,7 +196,7 @@ export const requestSchema = z.object({
   // A GPU budget is not a Wasm heap limit. Bound only exact byte accounting;
   // the separate Wasm32 refinement reflects native size_t, not model file size.
   gpuBudgetMiB: z.number().int().min(512).max(Math.floor(Number.MAX_SAFE_INTEGER / 1024 ** 2)).optional(),
-}).refine(value => value.gpuBudgetMiB === undefined || getProfileConfiguration({ profile: value.artifact.profile }).memory64 || value.gpuBudgetMiB <= 4095, { path: ['gpuBudgetMiB'], message: 'The Wasm32 memory accounting budget must be below 4 GiB' });
+}).refine(value => value.gpuBudgetMiB === undefined || getProfileConfiguration({ profile: value.artifact.profile }).memory64 || value.gpuBudgetMiB <= 4095, { path: ['gpuBudgetMiB'], message: 'The Wasm32 memory accounting budget must be below 4 GiB' }).refine(value => value.parameters.bf16WeightType !== 'bf16' || value.artifact.bf16WeightRetention === true, { path: ['parameters', 'bf16WeightType'], message: 'Retaining BF16 weights requires an updated image runtime' });
 export const progressSchema = z.object({
   phase: z.enum(['runtime', 'model', 'sampling', 'decoding', 'encoding']),
   step: z.number().int().nonnegative(),
@@ -176,6 +208,7 @@ export const responseSchema = z.object({
   height: z.number().int().min(128).max(2048),
   modelVersion: z.string().max(256),
   uniformOutput: z.boolean().default(false),
+  sampling: imageGenerationSamplingSchema.optional(),
 });
 export const workerResultSchema = z.union([cancelledResultSchema, responseSchema]);
 export type WorkerResult = z.infer<typeof workerResultSchema>;
