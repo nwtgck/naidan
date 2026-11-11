@@ -10,20 +10,24 @@ export function imageRecommendedHint({ recommendation, field }: { recommendation
     || recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
     return undefined;
   }
-  const range = (() => {
+  const policy = (() => {
     switch (field) {
-    case 'steps': return recommendation.stepRange;
-    case 'width': case 'height': case 'guidance': case 'sampler': case 'scheduler': case 'distilledGuidance': case 'vaeTiling': case 'vaeTileSize': case 'flashAttention': case 'bf16WeightType': case 'qwenVaePolicy': case 'conditioningCacheSize': case 'modelArguments': return undefined;
+    case 'bf16WeightType': return undefined;
+    case 'steps': return { range: recommendation.stepRange };
+    case 'width': case 'height': case 'guidance': case 'sampler': case 'scheduler': case 'distilledGuidance': case 'vaeTiling': case 'vaeTileSize': case 'flashAttention': case 'qwenVaePolicy': case 'conditioningCacheSize': case 'modelArguments': return { range: undefined };
     default: {
       const exhaustive: never = field;
       throw new Error(String(exhaustive));
     }
     }
   })();
+  if (!policy) {
+    return undefined;
+  }
   return {
     value: recommendation.parameters[field],
     origin: recommendation.recommendedFields?.includes(field) ? 'recommended' : 'suggested',
-    range,
+    range: policy.range,
   };
 }
 
@@ -36,8 +40,7 @@ export function differsFromImageRecommendation({ current, hint }: { current: unk
 
 export function applyImageRecommendedField({ parameters, recommendation, field }: { parameters: Parameters, recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): Parameters {
   // Explicitly update one field; a tile size action never enables tiling, etc.
-  if (recommendation.applicableFields && !recommendation.applicableFields.includes(field)
-    || recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
+  if (imageRecommendedHint({ recommendation, field }) === undefined) {
     return parameters;
   }
   return { ...parameters, [field]: recommendation.parameters[field] };

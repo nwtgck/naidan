@@ -30,6 +30,12 @@ it('ignores per-image parameters and preview settings while keeping all context 
       request.parameters.bf16WeightType = 'f16';
     },
     () => {
+      request.parameters.bf16WeightType = 'bf16';
+    },
+    () => {
+      request.artifact.bf16WeightRetention = true;
+    },
+    () => {
       request.parameters.conditioningCacheSize = 1;
     },
     () => {

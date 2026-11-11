@@ -13,7 +13,7 @@ import type { ModelInventory } from '@/features/stable-diffusion-cpp-browser/log
 import { benchmarkManifest } from '@/features/stable-diffusion-cpp-browser/benchmark/archive';
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
-const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), cancel: vi.fn(), inspect: vi.fn(), updatePreview: vi.fn() }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), cancel: vi.fn(), inspect: vi.fn(), updatePreview: vi.fn(), bf16WeightRetention: false }));
 vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({
   createImageClient: () => {
     mocks.create();
@@ -24,7 +24,24 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
   default: {
     kind: 'available',
     sourceCommit: 'a'.repeat(40),
-    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
+    runtimeFeatures: {
+      ggufOriginalShapes: false,
+      get bf16WeightRetention() {
+        return mocks.bf16WeightRetention;
+      },
+    },
+    artifacts: [{
+      profile: 'webgpu-wasm32-asyncify',
+      modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`,
+      wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`,
+      helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`,
+      schemaSha256: '1'.repeat(64),
+      wasmBytes: 8,
+      wasmSha256: '0'.repeat(64),
+      get bf16WeightRetention() {
+        return mocks.bf16WeightRetention;
+      },
+    }],
   },
 }));
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
@@ -33,6 +50,7 @@ const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.resetAllMocks();
+  mocks.bf16WeightRetention = false;
   mocks.inspect.mockResolvedValue({ candidates: [], issues: [] });
   vi.stubGlobal('isSecureContext', true);
   vi.stubGlobal('OffscreenCanvas', class {});
@@ -89,6 +107,54 @@ it('defaults to F32 and retains weights while BF16 conversion is edited for the 
   await flushPromises();
   expect(mocks.generate).toHaveBeenCalledTimes(2);
   expect(mocks.generate.mock.calls[1]?.[0].request.parameters.bf16WeightType).toBe('f16');
+});
+
+it('keeps BF16 visible but unavailable on an older engine without replacing a restored selection', async () => {
+  wrapper = mount(ImageGenerationLab);
+  await flushPromises();
+  const select = wrapper.get<HTMLSelectElement>('[data-testid="image-bf16-weight-type"]');
+  expect(select.get<HTMLOptionElement>('option[value="bf16"]').element.disabled).toBe(true);
+  await select.setValue('bf16');
+  expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe('f32');
+  wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType = 'bf16';
+  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
+  await flushPromises();
+  expect(select.element.value).toBe('bf16');
+  expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe('bf16');
+  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-generate"]').element.disabled).toBe(true);
+  expect(wrapper.get('[data-testid="image-bf16-retention-unavailable"]').text()).toContain('Update the image generation engine');
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('defaults supported engines to BF16 and preserves explicit F32 or F16 choices until Generate', async () => {
+  mocks.bf16WeightRetention = true;
+  mocks.generate.mockResolvedValue({ png: new Blob(['PNG'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
+  wrapper = mount(ImageGenerationLab);
+  await flushPromises();
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() };
+  wrapper.vm.TEST_ONLY.parameters.value.prompt = 'a small tree';
+  const select = wrapper.get<HTMLSelectElement>('[data-testid="image-bf16-weight-type"]');
+  expect(select.findAll('option').map(option => option.element.value)).toEqual(['bf16', 'f32', 'f16']);
+  expect(select.element.value).toBe('bf16');
+  expect(select.get<HTMLOptionElement>('option[value="bf16"]').element.disabled).toBe(false);
+  expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe('bf16');
+  expect(wrapper.find('[data-testid="image-bf16-retention-unavailable"]').exists()).toBe(false);
+  await wrapper.vm.TEST_ONLY.generate({ submission: undefined });
+  mocks.release.mockClear();
+  for (const value of ['f32', 'f16'] as const) {
+    const previousRuns = mocks.generate.mock.calls.length;
+    await select.setValue(value);
+    await flushPromises();
+    expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe(value);
+    expect(select.element.value).toBe(value);
+    expect(mocks.generate).toHaveBeenCalledTimes(previousRuns);
+    expect(mocks.release).not.toHaveBeenCalled();
+    expect(wrapper.vm.TEST_ONLY.modelResident.value).toBe(true);
+    await wrapper.vm.TEST_ONLY.generate({ submission: undefined });
+  }
+  expect(mocks.generate.mock.calls.map(([{ request }]) => request.parameters.bf16WeightType)).toEqual(['bf16', 'f32', 'f16']);
+  expect(mocks.generate.mock.calls.every(([{ request }]) => request.artifact.bf16WeightRetention)).toBe(true);
 });
 
 it('snapshots LoRA files and strength, excludes disabled adapters, and clears selections when the base model changes', async () => {
@@ -802,6 +868,38 @@ it('uses shared or per-model BF16 conversion in diagnostics without changing the
   expect(bench.effective({ target }).bf16WeightType).toBe('f16');
   expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe('f32');
   expect(bench.common.value.prompt).toContain('A fluffy cat curled up asleep');
+});
+
+it.each([false, true])('gates shared and overridden BF16 retention by the same engine feature (supported=%j)', async supported => {
+  mocks.bf16WeightRetention = supported;
+  mocks.inspect.mockResolvedValue(benchmarkInventory());
+  wrapper = mount(ImageGenerationLab);
+  await flushPromises();
+  await wrapper.get('[data-testid="image-tab-measure"]').trigger('click');
+  const bench = wrapper.vm.TEST_ONLY.benchmark;
+  const common = wrapper.findAll('[data-testid="benchmark-parameters"]')[0]!;
+  const row = wrapper.findAll('[data-testid="benchmark-target"]')[0]!;
+  const shared = common.get<HTMLSelectElement>('[data-testid="parameter-bf16WeightType"]');
+  const target = bench.targets.value[0]!;
+  expect(shared.findAll('option').map(option => option.element.value)).toEqual(['bf16', 'f32', 'f16']);
+  expect(shared.element.value).toBe(supported ? 'bf16' : 'f32');
+  expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe(supported ? 'bf16' : 'f32');
+  expect(shared.get<HTMLOptionElement>('option[value="bf16"]').element.disabled).toBe(!supported);
+  await shared.setValue('bf16');
+  expect(bench.common.value.bf16WeightType).toBe(supported ? 'bf16' : 'f32');
+  await row.get('[data-testid="override-bf16WeightType"]').setValue(true);
+  const override = row.get<HTMLSelectElement>('[data-testid="parameter-bf16WeightType"]');
+  expect(override.get<HTMLOptionElement>('option[value="bf16"]').element.disabled).toBe(!supported);
+  await override.setValue('bf16');
+  expect(bench.effective({ target }).bf16WeightType).toBe(supported ? 'bf16' : 'f32');
+  for (const value of ['f32', 'f16'] as const) {
+    await override.setValue(value);
+    expect(bench.effective({ target }).bf16WeightType).toBe(value);
+    expect(override.element.value).toBe(value);
+  }
+  expect(common.find('[data-testid="benchmark-bf16-retention-unavailable"]').exists()).toBe(!supported);
+  expect(wrapper.vm.TEST_ONLY.parameters.value.bf16WeightType).toBe(supported ? 'bf16' : 'f32');
+  expect(mocks.create).not.toHaveBeenCalled();
 });
 
 it('applies compact resolution presets to common settings or both per-model dimensions while retaining manual input', async () => {

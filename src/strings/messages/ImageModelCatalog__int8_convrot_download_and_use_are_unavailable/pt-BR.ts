@@ -1,0 +1,1 @@
+export const ImageModelCatalog__int8_convrot_download_and_use_are_unavailable = (): string => 'O mecanismo atual de imagens não oferece suporte a INT8 ConvRot. Esta configuração não pode ser baixada nem usada no aplicativo.';

@@ -22,7 +22,9 @@ const mocks = vi.hoisted(() => {
     configuration: {
       kind: 'available',
       sourceCommit: commit,
+      runtimeFeatures: { ggufOriginalShapes: false, bf16WeightRetention: false },
       artifacts: [{
+        bf16WeightRetention: false,
         profile,
         modulePath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.mjs`,
         wasmPath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.wasm.gz`,
@@ -81,6 +83,8 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('window', { location: { href: 'https://local.example/' } });
   vi.clearAllMocks();
+  mocks.configuration.runtimeFeatures.bf16WeightRetention = false;
+  mocks.configuration.artifacts[0]!.bf16WeightRetention = false;
   mocks.scan.mockResolvedValue({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] });
   mocks.create.mockReturnValue({ generate: mocks.generate, dispose: mocks.dispose });
   mocks.generate.mockResolvedValue({ png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
@@ -98,6 +102,31 @@ it('reads catalogs without creating an engine or downloading anything', async ()
   const catalog = await resource().listImageModels({ signal: new AbortController().signal });
   expect(catalog[0]?.selection?.primary.file.expected).toEqual({ size: 16, lastModified: 123 });
   expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('resolves peer execution precision from the receiving artifact instead of the caller: %s', async bf16WeightRetention => {
+  mocks.configuration.runtimeFeatures.bf16WeightRetention = bf16WeightRetention;
+  mocks.configuration.artifacts[0]!.bf16WeightRetention = bf16WeightRetention;
+  await generate({ input: request() });
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters.bf16WeightType).toBe(bf16WeightRetention ? 'bf16' : 'f32');
+  expect(actual.artifact.bf16WeightRetention).toBe(bf16WeightRetention);
+});
+
+it.each([0, 0.5, -0.25])('keeps the legacy RPC precision only for active LoRAs without retrying or changing strength: %s', async strength => {
+  mocks.configuration.runtimeFeatures.bf16WeightRetention = true;
+  mocks.configuration.artifacts[0]!.bf16WeightRetention = true;
+  const model = candidate({ path: 'model.gguf', roles: ['model'] }), lora = candidate({ path: 'lora.gguf', roles: [] });
+  lora.classes = ['lora'];
+  mocks.scan.mockResolvedValue({ candidates: [model, lora] });
+  const input = request();
+  input.modelSelection.loras.push({ file: { location: { kind: 'opfs', path: 'models/user/model/lora.gguf' } }, strength });
+  await generate({ input });
+  expect(mocks.generate).toHaveBeenCalledOnce();
+  const actual: Request = mocks.generate.mock.calls[0]![0].request;
+  expect(actual.parameters.bf16WeightType).toBe(strength === 0 ? 'bf16' : 'f32');
+  expect(actual.loras[0]?.strength).toBe(strength);
+  expect(actual.artifact.bf16WeightRetention).toBe(true);
 });
 
 it('preserves readable model references at the peer boundary', async () => {

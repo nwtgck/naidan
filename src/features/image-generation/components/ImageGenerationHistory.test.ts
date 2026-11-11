@@ -97,6 +97,16 @@ it('selects locally without altering the form and emits reuse or image actions o
   expect(json.findAll('span').length).toBeGreaterThan(0);
 });
 
+it('shows the saved explicit BF16 weight storage without rewriting the historical request', async () => {
+  const { view, record } = fixture();
+  record.request.parameters.bf16WeightType = 'bf16';
+  view.selected.value = record;
+  wrapper = mount(ImageGenerationHistory, { props: { onDownload, downloadPreferences, onDownloadPreferencesChange, view, disabled: false, recordDeleteDisabled: false, editorDisabled: false, active: true } });
+  expect(wrapper.get('[data-testid="image-history-bf16-weight-type"]').text()).toBe('BF16');
+  expect(wrapper.text()).toContain('BF16 weight storage');
+  expect(record.request.parameters.bf16WeightType).toBe('bf16');
+});
+
 it('copies the exact full prompt from the compact read-only card and reports clipboard failure', async () => {
   const { view, record } = fixture();
   const prompt = `\

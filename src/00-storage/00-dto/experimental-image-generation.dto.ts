@@ -71,7 +71,7 @@ export const ExperimentalImageGenerationSchemaDto = dtozod.object({
       vaeTiling: dtozod.boolean().optional(),
       vaeTileSize: dtozod.number().optional(),
       flashAttention: dtozod.boolean().optional(),
-      bf16WeightType: dtozod.enum(['f32', 'f16']).optional(),
+      bf16WeightType: dtozod.enum(['f32', 'f16', 'bf16']).optional(),
       qwenVaePolicy: dtozod.enum(['bounded', 'native']).optional(),
       conditioningCacheSize: dtozod.number().optional(),
       modelArguments: dtozod.string().optional(),

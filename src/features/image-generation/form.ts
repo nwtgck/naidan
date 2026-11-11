@@ -1,13 +1,13 @@
 import type { ImageGenerationParameters } from '@/01-models/image-generation-history';
 import { ref, shallowRef } from 'vue';
 import { defaultPreviewSettings } from '@/features/stable-diffusion-cpp-browser/form-options';
-import type { PreviewFrame, PreviewSettings, Artifact, Parameters, WeightResidency, ModelSlot, Progress } from '@/features/stable-diffusion-cpp-browser/types';
+import { resolveBf16WeightType, type ImageRuntimeFeatures, type PreviewFrame, type PreviewSettings, type Artifact, type Parameters, type WeightResidency, type ModelSlot, type Progress } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';
 import type { ImageDownloadPreferences } from './use-image-generation-types';
 import { emptyImageInputs } from './image-input-form';
 
 /** Shared visible form state, including the disabled standalone page. */
-export function createImageForm({ profile: initialProfile }: { profile: Artifact['profile'] }) {
+export function createImageForm({ profile: initialProfile, runtimeFeatures }: { profile: Artifact['profile'], runtimeFeatures?: ImageRuntimeFeatures }) {
   const profile = ref(initialProfile);
   const debug = ref<'off' | 'on'>('off');
   const diagnosticText = ref('');
@@ -17,7 +17,7 @@ export function createImageForm({ profile: initialProfile }: { profile: Artifact
   const files = shallowRef<Partial<Record<ModelSlot, File>>>({});
   const loras = shallowRef<ImageLoraSelection[]>([]);
   const imageInputs = shallowRef(emptyImageInputs());
-  const parameters = ref<Parameters>({ prompt: '', negativePrompt: '', width: 256, height: 256, steps: 20, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: 'f32', qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' });
+  const parameters = ref<Parameters>({ prompt: '', negativePrompt: '', width: 256, height: 256, steps: 20, guidance: 7, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5, vaeTiling: true, vaeTileSize: 32, flashAttention: false, bf16WeightType: resolveBf16WeightType({ value: undefined, bf16WeightRetention: runtimeFeatures?.bf16WeightRetention === true }), qwenVaePolicy: 'bounded', conditioningCacheSize: 0, modelArguments: '' });
   const imageDownloadPreferences = ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' });
   function setImageDownloadPreferences({ preferences }: { preferences: ImageDownloadPreferences }): void {
     imageDownloadPreferences.value = { ...preferences };

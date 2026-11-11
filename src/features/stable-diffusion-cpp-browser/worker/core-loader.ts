@@ -1,5 +1,14 @@
 import type { Artifact } from '@/features/stable-diffusion-cpp-browser/types';
 import type { CoreFactory, HostHelpers } from './core-types';
+import { assertImageRuntimeContract } from '@/features/stable-diffusion-cpp-browser/runtime-contract';
+
+function checkedCoreHelpers({ value, schemaSha256, bf16WeightRetention }: { value: unknown, schemaSha256: string, bf16WeightRetention?: boolean }): HostHelpers {
+  if (!value || typeof value !== 'object' || !('attachCore' in value) || typeof value.attachCore !== 'function' || !('mountReadOnlyFile' in value) || typeof value.mountReadOnlyFile !== 'function' || !('schema' in value) || !value.schema || typeof value.schema !== 'object' || !('schemaSha256' in value.schema) || value.schema.schemaSha256 !== schemaSha256 || !('abiVersion' in value.schema) || value.schema.abiVersion !== 2) {
+    throw new Error('Missing or incompatible thin image core helpers');
+  }
+  assertImageRuntimeContract({ schema: value.schema, bf16WeightRetention });
+  return value as HostHelpers;
+}
 
 export async function loadCoreFactory({ artifact, baseUrl }: { artifact: Artifact, baseUrl: string }): Promise<{ create: CoreFactory, wasmBinary: Uint8Array<ArrayBuffer>, moduleUrl: string, helpers: HostHelpers }> {
   const base = new URL(baseUrl);
@@ -42,12 +51,11 @@ export async function loadCoreFactory({ artifact, baseUrl }: { artifact: Artifac
   if (!module || typeof module !== 'object' || !('default' in module) || typeof module.default !== 'function') {
     throw new Error('Missing image core factory');
   }
-  const helpers: unknown = await import(/* @vite-ignore */ new URL(artifact.helpersPath, base).href);
-  if (!helpers || typeof helpers !== 'object' || !('attachCore' in helpers) || typeof helpers.attachCore !== 'function' || !('mountReadOnlyFile' in helpers) || typeof helpers.mountReadOnlyFile !== 'function' || !('schema' in helpers) || !helpers.schema || typeof helpers.schema !== 'object' || !('schemaSha256' in helpers.schema) || helpers.schema.schemaSha256 !== artifact.schemaSha256 || !('abiVersion' in helpers.schema) || helpers.schema.abiVersion !== 2) {
-    throw new Error('Missing or incompatible thin image core helpers');
-  }
-  return { helpers: helpers as HostHelpers, create: module.default as CoreFactory, wasmBinary, moduleUrl };
+  const importedHelpers: unknown = await import(/* @vite-ignore */ new URL(artifact.helpersPath, base).href);
+  const helpers = checkedCoreHelpers({ value: importedHelpers, schemaSha256: artifact.schemaSha256, bf16WeightRetention: artifact.bf16WeightRetention });
+  return { helpers, create: module.default as CoreFactory, wasmBinary, moduleUrl };
 }
 
 export const TEST_ONLY = {
+  checkedCoreHelpers,
 };

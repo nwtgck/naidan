@@ -1,0 +1,1 @@
+export const stableDiffusionCppBrowser__bf16_weight_storage_help = (): string => "F32는 BF16 값을 유지하며 가중치 메모리를 두 배로 사용합니다. F16은 메모리를 절약하지만 정밀도와 수치 범위가 줄어들 수 있습니다. BF16은 지원되는 행렬 및 임베딩 가중치를 유지하며 정규화 가중치와 편향에는 F32가 사용될 수 있습니다. 기존 양자화는 변경하지 않습니다.";

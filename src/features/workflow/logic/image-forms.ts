@@ -16,7 +16,7 @@ export function workflowImageParameterLabel({ key }: { key: keyof WorkflowImageP
   case 'vaeTiling': return lazyStrings.stableDiffusionCppBrowser__vae_tiling();
   case 'vaeTileSize': return lazyStrings.stableDiffusionCppBrowser__vae_tile_size();
   case 'flashAttention': return lazyStrings.stableDiffusionCppBrowser__flash_attention();
-  case 'bf16WeightType': return lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion();
+  case 'bf16WeightType': return lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage();
   case 'qwenVaePolicy': return lazyStrings.stableDiffusionCppBrowser__qwen_vae_bounded();
   case 'conditioningCacheSize': return lazyStrings.stableDiffusionCppBrowser__conditioning_cache();
   case 'modelArguments': return lazyStrings.stableDiffusionCppBrowser__model_arguments();
@@ -34,7 +34,9 @@ export function workflowImageParameterChoices({ key }: { key: keyof WorkflowImag
   case 'profile': return ['auto', ...profileOptions];
   case 'sampler': return samplerOptions;
   case 'scheduler': return schedulerOptions;
-  case 'bf16WeightType': return ['f32', 'f16'];
+  // Workflow literals can target another engine or be changed before execution.
+  // The actual run checks the selected artifact and native retention version.
+  case 'bf16WeightType': return ['bf16', 'f32', 'f16'];
   case 'qwenVaePolicy': return ['bounded', 'native'];
   case 'weightResidency': return ['auto', 'cpu', 'hybrid', 'disk', 'runtime'];
   case 'negativePrompt': case 'width': case 'height': case 'steps': case 'guidance': case 'seed': case 'distilledGuidance': case 'vaeTiling': case 'vaeTileSize': case 'flashAttention': case 'conditioningCacheSize': case 'modelArguments': return [];

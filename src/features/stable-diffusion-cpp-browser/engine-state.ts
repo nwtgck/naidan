@@ -41,7 +41,7 @@ export const imageEngineSnapshotSchema = z.object({
     maxVram: z.string().max(512),
     flashAttention: z.boolean(),
     diffusionFlashAttention: z.boolean(),
-    bf16WeightType: z.enum(['f16', 'f32', 'other']),
+    bf16WeightType: z.enum(['f16', 'f32', 'bf16', 'other']),
     conditioningCacheSize: z.number().int(),
   }).strict(),
 }).strict();

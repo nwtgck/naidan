@@ -80,7 +80,7 @@ export function ggufFixture({ name, tensors, metadata, extraBytes }: { name: str
     for (const dimension of [...tensor.shape].reverse()) {
       u64({ value: dimension });
     }
-    u32({ value: 0 });
+    u32({ value: tensor.dtype === 'BF16' ? 30 : tensor.dtype === 'F16' ? 1 : /^\d+$/.test(tensor.dtype) ? Number(tensor.dtype) : 0 });
     u64({ value: dataBytes });
     dataBytes += Math.ceil(tensor.shape.reduce((n, d) => n * d, 4) / 32) * 32;
   }

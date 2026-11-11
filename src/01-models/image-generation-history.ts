@@ -52,7 +52,7 @@ export type ImageGenerationParameters = {
   vaeTiling?: boolean,
   vaeTileSize?: number,
   flashAttention?: boolean,
-  bf16WeightType?: 'f32' | 'f16',
+  bf16WeightType?: 'f32' | 'f16' | 'bf16',
   qwenVaePolicy?: 'bounded' | 'native',
   conditioningCacheSize?: number,
   modelArguments?: string,

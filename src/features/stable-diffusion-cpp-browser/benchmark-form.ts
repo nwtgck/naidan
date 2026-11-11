@@ -1,14 +1,14 @@
 import { ref, shallowRef } from 'vue';
 import { createImageForm } from '@/features/image-generation/form';
-import type { ModelSlot, Parameters, Progress, ImageInputs } from './types';
+import type { ImageRuntimeFeatures, ModelSlot, Parameters, Progress, ImageInputs } from './types';
 import type { BenchmarkProtocol, BenchmarkRun, BenchmarkPlan, ParameterChange } from './benchmark/types';
 import type { ImageLoraSelection } from './lora-form';
 
 /** Shared presentation state, also used by the unavailable standalone facade.
- * No schema/runtime imports, network access or model reads. */
-export function createBenchmarkForm() {
+ * No engine/configuration imports, network access or model reads. */
+export function createBenchmarkForm({ runtimeFeatures }: { runtimeFeatures: ImageRuntimeFeatures | undefined }) {
   const common = ref<Parameters>({
-    ...createImageForm({ profile: 'webgpu-wasm32-asyncify' }).parameters.value,
+    ...createImageForm({ profile: 'webgpu-wasm32-asyncify', runtimeFeatures }).parameters.value,
     prompt: 'A fluffy cat curled up asleep by a window in soft morning light. Small potted plants and warm wooden furnishings create a quiet, soothing scene. Gentle warm colors and soft shadows.',
     width: 512,
     height: 512,

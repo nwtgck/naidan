@@ -19,7 +19,7 @@ import { createImageDiagnosticBuffer, type ImageDiagnostic } from '@/features/st
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 import { rawConfiguration, initialProfile, supportsJspi, supportsMemory64, useImageLibrary, createImageEngineClient, inspectImageInventory } from '@/features/image-generation/providers/local-environment';
-import { configurationSchema, requestSchema, previewSettingsSchema, type PreviewFrame, type ModelSlot, type Request } from '@/features/stable-diffusion-cpp-browser/types';
+import { configurationSchema, getImageRuntimeFeatures, requestSchema, previewSettingsSchema, type PreviewFrame, type ModelSlot, type Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageReleaseReason } from '@/features/stable-diffusion-cpp-browser/worker/types';
 import { createImageGallery } from './image-gallery';
 import { createImageForm } from './form';
@@ -45,7 +45,7 @@ import { downloadImageBlob, imageGenerationDownloadBlob, type ImageGenerationExp
  * environment facade; the standalone build can use the same RPC execution UI. */
 export function useImageGeneration(): ImageGenerationView {
   const configuration = configurationSchema.parse(rawConfiguration);
-  const form = createImageForm({ profile: initialProfile() });
+  const form = createImageForm({ profile: initialProfile(), runtimeFeatures: getImageRuntimeFeatures({ configuration }) });
   const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results } = form;
   const controller = shallowRef<AbortController>();
   const seedMode = ref<'random' | 'fixed'>('random');
@@ -196,6 +196,7 @@ export function useImageGeneration(): ImageGenerationView {
   const draftDisabled = computed(() => preferenceRestoring.value || benchmarkActive.value || historyActions.busy.value || !remote.value && configuration.kind === 'unavailable');
   const formDisabled = computed(() => preferenceRestoring.value || busy.value || benchmarkActive.value || historyActions.busy.value || historySaving.status.value === 'saving' || !remote.value && configuration.kind === 'unavailable');
   const library = useImageLibrary({
+    runtimeFeatures: getImageRuntimeFeatures({ configuration }),
     downloadsBlocked: () => configuration.kind === 'unavailable',
     blocked: () => formDisabled.value,
     dependencies: undefined,
@@ -275,7 +276,7 @@ export function useImageGeneration(): ImageGenerationView {
     // Resolution belongs to the composition the user chose. Applying a model
     // preset changes sampling settings without resizing that composition.
     if (preset.applicableFields) {
-      const fields = preset.applicableFields.filter(field => field !== 'width' && field !== 'height'
+      const fields = preset.applicableFields.filter(field => field !== 'width' && field !== 'height' && field !== 'bf16WeightType'
         && (!preset.recommendedFieldsOnly || preset.recommendedFields?.includes(field)));
       parameters.value = { ...parameters.value, ...Object.fromEntries(fields.map(field => [field, preset.parameters[field]])) };
     } else if (preset.recommendedFieldsOnly) {
@@ -284,10 +285,11 @@ export function useImageGeneration(): ImageGenerationView {
       const fields = preset.recommendedFields ?? [];
       parameters.value = {
         ...parameters.value,
-        ...Object.fromEntries(fields.filter(field => field !== 'width' && field !== 'height').map(field => [field, preset.parameters[field]])),
+        ...Object.fromEntries(fields.filter(field => field !== 'width' && field !== 'height' && field !== 'bf16WeightType').map(field => [field, preset.parameters[field]])),
       };
     } else {
-      const { width: _width, height: _height, ...settings } = preset.parameters;
+      // Precision is the runtime/user choice, not a model sampling preset.
+      const { width: _width, height: _height, bf16WeightType: _bf16WeightType, ...settings } = preset.parameters;
       parameters.value = { ...parameters.value, ...settings };
     }
     if (!busy.value && !preset.recommendedFieldsOnly) {

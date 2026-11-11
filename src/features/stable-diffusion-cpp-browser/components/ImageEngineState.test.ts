@@ -117,6 +117,15 @@ it('shows separate observed memory categories and marks a busy reading as previo
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-engine-refresh"]').element.disabled).toBe(true);
 });
 
+it('shows BF16 requested storage from an observed context without presenting it as an all-weight dtype guarantee', async () => {
+  const { engineState, wrapper } = setup({ captured: true });
+  engineState.snapshot.value!.requested.bf16WeightType = 'bf16';
+  engineState.setOpened({ opened: true });
+  await flushPromises();
+  expect(wrapper.get('[data-testid="image-engine-bf16-weight-type"]').text()).toBe('BF16');
+  expect(wrapper.text()).toContain('BF16 weight storage');
+});
+
 it('allows an idle engine refresh while the generated image is still being saved', async () => {
   const { view, engineState, refresh, wrapper } = setup({ busy: true, captured: true });
   engineState.setOpened({ opened: true });

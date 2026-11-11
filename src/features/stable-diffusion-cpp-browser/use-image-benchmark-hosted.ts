@@ -5,14 +5,15 @@ import { ensureStrings } from '@/strings';
 import { createBenchmarkForm } from './benchmark-form';
 import type { ImageBenchmarkView } from './benchmark-view';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
-import { configurationSchema } from './types';
+import { configurationSchema, getImageRuntimeFeatures } from './types';
 import { createImageEngineClient } from '@/features/stable-diffusion-cpp-browser/inference/engine';
 import { createBenchmarkRunner } from './benchmark/runner';
 import { createBenchmarkPlan, benchmarkParameters } from './benchmark/plan';
 import { benchmarkArchiveBlob } from './benchmark/archive';
 
 export function useImageBenchmark({ generation }: { generation: ImageGenerationView }): ImageBenchmarkView {
-  const form = createBenchmarkForm(), config = configurationSchema.parse(rawConfiguration);
+  const config = configurationSchema.parse(rawConfiguration);
+  const form = createBenchmarkForm({ runtimeFeatures: getImageRuntimeFeatures({ configuration: config }) });
   let disposed = false;
   const seen = new Set<string>();
   let exportControl: AbortController | undefined;

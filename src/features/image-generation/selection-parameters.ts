@@ -13,7 +13,7 @@ export function imageSelectionParameters({ parameters, family, turbo, location }
     // This argument is not carried by the image RPC contract.
     modelArguments: location === 'local' && !parameters.modelArguments ? 'qwen_image_2_1_prefix_cache=false' : parameters.modelArguments,
   };
-  case 'sd-checkpoint': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'unknown': return parameters;
+  case 'sd-checkpoint': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'minimax-h3-image': case 'unknown': return parameters;
   default: {
     const exhaustive: never = family;
     throw new Error(String(exhaustive));

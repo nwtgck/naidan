@@ -12,14 +12,14 @@ import { inspectImageInventory } from './inventory-worker/client';
 import type { InspectionProgress } from './inventory-worker/types';
 import type { ImageRecipeDownloader, ImageDownloadDestination, CatalogDownloadProgress } from './logic/catalog-download';
 import { downloadImageRecipeInWorker } from './download-worker/client';
-import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile, type ImageRecipeSelection } from './model-recipes';
+import { imageModelRecipes, selectedRecipeFiles, imageRecipeUnavailableReason, type ImageRecipeFile, type ImageRecipeSelection } from './model-recipes';
 import { imageCatalogLoras } from './lora-catalog';
 import type { ImageDownloadSource } from './logic/catalog-source';
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { type listImageRepositories, importImageRepository } from './logic/repository-store';
 import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, imageSelectionCandidates, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
 import { imageDirectoryFromFiles, imageDirectoriesFromDrop, imageDirectoryForFile } from './logic/repository-input';
-import type { ModelSlot, Request } from './types';
+import type { ImageRuntimeFeatures, ModelSlot, Request } from './types';
 import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability, SavedImageLoraChoice } from './library-view';
 import { useHostModelDirectories } from './composables/use-host-model-directories';
 import { createDisabledImageLibrary } from './library-standalone';
@@ -47,12 +47,15 @@ function automaticOrigin({ origin }: { origin: 'automatic' | 'manual' | 'files' 
 
 /** Application-owned local inventory and composition. File metadata is advisory:
  * a structural match is not a claim of identical training weights or quality. */
-export function useImageLibrary({ blocked, downloadsBlocked, onSelection, dependencies }: {
+export function useImageLibrary({ blocked, downloadsBlocked, onSelection, dependencies, runtimeFeatures }: {
   blocked: () => boolean,
   downloadsBlocked: () => boolean,
   onSelection: ({ family, turbo }: { family: ModelCandidate['family'], turbo: boolean }) => void,
   dependencies: Dependencies | undefined,
+  // Missing metadata must preserve the older engine's limited capabilities.
+  runtimeFeatures?: ImageRuntimeFeatures,
 }): ImageLibraryView {
+  const supportedRuntimeFeatures = computed(() => runtimeFeatures ?? { ggufOriginalShapes: false, bf16WeightRetention: false });
   const deps = dependencies ?? defaultDependencies;
   const manager = dependencies?.manager ?? (dependencies ? createDownloadManager() : getDownloadManager());
   const inventory = shallowRef<ModelInventory>({ candidates: [], issues: [] });
@@ -122,7 +125,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   const downloadRecipeId = computed(() => downloadPresentation.value.recipeId);
   const downloadLoraId = computed(() => downloadPresentation.value.loraId);
   const downloadSelections = computed<ImageRecipeSelection>(() => downloadPresentation.value.selections);
-  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image', files: ImageRecipeFile[], destinationId: string } | undefined;
+  let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image' | 'minimax-h3-image', files: ImageRecipeFile[], destinationId: string } | undefined;
   const downloading = computed(() => activeDownload.value !== undefined || jobs.value.some(job => job.state === 'queued' || job.state === 'downloading'));
   let hostPublication: AbortController | undefined;
   const host = dependencies ? undefined : useHostModelDirectories({
@@ -381,6 +384,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       case 'anima-turbo-1.1': return 'anima' as const;
       case 'krea2-turbo': return 'krea2' as const;
       case 'ernie-image-turbo': return 'ernie-image' as const;
+      case 'minimax-h3-image': return 'minimax-h3-image' as const;
       default: {
         const exhaustive: never = recipe.id;
         throw new Error(String(exhaustive));
@@ -470,6 +474,9 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       return;
     }
     const files = selectedRecipeFiles({ recipe, selections: requested });
+    if (imageRecipeUnavailableReason({ files, runtimeFeatures: supportedRuntimeFeatures.value }) !== undefined) {
+      return;
+    }
     const destinationId = hostDirectories.destination.value;
     selectionVersion++;
     unavailableLoras = [];
@@ -487,6 +494,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     case 'krea2-turbo': recipeIntent = { family: 'krea2', files, destinationId };
       break;
     case 'ernie-image-turbo': recipeIntent = { family: 'ernie-image', files, destinationId };
+      break;
+    case 'minimax-h3-image': recipeIntent = { family: 'minimax-h3-image', files, destinationId };
       break;
     default: {
       const exhaustive: never = recipe.id;
@@ -509,6 +518,9 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       return;
     }
     const choices = { ...requested }, files = selectedRecipeFiles({ recipe, selections: choices });
+    if (imageRecipeUnavailableReason({ files, runtimeFeatures: supportedRuntimeFeatures.value }) !== undefined) {
+      return;
+    }
     await enqueueDownload({ target: { kind: 'recipe', id: recipeId, selections: choices }, files, label: recipe.title });
   }
   async function downloadLora({ id }: { id: string }): Promise<void> {
@@ -1468,6 +1480,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     // Closing this view cancels only its reads and rendering, never file writes.
   });
   return {
+    runtimeFeatures: supportedRuntimeFeatures,
     captureModelSelection,
     restoreModelSelection,
     downloadsDisabled,

@@ -1161,11 +1161,13 @@ import { ImageLoraControls__selected_adapters } from '@/strings/messages/ImageLo
 import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/es';
 import { ImageModelCatalog__checking_saved_models } from '@/strings/messages/ImageModelCatalog__checking_saved_models/es';
 import { ImageModelCatalog__download_queue } from '@/strings/messages/ImageModelCatalog__download_queue/es';
+import { ImageModelCatalog__int8_convrot_download_and_use_are_unavailable } from '@/strings/messages/ImageModelCatalog__int8_convrot_download_and_use_are_unavailable/es';
 import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/es';
 import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog__queued/es';
 import { ImageModelCatalog__recommended } from '@/strings/messages/ImageModelCatalog__recommended/es';
 import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/es';
 import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/es';
+import { ImageModelCatalog__update_the_image_engine_to_use_this_quantization } from '@/strings/messages/ImageModelCatalog__update_the_image_engine_to_use_this_quantization/es';
 import { ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model } from '@/strings/messages/ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model/es';
 import { ImageModelLocalFileRecovery__could_not_open_local_image_model_files } from '@/strings/messages/ImageModelLocalFileRecovery__could_not_open_local_image_model_files/es';
 import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/es';
@@ -3216,8 +3218,11 @@ import { stableDiffusionCppBrowser__advanced_parameters } from '@/strings/messag
 import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters_help/es';
 import { stableDiffusionCppBrowser__apply_recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__apply_recommended_settings/es';
 import { stableDiffusionCppBrowser__artifact_not_installed } from '@/strings/messages/stableDiffusionCppBrowser__artifact_not_installed/es';
+import { stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine } from '@/strings/messages/stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine/es';
 import { stableDiffusionCppBrowser__bf16_weight_conversion } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion/es';
 import { stableDiffusionCppBrowser__bf16_weight_conversion_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion_help/es';
+import { stableDiffusionCppBrowser__bf16_weight_storage } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_storage/es';
+import { stableDiffusionCppBrowser__bf16_weight_storage_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_storage_help/es';
 import { stableDiffusionCppBrowser__cancel } from '@/strings/messages/stableDiffusionCppBrowser__cancel/es';
 import { stableDiffusionCppBrowser__cancel_wait_help } from '@/strings/messages/stableDiffusionCppBrowser__cancel_wait_help/es';
 import { stableDiffusionCppBrowser__cancelled } from '@/strings/messages/stableDiffusionCppBrowser__cancelled/es';
@@ -5022,11 +5027,13 @@ export const catalog = {
   ImageLoraControls__strength,
   ImageModelCatalog__checking_saved_models,
   ImageModelCatalog__download_queue,
+  ImageModelCatalog__int8_convrot_download_and_use_are_unavailable,
   ImageModelCatalog__optional_lora,
   ImageModelCatalog__queued,
   ImageModelCatalog__recommended,
   ImageModelCatalog__reference_style_lora_help,
   ImageModelCatalog__saved_choose_in_lora_controls,
+  ImageModelCatalog__update_the_image_engine_to_use_this_quantization,
   ImageModelLocalFileRecovery__add_image_model_files_then_select_the_model,
   ImageModelLocalFileRecovery__could_not_open_local_image_model_files,
   ImageModelPicker__choose_a_model,
@@ -7077,8 +7084,11 @@ export const catalog = {
   stableDiffusionCppBrowser__advanced_parameters_help,
   stableDiffusionCppBrowser__apply_recommended_settings,
   stableDiffusionCppBrowser__artifact_not_installed,
+  stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine,
   stableDiffusionCppBrowser__bf16_weight_conversion,
   stableDiffusionCppBrowser__bf16_weight_conversion_help,
+  stableDiffusionCppBrowser__bf16_weight_storage,
+  stableDiffusionCppBrowser__bf16_weight_storage_help,
   stableDiffusionCppBrowser__cancel,
   stableDiffusionCppBrowser__cancel_wait_help,
   stableDiffusionCppBrowser__cancelled,

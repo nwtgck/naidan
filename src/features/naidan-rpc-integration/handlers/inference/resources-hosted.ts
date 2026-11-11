@@ -10,7 +10,7 @@ import type { ModelCandidate } from '@/features/stable-diffusion-cpp-browser/log
 import { createImageEngineClient } from '@/features/stable-diffusion-cpp-browser/inference/engine';
 import type { ImageClient } from '@/features/stable-diffusion-cpp-browser/worker/types';
 import { initialProfile } from '@/features/stable-diffusion-cpp-browser/capabilities';
-import { configurationSchema, requestSchema, workerResultSchema } from '@/features/stable-diffusion-cpp-browser/types';
+import { configurationSchema, requestSchema, workerResultSchema, resolveBf16WeightType } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Request, ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import rawConfiguration from 'virtual:stable-diffusion-cpp-browser/config';
 import type { OwnedInferenceResources } from './resources';
@@ -256,7 +256,9 @@ export function createReadOnlyResources({ directories }: { directories(): readon
             vaeTiling: true,
             vaeTileSize: 32,
             flashAttention: false,
-            bf16WeightType: 'f32',
+            // RPC has no precision control. Preserve its existing F32 default
+            // for active LoRAs, whose immediate application cannot modify retained BF16.
+            bf16WeightType: resolveBf16WeightType({ value: loras.some(lora => lora.strength !== 0) ? 'f32' : undefined, bf16WeightRetention: artifact.bf16WeightRetention === true }),
             qwenVaePolicy: 'bounded',
             conditioningCacheSize: 0,
             modelArguments: '',

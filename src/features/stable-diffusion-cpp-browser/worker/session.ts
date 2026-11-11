@@ -4,6 +4,7 @@ import { cancelControlSchema, previewControlSchema, type CancelControl, type Can
 import type { Core, HostHelpers } from './core-types';
 import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES, type SyncBlobReader } from './gguf-file';
 import { validateModelMounts } from './model-mounts';
+import { assertBf16ConversionFitsMemory } from './bf16-conversion-memory';
 import { copyNativeImage, imagePixelStatistics, type ImagePixels } from './image-output';
 import { createNativePreviewControl } from './preview-control';
 import { writeImageInputs } from './image-input';
@@ -46,6 +47,25 @@ export function effectiveVaeTile({ modelVersion, requested, policy, enabled }: {
   return requested;
 }
 
+/** The editor and saved requests keep latent-pixel tiles; native fields use image pixels. */
+export function nativeVaeTile({ modelVersion, requested, policy, enabled }: {
+  modelVersion: string, requested: number, policy: Request['parameters']['qwenVaePolicy'], enabled: boolean,
+}): number {
+  if (!enabled) {
+    return 0;
+  }
+  const tile = effectiveVaeTile({ modelVersion, requested, policy, enabled });
+  switch (modelVersion.trim()) {
+  case 'Qwen Image 2.1': case 'Flux.2': case 'Flux.2 klein': case 'SeFi-Image': case 'Ernie Image': case 'MiniMax-H3-Image': case 'P-H3-Image': return tile * 16;
+  case 'Z-Image': case 'Anima': case 'Krea2':
+  case 'Qwen Image': case 'Qwen Image Layered': case 'Flux': case 'Flux Fill': case 'Flux Control': case 'Flex.2': case 'Chroma': case 'Ovis Image':
+  case 'SD 1.x': case 'SD 1.x Inpaint': case 'Instruct-Pix2Pix': case 'SD 1.x Tiny UNet':
+  case 'SD 2.x': case 'SD 2.x Inpaint': case 'SD 2.x Tiny UNet': case 'SDXS (512-DS)': case 'SDXS (09)':
+  case 'SDXL': case 'SDXL Inpaint': case 'SDXL Instruct-Pix2Pix': case 'SDXL (Vega)': case 'SDXL (SSD1B)': return tile * 8;
+  default: throw new Error('The VAE tile scale for this model is unknown. Disable VAE tiling before generating.');
+  }
+}
+
 /** One immutable model composition per worker. Only per-image allocations are
  * freed between successful runs; the client retires the worker on composition
  * changes, forced cancellation or failure. Graceful cancellation waits for native cleanup. A native trap is never followed by a free. */
@@ -63,10 +83,9 @@ export function createImageGenerationSession({ core, helpers, reader }: {
   let poisoned = false, closed = false, failed = false;
   let inspection: Promise<ImageEngineInspection> | undefined;
   let artifact: Request['artifact'] | undefined;
-  let nativeCall: 'new_sd_ctx' | 'generate_image' | undefined;
+  let nativeCall: 'sd_browser_bf16_retention_version' | 'new_sd_ctx' | 'generate_image' | undefined;
   let nativePhase: 'model' | 'sampling' | 'decoding' = 'model';
-  let previewDecoding = false;
-  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, samplingSteps: number | undefined, samplingState: 'input-images' | 'denoising', cancelRequested: boolean }) | undefined;
+  let active: (Run & { latest: PreviewControl, preview?: ReturnType<typeof createNativePreviewControl>, capturedStep: number, samplingSteps: number | undefined, samplingPass: number | undefined, cancelRequested: boolean }) | undefined;
   const keep = ({ pointer }: { pointer: bigint }) => {
     allocations.push(pointer);
     return pointer;
@@ -83,30 +102,6 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     } catch { /* observational */ }
   };
   const log = ({ message, level }: { message: string, level?: number }): void => {
-    // Pinned native code announces the image after input VAE/conditioning and
-    // before denoising. Both VAE tiles and denoising report step zero, so the
-    // progress callback alone cannot identify a shortened img2img schedule.
-    if (active && nativeCall === 'generate_image' && nativePhase === 'sampling'
-      && /^image\.cpp:\d+\s+- generating image: 1\/1 - seed -?\d+\s*$/.test(message)) {
-      active.samplingState = 'denoising';
-      previewDecoding = false;
-    }
-    // Full VAE previews reuse the same native tile-progress callback as final
-    // decoding. Observe only pinned native markers; never show tiles as steps.
-    if (nativeCall === 'generate_image' && nativePhase === 'sampling' && active?.request.preview.mode === 'vae') {
-      if (/^vae\.hpp:\d+\s+- VAE Tile size:/.test(message)) {
-        previewDecoding = true;
-      }
-      if (/^vae\.hpp:\d+\s+- computing vae decode graph completed,/.test(message) || /^diffusion_engine\.cpp:\d+\s+- preview decode failed/.test(message)) {
-        previewDecoding = false;
-      }
-    }
-    if (nativeCall === 'generate_image' && nativePhase === 'sampling' && /^image\.cpp:\d+\s+- decoding [1-9]\d* latents\s*$/.test(message)) {
-      nativePhase = 'decoding';
-      previewDecoding = false;
-      notify({ event: { phase: 'decoding', step: 0, steps: 0 } });
-      emit({ event: 'start', stage: 'decoding', message: 'Decoding image latents', fields: {} });
-    }
     try {
       active?.onLog({ message, level });
     } catch { /* observational */ }
@@ -134,43 +129,16 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       } catch { /* borrowed diagnostics */ }
     }, 'vipp'));
     callbacks.push(core.module.addFunction((...args) => {
-      if (previewDecoding) {
+      // Sampling has context-local events. Legacy VAE tiles must not become denoising steps.
+      if (nativeCall === 'generate_image' && nativePhase === 'sampling') {
         return;
       }
       const step = Number(args[0]), steps = Number(args[1]);
       if (Number.isInteger(step) && Number.isInteger(steps) && step >= 0 && steps >= 0) {
-        if (active && nativePhase === 'sampling') {
-          switch (active.samplingState) {
-          case 'input-images': return;
-          case 'denoising': break;
-          default: {
-            const exhaustive: never = active.samplingState;
-            throw new Error(String(exhaustive));
-          }
-          }
-          if (active.samplingSteps === undefined) {
-            if (step !== 0 || steps < 1 || steps > active.request.parameters.steps
-              || !active.request.imageInputs.initImage && steps !== active.request.parameters.steps) {
-              return;
-            }
-            active.samplingSteps = steps;
-          }
-          if ((active.request.imageInputs.initImage || active.request.imageInputs.referenceImages.length) && steps !== active.samplingSteps) {
-            return;
-          }
-        }
-        if (active && nativePhase === 'sampling' && steps > 0 && step <= steps
-          && steps === active.samplingSteps) {
-          try {
-            active.onPerformance?.({ signal: { kind: 'sampling-progress', step, steps } });
-          } catch { /* measurement only */ }
-          active.preview?.observeStep({ step });
-        }
         notify({ event: { phase: nativePhase, step, steps } });
       }
     }, 'viifp'));
     callbacks.push(core.module.addFunction((...args) => {
-      previewDecoding = false;
       const operation = active, snapshot = operation?.preview?.snapshot();
       if (!operation || operation.samplingSteps === undefined || operation.cancelRequested || !snapshot?.settings.enabled || !operation.onPreview) {
         return;
@@ -188,16 +156,106 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         emit({ event: 'native', stage: 'generation', message: 'Preview frame could not be copied; final generation continues', fields: { ...imageErrorContext({ error }) } });
       }
     }, 'viipip'));
+    callbacks.push(core.module.addFunction((...args) => {
+      const operation = active;
+      if (!operation || operation.cancelRequested || nativeCall !== 'generate_image') {
+        return;
+      }
+      try {
+        const pointer = BigInt(args[0] ?? 0);
+        if (!pointer) {
+          return;
+        }
+        const stage = core.readUtf8(BigInt(core.getField('sd_generation_progress_t', pointer, 'stage')), 128);
+        if (stage === 'vae_decode') {
+          if (operation.samplingPass !== undefined && nativePhase !== 'decoding') {
+            nativePhase = 'decoding';
+            notify({ event: { phase: 'decoding', step: 0, steps: 0 } });
+            emit({ event: 'start', stage: 'decoding', message: 'Decoding image latents', fields: {} });
+          }
+          return;
+        }
+        if (stage !== 'sampling' || nativePhase !== 'sampling'
+          || core.readUtf8(BigInt(core.getField('sd_generation_progress_t', pointer, 'unit')), 32) !== 'steps') {
+          return;
+        }
+        const completed = core.getField('sd_generation_progress_t', pointer, 'completed');
+        const total = core.getField('sd_generation_progress_t', pointer, 'total');
+        const pass = Number(core.getField('sd_generation_progress_t', pointer, 'sample_pass'));
+        if (typeof completed !== 'bigint' || typeof total !== 'bigint' || completed < 0n || total < 1n
+          || completed > total || total > BigInt(operation.request.parameters.steps)
+          || !Number.isSafeInteger(pass) || pass < 1) {
+          return;
+        }
+        if (operation.samplingPass === undefined) {
+          if (completed !== 0n) {
+            return;
+          }
+          operation.samplingPass = pass;
+          operation.samplingSteps = Number(total);
+        }
+        if (operation.samplingPass !== pass || operation.samplingSteps !== Number(total)) {
+          return;
+        }
+        const step = Number(completed), steps = Number(total);
+        try {
+          operation.onPerformance?.({ signal: { kind: 'sampling-progress', step, steps } });
+        } catch { /* measurement only */ }
+        operation.preview?.observeStep({ step });
+        notify({ event: { phase: 'sampling', step, steps } });
+      } catch { /* borrowed progress must never throw through native code */ }
+    }, 'vpp'));
     await core.api.sd_set_log_callback(BigInt(callbacks[0]!), 0n);
     await core.api.sd_set_progress_callback(BigInt(callbacks[1]!), 0n);
   }
   async function initialize({ request }: { request: Request }): Promise<void> {
+    let bf16RetentionVersion = 0;
+    if (request.artifact.bf16WeightRetention === true) {
+      const getter = core.api.sd_browser_bf16_retention_version;
+      if (typeof getter !== 'function') {
+        throw new Error('The installed image runtime advertises BF16 weight retention but its native version API is missing. Update the image runtime before generating.');
+      }
+      try {
+        nativeCall = 'sd_browser_bf16_retention_version';
+        bf16RetentionVersion = await getter();
+        nativeCall = undefined;
+      } catch (cause) {
+        throw new Error('The installed image runtime could not verify its native BF16 weight retention contract. Update the image runtime before generating.', { cause });
+      }
+      if (!Number.isSafeInteger(bf16RetentionVersion) || bf16RetentionVersion < 1) {
+        throw new Error('The installed image runtime does not implement the advertised BF16 weight retention contract. Update the image runtime before generating.');
+      }
+    }
+    if (request.parameters.bf16WeightType === 'bf16' && bf16RetentionVersion < 1) {
+      throw new Error('The installed image runtime does not support retaining BF16 weights. Update the image runtime or explicitly choose F32 or F16 before generating.');
+    }
     try {
       // Generated record metadata is checked before mounting model files. Older
       // artifacts must not silently ignore the selected weight conversion.
       core.fieldAddress('sd_ctx_params_t', 0n, 'webgpu_bf16_type');
     } catch (cause) {
       throw new Error('The installed image runtime does not support BF16 weight conversion. Update the image runtime before generating.', { cause });
+    }
+    try {
+      for (const field of ['flash_attn_mode', 'conv_direct_mode', 'batched_cfg']) {
+        core.fieldAddress('sd_ctx_params_t', 0n, field);
+      }
+      for (const field of ['items', 'count']) {
+        core.fieldAddress('sd_image_generation_result_t', 0n, field);
+      }
+      core.fieldAddress('sd_image_result_t', 0n, 'image');
+      for (const field of ['tile_size_w', 'tile_size_h']) {
+        core.fieldAddress('sd_tiling_params_t', 0n, field);
+      }
+      for (const field of ['stage', 'unit', 'completed', 'total', 'sample_pass']) {
+        core.fieldAddress('sd_generation_progress_t', 0n, field);
+      }
+      if (typeof core.api.free_sd_image_generation_result !== 'function'
+        || typeof core.api.sd_set_generation_progress_callback !== 'function') {
+        throw new Error('Missing image result ownership or generation progress API');
+      }
+    } catch (cause) {
+      throw new Error('The installed image runtime does not support the required image API. Update the image runtime before generating.', { cause });
     }
     if (request.loras.length) {
       try {
@@ -214,10 +272,17 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     const paths = new Map<ModelSlot, string>();
     const directories = new Set(['/models']);
     const capabilities = core.module._sdc_model_io_capabilities?.() ?? 0;
+    const h3Composition: { primary: boolean, embedding: Awaited<ReturnType<typeof validateModelMounts>>['minimaxH3BF16Embedding'] } = { primary: false, embedding: undefined };
     async function mount({ slot, input }: { slot: string, input: Parameters<typeof validateModelMounts>[0]['input'] }): Promise<string> {
       const { file } = input;
       emit({ event: 'start', stage: 'model-header', message: undefined, fields: { slot, bytes: file.size } });
       const plan = await validateModelMounts({ input, reader, capabilities });
+      if (slot === 'diffusion') {
+        h3Composition.primary = plan.minimaxH3Image;
+      }
+      if (slot === 'lm') {
+        h3Composition.embedding = plan.minimaxH3BF16Embedding;
+      }
       emit({ event: 'file-summary', stage: 'model-header', message: 'File tensor types are source metadata, not proof of CPU/GPU placement', fields: { slot, path: plan.relativePath.slice(0, 512), members: plan.files.length, ...plan.summary } });
       const root = '/models/' + slot + '/';
       for (const entry of plan.files) {
@@ -316,6 +381,32 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     for (const [index, input] of request.loras.entries()) {
       loraPaths.push(await mount({ slot: `lora-${index}`, input }));
     }
+    const { primary: minimaxH3Image, embedding: minimaxH3BF16Embedding } = h3Composition;
+    if (minimaxH3Image && minimaxH3BF16Embedding && bf16RetentionVersion < 1 && request.parameters.bf16WeightType !== 'bf16') {
+      const maximumMemoryBytes = (() => {
+        switch (request.artifact.profile) {
+        case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify': return 2n ** 32n;
+        case 'webgpu-wasm64-jspi': return 16n * 1024n ** 3n;
+        default: {
+          const exhaustive: never = request.artifact.profile;
+          throw new Error(String(exhaustive));
+        }
+        }
+      })();
+      // This full source + destination bound belongs to the legacy reader.
+      // Version 1 can use bounded device reads, including F32/F16 conversion;
+      // its actual host/device destination and F32 fallbacks are decided and
+      // checked natively. Requested residency alone cannot establish that path.
+      // Do not generalize the known H3 GET_ROWS role into retention for arbitrary
+      // rank-2 weights: norm/bias and unsupported roles still use F32.
+      // Unused source tensors and complete file sizes do not establish this bound.
+      assertBf16ConversionFitsMemory({
+        tensorName: minimaxH3BF16Embedding.name,
+        elements: minimaxH3BF16Embedding.elements,
+        target: request.parameters.bf16WeightType,
+        maximumMemoryBytes,
+      });
+    }
     const ctxParams = keep({ pointer: core.allocRecord('sd_ctx_params_t') });
     await core.api.sd_ctx_params_init(ctxParams);
     for (const [slot, path] of paths) {
@@ -361,6 +452,8 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       break;
     case 'f16': core.setField('sd_ctx_params_t', ctxParams, 'webgpu_bf16_type', core.constant('SD_TYPE_F16'));
       break;
+    case 'bf16': core.setField('sd_ctx_params_t', ctxParams, 'webgpu_bf16_type', core.constant('SD_TYPE_BF16'));
+      break;
     default: {
       const exhaustive: never = bf16WeightType;
       throw new Error(String(exhaustive));
@@ -368,6 +461,10 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     }
     core.setField('sd_ctx_params_t', ctxParams, 'flash_attn', Number(flashAttention));
     core.setField('sd_ctx_params_t', ctxParams, 'diffusion_flash_attn', Number(flashAttention));
+    core.setField('sd_ctx_params_t', ctxParams, 'flash_attn_mode', text({ value: flashAttention ? 'on' : 'off' }));
+    core.setField('sd_ctx_params_t', ctxParams, 'conv_direct_mode', text({ value: 'off' }));
+    // Preserve sequential UNet CFG instead of adopting the new native batching default.
+    core.setField('sd_ctx_params_t', ctxParams, 'batched_cfg', 0);
     core.setField('sd_ctx_params_t', ctxParams, 'conditioning_cache_size', conditioningCacheSize);
     core.setField('sd_ctx_params_t', ctxParams, 'model_args', modelArguments ? text({ value: modelArguments }) : 0n);
     notify({ event: { phase: 'model', step: 0, steps: 0 } });
@@ -394,14 +491,12 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     sessionId ??= run.request.sessionId;
     const { request } = run;
     artifact ??= request.artifact;
-    const hasInputImages = !!request.imageInputs.initImage || request.imageInputs.referenceImages.length > 0;
-    previewDecoding = false;
     active = {
       ...run,
       latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: { ...request.preview } },
       capturedStep: 0,
-      samplingSteps: hasInputImages ? undefined : request.parameters.steps,
-      samplingState: hasInputImages ? 'input-images' : 'denoising',
+      samplingSteps: undefined,
+      samplingPass: undefined,
       cancelRequested: false,
     };
     // A requested observation may have started while idle. Reserve this run
@@ -419,7 +514,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       return pointer;
     };
     const text = ({ value }: { value: string }) => keep({ pointer: core.utf8(value) });
-    let images = 0n, imageCount = 0;
+    let generationResult = 0n;
     let result: (ImagePixels & { modelVersion: string, uniformOutput: boolean }) | CancelledResult | undefined;
     let failure: { error: unknown } | undefined;
     try {
@@ -448,8 +543,12 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       if (active.cancelRequested) {
         throw cancelledRun;
       }
+      if (modelVersion === 'MiniMax-H3-Image' && request.imageInputs.referenceImages.length > 16) {
+        throw new Error('MiniMax-H3-Image supports at most 16 reference images.');
+      }
       const { prompt, negativePrompt, width, height, steps, guidance, seed, sampler, scheduler,
         distilledGuidance, vaeTiling, vaeTileSize, qwenVaePolicy, flashAttention } = request.parameters;
+      const pixelTile = nativeVaeTile({ modelVersion, requested: vaeTileSize, policy: qwenVaePolicy, enabled: vaeTiling });
       const params = keep({ pointer: core.allocRecord('sd_img_gen_params_t') });
       await core.api.sd_img_gen_params_init(params);
       await writeImageInputs({
@@ -531,20 +630,19 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       const tiling = core.fieldAddress('sd_img_gen_params_t', params, 'vae_tiling_params');
       core.setField('sd_tiling_params_t', tiling, 'enabled', Number(vaeTiling));
       const effectiveTile = effectiveVaeTile({ modelVersion, requested: vaeTileSize, policy: qwenVaePolicy, enabled: vaeTiling });
-      core.setField('sd_tiling_params_t', tiling, 'tile_size_x', effectiveTile);
-      core.setField('sd_tiling_params_t', tiling, 'tile_size_y', effectiveTile);
+      core.setField('sd_tiling_params_t', tiling, 'tile_size_w', pixelTile);
+      core.setField('sd_tiling_params_t', tiling, 'tile_size_h', pixelTile);
       if (effectiveTile !== vaeTileSize) {
         emit({ event: 'native', stage: 'decoding', message: 'Bounded Qwen VAE tiles; output dimensions and sampling unchanged', fields: { requestedTile: vaeTileSize, effectiveTile, width, height } });
       }
       core.setField('sd_tiling_params_t', tiling, 'target_overlap', 0.25);
-      const imagesOut = keep({ pointer: core.alloc(core.pointerBytes) });
-      const countOut = keep({ pointer: core.alloc(4) });
-      core.bytes(imagesOut, core.pointerBytes).fill(0);
-      core.bytes(countOut, 4).fill(0);
+      const resultOut = keep({ pointer: core.alloc(core.pointerBytes) });
+      core.bytes(resultOut, core.pointerBytes).fill(0);
       nativePhase = 'sampling';
       notify({ event: { phase: 'sampling', step: 0, steps } });
       emit({ event: 'start', stage: 'generation', message: 'generate_image includes text encoding, denoising and VAE decoding', fields: { width, height, steps, guidance, sampler: sampleMethod, scheduler: sampleScheduler, vaeTiling, flashAttention } });
       await active!.preview!.start();
+      await core.api.sd_set_generation_progress_callback(context, BigInt(callbacks[3]!), 0n);
       if (active.cancelRequested) {
         throw cancelledRun;
       }
@@ -552,22 +650,25 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         active.onPerformance?.({ signal: { kind: 'conditioning' } });
       } catch { /* measurement only */ }
       nativeCall = 'generate_image';
-      const generated = await core.api.generate_image(context, params, imagesOut, countOut);
+      const generated = await core.api.generate_image(context, params, resultOut);
       nativeCall = undefined;
       emit({ event: 'complete', stage: 'generation', message: undefined, fields: { generated, wasmBytes: core.module.HEAPU8?.byteLength ?? 0 } });
       // Recreate views after every native call: Wasm memory may have grown.
-      const pointers = core.bytes(imagesOut, core.pointerBytes);
+      const pointers = core.bytes(resultOut, core.pointerBytes);
       const pointerView = new DataView(pointers.buffer, pointers.byteOffset, pointers.byteLength);
-      images = core.pointerBytes === 8 ? pointerView.getBigUint64(0, true) : BigInt(pointerView.getUint32(0, true));
-      const counts = core.bytes(countOut, 4);
-      imageCount = new DataView(counts.buffer, counts.byteOffset, 4).getInt32(0, true);
+      generationResult = core.pointerBytes === 8 ? pointerView.getBigUint64(0, true) : BigInt(pointerView.getUint32(0, true));
       if (active.cancelRequested) {
         throw cancelledRun;
       }
-      if (generated !== 1 || !images || imageCount !== 1) {
+      if (generated !== 1 || !generationResult) {
         throw new Error('Image generation did not return one complete image');
       }
-      const output = copyNativeImage({ core, pointer: images });
+      const images = BigInt(core.getField('sd_image_generation_result_t', generationResult, 'items'));
+      const imageCount = core.getField('sd_image_generation_result_t', generationResult, 'count');
+      if (!images || imageCount !== 1) {
+        throw new Error('Image generation did not return one complete image');
+      }
+      const output = copyNativeImage({ core, pointer: core.fieldAddress('sd_image_result_t', images, 'image') });
       if (output.width !== width || output.height !== height) {
         throw new Error('Invalid generated image dimensions/channels');
       }
@@ -591,6 +692,9 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       // discards the module-global diagnostic flag along with the native state.
       if (!poisoned) {
         try {
+          if (context) {
+            await core.api.sd_set_generation_progress_callback(context, 0n, 0n);
+          }
           await core.api.sd_set_graph_diagnostics(0);
         } catch (error) {
           poisoned = true;
@@ -603,8 +707,8 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     active.preview?.close();
     try {
       if (!poisoned) {
-        if (images && imageCount > 0 && imageCount <= 64) {
-          await core.api.free_sd_images(images, imageCount);
+        if (generationResult) {
+          await core.api.free_sd_image_generation_result(generationResult);
         }
         await core.api.sd_set_preview_callback(0n, core.constant('PREVIEW_NONE'), 1, 0, 0, 0n);
         if (active.cancelRequested && context) {

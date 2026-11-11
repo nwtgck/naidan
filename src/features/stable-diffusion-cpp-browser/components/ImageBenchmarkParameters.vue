@@ -7,7 +7,7 @@ import { lazyStrings } from '@/strings';
 import { samplerOptions, schedulerOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
 import type { Parameters } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ParameterChange } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
-const props = defineProps<{ values: Parameters, overrides: Partial<Parameters> | undefined, disabled: boolean }>();
+const props = defineProps<{ values: Parameters, overrides: Partial<Parameters> | undefined, disabled: boolean, bf16RetentionSupported: boolean }>();
 const emit = defineEmits<{ change: [change: ParameterChange], inherit: [key: keyof Parameters] }>();
 const id = useId();
 
@@ -129,10 +129,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <ImageSettingsSection compact :title="lazyStrings.stableDiffusionCppBrowser__runtime_settings()" :summary="undefined">
       <div tw-class="grid min-w-0 gap-3 sm:grid-cols-2">
         <div tw-class="space-y-1" data-parameter="bf16WeightType">
-          <label :id="id + '-label-bf16WeightType'" :for="id + '-bf16WeightType'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</label>
+          <label :id="id + '-label-bf16WeightType'" :for="id + '-bf16WeightType'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage() }}</label>
           <label v-if="props.overrides !== undefined" tw-class="inline-flex min-h-7 cursor-pointer items-center gap-1.5 rounded-md px-1 text-[10px] text-gray-400 hover:bg-gray-100 dark:text-gray-500 dark:hover:bg-gray-800"><SettingsChoiceControl presentation="checkbox"><input type="checkbox" :checked="Object.hasOwn(props.overrides, 'bf16WeightType')" :aria-describedby="id + '-label-bf16WeightType'" @change="setOverride({ key: 'bf16WeightType', event: $event })" data-testid="override-bf16WeightType" /></SettingsChoiceControl>{{ lazyStrings.imageBenchmark__override() }}</label>
-          <SettingsFormSelect :id="id + '-bf16WeightType'" :disabled="disabled || (props.overrides !== undefined && !Object.hasOwn(props.overrides, 'bf16WeightType'))" data-testid="parameter-bf16WeightType" :model-value="props.values.bf16WeightType" @update:model-value="emit('change', { key: 'bf16WeightType', value: $event })" :options="[{ value: 'f32', label: 'F32' }, { value: 'f16', label: 'F16' }]" :label="lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion()" />
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion_help() }}</p>
+          <SettingsFormSelect :id="id + '-bf16WeightType'" :disabled="disabled || (props.overrides !== undefined && !Object.hasOwn(props.overrides, 'bf16WeightType'))" data-testid="parameter-bf16WeightType" :model-value="props.values.bf16WeightType" @update:model-value="emit('change', { key: 'bf16WeightType', value: $event })" :options="[{ value: 'bf16', label: 'BF16', disabled: !bf16RetentionSupported }, { value: 'f32', label: 'F32' }, { value: 'f16', label: 'F16' }]" :label="lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage()" />
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage_help() }}</p>
+          <p v-if="!bf16RetentionSupported" data-testid="benchmark-bf16-retention-unavailable" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine() }}</p>
         </div>
         <div tw-class="space-y-1" data-parameter="sampler">
           <label :id="id + '-label-sampler'" :for="id + '-sampler'" tw-class="block text-sm">{{ lazyStrings.stableDiffusionCppBrowser__sampler() }}</label>

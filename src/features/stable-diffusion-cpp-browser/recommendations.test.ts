@@ -6,13 +6,38 @@ import { parametersFixture } from './test-fixtures';
 import { scanImageRepositories } from './logic/model-candidates';
 import { imageModelRecipes } from './model-recipes';
 import { ggufFixture, zImageTensors, qwenImageTensors, flux2KleinTensors, animaTensors, krea2Tensors, ernieImageTensors } from './test-utils/weights.test-support';
+import { minimaxH3ImageTensors } from './test-utils/minimax-h3-weights.test-support';
+import { applyImageRecommendedField, imageRecommendedHint } from '@/features/image-generation/recommended-fields';
 
-it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
+it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo', 'minimax-h3-image'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
   const preset = TEST_ONLY.presets[id], original = { ...parametersFixture(), prompt: 'private', negativePrompt: 'custom', seed: '123' };
   const settings = parametersSchema.parse({ ...original, ...preset.parameters });
   expect(settings).toMatchObject({ prompt: 'private', negativePrompt: 'custom', seed: '123' });
   expect(previewSettingsSchema.parse({ ...defaultPreviewSettings, enabled: false, ...preset.preview }).enabled).toBe(false);
   expect(preset.sources.every(source => /^https:\/\/(github.com|huggingface.co)\//.test(source.url))).toBe(true);
+  expect(imageRecommendedHint({ recommendation: preset, field: 'bf16WeightType' })).toBeUndefined();
+  for (const bf16WeightType of ['bf16', 'f32', 'f16'] as const) {
+    const parameters = { ...parametersFixture(), bf16WeightType };
+    expect(applyImageRecommendedField({ parameters, recommendation: preset, field: 'bf16WeightType' })).toBe(parameters);
+  }
+});
+
+it('uses the H3 image PDD architecture for six-step Euler/Discrete hints without changing precision', async () => {
+  const file = ggufFixture({ name: 'renamed.data', tensors: minimaxH3ImageTensors, metadata: {}, extraBytes: 0 }).file;
+  const result = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/h3', repositoryLabel: 'H3', files: [{ relativePath: file.name, file }] }], signal: undefined });
+  expect(result.candidates[0]).toMatchObject({ family: 'minimax-h3-image', variant: 'unknown' });
+  const preset = recommendationForSelection({ model: result.candidates[0] })!;
+  expect(preset).toMatchObject({
+    id: 'minimax-h3-image',
+    parameters: { width: 1024, height: 1024, steps: 6, guidance: 1, sampler: 'euler', scheduler: 'discrete' },
+    applicableFields: ['width', 'height', 'steps', 'guidance', 'sampler', 'scheduler'],
+  });
+  const parameters = { ...parametersFixture(), width: 768, height: 512, bf16WeightType: 'f16' as const, flashAttention: true };
+  expect(applyImageRecommendedField({ parameters, recommendation: preset, field: 'bf16WeightType' })).toBe(parameters);
+  expect(applyImageRecommendedField({ parameters, recommendation: preset, field: 'flashAttention' })).toBe(parameters);
+  expect(imageRecommendedHint({ recommendation: preset, field: 'bf16WeightType' })).toBeUndefined();
+  expect(applyImageRecommendedField({ parameters, recommendation: preset, field: 'width' })).toEqual({ ...parameters, width: 1024 });
+  expect(applyImageRecommendedField({ parameters, recommendation: preset, field: 'steps' })).toEqual({ ...parameters, steps: 6 });
 });
 
 it('does not infer Turbo from a filename or from missing variant evidence', async () => {

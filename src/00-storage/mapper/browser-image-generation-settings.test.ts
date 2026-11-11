@@ -7,6 +7,22 @@ import { settingsToDomain, settingsToDto } from './mappers';
 const base: Settings = { ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '' }, storageType: 'local' };
 
 describe('browser image generation settings', () => {
+  it.each([undefined, 'f32', 'f16', 'bf16'] as const)('roundtrips the stored BF16 choice without materializing a legacy missing value: %s', bf16WeightType => {
+    const preferences: BrowserImageGenerationSettings = { width: 512 };
+    if (bf16WeightType !== undefined) {
+      preferences.bf16WeightType = bf16WeightType;
+    }
+    const stored = JSON.parse(JSON.stringify(settingsToDto({ domain: { ...base, experimental: { browserImageGeneration: preferences } } })));
+    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(stored) });
+    expect(restored.experimental?.browserImageGeneration?.bf16WeightType).toBe(bf16WeightType);
+    expect(restored.experimental?.browserImageGeneration?.width).toBe(512);
+    if (bf16WeightType === undefined) {
+      expect(stored.experimental.browserImageGeneration).not.toHaveProperty('bf16WeightType');
+    } else {
+      expect(stored.experimental.browserImageGeneration.bf16WeightType).toBe(bf16WeightType);
+    }
+  });
+
   it('keeps absent preferences absent while exposing the current editor defaults separately', () => {
     const saved = settingsToDto({ domain: base });
     const read = settingsToDomain({ dto: SettingsSchemaDto.parse(saved) });

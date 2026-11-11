@@ -28,6 +28,16 @@ const configurationOpen = ref(false);
 const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
 const remote = computed(() => props.view.inferenceLocation?.kind.value === 'naidan_rpc');
+const bf16RetentionUnavailable = computed(() => {
+  switch (parameters.value.bf16WeightType) {
+  case 'bf16': return !library.runtimeFeatures.value.bf16WeightRetention;
+  case 'f32': case 'f16': return false;
+  default: {
+    const exhaustive: never = parameters.value.bf16WeightType;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
 const { settings } = useSettings();
 watch([() => props.view.inferenceLocation, () => props.active, () => settings.value.experimental?.naidanRpc === 'enabled'], ([location, active, enabled], _previous, onCleanup) => {
   location?.setCatalogActivity({ active, enabled });
@@ -159,7 +169,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <textarea :id="id + '-negative-prompt'" :disabled="draftDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y border-0 bg-transparent px-0.5 py-2 text-sm leading-7 text-gray-800 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-100" />
         </div>
         <div tw-class="flex flex-wrap items-center gap-2" data-testid="image-generation-actions">
-          <button type="submit" :disabled="formDisabled || !supported || !hasModel || (!remote && (library.importing.value || (!!library.selectedCandidateKey.value && !library.ready.value)))" data-testid="image-generate" tw-class="flex min-h-11 flex-1 items-center justify-center gap-2.5 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none border-blue-300/80 bg-blue-50/60 text-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-500/40 dark:bg-gray-800/90 dark:text-gray-100 dark:hover:border-blue-400/60 dark:hover:bg-gray-800"><ImageIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
+          <button type="submit" :disabled="formDisabled || !supported || !hasModel || (!remote && (bf16RetentionUnavailable || library.importing.value || (!!library.selectedCandidateKey.value && !library.ready.value)))" data-testid="image-generate" tw-class="flex min-h-11 flex-1 items-center justify-center gap-2.5 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none border-blue-300/80 bg-blue-50/60 text-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-500/40 dark:bg-gray-800/90 dark:text-gray-100 dark:hover:border-blue-400/60 dark:hover:bg-gray-800"><ImageIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
 
           <button type="button" :disabled="!inferenceRunning || stopping" @click="cancel" data-testid="image-cancel" tw-class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
             <SquareIcon aria-hidden="true" tw-class="h-4 w-4 fill-current" />{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
@@ -240,10 +250,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__weight_residency_help() }}</p>
           <div tw-class="block text-sm space-y-1">
-            <div tw-class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1"><label :for="id + '-recommended-bf16WeightType'">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion() }}</label><ImageRecommendedFieldHint :recommendation="recommendation" field="bf16WeightType" :current="parameters.bf16WeightType" :input-id="id + '-recommended-bf16WeightType'" :context="context" :disabled="draftDisabled" :busy="busy" @apply="applyRecommendedField" /></div>
-            <SettingsFormSelect :id="id + '-recommended-bf16WeightType'" v-model="parameters.bf16WeightType" data-testid="image-bf16-weight-type" :options="[{ value: 'f32', label: 'F32' }, { value: 'f16', label: 'F16' }]" :label="lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion()" :disabled="draftDisabled" />
+            <div tw-class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1"><label :for="id + '-recommended-bf16WeightType'">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage() }}</label><ImageRecommendedFieldHint :recommendation="recommendation" field="bf16WeightType" :current="parameters.bf16WeightType" :input-id="id + '-recommended-bf16WeightType'" :context="context" :disabled="draftDisabled" :busy="busy" @apply="applyRecommendedField" /></div>
+            <SettingsFormSelect :id="id + '-recommended-bf16WeightType'" v-model="parameters.bf16WeightType" data-testid="image-bf16-weight-type" :options="[{ value: 'bf16', label: 'BF16', disabled: !library.runtimeFeatures.value.bf16WeightRetention }, { value: 'f32', label: 'F32' }, { value: 'f16', label: 'F16' }]" :label="lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage()" :disabled="draftDisabled" />
           </div>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_conversion_help() }}</p>
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_weight_storage_help() }}</p>
+          <p v-if="!library.runtimeFeatures.value.bf16WeightRetention" data-testid="image-bf16-retention-unavailable" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__bf16_retention_requires_an_updated_image_engine() }}</p>
           <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__memory_and_cancellation() }}</p>
           <label tw-class="block text-sm space-y-1">
             <span>{{ lazyStrings.stableDiffusionCppBrowser__gpu_budget() }}</span>

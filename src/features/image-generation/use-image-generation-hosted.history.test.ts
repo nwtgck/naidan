@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => {
     download: vi.fn(),
     setTransfer: vi.fn(),
     models,
-    facts: { family: 'z-image' as 'z-image' | 'qwen-image-2.1', variant: 'turbo' as 'turbo' | 'base', evidence: [] as string[] },
+    facts: { family: 'z-image' as 'z-image' | 'qwen-image-2.1' | 'minimax-h3-image', variant: 'turbo' as 'turbo' | 'base', evidence: [] as string[] },
     storageType: 'opfs',
     listeners: new Set<({ event }: { event: { type: 'migration', timestamp: number } }) => void>(),
     select(value: { family: 'z-image' | 'qwen-image-2.1', turbo: boolean }) {
@@ -1225,19 +1225,20 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(pendingImageHistory.list()).toHaveLength(1);
   });
 
-  it('keeps the chosen dimensions for selection-time helpers and explicit recommended settings', async () => {
+  it.each(['bf16', 'f32', 'f16'] as const)('keeps the chosen dimensions and %s precision for selection-time helpers and explicit recommended settings', async bf16WeightType => {
     const view = open();
     view.parameters.value.width = 768;
     view.parameters.value.height = 448;
     view.parameters.value.steps = 50;
     view.parameters.value.guidance = 10;
+    view.parameters.value.bf16WeightType = bf16WeightType;
     mocks.select({ family: 'z-image', turbo: true });
     await nextTick();
-    expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1 });
+    expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1, bf16WeightType });
     view.parameters.value.steps = 60;
     view.applyRecommendedSettings();
     await nextTick();
-    expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1 });
+    expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1, bf16WeightType });
   });
 
   it('sets Turbo guidance to one on Qwen selection without resetting size, and keeps Base at six', () => {
@@ -1259,6 +1260,40 @@ describe('hosted image history integration with a synthetic inference client', (
     view.applyRecommendedSettings();
     expect(view.parameters.value).toMatchObject({ width: 768, height: 640, steps: 34, guidance: 1, sampler: 'dpm++2m', scheduler: 'karras' });
     expect(view.preview.value.interval).toBe(9);
+  });
+
+  it('applies the H3 sampling contract while preserving composition and user precision, memory and tiling settings', () => {
+    mocks.facts = { family: 'minimax-h3-image', variant: 'base', evidence: [] };
+    const view = open();
+    view.parameters.value = {
+      ...view.parameters.value,
+      width: 768,
+      height: 448,
+      steps: 37,
+      guidance: 7,
+      sampler: 'dpm++2m',
+      scheduler: 'karras',
+      distilledGuidance: 2.5,
+      bf16WeightType: 'f16',
+      flashAttention: true,
+      conditioningCacheSize: 3,
+      modelArguments: 'keep=true',
+      vaeTiling: false,
+      vaeTileSize: 16,
+      qwenVaePolicy: 'native',
+    };
+    view.profile.value = 'webgpu-wasm64-jspi';
+    view.weightResidency.value = 'disk';
+    view.gpuBudgetMiB.value = 6144;
+    const before = { ...view.parameters.value };
+
+    expect(view.recommendation.value?.id).toBe('minimax-h3-image');
+    view.applyRecommendedSettings();
+
+    expect(view.parameters.value).toEqual({ ...before, steps: 6, guidance: 1, sampler: 'euler', scheduler: 'discrete' });
+    expect(view.profile.value).toBe('webgpu-wasm64-jspi');
+    expect(view.weightResidency.value).toBe('disk');
+    expect(view.gpuBudgetMiB.value).toBe(6144);
   });
 
   it('resolves a browser-random seed once for the accepted request and saved snapshot', async () => {

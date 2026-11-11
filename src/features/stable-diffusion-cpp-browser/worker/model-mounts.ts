@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { inspectWeightFile, readModelJson, type ModelMetadataFile, type WeightMetadata } from '@/features/stable-diffusion-cpp-browser/logic/model-metadata';
+import { hasMinimaxH3ImageStructure, minimaxH3PrunedTextEmbedding } from '@/features/stable-diffusion-cpp-browser/logic/minimax-h3-metadata';
 import { relativeCompanionPath, validModelPath } from '@/features/stable-diffusion-cpp-browser/logic/model-path';
 import { parseGgufSplitPath } from '@/utils/gguf-file-paths';
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
@@ -10,7 +11,11 @@ const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string(
 
 /** Validate untrusted model/index data before the native parser can fall back to
  * a different format. No model-provided network path or code is ever executed. */
-export async function validateModelMounts({ input, reader, capabilities }: { input: Input, reader: SyncBlobReader, capabilities: number }): Promise<{ relativePath: string, files: { relativePath: string, file: File }[], summary: { tensorCount: number, dtypes: string, largestElements: number } }> {
+export async function validateModelMounts({ input, reader, capabilities }: { input: Input, reader: SyncBlobReader, capabilities: number }): Promise<{
+  relativePath: string, files: { relativePath: string, file: File }[],
+  summary: { tensorCount: number, dtypes: string, largestElements: number, largestBF16TensorElements: string },
+  minimaxH3Image: boolean, minimaxH3BF16Embedding: { name: string, elements: bigint } | undefined,
+}> {
   const path = input.relativePath ?? input.file.name;
   const files = [{ relativePath: path, file: input.file }, ...(input.companions ?? [])];
   const names = new Set(files.map(file => file.relativePath));
@@ -96,6 +101,9 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
   }
   const tensorNames = new Set<string>();
   for (const name of required) {
+    if (metadata.get(name)?.requiresGgufOriginalShapes && !(capabilities & 4)) {
+      throw new Error('This image core needs the GGUF original-shape update. Keep the original GGUF file unchanged.');
+    }
     for (const tensor of metadata.get(name)?.tensors ?? []) {
       if (tensorNames.has(tensor.name)) {
         throw new Error('Duplicate tensors in model shard group');
@@ -106,21 +114,39 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
   // Unreferenced source files are preserved in storage, but never mounted.
   const dtypes = new Map<string, number>();
   let tensorCount = 0, largestElements = 0;
+  let largestBF16TensorElements = 0n;
+  const tensors = [...required].flatMap(name => metadata.get(name)?.tensors ?? []);
+  const architectures = [...required].map(name => metadata.get(name)?.metadata.get('general.architecture')).filter(architecture => architecture !== undefined);
+  const embedding = new Set(architectures).size <= 1 ? minimaxH3PrunedTextEmbedding({ tensors, architecture: architectures[0], modelType: undefined, textModelType: undefined }) : undefined;
   for (const name of required) {
     for (const tensor of metadata.get(name)?.tensors ?? []) {
       const type = tensor.dtype === '30' ? 'BF16' : tensor.dtype === '0' ? 'F32' : tensor.dtype === '1' ? 'F16' : tensor.dtype;
       dtypes.set(type, (dtypes.get(type) ?? 0) + 1);
       tensorCount++;
       largestElements = Math.max(largestElements, tensor.shape.reduce((n, value) => n * value, 1));
+      if (type === 'BF16') {
+        const elements = tensor.shape.reduce((total, dimension) => total * BigInt(dimension), 1n);
+        if (elements > largestBF16TensorElements) {
+          largestBF16TensorElements = elements;
+        }
+      }
     }
   }
   return {
     relativePath: path,
     files: files.filter(entry => required.has(entry.relativePath)),
+    minimaxH3Image: hasMinimaxH3ImageStructure({ tensors }),
+    // The caller must also select an H3 Image primary before treating this
+    // embedding as consumed. Unused BF16 tensors never authorize rejection.
+    minimaxH3BF16Embedding: embedding && (embedding.dtype === 'BF16' || embedding.dtype === '30')
+      ? { name: embedding.name, elements: embedding.shape.reduce((total, dimension) => total * BigInt(dimension), 1n) } : undefined,
     summary: {
       tensorCount,
       dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512),
       largestElements,
+      // Decimal text preserves the exact header count across diagnostics/JSON.
+      // This describes source tensors; it does not prove which ones are used.
+      largestBF16TensorElements: String(largestBF16TensorElements),
     },
   };
 }

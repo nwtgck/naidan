@@ -15,6 +15,7 @@ it('keeps native verbose text opt-in while structural checkpoints work in normal
   trace.native({ message: 'detail', level: 0 });
   expect(listener).not.toHaveBeenCalled();
   trace.native({ message: 'util.h:101  - graph-stage-v1 runner=anima stage=graph event=begin\n', level: 0 });
+  trace.native({ message: 'graph-stage-v1 runner=anima stage=graph event=begin --- util.h:111\n', level: 0 });
   expect(listener).not.toHaveBeenCalled();
   trace.emit({ event: 'start', stage: 'generation', message: undefined, fields: {} });
   expect(listener).toHaveBeenCalledOnce();
@@ -33,12 +34,12 @@ it('bounds high-frequency logs and reports omitted lines instead of queuing prom
   expect(listener.mock.calls[60]?.[0].diagnostic).toMatchObject({ event: 'dropped', fields: { nativeLines: 4940 } });
 });
 
-it('exports graph boundaries after verbose saturation without spending or resetting the verbose budget', () => {
+it.each(['prefix', 'suffix'] as const)('exports %s graph boundaries after verbose saturation without spending or resetting the verbose budget', format => {
   const buffer = createImageDiagnosticBuffer();
   const trace = createImageTrace({ debug: 'on', secrets: ['private-runner'], listener: buffer.append, now: () => 0 });
-  const first = 'util.h:101  - graph-stage-v1 runner=private-runner stage=graph event=begin\n';
-  const begin = 'util.h:101  - graph-stage-v1 runner=anima stage=scheduler-create event=begin\n';
-  const end = 'util.h:101  - graph-stage-v1 runner=anima stage=scheduler-create event=end\n';
+  const first = format === 'prefix' ? 'util.h:101  - graph-stage-v1 runner=private-runner stage=graph event=begin\n' : 'graph-stage-v1 runner=private-runner stage=graph event=begin --- util.h:111\n';
+  const begin = format === 'prefix' ? 'util.h:101  - graph-stage-v1 runner=anima stage=scheduler-create event=begin\n' : 'graph-stage-v1 runner=qwen3vl stage=workspace-allocate event=begin --- util.h:111\n';
+  const end = begin.replace('event=begin', 'event=end');
   trace.native({ message: first, level: 0 });
   for (let i = 0; i < 60; i++) {
     trace.native({ message: 'verbose ' + i, level: 0 });
@@ -66,11 +67,12 @@ it('exports graph boundaries after verbose saturation without spending or resett
   expect(exported).not.toContain('extra line');
 });
 
-it('keeps the export buffer bounded even for graph-stage diagnostics', () => {
+it.each(['prefix', 'suffix'] as const)('keeps the export buffer bounded even for %s graph-stage diagnostics', format => {
   const buffer = createImageDiagnosticBuffer();
   const trace = createImageTrace({ debug: 'on', secrets: [], listener: buffer.append, now: () => 0 });
   for (let i = 0; i < 2000; i++) {
-    trace.native({ message: `util.h:101  - graph-stage-v1 runner=runner-${i} stage=graph event=failed\n`, level: 0 });
+    const message = format === 'prefix' ? `util.h:101  - graph-stage-v1 runner=runner-${i} stage=graph event=failed\n` : `graph-stage-v1 runner=runner-${i} stage=graph event=failed --- util.h:111\n`;
+    trace.native({ message, level: 0 });
   }
   const exported = buffer.text();
   expect(exported).toContain('runner=runner-1999');

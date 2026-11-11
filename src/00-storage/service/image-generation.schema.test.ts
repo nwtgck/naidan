@@ -10,6 +10,22 @@ function runFixture() {
 }
 
 describe('Image Generation persistence contracts', () => {
+  it.each([undefined, 'f32', 'f16', 'bf16'] as const)('roundtrips the exact BF16 choice and preserves an omitted legacy field through the real history DTO: %s', bf16WeightType => {
+    const run = runFixture();
+    if (bf16WeightType === undefined) {
+      delete run.request.parameters.bf16WeightType;
+    } else {
+      run.request.parameters.bf16WeightType = bf16WeightType;
+    }
+    const json = JSON.parse(JSON.stringify(imageGenerationRunToDto({ run })));
+    const restored = imageGenerationRunToDomain({ dto: ExperimentalImageGenerationRunSchemaDto.parse(json) });
+    expect(restored).toEqual(run);
+    expect(restored.request.parameters.bf16WeightType).toBe(bf16WeightType);
+    if (bf16WeightType === undefined) {
+      expect(json.request.parameters).not.toHaveProperty('bf16WeightType');
+    }
+  });
+
   it('round-trips exact large seeds and the complete request through JSON serialization', () => {
     const run = runFixture();
     const parsed = ExperimentalImageGenerationRunSchemaDto.parse(JSON.parse(JSON.stringify(imageGenerationRunToDto({ run }))));
