@@ -27,6 +27,11 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+### Changed
+
+- Stage new Hugging Face model downloads as `.tmp` files and publish them by native file move after size, checksum, and format validation, without new `.pending` or `.complete` files. Resume interrupted `.tmp` downloads by byte offset; retain the existing journal and receipt path for older downloads and storage without native move support.
+- Use `.tmp` staging and native file moves for local llama.cpp and image-model imports on supported storage, while keeping the existing temporary repository-wide import barrier. Recognize completed markerless image-model downloads without inventing persistent source metadata.
+
 ### Fixed
 
 - Recover the development privacy broker after rapid HTML error-and-repair saves, and cancel pending rebuilds when its server closes.

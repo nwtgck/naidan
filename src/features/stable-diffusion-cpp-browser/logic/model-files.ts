@@ -10,7 +10,7 @@ export function modelForImageCandidate({ slot, candidate }: { slot: ModelSlot, c
   // Preserve publication identity and shard membership; never copy weight bytes.
   // Host files can change outside Naidan. Fresh File snapshots deliberately
   // invalidate retained-model identity, even when an old receipt still matches.
-  const modelFilesReuseKey = imageModelLocation({ repositoryKey: candidate.repositoryKey, hostSource: candidate.hostSource, relativePath: candidate.primaryRelativePath }).kind === 'opfs' && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({
+  const modelFilesReuseKey = imageModelLocation({ repositoryKey: candidate.repositoryKey, hostSource: candidate.hostSource, relativePath: candidate.primaryRelativePath }).kind === 'opfs' && candidate.repositoryKey.startsWith('huggingface.co/') && candidate.files.every(entry => !entry.receipt || entry.receipt.source.kind === 'hugging-face') ? JSON.stringify({
     repository: candidate.repositoryKey,
     path: candidate.primaryRelativePath,
     files: candidate.files.map(entry => ({ relativePath: entry.relativePath, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),

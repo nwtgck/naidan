@@ -225,23 +225,24 @@ it('publishes a snapshot-bound complete receipt only after verification and clea
   expect(receipt.lastModified).toBe((await (await folder.getFileHandle('model.gguf')).getFile()).lastModified);
 });
 
-it('does not auto-use a missing, malformed or stale complete receipt, and verifies markerless existing bytes without another payload download', async () => {
+it('lists verified markerless files and reuses their bytes without inventing a receipt', async () => {
   serve({ actual: gguf(), expected: gguf() });
   await downloadImageRecipe({ files: [file], signal: new AbortController().signal, onProgress() {} });
   const folder = await (await stored()).getDirectoryHandle('weights');
   await folder.removeEntry('.model.gguf.complete');
-  expect((await listImageRepositories({ signal: undefined }))[0]?.files).toEqual([]);
+  // The old receipt is optional when an existing finished file has no pending.
+  expect((await listImageRepositories({ signal: undefined }))[0]?.files).toHaveLength(1);
   const writes = vi.spyOn(await folder.getFileHandle('model.gguf'), 'createWritable');
   await downloadImageRecipe({ files: [file], signal: new AbortController().signal, onProgress() {} });
   expect(writes).not.toHaveBeenCalled();
   expect(calls.fetch.mock.calls.filter(([{ request }]) => !request.url.includes('/api/'))).toHaveLength(1);
-  expect((await listImageRepositories({ signal: undefined }))[0]?.files).toHaveLength(1);
-  const receipt = await folder.getFileHandle('.model.gguf.complete');
+  expect(folder.children.has('.model.gguf.complete')).toBe(false);
+  // A malformed legacy receipt must not be overwritten or magically repaired.
+  const receipt = await folder.getFileHandle('.model.gguf.complete', { create: true });
   receipt.data = new TextEncoder().encode('{}');
-  expect((await listImageRepositories({ signal: undefined }))[0]?.files).toEqual([]);
+  expect((await listImageRepositories({ signal: undefined }))[0]?.files).toHaveLength(1);
   await downloadImageRecipe({ files: [file], signal: new AbortController().signal, onProgress() {} });
-  (await folder.getFileHandle('model.gguf')).modified++;
-  expect((await listImageRepositories({ signal: undefined }))[0]?.files).toEqual([]);
+  expect(await (await receipt.getFile()).text()).toBe('{}');
 });
 
 it('resumes only recorded bytes with Range and rehashes the entire prefix plus suffix', async () => {

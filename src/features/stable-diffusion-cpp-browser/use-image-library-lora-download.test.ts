@@ -89,13 +89,13 @@ it('downloads only the optional adapter and preserves the chosen base and its re
   expect(imageModelRecipes.find(recipe => recipe.id === entry.recipeId)?.components.map(item => item.role)).toEqual(['diffusion', 'vae', 'lm']);
 });
 
-it('requires the exact publication receipt in the selected destination, not any selectable adapter', async () => {
+it('accepts markerless catalog-path candidates only for the selected destination and expected size', async () => {
   const h = harness();
   h.inventory.candidates.push(adapter({ source: undefined, root: 'host-root' }));
   await h.library.refresh();
   h.library.hostDirectories.destination.value = 'host-root';
   expect(h.library.savedLoras.value).toHaveLength(1);
-  expect(h.library.loraAvailable({ id: entry.id })).toBe(false);
+  expect(h.library.loraAvailable({ id: entry.id })).toBe(true);
   for (const changed of [{ sha256: '0'.repeat(64) }, { repository: 'other/repo' }, { revision: '0'.repeat(40) }, { path: 'other.safetensors' }]) {
     h.inventory.candidates[1] = adapter({ source: { ...source(), ...changed }, root: 'host-root' });
     await h.library.refresh();
@@ -108,7 +108,7 @@ it('requires the exact publication receipt in the selected destination, not any 
   expect(h.library.loraAvailable({ id: entry.id })).toBe(false);
 });
 
-it('resumes an adapter download independently of recipe selections and never promotes markerless output to complete', async () => {
+it('resumes an adapter download and recognizes a completed markerless catalog file', async () => {
   const h = harness();
   await h.library.refresh();
   h.download.mockRejectedValueOnce(new Error('interrupted'));
@@ -119,12 +119,12 @@ it('resumes an adapter download independently of recipe selections and never pro
   });
   await h.library.resumeDownload();
   expect(h.download.mock.calls[1]![0].files).toEqual([entry.source]);
-  expect(h.library.downloadState.value).toBe('incomplete');
+  expect(h.library.downloadState.value).toBe('complete');
   expect(h.library.selectedCandidateKey.value).toBe('model');
   h.library.resetDownloadIntent();
   expect(h.library.downloadLoraId.value).toBe(entry.id);
-  const job = h.library.downloadQueue.value[0]!;
-  h.library.removeQueuedDownload({ id: job.id });
-  expect(h.library.downloadLoraId.value).toBe('');
+  expect(h.library.downloadQueue.value).toEqual([]);
+  // A completed download has no pending job to remove; reset intent is separate.
+  expect(h.library.downloadLoraId.value).toBe(entry.id);
   expect(h.library.downloadRecipeId.value).toBe('');
 });

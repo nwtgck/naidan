@@ -1,3 +1,4 @@
+import { createFileMoveSupportCache, moveStagedFile, publicationFileName, temporaryFileName } from '@/utils/file-system-publication';
 import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/inventory-worker/types';
 import { modelFileIsPending, modelFileMarker, publishModelFile, readModelFileReceipt, type ModelFileReceipt } from '@/logic/model-file-publication';
 import { readJournal } from '@/features/llama-cpp-browser/hugging-face/storage';
@@ -101,7 +102,19 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
       case 'directory': await walk({ directory: entry, prefix: path + '/', depth: depth + 1 });
         break;
       case 'file': {
-        if (hidden.has(path) || await modelFileIsPending({ directory, name })) {
+        const stagingFor = name.endsWith('.tmp') ? name.slice(0, -4) : undefined;
+        const hideTemporary = (() => {
+          switch (publication) {
+          case 'opfs-hugging-face': case 'host': return stagingFor !== undefined;
+          case 'opfs-user': return /\.(?:gguf|safetensors|sft)\.tmp$/i.test(name);
+          default: {
+            const exhaustive: never = publication;
+            throw new Error(String(exhaustive));
+          }
+          }
+        })();
+        if (hideTemporary || hidden.has(path) || await modelFileIsPending({ directory, name }) ||
+            (stagingFor && await modelFileIsPending({ directory, name: stagingFor }))) {
           issues.push({ relativePath: path, message: 'Download is incomplete. Resume the catalog download.' });
           break;
         }
@@ -109,9 +122,9 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
         const file = storedFile.file;
         const receipt = await readModelFileReceipt({ directory, name, file });
         // Legacy user imports were committed with a repository-wide marker.
-        // Remote files require a per-file receipt: the old image downloader
-        // wrote no receipt, so explicit Download verifies and adopts those bytes.
-        if (requiresReceipt) {
+        // A finished move is a normal file with no receipt. Legacy receipts
+        // still carry provenance, but their absence cannot hide new downloads.
+        if (requiresReceipt && receipt) {
           const source = receipt?.source;
           if (!receipt || source?.kind !== 'hugging-face' || source.path !== path ||
               ![ `huggingface.co/${source.repository}/resolve/main`, `huggingface.co/${source.repository}/resolve/${source.revision}` ].includes(repositoryKey)) {
@@ -309,6 +322,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
     }
     paths.add(entry.relativePath);
   }
+  const inputEntries = new Set(paths);
   for (const path of paths) {
     const parent = path.split('/');
     parent.pop();
@@ -316,6 +330,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
       if (paths.has(parent.join('/'))) {
         throw new Error('File/directory path collision');
       }
+      inputEntries.add(parent.join('/'));
       parent.pop();
     }
   }
@@ -339,11 +354,12 @@ export async function importImageRepository({ input, signal, onProgress }: {
     }
     signal?.throwIfAborted();
     const root = await user.getDirectoryHandle(directory.rootName, { create: true });
-    const created: { parent: FileSystemDirectoryHandle, name: string, handle: FileSystemFileHandle, size: number, modified: number }[] = [];
+    const created: { parent: FileSystemDirectoryHandle, name: string, finalName: string | undefined, handle: FileSystemFileHandle, size: number, modified: number }[] = [];
     const folders: { parent: FileSystemDirectoryHandle, name: string }[] = [];
     const known = new Map<string, FileSystemDirectoryHandle>([['', root]]);
     let completed = 0;
-    async function makeFile({ parent, name }: { parent: FileSystemDirectoryHandle, name: string }): Promise<(typeof created)[number]> {
+    const moveSupport = createFileMoveSupportCache();
+    async function makeFile({ parent, name, finalName }: { parent: FileSystemDirectoryHandle, name: string, finalName?: string }): Promise<(typeof created)[number]> {
       for await (const [existing] of parent.entries()) {
         if (existing === name) {
           throw new Error('Repository destination changed during import');
@@ -351,7 +367,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
       }
       const handle = await parent.getFileHandle(name, { create: true });
       const file = await handle.getFile();
-      const record = { parent, name, handle, size: file.size, modified: file.lastModified };
+      const record = { parent, name, finalName, handle, size: file.size, modified: file.lastModified };
       created.push(record);
       return record;
     }
@@ -372,7 +388,11 @@ export async function importImageRepository({ input, signal, onProgress }: {
           parent = folder;
           prefix = next;
         }
-        const record = await makeFile({ parent, name });
+        const stagedName = temporaryFileName({ name });
+        const stagedPath = prefix ? `${prefix}/${stagedName}` : stagedName;
+        const collides = inputEntries.has(stagedPath);
+        const publication = collides ? 'unsupported' : await moveSupport.detect({ directory: parent });
+        const record = await makeFile({ parent, name: publicationFileName({ name, support: publication }), finalName: name });
         const writer = await record.handle.createWritable();
         const reader = file.stream().getReader();
         const cancelRead = (): void => {
@@ -409,11 +429,30 @@ export async function importImageRepository({ input, signal, onProgress }: {
           if (published.size !== file.size) {
             throw new Error('Local copy size mismatch');
           }
-          const receipt = await makeFile({ parent, name: modelFileMarker({ name, state: 'complete' }) });
-          await publishModelFile({ directory: parent, name, handle: record.handle, file: published, source: { kind: 'local' } });
-          const receiptFile = await receipt.handle.getFile();
-          receipt.size = receiptFile.size;
-          receipt.modified = receiptFile.lastModified;
+          signal?.throwIfAborted();
+          switch (publication) {
+          case 'supported': {
+            await moveStagedFile({ directory: parent, name, handle: record.handle, snapshot: published, moveSupport });
+            // Rollback follows the renamed entry, never a stale temporary name.
+            record.name = name;
+            const moved = await record.handle.getFile();
+            record.size = moved.size;
+            record.modified = moved.lastModified;
+            break;
+          }
+          case 'unsupported': {
+            const receipt = await makeFile({ parent, name: modelFileMarker({ name, state: 'complete' }) });
+            await publishModelFile({ directory: parent, name, handle: record.handle, file: published, source: { kind: 'local' } });
+            const receiptFile = await receipt.handle.getFile();
+            receipt.size = receiptFile.size;
+            receipt.modified = receiptFile.lastModified;
+            break;
+          }
+          default: {
+            const exhaustive: never = publication;
+            throw new Error(String(exhaustive));
+          }
+          }
         } catch (error) {
           await reader.cancel().catch(() => undefined);
           await writer.abort().catch(() => undefined);
@@ -431,13 +470,15 @@ export async function importImageRepository({ input, signal, onProgress }: {
       // still matching this import's handles/metadata, then EMPTY directories.
       // Never recursively sweep the root or remove someone else's changed data.
       for (const record of [...created].reverse().filter(entry => entry.name !== pendingName)) {
-        try {
-          const current = await record.parent.getFileHandle(record.name);
-          const file = await current.getFile();
-          if (await current.isSameEntry(record.handle) && file.size === record.size && file.lastModified === record.modified) {
-            await record.parent.removeEntry(record.name);
-          }
-        } catch { /* preserve ambiguous leftovers */ }
+        for (const name of new Set([record.name, record.finalName].filter((name): name is string => name !== undefined))) {
+          try {
+            const current = await record.parent.getFileHandle(name);
+            const file = await current.getFile();
+            if (await current.isSameEntry(record.handle) && file.size === record.size && file.lastModified === record.modified) {
+              await record.parent.removeEntry(name);
+            }
+          } catch { /* preserve ambiguous leftovers */ }
+        }
       }
       for (const folder of [...folders].reverse()) {
         await folder.parent.removeEntry(folder.name).catch(() => undefined);

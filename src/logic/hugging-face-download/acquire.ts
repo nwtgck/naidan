@@ -1,3 +1,4 @@
+import { createFileMoveSupportCache } from '@/utils/file-system-publication';
 import type { DownloadFetch } from './fetch-types';
 import { z } from 'zod';
 import { resolveHuggingFaceFile, huggingFaceSourceSchema, type HuggingFaceSource } from './source';
@@ -61,10 +62,12 @@ export async function acquireHuggingFaceFiles({ files, signal, onProgress, fetch
     throw new Error('Catalog total exceeds exact byte accounting');
   }
   await migrateLegacyDownloads({ files: planned, destination: destination ?? { kind: 'opfs' }, expectedRoot, signal });
+  const moveSupport = createFileMoveSupportCache();
   let completed = 0, processed = 0;
   for (const [index, file] of planned.entries()) {
     let reported = -Infinity, fileProcessed = 0;
     await saveHuggingFaceFile({
+      moveSupport,
       file,
       signal,
       fetch,
