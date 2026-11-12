@@ -1,1 +1,1 @@
-export const modelGraphDefinitionRegistry__register_definitions = (): string => "Register definitions";
+export const modelGraphDefinitionRegistry__register_definitions = (): string => "Register all and use";

@@ -1090,7 +1090,7 @@ describe('explicit image workload observation', () => {
 describe('registered graph worker routing isolation', () => {
   function graphRequest(): WorkerGenerateCall {
     const entries = importModelGraphRegistrations({ input: JSON.stringify(llamaGraphFixture()), existing: [] });
-    return { ...request({ generationId: 8001 }), modelGraphRegistrations: modelGraphRequestRegistrations({ registrations: [setModelGraphUseRule({ registration: entries[0]!, mode: 'replaceNative', registrations: entries })] }) };
+    return { ...request({ generationId: 8001 }), modelGraphRegistrations: modelGraphRequestRegistrations({ registrations: [setModelGraphUseRule({ registration: entries[0]!, mode: 'replace_native', registrations: entries })] }) };
   }
 
   it('does not invoke the graph route for an ordinary native request', async () => {

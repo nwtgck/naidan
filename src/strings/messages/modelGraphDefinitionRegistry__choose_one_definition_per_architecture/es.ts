@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__choose_one_definition_per_architecture = (): string => "Varias definiciones corresponden a la misma arquitectura. Registra por separado la que quieras usar.";

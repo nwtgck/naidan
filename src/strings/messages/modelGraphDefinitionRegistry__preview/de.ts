@@ -1,1 +1,1 @@
-export const modelGraphDefinitionRegistry__preview = (): string => "Preview";
+export const modelGraphDefinitionRegistry__preview = (): string => "Eingabe prüfen";

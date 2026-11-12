@@ -4,7 +4,7 @@ import { createSha256Hasher } from '@/utils/sha256';
 
 export type ModelGraphUseRule =
   | { mode: 'disabled' }
-  | { mode: 'whenArchitectureUnknown' | 'replaceNative'; architecture: string; approvedSha256: string };
+  | { mode: 'when_architecture_unknown' | 'replace_native'; architecture: string; approvedSha256: string };
 
 /** Source syntax is deliberately experimental and may break between releases.
  * Retain unreadable source for recovery; never convert a broken override into
@@ -48,7 +48,7 @@ export function validateModelGraphRegistrations({ registrations }: { registratio
     }
     switch (rule.mode) {
     case 'disabled': break;
-    case 'whenArchitectureUnknown': case 'replaceNative':
+    case 'when_architecture_unknown': case 'replace_native':
       if (!/^[a-zA-Z0-9_.-]{1,128}$/.test(rule.architecture) || rule.approvedSha256 !== sourceSha256) {
         throw new Error('Model graph approval does not match the source');
       }

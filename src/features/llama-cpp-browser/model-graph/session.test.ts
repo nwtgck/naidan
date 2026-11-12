@@ -48,7 +48,7 @@ afterEach(async () => {
   await releaseRegisteredGraph();
 });
 
-function request({ mode }: { mode: 'whenArchitectureUnknown' | 'replaceNative' }): WorkerPrepareInput {
+function request({ mode }: { mode: 'when_architecture_unknown' | 'replace_native' }): WorkerPrepareInput {
   const imported = importModelGraphRegistrations({ input: JSON.stringify(llamaGraphFixture()), existing: [] });
   return { modelId: 'user/fixture', resolvedModel: resolvedModelFixture({ modelId: 'user/fixture' }), options: { profile: 'cpu-wasm32', contextTokens: 128 }, modelGraphRegistrations: modelGraphRequestRegistrations({ registrations: [setModelGraphUseRule({ registration: imported[0]!, mode, registrations: imported })] }) };
 }
@@ -57,14 +57,14 @@ const prepare = ({ value }: { value: WorkerPrepareInput }) => prepareRegisteredG
 
 describe('request-boundary model graph authority and ownership', () => {
   it('does not touch a runtime or model file when disabled', async () => {
-    expect(await prepare({ value: { ...request({ mode: 'replaceNative' }), modelGraphRegistrations: [] } })).toBeUndefined();
+    expect(await prepare({ value: { ...request({ mode: 'replace_native' }), modelGraphRegistrations: [] } })).toBeUndefined();
     expect(calls.open).not.toHaveBeenCalled();
     expect(calls.runtime).not.toHaveBeenCalled();
     expect(calls.releaseNative).not.toHaveBeenCalled();
   });
 
   it('keeps the loaded native model and its caches for an inapplicable unknown-only rule', async () => {
-    expect(await prepare({ value: request({ mode: 'whenArchitectureUnknown' }) })).toBeUndefined();
+    expect(await prepare({ value: request({ mode: 'when_architecture_unknown' }) })).toBeUndefined();
     expect(calls.runtime).toHaveBeenCalledOnce();
     expect(calls.releaseNative).not.toHaveBeenCalled();
     expect(calls.engine).not.toHaveBeenCalled();
@@ -72,12 +72,12 @@ describe('request-boundary model graph authority and ownership', () => {
 
   it('uses an unknown-only rule only after the actual runtime reports unknown', async () => {
     known.mockReturnValue(false);
-    expect(await prepare({ value: request({ mode: 'whenArchitectureUnknown' }) })).toBeDefined();
+    expect(await prepare({ value: request({ mode: 'when_architecture_unknown' }) })).toBeDefined();
     expect(calls.releaseNative).toHaveBeenCalledWith({ releaseRuntime: false });
   });
 
   it('reuses a matching owner, changes its label without changing semantics, and releases on disable', async () => {
-    const value = request({ mode: 'replaceNative' });
+    const value = request({ mode: 'replace_native' });
     const first = await prepare({ value });
     const second = await prepare({ value: { ...value, modelGraphRegistrations: value.modelGraphRegistrations!.map(entry => ({ ...entry, label: 'Renamed' })) } });
     expect(second).toBe(first);
@@ -89,7 +89,7 @@ describe('request-boundary model graph authority and ownership', () => {
   });
 
   it('rebuilds on context changes and never retains an old definition after replacement', async () => {
-    const value = request({ mode: 'replaceNative' });
+    const value = request({ mode: 'replace_native' });
     await prepare({ value });
     await prepare({ value: { ...value, options: { ...value.options, contextTokens: 256 } } });
     expect(calls.engine).toHaveBeenCalledTimes(2);
@@ -100,14 +100,14 @@ describe('request-boundary model graph authority and ownership', () => {
   });
 
   it.each(['vision', 'audio', 'live'] as const)('does not silently fall back for unsupported %s input', async purpose => {
-    await expect(prepareRegisteredGraph({ request: request({ mode: 'replaceNative' }), signal: undefined, onProgress() {}, purpose })).rejects.toThrow('unsupported-input');
+    await expect(prepareRegisteredGraph({ request: request({ mode: 'replace_native' }), signal: undefined, onProgress() {}, purpose })).rejects.toThrow('unsupported-input');
     expect(calls.engine).not.toHaveBeenCalled();
     expect(calls.releaseNative).not.toHaveBeenCalled();
   });
 
   it('releases vocabulary and files after a graph allocation failure', async () => {
     calls.engine.mockRejectedValueOnce(new Error('allocation rejected'));
-    await expect(prepare({ value: request({ mode: 'replaceNative' }) })).rejects.toThrow('allocation rejected');
+    await expect(prepare({ value: request({ mode: 'replace_native' }) })).rejects.toThrow('allocation rejected');
     expect(closeVocab).toHaveBeenCalledOnce();
     expect(closeFile).toHaveBeenCalledTimes(2);
     await releaseRegisteredGraph();
@@ -116,7 +116,7 @@ describe('request-boundary model graph authority and ownership', () => {
 
   it('rejects a tokenizer inventory mismatch before graph allocation', async () => {
     vocabSize.mockResolvedValueOnce(260);
-    await expect(prepare({ value: request({ mode: 'replaceNative' }) })).rejects.toThrow('vocabulary size');
+    await expect(prepare({ value: request({ mode: 'replace_native' }) })).rejects.toThrow('vocabulary size');
     expect(closeVocab).toHaveBeenCalledOnce();
     expect(calls.engine).not.toHaveBeenCalled();
   });
@@ -125,7 +125,7 @@ describe('request-boundary model graph authority and ownership', () => {
     calls.bind.mockImplementationOnce(() => {
       throw new Error('missing native extension');
     });
-    await expect(prepare({ value: request({ mode: 'replaceNative' }) })).rejects.toThrow('missing native extension');
+    await expect(prepare({ value: request({ mode: 'replace_native' }) })).rejects.toThrow('missing native extension');
     expect(calls.releaseNative).not.toHaveBeenCalled();
   });
 
@@ -137,7 +137,7 @@ describe('request-boundary model graph authority and ownership', () => {
     closeVocab.mockImplementationOnce(() => {
       throw new Error('secondary vocabulary close failure');
     });
-    await expect(prepare({ value: request({ mode: 'replaceNative' }) })).rejects.toThrow('primary allocation failure');
+    await expect(prepare({ value: request({ mode: 'replace_native' }) })).rejects.toThrow('primary allocation failure');
     expect(closeVocab).toHaveBeenCalledOnce();
     expect(closeFile).toHaveBeenCalledTimes(2);
     await releaseRegisteredGraph();
@@ -148,15 +148,15 @@ describe('request-boundary model graph authority and ownership', () => {
     closeFile.mockImplementationOnce(() => {}).mockImplementationOnce(() => {
       throw new Error('file close failure');
     });
-    await expect(prepare({ value: request({ mode: 'replaceNative' }) })).rejects.toThrow('file close failure');
+    await expect(prepare({ value: request({ mode: 'replace_native' }) })).rejects.toThrow('file close failure');
     expect(closeEngine).toHaveBeenCalledOnce();
     expect(closeVocab).toHaveBeenCalledOnce();
-    await prepare({ value: request({ mode: 'replaceNative' }) });
+    await prepare({ value: request({ mode: 'replace_native' }) });
     expect(calls.engine).toHaveBeenCalledTimes(2);
   });
 
   it('closes the vocabulary and forgets the owner even when both destructors fail', async () => {
-    await prepare({ value: request({ mode: 'replaceNative' }) });
+    await prepare({ value: request({ mode: 'replace_native' }) });
     closeEngine.mockRejectedValueOnce(new Error('engine close failure'));
     closeVocab.mockImplementationOnce(() => {
       throw new Error('vocabulary close failure');

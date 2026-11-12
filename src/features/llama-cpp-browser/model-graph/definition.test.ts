@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { graphFixture } from './fixtures.test-support';
 import { parseModelGraphDefinitions } from './definition';
 import { compileModelGraph, modelGraphTensorBytes } from './compile';
-import { importModelGraphRegistrations, selectModelGraphRegistration, setModelGraphUseRule } from './registry';
+import { importModelGraphRegistrations, registerModelGraphDefinitions, selectModelGraphRegistration, setModelGraphUseRule } from './registry';
 import { modelGraphRequestRegistrations } from './request-registry';
 
 const compile = () => {
@@ -75,6 +75,29 @@ expect(() => compileModelGraph({ definition, inventory, inputTokens: 16, cacheTo
 });
 
 describe('explicit execution authority', () => {
+  it('registers only the selected source with execution approval', () => {
+    const definition = graphFixture().definition;
+    const first = JSON.stringify(definition);
+    const second = JSON.stringify({ ...definition, name: 'Second' });
+    const registered = registerModelGraphDefinitions({ input: first + second, source: second, existing: [] });
+    expect(registered).toHaveLength(1);
+    expect(registered[0]?.label).toBe('Second');
+    expect(registered[0]?.rule).toEqual({ mode: 'replace_native', architecture: 'fixture', approvedSha256: registered[0]?.sourceSha256 });
+    expect(() => registerModelGraphDefinitions({ input: first, source: second, existing: [] })).toThrow('no longer');
+  });
+
+  it('rejects competing approvals in one batch without changing the existing registry', () => {
+    const definition = graphFixture().definition;
+    const first = JSON.stringify(definition);
+    const second = JSON.stringify({ ...definition, name: 'Second' });
+    const existing = importModelGraphRegistrations({ input: first, existing: [] });
+    expect(() => registerModelGraphDefinitions({ input: first + second, source: undefined, existing: [] })).toThrow('Another enabled definition');
+    expect(existing[0]?.rule.mode).toBe('disabled');
+    const approved = setModelGraphUseRule({ registration: existing[0]!, mode: 'replace_native', registrations: existing });
+    expect(() => registerModelGraphDefinitions({ input: second, source: undefined, existing: [approved] })).toThrow('Another enabled definition');
+    expect(approved.rule.mode).toBe('replace_native');
+  });
+
   it('imports disabled and rejects duplicates atomically', () => {
     const source = JSON.stringify(graphFixture().definition);
     const imported = importModelGraphRegistrations({ input: source, existing: [] });
@@ -83,18 +106,18 @@ describe('explicit execution authority', () => {
     expect(() => importModelGraphRegistrations({ input: source + source, existing: [] })).toThrow('already');
   });
 
-  it.each(['replaceNative', 'whenArchitectureUnknown'] as const)('requires local approval: %s', mode => {
+  it.each(['replace_native', 'when_architecture_unknown'] as const)('requires local approval: %s', mode => {
     const imported = importModelGraphRegistrations({ input: JSON.stringify(graphFixture().definition), existing: [] });
     const approved = setModelGraphUseRule({ registration: imported[0]!, mode, registrations: imported });
     const registrations = modelGraphRequestRegistrations({ registrations: [approved] });
     expect(selectModelGraphRegistration({ registrations, architecture: 'fixture', nativeRecognized: false })).toBeDefined();
-    expect(Boolean(selectModelGraphRegistration({ registrations, architecture: 'fixture', nativeRecognized: true }))).toBe(mode === 'replaceNative');
+    expect(Boolean(selectModelGraphRegistration({ registrations, architecture: 'fixture', nativeRecognized: true }))).toBe(mode === 'replace_native');
     expect(selectModelGraphRegistration({ registrations, architecture: 'other', nativeRecognized: false })).toBeUndefined();
   });
 
   it('does not fall back after source tampering or a conflicting approval', () => {
     const [entry] = importModelGraphRegistrations({ input: JSON.stringify(graphFixture().definition), existing: [] });
-    const approved = setModelGraphUseRule({ registration: entry!, mode: 'replaceNative', registrations: [entry!] });
+    const approved = setModelGraphUseRule({ registration: entry!, mode: 'replace_native', registrations: [entry!] });
     const [wire] = modelGraphRequestRegistrations({ registrations: [approved] });
     expect(() => selectModelGraphRegistration({ registrations: [{ ...wire!, source: '{}' }], architecture: 'fixture', nativeRecognized: true })).toThrow('stale');
     expect(() => selectModelGraphRegistration({ registrations: [wire!, wire!], architecture: 'fixture', nativeRecognized: true })).toThrow('Conflicting');

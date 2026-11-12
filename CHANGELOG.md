@@ -27,26 +27,10 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
-### Added
-
-- Experimental model graph definitions in Settings → Developer, with multi-object JSON import, explicit application-wide approval/override rules, independent experimental storage, and actual execution identity in diagnostics and performance comparisons.
-- A model-independent, deliberately unstable declaration compiler with bounded layer repetition, static conditions, metadata-array expressions, typed tensor operators, decoder inputs and staged persistent-state updates. It combines existing GGML operations without executing external JavaScript or adding model-name-specific builders.
-- Checked BF16 and IQ weight layouts and explicit floating-point casts for registered graphs. Backend support remains runtime-specific; unsupported operations fail explicitly.
-- Registered graph execution using the optional bicore vocabulary/chat/sampling boundary. Native model execution remains separate, and older artifacts without the boundary cannot execute registered graphs.
-
-### Changed
-
-- Replace implicit model-graph string interpolation with explicit `concat`/`decimal` name expressions and scoped `iteration`, `capture`, `carry`, and named output references. The deliberately incompatible `experimental-3` declaration format preserves old registration text for copying but requires replacement and renewed approval before execution.
-
 ### Fixed
 
-- Support explicitly declared scalar-or-array model metadata with exact layer counts and missing-key defaults. Preserve strict array indexing, reject malformed layer flags, and report metadata type, length, and index errors separately.
-- Measure registered model graph compute buffers with the native allocator before allocation, instead of double-counting persistent state and summing every intermediate tensor. Preserve the existing budgets and report the state, compute, context, and batch sizes when a real limit is exceeded.
-- Keep model graph declaration parsing and operator catalogs out of the initial Worker protocol bundle while preserving request authority validation.
 - Recover the development privacy broker after rapid HTML error-and-repair saves, and cancel pending rebuilds when its server closes.
 - Reject trailing junk, duplicate keys and malformed concatenated JSON imports instead of accepting a valid-looking prefix.
-- Preserve simultaneous state updates and immutable graph constants across graph reuse; reject unproven floating-point-to-index conversions before native execution.
-
 
 ## [0.66.0] - 2026-11-11
 

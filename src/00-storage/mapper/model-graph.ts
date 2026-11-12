@@ -6,7 +6,7 @@ import { exactObject } from '@/utils/exact-object';
 function copyRule({ rule }: { rule: ModelGraphUseRule }): ModelGraphUseRule {
   switch (rule.mode) {
   case 'disabled': return { mode: 'disabled' };
-  case 'whenArchitectureUnknown': case 'replaceNative': {
+  case 'when_architecture_unknown': case 'replace_native': {
     const { mode, architecture, approvedSha256, ...rest } = rule;
     rest satisfies Record<PropertyKey, never>;
     return { mode, architecture, approvedSha256 };

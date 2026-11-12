@@ -9,7 +9,7 @@ function entry({ index = 0 }: { index?: number } = {}): ModelGraphRequestRegistr
     label: 'Fixture',
     source: '{}',
     sourceSha256: 'a'.repeat(64),
-    rule: { mode: 'replaceNative', architecture: `arch-${index}`, approvedSha256: 'a'.repeat(64) },
+    rule: { mode: 'replace_native', architecture: `arch-${index}`, approvedSha256: 'a'.repeat(64) },
   };
 }
 

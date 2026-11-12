@@ -5,7 +5,7 @@ import * as dtozod from '@/utils/dtozod';
 // and recoverable, rather than silently disappearing on an application update.
 export const ExperimentalModelGraphRuleSchemaDto = dtozod.union([
   dtozod.object({ mode: dtozod.literal('disabled') }),
-  dtozod.object({ mode: dtozod.enum(['whenArchitectureUnknown', 'replaceNative']), architecture: dtozod.string(), approvedSha256: dtozod.string() }),
+  dtozod.object({ mode: dtozod.enum(['when_architecture_unknown', 'replace_native']), architecture: dtozod.string(), approvedSha256: dtozod.string() }),
 ]);
 export const ExperimentalModelGraphRegistrationSchemaDto = dtozod.object({
   id: dtozod.string(),

@@ -1,36 +1,48 @@
 <script setup lang="ts">
-import { CopyIcon, ReplaceIcon, Trash2Icon } from 'lucide-vue-next';
+import { computed, ref, useId } from 'vue';
+import { ChevronDownIcon, CopyIcon, DownloadIcon, ReplaceIcon, Trash2Icon } from 'lucide-vue-next';
 import ActionButton from '@/components/ActionButton.vue';
+import SettingsCollapse from '@/components/SettingsCollapse.vue';
+import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
+import StandardCodeBlock from '@/components/block-markdown/StandardCodeBlock.vue';
 import { lazyStrings } from '@/strings';
 import type { ModelGraphRegistration, ModelGraphUseRule } from '@/01-models/model-graph-registry';
-const props = defineProps<{ registration: ModelGraphRegistration; disabled: boolean; hasInput: boolean }>();
-const emit = defineEmits<{ rule: [mode: ModelGraphUseRule['mode']]; copy: []; replace: []; remove: [] }>();
+defineProps<{ registration: ModelGraphRegistration; disabled: boolean; hasInput: boolean }>();
+const emit = defineEmits<{ rule: [mode: ModelGraphUseRule['mode']]; copy: []; download: []; replace: []; remove: [] }>();
+const sourceOpen = ref(false);
+const sourceMounted = ref(false);
+const sourceButton = ref<HTMLButtonElement>();
+const sourceId = useId();
+const rules = computed(() => [
+  { value: 'disabled' as const, label: lazyStrings.modelGraphDefinitionRegistry__register_only() },
+  { value: 'when_architecture_unknown' as const, label: lazyStrings.modelGraphDefinitionRegistry__use_when_architecture_unknown() },
+  { value: 'replace_native' as const, label: lazyStrings.modelGraphDefinitionRegistry__replace_native_implementation() },
+]);
 
-function changeRule({ event }: { event: Event }): void {
-  const target = event.target;
-  if (!(target instanceof HTMLSelectElement)) {
-    return;
-  }
-  const mode = target.value;
-  target.value = props.registration.rule.mode; // Reflect only a committed, approved change.
-  switch (mode) {
-  case 'disabled': case 'whenArchitectureUnknown': case 'replaceNative': emit('rule', mode);
-    break;
-  default: throw new Error('Invalid model graph usage rule');
-  }
+function toggleSource(): void {
+  // Highlight only after inspection is requested, then retain the content for
+  // the collapse animation and the person's scroll/wrapping preferences.
+  sourceMounted.value = true;
+  sourceOpen.value = !sourceOpen.value;
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <article tw-class="min-w-0 space-y-3 rounded-xl border border-gray-200/80 bg-white/60 p-3 dark:border-gray-700/70 dark:bg-gray-800/25" data-testid="model-graph-registration">
-    <div tw-class="flex flex-wrap items-start justify-between gap-2"><h4 tw-class="min-w-0 break-words text-sm font-medium text-gray-800 dark:text-gray-100">{{ registration.label }}</h4><code v-if="registration.rule.mode !== 'disabled'" tw-class="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">{{ registration.rule.architecture }}</code></div>
-    <label tw-class="block space-y-1.5"><span tw-class="text-xs text-gray-600 dark:text-gray-300">{{ lazyStrings.modelGraphDefinitionRegistry__usage_rule() }}</span>
-      <select :value="registration.rule.mode" @change="changeRule({ event: $event })" :disabled="disabled" data-testid="model-graph-usage-rule" tw-class="block w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
-        <option value="disabled">{{ lazyStrings.modelGraphDefinitionRegistry__register_only() }}</option><option value="whenArchitectureUnknown">{{ lazyStrings.modelGraphDefinitionRegistry__use_when_architecture_unknown() }}</option><option value="replaceNative">{{ lazyStrings.modelGraphDefinitionRegistry__replace_native_implementation() }}</option>
-      </select>
-    </label>
-    <details tw-class="text-xs text-gray-500 dark:text-gray-400"><summary tw-class="cursor-pointer">{{ lazyStrings.modelGraphDefinitionRegistry__source() }} · {{ registration.sourceSha256.slice(0, 12) }}</summary><pre tw-class="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 p-2 font-mono text-xs dark:bg-gray-900">{{ registration.source }}</pre></details>
-    <div tw-class="flex flex-wrap gap-2"><ActionButton appearance="secondary" :icon-tone="undefined" :disabled="disabled" @click="emit('copy')"><CopyIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.modelGraphDefinitionRegistry__copy_definitions() }}</ActionButton><ActionButton appearance="secondary" :icon-tone="undefined" :disabled="disabled || !hasInput" @click="emit('replace')"><ReplaceIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.modelGraphDefinitionRegistry__replace_from_input() }}</ActionButton><ActionButton appearance="danger" :icon-tone="undefined" :disabled="disabled" @click="emit('remove')"><Trash2Icon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.modelGraphDefinitionRegistry__delete_definition() }}</ActionButton></div>
+  <article tw-class="min-w-0 space-y-3 p-4" data-testid="model-graph-registration">
+    <div tw-class="flex flex-wrap items-center justify-between gap-3">
+      <div tw-class="min-w-0 flex-1 space-y-1"><h4 tw-class="break-words text-sm font-medium text-gray-700 dark:text-gray-300">{{ registration.label }}</h4><code v-if="registration.rule.mode !== 'disabled'" tw-class="break-all text-xs text-gray-500 dark:text-gray-400">{{ registration.rule.architecture }}</code></div>
+      <div tw-class="flex shrink-0 items-center gap-2">
+        <ActionButton appearance="secondary" :icon-tone="undefined" :disabled="disabled" @click="emit('copy')" data-testid="model-graph-copy" :aria-label="lazyStrings.modelGraphDefinitionRegistry__copy_definitions()" :title="lazyStrings.modelGraphDefinitionRegistry__copy_definitions()"><CopyIcon aria-hidden="true" tw-class="h-4 w-4" /></ActionButton>
+        <ActionButton appearance="primary" :icon-tone="undefined" :disabled="disabled" @click="emit('download')" data-testid="model-graph-download" :aria-label="lazyStrings.modelGraphDefinitionRegistry__download_json()" :title="lazyStrings.modelGraphDefinitionRegistry__download_json()"><DownloadIcon aria-hidden="true" tw-class="h-4 w-4" /></ActionButton>
+        <ActionButton appearance="secondary" :icon-tone="undefined" :disabled="disabled || !hasInput" @click="emit('replace')" data-testid="model-graph-replace" :aria-label="lazyStrings.modelGraphDefinitionRegistry__replace_from_input()" :title="lazyStrings.modelGraphDefinitionRegistry__replace_from_input()"><ReplaceIcon aria-hidden="true" tw-class="h-4 w-4" /></ActionButton>
+        <ActionButton appearance="danger" :icon-tone="undefined" :disabled="disabled" @click="emit('remove')" data-testid="model-graph-delete" :aria-label="lazyStrings.modelGraphDefinitionRegistry__delete_definition()" :title="lazyStrings.modelGraphDefinitionRegistry__delete_definition()"><Trash2Icon aria-hidden="true" tw-class="h-4 w-4" /></ActionButton>
+      </div>
+    </div>
+    <div tw-class="space-y-1.5"><p tw-class="text-sm text-gray-600 dark:text-gray-400">{{ lazyStrings.modelGraphDefinitionRegistry__usage_rule() }}</p><SettingsFormSelect :model-value="registration.rule.mode" :options="rules" :label="lazyStrings.modelGraphDefinitionRegistry__usage_rule()" :disabled="disabled" data-testid="model-graph-usage-rule" tw-class="w-full text-sm!" @update:model-value="emit('rule', $event)" /></div>
+    <div>
+      <button ref="sourceButton" type="button" :disabled="disabled" @click="toggleSource" :aria-expanded="sourceOpen" :aria-controls="sourceId" data-testid="model-graph-source-toggle" tw-class="inline-flex max-w-full items-center gap-2 rounded-lg py-1 text-sm text-gray-500 transition-colors hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50 dark:text-gray-400 dark:hover:text-blue-400"><ChevronDownIcon aria-hidden="true" :tw-class="['h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none', sourceOpen ? 'rotate-180' : '']" />{{ lazyStrings.modelGraphDefinitionRegistry__source() }}<code tw-class="text-xs text-gray-400 dark:text-gray-500">{{ registration.sourceSha256.slice(0, 12) }}</code></button>
+      <SettingsCollapse :id="sourceId" :open="sourceOpen" :return-focus="sourceButton"><div tw-class="mt-2 max-h-80 overflow-auto"><StandardCodeBlock v-if="sourceMounted" :code="registration.source" lang="json" tw-class="my-0!" /></div></SettingsCollapse>
+    </div>
   </article>
 </template>

@@ -12,7 +12,7 @@ export const modelGraphRequestRegistrationSchema = z.strictObject({
   label: z.string().min(1).max(120),
   source: z.string().min(1).max(1024 * 1024),
   sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
-  rule: z.strictObject({ mode: z.enum(['whenArchitectureUnknown', 'replaceNative']), architecture: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/), approvedSha256: z.string().regex(/^[a-f0-9]{64}$/) }),
+  rule: z.strictObject({ mode: z.enum(['when_architecture_unknown', 'replace_native']), architecture: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/), approvedSha256: z.string().regex(/^[a-f0-9]{64}$/) }),
 });
 export const modelGraphRequestRegistrationsSchema = z.array(modelGraphRequestRegistrationSchema).max(32).superRefine((entries, context) => {
   const ids = new Set<string>(), architectures = new Set<string>();
@@ -37,7 +37,7 @@ export function modelGraphRequestRegistrations({ registrations }: { registration
     rest satisfies Record<PropertyKey, never>;
     switch (rule.mode) {
     case 'disabled': break;
-    case 'replaceNative': case 'whenArchitectureUnknown': result.push({ id: idToRaw({ id }), label, source, sourceSha256, rule });
+    case 'replace_native': case 'when_architecture_unknown': result.push({ id: idToRaw({ id }), label, source, sourceSha256, rule });
       break;
     default: {
       const exhaustive: never = rule;

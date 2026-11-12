@@ -74,7 +74,7 @@ describe.skipIf(!available)('installed model graph extension, without native-bou
     const definition = llamaGraphFixture();
     definition.applicability.architecture = architecture;
     const registrations = importModelGraphRegistrations({ input: JSON.stringify(definition), existing: [] });
-    const approved = setModelGraphUseRule({ registration: registrations[0]!, mode: architecture === 'llama' ? 'replaceNative' : 'whenArchitectureUnknown', registrations });
+    const approved = setModelGraphUseRule({ registration: registrations[0]!, mode: architecture === 'llama' ? 'replace_native' : 'when_architecture_unknown', registrations });
     const request: WorkerGenerateInput = {
       modelId: 'user/fixture',
       resolvedModel: resolvedModelFixture({ modelId: 'user/fixture' }),

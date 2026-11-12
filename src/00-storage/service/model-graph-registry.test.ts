@@ -86,7 +86,7 @@ describe('admission limits', () => {
   it('rejects source substitution without new approval', async () => {
     const initial = await storageService.loadModelGraphRegistry();
     const entry = registration({ source: '{}' });
-    await expect(storageService.updateModelGraphRegistry({ access: initial.access, registrations: [{ ...entry, rule: { mode: 'replaceNative', architecture: 'llama', approvedSha256: '0'.repeat(64) } }] })).rejects.toThrow('approval');
+    await expect(storageService.updateModelGraphRegistry({ access: initial.access, registrations: [{ ...entry, rule: { mode: 'replace_native', architecture: 'llama', approvedSha256: '0'.repeat(64) } }] })).rejects.toThrow('approval');
   });
 });
 

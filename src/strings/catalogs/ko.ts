@@ -3217,7 +3217,9 @@ import { llamaCppPerformance__wait_for_other_work } from '@/strings/messages/lla
 import { llamaCppPerformance__waiting_for_visible_page } from '@/strings/messages/llamaCppPerformance__waiting_for_visible_page/ko';
 import { llamaCppPerformance__workload } from '@/strings/messages/llamaCppPerformance__workload/ko';
 import { modelGraphDefinitionRegistry__add_files } from '@/strings/messages/modelGraphDefinitionRegistry__add_files/ko';
+import { modelGraphDefinitionRegistry__architecture_is_already_in_use } from '@/strings/messages/modelGraphDefinitionRegistry__architecture_is_already_in_use/ko';
 import { modelGraphDefinitionRegistry__changes_apply_to_the_next_request } from '@/strings/messages/modelGraphDefinitionRegistry__changes_apply_to_the_next_request/ko';
+import { modelGraphDefinitionRegistry__choose_one_definition_per_architecture } from '@/strings/messages/modelGraphDefinitionRegistry__choose_one_definition_per_architecture/ko';
 import { modelGraphDefinitionRegistry__clear_input } from '@/strings/messages/modelGraphDefinitionRegistry__clear_input/ko';
 import { modelGraphDefinitionRegistry__confirm_native_replacement } from '@/strings/messages/modelGraphDefinitionRegistry__confirm_native_replacement/ko';
 import { modelGraphDefinitionRegistry__copied } from '@/strings/messages/modelGraphDefinitionRegistry__copied/ko';
@@ -3225,23 +3227,29 @@ import { modelGraphDefinitionRegistry__copy_definitions } from '@/strings/messag
 import { modelGraphDefinitionRegistry__delete_definition } from '@/strings/messages/modelGraphDefinitionRegistry__delete_definition/ko';
 import { modelGraphDefinitionRegistry__delete_definition_question } from '@/strings/messages/modelGraphDefinitionRegistry__delete_definition_question/ko';
 import { modelGraphDefinitionRegistry__discard_unsaved_model_graph_input } from '@/strings/messages/modelGraphDefinitionRegistry__discard_unsaved_model_graph_input/ko';
+import { modelGraphDefinitionRegistry__download_json } from '@/strings/messages/modelGraphDefinitionRegistry__download_json/ko';
 import { modelGraphDefinitionRegistry__experimental_model_graph_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__experimental_model_graph_definitions/ko';
 import { modelGraphDefinitionRegistry__format_may_change_without_migration } from '@/strings/messages/modelGraphDefinitionRegistry__format_may_change_without_migration/ko';
+import { modelGraphDefinitionRegistry__input_changed_review_again } from '@/strings/messages/modelGraphDefinitionRegistry__input_changed_review_again/ko';
 import { modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests } from '@/strings/messages/modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests/ko';
 import { modelGraphDefinitionRegistry__no_definitions_registered } from '@/strings/messages/modelGraphDefinitionRegistry__no_definitions_registered/ko';
 import { modelGraphDefinitionRegistry__objects_can_span_multiple_lines } from '@/strings/messages/modelGraphDefinitionRegistry__objects_can_span_multiple_lines/ko';
 import { modelGraphDefinitionRegistry__paste_multiple_json_objects } from '@/strings/messages/modelGraphDefinitionRegistry__paste_multiple_json_objects/ko';
 import { modelGraphDefinitionRegistry__preview } from '@/strings/messages/modelGraphDefinitionRegistry__preview/ko';
 import { modelGraphDefinitionRegistry__read_only_registry } from '@/strings/messages/modelGraphDefinitionRegistry__read_only_registry/ko';
+import { modelGraphDefinitionRegistry__register_and_use } from '@/strings/messages/modelGraphDefinitionRegistry__register_and_use/ko';
 import { modelGraphDefinitionRegistry__register_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__register_definitions/ko';
 import { modelGraphDefinitionRegistry__register_only } from '@/strings/messages/modelGraphDefinitionRegistry__register_only/ko';
+import { modelGraphDefinitionRegistry__registered } from '@/strings/messages/modelGraphDefinitionRegistry__registered/ko';
 import { modelGraphDefinitionRegistry__registered_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__registered_definitions/ko';
+import { modelGraphDefinitionRegistry__registration_enables_native_replacement } from '@/strings/messages/modelGraphDefinitionRegistry__registration_enables_native_replacement/ko';
 import { modelGraphDefinitionRegistry__reload_registry } from '@/strings/messages/modelGraphDefinitionRegistry__reload_registry/ko';
 import { modelGraphDefinitionRegistry__replace_from_input } from '@/strings/messages/modelGraphDefinitionRegistry__replace_from_input/ko';
 import { modelGraphDefinitionRegistry__replace_native_implementation } from '@/strings/messages/modelGraphDefinitionRegistry__replace_native_implementation/ko';
 import { modelGraphDefinitionRegistry__replacement_requires_new_approval } from '@/strings/messages/modelGraphDefinitionRegistry__replacement_requires_new_approval/ko';
 import { modelGraphDefinitionRegistry__session_only_storage } from '@/strings/messages/modelGraphDefinitionRegistry__session_only_storage/ko';
 import { modelGraphDefinitionRegistry__source } from '@/strings/messages/modelGraphDefinitionRegistry__source/ko';
+import { modelGraphDefinitionRegistry__unregistered } from '@/strings/messages/modelGraphDefinitionRegistry__unregistered/ko';
 import { modelGraphDefinitionRegistry__usage_rule } from '@/strings/messages/modelGraphDefinitionRegistry__usage_rule/ko';
 import { modelGraphDefinitionRegistry__use_definition } from '@/strings/messages/modelGraphDefinitionRegistry__use_definition/ko';
 import { modelGraphDefinitionRegistry__use_registered_graphs_before_native_support } from '@/strings/messages/modelGraphDefinitionRegistry__use_registered_graphs_before_native_support/ko';
@@ -7178,7 +7186,9 @@ export const catalog = {
   llamaCppPerformance__waiting_for_visible_page,
   llamaCppPerformance__workload,
   modelGraphDefinitionRegistry__add_files,
+  modelGraphDefinitionRegistry__architecture_is_already_in_use,
   modelGraphDefinitionRegistry__changes_apply_to_the_next_request,
+  modelGraphDefinitionRegistry__choose_one_definition_per_architecture,
   modelGraphDefinitionRegistry__clear_input,
   modelGraphDefinitionRegistry__confirm_native_replacement,
   modelGraphDefinitionRegistry__copied,
@@ -7186,23 +7196,29 @@ export const catalog = {
   modelGraphDefinitionRegistry__delete_definition,
   modelGraphDefinitionRegistry__delete_definition_question,
   modelGraphDefinitionRegistry__discard_unsaved_model_graph_input,
+  modelGraphDefinitionRegistry__download_json,
   modelGraphDefinitionRegistry__experimental_model_graph_definitions,
   modelGraphDefinitionRegistry__format_may_change_without_migration,
+  modelGraphDefinitionRegistry__input_changed_review_again,
   modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests,
   modelGraphDefinitionRegistry__no_definitions_registered,
   modelGraphDefinitionRegistry__objects_can_span_multiple_lines,
   modelGraphDefinitionRegistry__paste_multiple_json_objects,
   modelGraphDefinitionRegistry__preview,
   modelGraphDefinitionRegistry__read_only_registry,
+  modelGraphDefinitionRegistry__register_and_use,
   modelGraphDefinitionRegistry__register_definitions,
   modelGraphDefinitionRegistry__register_only,
+  modelGraphDefinitionRegistry__registered,
   modelGraphDefinitionRegistry__registered_definitions,
+  modelGraphDefinitionRegistry__registration_enables_native_replacement,
   modelGraphDefinitionRegistry__reload_registry,
   modelGraphDefinitionRegistry__replace_from_input,
   modelGraphDefinitionRegistry__replace_native_implementation,
   modelGraphDefinitionRegistry__replacement_requires_new_approval,
   modelGraphDefinitionRegistry__session_only_storage,
   modelGraphDefinitionRegistry__source,
+  modelGraphDefinitionRegistry__unregistered,
   modelGraphDefinitionRegistry__usage_rule,
   modelGraphDefinitionRegistry__use_definition,
   modelGraphDefinitionRegistry__use_registered_graphs_before_native_support,
