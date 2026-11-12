@@ -27,6 +27,19 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+### Added
+
+- Experimental model graph definitions in Settings → Developer, with multi-object JSON import, explicit application-wide approval/override rules, independent experimental storage, and actual execution identity in diagnostics and performance comparisons.
+- A model-independent, deliberately unstable declaration compiler with bounded layer repetition, static conditions, metadata-array expressions, typed tensor operators, decoder inputs and staged persistent-state updates. It combines existing GGML operations without executing external JavaScript or adding model-name-specific builders.
+- Checked BF16 and IQ weight layouts and explicit floating-point casts for registered graphs. Backend support remains runtime-specific; unsupported operations fail explicitly.
+- Registered graph execution using the optional bicore vocabulary/chat/sampling boundary. Native model execution remains separate, and older artifacts without the boundary cannot execute registered graphs.
+
+### Fixed
+
+- Reject trailing junk, duplicate keys and malformed concatenated JSON imports instead of accepting a valid-looking prefix.
+- Preserve simultaneous state updates and immutable graph constants across graph reuse; reject unproven floating-point-to-index conversions before native execution.
+
+
 ## [0.66.0] - 2026-11-11
 
 ### Added

@@ -14,3 +14,4 @@ export const READ_ENV_HOMEDRIVE = () => process.env.HOMEDRIVE;
 export const READ_ENV_HOMEPATH = () => process.env.HOMEPATH;
 export const READ_ENV_TEMP = () => process.env.TEMP;
 export const READ_ENV_TMP = () => process.env.TMP;
+export const READ_ENV_NAIDAN_MODEL_GRAPH_TEST_RUNTIME = () => process.env.NAIDAN_MODEL_GRAPH_TEST_RUNTIME;

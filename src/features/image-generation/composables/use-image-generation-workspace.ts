@@ -1597,7 +1597,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     listener: ({ event }) => {
       switch (event.type) {
       case 'migration': break;
-      case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
+      case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'model_graph_registry': case 'naidan_rpc_registry': case 'binary_objects': return;
       default: {
         const exhaustive: never = event;
         throw new Error(String(exhaustive));

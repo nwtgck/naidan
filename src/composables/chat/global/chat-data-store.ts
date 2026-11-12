@@ -981,7 +981,7 @@ export function createChatDataStore({
       }
       case 'binary_objects':
       case 'settings':
-      case 'naidan_rpc_registry':
+      case 'model_graph_registry': case 'naidan_rpc_registry':
         break;
       default: {
         const _ex: never = event;

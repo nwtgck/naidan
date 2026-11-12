@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__use_registered_graphs_before_native_support = (): string => "Use registered computation graphs before native model support is available. Definitions contain data, not executable JavaScript.";

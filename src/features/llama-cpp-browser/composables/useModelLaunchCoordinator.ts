@@ -464,7 +464,7 @@ export function useModelLaunchCoordinator(): void {
         }
         break;
       }
-      case 'chat_meta_and_chat_group': case 'settings': case 'binary_objects': case 'migration': case 'naidan_rpc_registry': break;
+      case 'chat_meta_and_chat_group': case 'settings': case 'binary_objects': case 'migration': case 'model_graph_registry': case 'naidan_rpc_registry': break;
       default: {
         const exhaustive: never = event;
         throw new Error(String(exhaustive));

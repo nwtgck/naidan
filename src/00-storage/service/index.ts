@@ -1,3 +1,5 @@
+import type { ModelGraphRegistration } from '@/01-models/model-graph-registry';
+import { readModelGraphRegistry, writeModelGraphRegistry, sameModelGraphRegistry, type ModelGraphRegistryAccess, type ModelGraphRegistrySnapshot } from './model-graph-registry';
 export { areModelBindingSnapshotsEqual } from './model-binding';
 import { cloneOptionalEndpoint } from '@/01-models/endpoint';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
@@ -187,7 +189,7 @@ export class StorageService {
           }
           break;
         case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation':
-        case 'settings': case 'binary_objects': case 'naidan_rpc_registry':
+        case 'settings': case 'binary_objects': case 'model_graph_registry': case 'naidan_rpc_registry':
           break;
         default: {
           const exhaustive: never = event;
@@ -1196,6 +1198,35 @@ export class StorageService {
     return updated;
   }
 
+  async loadModelGraphRegistry(): Promise<ModelGraphRegistrySnapshot> {
+    return this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: () => readModelGraphRegistry({ provider: this.getProvider(), providerGeneration: this.providerGeneration, persistence: this.rpcRegistryPersistence() }),
+    });
+  }
+
+  async updateModelGraphRegistry({ access, registrations }: {
+    access: ModelGraphRegistryAccess, registrations: readonly ModelGraphRegistration[],
+  }): Promise<ModelGraphRegistrySnapshot> {
+    if (this.rpcRegistryPersistence() === 'durable' && (typeof navigator === 'undefined' || !navigator.locks?.request)) {
+      throw new Error('Saving model graph definitions requires Web Locks');
+    }
+    const updated = await this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: async () => {
+        const provider = this.getProvider();
+        const current = await readModelGraphRegistry({ provider, providerGeneration: this.providerGeneration, persistence: this.rpcRegistryPersistence() });
+        if (!sameModelGraphRegistry({ left: access, right: current.access })) {
+          throw new Error('Model graph definitions changed. Reload before saving.');
+        }
+        await writeModelGraphRegistry({ provider, current, registrations });
+        return readModelGraphRegistry({ provider, providerGeneration: this.providerGeneration, persistence: this.rpcRegistryPersistence() });
+      },
+    });
+    this.notify({ event: { type: 'model_graph_registry', timestamp: Date.now() } });
+    return updated;
+  }
+
   /**
    * Performs an atomic update on the global settings.
    */
@@ -1949,6 +1980,7 @@ export class StorageService {
 
           const oldProvider = activeProvider;
           const rpcRegistry = await oldProvider.loadNaidanRpcRegistry();
+          const modelGraphRegistry = await oldProvider.loadModelGraphRegistry();
           const snapshot = await oldProvider.dump();
 
           const isOPFSSupported = await checkOPFSSupport();
@@ -2038,6 +2070,7 @@ export class StorageService {
           // Transfer local trust only during an explicit provider switch. It is
           // absent from general JSON backups, which cannot carry CryptoKey.
           await newProvider.saveNaidanRpcRegistry({ registry: rpcRegistry });
+          await newProvider.saveModelGraphRegistry({ registry: modelGraphRegistry });
           const actualType = type === 'opfs' && !isOPFSSupported ? 'local' : type;
 
           if (typeof localStorage !== 'undefined') {

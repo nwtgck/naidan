@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests = (): string => "This changes all matching model requests, including speed investigations. It does not apply only to the current chat. Failures will stop generation instead of falling back.";

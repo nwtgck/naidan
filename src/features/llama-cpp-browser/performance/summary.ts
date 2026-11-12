@@ -1,3 +1,5 @@
+import { observedModelExecution, modelExecutionIdentity } from './model-execution';
+import type { ModelExecution } from './model-execution-schema';
 import { isGpuProfileTrial } from './gpu-profile-summary';
 import type { PerformanceSnapshot, PerformanceTrial } from './types';
 
@@ -28,7 +30,7 @@ function median({ values }: { values: number[] }): number | undefined {
 export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapshot }) {
   const stepsById = new Map(snapshot.plan.steps.map(step => [step.id, step]));
   const trialsByStep = new Map(snapshot.trials.toReversed().map(trial => [trial.stepId, trial]));
-  const groups = new Map<string, { modelIndex: number, runtimeSegment: number, runtimeRestarted: boolean, scenario: string, position: string, profile: string, contextTokens: number | undefined,
+  const groups = new Map<string, { modelExecution: ModelExecution | undefined, modelIndex: number, runtimeSegment: number, runtimeRestarted: boolean, scenario: string, position: string, profile: string, contextTokens: number | undefined,
     batchTokens: number | undefined, finishReason: string | undefined, parentFinishReason: string | undefined, promptTokens: number | undefined,
     reusedTokens: number | undefined, generatedTokens: number | undefined, vision: { fixtureSha256: string | undefined, residency: 'cold' | 'warm', storage: NonNullable<NonNullable<PerformanceTrial['summary']>['performance']>['visionStorage'], files: NonNullable<NonNullable<NonNullable<PerformanceTrial['summary']>['performance']>['vision']>['files'] | undefined } | undefined, trials: PerformanceTrial[] }>();
   for (const trial of snapshot.trials) {
@@ -38,6 +40,7 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     }
     const metrics = trial.summary?.performance;
     const condition = {
+      modelExecution: observedModelExecution({ summary: trial.summary }),
       modelIndex: trial.modelIndex,
       runtimeSegment: trial.runtimeSegment ?? 0,
       runtimeRestarted: trial.warnings.includes('runtime-restarted'),
@@ -53,7 +56,7 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
       generatedTokens: metrics?.nonEogTokens,
       vision: step.vision ? { fixtureSha256: snapshot.plan.visionFixture?.sha256, residency: step.vision.residency, storage: metrics?.visionStorage ?? trial.visionAdmission?.diagnostic.storage, files: metrics?.vision?.files } : undefined,
     };
-    const key = JSON.stringify(condition);
+    const key = JSON.stringify({ ...condition, modelExecution: modelExecutionIdentity({ execution: condition.modelExecution }) });
     const group = groups.get(key) ?? { ...condition, trials: [] };
     group.trials.push(trial);
     groups.set(key, group);
@@ -112,6 +115,13 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
       reasons.push('missing-attempt');
     }
     if (before && after) {
+      const beforeExecution = observedModelExecution({ summary: before.summary }), afterExecution = observedModelExecution({ summary: after.summary });
+      if (!beforeExecution || !afterExecution) {
+        uncertainties.push('model-execution-unconfirmed');
+      }
+      if (modelExecutionIdentity({ execution: beforeExecution }) !== modelExecutionIdentity({ execution: afterExecution })) {
+        reasons.push('different-model-execution');
+      }
       for (const preparation of [warmPreparationEvidence({ trial: before, position: 'before' }), warmPreparationEvidence({ trial: after, position: 'after' })]) {
         reasons.push(...preparation.reasons);
         uncertainties.push(...preparation.uncertainties);

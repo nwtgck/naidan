@@ -86,7 +86,7 @@ export function useImageGeneration(): ImageGenerationView {
         historySaving.status.value = 'idle';
         historySaving.error.value = '';
         break;
-      case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': break;
+      case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'model_graph_registry': case 'naidan_rpc_registry': case 'binary_objects': break;
       default: {
         const exhaustive: never = event;
         throw new Error(String(exhaustive));

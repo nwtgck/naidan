@@ -137,3 +137,37 @@ describe('parseConcatenatedJson', () => {
     }
   });
 });
+
+describe('strict object stream boundary', () => {
+  it.each([
+    'garbage {"a":1}', '{"a":1} trailing', '[{"a":1}]', 'null', 'true',
+    '{"a":1}, {"b":2}', '} {"a":1}', '{"a":1}//comment',
+    '{"a":1,"a":2}', '{"a":1,"\\u0061":2}', '{"nested":{"x":1,"x":2}}',
+    '{"a":[{"x":1,"x":2}]}', '{"a":01}', '{"a":1,}', '{"a":[1,]}',
+    '{"a":"bad\\q"}', '{"a":\\"b"}',
+  ])('reports an invalid suffix or duplicate key: %s', input => {
+    expect(parseConcatenatedJson({ input }).some(result => !result.success)).toBe(true);
+  });
+
+  it('accepts a single leading byte order mark and object-local duplicate names', () => {
+    expect(parseConcatenatedJson({ input: '\uFEFF {"a":1}{"a":2}' }).every(result => result.success)).toBe(true);
+  });
+
+  it('keeps exact source without separators', () => {
+    const input = `\
+ { "a": { "b": 2 } }
+ {"c":3}
+`;
+    expect(parseConcatenatedJson({ input }).map(result => result.raw)).toEqual(['{ "a": { "b": 2 } }', '{"c":3}']);
+  });
+
+  it('bounds depth and input size before parsing', () => {
+    expect(parseConcatenatedJson({ input: '{"a":' + '['.repeat(80) + '0' + ']'.repeat(80) + '}' }).some(result => !result.success)).toBe(true);
+    expect(parseConcatenatedJson({ input: ' '.repeat(4 * 1024 * 1024 + 1) })[0]?.success).toBe(false);
+  });
+
+  it('bounds stream count and rejects a noninitial byte order mark', () => {
+    expect(parseConcatenatedJson({ input: '{}'.repeat(129) }).some(result => !result.success)).toBe(true);
+    expect(parseConcatenatedJson({ input: '{}\uFEFF{}' }).some(result => !result.success)).toBe(true);
+  });
+});

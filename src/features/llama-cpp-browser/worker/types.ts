@@ -1,3 +1,4 @@
+import { modelGraphRequestRegistrationsSchema } from '@/features/llama-cpp-browser/model-graph/registry';
 import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import type { LiveRequest, LiveResult, LiveEvent, LiveEventHandler } from '@/features/llama-cpp-browser/live-types';
 import type { VisionAdmission } from '@/features/llama-cpp-browser/performance/vision-admission-schema';
@@ -14,11 +15,11 @@ import { generateInputSchema, profileSchema, runtimeOptionsSchema } from '@/feat
 import type { WorkerProxy, WorkerCapability } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, GenerationCallback, GenerationEvent, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.enum(['placement', 'vision']).optional() }).strict().optional(), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema }).strict();
+const workerGenerateBaseSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.enum(['placement', 'vision']).optional() }).strict().optional(), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema, modelGraphRegistrations: modelGraphRequestRegistrationsSchema.optional() }).strict();
 export const workerGenerateInputSchema = workerGenerateBaseSchema.refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
-const workerPrepareBaseSchema = workerGenerateBaseSchema.pick({ modelId: true, options: true, debug: true, assetBaseURL: true, resolvedModel: true }).strict();
+const workerPrepareBaseSchema = workerGenerateBaseSchema.pick({ modelId: true, options: true, debug: true, assetBaseURL: true, resolvedModel: true, modelGraphRegistrations: true }).strict();
 export const workerPrepareInputSchema = workerPrepareBaseSchema.refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerPrepareInput = z.infer<typeof workerPrepareInputSchema>;
 export const workerPrepareCallSchema = workerPrepareBaseSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
@@ -27,7 +28,7 @@ export type WorkerPrepareCall = z.infer<typeof workerPrepareCallSchema>;
 export const workerGenerateCallSchema = workerGenerateBaseSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerGenerateCall = z.infer<typeof workerGenerateCallSchema>;
 
-const workerAudioBaseSchema = audioGenerationInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema }).strict();
+const workerAudioBaseSchema = audioGenerationInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional(), resolvedModel: workerResolvedModelSchema, modelGraphRegistrations: modelGraphRequestRegistrationsSchema.optional() }).strict();
 export const workerAudioInputSchema = workerAudioBaseSchema.refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });
 export type WorkerAudioInput = z.infer<typeof workerAudioInputSchema>;
 export const workerAudioCallSchema = workerAudioBaseSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().refine(request => request.modelId === request.resolvedModel.modelId, { path: ['resolvedModel', 'modelId'], error: 'Resolved model does not match the requested modelId' });

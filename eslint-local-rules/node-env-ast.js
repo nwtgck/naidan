@@ -11,6 +11,7 @@ export const registryConsumers = new Set([
   'build/node-env.test.ts',
   'src/features/stable-diffusion-cpp-browser/build-runtime.ts',
   'src/features/llama-cpp-browser/worker/generation.test.ts',
+  'src/features/llama-cpp-browser/model-graph/ci-runtime.test.ts',
 ].map(file => path.join(repoRoot, file)));
 
 export function isRegistryModule({ value, filename }) {

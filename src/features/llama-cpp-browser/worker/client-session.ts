@@ -1,3 +1,4 @@
+import { readModelGraphRequestSettings } from '@/features/llama-cpp-browser/model-graph/request-settings';
 import { createModelTransport } from './model-transport';
 import type { WorkerResolvedModel } from './model-transport-schema';
 import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
@@ -265,7 +266,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     async live({ request, onEvent, onProgress, signal }) {
       let accepted: LiveRequest;
       switch (request.type) {
-      case 'open': accepted = liveRequestSchema.parse({ ...request, prepare: { ...request.prepare, assetBaseURL: getAssetBaseURL() } });
+      case 'open': accepted = liveRequestSchema.parse({ ...request, prepare: { ...request.prepare, modelGraphRegistrations: await readModelGraphRequestSettings(), assetBaseURL: getAssetBaseURL() } });
         break;
       case 'command': accepted = liveRequestSchema.parse(request);
         break;
@@ -384,7 +385,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       }));
     },
     prepareModel: async ({ request, onProgress, signal }) => {
-      const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerPrepareCallSchema.parse({ ...request, modelGraphRegistrations: await readModelGraphRequestSettings(), generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
         await invoke({
@@ -408,6 +409,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics, onVisionAdmission }) => {
       const accepted = workerGenerateCallSchema.parse({
         ...request,
+        modelGraphRegistrations: await readModelGraphRequestSettings(),
         generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
@@ -427,6 +429,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
                 request: {
                   modelId: accepted.modelId,
                   resolvedModel: accepted.resolvedModel,
+                  modelGraphRegistrations: accepted.modelGraphRegistrations,
                   options: accepted.options,
                   debug: accepted.debug,
                   assetBaseURL: accepted.assetBaseURL,
@@ -544,7 +547,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       }
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
-      const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerAudioCallSchema.parse({ ...request, modelGraphRegistrations: await readModelGraphRequestSettings(), generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       let started = false;
       const finish = (): void => {

@@ -26,6 +26,16 @@ type BrandedId<TName extends string> =
 export type NaidanRpcRegistrationId = BrandedId<'NaidanRpcRegistrationId'>;
 export type NaidanRpcPeerPublicKey = BrandedId<'NaidanRpcPeerPublicKey'>;
 export type NaidanRpcRegistryId = BrandedId<'NaidanRpcRegistryId'>;
+export type ModelGraphRegistrationId = BrandedId<'ModelGraphRegistrationId'>;
+export type ModelGraphRegistryId = BrandedId<'ModelGraphRegistryId'>;
+
+export function toModelGraphRegistrationId({ raw }: { raw: string }): ModelGraphRegistrationId {
+  return raw as unknown as ModelGraphRegistrationId;
+}
+
+export function toModelGraphRegistryId({ raw }: { raw: string }): ModelGraphRegistryId {
+  return raw as unknown as ModelGraphRegistryId;
+}
 
 export type ChatId = BrandedId<'ChatId'>;
 export type MessageId = BrandedId<'MessageId'>;

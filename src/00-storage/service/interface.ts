@@ -1,3 +1,4 @@
+import type { ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
 import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/00-storage/00-dto/dto';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -23,6 +24,9 @@ export abstract class IStorageProvider {
   // An absent registry is distinct from unreadable or invalid stored data.
   abstract loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined>;
   abstract saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void>;
+
+  abstract loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined>;
+  abstract saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void>;
 
   // --- Volume Management ---
 

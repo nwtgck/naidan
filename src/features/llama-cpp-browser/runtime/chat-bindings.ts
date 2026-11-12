@@ -52,6 +52,19 @@ export function bindNativeChat<
     templatesByModel.set(model, created);
     return created;
   };
+  const templatesByVocabulary = new Map<bigint, InstanceType<typeof native.common_chat_templates>>();
+  const vocabularyTemplate = ({ assertIdle, owner }: { assertIdle: () => void, owner: bigint }) => {
+    assertIdle();
+    const previous = templatesByVocabulary.get(owner);
+    if (previous) {
+      return previous;
+    }
+    // This overload is used only after model-graph-v1 version/hash validation.
+    // It preserves this module's native handle types; no external code is loaded.
+    const created = Reflect.construct(native.common_chat_templates, [owner, '']) as InstanceType<typeof native.common_chat_templates>;
+    templatesByVocabulary.set(owner, created);
+    return created;
+  };
   const binding = {
     releaseModel({ assertIdle, model }: { assertIdle: () => void, model: bigint }): void {
       assertIdle();
@@ -62,7 +75,7 @@ export function bindNativeChat<
       templatesByModel.delete(model);
       templates.delete();
     },
-    prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'>, generationPrompt: 'include' | 'omit' | undefined }) {
+    prepareInternal({ assertIdle, source, request, generationPrompt }: { assertIdle: () => void, source: { kind: 'model', model: bigint } | { kind: 'vocabulary', owner: bigint }, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'>, generationPrompt: 'include' | 'omit' | undefined }) {
       assertIdle();
       let params: Params | undefined;
       let parser: Parser | undefined;
@@ -80,7 +93,16 @@ export function bindNativeChat<
         }
       };
       try {
-        const templates = templateFor({ assertIdle, model });
+        const templates = (() => {
+          switch (source.kind) {
+          case 'model': return templateFor({ assertIdle, model: source.model });
+          case 'vocabulary': return vocabularyTemplate({ assertIdle, owner: source.owner });
+          default: {
+            const exhaustive: never = source;
+            throw new Error(String(exhaustive));
+          }
+          }
+        })();
         const images: { marker: string, blob: Blob }[] = [];
         const messages = request.messages.map(message => ({
           ...message,
@@ -275,9 +297,20 @@ export function bindNativeChat<
     releaseModel: binding.releaseModel,
     prepare({ assertIdle, model, request }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'> }) {
       // Preserve the ordinary Chat contract and its upstream template defaults.
-      return binding.prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt: undefined });
+      return binding.prepareInternal({ assertIdle, source: { kind: 'model', model }, request, generationPrompt: undefined });
     },
-    prepareWithGenerationPrompt: binding.prepareWithGenerationPrompt,
+    prepareWithGenerationPrompt({ assertIdle, model, request, generationPrompt }: { assertIdle: () => void, model: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'>, generationPrompt: 'include' | 'omit' | undefined }) {
+      return binding.prepareInternal({ assertIdle, source: { kind: 'model', model }, request, generationPrompt });
+    },
+    prepareFromVocabulary({ assertIdle, owner, request }: { assertIdle: () => void, owner: bigint, request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort' | 'chatTemplateKwargs'> }) {
+      return binding.prepareInternal({ assertIdle, source: { kind: 'vocabulary', owner }, request, generationPrompt: undefined });
+    },
+    releaseVocabulary({ assertIdle, owner }: { assertIdle: () => void, owner: bigint }): void {
+      assertIdle();
+      const templates = templatesByVocabulary.get(owner);
+      templatesByVocabulary.delete(owner);
+      templates?.delete();
+    },
   };
 }
 

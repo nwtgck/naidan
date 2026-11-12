@@ -1,3 +1,4 @@
+import { observedModelExecution } from './model-execution';
 import { gpuProfilingProfile } from '@/features/llama-cpp-browser/types';
 import { gpuProfilePhaseSchema } from './gpu-profile-schema';
 import type { PerformanceSnapshot, PerformanceTrial, PerformanceStep } from './types';
@@ -17,6 +18,7 @@ export function summarizeGpuProfiles({ snapshot }: { snapshot: PerformanceSnapsh
     const profile = trial.summary?.performance?.gpuProfile;
     return {
       attemptId: trial.id,
+      modelExecution: observedModelExecution({ summary: trial.summary }),
       stepId: trial.stepId,
       modelIndex: trial.modelIndex,
       lane: trial.lane ?? step?.lane,

@@ -76,6 +76,8 @@ const mockProvider = {
   loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
   saveHierarchy: vi.fn().mockResolvedValue(undefined),
   loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+  loadModelGraphRegistry: vi.fn().mockResolvedValue(undefined),
+  saveModelGraphRegistry: vi.fn().mockResolvedValue(undefined),
   saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
   dump: vi.fn(),
   restore: vi.fn(),
