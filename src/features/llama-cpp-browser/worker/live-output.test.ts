@@ -9,6 +9,7 @@ vi.mock('./chat-sampler', () => ({
   createChatSampler: vi.fn<typeof createChatSampler>(async ({ core, chain }) => ({
     preservedTokens: new Set<number>(),
     sample: async ({ context }) => core.api.llama_sampler_sample(chain, context, -1),
+    sampleFromLogits: async ({ sample }) => sample({ sampler: chain }),
     dispose: async () => core.api.llama_sampler_free(chain),
   })),
 }));

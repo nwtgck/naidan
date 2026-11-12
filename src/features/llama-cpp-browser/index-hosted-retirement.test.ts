@@ -104,6 +104,7 @@ beforeEach(async () => {
   harness.workers.length = 0;
   snapshots.length = 0;
   const { storageService } = await import('@/00-storage/service');
+  await storageService.init({ type: 'memory' });
   vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   harness.factoryGate = undefined;
   harness.generationGate = undefined;

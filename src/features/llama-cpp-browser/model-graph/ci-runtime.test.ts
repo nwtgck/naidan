@@ -1,11 +1,10 @@
 // @vitest-environment node
-import { READ_ENV_NAIDAN_MODEL_GRAPH_TEST_RUNTIME } from '../../../../build/node-env';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { attachCore, type Core, type CoreModule } from '@/features/llama-cpp-browser/runtime/core';
-import { bindNativeChat } from '@/features/llama-cpp-browser/runtime/chat-bindings';
+import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { createPositionSensitiveGguf } from '@/features/llama-cpp-browser/worker/test-utils/synthetic-gguf.test-support';
 import { resolvedModelFixture } from '@/features/llama-cpp-browser/worker/test-utils/resolved-model.test-support';
 import type { WorkerGenerateInput } from '@/features/llama-cpp-browser/worker/types';
@@ -13,7 +12,8 @@ import { bindModelGraphBoundary } from './native-boundary';
 import { generateWithRegisteredGraph } from './generation';
 import { releaseRegisteredGraph } from './session';
 import { llamaGraphFixture } from './fixtures.test-support';
-import { importModelGraphRegistrations, modelGraphRequestRegistrations, setModelGraphUseRule } from './registry';
+import { importModelGraphRegistrations, setModelGraphUseRule } from './registry';
+import { modelGraphRequestRegistrations } from './request-registry';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 
 const host = vi.hoisted(() => ({ core: undefined as Core | undefined, bytes: new Uint8Array(), releaseNative: vi.fn(), closes: vi.fn() }));
@@ -31,22 +31,20 @@ vi.mock('@/features/llama-cpp-browser/worker/model-file-access', () => ({
 }));
 vi.mock('@/features/llama-cpp-browser/worker/model-file-identity', () => ({ sameModelFile: async () => true }));
 
-// Explicit test-runner asset path, never a model-supplied URI. The regular
-// published legacy dependency need not contain the experimental native owner.
-const runtime = READ_ENV_NAIDAN_MODEL_GRAPH_TEST_RUNTIME();
+// Follow the installed, pinned runtime just like the other CPU integration
+// tests. Legacy packages may omit this optional extension; a present but broken
+// extension must fail the tests instead of being silently skipped.
+const profiles = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles');
+const runtime = path.join(profiles, 'cpu-wasm32/browser');
+const available = existsSync(path.join(runtime, 'model-graph-v1.schema.json'));
 
-describe.skipIf(!runtime)('actual CI model graph extension, without native-boundary adapters', () => {
+describe.skipIf(!available)('installed model graph extension, without native-boundary adapters', () => {
   beforeAll(async () => {
-    if (!runtime) {
-      throw new Error('Set the reviewed CI runtime directory');
-    }
-    const modulePath = pathToFileURL(path.join(runtime, 'core.mjs')).href;
-    const loaded: unknown = await import(/* @vite-ignore */ modulePath);
-    if (!loaded || typeof loaded !== 'object' || !('default' in loaded) || typeof loaded.default !== 'function') {
-      throw new Error('Invalid test core factory');
-    }
-    const module: CoreModule & Parameters<typeof bindNativeChat>[0]['native'] = await loaded.default({ wasmBinary: await readFile(path.join(runtime, 'core.wasm')), print() {}, printErr() {} });
-    host.core = { ...attachCore({ module, callMode: 'direct' }), chat: bindNativeChat({ native: module }) };
+    host.core = await createCore({
+      profile: 'cpu-wasm32',
+      baseURL: pathToFileURL(profiles + path.sep),
+      moduleOptions: { wasmBinary: await readFile(path.join(runtime, 'core.wasm')), print() {}, printErr() {} },
+    });
     await host.core.api.llama_backend_init();
   });
 

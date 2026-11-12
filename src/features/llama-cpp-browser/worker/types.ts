@@ -1,4 +1,4 @@
-import { modelGraphRequestRegistrationsSchema } from '@/features/llama-cpp-browser/model-graph/registry';
+import { modelGraphRequestRegistrationsSchema } from '@/features/llama-cpp-browser/model-graph/request-registry';
 import { FILE_SYSTEM_HANDLE_CLONING_REQUIRES_SUCCESSFUL_RUNTIME_FEATURE_DETECTION } from '@/utils/worker-transport-capabilities';
 import type { LiveRequest, LiveResult, LiveEvent, LiveEventHandler } from '@/features/llama-cpp-browser/live-types';
 import type { VisionAdmission } from '@/features/llama-cpp-browser/performance/vision-admission-schema';

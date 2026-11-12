@@ -1,5 +1,5 @@
 import { storageService } from '@/00-storage/service';
-import { modelGraphRequestRegistrations } from './registry';
+import { modelGraphRequestRegistrations } from './request-registry';
 
 /** Read at request admission, not during token generation. Do not cache across
  * storage-provider generations or hide an unreadable approved registry. */

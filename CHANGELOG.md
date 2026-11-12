@@ -36,6 +36,8 @@ Do not add entries directly here during ordinary development.
 
 ### Fixed
 
+- Keep model graph declaration parsing and operator catalogs out of the initial Worker protocol bundle while preserving request authority validation.
+- Recover the development privacy broker after rapid HTML error-and-repair saves, and cancel pending rebuilds when its server closes.
 - Reject trailing junk, duplicate keys and malformed concatenated JSON imports instead of accepting a valid-looking prefix.
 - Preserve simultaneous state updates and immutable graph constants across graph reuse; reject unproven floating-point-to-index conversions before native execution.
 

@@ -9,7 +9,8 @@ import { parseModelGraphDefinitions } from './definition';
 import { bindModelGraphBoundary, modelGraphNativeSchemaHash } from './native-boundary';
 import { createModelGraphEngine } from './engine';
 import { combineModelGraphGgufs, copyModelGraphVocabularyMetadata, inspectModelGraphGguf, readModelGraphArchitecture, type ModelGraphByteSource } from './gguf';
-import { selectModelGraphRegistration, type ModelGraphRequestRegistration } from './registry';
+import { selectModelGraphRegistration } from './registry';
+import { type ModelGraphRequestRegistration } from './request-registry';
 import type { ModelExecution } from '@/features/llama-cpp-browser/performance/model-execution-schema';
 
 export type RegisteredGraphSession = {

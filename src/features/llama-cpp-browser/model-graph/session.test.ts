@@ -4,7 +4,8 @@ import type { WorkerPrepareInput } from '@/features/llama-cpp-browser/worker/typ
 import { resolvedModelFixture } from '@/features/llama-cpp-browser/worker/test-utils/resolved-model.test-support';
 import { createPositionSensitiveGguf } from '@/features/llama-cpp-browser/worker/test-utils/synthetic-gguf.test-support';
 import { prepareRegisteredGraph, releaseRegisteredGraph } from './session';
-import { importModelGraphRegistrations, modelGraphRequestRegistrations, setModelGraphUseRule } from './registry';
+import { importModelGraphRegistrations, setModelGraphUseRule } from './registry';
+import { modelGraphRequestRegistrations } from './request-registry';
 import { llamaGraphFixture } from './fixtures.test-support';
 
 const calls = vi.hoisted(() => ({ open: vi.fn(), runtime: vi.fn(), releaseNative: vi.fn(), bind: vi.fn(), engine: vi.fn() }));

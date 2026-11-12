@@ -195,6 +195,16 @@ globalThis.brokerProbe = "initial-broker";`,
     await vi.waitFor(async () => expect((await fixture.request()).status).toBe(200), poll);
   }, 25_000);
 
+  it('recovers when invalid HTML is repaired immediately after the error is visible', async () => {
+    await using fixture = await createBrokerDevFixture();
+    for (let edit = 0; edit < 3; edit++) {
+      await fixture.write({ file: 'privacy-fetch-broker.html', source: `<script src="/invalid-${edit}.ts"></script>` });
+      await vi.waitFor(async () => expect((await fixture.request()).status).toBe(503), { ...poll, interval: 1 });
+      await fixture.write({ file: 'privacy-fetch-broker.html', source: fixture.html });
+      await vi.waitFor(async () => expect((await fixture.request()).status).toBe(200), { ...poll, interval: 1 });
+    }
+  }, 25_000);
+
   it('handles deletion and restoration of an existing dependency', async () => {
     await using fixture = await createBrokerDevFixture({ entry: 'import { value } from "./dep"; globalThis.brokerProbe = value;', files: { 'src/features/privacy-fetch/dep.ts': 'export const value = "first-dependency";' } });
     await rm(path.join(fixture.root, 'src/features/privacy-fetch/dep.ts'));
@@ -293,6 +303,17 @@ globalThis.brokerProbe = "initial-broker";`,
     expect(fixture.server.watcher.listenerCount('change')).toBe(0);
     expect((await fixture.request()).status).toBe(503);
   }, 25_000);
+
+  it('cancels a coalesced source rebuild when the server closes', async () => {
+    await using fixture = await createBrokerDevFixture({ middlewareMode: true });
+    fixture.send.mockClear();
+    // Close deterministically while the source rebuild is waiting.
+    fixture.server.watcher.emit('change', path.join(fixture.root, 'privacy-fetch-broker.html'));
+    await fixture.server.close();
+    expect(fixture.server.watcher.listenerCount('change')).toBe(0);
+    expect(fixture.send).not.toHaveBeenCalled();
+    expect((await fixture.request()).status).toBe(503);
+  });
 
   it('recovers from a syntax error in a newly added dependency', async () => {
     await using fixture = await createBrokerDevFixture();

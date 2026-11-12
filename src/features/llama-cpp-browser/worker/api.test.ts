@@ -19,7 +19,8 @@ import { createWorkerApi } from "./api";
 import type { WorkerGenerateCall } from "./types";
 import type { generate } from "./generation";
 
-import { importModelGraphRegistrations, modelGraphRequestRegistrations, setModelGraphUseRule } from '@/features/llama-cpp-browser/model-graph/registry';
+import { importModelGraphRegistrations, setModelGraphUseRule } from '@/features/llama-cpp-browser/model-graph/registry';
+import { modelGraphRequestRegistrations } from '@/features/llama-cpp-browser/model-graph/request-registry';
 import { llamaGraphFixture } from '@/features/llama-cpp-browser/model-graph/fixtures.test-support';
 const graphCalls = vi.hoisted(() => ({ prepare: vi.fn(), generate: vi.fn(), release: vi.fn() }));
 vi.mock('../model-graph/worker-router', () => ({ prepare: graphCalls.prepare, generateWithRegisteredGraph: graphCalls.generate, releaseRegisteredGraph: graphCalls.release }));

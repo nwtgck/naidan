@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { graphFixture } from './fixtures.test-support';
 import { parseModelGraphDefinitions } from './definition';
 import { compileModelGraph, modelGraphTensorBytes } from './compile';
-import { importModelGraphRegistrations, modelGraphRequestRegistrations, selectModelGraphRegistration, setModelGraphUseRule } from './registry';
+import { importModelGraphRegistrations, selectModelGraphRegistration, setModelGraphUseRule } from './registry';
+import { modelGraphRequestRegistrations } from './request-registry';
 
 const compile = () => {
   const fixture = graphFixture();

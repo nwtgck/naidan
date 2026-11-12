@@ -68,6 +68,20 @@ export function createPrivacyFetchBrokerDevPlugin(): Plugin {
       let dirty = false;
       let buildTask: Promise<void> | undefined;
       let closeTask: Promise<void> | undefined;
+      let changeWait: Promise<void> | undefined;
+      let finishChangeWait: (() => void) | undefined;
+      let changeTimer: ReturnType<typeof setTimeout> | undefined;
+
+      function finishPendingChange(): void {
+        if (changeTimer !== undefined) {
+          clearTimeout(changeTimer);
+          changeTimer = undefined;
+        }
+        const finish = finishChangeWait;
+        changeWait = undefined;
+        finishChangeWait = undefined;
+        finish?.();
+      }
 
       function reportFailure({ error }: { error: unknown }) {
         if (closed) {
@@ -84,6 +98,7 @@ export function createPrivacyFetchBrokerDevPlugin(): Plugin {
       const close = () => {
         closeTask ??= (async () => {
           closed = true;
+          finishPendingChange();
           server.watcher.off('add', onFileAdded);
           server.watcher.off('change', onFileChanged);
           server.watcher.off('unlink', onFileChanged);
@@ -220,6 +235,15 @@ export function createPrivacyFetchBrokerDevPlugin(): Plugin {
 
       async function rebuild() {
         while (dirty && !closed) {
+          if (changeWait !== undefined) {
+            await changeWait;
+            if (closed) {
+              return;
+            }
+            if (changeWait !== undefined) {
+              continue;
+            }
+          }
           dirty = false;
           try {
             const next = await compile();
@@ -252,10 +276,25 @@ export function createPrivacyFetchBrokerDevPlugin(): Plugin {
         return buildTask;
       }
 
+      function scheduleSourceChange(): void {
+        // Vite's shared watcher coalesces rapid writes, including an immediate
+        // repair of invalid HTML. Reading before that window ends can miss the
+        // repair and leave the broker failed. Debounce only our rebuild; startup
+        // remains immediate and shutdown cancels the wait. Errors fail closed.
+        if (changeTimer !== undefined) {
+          clearTimeout(changeTimer);
+        }
+        changeWait ??= new Promise<void>(resolve => {
+          finishChangeWait = resolve;
+        });
+        changeTimer = setTimeout(finishPendingChange, 100);
+        void scheduleBuild();
+      }
+
       function onFileChanged(file: string) {
         const normalized = normalizePath(file);
         if (!closed && (failed || buildTask !== undefined || dependencies.has(normalized))) {
-          void scheduleBuild();
+          scheduleSourceChange();
         }
       }
 
@@ -264,7 +303,7 @@ export function createPrivacyFetchBrokerDevPlugin(): Plugin {
         // even without an existing graph edge. Reuse Vite's watcher and let the
         // output comparison avoid reloads for unrelated additions.
         if (!closed) {
-          void scheduleBuild();
+          scheduleSourceChange();
         }
       }
 
