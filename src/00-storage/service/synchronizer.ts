@@ -34,6 +34,10 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
     volumeFilesRemoved: z.literal(true).optional(),
   }),
   z.object({
+    type: z.literal('model_graph_registry'),
+    timestamp: z.number(),
+  }),
+  z.object({
     type: z.literal('naidan_rpc_registry'),
     timestamp: z.number(),
   }),

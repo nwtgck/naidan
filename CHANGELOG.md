@@ -1,12 +1,13 @@
 # Changelog
 
 <!--
-This file is the canonical source for Naidan release notes.
+This file is the canonical source for released Naidan release notes.
 Keep the Markdown format machine-readable: one "## [X.Y.Z] - YYYY-MM-DD"
 heading per release. Version headings and reference labels omit the v prefix;
 Git tag names in link destinations retain it. Use the standard Added, Changed, Deprecated, Removed,
 Fixed, and Security categories as level-three headings; omit unused categories.
-The [Unreleased] heading is reserved for changes not yet in a release.
+Unreleased entries are maintained in changelog-unreleased/; direct entries
+under [Unreleased] remain supported for compatibility.
 Release tooling may edit version headings and move entries between sections.
 Write entries in English, based on differences between the released source trees.
 Commit messages can explain intent but are not authoritative evidence of behavior.
@@ -19,6 +20,42 @@ uses today's UTC date unless --date explicitly supplies a UTC calendar date.
 All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
+
+<!-- changelog-unreleased:instructions
+Unreleased entries are maintained in changelog-unreleased/.
+See changelog-unreleased/AGENTS.md for instructions.
+Do not add entries directly here during ordinary development.
+-->
+
+## [0.67.0] - 2026-11-12
+
+### Changed
+
+- Stage new Hugging Face model downloads as `.tmp` files and publish them by native file move after size, checksum, and format validation, without new `.pending` or `.complete` files. Resume interrupted `.tmp` downloads by byte offset; retain the existing journal and receipt path for older downloads and storage without native move support.
+- Use `.tmp` staging and native file moves for local llama.cpp and image-model imports on supported storage, while keeping the existing temporary repository-wide import barrier. Recognize completed markerless image-model downloads without inventing persistent source metadata.
+
+- Release preparation combines independently recorded unreleased changelog entries
+  with existing notes in CHANGELOG.md, previews the published notes, and removes
+  only the collected entry files in the release commit.
+- Group related notes by topic and category, validate category filename suffixes,
+  and preserve chronological ordering with the UTC creation timestamp first.
+
+### Fixed
+
+- Recover the development privacy broker after rapid HTML error-and-repair saves, and cancel pending rebuilds when its server closes.
+- Reject trailing junk, duplicate keys and malformed concatenated JSON imports instead of accepting a valid-looking prefix.
+
+### Added
+
+- Editable multi-prompt image generation within one session, with shared settings, compact per-request overrides, duplication, ordering, and direct YAML/JSONL input. Both input formats have copyable examples and automatic detection; model configuration slots are assigned in the UI.
+- Collapsible operation groups for single and multiple requests, sequential execution with frozen settings, per-image progress and request-specific errors. Completed, saved images can be downloaded as an operation ZIP while generation continues; later images remain available for the next download.
+- Saved composition drafts with conflict detection, recoverable result saves, and explicit interrupted-operation recovery that protects active inference and unsaved images in other tabs. Session backups include operation membership and composition drafts, while existing image-generation records retain their identities.
+- Experimental model graph definitions in Settings → Developer, with multi-object JSON input, file import, individual or batch registration, and explicit application-wide usage rules. Registration confirms use in place of the native implementation; pending definitions and saved registrations have distinct presentation, and individually registered inputs remain available for review and continued registration.
+- A model-independent, deliberately unstable declaration compiler with explicit name expressions, scoped references, bounded layer repetition, static conditions, scalar-or-array metadata, typed tensor operators, decoder inputs, and simultaneous persistent-state updates. It combines GGML operations without executing external JavaScript or adding model-name-specific builders.
+- Checked BF16 and IQ weight layouts, immutable graph constants, and explicit floating-point casts for registered graphs. Backend support remains runtime-specific; unsupported operations and unproven floating-point-to-index conversions fail explicitly.
+- Registered graph execution using the optional bicore vocabulary/chat/sampling boundary, with actual execution identity in diagnostics and performance comparisons. Native model execution remains separate, and artifacts without the boundary cannot execute registered graphs. Declaration parsing and operator catalogs stay outside the initial Worker protocol bundle.
+- Pre-allocation measurement of registered graph compute buffers using the native allocator, with separate state and compute budgets and context/batch details when a limit is exceeded.
+- Independent experimental storage of model graph source and local approvals. Source can be inspected with JSON highlighting, copied, or downloaded as JSON without exporting local approvals, even when its declaration format is no longer executable; replaced content requires renewed approval, and stale edits or competing architecture approvals cannot silently change execution rules.
 
 ## [0.66.0] - 2026-11-11
 
@@ -1109,7 +1146,8 @@ All notable changes to Naidan are documented in this file.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.66.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.67.0...develop
+[0.67.0]: https://github.com/nwtgck/naidan/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/nwtgck/naidan/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/nwtgck/naidan/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/nwtgck/naidan/compare/v0.63.0...v0.64.0

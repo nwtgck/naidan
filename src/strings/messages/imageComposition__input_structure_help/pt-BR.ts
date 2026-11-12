@@ -1,0 +1,1 @@
+export const imageComposition__input_structure_help = (): string => "Use um objeto simples por documento YAML (separados por ---) ou por linha JSONL. prompt é obrigatório. Campos omitidos usam as configurações comuns. Não adicione estruturas externas defaults, jobs ou overrides.";

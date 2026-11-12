@@ -1,3 +1,4 @@
+import { createFileMoveSupportCache, moveStagedFile, optionalFile, publicationFileName, temporaryFileName } from '@/utils/file-system-publication';
 import { localRepositoryInput, modelImportPendingName, normalizeModelDirectoryInput } from './model-directory-input';
 import { isModelSourceSegment, localRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
 import { readStoredModelFile, type ModelFile, type StoredModelFile } from '@/logic/model-file-system';
@@ -303,17 +304,51 @@ async function writeModelDirectory({ directory, onProgress, signal, collision, l
     throw new LlamaCppBrowserError({ code: 'storage-error' });
   }
   const folder = await parent.getDirectoryHandle(rootName, { create: true });
+  const moveSupport = createFileMoveSupportCache();
+  const inputEntries = new Set(paths);
+  for (const path of paths) {
+    const parts = path.split('/');
+    parts.pop();
+    while (parts.length) {
+      inputEntries.add(parts.join('/'));
+      parts.pop();
+    }
+  }
+  const created: { parent: FileSystemDirectoryHandle, name: string, finalName: string, handle: FileSystemFileHandle, size: number, modified: number }[] = [];
+  const createdFolders: { parent: FileSystemDirectoryHandle, name: string, handle: FileSystemDirectoryHandle }[] = [];
+  const knownFolders = new Map<string, FileSystemDirectoryHandle>([['', folder]]);
+  let marker: FileSystemFileHandle | undefined;
   try {
-    await folder.getFileHandle(pendingName, { create: true });
+    marker = await folder.getFileHandle(pendingName, { create: true });
     for (const { relativePath, file } of directory.files) {
       checkCancelled();
       const parts = relativePath.split('/');
       const name = parts.pop()!;
-      let parent = folder;
+      let parent = folder, prefix = '';
       for (const segment of parts) {
-        parent = await parent.getDirectoryHandle(segment, { create: true });
+        prefix = prefix ? `${prefix}/${segment}` : segment;
+        let next = knownFolders.get(prefix);
+        if (!next) {
+          next = await parent.getDirectoryHandle(segment, { create: true });
+          knownFolders.set(prefix, next);
+          createdFolders.push({ parent, name: segment, handle: next });
+        }
+        parent = next;
       }
-      const destination = await parent.getFileHandle(name, { create: true });
+      // A real input may already be named <name>.tmp (or use it as a
+      // directory). Keep the base write path for this collision only.
+      const temporaryPath = temporaryFileName({ name });
+      const stagedPath = parts.length ? `${parts.join('/')}/${temporaryPath}` : temporaryPath;
+      const collides = inputEntries.has(stagedPath);
+      const publication = collides ? 'unsupported' : await moveSupport.detect({ directory: parent });
+      const destinationName = publicationFileName({ name, support: publication });
+      if (await optionalFile({ directory: parent, name: destinationName })) {
+        throw new Error('Import destination changed; existing file was preserved');
+      }
+      const destination = await parent.getFileHandle(destinationName, { create: true });
+      const initial = await destination.getFile();
+      const record = { parent, name: destinationName, finalName: name, handle: destination, size: initial.size, modified: initial.lastModified };
+      created.push(record);
       const writer = await destination.createWritable();
       const reader = file.stream().getReader();
       let written = 0;
@@ -345,8 +380,27 @@ async function writeModelDirectory({ directory, onProgress, signal, collision, l
           throw new LlamaCppBrowserError({ code: 'storage-error' });
         }
         await writer.close();
-        if ((await destination.getFile()).size !== file.size) {
+        const snapshot = await destination.getFile();
+        record.size = snapshot.size;
+        record.modified = snapshot.lastModified;
+        if (snapshot.size !== file.size) {
           throw new LlamaCppBrowserError({ code: 'storage-error' });
+        }
+        checkCancelled();
+        switch (publication) {
+        case 'supported': {
+          await moveStagedFile({ directory: parent, name, handle: destination, snapshot, moveSupport });
+          record.name = name;
+          const moved = await destination.getFile();
+          record.size = moved.size;
+          record.modified = moved.lastModified;
+          break;
+        }
+        case 'unsupported': break;
+        default: {
+          const exhaustive: never = publication;
+          throw new Error(String(exhaustive));
+        }
         }
       } catch (error) {
         await reader.cancel().catch(() => {});
@@ -382,7 +436,50 @@ async function writeModelDirectory({ directory, onProgress, signal, collision, l
       })),
     };
   } catch (error) {
-    await parent.removeEntry(rootName, { recursive: true }).catch(() => {});
+    // Even an OPFS file explorer can ignore the model mutation lock. Roll back
+    // only our unchanged entries, never recursively sweep a competing file.
+    for (const record of [...created].reverse()) {
+      for (const name of new Set([record.name, record.finalName])) {
+        try {
+          const current = await optionalFile({ directory: record.parent, name });
+          if (current && (current === record.handle || await current.isSameEntry(record.handle))) {
+            const snapshot = await current.getFile();
+            if (snapshot.size === record.size && snapshot.lastModified === record.modified) {
+              await record.parent.removeEntry(name);
+            }
+          }
+        } catch { /* Preserve entries whose ownership cannot be established. */ }
+      }
+    }
+    for (const entry of [...createdFolders].reverse()) {
+      try {
+        const current = await entry.parent.getDirectoryHandle(entry.name);
+        if (current === entry.handle || await current.isSameEntry(entry.handle)) {
+          await entry.parent.removeEntry(entry.name);
+        }
+      } catch { /* Only empty, still-owned directories may be removed. */ }
+    }
+    try {
+      const remaining: string[] = [];
+      for await (const [name] of folder.entries()) {
+        if (name !== pendingName) {
+          remaining.push(name);
+        }
+      }
+      if (remaining.length) {
+        // Validation after publication may fail. Keep ambiguous leftovers hidden.
+        await folder.getFileHandle(pendingName, { create: true });
+      } else {
+        const currentMarker = marker ? await optionalFile({ directory: folder, name: pendingName }) : undefined;
+        if (currentMarker && marker && (currentMarker === marker || await currentMarker.isSameEntry(marker)) && (await currentMarker.getFile()).size === 0) {
+          await folder.removeEntry(pendingName);
+        }
+        const currentRoot = await parent.getDirectoryHandle(rootName);
+        if (currentRoot === folder || await currentRoot.isSameEntry(folder)) {
+          await parent.removeEntry(rootName);
+        }
+      }
+    } catch { /* Preserve the original failure and any ambiguous leftovers. */ }
     throw error;
   }
 }

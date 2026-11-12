@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__architecture_is_already_in_use = (): string => "Esta arquitectura ya tiene una definición activa. Desactívala en la lista inferior antes de registrar otra.";

@@ -64,7 +64,7 @@ const unsubscribe = storageService.subscribeToChanges({
     switch (event.type) {
     case 'migration': void syncGroup();
       return;
-    case 'chat_content': case 'chat_meta_and_chat_group': case 'chat_content_generation': case 'settings': case 'binary_objects': case 'naidan_rpc_registry': return;
+    case 'chat_content': case 'chat_meta_and_chat_group': case 'chat_content_generation': case 'settings': case 'binary_objects': case 'model_graph_registry': case 'naidan_rpc_registry': return;
     default: {
       const exhaustive: never = event;
       return exhaustive;

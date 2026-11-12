@@ -140,7 +140,15 @@ export function liveNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     ...base.core,
     api,
     alloc: ({ bytes }: { bytes: number | bigint }) => base.core.alloc({ bytes: Number(bytes) }),
-    chat: { prepare: ({ request }: { request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) => prepare({ request, generationPrompt: undefined }), prepareWithGenerationPrompt: prepare, releaseModel: vi.fn() } as NativeChat,
+    chat: {
+      prepare: ({ request }: { request: Pick<GenerateInput, 'messages' | 'tools' | 'reasoningEffort'> }) => prepare({ request, generationPrompt: undefined }),
+      prepareWithGenerationPrompt: prepare,
+      releaseModel: vi.fn(),
+      prepareFromVocabulary: () => {
+        throw new Error('The live fixture must use the native model owner');
+      },
+      releaseVocabulary: vi.fn(),
+    } satisfies NativeChat,
     constant: ({ name }: { name: string }) => constants[name] ?? base.core.constant({ name }),
     fieldLayout: ({ name, field }: { name: string, field: string }) => {
       if (name === 'mtmd_gen_audio_info' && field === 'sample_rate') {

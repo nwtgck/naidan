@@ -315,7 +315,7 @@ export function useChatSearch({ sidebarItems }: {
       case 'chat_content':
       case 'chat_content_generation':
       case 'settings':
-      case 'naidan_rpc_registry': case 'binary_objects':
+      case 'model_graph_registry': case 'naidan_rpc_registry': case 'binary_objects':
         break;
       default: {
         const _ex: never = event;

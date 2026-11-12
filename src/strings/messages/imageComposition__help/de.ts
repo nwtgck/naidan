@@ -1,0 +1,1 @@
+export const imageComposition__help = (): string => "Anfragen übernehmen gemeinsame Einstellungen, soweit nicht überschrieben. Ausführung in Listenreihenfolge; bei Fehler oder Abbruch wird gestoppt.";

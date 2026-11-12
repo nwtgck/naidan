@@ -908,6 +908,9 @@ import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageB
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/de';
 import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/de';
 import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/de';
+import { ImageCompositionFields__model_configuration_slot } from '@/strings/messages/ImageCompositionFields__model_configuration_slot/de';
+import { ImageCompositionFields__shared } from '@/strings/messages/ImageCompositionFields__shared/de';
+import { ImageCompositionModeSelect__input_mode } from '@/strings/messages/ImageCompositionModeSelect__input_mode/de';
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/de';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/de';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/de';
@@ -1040,6 +1043,13 @@ import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/Imag
 import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/de';
 import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/de';
 import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/de';
+import { ImageGenerationMonitor__images_generated } from '@/strings/messages/ImageGenerationMonitor__images_generated/de';
+import { ImageGenerationMonitor__preparing_generation } from '@/strings/messages/ImageGenerationMonitor__preparing_generation/de';
+import { ImageGenerationMonitor__request_position } from '@/strings/messages/ImageGenerationMonitor__request_position/de';
+import { ImageGenerationMonitor__saving_results } from '@/strings/messages/ImageGenerationMonitor__saving_results/de';
+import { ImageGenerationMonitor__unsaved_images } from '@/strings/messages/ImageGenerationMonitor__unsaved_images/de';
+import { ImageGenerationOperationActions__no_completed_images } from '@/strings/messages/ImageGenerationOperationActions__no_completed_images/de';
+import { ImageGenerationOperationActions__saving_results } from '@/strings/messages/ImageGenerationOperationActions__saving_results/de';
 import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/de';
 import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/de';
 import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/de';
@@ -1611,6 +1621,9 @@ import { ModelDownloads__retry } from '@/strings/messages/ModelDownloads__retry/
 import { ModelDownloads__unknown_size } from '@/strings/messages/ModelDownloads__unknown_size/de';
 import { ModelDownloads__verifying } from '@/strings/messages/ModelDownloads__verifying/de';
 import { ModelDownloads__waiting } from '@/strings/messages/ModelDownloads__waiting/de';
+import { ModelExecutionBadge__execution_not_observed } from '@/strings/messages/ModelExecutionBadge__execution_not_observed/de';
+import { ModelExecutionBadge__native_architecture } from '@/strings/messages/ModelExecutionBadge__native_architecture/de';
+import { ModelExecutionBadge__registered_model_graph } from '@/strings/messages/ModelExecutionBadge__registered_model_graph/de';
 import { ModelSelector__clear_filter } from '@/strings/messages/ModelSelector__clear_filter/de';
 import { ModelSelector__filter_models } from '@/strings/messages/ModelSelector__filter_models/de';
 import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inherit/de';
@@ -2712,6 +2725,46 @@ import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__su
 import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/de';
 import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/de';
 import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/de';
+import { imageComposition__add } from '@/strings/messages/imageComposition__add/de';
+import { imageComposition__append } from '@/strings/messages/imageComposition__append/de';
+import { imageComposition__assign } from '@/strings/messages/imageComposition__assign/de';
+import { imageComposition__assigned } from '@/strings/messages/imageComposition__assigned/de';
+import { imageComposition__auto } from '@/strings/messages/imageComposition__auto/de';
+import { imageComposition__copy_example } from '@/strings/messages/imageComposition__copy_example/de';
+import { imageComposition__down } from '@/strings/messages/imageComposition__down/de';
+import { imageComposition__download_results } from '@/strings/messages/imageComposition__download_results/de';
+import { imageComposition__duplicate } from '@/strings/messages/imageComposition__duplicate/de';
+import { imageComposition__export_notice } from '@/strings/messages/imageComposition__export_notice/de';
+import { imageComposition__generate } from '@/strings/messages/imageComposition__generate/de';
+import { imageComposition__help } from '@/strings/messages/imageComposition__help/de';
+import { imageComposition__inherit } from '@/strings/messages/imageComposition__inherit/de';
+import { imageComposition__input_examples } from '@/strings/messages/imageComposition__input_examples/de';
+import { imageComposition__input_models_help } from '@/strings/messages/imageComposition__input_models_help/de';
+import { imageComposition__input_structure_help } from '@/strings/messages/imageComposition__input_structure_help/de';
+import { imageComposition__input_values_help } from '@/strings/messages/imageComposition__input_values_help/de';
+import { imageComposition__multiple } from '@/strings/messages/imageComposition__multiple/de';
+import { imageComposition__operation } from '@/strings/messages/imageComposition__operation/de';
+import { imageComposition__overrides } from '@/strings/messages/imageComposition__overrides/de';
+import { imageComposition__parse } from '@/strings/messages/imageComposition__parse/de';
+import { imageComposition__paste } from '@/strings/messages/imageComposition__paste/de';
+import { imageComposition__paste_help } from '@/strings/messages/imageComposition__paste_help/de';
+import { imageComposition__pending_metadata } from '@/strings/messages/imageComposition__pending_metadata/de';
+import { imageComposition__random } from '@/strings/messages/imageComposition__random/de';
+import { imageComposition__recover } from '@/strings/messages/imageComposition__recover/de';
+import { imageComposition__recover_notice } from '@/strings/messages/imageComposition__recover_notice/de';
+import { imageComposition__reload } from '@/strings/messages/imageComposition__reload/de';
+import { imageComposition__reload_notice } from '@/strings/messages/imageComposition__reload_notice/de';
+import { imageComposition__remove } from '@/strings/messages/imageComposition__remove/de';
+import { imageComposition__replace } from '@/strings/messages/imageComposition__replace/de';
+import { imageComposition__replace_notice } from '@/strings/messages/imageComposition__replace_notice/de';
+import { imageComposition__save_only } from '@/strings/messages/imageComposition__save_only/de';
+import { imageComposition__shared_negative_prompt } from '@/strings/messages/imageComposition__shared_negative_prompt/de';
+import { imageComposition__single } from '@/strings/messages/imageComposition__single/de';
+import { imageComposition__slot_help } from '@/strings/messages/imageComposition__slot_help/de';
+import { imageComposition__summary } from '@/strings/messages/imageComposition__summary/de';
+import { imageComposition__unassigned } from '@/strings/messages/imageComposition__unassigned/de';
+import { imageComposition__unsupported } from '@/strings/messages/imageComposition__unsupported/de';
+import { imageComposition__up } from '@/strings/messages/imageComposition__up/de';
 import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/de';
 import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/de';
 import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/de';
@@ -3163,6 +3216,44 @@ import { llamaCppPerformance__trial_status } from '@/strings/messages/llamaCppPe
 import { llamaCppPerformance__wait_for_other_work } from '@/strings/messages/llamaCppPerformance__wait_for_other_work/de';
 import { llamaCppPerformance__waiting_for_visible_page } from '@/strings/messages/llamaCppPerformance__waiting_for_visible_page/de';
 import { llamaCppPerformance__workload } from '@/strings/messages/llamaCppPerformance__workload/de';
+import { modelGraphDefinitionRegistry__add_files } from '@/strings/messages/modelGraphDefinitionRegistry__add_files/de';
+import { modelGraphDefinitionRegistry__architecture_is_already_in_use } from '@/strings/messages/modelGraphDefinitionRegistry__architecture_is_already_in_use/de';
+import { modelGraphDefinitionRegistry__changes_apply_to_the_next_request } from '@/strings/messages/modelGraphDefinitionRegistry__changes_apply_to_the_next_request/de';
+import { modelGraphDefinitionRegistry__choose_one_definition_per_architecture } from '@/strings/messages/modelGraphDefinitionRegistry__choose_one_definition_per_architecture/de';
+import { modelGraphDefinitionRegistry__clear_input } from '@/strings/messages/modelGraphDefinitionRegistry__clear_input/de';
+import { modelGraphDefinitionRegistry__confirm_native_replacement } from '@/strings/messages/modelGraphDefinitionRegistry__confirm_native_replacement/de';
+import { modelGraphDefinitionRegistry__copied } from '@/strings/messages/modelGraphDefinitionRegistry__copied/de';
+import { modelGraphDefinitionRegistry__copy_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__copy_definitions/de';
+import { modelGraphDefinitionRegistry__delete_definition } from '@/strings/messages/modelGraphDefinitionRegistry__delete_definition/de';
+import { modelGraphDefinitionRegistry__delete_definition_question } from '@/strings/messages/modelGraphDefinitionRegistry__delete_definition_question/de';
+import { modelGraphDefinitionRegistry__discard_unsaved_model_graph_input } from '@/strings/messages/modelGraphDefinitionRegistry__discard_unsaved_model_graph_input/de';
+import { modelGraphDefinitionRegistry__download_json } from '@/strings/messages/modelGraphDefinitionRegistry__download_json/de';
+import { modelGraphDefinitionRegistry__experimental_model_graph_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__experimental_model_graph_definitions/de';
+import { modelGraphDefinitionRegistry__format_may_change_without_migration } from '@/strings/messages/modelGraphDefinitionRegistry__format_may_change_without_migration/de';
+import { modelGraphDefinitionRegistry__input_changed_review_again } from '@/strings/messages/modelGraphDefinitionRegistry__input_changed_review_again/de';
+import { modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests } from '@/strings/messages/modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests/de';
+import { modelGraphDefinitionRegistry__no_definitions_registered } from '@/strings/messages/modelGraphDefinitionRegistry__no_definitions_registered/de';
+import { modelGraphDefinitionRegistry__objects_can_span_multiple_lines } from '@/strings/messages/modelGraphDefinitionRegistry__objects_can_span_multiple_lines/de';
+import { modelGraphDefinitionRegistry__paste_multiple_json_objects } from '@/strings/messages/modelGraphDefinitionRegistry__paste_multiple_json_objects/de';
+import { modelGraphDefinitionRegistry__preview } from '@/strings/messages/modelGraphDefinitionRegistry__preview/de';
+import { modelGraphDefinitionRegistry__read_only_registry } from '@/strings/messages/modelGraphDefinitionRegistry__read_only_registry/de';
+import { modelGraphDefinitionRegistry__register_and_use } from '@/strings/messages/modelGraphDefinitionRegistry__register_and_use/de';
+import { modelGraphDefinitionRegistry__register_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__register_definitions/de';
+import { modelGraphDefinitionRegistry__register_only } from '@/strings/messages/modelGraphDefinitionRegistry__register_only/de';
+import { modelGraphDefinitionRegistry__registered } from '@/strings/messages/modelGraphDefinitionRegistry__registered/de';
+import { modelGraphDefinitionRegistry__registered_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__registered_definitions/de';
+import { modelGraphDefinitionRegistry__registration_enables_native_replacement } from '@/strings/messages/modelGraphDefinitionRegistry__registration_enables_native_replacement/de';
+import { modelGraphDefinitionRegistry__reload_registry } from '@/strings/messages/modelGraphDefinitionRegistry__reload_registry/de';
+import { modelGraphDefinitionRegistry__replace_from_input } from '@/strings/messages/modelGraphDefinitionRegistry__replace_from_input/de';
+import { modelGraphDefinitionRegistry__replace_native_implementation } from '@/strings/messages/modelGraphDefinitionRegistry__replace_native_implementation/de';
+import { modelGraphDefinitionRegistry__replacement_requires_new_approval } from '@/strings/messages/modelGraphDefinitionRegistry__replacement_requires_new_approval/de';
+import { modelGraphDefinitionRegistry__session_only_storage } from '@/strings/messages/modelGraphDefinitionRegistry__session_only_storage/de';
+import { modelGraphDefinitionRegistry__source } from '@/strings/messages/modelGraphDefinitionRegistry__source/de';
+import { modelGraphDefinitionRegistry__unregistered } from '@/strings/messages/modelGraphDefinitionRegistry__unregistered/de';
+import { modelGraphDefinitionRegistry__usage_rule } from '@/strings/messages/modelGraphDefinitionRegistry__usage_rule/de';
+import { modelGraphDefinitionRegistry__use_definition } from '@/strings/messages/modelGraphDefinitionRegistry__use_definition/de';
+import { modelGraphDefinitionRegistry__use_registered_graphs_before_native_support } from '@/strings/messages/modelGraphDefinitionRegistry__use_registered_graphs_before_native_support/de';
+import { modelGraphDefinitionRegistry__use_when_architecture_unknown } from '@/strings/messages/modelGraphDefinitionRegistry__use_when_architecture_unknown/de';
 import { naidanRpc__add_header } from '@/strings/messages/naidanRpc__add_header/de';
 import { naidanRpc__apply_methods } from '@/strings/messages/naidanRpc__apply_methods/de';
 import { naidanRpc__chat } from '@/strings/messages/naidanRpc__chat/de';
@@ -4786,6 +4877,9 @@ export const catalog = {
   ImageBenchmarkResult__image_memory_limit_reached,
   ImageBenchmarkResult__image_not_retained,
   ImageBenchmarkResult__no_image,
+  ImageCompositionFields__model_configuration_slot,
+  ImageCompositionFields__shared,
+  ImageCompositionModeSelect__input_mode,
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
@@ -4918,6 +5012,13 @@ export const catalog = {
   ImageGenerationLab__record_detailed_logs,
   ImageGenerationLab__saved_models,
   ImageGenerationLab__select_missing_files,
+  ImageGenerationMonitor__images_generated,
+  ImageGenerationMonitor__preparing_generation,
+  ImageGenerationMonitor__request_position,
+  ImageGenerationMonitor__saving_results,
+  ImageGenerationMonitor__unsaved_images,
+  ImageGenerationOperationActions__no_completed_images,
+  ImageGenerationOperationActions__saving_results,
   ImageGenerationPreview__preview_from_cancelled_generation,
   ImageGenerationPreview__preview_from_failed_generation,
   ImageGenerationProgress__processing_step,
@@ -5489,6 +5590,9 @@ export const catalog = {
   ModelDownloads__unknown_size,
   ModelDownloads__verifying,
   ModelDownloads__waiting,
+  ModelExecutionBadge__execution_not_observed,
+  ModelExecutionBadge__native_architecture,
+  ModelExecutionBadge__registered_model_graph,
   ModelSelector__clear_filter,
   ModelSelector__filter_models,
   ModelSelector__inherit,
@@ -6590,6 +6694,46 @@ export const catalog = {
   imageBenchmark__timeout,
   imageBenchmark__unavailable_components,
   imageBenchmark__warm,
+  imageComposition__add,
+  imageComposition__append,
+  imageComposition__assign,
+  imageComposition__assigned,
+  imageComposition__auto,
+  imageComposition__copy_example,
+  imageComposition__down,
+  imageComposition__download_results,
+  imageComposition__duplicate,
+  imageComposition__export_notice,
+  imageComposition__generate,
+  imageComposition__help,
+  imageComposition__inherit,
+  imageComposition__input_examples,
+  imageComposition__input_models_help,
+  imageComposition__input_structure_help,
+  imageComposition__input_values_help,
+  imageComposition__multiple,
+  imageComposition__operation,
+  imageComposition__overrides,
+  imageComposition__parse,
+  imageComposition__paste,
+  imageComposition__paste_help,
+  imageComposition__pending_metadata,
+  imageComposition__random,
+  imageComposition__recover,
+  imageComposition__recover_notice,
+  imageComposition__reload,
+  imageComposition__reload_notice,
+  imageComposition__remove,
+  imageComposition__replace,
+  imageComposition__replace_notice,
+  imageComposition__save_only,
+  imageComposition__shared_negative_prompt,
+  imageComposition__single,
+  imageComposition__slot_help,
+  imageComposition__summary,
+  imageComposition__unassigned,
+  imageComposition__unsupported,
+  imageComposition__up,
   imageGeneration__action_applied,
   imageGeneration__active_images,
   imageGeneration__actual_seed,
@@ -7041,6 +7185,44 @@ export const catalog = {
   llamaCppPerformance__wait_for_other_work,
   llamaCppPerformance__waiting_for_visible_page,
   llamaCppPerformance__workload,
+  modelGraphDefinitionRegistry__add_files,
+  modelGraphDefinitionRegistry__architecture_is_already_in_use,
+  modelGraphDefinitionRegistry__changes_apply_to_the_next_request,
+  modelGraphDefinitionRegistry__choose_one_definition_per_architecture,
+  modelGraphDefinitionRegistry__clear_input,
+  modelGraphDefinitionRegistry__confirm_native_replacement,
+  modelGraphDefinitionRegistry__copied,
+  modelGraphDefinitionRegistry__copy_definitions,
+  modelGraphDefinitionRegistry__delete_definition,
+  modelGraphDefinitionRegistry__delete_definition_question,
+  modelGraphDefinitionRegistry__discard_unsaved_model_graph_input,
+  modelGraphDefinitionRegistry__download_json,
+  modelGraphDefinitionRegistry__experimental_model_graph_definitions,
+  modelGraphDefinitionRegistry__format_may_change_without_migration,
+  modelGraphDefinitionRegistry__input_changed_review_again,
+  modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests,
+  modelGraphDefinitionRegistry__no_definitions_registered,
+  modelGraphDefinitionRegistry__objects_can_span_multiple_lines,
+  modelGraphDefinitionRegistry__paste_multiple_json_objects,
+  modelGraphDefinitionRegistry__preview,
+  modelGraphDefinitionRegistry__read_only_registry,
+  modelGraphDefinitionRegistry__register_and_use,
+  modelGraphDefinitionRegistry__register_definitions,
+  modelGraphDefinitionRegistry__register_only,
+  modelGraphDefinitionRegistry__registered,
+  modelGraphDefinitionRegistry__registered_definitions,
+  modelGraphDefinitionRegistry__registration_enables_native_replacement,
+  modelGraphDefinitionRegistry__reload_registry,
+  modelGraphDefinitionRegistry__replace_from_input,
+  modelGraphDefinitionRegistry__replace_native_implementation,
+  modelGraphDefinitionRegistry__replacement_requires_new_approval,
+  modelGraphDefinitionRegistry__session_only_storage,
+  modelGraphDefinitionRegistry__source,
+  modelGraphDefinitionRegistry__unregistered,
+  modelGraphDefinitionRegistry__usage_rule,
+  modelGraphDefinitionRegistry__use_definition,
+  modelGraphDefinitionRegistry__use_registered_graphs_before_native_support,
+  modelGraphDefinitionRegistry__use_when_architecture_unknown,
   naidanRpc__add_header,
   naidanRpc__apply_methods,
   naidanRpc__chat,

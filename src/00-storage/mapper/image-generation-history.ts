@@ -7,7 +7,7 @@ import type { ExperimentalImageGenerationDto, ExperimentalImageGenerationSummary
 
 type ModelFileDto = ExperimentalImageGenerationDto['request']['models'][number]['file'];
 
-function fileToDomain({ file }: { file: ModelFileDto }): ImageGenerationModelFile {
+export function imageGenerationModelFileToDomain({ file }: { file: ModelFileDto }): ImageGenerationModelFile {
   switch (file.type) {
   case 'file': return exactObject<Extract<ImageGenerationModelFile, { type: 'file' }>>()({ ...file });
   case 'opfs': case 'temp': return exactObject<Extract<ImageGenerationModelFile, { type: 'opfs' | 'temp' }>>()({ ...file });
@@ -19,7 +19,7 @@ function fileToDomain({ file }: { file: ModelFileDto }): ImageGenerationModelFil
   }
 }
 
-function fileToDto({ file }: { file: ImageGenerationModelFile }): ModelFileDto {
+export function imageGenerationModelFileToDto({ file }: { file: ImageGenerationModelFile }): ModelFileDto {
   switch (file.type) {
   case 'file': return exactObject<Extract<ModelFileDto, { type: 'file' }>>()({ ...file });
   case 'opfs': case 'temp': return exactObject<Extract<ModelFileDto, { type: 'opfs' | 'temp' }>>()({ ...file });
@@ -40,10 +40,10 @@ export function imageGenerationRequestBodyToDomain({ request }: { request: Omit<
     preview: exactObject<ImageGenerationRecord['request']['preview']>()({ ...preview }),
     models: models.map(({ file, companions, ...model }) => exactObject<ImageGenerationRecord['request']['models'][number]>()({
       ...model,
-      file: fileToDomain({ file }),
-      companions: companions.map(({ file, ...companion }) => exactObject<ImageGenerationRecord['request']['models'][number]['companions'][number]>()({ ...companion, file: fileToDomain({ file }) })),
+      file: imageGenerationModelFileToDomain({ file }),
+      companions: companions.map(({ file, ...companion }) => exactObject<ImageGenerationRecord['request']['models'][number]['companions'][number]>()({ ...companion, file: imageGenerationModelFileToDomain({ file }) })),
     })),
-    loras: loras.map(({ file, ...lora }) => exactObject<ImageGenerationRecord['request']['loras'][number]>()({ ...lora, file: fileToDomain({ file }) })),
+    loras: loras.map(({ file, ...lora }) => exactObject<ImageGenerationRecord['request']['loras'][number]>()({ ...lora, file: imageGenerationModelFileToDomain({ file }) })),
     imageInputs: exactObject<ImageGenerationRecord['request']['imageInputs']>()({
       ...inputMetadata,
       initImage: initImage && exactObject<NonNullable<ImageGenerationRecord['request']['imageInputs']['initImage']>>()({ ...initImage, binaryObjectId: toBinaryObjectId({ raw: initImage.binaryObjectId }) }),
@@ -61,10 +61,10 @@ export function imageGenerationRequestBodyToDto({ request }: { request: Omit<Ima
     preview: exactObject<ExperimentalImageGenerationDto['request']['preview']>()({ ...preview }),
     models: models.map(({ file, companions, ...model }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]>()({
       ...model,
-      file: fileToDto({ file }),
-      companions: companions.map(({ file, ...companion }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]['companions'][number]>()({ ...companion, file: fileToDto({ file }) })),
+      file: imageGenerationModelFileToDto({ file }),
+      companions: companions.map(({ file, ...companion }) => exactObject<ExperimentalImageGenerationDto['request']['models'][number]['companions'][number]>()({ ...companion, file: imageGenerationModelFileToDto({ file }) })),
     })),
-    loras: loras.map(({ file, ...lora }) => exactObject<ExperimentalImageGenerationDto['request']['loras'][number]>()({ ...lora, file: fileToDto({ file }) })),
+    loras: loras.map(({ file, ...lora }) => exactObject<ExperimentalImageGenerationDto['request']['loras'][number]>()({ ...lora, file: imageGenerationModelFileToDto({ file }) })),
     imageInputs: exactObject<ExperimentalImageGenerationDto['request']['imageInputs']>()({
       ...inputMetadata,
       initImage: initImage && exactObject<NonNullable<ExperimentalImageGenerationDto['request']['imageInputs']['initImage']>>()({ ...initImage, binaryObjectId: idToRaw({ id: initImage.binaryObjectId }) }),

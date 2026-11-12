@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.66.0",
+  "version": "0.67.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -36,7 +36,7 @@
     "he": "^2.0.0",
     "highlight.js": "^11.12.0",
     "katex": "0.18.10",
-    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#19318aecc36087ad12021511512284d900cb3fc8",
+    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#391a214538cb3c04fd30554ae47e84fc18c1d37a",
     "lucide-vue-next": "^0.577.0",
     "marked": "^18.1.2",
     "marked-highlight": "^2.2.4",
@@ -47,7 +47,8 @@
     "vue": "^3.5.44",
     "vue-router": "^5.4.0",
     "vuedraggable": "^4.1.0",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@babel/core": "^8.1.0",
@@ -99,7 +100,6 @@
     "vitest": "^5.1.0",
     "vue-tsc": "^3.3.14",
     "workbox-precaching": "^7.4.1",
-    "workbox-routing": "^7.4.1",
-    "yaml": "^2.9.1"
+    "workbox-routing": "^7.4.1"
   }
 }

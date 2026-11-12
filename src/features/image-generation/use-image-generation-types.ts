@@ -1,6 +1,6 @@
 import type { ImageInferenceLocationView } from './composables/use-image-inference-location';
-import type { ImageGenerationDraftAccess } from './generation-draft';
-import type { ImageGenerationSubmission } from './generation-submission';
+import type { ImageGenerationDraft, ImageGenerationDraftAccess } from './generation-draft';
+import type { ImageGenerationSubmission, PreparedImageGeneration } from './generation-submission';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import type { Ref, ComputedRef } from 'vue';
 import type { createImageForm } from './form';
@@ -66,6 +66,7 @@ export type ImageGenerationView = ReturnType<typeof createImageForm> & Partial<I
   chooseFile({ slot, event }: { slot: ModelSlot, event: Event }): void;
   resetFiles(): void;
   removeResult({ resultId }: { resultId: number }): void;
+  prepareRequests?({ requests, signal }: { requests: { draft: ImageGenerationDraft, count: number }[], signal: AbortSignal }): Promise<PreparedImageGeneration[]>;
   generate({ submission }: { submission: ImageGenerationSubmission | undefined }): Promise<void>;
   cancel(): void;
   forceCancel(): void;

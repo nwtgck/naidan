@@ -352,7 +352,7 @@ export function registerChatModelBindingOrigin({ chatId, modelId, isCurrent }: {
           invalidateOrigin({ origin });
         }
         break;
-      case 'chat_meta_and_chat_group': case 'settings': case 'binary_objects': case 'naidan_rpc_registry': break;
+      case 'chat_meta_and_chat_group': case 'settings': case 'binary_objects': case 'model_graph_registry': case 'naidan_rpc_registry': break;
       default: {
         const exhaustive: never = event;
         throw new Error(String(exhaustive));
@@ -449,7 +449,7 @@ export function captureChatModelBindingHistoryProof({ chatId, modelId }: { chatI
             proof.invalidate();
           }
           break;
-        case 'chat_meta_and_chat_group': case 'settings': case 'binary_objects': case 'naidan_rpc_registry': break;
+        case 'chat_meta_and_chat_group': case 'settings': case 'binary_objects': case 'model_graph_registry': case 'naidan_rpc_registry': break;
         default: {
           const exhaustive: never = event;
           throw new Error(String(exhaustive));

@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__registration_enables_native_replacement = (): string => "Ao registrar, estas definições são configuradas para substituir a implementação padrão dos modelos correspondentes.";

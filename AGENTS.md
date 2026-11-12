@@ -2,6 +2,9 @@
 
 Do not modify `./docs/` unless the user explicitly requests changes to Docs.
 
+When implementing a change that belongs in the release notes, follow `changelog-unreleased/AGENTS.md` and create a new Markdown change entry.
+Do not edit the `[Unreleased]` section of `CHANGELOG.md` directly during ordinary development.
+
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
 *   **Persisted DTOs**: Use `@/utils/dtozod`, the type-restricted aliases of native Zod. DTOs describe TypeScript structures, not domain validation. Do not restore `strict`/`strictObject` (downgrade loads may discard unknown fields), add `unwrap`/`fromZod`, or recreate every removed check elsewhere. `default`, `exactOptional`, and the existing experimental/missing-as-undefined compatibility helpers are intentional. See the policy beside the types in `src/utils/dtozod/index.ts`. Its Zod-compatible signatures use local named-argument lint suppressions, not a change to the lint rule. Do not alias or re-export native domain schemas as DTOs; the DTO boundary also checks exported value types.
 *   **Secrets**: Use `Secret<T>` (`src/utils/secret.ts`) for domain credentials. Ordinary JSON serialization and string coercion mask values; reveal only at explicit request, form, or persistence boundaries. Compare with `Secret.equals(left, right)`, not JSON fingerprints. Do not JSON-clone or structured-clone domain secrets. Preserve original values in existing storage, ZIP, and chat URL sharing flows; never expose them through logs or Wesh sysfs.

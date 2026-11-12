@@ -1,0 +1,1 @@
+export const imageComposition__recover_notice = (): string => "Mark unfinished requests as interrupted only when no tab owns the operation or unsaved results. This does not generate images or remove saved images.";

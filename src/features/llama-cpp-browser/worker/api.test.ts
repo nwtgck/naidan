@@ -19,6 +19,12 @@ import { createWorkerApi } from "./api";
 import type { WorkerGenerateCall } from "./types";
 import type { generate } from "./generation";
 
+import { importModelGraphRegistrations, setModelGraphUseRule } from '@/features/llama-cpp-browser/model-graph/registry';
+import { modelGraphRequestRegistrations } from '@/features/llama-cpp-browser/model-graph/request-registry';
+import { llamaGraphFixture } from '@/features/llama-cpp-browser/model-graph/fixtures.test-support';
+const graphCalls = vi.hoisted(() => ({ prepare: vi.fn(), generate: vi.fn(), release: vi.fn() }));
+vi.mock('../model-graph/worker-router', () => ({ prepare: graphCalls.prepare, generateWithRegisteredGraph: graphCalls.generate, releaseRegisteredGraph: graphCalls.release }));
+
 const visionCreated = vi.hoisted(() => vi.fn());
 vi.mock('./vision-measurement', async importOriginal => {
   const actual = await importOriginal<typeof import('./vision-measurement')>();
@@ -76,6 +82,10 @@ function deferred() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  graphCalls.prepare.mockReset();
+  graphCalls.generate.mockReset();
+  graphCalls.release.mockReset();
+  calls.releaseSession.mockReset();
   calls.audio.mockReset();
   calls.audio.mockResolvedValue(audioResult());
   calls.list.mockResolvedValue([]);
@@ -1074,5 +1084,40 @@ describe('explicit image workload observation', () => {
     const count = summaries[0]!.diagnostic.performance!.vision!.rows.length;
     logNativeDiagnostic({ message: 'encoding image slice...' });
     expect(summaries[0]!.diagnostic.performance!.vision!.rows).toHaveLength(count);
+  });
+});
+
+describe('registered graph worker routing isolation', () => {
+  function graphRequest(): WorkerGenerateCall {
+    const entries = importModelGraphRegistrations({ input: JSON.stringify(llamaGraphFixture()), existing: [] });
+    return { ...request({ generationId: 8001 }), modelGraphRegistrations: modelGraphRequestRegistrations({ registrations: [setModelGraphUseRule({ registration: entries[0]!, mode: 'replace_native', registrations: entries })] }) };
+  }
+
+  it('does not invoke the graph route for an ordinary native request', async () => {
+    calls.generate.mockResolvedValueOnce(completed());
+    await createWorkerApi().generate(request({ generationId: 8002 }), async () => {}, () => {});
+    expect(graphCalls.generate).not.toHaveBeenCalled();
+    expect(graphCalls.prepare).not.toHaveBeenCalled();
+    expect(calls.generate).toHaveBeenCalledOnce();
+  });
+
+  it('does not silently use the native implementation after a selected graph fails', async () => {
+    graphCalls.generate.mockRejectedValueOnce(new Error('invalid graph'));
+    const api = createWorkerApi();
+    await expect(api.generate(graphRequest(), async () => {}, () => {})).rejects.toThrow();
+    expect(calls.generate).not.toHaveBeenCalled();
+    await api.release();
+    expect(graphCalls.release).toHaveBeenCalledOnce();
+    expect(calls.releaseSession).toHaveBeenCalledWith({ releaseRuntime: true });
+  });
+
+  it('still releases the shared runtime if a graph destructor rejects', async () => {
+    graphCalls.generate.mockResolvedValueOnce(completed());
+    const api = createWorkerApi();
+    await api.generate(graphRequest(), async () => {}, () => {});
+    graphCalls.release.mockRejectedValueOnce(new Error('graph cleanup failed'));
+    calls.releaseSession.mockRejectedValueOnce(new Error('runtime cleanup failed'));
+    await expect(api.release()).rejects.toThrow('graph cleanup failed');
+    expect(calls.releaseSession).toHaveBeenCalledWith({ releaseRuntime: true });
   });
 });

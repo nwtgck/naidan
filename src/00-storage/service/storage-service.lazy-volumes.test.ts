@@ -136,6 +136,8 @@ async function harness({ beforeOpen, beforeWrite }: {
     }),
     dump: vi.fn(async () => snapshot()),
     loadNaidanRpcRegistry: vi.fn(async () => undefined),
+    loadModelGraphRegistry: vi.fn(async () => undefined),
+    saveModelGraphRegistry: vi.fn(async () => undefined),
   };
   Object.assign(h.provider, backend);
   controls.provider = h.provider;

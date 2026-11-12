@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__changes_apply_to_the_next_request = (): string => "Usage rules apply globally from the next request. Existing chats keep their current controls. A selected graph never silently falls back to the native implementation.";

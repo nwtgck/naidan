@@ -1,0 +1,1 @@
+export const ImageGenerationMonitor__request_position = ({ current, total, image, images }: { current: number, total: number, image: number, images: number }): string => `提示词 ${current} / ${total} · 图像 ${image} / ${images}`;

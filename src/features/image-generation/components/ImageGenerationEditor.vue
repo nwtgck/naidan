@@ -23,7 +23,7 @@ import ImageRemoteModelConfiguration from './ImageRemoteModelConfiguration.vue';
 import ImageModelPicker from '@/features/stable-diffusion-cpp-browser/components/ImageModelPicker.vue';
 import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 const props = defineProps<{ view: ImageGenerationView, active: boolean, context?: string }>();
-defineSlots<{ 'prompt-actions'({ field, text }: { field: 'prompt' | 'negativePrompt', text: string }): unknown }>();
+defineSlots<{ 'prompt-mode'(): unknown, 'prompt-editor'(): unknown, 'prompt-actions'({ field, text }: { field: 'prompt' | 'negativePrompt', text: string }): unknown }>();
 const emit = defineEmits<{ manageModels: [] }>();
 const id = useId();
 const configurationOpen = ref(false);
@@ -161,31 +161,36 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </fieldset>
         </ImageSettingsSection>
       </section>
-      <section tw-class="space-y-2" data-testid="image-prompt-section">
-        <div tw-class="rounded-xl border border-gray-200/80 bg-white dark:bg-gray-900/40 px-3.5 pb-1.5 pt-2 transition-colors hover:border-gray-300 focus-within:border-blue-400/70 focus-within:ring-2 focus-within:ring-blue-500/10 dark:border-gray-700/70 dark:hover:border-gray-600 dark:focus-within:border-blue-500/60">
-          <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'prompt'" :text="parameters.prompt" /><ImageGenerationCopyButton :text="parameters.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="image-copy-draft-prompt" /></div></div>
-          <textarea :id="id + '-prompt'" :placeholder="lazyStrings.stableDiffusionCppBrowser__prompt()" :disabled="draftDisabled" v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full resize-y border-0 bg-transparent px-0.5 py-2 text-sm leading-7 text-gray-800 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-100" />
-        </div>
-        <div tw-class="rounded-xl border border-gray-200/80 bg-gray-50/70 dark:bg-gray-800/20 px-3.5 pb-1.5 pt-2 transition-colors hover:border-gray-300 focus-within:border-blue-400/70 focus-within:ring-2 focus-within:ring-blue-500/10 dark:border-gray-700/70 dark:hover:border-gray-600 dark:focus-within:border-blue-500/60">
-          <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-negative-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'negativePrompt'" :text="parameters.negativePrompt" /><ImageGenerationCopyButton :text="parameters.negativePrompt" :label="lazyStrings.imageGeneration__copy_negative_prompt()" data-testid="image-copy-draft-negative-prompt" /></div></div>
-          <textarea :id="id + '-negative-prompt'" :disabled="draftDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y border-0 bg-transparent px-0.5 py-2 text-sm leading-7 text-gray-800 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-100" />
-        </div>
-        <div tw-class="flex flex-wrap items-center gap-2" data-testid="image-generation-actions">
-          <button type="submit" :disabled="formDisabled || !supported || !hasModel || (!remote && (bf16RetentionUnavailable || library.importing.value || (!!library.selectedCandidateKey.value && !library.ready.value)))" data-testid="image-generate" tw-class="flex min-h-11 flex-1 items-center justify-center gap-2.5 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none border-blue-300/80 bg-blue-50/60 text-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-500/40 dark:bg-gray-800/90 dark:text-gray-100 dark:hover:border-blue-400/60 dark:hover:bg-gray-800"><ImageIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
+      <slot name="prompt-editor">
+        <section tw-class="space-y-2" data-testid="image-prompt-section">
+          <div tw-class="rounded-xl border border-gray-200/80 bg-white dark:bg-gray-900/40 px-3.5 pb-1.5 pt-2 transition-colors hover:border-gray-300 focus-within:border-blue-400/70 focus-within:ring-2 focus-within:ring-blue-500/10 dark:border-gray-700/70 dark:hover:border-gray-600 dark:focus-within:border-blue-500/60">
+            <div tw-class="flex flex-wrap items-center justify-between gap-2">
+              <div tw-class="flex min-w-0 max-w-full items-center gap-1.5"><label :for="id + '-prompt'" tw-class="shrink-0 text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label><slot name="prompt-mode" /></div>
+              <div tw-class="ml-auto flex shrink-0 items-center gap-1"><slot name="prompt-actions" :field="'prompt'" :text="parameters.prompt" /><ImageGenerationCopyButton :text="parameters.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="image-copy-draft-prompt" /></div>
+            </div>
+            <textarea :id="id + '-prompt'" :placeholder="lazyStrings.stableDiffusionCppBrowser__prompt()" :disabled="draftDisabled" v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full resize-y border-0 bg-transparent px-0.5 py-2 text-sm leading-7 text-gray-800 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-100" />
+          </div>
+          <div tw-class="rounded-xl border border-gray-200/80 bg-gray-50/70 dark:bg-gray-800/20 px-3.5 pb-1.5 pt-2 transition-colors hover:border-gray-300 focus-within:border-blue-400/70 focus-within:ring-2 focus-within:ring-blue-500/10 dark:border-gray-700/70 dark:hover:border-gray-600 dark:focus-within:border-blue-500/60">
+            <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-negative-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'negativePrompt'" :text="parameters.negativePrompt" /><ImageGenerationCopyButton :text="parameters.negativePrompt" :label="lazyStrings.imageGeneration__copy_negative_prompt()" data-testid="image-copy-draft-negative-prompt" /></div></div>
+            <textarea :id="id + '-negative-prompt'" :disabled="draftDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y border-0 bg-transparent px-0.5 py-2 text-sm leading-7 text-gray-800 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-100" />
+          </div>
+          <div tw-class="flex flex-wrap items-center gap-2" data-testid="image-generation-actions">
+            <button type="submit" :disabled="formDisabled || !supported || !hasModel || (!remote && (bf16RetentionUnavailable || library.importing.value || (!!library.selectedCandidateKey.value && !library.ready.value)))" data-testid="image-generate" tw-class="flex min-h-11 flex-1 items-center justify-center gap-2.5 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none border-blue-300/80 bg-blue-50/60 text-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-500/40 dark:bg-gray-800/90 dark:text-gray-100 dark:hover:border-blue-400/60 dark:hover:bg-gray-800"><ImageIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
 
-          <button type="button" :disabled="!inferenceRunning || stopping" @click="cancel" data-testid="image-cancel" tw-class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
-            <SquareIcon aria-hidden="true" tw-class="h-4 w-4 fill-current" />{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
-          <button v-if="stopping" type="button" :disabled="!inferenceRunning" @click="forceCancel" data-testid="image-force-cancel" tw-class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:border-red-300 dark:hover:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-40 disabled:cursor-not-allowed">
-            <OctagonXIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.stableDiffusionCppBrowser__force_stop() }}</button>
+            <button type="button" :disabled="!inferenceRunning || stopping" @click="cancel" data-testid="image-cancel" tw-class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
+              <SquareIcon aria-hidden="true" tw-class="h-4 w-4 fill-current" />{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
+            <button v-if="stopping" type="button" :disabled="!inferenceRunning" @click="forceCancel" data-testid="image-force-cancel" tw-class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:border-red-300 dark:hover:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-40 disabled:cursor-not-allowed">
+              <OctagonXIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.stableDiffusionCppBrowser__force_stop() }}</button>
 
-        </div>
-        <p v-if="busy" data-testid="image-next-generation-draft" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationEditor__edits_apply_to_next_generation() }}</p>
-        <div v-if="cancelled" tw-class="flex flex-wrap items-center justify-between gap-2">
-          <p v-if="cancelled" role="status" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__cancelled() }}</p>
-        </div>
-        <p v-if="stopping" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__cancel_wait_help() }}</p>
-        <p v-if="invalid" role="alert" tw-class="text-red-600 dark:text-red-400 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
-      </section>
+          </div>
+          <p v-if="busy" data-testid="image-next-generation-draft" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationEditor__edits_apply_to_next_generation() }}</p>
+          <div v-if="cancelled" tw-class="flex flex-wrap items-center justify-between gap-2">
+            <p v-if="cancelled" role="status" tw-class="text-sm">{{ lazyStrings.stableDiffusionCppBrowser__cancelled() }}</p>
+          </div>
+          <p v-if="stopping" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__cancel_wait_help() }}</p>
+          <p v-if="invalid" role="alert" tw-class="text-red-600 dark:text-red-400 text-sm">{{ lazyStrings.stableDiffusionCppBrowser__check_inputs() }}</p>
+        </section>
+      </slot>
       <fieldset :disabled="draftDisabled" tw-class="min-w-0 space-y-4">
         <ImageInputControls :active="active" v-model="imageInputs" :disabled="formDisabled || !supported || library.importing.value" />
         <section tw-class="space-y-2" data-testid="image-resolution">

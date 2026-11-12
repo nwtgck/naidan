@@ -1,9 +1,12 @@
+import type { ModelGraphRegistration } from '@/01-models/model-graph-registry';
+import { readModelGraphRegistry, writeModelGraphRegistry, sameModelGraphRegistry, type ModelGraphRegistryAccess, type ModelGraphRegistrySnapshot } from './model-graph-registry';
 export { areModelBindingSnapshotsEqual } from './model-binding';
 import { cloneOptionalEndpoint } from '@/01-models/endpoint';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
 import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
-import type { ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationOperationId, ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationResultExportSnapshot } from './image-generation-results-export';
 import type { ImageGenerationExportSnapshot } from './image-generation-export';
 import type { ImageGenerationAsset, ImageGenerationSessionDraft, ImageGenerationRun } from '@/01-models/image-generation';
 import type { ImageGenerationStoreAccess } from './image-generation';
@@ -186,7 +189,7 @@ export class StorageService {
           }
           break;
         case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation':
-        case 'settings': case 'binary_objects': case 'naidan_rpc_registry':
+        case 'settings': case 'binary_objects': case 'model_graph_registry': case 'naidan_rpc_registry':
           break;
         default: {
           const exhaustive: never = event;
@@ -1195,6 +1198,35 @@ export class StorageService {
     return updated;
   }
 
+  async loadModelGraphRegistry(): Promise<ModelGraphRegistrySnapshot> {
+    return this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: () => readModelGraphRegistry({ provider: this.getProvider(), providerGeneration: this.providerGeneration, persistence: this.rpcRegistryPersistence() }),
+    });
+  }
+
+  async updateModelGraphRegistry({ access, registrations }: {
+    access: ModelGraphRegistryAccess, registrations: readonly ModelGraphRegistration[],
+  }): Promise<ModelGraphRegistrySnapshot> {
+    if (this.rpcRegistryPersistence() === 'durable' && (typeof navigator === 'undefined' || !navigator.locks?.request)) {
+      throw new Error('Saving model graph definitions requires Web Locks');
+    }
+    const updated = await this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: async () => {
+        const provider = this.getProvider();
+        const current = await readModelGraphRegistry({ provider, providerGeneration: this.providerGeneration, persistence: this.rpcRegistryPersistence() });
+        if (!sameModelGraphRegistry({ left: access, right: current.access })) {
+          throw new Error('Model graph definitions changed. Reload before saving.');
+        }
+        await writeModelGraphRegistry({ provider, current, registrations });
+        return readModelGraphRegistry({ provider, providerGeneration: this.providerGeneration, persistence: this.rpcRegistryPersistence() });
+      },
+    });
+    this.notify({ event: { type: 'model_graph_registry', timestamp: Date.now() } });
+    return updated;
+  }
+
   /**
    * Performs an atomic update on the global settings.
    */
@@ -1549,6 +1581,35 @@ export class StorageService {
           binaries.push({ id, blob });
         }
         return { metadata, binaries };
+      },
+    });
+  }
+
+  async captureImageGenerationResults({ store, sessionId, operationId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, operationId: ImageGenerationOperationId }): Promise<ImageGenerationResultExportSnapshot> {
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') {
+      throw new Error('Image Generation export requires OPFS.');
+    }
+    const provider = this.getProvider();
+    const { collectImageGenerationResultsMetadata } = await import('./image-generation-results-export');
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      ...this.getLockOptions({ source: 'captureImageGenerationResults' }),
+      fn: async () => {
+        if (this.getProvider() !== provider) {
+          throw new Error('The storage provider changed before export.');
+        }
+        const { manifest, files } = await collectImageGenerationResultsMetadata({ store, sessionId, operationId, exportedAt: Date.now() });
+        const images: ImageGenerationResultExportSnapshot['images'] = [];
+        for (const reference of files) {
+          const blob = await provider.getFile({ binaryObjectId: reference.id });
+          if (!blob) {
+            throw new Error(`A result image is missing: ${idToRaw({ id: reference.id })}`);
+          }
+          const extension = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'bin';
+          reference.output.filename = `${reference.base}.${extension}`;
+          images.push({ path: reference.output.filename, blob });
+        }
+        return { manifest: new Blob([JSON.stringify(manifest, undefined, 2)], { type: 'application/json' }), images };
       },
     });
   }
@@ -1919,6 +1980,7 @@ export class StorageService {
 
           const oldProvider = activeProvider;
           const rpcRegistry = await oldProvider.loadNaidanRpcRegistry();
+          const modelGraphRegistry = await oldProvider.loadModelGraphRegistry();
           const snapshot = await oldProvider.dump();
 
           const isOPFSSupported = await checkOPFSSupport();
@@ -2008,6 +2070,7 @@ export class StorageService {
           // Transfer local trust only during an explicit provider switch. It is
           // absent from general JSON backups, which cannot carry CryptoKey.
           await newProvider.saveNaidanRpcRegistry({ registry: rpcRegistry });
+          await newProvider.saveModelGraphRegistry({ registry: modelGraphRegistry });
           const actualType = type === 'opfs' && !isOPFSSupported ? 'local' : type;
 
           if (typeof localStorage !== 'undefined') {

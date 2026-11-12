@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
+import { toBinaryObjectId, toImageGenerationId, toImageGenerationOperationId, toImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationRun } from '@/01-models/image-generation';
 import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
-import { finishImageGenerationSnapshot, type ImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
+import { copyImageGenerationSnapshot, finishImageGenerationSnapshot, type ImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import { createImageGenerationRunSink, type ImageGenerationRunPersistence } from './run-sink';
 
 function harness({ count }: { count: number }) {
@@ -29,6 +30,171 @@ function harness({ count }: { count: number }) {
   }
   return { sink, create, commit, update, snapshot, plan, output, accept: () => sink.submission.accepted({ snapshot, seeds: plan.seeds }) };
 }
+
+function plannedHarness() {
+  const sessionId = toImageGenerationSessionId({ raw: 'session-aa' });
+  const operationId = toImageGenerationOperationId({ raw: 'operation-aa' });
+  const plannedRun = generationRunFixture({ id: 'planned-run-aa', sessionId, count: 2, seed: '9007199254740993' });
+  plannedRun.operationId = operationId;
+  const snapshot: ImageGenerationSnapshot = { id: toImageGenerationId({ raw: 'image-aa' }), createdAt: plannedRun.createdAt, request: structuredClone(plannedRun.request), inputFiles: [] };
+  const create = vi.fn<ImageGenerationRunPersistence['create']>().mockResolvedValue(undefined);
+  const commit = vi.fn<ImageGenerationRunPersistence['commit']>().mockResolvedValue(undefined);
+  const update = vi.fn<ImageGenerationRunPersistence['update']>().mockResolvedValue(undefined);
+  const sink = createImageGenerationRunSink({ sessionId, operationId, plannedRun, count: 2, sources: [], persistence: { create, commit, update }, changed: vi.fn() });
+  return { plannedRun, snapshot, sink, create, update, accept: () => sink.submission.accepted({ snapshot, seeds: [...plannedRun.seeds] }) };
+}
+
+describe('Prepared request acceptance', () => {
+  it('accepts copied request metadata despite object key order at every level', async () => {
+    const h = plannedHarness();
+    const copied = copyImageGenerationSnapshot({ snapshot: h.snapshot });
+    const { prompt, ...parameters } = copied.request.parameters;
+    copied.request.parameters = { ...parameters, prompt };
+    const model = copied.request.models[0]!;
+    const { name, ...file } = model.file;
+    model.file = { ...file, name };
+    const { enabled, ...preview } = copied.request.preview;
+    copied.request.preview = { ...preview, enabled };
+    const runtime = copied.request.runtime;
+    if (runtime.profile === 'naidan-rpc') {
+      throw new Error('The fixture must use a local runtime.');
+    }
+    const { sourceCommit, ...runtimeFields } = runtime;
+    copied.request.runtime = { ...runtimeFields, sourceCommit };
+    await h.sink.submission.accepted({ snapshot: copied, seeds: [...h.plannedRun.seeds] });
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0]![0].run).toEqual(h.plannedRun);
+    expect(h.sink.snapshot().run).toMatchObject({ id: h.plannedRun.id, execution: { type: 'running' } });
+  });
+
+  it('treats an omitted optional setting as its explicit undefined value', async () => {
+    const h = plannedHarness();
+    h.plannedRun.request.parameters.modelArguments = undefined;
+    delete h.snapshot.request.parameters.modelArguments;
+    await h.accept();
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.sink.snapshot().run?.id).toBe(h.plannedRun.id);
+  });
+
+  const changedRequests: { name: string, change({ run }: { run: ImageGenerationRun }): void }[] = [
+    {
+      name: 'prompt',
+      change({ run }) {
+        run.request.parameters.prompt = 'another prompt';
+      },
+    },
+    {
+      name: 'negative prompt',
+      change({ run }) {
+        run.request.parameters.negativePrompt = 'another negative prompt';
+      },
+    },
+    {
+      name: 'model file identity',
+      change({ run }) {
+        run.request.models[0]!.file.lastModified++;
+      },
+    },
+    {
+      name: 'model companion',
+      change({ run }) {
+        run.request.models[0]!.companions[0]!.path = 'other/tokenizer.json';
+      },
+    },
+    {
+      name: 'LoRA strength',
+      change({ run }) {
+        run.request.loras[0]!.strength = 0.5;
+      },
+    },
+    {
+      name: 'input image identity',
+      change({ run }) {
+        run.request.imageInputs.initImage = { binaryObjectId: toBinaryObjectId({ raw: 'different-aa' }), name: 'initial.png' };
+      },
+    },
+    {
+      name: 'preview setting',
+      change({ run }) {
+        run.request.preview.interval++;
+      },
+    },
+    {
+      name: 'runtime setting',
+      change({ run }) {
+        if (run.request.runtime.profile === 'naidan-rpc') {
+          throw new Error('The fixture must use a local runtime.');
+        }
+        run.request.runtime.weightResidency = 'cpu';
+      },
+    },
+    {
+      name: 'planned seed',
+      change({ run }) {
+        run.request.parameters.seed = '42';
+      },
+    },
+  ];
+
+  it.each(changedRequests)('rejects a changed $name before persisting or accepting the run', async ({ change }) => {
+    const h = plannedHarness();
+    change({ run: h.plannedRun });
+    await expect(h.accept()).rejects.toThrow('no longer matches');
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.sink.snapshot().run).toBeUndefined();
+  });
+
+  it.each(['session', 'operation', 'revision', 'execution'] as const)('rejects a changed %s identity or execution state', async field => {
+    const h = plannedHarness();
+    switch (field) {
+    case 'session': h.plannedRun.sessionId = toImageGenerationSessionId({ raw: 'other-session-aa' });
+      break;
+    case 'operation': h.plannedRun.operationId = toImageGenerationOperationId({ raw: 'other-operation-aa' });
+      break;
+    case 'revision': h.plannedRun.revision = 1;
+      break;
+    case 'execution': h.plannedRun.execution = { type: 'running', startedAt: 1 };
+      break;
+    default: {
+      const exhaustive: never = field;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await expect(h.accept()).rejects.toThrow('no longer matches');
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.sink.snapshot().run).toBeUndefined();
+  });
+
+  it.each(['models', 'loras', 'referenceImages'] as const)('preserves the order of %s rather than comparing an unordered set', async field => {
+    const h = plannedHarness();
+    switch (field) {
+    case 'models': {
+      const first = h.plannedRun.request.models[0]!;
+      h.plannedRun.request.models.push({ ...structuredClone(first), slot: 'vae', path: 'weights/vae.gguf' });
+      h.snapshot.request.models = structuredClone(h.plannedRun.request.models).reverse();
+      break;
+    }
+    case 'loras': {
+      const first = h.plannedRun.request.loras[0]!;
+      h.plannedRun.request.loras.push({ ...structuredClone(first), path: 'second.gguf', strength: 0.5 });
+      h.snapshot.request.loras = structuredClone(h.plannedRun.request.loras).reverse();
+      break;
+    }
+    case 'referenceImages':
+      h.plannedRun.request.imageInputs.referenceImages.push({ binaryObjectId: toBinaryObjectId({ raw: 'reference-bb' }), name: 'second.png' });
+      h.snapshot.request.imageInputs.referenceImages = structuredClone(h.plannedRun.request.imageInputs.referenceImages).reverse();
+      break;
+    default: {
+      const exhaustive: never = field;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await expect(h.accept()).rejects.toThrow('no longer matches');
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.sink.snapshot().run).toBeUndefined();
+  });
+});
 
 describe('Workspace run publication ownership', () => {
   it('keeps one run and exact per-image seeds without mutating the accepted request', async () => {

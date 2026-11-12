@@ -2,7 +2,7 @@ import { Blob as NodeBlob } from 'node:buffer';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { toBinaryObjectId } from '@/01-models/ids';
 import { createBlobZipSource, createWebZipCompressionCodec, StreamingZipReader } from '@/utils/zip-stream';
-import { createImageGenerationArchive } from './export';
+import { createImageGenerationArchive, createImageGenerationResultsArchive } from './export';
 
 beforeEach(() => vi.stubGlobal('Blob', NodeBlob));
 
@@ -32,4 +32,28 @@ it('settles the writer when the consumer cancels while image bytes are blocked b
   const result = expect(archive.completed).rejects.toBeDefined();
   await archive.stream.cancel(new Error('user cancelled'));
   await result;
+});
+
+it('streams an operation result archive without session backup metadata', async () => {
+  const archive = createImageGenerationResultsArchive({ snapshot: { manifest: new Blob(['{"version":1}'], { type: 'application/json' }), images: [{ path: 'images/001/01.png', blob: new Blob(['pixels']) }] }, exportedAt: 1700000000000 });
+  const blob = await new Response(archive.stream).blob();
+  await archive.completed;
+  const reader = new StreamingZipReader({ source: createBlobZipSource({ blob }), compressionCodec: createWebZipCompressionCodec() });
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      await reader.close();
+    },
+  };
+  const names = [];
+  for await (const entry of reader.entries()) {
+    names.push(entry.name);
+  }
+  expect(names).toEqual(['manifest.json', 'images/001/01.png']);
+});
+
+it('settles result ZIP writing when its consumer cancels', async () => {
+  const archive = createImageGenerationResultsArchive({ snapshot: { manifest: new Blob(['{}']), images: [{ path: 'images/001/01.png', blob: new Blob([new Uint8Array(2 * 1024 * 1024)]) }] }, exportedAt: 1700000000000 });
+  const rejected = expect(archive.completed).rejects.toBeDefined();
+  await archive.stream.cancel(new Error('cancelled'));
+  await rejected;
 });

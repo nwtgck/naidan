@@ -9,7 +9,7 @@ vi.mock('virtual:naidan-licenses', () => ({ default: () => ({ entries: [{ name: 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, reactive, nextTick, shallowRef } from 'vue';
+import { ref, reactive, nextTick, shallowRef, defineComponent } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import AboutTab from './AboutTab.vue';
@@ -268,7 +268,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
 
     vi.stubGlobal('location', { reload: vi.fn() });
-    mockShowConfirm.mockClear();
+    mockShowConfirm.mockReset();
     mockShowPrompt.mockClear();
   });
 
@@ -807,6 +807,36 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         title: 'Discard Unsaved Changes?',
       }),
     );
+  });
+
+  it('keeps graph input between tabs and warns about both independent unsaved drafts', async () => {
+    const developer = defineComponent({
+      props: ['modelGraphInput'],
+      emits: ['update:modelGraphInput'],
+      template: '<textarea data-testid="graph-draft" :value="modelGraphInput" @input="$emit(\'update:modelGraphInput\', $event.target.value)" />',
+    });
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ...globalStubs, DeveloperTab: developer } } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    await wrapper.get('[data-testid="setting-url-input"]').setValue('http://changed-url');
+    await wrapper.findAll('nav button').find(button => button.text().includes('Developer'))!.trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="graph-draft"]').setValue('{"draft":true}');
+    await wrapper.findAll('nav button').find(button => button.text().includes('Connection'))!.trigger('click');
+    await wrapper.findAll('nav button').find(button => button.text().includes('Developer'))!.trigger('click');
+    await flushPromises();
+    expect(wrapper.get<HTMLTextAreaElement>('[data-testid="graph-draft"]').element.value).toBe('{"draft":true}');
+    mockShowConfirm.mockResolvedValueOnce(false);
+    await wrapper.get('[data-testid="setting-close-x"]').trigger('click');
+    await flushPromises();
+    const message: string = mockShowConfirm.mock.calls.at(-1)![0].message;
+    expect(message).toContain('connection');
+    expect(message).toContain('model graph');
+    expect(wrapper.emitted('close')).toBeUndefined();
   });
 
   it('applies endpoint presets correctly and highlights the active one', async () => {

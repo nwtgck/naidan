@@ -304,3 +304,9 @@ it('fetch rejects existing draft/prerelease publication instead of hiding the co
     assert.ok(h.calls.every(call => call.method.startsWith('GET')));
   }
 });
+
+it('shared changelog formatting changes trigger release-note synchronization', () => {
+  const push = workflow.split('  workflow_dispatch:')[0];
+  assert.match(push, /^      - scripts\/changelog_format\.py$/m);
+  assert.doesNotMatch(push, /^      - changelog-unreleased/m);
+});

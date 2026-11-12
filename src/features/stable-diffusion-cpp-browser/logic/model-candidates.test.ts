@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { scanImageRepositories, componentRequirements, defaultCompanion, componentMatch } from './model-candidates';
 import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor, sdVaeTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import type { LocalImageRepository } from './repository-store';
+import { imageModelRecipes } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 
 function repository({ repositoryKey, file }: { repositoryKey: string, file: File }): LocalImageRepository {
   return { repositoryKey, repositoryLabel: repositoryKey, files: [{ relativePath: file.name, file }] };
@@ -105,4 +106,29 @@ it('recognizes the official Qwen3-VL-8B 36-layer text architecture and rejects t
   const requirement = { slot: 'lm' as const, accepts: ['lm-qwen3vl-8b' as const] };
   expect(componentMatch({ candidate: result.candidates[0]!, requirement })).toBe('matching');
   expect(componentMatch({ candidate: result.candidates[1]!, requirement })).toBe('incompatible');
+});
+
+it('recognizes a known Z-Image catalog path without a completion marker, without trusting arbitrary names', async () => {
+  const recipe = imageModelRecipes.find(entry => entry.id === 'z-image-turbo')!;
+  const selected = recipe.files.find(entry => entry.role === 'diffusion')!;
+  const file = ggufFixture({ name: 'opaque.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
+  const inventory = ({ repositoryKey }: { repositoryKey: string }): LocalImageRepository => ({
+    repositoryKey,
+    repositoryLabel: repositoryKey,
+    files: [{ relativePath: selected.path, file }],
+  });
+  const known = await scanImageRepositories({ repositories: [inventory({ repositoryKey: `huggingface.co/${selected.repository}/resolve/main` })], signal: undefined });
+  expect(known.candidates[0]).toMatchObject({ family: 'z-image', variant: 'turbo', turboHint: true });
+  expect(known.candidates[0]!.evidence.join(' ')).toContain('source not verified on read');
+  const linked = await scanImageRepositories({
+    repositories: [{
+      ...inventory({ repositoryKey: 'host/linked/known-model' }),
+      hostSource: { directoryId: 'linked', directoryName: 'Linked models', repository: selected.repository },
+    }],
+    signal: undefined,
+  });
+  expect(linked.candidates[0]).toMatchObject({ family: 'z-image', variant: 'turbo', turboHint: true });
+  expect(linked.candidates[0]!.evidence.join(' ')).toContain('source not verified on read');
+  const foreign = await scanImageRepositories({ repositories: [inventory({ repositoryKey: 'user/renamed-catalog-file' })], signal: undefined });
+  expect(foreign.candidates[0]).toMatchObject({ family: 'z-image', variant: 'unknown', turboHint: false });
 });

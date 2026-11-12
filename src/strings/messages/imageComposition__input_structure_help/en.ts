@@ -1,0 +1,1 @@
+export const imageComposition__input_structure_help = (): string => "Use one flat object per YAML document (separate documents with ---) or per JSONL line. prompt is required. Omitted fields use the shared settings. Do not add defaults, jobs, or overrides wrappers.";

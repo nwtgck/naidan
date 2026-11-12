@@ -26,6 +26,16 @@ type BrandedId<TName extends string> =
 export type NaidanRpcRegistrationId = BrandedId<'NaidanRpcRegistrationId'>;
 export type NaidanRpcPeerPublicKey = BrandedId<'NaidanRpcPeerPublicKey'>;
 export type NaidanRpcRegistryId = BrandedId<'NaidanRpcRegistryId'>;
+export type ModelGraphRegistrationId = BrandedId<'ModelGraphRegistrationId'>;
+export type ModelGraphRegistryId = BrandedId<'ModelGraphRegistryId'>;
+
+export function toModelGraphRegistrationId({ raw }: { raw: string }): ModelGraphRegistrationId {
+  return raw as unknown as ModelGraphRegistrationId;
+}
+
+export function toModelGraphRegistryId({ raw }: { raw: string }): ModelGraphRegistryId {
+  return raw as unknown as ModelGraphRegistryId;
+}
 
 export type ChatId = BrandedId<'ChatId'>;
 export type MessageId = BrandedId<'MessageId'>;
@@ -42,6 +52,8 @@ export type LocalModelSourceId = BrandedId<'LocalModelSourceId'>;
 export type ImageGenerationId = BrandedId<'ImageGenerationId'>;
 export type ImageGenerationStoreId = BrandedId<'ImageGenerationStoreId'>;
 export type ImageGenerationSessionId = BrandedId<'ImageGenerationSessionId'>;
+export type ImageGenerationOperationId = BrandedId<'ImageGenerationOperationId'>;
+export type ImageGenerationJobId = BrandedId<'ImageGenerationJobId'>;
 export type ImageGenerationRunId = BrandedId<'ImageGenerationRunId'>;
 export type ImageGenerationAssetId = BrandedId<'ImageGenerationAssetId'>;
 export type ImageGenerationTagId = BrandedId<'ImageGenerationTagId'>;
@@ -144,6 +156,10 @@ export function toImageGenerationTagId({ raw }: { raw: string }): ImageGeneratio
 
 export function toImageGenerationBindingId({ raw }: { raw: string }): ImageGenerationBindingId {
   return raw as unknown as ImageGenerationBindingId;
+}
+
+export function toImageGenerationOperationId({ raw }: { raw: string }): ImageGenerationOperationId {
+  return raw as unknown as ImageGenerationOperationId;
 }
 
 export function toImageGenerationDraftRevisionId({ raw }: { raw: string }): ImageGenerationDraftRevisionId {

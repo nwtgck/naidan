@@ -1,6 +1,6 @@
 import { generateId } from '@/01-models/id';
-import type { ImageGenerationId, ImageGenerationSessionId } from '@/01-models/ids';
-import type { ImageGenerationSource } from '@/01-models/image-generation';
+import type { ImageGenerationId, ImageGenerationOperationId, ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationRun, ImageGenerationSource } from '@/01-models/image-generation';
 import type { ImageGenerationStoreAccess } from '@/00-storage/service/image-generation';
 import type { ImageGenerationSubmission } from '@/features/image-generation/generation-submission';
 import { createImageGenerationRunSink, type ImageGenerationRunPersistence } from './run-sink';
@@ -65,9 +65,9 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
         listeners.delete(listener);
       };
     },
-    create({ store, sessionId, count, sources, persistence }: {
+    create({ store, sessionId, count, sources, persistence, plannedRun }: {
       store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, count: number,
-      sources: ImageGenerationSource[], persistence: ImageGenerationRunPersistence,
+      sources: ImageGenerationSource[], persistence: ImageGenerationRunPersistence, plannedRun?: ImageGenerationRun,
     }) {
       const blobs = new Set<Blob>();
       for (const entry of entries.values()) {
@@ -81,9 +81,12 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
         throw new Error('Save or discard pending image runs before generating again.');
       }
       const id = generateId<ImageGenerationId>();
+      const operationId = plannedRun?.operationId ?? generateId<ImageGenerationOperationId>();
       // This closure belongs to the registry, not to a mounted workspace.
       const sink = createImageGenerationRunSink({
         sessionId,
+        operationId,
+        plannedRun,
         count,
         sources,
         persistence,
@@ -108,6 +111,7 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
       changed();
       return {
         id,
+        operationId,
         submission,
         snapshot: sink.snapshot,
         async retire(): Promise<void> {

@@ -6,7 +6,7 @@ import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } f
 import type { ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import type { ExperimentalImageGenerationDraftDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageGenerationAsset, ImageGenerationAssetAnnotations, ImageGenerationAssetSummary, ImageGenerationCatalog, ImageGenerationRun, ImageGenerationRunSummary, ImageGenerationSession, ImageGenerationTagReference } from '@/01-models/image-generation';
-import { idToRaw, toChatId, toBinaryObjectId, toImageGenerationAssetId, toImageGenerationRunId, toImageGenerationSessionId, toImageGenerationStoreId, toImageGenerationTagId } from '@/01-models/ids';
+import { idToRaw, toChatId, toBinaryObjectId, toImageGenerationAssetId, toImageGenerationRunId, toImageGenerationOperationId, toImageGenerationSessionId, toImageGenerationStoreId, toImageGenerationTagId } from '@/01-models/ids';
 import { exactObject } from '@/utils/exact-object';
 import type { ExperimentalImageGenerationAssetAnnotationsDto, ExperimentalImageGenerationAssetDto, ExperimentalImageGenerationAssetSummaryDto, ExperimentalImageGenerationCatalogDto, ExperimentalImageGenerationRunDto, ExperimentalImageGenerationRunSummaryDto, ExperimentalImageGenerationSessionDto, ExperimentalImageGenerationTagReferenceDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationRuntimeToDomain, imageGenerationRuntimeToDto, imageGenerationRequestBodyToDomain, imageGenerationRequestBodyToDto, imageGenerationRequestToDomain, imageGenerationRequestToDto } from './image-generation-history';
@@ -60,9 +60,10 @@ export function imageGenerationSessionToDomain({ dto }: { dto: ExperimentalImage
 }
 
 export function imageGenerationRunToDto({ run }: { run: ImageGenerationRun }): ExperimentalImageGenerationRunDto {
-  const { id, sessionId, request, sources, ...metadata } = run;
+  const { id, sessionId, operationId, request, sources, ...metadata } = run;
   return exactObject<ExperimentalImageGenerationRunDto>()({
     ...metadata,
+    ...(operationId === undefined ? {} : { operationId: idToRaw({ id: operationId }) }),
     id: idToRaw({ id }),
     sessionId: idToRaw({ id: sessionId }),
     request: imageGenerationRequestToDto({ request }),
@@ -71,9 +72,10 @@ export function imageGenerationRunToDto({ run }: { run: ImageGenerationRun }): E
 }
 
 export function imageGenerationRunToDomain({ dto }: { dto: ExperimentalImageGenerationRunDto }): ImageGenerationRun {
-  const { id, sessionId, request, sources, ...metadata } = dto;
+  const { id, sessionId, operationId, request, sources, ...metadata } = dto;
   return exactObject<ImageGenerationRun>()({
     ...metadata,
+    ...(operationId === undefined ? {} : { operationId: toImageGenerationOperationId({ raw: operationId }) }),
     id: toImageGenerationRunId({ raw: id }),
     sessionId: toImageGenerationSessionId({ raw: sessionId }),
     request: imageGenerationRequestToDomain({ request }),
@@ -138,7 +140,8 @@ export function imageGenerationAnnotationsToDomain({ dto }: { dto: ExperimentalI
 }
 
 export function imageGenerationRunSummaryToDomain({ dto }: { dto: ExperimentalImageGenerationRunSummaryDto }): ImageGenerationRunSummary {
-  return exactObject<ImageGenerationRunSummary>()({ ...dto, id: toImageGenerationRunId({ raw: dto.id }), sessionId: toImageGenerationSessionId({ raw: dto.sessionId }) });
+  const { operationId, ...summary } = dto;
+  return exactObject<ImageGenerationRunSummary>()({ ...summary, ...(operationId === undefined ? {} : { operationId: toImageGenerationOperationId({ raw: operationId }) }), id: toImageGenerationRunId({ raw: dto.id }), sessionId: toImageGenerationSessionId({ raw: dto.sessionId }) });
 }
 
 export function imageGenerationAssetSummaryToDomain({ dto }: { dto: ExperimentalImageGenerationAssetSummaryDto }): ImageGenerationAssetSummary {

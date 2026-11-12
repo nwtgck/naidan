@@ -1,3 +1,4 @@
+vi.mock('../model-graph/request-settings', () => ({ readModelGraphRequestSettings: vi.fn(async () => []) }));
 import { installHandleCloneProbe } from '@/utils/worker-capability-probe.test-support';
 import { TEST_ONLY as capabilityTest } from '@/utils/worker-transport';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';

@@ -34,10 +34,11 @@ describe('DeveloperTab', () => {
 
   function mountDeveloperTab() {
     return mount(DeveloperTab, {
-      props: { storageType: 'localStorage' },
+      props: { storageType: 'localStorage', modelGraphInput: '' },
       global: {
         stubs: {
           FeatureFlagsSettings: true,
+          ModelGraphDefinitionRegistryPanel: true,
           DeveloperOpenStateLinks: true,
         },
       },

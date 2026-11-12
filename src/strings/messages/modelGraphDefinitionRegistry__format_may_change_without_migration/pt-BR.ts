@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__format_may_change_without_migration = (): string => "This format may change without compatibility or automatic migration. Keep a copy of your definitions and the working Naidan version.";

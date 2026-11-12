@@ -1,3 +1,4 @@
+import { sameModelFile } from './model-file-identity';
 import { defaultVisionBf16Storage } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage-schema';
 import { fileBackedRowsCapability } from '@/features/llama-cpp-browser/runtime/file-backed-rows';
 import { createModelFileDiagnostics } from '@/features/llama-cpp-browser/runtime/model-file-diagnostics';
@@ -128,17 +129,6 @@ export async function invalidateStoredModel({ modelId }: { modelId: string }): P
   }
 }
 
-// This is resident-cache invalidation, not public identity protection. Reusing a
-// temporary name must load its current files, even when size/mtime are identical.
-async function sameModelFile({ previous, next }: { previous: ModelFile, next: ModelFile }): Promise<boolean> {
-  if ('snapshotId' in previous || 'snapshotId' in next) {
-    return 'snapshotId' in previous && 'snapshotId' in next && previous.storageKind === next.storageKind && previous.snapshotId === next.snapshotId;
-  }
-  if (previous.storageKind === 'temp' || next.storageKind === 'temp') {
-    return previous.storageKind === 'temp' && next.storageKind === 'temp' && previous.registrationRevision === next.registrationRevision;
-  }
-  return previous.storageKind === next.storageKind && previous.handle.isSameEntry(next.handle);
-}
 
 type SessionRequest = Pick<WorkerGenerateInput, 'modelId' | 'options' | 'assetBaseURL' | 'debug' | 'measurement' | 'resolvedModel'>;
 type ProjectorPolicy = 'load-if-present' | 'defer';
@@ -238,6 +228,26 @@ export async function prepareLiveSession({ request, onProgress, signal }: {
   return prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'live', contextTokens: request.options.contextTokens ?? 8192 } });
 }
 
+/** Runtime ownership stays here for both execution implementations. A capability
+ * query must not evict an otherwise reusable native model or its prompt cache. */
+export async function prepareRuntime({ request, onProgress, signal }: {
+  request: Pick<SessionRequest, 'options' | 'assetBaseURL'>,
+  onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
+}): Promise<{ core: Core, profile: LlamaCppProfile }> {
+  signal?.throwIfAborted();
+  const profile = runtime?.requestedProfile === request.options.profile && runtime.assetBaseURL === request.assetBaseURL
+    ? runtime.profile : await resolveRuntimeProfile({ profile: request.options.profile });
+  signal?.throwIfAborted();
+  if (!runtime || runtime.profile !== profile || runtime.assetBaseURL !== request.assetBaseURL) {
+    await releaseSession({ releaseRuntime: true });
+    onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
+    runtime = { profile, requestedProfile: request.options.profile, assetBaseURL: request.assetBaseURL, core: await loadRuntime({ profile, assetBaseURL: request.assetBaseURL }) };
+    beginMemoryDiagnostics({ core: runtime.core, profile });
+  }
+  runtime.requestedProfile = request.options.profile;
+  return { core: runtime.core, profile };
+}
+
 async function prepareResidentSession({ request, purpose, onProgress, signal }: {
   request: SessionRequest, purpose: SessionPurpose,
   onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
@@ -272,17 +282,8 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     }
     }
   })();
-  const profile = runtime?.requestedProfile === request.options.profile && runtime.assetBaseURL === request.assetBaseURL
-    ? runtime.profile : await resolveRuntimeProfile({ profile: request.options.profile });
+  const { core, profile } = await prepareRuntime({ request, onProgress, signal });
   checkCancelled();
-  if (!runtime || runtime.profile !== profile || runtime.assetBaseURL !== request.assetBaseURL) {
-    await releaseSession({ releaseRuntime: true });
-    onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
-    runtime = { profile, requestedProfile: request.options.profile, assetBaseURL: request.assetBaseURL, core: await loadRuntime({ profile, assetBaseURL: request.assetBaseURL }) };
-    beginMemoryDiagnostics({ core: runtime.core, profile });
-  }
-  runtime.requestedProfile = request.options.profile;
-  const core = runtime.core;
   const api = core.api;
   const directory = request.resolvedModel.directory;
   if (purpose.kind !== 'chat' && !directory.projectorFile) {

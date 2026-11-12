@@ -908,6 +908,9 @@ import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageB
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/zh-Hans';
 import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/zh-Hans';
 import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/zh-Hans';
+import { ImageCompositionFields__model_configuration_slot } from '@/strings/messages/ImageCompositionFields__model_configuration_slot/zh-Hans';
+import { ImageCompositionFields__shared } from '@/strings/messages/ImageCompositionFields__shared/zh-Hans';
+import { ImageCompositionModeSelect__input_mode } from '@/strings/messages/ImageCompositionModeSelect__input_mode/zh-Hans';
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/zh-Hans';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/zh-Hans';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/zh-Hans';
@@ -1040,6 +1043,13 @@ import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/Imag
 import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/zh-Hans';
 import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/zh-Hans';
 import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/zh-Hans';
+import { ImageGenerationMonitor__images_generated } from '@/strings/messages/ImageGenerationMonitor__images_generated/zh-Hans';
+import { ImageGenerationMonitor__preparing_generation } from '@/strings/messages/ImageGenerationMonitor__preparing_generation/zh-Hans';
+import { ImageGenerationMonitor__request_position } from '@/strings/messages/ImageGenerationMonitor__request_position/zh-Hans';
+import { ImageGenerationMonitor__saving_results } from '@/strings/messages/ImageGenerationMonitor__saving_results/zh-Hans';
+import { ImageGenerationMonitor__unsaved_images } from '@/strings/messages/ImageGenerationMonitor__unsaved_images/zh-Hans';
+import { ImageGenerationOperationActions__no_completed_images } from '@/strings/messages/ImageGenerationOperationActions__no_completed_images/zh-Hans';
+import { ImageGenerationOperationActions__saving_results } from '@/strings/messages/ImageGenerationOperationActions__saving_results/zh-Hans';
 import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/zh-Hans';
 import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/zh-Hans';
 import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/zh-Hans';
@@ -1611,6 +1621,9 @@ import { ModelDownloads__retry } from '@/strings/messages/ModelDownloads__retry/
 import { ModelDownloads__unknown_size } from '@/strings/messages/ModelDownloads__unknown_size/zh-Hans';
 import { ModelDownloads__verifying } from '@/strings/messages/ModelDownloads__verifying/zh-Hans';
 import { ModelDownloads__waiting } from '@/strings/messages/ModelDownloads__waiting/zh-Hans';
+import { ModelExecutionBadge__execution_not_observed } from '@/strings/messages/ModelExecutionBadge__execution_not_observed/zh-Hans';
+import { ModelExecutionBadge__native_architecture } from '@/strings/messages/ModelExecutionBadge__native_architecture/zh-Hans';
+import { ModelExecutionBadge__registered_model_graph } from '@/strings/messages/ModelExecutionBadge__registered_model_graph/zh-Hans';
 import { ModelSelector__clear_filter } from '@/strings/messages/ModelSelector__clear_filter/zh-Hans';
 import { ModelSelector__filter_models } from '@/strings/messages/ModelSelector__filter_models/zh-Hans';
 import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inherit/zh-Hans';
@@ -2712,6 +2725,46 @@ import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__su
 import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/zh-Hans';
 import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/zh-Hans';
 import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/zh-Hans';
+import { imageComposition__add } from '@/strings/messages/imageComposition__add/zh-Hans';
+import { imageComposition__append } from '@/strings/messages/imageComposition__append/zh-Hans';
+import { imageComposition__assign } from '@/strings/messages/imageComposition__assign/zh-Hans';
+import { imageComposition__assigned } from '@/strings/messages/imageComposition__assigned/zh-Hans';
+import { imageComposition__auto } from '@/strings/messages/imageComposition__auto/zh-Hans';
+import { imageComposition__copy_example } from '@/strings/messages/imageComposition__copy_example/zh-Hans';
+import { imageComposition__down } from '@/strings/messages/imageComposition__down/zh-Hans';
+import { imageComposition__download_results } from '@/strings/messages/imageComposition__download_results/zh-Hans';
+import { imageComposition__duplicate } from '@/strings/messages/imageComposition__duplicate/zh-Hans';
+import { imageComposition__export_notice } from '@/strings/messages/imageComposition__export_notice/zh-Hans';
+import { imageComposition__generate } from '@/strings/messages/imageComposition__generate/zh-Hans';
+import { imageComposition__help } from '@/strings/messages/imageComposition__help/zh-Hans';
+import { imageComposition__inherit } from '@/strings/messages/imageComposition__inherit/zh-Hans';
+import { imageComposition__input_examples } from '@/strings/messages/imageComposition__input_examples/zh-Hans';
+import { imageComposition__input_models_help } from '@/strings/messages/imageComposition__input_models_help/zh-Hans';
+import { imageComposition__input_structure_help } from '@/strings/messages/imageComposition__input_structure_help/zh-Hans';
+import { imageComposition__input_values_help } from '@/strings/messages/imageComposition__input_values_help/zh-Hans';
+import { imageComposition__multiple } from '@/strings/messages/imageComposition__multiple/zh-Hans';
+import { imageComposition__operation } from '@/strings/messages/imageComposition__operation/zh-Hans';
+import { imageComposition__overrides } from '@/strings/messages/imageComposition__overrides/zh-Hans';
+import { imageComposition__parse } from '@/strings/messages/imageComposition__parse/zh-Hans';
+import { imageComposition__paste } from '@/strings/messages/imageComposition__paste/zh-Hans';
+import { imageComposition__paste_help } from '@/strings/messages/imageComposition__paste_help/zh-Hans';
+import { imageComposition__pending_metadata } from '@/strings/messages/imageComposition__pending_metadata/zh-Hans';
+import { imageComposition__random } from '@/strings/messages/imageComposition__random/zh-Hans';
+import { imageComposition__recover } from '@/strings/messages/imageComposition__recover/zh-Hans';
+import { imageComposition__recover_notice } from '@/strings/messages/imageComposition__recover_notice/zh-Hans';
+import { imageComposition__reload } from '@/strings/messages/imageComposition__reload/zh-Hans';
+import { imageComposition__reload_notice } from '@/strings/messages/imageComposition__reload_notice/zh-Hans';
+import { imageComposition__remove } from '@/strings/messages/imageComposition__remove/zh-Hans';
+import { imageComposition__replace } from '@/strings/messages/imageComposition__replace/zh-Hans';
+import { imageComposition__replace_notice } from '@/strings/messages/imageComposition__replace_notice/zh-Hans';
+import { imageComposition__save_only } from '@/strings/messages/imageComposition__save_only/zh-Hans';
+import { imageComposition__shared_negative_prompt } from '@/strings/messages/imageComposition__shared_negative_prompt/zh-Hans';
+import { imageComposition__single } from '@/strings/messages/imageComposition__single/zh-Hans';
+import { imageComposition__slot_help } from '@/strings/messages/imageComposition__slot_help/zh-Hans';
+import { imageComposition__summary } from '@/strings/messages/imageComposition__summary/zh-Hans';
+import { imageComposition__unassigned } from '@/strings/messages/imageComposition__unassigned/zh-Hans';
+import { imageComposition__unsupported } from '@/strings/messages/imageComposition__unsupported/zh-Hans';
+import { imageComposition__up } from '@/strings/messages/imageComposition__up/zh-Hans';
 import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/zh-Hans';
 import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/zh-Hans';
 import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/zh-Hans';
@@ -3163,6 +3216,44 @@ import { llamaCppPerformance__trial_status } from '@/strings/messages/llamaCppPe
 import { llamaCppPerformance__wait_for_other_work } from '@/strings/messages/llamaCppPerformance__wait_for_other_work/zh-Hans';
 import { llamaCppPerformance__waiting_for_visible_page } from '@/strings/messages/llamaCppPerformance__waiting_for_visible_page/zh-Hans';
 import { llamaCppPerformance__workload } from '@/strings/messages/llamaCppPerformance__workload/zh-Hans';
+import { modelGraphDefinitionRegistry__add_files } from '@/strings/messages/modelGraphDefinitionRegistry__add_files/zh-Hans';
+import { modelGraphDefinitionRegistry__architecture_is_already_in_use } from '@/strings/messages/modelGraphDefinitionRegistry__architecture_is_already_in_use/zh-Hans';
+import { modelGraphDefinitionRegistry__changes_apply_to_the_next_request } from '@/strings/messages/modelGraphDefinitionRegistry__changes_apply_to_the_next_request/zh-Hans';
+import { modelGraphDefinitionRegistry__choose_one_definition_per_architecture } from '@/strings/messages/modelGraphDefinitionRegistry__choose_one_definition_per_architecture/zh-Hans';
+import { modelGraphDefinitionRegistry__clear_input } from '@/strings/messages/modelGraphDefinitionRegistry__clear_input/zh-Hans';
+import { modelGraphDefinitionRegistry__confirm_native_replacement } from '@/strings/messages/modelGraphDefinitionRegistry__confirm_native_replacement/zh-Hans';
+import { modelGraphDefinitionRegistry__copied } from '@/strings/messages/modelGraphDefinitionRegistry__copied/zh-Hans';
+import { modelGraphDefinitionRegistry__copy_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__copy_definitions/zh-Hans';
+import { modelGraphDefinitionRegistry__delete_definition } from '@/strings/messages/modelGraphDefinitionRegistry__delete_definition/zh-Hans';
+import { modelGraphDefinitionRegistry__delete_definition_question } from '@/strings/messages/modelGraphDefinitionRegistry__delete_definition_question/zh-Hans';
+import { modelGraphDefinitionRegistry__discard_unsaved_model_graph_input } from '@/strings/messages/modelGraphDefinitionRegistry__discard_unsaved_model_graph_input/zh-Hans';
+import { modelGraphDefinitionRegistry__download_json } from '@/strings/messages/modelGraphDefinitionRegistry__download_json/zh-Hans';
+import { modelGraphDefinitionRegistry__experimental_model_graph_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__experimental_model_graph_definitions/zh-Hans';
+import { modelGraphDefinitionRegistry__format_may_change_without_migration } from '@/strings/messages/modelGraphDefinitionRegistry__format_may_change_without_migration/zh-Hans';
+import { modelGraphDefinitionRegistry__input_changed_review_again } from '@/strings/messages/modelGraphDefinitionRegistry__input_changed_review_again/zh-Hans';
+import { modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests } from '@/strings/messages/modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests/zh-Hans';
+import { modelGraphDefinitionRegistry__no_definitions_registered } from '@/strings/messages/modelGraphDefinitionRegistry__no_definitions_registered/zh-Hans';
+import { modelGraphDefinitionRegistry__objects_can_span_multiple_lines } from '@/strings/messages/modelGraphDefinitionRegistry__objects_can_span_multiple_lines/zh-Hans';
+import { modelGraphDefinitionRegistry__paste_multiple_json_objects } from '@/strings/messages/modelGraphDefinitionRegistry__paste_multiple_json_objects/zh-Hans';
+import { modelGraphDefinitionRegistry__preview } from '@/strings/messages/modelGraphDefinitionRegistry__preview/zh-Hans';
+import { modelGraphDefinitionRegistry__read_only_registry } from '@/strings/messages/modelGraphDefinitionRegistry__read_only_registry/zh-Hans';
+import { modelGraphDefinitionRegistry__register_and_use } from '@/strings/messages/modelGraphDefinitionRegistry__register_and_use/zh-Hans';
+import { modelGraphDefinitionRegistry__register_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__register_definitions/zh-Hans';
+import { modelGraphDefinitionRegistry__register_only } from '@/strings/messages/modelGraphDefinitionRegistry__register_only/zh-Hans';
+import { modelGraphDefinitionRegistry__registered } from '@/strings/messages/modelGraphDefinitionRegistry__registered/zh-Hans';
+import { modelGraphDefinitionRegistry__registered_definitions } from '@/strings/messages/modelGraphDefinitionRegistry__registered_definitions/zh-Hans';
+import { modelGraphDefinitionRegistry__registration_enables_native_replacement } from '@/strings/messages/modelGraphDefinitionRegistry__registration_enables_native_replacement/zh-Hans';
+import { modelGraphDefinitionRegistry__reload_registry } from '@/strings/messages/modelGraphDefinitionRegistry__reload_registry/zh-Hans';
+import { modelGraphDefinitionRegistry__replace_from_input } from '@/strings/messages/modelGraphDefinitionRegistry__replace_from_input/zh-Hans';
+import { modelGraphDefinitionRegistry__replace_native_implementation } from '@/strings/messages/modelGraphDefinitionRegistry__replace_native_implementation/zh-Hans';
+import { modelGraphDefinitionRegistry__replacement_requires_new_approval } from '@/strings/messages/modelGraphDefinitionRegistry__replacement_requires_new_approval/zh-Hans';
+import { modelGraphDefinitionRegistry__session_only_storage } from '@/strings/messages/modelGraphDefinitionRegistry__session_only_storage/zh-Hans';
+import { modelGraphDefinitionRegistry__source } from '@/strings/messages/modelGraphDefinitionRegistry__source/zh-Hans';
+import { modelGraphDefinitionRegistry__unregistered } from '@/strings/messages/modelGraphDefinitionRegistry__unregistered/zh-Hans';
+import { modelGraphDefinitionRegistry__usage_rule } from '@/strings/messages/modelGraphDefinitionRegistry__usage_rule/zh-Hans';
+import { modelGraphDefinitionRegistry__use_definition } from '@/strings/messages/modelGraphDefinitionRegistry__use_definition/zh-Hans';
+import { modelGraphDefinitionRegistry__use_registered_graphs_before_native_support } from '@/strings/messages/modelGraphDefinitionRegistry__use_registered_graphs_before_native_support/zh-Hans';
+import { modelGraphDefinitionRegistry__use_when_architecture_unknown } from '@/strings/messages/modelGraphDefinitionRegistry__use_when_architecture_unknown/zh-Hans';
 import { naidanRpc__add_header } from '@/strings/messages/naidanRpc__add_header/zh-Hans';
 import { naidanRpc__apply_methods } from '@/strings/messages/naidanRpc__apply_methods/zh-Hans';
 import { naidanRpc__chat } from '@/strings/messages/naidanRpc__chat/zh-Hans';
@@ -4786,6 +4877,9 @@ export const catalog = {
   ImageBenchmarkResult__image_memory_limit_reached,
   ImageBenchmarkResult__image_not_retained,
   ImageBenchmarkResult__no_image,
+  ImageCompositionFields__model_configuration_slot,
+  ImageCompositionFields__shared,
+  ImageCompositionModeSelect__input_mode,
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
@@ -4918,6 +5012,13 @@ export const catalog = {
   ImageGenerationLab__record_detailed_logs,
   ImageGenerationLab__saved_models,
   ImageGenerationLab__select_missing_files,
+  ImageGenerationMonitor__images_generated,
+  ImageGenerationMonitor__preparing_generation,
+  ImageGenerationMonitor__request_position,
+  ImageGenerationMonitor__saving_results,
+  ImageGenerationMonitor__unsaved_images,
+  ImageGenerationOperationActions__no_completed_images,
+  ImageGenerationOperationActions__saving_results,
   ImageGenerationPreview__preview_from_cancelled_generation,
   ImageGenerationPreview__preview_from_failed_generation,
   ImageGenerationProgress__processing_step,
@@ -5489,6 +5590,9 @@ export const catalog = {
   ModelDownloads__unknown_size,
   ModelDownloads__verifying,
   ModelDownloads__waiting,
+  ModelExecutionBadge__execution_not_observed,
+  ModelExecutionBadge__native_architecture,
+  ModelExecutionBadge__registered_model_graph,
   ModelSelector__clear_filter,
   ModelSelector__filter_models,
   ModelSelector__inherit,
@@ -6590,6 +6694,46 @@ export const catalog = {
   imageBenchmark__timeout,
   imageBenchmark__unavailable_components,
   imageBenchmark__warm,
+  imageComposition__add,
+  imageComposition__append,
+  imageComposition__assign,
+  imageComposition__assigned,
+  imageComposition__auto,
+  imageComposition__copy_example,
+  imageComposition__down,
+  imageComposition__download_results,
+  imageComposition__duplicate,
+  imageComposition__export_notice,
+  imageComposition__generate,
+  imageComposition__help,
+  imageComposition__inherit,
+  imageComposition__input_examples,
+  imageComposition__input_models_help,
+  imageComposition__input_structure_help,
+  imageComposition__input_values_help,
+  imageComposition__multiple,
+  imageComposition__operation,
+  imageComposition__overrides,
+  imageComposition__parse,
+  imageComposition__paste,
+  imageComposition__paste_help,
+  imageComposition__pending_metadata,
+  imageComposition__random,
+  imageComposition__recover,
+  imageComposition__recover_notice,
+  imageComposition__reload,
+  imageComposition__reload_notice,
+  imageComposition__remove,
+  imageComposition__replace,
+  imageComposition__replace_notice,
+  imageComposition__save_only,
+  imageComposition__shared_negative_prompt,
+  imageComposition__single,
+  imageComposition__slot_help,
+  imageComposition__summary,
+  imageComposition__unassigned,
+  imageComposition__unsupported,
+  imageComposition__up,
   imageGeneration__action_applied,
   imageGeneration__active_images,
   imageGeneration__actual_seed,
@@ -7041,6 +7185,44 @@ export const catalog = {
   llamaCppPerformance__wait_for_other_work,
   llamaCppPerformance__waiting_for_visible_page,
   llamaCppPerformance__workload,
+  modelGraphDefinitionRegistry__add_files,
+  modelGraphDefinitionRegistry__architecture_is_already_in_use,
+  modelGraphDefinitionRegistry__changes_apply_to_the_next_request,
+  modelGraphDefinitionRegistry__choose_one_definition_per_architecture,
+  modelGraphDefinitionRegistry__clear_input,
+  modelGraphDefinitionRegistry__confirm_native_replacement,
+  modelGraphDefinitionRegistry__copied,
+  modelGraphDefinitionRegistry__copy_definitions,
+  modelGraphDefinitionRegistry__delete_definition,
+  modelGraphDefinitionRegistry__delete_definition_question,
+  modelGraphDefinitionRegistry__discard_unsaved_model_graph_input,
+  modelGraphDefinitionRegistry__download_json,
+  modelGraphDefinitionRegistry__experimental_model_graph_definitions,
+  modelGraphDefinitionRegistry__format_may_change_without_migration,
+  modelGraphDefinitionRegistry__input_changed_review_again,
+  modelGraphDefinitionRegistry__native_replacement_changes_all_matching_requests,
+  modelGraphDefinitionRegistry__no_definitions_registered,
+  modelGraphDefinitionRegistry__objects_can_span_multiple_lines,
+  modelGraphDefinitionRegistry__paste_multiple_json_objects,
+  modelGraphDefinitionRegistry__preview,
+  modelGraphDefinitionRegistry__read_only_registry,
+  modelGraphDefinitionRegistry__register_and_use,
+  modelGraphDefinitionRegistry__register_definitions,
+  modelGraphDefinitionRegistry__register_only,
+  modelGraphDefinitionRegistry__registered,
+  modelGraphDefinitionRegistry__registered_definitions,
+  modelGraphDefinitionRegistry__registration_enables_native_replacement,
+  modelGraphDefinitionRegistry__reload_registry,
+  modelGraphDefinitionRegistry__replace_from_input,
+  modelGraphDefinitionRegistry__replace_native_implementation,
+  modelGraphDefinitionRegistry__replacement_requires_new_approval,
+  modelGraphDefinitionRegistry__session_only_storage,
+  modelGraphDefinitionRegistry__source,
+  modelGraphDefinitionRegistry__unregistered,
+  modelGraphDefinitionRegistry__usage_rule,
+  modelGraphDefinitionRegistry__use_definition,
+  modelGraphDefinitionRegistry__use_registered_graphs_before_native_support,
+  modelGraphDefinitionRegistry__use_when_architecture_unknown,
   naidanRpc__add_header,
   naidanRpc__apply_methods,
   naidanRpc__chat,

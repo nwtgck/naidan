@@ -1,3 +1,4 @@
+import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
 import { readLegacyUploadedFileMetadata, remapLegacyUploadedFileReferences } from './legacy-uploaded-file-content';
 import { createLegacyUploadedFileId } from './legacy-uploaded-file-id';
@@ -57,6 +58,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 }
 
 const MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS = 'v1_uploaded_files_to_binary_objects';
+const MODEL_GRAPH_REGISTRY_FILE = 'experimental-model-graph-registry.json';
 const NAIDAN_RPC_REGISTRY_FILE = 'naidan-rpc-connections.json';
 
 type BinaryShardIndex = BinaryShardIndexDto;
@@ -138,6 +140,72 @@ export class OPFSStorageProvider extends IStorageProvider {
       if (created) {
         try {
           await directory.removeEntry(NAIDAN_RPC_REGISTRY_FILE);
+        } catch { /* Cleanup failure does not turn a failed save into success. */ }
+      }
+      throw error;
+    }
+  }
+
+  async loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
+    const directory = await this.getExperimentalDir({ create: false });
+    if (!directory) {
+      return undefined;
+    }
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await directory.getFileHandle(MODEL_GRAPH_REGISTRY_FILE);
+    } catch (error) {
+      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+        return undefined;
+      }
+      throw error;
+    }
+    return ExperimentalModelGraphRegistrySchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+  }
+
+  async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
+    if (registry === undefined) {
+      const directory = await this.getExperimentalDir({ create: false });
+      if (!directory) {
+        return;
+      }
+      try {
+        await directory.removeEntry(MODEL_GRAPH_REGISTRY_FILE);
+      } catch (error) {
+        if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
+          throw error;
+        }
+      }
+      return;
+    }
+    const text = JSON.stringify(ExperimentalModelGraphRegistrySchemaDto.parse(registry));
+    const directory = await this.getExperimentalDir({ create: true });
+    if (!directory) {
+      throw new Error('Experimental storage directory is unavailable.');
+    }
+    let handle: FileSystemFileHandle;
+    let created = false;
+    try {
+      handle = await directory.getFileHandle(MODEL_GRAPH_REGISTRY_FILE);
+    } catch (error) {
+      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
+        throw error;
+      }
+      handle = await directory.getFileHandle(MODEL_GRAPH_REGISTRY_FILE, { create: true });
+      created = true;
+    }
+    let writable: FileSystemWritableFileStream | undefined;
+    try {
+      writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+    } catch (error) {
+      try {
+        await writable?.abort();
+      } catch { /* Preserve the original save failure. */ }
+      if (created) {
+        try {
+          await directory.removeEntry(MODEL_GRAPH_REGISTRY_FILE);
         } catch { /* Cleanup failure does not turn a failed save into success. */ }
       }
       throw error;

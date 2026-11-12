@@ -55,6 +55,18 @@ it('keeps progress values based on observed completed steps and loading progress
   expect(view.get('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined();
 });
 
+it('shows the operation phase during engine gaps without inventing native progress', async () => {
+  const view = openProgress();
+  await view.setProps({ fallbackPhaseLabel: 'Preparing generation…', phasePosition: 'above-preview' });
+  expect(view.get('[data-testid="image-generation-phase"]').text()).toBe('Preparing generation…');
+  expect(view.get('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined();
+  await view.setProps({ progress: { phase: 'sampling', step: 2, steps: 8 } });
+  expect(view.get('[data-testid="image-generation-phase"]').text()).toBe('Processing step 3 / 8');
+  await view.setProps({ progress: undefined, fallbackPhaseLabel: 'Saving results…' });
+  expect(view.get('[data-testid="image-generation-phase"]').text()).toBe('Saving results…');
+  expect(view.get('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined();
+});
+
 it('distinguishes the inferred active step from completed progress, including the final step and cancellation', async () => {
   const view = openProgress();
   for (const [completed, displayed, label] of [

@@ -15,6 +15,7 @@ function warmSnapshot({ models, repeats }: { models: number, repeats: number }):
     modelErrors: [],
     trials: plan.steps.filter(step => step.position === 'before' || step.position === 'after').map(step => {
       const summary = performanceReport();
+      summary.modelExecution = { kind: 'nativeArchitecture' };
       summary.performance!.preparationEvents = [{ event: 'model-reused', observedMs: 0 }, { event: 'context-ready', observedMs: 1 }];
       return {
         id: step.id,
@@ -47,6 +48,7 @@ describe('warm before/after preparation evidence', () => {
     const snapshot = warmSnapshot({ models: 1, repeats: 1 });
     const initial = snapshot.plan.steps.find(step => step.position === 'initial')!;
     const summary = performanceReport();
+    summary.modelExecution = { kind: 'nativeArchitecture' };
     summary.performance!.preparationEvents = (['runtime-ready', 'load-start', 'load-complete', 'context-start', 'context-ready'] as const).map(event => ({ event, observedMs: 0 }));
     snapshot.trials.unshift({ ...snapshot.trials[0]!, id: initial.id, stepId: initial.id, summary });
     expect(performanceFindings({ snapshot })).toMatchObject([{ reasons: [], uncertainties: [], afterToBeforeRatio: 1 }]);
@@ -148,4 +150,36 @@ it('partitions a restarted cold request from later warm requests in the same seg
   expect(performanceFindings({ snapshot })[0]?.reasons).toContain('before-runtime-restarted');
   expect(performanceFindings({ snapshot })[0]?.afterToBeforeRatio).toBeUndefined();
   expect(performanceFindings({ snapshot })[1]?.afterToBeforeRatio).toBe(1);
+});
+
+describe('model execution identity', () => {
+  const graph = { kind: 'registeredModelGraph' as const, registrationId: 'registration-one', label: 'Fixture', architecture: 'llama', format: 'experimental-1', definitionSha256: 'a'.repeat(64), nativeExtensionSha256: 'b'.repeat(64) };
+
+  it('never compares a standard implementation with a registered graph', () => {
+    const snapshot = warmSnapshot({ models: 1, repeats: 1 });
+    snapshot.trials[1]!.summary!.modelExecution = graph;
+    const finding = performanceFindings({ snapshot })[0]!;
+    expect(finding.reasons).toContain('different-model-execution');
+    expect(finding.afterToBeforeRatio).toBeUndefined();
+  });
+
+  it('partitions graph programs, not their editable display labels', () => {
+    const snapshot = warmSnapshot({ models: 1, repeats: 2 });
+    snapshot.trials.forEach(trial => {
+ trial.summary!.modelExecution = graph;
+    });
+    snapshot.trials[2]!.summary!.modelExecution = { ...graph, label: 'Renamed' };
+    expect(summarizePerformance({ snapshot }).filter(value => value.position === 'before')).toHaveLength(1);
+    snapshot.trials[2]!.summary!.modelExecution = { ...graph, definitionSha256: 'c'.repeat(64) };
+    expect(summarizePerformance({ snapshot }).filter(value => value.position === 'before')).toHaveLength(2);
+  });
+
+  it('does not assume old records used the standard implementation', () => {
+    const snapshot = warmSnapshot({ models: 1, repeats: 1 });
+    snapshot.trials.forEach(trial => {
+      delete trial.summary!.modelExecution;
+    });
+    expect(performanceFindings({ snapshot })[0]!.uncertainties).toContain('model-execution-unconfirmed');
+    expect(summarizePerformance({ snapshot })[0]!.modelExecution).toBeUndefined();
+  });
 });

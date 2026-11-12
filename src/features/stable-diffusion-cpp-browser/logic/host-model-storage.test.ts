@@ -104,15 +104,15 @@ describe('host image model storage', () => {
     expect(result.map(repo => repo.issues?.[0]?.message)).toEqual(['Reconnect this model directory', 'IDB unavailable']);
   });
 
-  it('keeps OPFS remote files hidden without their completion receipt', async () => {
+  it('lists OPFS remote files without requiring a completion receipt', async () => {
     let folder = opfs;
     for (const name of ['models', 'huggingface.co', 'owner', 'repo', 'resolve', 'main']) {
       folder = await folder.getDirectoryHandle(name, { create: true });
     }
     (await folder.getFileHandle('model.gguf', { create: true })).data = bytes;
     const result = await listImageRepositories({ signal: undefined });
-    expect(result[0]?.files).toEqual([]);
-    expect(result[0]?.issues?.[0]?.message).toContain('No valid completion receipt');
+    expect(result[0]?.files.map(entry => entry.relativePath)).toEqual(['model.gguf']);
+    expect(result[0]?.files[0]?.receipt).toBeUndefined();
   });
 
   it('streams a download with native writable calls and publishes only after close', async () => {

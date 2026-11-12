@@ -1,3 +1,4 @@
+vi.mock('../model-graph/request-settings', () => ({ readModelGraphRequestSettings: vi.fn(async () => []) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLlamaCppWorkerSessionClient } from './client-session';
 import type { LlamaCppWorkerApi, AcceptedGenerateInput } from './types';

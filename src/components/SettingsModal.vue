@@ -85,6 +85,8 @@ const appVersion = __APP_VERSION__;
 const portableAppDownload = usePortableAppDownload({ version: appVersion });
 
 const form = ref<Settings>(clonePlainData({ value: settings.value }));
+// Keep unfinished model definition input across Developer tab unmounts.
+const modelGraphInput = ref('');
 const initialFormState = ref(pickConnectionFields({ settings: form.value }));
 const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
@@ -152,7 +154,7 @@ async function createLocalModelChatGroup({ model, signal }: { model: LocalModel,
   const stop = watch([() => props.isOpen, () => props.suspended, () => route.fullPath], abort, { flush: 'sync' });
   const isCurrent = () => !controller.signal.aborted && props.isOpen && !props.suspended;
   try {
-    if (!await confirmDiscardConnectionChanges({ isCurrent }) || !isCurrent()) {
+    if (!await confirmDiscardChanges({ isCurrent }) || !isCurrent()) {
       return;
     }
     await startLocalModel({ model, signal: controller.signal });
@@ -284,11 +286,22 @@ const activeTab = computed({
   },
 });
 
-async function confirmDiscardConnectionChanges({ isCurrent }: { isCurrent: () => boolean }): Promise<boolean> {
-  if (hasUnsavedConnectionChanges.value) {
+async function confirmDiscardChanges({ isCurrent }: { isCurrent: () => boolean }): Promise<boolean> {
+  if (hasUnsavedConnectionChanges.value || modelGraphInput.value.trim()) {
+    // Both independent drafts can be lost on close. Do not let the presence of
+    // a graph definition hide an unsaved connection change in the confirmation.
+    const connectionChanged = hasUnsavedConnectionChanges.value;
+    const graphChanged = !!modelGraphInput.value.trim();
+    const messages: string[] = [];
+    if (connectionChanged) {
+      messages.push(await ensureStrings.SettingsModal__discard_unsaved_connection_changes());
+    }
+    if (graphChanged) {
+      messages.push(await ensureStrings.modelGraphDefinitionRegistry__discard_unsaved_model_graph_input());
+    }
     const options = {
       title: await ensureStrings.SettingsModal__discard_unsaved_changes(),
-      message: await ensureStrings.SettingsModal__discard_unsaved_connection_changes(),
+      message: messages.join('\n\n'),
       confirmButtonText: await ensureStrings.SettingsModal__discard(),
       cancelButtonText: await ensureStrings.SettingsModal__keep_editing(),
     };
@@ -308,7 +321,7 @@ async function openDiagnostics(): Promise<void> {
   const version = modalRequestVersion;
   const isCurrent = () => props.isOpen && !props.suspended && version === modalRequestVersion;
   try {
-    if (await confirmDiscardConnectionChanges({ isCurrent }) && isCurrent()) {
+    if (await confirmDiscardChanges({ isCurrent }) && isCurrent()) {
       const failure = await router.push('/llama-cpp-browser/diagnostics');
       if (failure) {
         diagnosticsError.value = failure.message;
@@ -324,7 +337,7 @@ async function openDiagnostics(): Promise<void> {
 async function handleCancel() {
   const version = modalRequestVersion;
   const isCurrent = () => props.isOpen && version === modalRequestVersion;
-  if (await confirmDiscardConnectionChanges({ isCurrent }) && isCurrent()) {
+  if (await confirmDiscardChanges({ isCurrent }) && isCurrent()) {
     emit('close');
   }
 }
@@ -332,6 +345,7 @@ async function handleCancel() {
 // Watch for modal open to reset form
 watch(() => props.isOpen, async (open) => {
   if (open) {
+    modelGraphInput.value = '';
     setActiveFocusArea({ area: 'settings' });
     form.value = clonePlainData({ value: settings.value }) as Settings;
     initialFormState.value = pickConnectionFields({ settings: form.value });
@@ -443,6 +457,7 @@ defineExpose({
               <DeveloperTab
                 v-if="activeTab === 'developer'"
                 :storage-type="form.storageType"
+                v-model:model-graph-input="modelGraphInput"
                 @open-model-support-investigation="emit('openModelSupportInvestigation', $event)"
               />
 

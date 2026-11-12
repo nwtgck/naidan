@@ -1,3 +1,4 @@
+import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -46,6 +47,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   private chatContents = new Map<ChatId, ChatContentDto>();
   private binaryObjects = new Map<BinaryObjectId, { blob: Blob, meta: BinaryObject }>();
   private blobCache = new Map<AttachmentId, Blob>();
+  private modelGraphRegistry: ExperimentalModelGraphRegistryDto | undefined;
   private naidanRpcRegistry: ExperimentalNaidanRpcRegistryDto | undefined;
 
   async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
@@ -54,6 +56,14 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
     this.naidanRpcRegistry = registry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(registry);
+  }
+
+  async loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
+    return this.modelGraphRegistry === undefined ? undefined : ExperimentalModelGraphRegistrySchemaDto.parse(this.modelGraphRegistry);
+  }
+
+  async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
+    this.modelGraphRegistry = registry === undefined ? undefined : ExperimentalModelGraphRegistrySchemaDto.parse(registry);
   }
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
@@ -351,6 +361,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async clearAll(): Promise<void> {
     this.naidanRpcRegistry = undefined;
+    this.modelGraphRegistry = undefined;
     this.hierarchy = { items: [] };
     this.settings = null;
     this.chatMetas.clear();

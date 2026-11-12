@@ -21,7 +21,7 @@ import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreL
 import { withModelMutationLock } from '@/features/llama-cpp-browser/runtime/model-mutation-lock';
 import { invalidateStoredModel, releaseSession, prepareSession } from "./session";
 import { generate } from "./generation";
-import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
+import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type WorkerPrepareInput } from "./types";
 
 async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   try {
@@ -77,6 +77,35 @@ function eventQueue() {
 
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
   const live = createLiveSessionController();
+  let modelGraphs: typeof import('@/features/llama-cpp-browser/model-graph/worker-router') | undefined;
+  const graphRouter = async ({ request }: { request: WorkerPrepareInput }) => {
+    if (request.modelGraphRegistrations?.length && !modelGraphs) {
+      modelGraphs = await import('@/features/llama-cpp-browser/model-graph/worker-router');
+    }
+    return modelGraphs;
+  };
+  const prepareRoutedSession = async ({ request, signal, onProgress }: { request: Parameters<typeof prepareSession>[0]['request'], signal: Parameters<typeof prepareSession>[0]['signal'], onProgress: Parameters<typeof prepareSession>[0]['onProgress'] }) => {
+    const router = await graphRouter({ request });
+    if (await router?.prepare({ request, signal, onProgress, purpose: 'text' })) {
+      return;
+    }
+    await prepareSession({ request, signal, onProgress });
+  };
+  const generateRouted = async ({ request, signal, onEvent, onProgress, onSummary }: { request: Parameters<typeof generate>[0]['request'], signal: Parameters<typeof generate>[0]['signal'], onEvent: Parameters<typeof generate>[0]['onEvent'], onProgress: Parameters<typeof generate>[0]['onProgress'], onSummary: Parameters<typeof generate>[0]['onSummary'] }) => {
+    const router = await graphRouter({ request });
+    const native = () => generate({
+      request,
+      signal,
+      onEvent,
+      onProgress,
+      onSummary: ({ diagnostic }) => {
+        const modelExecution = { kind: 'nativeArchitecture' } as const;
+        onSummary?.({ diagnostic: { ...diagnostic, modelExecution, ...(diagnostic.performance ? { performance: { ...diagnostic.performance, modelExecution } } : {}) } });
+      },
+    });
+    return router ? router.generateWithRegisteredGraph({ request, signal, onEvent, onProgress, onSummary, native }) : native();
+  };
+
   let active: { generationId: number, controller: AbortController, finishAudio?: () => void, previewAudio?: ({ requestVersion }: { requestVersion: number }) => void } | undefined;
   // Single-file and folder imports must share this lifetime: cancellation is
   // acknowledged only after the importer has closed its streams and rolled back.
@@ -126,24 +155,38 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const events = eventQueue();
       try {
         return liveResultSchema.parse(await guarded({
-          operation: () => live.execute({
-            request,
-            signal: controller.signal,
-            onProgress: ({ progress }) => events.send({ operation: () => onProgress(progressSchema.parse(progress)) }),
-            onEvent: async ({ event }) => {
-              const accepted = liveEventSchema.parse(event);
-              switch (accepted.type) {
-              case 'audio': await onEvent(workerTransfer({ value: accepted, transferables: [accepted.pcm.buffer as ArrayBuffer] }));
-                break;
-              case 'text': await onEvent(workerTransfer({ value: accepted, transferables: [] }));
-                break;
-              default: {
-                const exhaustive: never = accepted;
-                throw new Error(String(exhaustive));
-              }
-              }
-            },
-          }),
+          operation: async () => {
+            switch (request.type) {
+            case 'open': {
+              const router = await graphRouter({ request: request.prepare });
+              await router?.prepare({ request: request.prepare, signal: controller.signal, onProgress: ({ progress }) => events.send({ operation: () => onProgress(progress) }), purpose: 'live' });
+              break;
+            }
+            case 'command': break;
+            default: {
+              const exhaustive: never = request;
+              throw new Error(String(exhaustive));
+            }
+            }
+            return live.execute({
+              request,
+              signal: controller.signal,
+              onProgress: ({ progress }) => events.send({ operation: () => onProgress(progressSchema.parse(progress)) }),
+              onEvent: async ({ event }) => {
+                const accepted = liveEventSchema.parse(event);
+                switch (accepted.type) {
+                case 'audio': await onEvent(workerTransfer({ value: accepted, transferables: [accepted.pcm.buffer as ArrayBuffer] }));
+                  break;
+                case 'text': await onEvent(workerTransfer({ value: accepted, transferables: [] }));
+                  break;
+                default: {
+                  const exhaustive: never = accepted;
+                  throw new Error(String(exhaustive));
+                }
+                }
+              },
+            });
+          },
         }));
       } finally {
         try {
@@ -168,6 +211,8 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       try {
         return await guarded({
           operation: async () => {
+            const router = await graphRouter({ request: accepted });
+            await router?.prepare({ request: accepted, signal: controller.signal, onProgress: ({ progress }) => events.send({ operation: () => onProgress(progress) }), purpose: 'vision' });
             const { prepareVisionMeasurement } = await import('./vision-admission');
             return prepareVisionMeasurement({
               request: accepted,
@@ -199,7 +244,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       try {
         await guarded({
           operation: async () => {
-            await prepareSession({
+            await prepareRoutedSession({
               request: accepted,
               signal: controller.signal,
               onProgress: ({ progress }) => {
@@ -255,32 +300,36 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       });
       try {
         const result = audioGenerationResultSchema.parse(await guarded({
-          operation: () => generateAudio({
-            request: accepted,
-            cancellationSignal: controller.signal,
-            shouldComplete: () => finishRequested,
-            preview: onPreview ? {
-              requestedVersion: () => previewVersion,
-              onPreview: async ({ event }) => {
-                if (controller.signal.aborted) {
-                  return;
-                }
-                const acceptedEvent = audioPreviewEventSchema.parse(event);
-                // Acknowledge each user-requested copy before continuing. Do not
-                // build an unbounded event queue of large audio buffers.
-                await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
-              },
-            } : undefined,
-            onProgress: ({ progress }) => {
-              events.send({
-                operation: () => {
-                  if (!controller.signal.aborted) {
-                    return onProgress(progress);
+          operation: async () => {
+            const router = await graphRouter({ request: accepted });
+            await router?.prepare({ request: accepted, signal: controller.signal, onProgress: ({ progress }) => events.send({ operation: () => onProgress(progress) }), purpose: 'audio' });
+            return generateAudio({
+              request: accepted,
+              cancellationSignal: controller.signal,
+              shouldComplete: () => finishRequested,
+              preview: onPreview ? {
+                requestedVersion: () => previewVersion,
+                onPreview: async ({ event }) => {
+                  if (controller.signal.aborted) {
+                    return;
                   }
+                  const acceptedEvent = audioPreviewEventSchema.parse(event);
+                  // Acknowledge each user-requested copy before continuing. Do not
+                  // build an unbounded event queue of large audio buffers.
+                  await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
                 },
-              });
-            },
-          }),
+              } : undefined,
+              onProgress: ({ progress }) => {
+                events.send({
+                  operation: () => {
+                    if (!controller.signal.aborted) {
+                      return onProgress(progress);
+                    }
+                  },
+                });
+              },
+            });
+          },
         }));
         // Native memory was already copied and released. Transfer the owned bytes,
         // rather than cloning a second full waveform across the worker boundary.
@@ -305,7 +354,22 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       if (active || live.ownsSession()) {
         throw new LlamaCppBrowserError({ code: 'busy' });
       }
-      await releaseSession({ releaseRuntime: true });
+      // A failing graph destructor must not keep the shared runtime alive.
+      // Preserve the first cleanup error while attempting both owners.
+      let failure: unknown;
+      try {
+        await modelGraphs?.releaseRegisteredGraph();
+      } catch (error) {
+        failure = error;
+      }
+      try {
+        await releaseSession({ releaseRuntime: true });
+      } catch (error) {
+        failure ??= error;
+      }
+      if (failure !== undefined) {
+        throw failure;
+      }
     },
     listModelEntries: () => guarded({ operation: async () => modelsSchema.parse(await listStoredModels()) }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, callback is a top-level argument.
@@ -325,6 +389,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
           if (active || live.ownsSession()) {
             throw new LlamaCppBrowserError({ code: 'busy' });
           }
+          await modelGraphs?.releaseRegisteredGraph();
           const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
           switch (plan.target.kind) {
           case 'model': await invalidateStoredModel({ modelId: plan.target.modelId });
@@ -408,11 +473,11 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
           // request, without waiting for a separate proxy callback acknowledgement.
           const measuredContext = accepted.measurement !== undefined && (diagnostic.event === 'context-start' || diagnostic.event === 'context-retry' || diagnostic.event === 'context-ready');
           const measuredSetting = accepted.measurement !== undefined && diagnostic.event === 'native-info' && (diagnostic.nativeMetric !== undefined || diagnostic.nativeFlashAttention !== undefined || diagnostic.loadedModelDescriptor !== undefined);
-          if (measuredContext || measuredSetting) {
+          if (measuredContext || measuredSetting || (accepted.measurement !== undefined && diagnostic.modelExecution !== undefined)) {
             postWorkerNotification({ endpoint: undefined, schema: diagnosticSchema, value: diagnostic });
           }
           // Existing operational diagnostics keep their separate callback contract.
-          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) {
+          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined) || diagnostic.modelExecution !== undefined)) {
             return Promise.resolve(onDiagnostic({ diagnostic }));
           }
           return undefined;
@@ -434,7 +499,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
         }
         }
         const result = await guarded({
-          operation: () => generate({
+          operation: () => generateRouted({
             request: accepted,
             signal: controller.signal,
             onSummary: ({ diagnostic }) => {

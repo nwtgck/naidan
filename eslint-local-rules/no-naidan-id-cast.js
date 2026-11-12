@@ -7,6 +7,8 @@ function isNaidanIdImplementationFile({ filePath }) {
 }
 
 const NAIDAN_ID_TYPES = new Set([
+  'ModelGraphRegistrationId',
+  'ModelGraphRegistryId',
   'NaidanRpcRegistrationId',
   'NaidanRpcPeerPublicKey',
   'NaidanRpcRegistryId',
@@ -21,6 +23,8 @@ const NAIDAN_ID_TYPES = new Set([
   'ImageGenerationId',
   'ImageGenerationStoreId',
   'ImageGenerationSessionId',
+  'ImageGenerationOperationId',
+  'ImageGenerationJobId',
   'ImageGenerationRunId',
   'ImageGenerationAssetId',
   'ImageGenerationTagId',

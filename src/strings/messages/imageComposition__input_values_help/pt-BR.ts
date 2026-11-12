@@ -1,0 +1,1 @@
+export const imageComposition__input_values_help = (): string => "Em seed, use uma string entre aspas para um valor fixo ou null para um valor aleatório. steps, guidance e vaeTileSize também aceitam auto.";

@@ -1,5 +1,5 @@
 import { generateId } from '@/01-models/id';
-import type { ImageGenerationAssetId, ImageGenerationRunId, ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationAssetId, ImageGenerationOperationId, ImageGenerationRunId, ImageGenerationSessionId } from '@/01-models/ids';
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import type { ImageGenerationAsset, ImageGenerationRun, ImageGenerationRunExecution, ImageGenerationSource } from '@/01-models/image-generation';
 import type { ImageGenerationSubmission, ImageGenerationCompletion } from '@/features/image-generation/generation-submission';
@@ -11,11 +11,34 @@ export type ImageGenerationRunPersistence = {
   update({ run, execution }: { run: ImageGenerationRun, execution: ImageGenerationRunExecution }): Promise<void>,
 };
 
+/** Request metadata is plain data. Copies may reorder object keys; arrays still
+ * identify ordered models, adapters, inputs and output seeds. */
+function samePreparedRunValue({ left, right }: { left: unknown, right: unknown }): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    const leftItems: readonly unknown[] = left, rightItems: readonly unknown[] = right;
+    return leftItems.every((value, index) => samePreparedRunValue({ left: value, right: rightItems[index] }));
+  }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') {
+    return false;
+  }
+  // Optional undefined fields have the same meaning as omitted fields in the
+  // persisted request. Compare every remaining field, including nested values.
+  const leftFields = new Map<string, unknown>(Object.entries(left).filter(([, value]) => value !== undefined));
+  const rightFields = new Map<string, unknown>(Object.entries(right).filter(([, value]) => value !== undefined));
+  return leftFields.size === rightFields.size && [...leftFields].every(([key, value]) => rightFields.has(key) && samePreparedRunValue({ left: value, right: rightFields.get(key) }));
+}
+
 /** A failed acknowledgement retries the SAME identities, bytes and revisions.
  * Completion is deferred until every received image has been persisted. */
-export function createImageGenerationRunSink({ sessionId, count, sources, persistence, changed }: {
+export function createImageGenerationRunSink({ sessionId, count, sources, persistence, changed, operationId, plannedRun }: {
   sessionId: ImageGenerationSessionId, count: number, sources: ImageGenerationSource[], persistence: ImageGenerationRunPersistence,
-  changed: () => void,
+  changed: () => void, operationId?: ImageGenerationOperationId, plannedRun?: ImageGenerationRun,
 }) {
   let run: ImageGenerationRun | undefined;
   let inputs: HistoryBinaryFile[] = [];
@@ -104,7 +127,8 @@ export function createImageGenerationRunSink({ sessionId, count, sources, persis
         throw new Error('Accepted seeds must match the requested output count and base seed.');
       }
       startedAt = Date.now();
-      run = {
+      const acceptedRun: ImageGenerationRun = {
+        ...(operationId === undefined ? {} : { operationId }),
         acceptedOrder: undefined,
         id: generateId<ImageGenerationRunId>(),
         sessionId,
@@ -115,6 +139,14 @@ export function createImageGenerationRunSink({ sessionId, count, sources, persis
         sources: sources.map(source => ({ ...source })),
         execution: { type: 'queued' },
       };
+      if (plannedRun) {
+        if (plannedRun.sessionId !== sessionId || plannedRun.operationId !== operationId || plannedRun.revision !== 0 || plannedRun.execution.type !== 'queued' || !samePreparedRunValue({ left: plannedRun.request, right: acceptedRun.request }) || !samePreparedRunValue({ left: plannedRun.seeds, right: seeds }) || !samePreparedRunValue({ left: plannedRun.sources, right: sources })) {
+          throw new Error('The prepared generation no longer matches its accepted request.');
+        }
+        run = structuredClone(plannedRun);
+      } else {
+        run = acceptedRun;
+      }
       inputs = snapshot.inputFiles.map(file => ({ ...file }));
       changed();
       await publish();
@@ -193,7 +225,7 @@ export function createImageGenerationRunSink({ sessionId, count, sources, persis
       changed();
     },
     snapshot() {
-      return { run, inputs: [...inputs], received, recovered, pending: [...pending.values()], failure, saving, needsRetry: failure.length > 0 };
+      return { run, inputs: [...inputs], received, recovered, pending: [...pending.values()], failure, saving, completion: completion && { ...completion }, needsRetry: failure.length > 0 };
     },
   };
 }
