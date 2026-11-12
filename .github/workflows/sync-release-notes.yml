@@ -269,7 +269,7 @@ jobs:
 
       - name: Upload extra assets to the existing GitHub Release
         if: ${{ inputs.publish-tag != '' && !inputs.dry-run }}
-        uses: softprops/action-gh-release@v3.0.3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           # No body, body_path, or generated notes: keep the synchronized text.
           files: |
