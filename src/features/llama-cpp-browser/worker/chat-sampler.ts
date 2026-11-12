@@ -175,6 +175,51 @@ export async function createChatSampler({ core, vocab, chain, params }: { core: 
           throw error;
         }
       },
+      // Separate leaf keeps the existing llama_context sampling hot path unchanged.
+      async sampleFromLogits({ sample }: { sample: ({ sampler }: { sampler: bigint }) => number }): Promise<number> {
+        let stage: DiagnosticStage = 'reasoning-state';
+        try {
+          const apply = grammarShouldApply();
+          stage = 'grammar-switch';
+          if (grammar && apply !== grammarAttached) {
+            if (!apply) {
+              await api.llama_sampler_chain_remove(outer, 0);
+              grammarAttached = false;
+            } else {
+            // Reinsert before the distribution sampler, without copying vocabulary logits into JS.
+              await api.llama_sampler_chain_remove(outer, 0);
+              chainAttached = false;
+              await api.llama_sampler_chain_add(outer, grammar);
+              grammarAttached = true;
+              await api.llama_sampler_chain_add(outer, chain);
+              chainAttached = true;
+            }
+          }
+          stage = 'native-sample';
+          const token = sample({ sampler: outer || chain });
+          if (budget) {
+            stage = 'reasoning-accept';
+            await api.llama_sampler_accept(budget, token);
+            stage = 'reasoning-state';
+            if (!apply && grammarShouldApply()) {
+              // The matched end sequence can itself contain a grammar trigger.
+              stage = 'reasoning-replay';
+              const end = copyReasoningEndMatch({ core, budget });
+              try {
+                for (const token of end) {
+                  await api.llama_sampler_accept(grammar, token);
+                }
+              } finally {
+                end.delete();
+              }
+            }
+          }
+          return token;
+        } catch (error) {
+          logFailure({ stage, error });
+          throw error;
+        }
+      },
     };
   } catch (error) {
     await dispose();

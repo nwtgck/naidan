@@ -147,7 +147,7 @@ storageService.subscribeToChanges({
     switch (event.type) {
     case 'migration': notifyModels();
       break;
-    case 'chat_content': case 'chat_meta_and_chat_group': case 'chat_content_generation': case 'settings': case 'binary_objects': case 'naidan_rpc_registry': break;
+    case 'chat_content': case 'chat_meta_and_chat_group': case 'chat_content_generation': case 'settings': case 'binary_objects': case 'model_graph_registry': case 'naidan_rpc_registry': break;
     default: {
       const exhaustive: never = event;
       throw new Error(String(exhaustive));

@@ -1,3 +1,4 @@
+import { observedModelExecution } from './model-execution';
 import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import { isGpuProfileTrial, summarizeGpuProfiles } from './gpu-profile-summary';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
@@ -93,6 +94,18 @@ counts describe retained and discarded records, not uninterrupted sampling.
 Archive output is streamed where supported; the buffered fallback can still use
 substantial memory. There is no fixed archive-output byte ceiling. Validation,
 JSON strings, ZIP output chunks and final Blob can coexist while exporting.
+
+## Model execution implementation
+summary.modelExecution and summary.performance.modelExecution are observations of
+actual execution: nativeArchitecture or registeredModelGraph. Missing evidence
+means unknown, including old archives. A graph observation includes its source
+SHA-256, format, architecture and native extension schema identity. Registration
+labels are display names, not compatibility proofs. summary.json partitions by
+implementation and graph identity; before/after comparisons reject different
+identities. Matching unknown identities remain explicitly unconfirmed.
+Registered graph timing separates build, allocation, input upload, computation
+and logits readback. These are host wall intervals, not GPU kernel timings.
+Definition source and execution approvals are not exported in diagnostic archives.
 
 ## Measurement modes and GPU timestamp boundaries
 plan.settings.mode is gpu-profile, standard, or both. Missing means the older
@@ -595,7 +608,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
           return JSON.stringify({ ...record, summary, gpuProfileFile: gpuProfile ? 'gpu-profile.jsonl' : undefined, gpuProfileCoverage: gpuProfile ? gpuCoverage : undefined, memoryDiagnosticsFile: memoryDiagnostics ? `memory/${record.id}.json` : undefined, memoryDiagnosticsCoverage: coverage });
         },
       });
-      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason']];
+      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason', 'model_execution', 'model_graph_sha256', 'model_graph_format', 'model_graph_native_schema_sha256']];
       if (snapshot.plan.visionFixture) {
         await add({ name: 'vision-fixture.json', text: json({ value: { ...snapshot.plan.visionFixture, imageBytesIncluded: false, decodedRgbIdentity: 'not-observed', storagePolicy: 'see-trial-vision-storage', storageComparison: 'unavailable', pureLmPrefill: 'unavailable', physicalMemoryPeak: 'unavailable' } }) });
       }
@@ -605,6 +618,17 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
         }
         const step = stepsById.get(trial.stepId);
         const metrics = trial.summary?.performance, rates = trialRates({ trial });
+        const execution = observedModelExecution({ summary: trial.summary });
+        const graph = (() => {
+          switch (execution?.kind) {
+          case undefined: case 'nativeArchitecture': return undefined;
+          case 'registeredModelGraph': return execution;
+          default: {
+            const exhaustive: never = execution;
+            throw new Error(String(exhaustive));
+          }
+          }
+        })();
         const instrumented = trial.exclusion.includes('instrumented') || isGpuProfileTrial({ trial, snapshot, stepsById });
         let gpuTotalMs: number | undefined;
         const gpuStatus = metrics?.gpuProfile?.status;
@@ -622,7 +646,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
           instrumented ? undefined : rates.prefillTokensPerSecond, instrumented ? undefined : rates.generationTokensPerSecond, metrics?.promptTokens, metrics?.reusedTokens,
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,
           step?.dependsOn === undefined ? undefined : trialsByStep.get(step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
-          instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason]);
+          instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason, execution?.kind ?? 'unobserved', graph?.definitionSha256, graph?.format, graph?.nativeExtensionSha256]);
         await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, vision: trial.vision, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
       await addLines({ name: 'summary.csv', values: rows, format: ({ value: row }) => row.map(value => csvCell({ value })).join(',') + '\r' });

@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__use_registered_graphs_before_native_support = (): string => "Registre definições de estruturas de modelos em JSON e escolha qual implementação usar para os modelos correspondentes. As definições são dados; JavaScript externo não é executado.";

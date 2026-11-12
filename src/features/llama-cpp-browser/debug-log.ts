@@ -1,3 +1,4 @@
+import { modelExecutionSchema, registeredGraphTimingSchema } from './performance/model-execution-schema';
 import { gpuProfileSchema } from './performance/gpu-profile-schema';
 import { nativeGraphCountersSchema } from './performance/native-graph-counters-schema';
 import { visionBf16StorageObservationSchema } from './runtime/vision-bf16-storage-schema';
@@ -69,6 +70,7 @@ export const nativeFlashAttentionSchema = z.discriminatedUnion('kind', [
 ]);
 
 export const diagnosticSchema = z.object({
+  modelExecution: modelExecutionSchema.optional(),
   visionStorage: visionBf16StorageObservationSchema.optional(),
   event: eventSchema,
   generationThroughput: z.object({
@@ -102,6 +104,8 @@ export const diagnosticSchema = z.object({
     peakPending: z.number().int().nonnegative().max(1),
   }).strict().optional(),
   performance: z.object({
+    modelExecution: modelExecutionSchema.optional(),
+    registeredGraphTiming: registeredGraphTimingSchema.optional(),
     visionStorage: visionBf16StorageObservationSchema.optional(),
     vision: visionDiagnosticSchema.optional(),
     // Existing load counters, without enabling per-read clocks in standard measurement.

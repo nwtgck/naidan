@@ -27,6 +27,11 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+### Fixed
+
+- Recover the development privacy broker after rapid HTML error-and-repair saves, and cancel pending rebuilds when its server closes.
+- Reject trailing junk, duplicate keys and malformed concatenated JSON imports instead of accepting a valid-looking prefix.
+
 ## [0.66.0] - 2026-11-11
 
 ### Added

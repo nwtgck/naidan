@@ -1,3 +1,4 @@
+vi.mock('../model-graph/request-settings', () => ({ readModelGraphRequestSettings: vi.fn(async () => []) }));
 import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
 import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';

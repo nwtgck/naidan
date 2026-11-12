@@ -794,7 +794,7 @@ async function generateInternal({ input: { request, onEvent, onProgress, signal,
     const remaining = capacity - Math.max(tokenCount, nextPosition);
     const maximum = request.maxTokens === undefined ? remaining : Math.min(request.maxTokens, remaining);
     measurements.counters.maximumTokens = maximum;
-    logDiagnostic({ diagnostic: { event: 'generation-start', imageCount: chat.images.length, tokens: tokenCount, pointerBytes: core.pointerBytes, toolCount: request.tools?.length ?? 0 } });
+    logDiagnostic({ diagnostic: { event: 'generation-start', modelExecution: { kind: 'nativeArchitecture' }, imageCount: chat.images.length, tokens: tokenCount, pointerBytes: core.pointerBytes, toolCount: request.tools?.length ?? 0 } });
     // Cooperation is independent of parse pacing: enabling tool-preview
     // coalescing later must not also relax the task-yield policy implicitly.
     const generationYield = createGenerationYieldPacing({

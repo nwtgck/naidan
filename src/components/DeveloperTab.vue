@@ -3,6 +3,7 @@ import { useSampleChat } from '@/composables/useSampleChat';
 import { computed } from 'vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon, SearchCheckIcon } from 'lucide-vue-next';
+import ModelGraphDefinitionRegistryPanel from '@/features/llama-cpp-browser/model-graph/components/ModelGraphDefinitionRegistryPanel.vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import ActionButton from './ActionButton.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
@@ -13,10 +14,12 @@ import { isModelSupportInvestigationAvailable } from '@/features/transformers-js
 
 const props = defineProps<{
   storageType: string,
+  modelGraphInput: string,
 }>();
 
 const emit = defineEmits<{
   (e: 'openModelSupportInvestigation', modelId: string): void,
+  (e: 'update:modelGraphInput', input: string): void,
 }>();
 
 const { createSampleChat, createLongSampleChat } = useSampleChat();
@@ -145,6 +148,8 @@ defineExpose({
             {{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}
           </ActionButton>
         </section>
+
+        <ModelGraphDefinitionRegistryPanel :input="modelGraphInput" @update:input="emit('update:modelGraphInput', $event)" />
 
         <DeveloperOpenStateLinks />
 

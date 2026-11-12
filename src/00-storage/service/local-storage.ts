@@ -1,3 +1,4 @@
+import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
@@ -37,6 +38,7 @@ import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegis
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
 const KEY_HIERARCHY = `${LSP_STORAGE_PREFIX}hierarchy`;
 const KEY_SETTINGS = `${LSP_STORAGE_PREFIX}settings`;
+const KEY_MODEL_GRAPH_REGISTRY = `${LSP_STORAGE_PREFIX}experimental-model-graph-registry`;
 const KEY_NAIDAN_RPC_REGISTRY = `${LSP_STORAGE_PREFIX}experimental-naidan-rpc-connections`;
 const KEY_META_PREFIX = `${LSP_STORAGE_PREFIX}chat_meta:`;
 const KEY_GROUP_PREFIX = `${LSP_STORAGE_PREFIX}chat_group:`;
@@ -61,6 +63,19 @@ export class LocalStorageProvider extends IStorageProvider {
       localStorage.removeItem(KEY_NAIDAN_RPC_REGISTRY);
     } else {
       localStorage.setItem(KEY_NAIDAN_RPC_REGISTRY, JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry)));
+    }
+  }
+
+  async loadModelGraphRegistry(): Promise<ExperimentalModelGraphRegistryDto | undefined> {
+    const raw = localStorage.getItem(KEY_MODEL_GRAPH_REGISTRY);
+    return raw === null ? undefined : ExperimentalModelGraphRegistrySchemaDto.parse(JSON.parse(raw));
+  }
+
+  async saveModelGraphRegistry({ registry }: { registry: ExperimentalModelGraphRegistryDto | undefined }): Promise<void> {
+    if (registry === undefined) {
+      localStorage.removeItem(KEY_MODEL_GRAPH_REGISTRY);
+    } else {
+      localStorage.setItem(KEY_MODEL_GRAPH_REGISTRY, JSON.stringify(ExperimentalModelGraphRegistrySchemaDto.parse(registry)));
     }
   }
 

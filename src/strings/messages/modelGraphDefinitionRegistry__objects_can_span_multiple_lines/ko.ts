@@ -1,0 +1,1 @@
+export const modelGraphDefinitionRegistry__objects_can_span_multiple_lines = (): string => "Paste consecutive objects, separated by whitespace if needed. Each object may span multiple lines; do not wrap them in an array.";
