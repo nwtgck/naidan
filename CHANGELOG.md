@@ -1,12 +1,13 @@
 # Changelog
 
 <!--
-This file is the canonical source for Naidan release notes.
+This file is the canonical source for released Naidan release notes.
 Keep the Markdown format machine-readable: one "## [X.Y.Z] - YYYY-MM-DD"
 heading per release. Version headings and reference labels omit the v prefix;
 Git tag names in link destinations retain it. Use the standard Added, Changed, Deprecated, Removed,
 Fixed, and Security categories as level-three headings; omit unused categories.
-The [Unreleased] heading is reserved for changes not yet in a release.
+Unreleased entries are maintained in changelog-unreleased/; direct entries
+under [Unreleased] remain supported for compatibility.
 Release tooling may edit version headings and move entries between sections.
 Write entries in English, based on differences between the released source trees.
 Commit messages can explain intent but are not authoritative evidence of behavior.
@@ -19,6 +20,12 @@ uses today's UTC date unless --date explicitly supplies a UTC calendar date.
 All notable changes to Naidan are documented in this file.
 
 ## [Unreleased]
+
+<!-- changelog-unreleased:instructions
+Unreleased entries are maintained in changelog-unreleased/.
+See changelog-unreleased/AGENTS.md for instructions.
+Do not add entries directly here during ordinary development.
+-->
 
 ## [0.66.0] - 2026-11-11
 

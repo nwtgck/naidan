@@ -16,6 +16,7 @@ from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'release_start.py'
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location('release_start', SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 release = importlib.util.module_from_spec(SPEC)
@@ -364,6 +365,7 @@ class ReleaseIntegrationTests(unittest.TestCase):
         })
         (self.root / 'scripts').mkdir()
         shutil.copyfile(SCRIPT, self.root / 'scripts/release_start.py')
+        shutil.copyfile(SCRIPT.with_name('changelog_format.py'), self.root / 'scripts/changelog_format.py')
         self.write_json(name='package.json', value={'name': 'naidan', 'version': '0.62.1-dev'})
         self.write_json(name='package-lock.json', value={'name': 'naidan', 'version': '0.62.1-dev', 'lockfileVersion': 3, 'packages': {'': {'name': 'naidan', 'version': '0.62.1-dev'}, 'node_modules/example': {'version': '9.8.7'}}})
         (self.root / 'CHANGELOG.md').write_text(CHANGELOG, encoding='utf-8')
@@ -635,6 +637,255 @@ sys.exit(module.main())
         self.assertEqual(self.git(args=['rev-parse', 'HEAD']), before_head)
         self.assertEqual(self.git(args=['branch', '--show-current']).strip(), 'release/0.62.1')
         self.assertEqual(set(self.git(args=['diff', '--cached', '--name-only']).splitlines()), {'CHANGELOG.md', 'package.json', 'package-lock.json'})
+
+    def write_fragment(self, *, topic: str = 'entry', content: str = '### Fixed\n\n- A fragment fix.\n') -> str:
+        directory = self.root / 'changelog-unreleased'
+        directory.mkdir(exist_ok=True)
+        (directory / 'AGENTS.md').write_text('Entry instructions.\n', encoding='utf-8')
+        name = f'changelog-unreleased/changes-20261112T063045.123Z-{topic}.md'
+        (self.root / name).write_text(content, encoding='utf-8')
+        return name
+
+    def invoke_patched(self, *, args: list[str], patch: str) -> subprocess.CompletedProcess[str]:
+        # Fault injection stays entirely in this isolated test process.
+        wrapper = '''import sys
+from pathlib import Path
+import release_start as release
+sys.argv = [release.__file__, *sys.argv[1:]]
+''' + patch + '\nsys.exit(release.main())\n'
+        return subprocess.run([sys.executable, '-c', wrapper, *args], cwd=self.root / 'scripts',
+                              env=self.env, capture_output=True, text=True, check=False)
+
+    def test_fragments_commit_exact_deletions_and_preserve_other_files_and_develop(self):
+        names = [self.write_fragment(topic='one'), self.write_fragment(topic='two', content='### Added\n\n- A fragment feature.\n')]
+        directory = self.root / 'changelog-unreleased'
+        for name in ('notes.md', 'changes-example.txt'):
+            (directory / name).write_text('Not consumed.\n')
+        (directory / 'nested').mkdir()
+        (directory / 'nested' / Path(names[0]).name).write_text('Not consumed.\n')
+        self.commit_fixture()
+        result = self.invoke(args=['patch', '--date', '2026-11-12'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Changelog fragments to consume: 2', result.stdout)
+        changes = self.git(args=['diff-tree', '--no-commit-id', '--name-status', '-r', 'HEAD']).splitlines()
+        self.assertEqual(set(changes), {f'D\t{name}' for name in names} | {'M\tCHANGELOG.md', 'M\tpackage.json', 'M\tpackage-lock.json'})
+        self.assertEqual((directory / 'AGENTS.md').read_text(), 'Entry instructions.\n')
+        self.assertTrue((directory / 'notes.md').is_file())
+        self.assertTrue((directory / 'nested' / Path(names[0]).name).is_file())
+        self.assertEqual(self.git(args=['status', '--porcelain']), '')
+        body = (self.root / 'CHANGELOG.md').read_text()
+        self.assertIn('A reviewed fix.', body)
+        self.assertIn('A fragment fix.', body)
+        self.assertIn('A fragment feature.', body)
+        for name in names:
+            self.assertIn('### ', self.git(args=['show', f'develop:{name}']))
+
+    def test_fragment_only_releases_for_all_three_bump_kinds(self):
+        name = self.write_fragment()
+        (self.root / 'CHANGELOG.md').write_text(PREAMBLE + '\n' + HISTORY + '\n' + LINKS)
+        self.commit_fixture()
+        for kind, version in (('patch', '0.62.1'), ('minor', '0.63.0'), ('major', '1.0.0')):
+            with self.subTest(kind=kind):
+                self.git(args=['checkout', 'develop'])
+                result = self.invoke(args=[kind, '--date', '2026-11-12'])
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.git(args=['branch', '--show-current']).strip(), 'release/' + version)
+                self.assertFalse((self.root / name).exists())
+                self.assertIn('A fragment fix.', (self.root / 'CHANGELOG.md').read_text())
+
+    def test_dry_run_previews_untracked_fragments_without_mutation(self):
+        name = self.write_fragment()
+        before = self.snapshot()
+        result = self.invoke(args=['patch', '--date', '2026-11-12', '--dry-run'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(name + ' (delete after integration)', result.stdout)
+        self.assertIn('Planned release notes:', result.stdout)
+        self.assertIn('A reviewed fix.', result.stdout)
+        self.assertIn('A fragment fix.', result.stdout)
+        self.assertIn('[Full Changelog][0.62.1]', result.stdout)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_malformed_fragment_is_not_bypassed_by_empty_or_dry_run_options(self):
+        name = self.write_fragment(content='### Fixed\n\n- First.\n- Second.\n')
+        self.commit_fixture()
+        for args in (['patch'], ['patch', '--dry-run'], ['patch', '--allow-empty-changelog']):
+            with self.subTest(args=args):
+                self.assert_unchanged_failure(args=args, message='one paragraph-style bullet')
+        self.assertTrue((self.root / name).is_file())
+
+    def test_ignored_untracked_entry_is_never_deleted(self):
+        name = self.write_fragment()
+        (self.root / '.gitignore').write_text('changelog-unreleased/changes-*.md\n')
+        self.commit_fixture()
+        self.assertEqual(self.git(args=['status', '--porcelain']), '')
+        self.assert_unchanged_failure(args=['patch'], message='must be tracked')
+        self.assertTrue((self.root / name).is_file())
+
+    def test_hidden_tracked_entry_flags_are_rejected_before_branch_creation(self):
+        name = self.write_fragment()
+        self.commit_fixture()
+        for flag, undo in (('--skip-worktree', '--no-skip-worktree'), ('--assume-unchanged', '--no-assume-unchanged')):
+            with self.subTest(flag=flag):
+                self.git(args=['update-index', flag, '--', name])
+                self.assert_unchanged_failure(args=['patch'], message='must be tracked')
+                self.git(args=['update-index', undo, '--', name])
+
+    @unittest.skipIf(os.name == 'nt', 'Symlinks may require additional privileges.')
+    def test_symlinked_entry_directory_is_rejected_before_changes(self):
+        directory = self.root / 'changelog-unreleased'
+        (self.root / 'elsewhere').mkdir()
+        directory.symlink_to('elsewhere', target_is_directory=True)
+        self.commit_fixture()
+        self.assert_unchanged_failure(args=['patch'], message='real directory')
+
+    def test_missing_sparse_entry_cannot_be_silently_omitted_from_release(self):
+        name = self.write_fragment()
+        self.commit_fixture()
+        self.git(args=['update-index', '--skip-worktree', '--', name])
+        (self.root / name).unlink()
+        self.assertEqual(self.git(args=['status', '--porcelain']), '')
+        self.assert_unchanged_failure(args=['patch'], message='missing from the working tree')
+
+    def test_dev_ignores_even_invalid_fragment_directory(self):
+        # A regular file in place of the directory must not even be inspected.
+        (self.root / 'changelog-unreleased').write_bytes(b'\xff malformed')
+        self.commit_fixture()
+        result = self.invoke(args=['dev'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.root / 'changelog-unreleased').read_bytes(), b'\xff malformed')
+        self.assertEqual(set(self.git(args=['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']).splitlines()), {'package.json', 'package-lock.json'})
+
+    def test_merged_release_removes_consumed_entries_but_keeps_concurrent_new_ones(self):
+        first = self.write_fragment(topic='first', content='### Added\n\n- First release feature.\n')
+        self.commit_fixture()
+        result = self.invoke(args=['patch', '--date', '2026-11-12'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.git(args=['checkout', 'develop'])
+        second = self.write_fragment(topic='second', content='### Fixed\n\n- Second release fix.\n')
+        self.commit_fixture()
+        self.git(args=['merge', '--no-edit', 'release/0.62.1'])
+        self.assertFalse((self.root / first).exists())
+        self.assertTrue((self.root / second).exists())
+        result = self.invoke(args=['patch', '--date', '2026-11-13'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        body = (self.root / 'CHANGELOG.md').read_text()
+        self.assertEqual(body.count('First release feature.'), 1)
+        self.assertEqual(body.count('Second release fix.'), 1)
+        self.assertNotIn('First release feature.', body.split('## [0.62.1]')[0])
+        self.assertFalse((self.root / second).exists())
+
+    def test_failed_commit_keeps_consumed_entries_recoverable_in_git(self):
+        name = self.write_fragment()
+        self.commit_fixture()
+        self.git(args=['config', 'commit.gpgsign', 'true'])
+        self.git(args=['config', 'gpg.program', str(self.root / 'missing-test-gpg')])
+        before = self.git(args=['rev-parse', 'HEAD'])
+        result = self.invoke(args=['patch'])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Release preparation failed', result.stderr)
+        self.assertEqual(self.git(args=['rev-parse', 'HEAD']), before)
+        self.assertIn(f'D\t{name}', self.git(args=['diff', '--cached', '--name-status']))
+        self.assertIn('A fragment fix.', self.git(args=['show', f'HEAD:{name}']))
+        self.assertIn('A fragment fix.', (self.root / 'CHANGELOG.md').read_text())
+
+    def test_checkout_hook_edit_is_detected_before_overwriting_any_release_file(self):
+        name = self.write_fragment()
+        self.commit_fixture()
+        before_package = (self.root / 'package.json').read_bytes()
+        patch = f'''
+original_git = release.run_git_command
+def edited_checkout(*, args, capture_output=False):
+    result = original_git(args=args, capture_output=capture_output)
+    if args[:2] == ['checkout', '-b']:
+        (release.REPO_ROOT / {name!r}).write_text('Changed after preflight.\\n')
+    return result
+release.run_git_command = edited_checkout
+'''
+        result = self.invoke_patched(args=['patch'], patch=patch)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('fragment changed', result.stderr)
+        self.assertEqual((self.root / name).read_text(), 'Changed after preflight.\n')
+        self.assertEqual((self.root / 'package.json').read_bytes(), before_package)
+        self.assertEqual(self.git(args=['diff', '--cached', '--name-only']), '')
+
+    def test_new_fragment_after_preflight_is_not_silently_missed(self):
+        self.write_fragment()
+        self.commit_fixture()
+        patch = '''
+original_git = release.run_git_command
+def edited_checkout(*, args, capture_output=False):
+    result = original_git(args=args, capture_output=capture_output)
+    if args[:2] == ['checkout', '-b']:
+        (release.FRAGMENTS_PATH / 'changes-20261112T063045.124Z-new.md').write_text('New draft.')
+    return result
+release.run_git_command = edited_checkout
+'''
+        result = self.invoke_patched(args=['patch'], patch=patch)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('inventory changed', result.stderr)
+        self.assertTrue((self.root / 'changelog-unreleased/changes-20261112T063045.124Z-new.md').exists())
+        self.assertEqual(self.git(args=['diff', '--cached', '--name-only']), '')
+
+    def test_write_failure_does_not_delete_collected_entries(self):
+        name = self.write_fragment()
+        self.commit_fixture()
+        patch = '''
+def fail_write(*, path, content):
+    raise OSError('simulated write failure')
+release.write_text_file = fail_write
+'''
+        result = self.invoke_patched(args=['patch'], patch=patch)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Release preparation failed', result.stderr)
+        self.assertTrue((self.root / name).is_file())
+        self.assertEqual(self.git(args=['diff', '--cached', '--name-only']), '')
+
+    def test_unlink_failure_leaves_generated_notes_and_recoverable_entries(self):
+        names = [self.write_fragment(topic='a'), self.write_fragment(topic='b')]
+        self.commit_fixture()
+        patch = f'''
+original_unlink = Path.unlink
+def fail_unlink(self, *args, **kwargs):
+    if self == release.REPO_ROOT / {names[1]!r}:
+        raise OSError('simulated unlink failure')
+    return original_unlink(self, *args, **kwargs)
+Path.unlink = fail_unlink
+'''
+        result = self.invoke_patched(args=['patch'], patch=patch)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Release preparation failed', result.stderr)
+        self.assertFalse((self.root / names[0]).exists())
+        self.assertTrue((self.root / names[1]).is_file())
+        self.assertEqual((self.root / 'CHANGELOG.md').read_text().count('A fragment fix.'), 2)
+        self.assertIn('A fragment fix.', self.git(args=['show', f'HEAD:{names[0]}']))
+        self.assertEqual(self.git(args=['diff', '--cached', '--name-only']), '')
+
+    def test_changed_entry_during_output_writes_is_not_deleted(self):
+        name = self.write_fragment()
+        self.commit_fixture()
+        patch = f'''
+original_write = release.write_text_file
+def edited_write(*, path, content):
+    original_write(path=path, content=content)
+    if path == release.CHANGELOG_PATH:
+        (release.REPO_ROOT / {name!r}).write_text('Changed during writes.\\n')
+release.write_text_file = edited_write
+'''
+        result = self.invoke_patched(args=['patch'], patch=patch)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('fragment changed', result.stderr)
+        self.assertEqual((self.root / name).read_text(), 'Changed during writes.\n')
+        self.assertEqual(self.git(args=['diff', '--cached', '--name-only']), '')
+
+    def test_publication_size_and_reference_errors_fail_before_branch_or_deletion(self):
+        name = self.write_fragment(content='### Fixed\n\n- ' + 'あ' * 42000 + '\n')
+        self.commit_fixture()
+        self.assert_unchanged_failure(args=['patch'], message='size limit')
+        self.assert_unchanged_failure(args=['patch', '--dry-run'], message='size limit')
+        (self.root / name).write_text('### Fixed\n\n- A valid note.\n')
+        (self.root / 'CHANGELOG.md').write_text(CHANGELOG + '\nNot a reference footer.\n')
+        self.commit_fixture()
+        self.assert_unchanged_failure(args=['patch'], message='reference definitions')
 
 
 if __name__ == '__main__':

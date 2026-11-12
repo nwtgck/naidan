@@ -67,15 +67,19 @@ only selects the mode, resolves the repository root, and reports results.
 
 Prepare a release locally without `git flow`. Run from `develop` with a clean
 working tree. The script creates `release/<version>`, updates `package.json`,
-`package-lock.json`, and `CHANGELOG.md`, and commits all three together as
-`bump: <version>`. It does not create a tag, push, publish, or update GitHub Releases.
+`package-lock.json`, and `CHANGELOG.md`, consumes the collected changelog entry
+files, and commits those updates and deletions together as `bump: <version>`.
+It does not create a tag, push, publish, or update GitHub Releases.
 
-Write and review English notes under `## [Unreleased]` **before** starting a
-release, then commit those edits. Review the actual source differences; commit
-messages are supplementary context, not evidence that a feature was released.
-The script moves those notes into `## [X.Y.Z] - YYYY-MM-DD`, creates an empty
-`Unreleased` section above it, and updates the optional Markdown comparison links.
-It never writes or summarizes release-note prose.
+Write and review English notes in `changelog-unreleased/changes-*.md` following
+`changelog-unreleased/AGENTS.md`, then commit them before starting a release.
+Review actual source differences; commit messages are supplementary context,
+not evidence that a feature was released. Existing notes written directly under
+`## [Unreleased]` are still supported, including when entry files also exist.
+Both inputs are combined into `## [X.Y.Z] - YYYY-MM-DD`; the `Unreleased`
+instructions remain in place and optional comparison links are updated.
+Only consumed entry files are removed. The script never writes, summarizes, or
+semantically deduplicates release-note prose.
 
 ```bash
 # Inspect a plan, including validation of the notes, without writing anything.
@@ -95,7 +99,8 @@ It never writes or summarizes release-note prose.
 `major` and `minor` increment their respective version components. `patch`
 removes a final `-dev` suffix without incrementing the patch number; otherwise it
 increments the patch number. `dev` increments the patch number and appends
-`-dev`, stays on `develop`, and does not read or modify `CHANGELOG.md`.
+`-dev`, stays on `develop`, and does not read or modify `CHANGELOG.md` or the
+changelog entry directory.
 `--date` and `--allow-empty-changelog` are release-only options. Release dates
 use UTC (Coordinated Universal Time), independent of the machine's local time
 zone. `--date YYYY-MM-DD` supplies a UTC calendar date verbatim, not a local
@@ -114,7 +119,11 @@ The optional categories are `### Added`, `### Changed`, `### Deprecated`,
 `### Removed`, `### Fixed`, and `### Security`. Do not duplicate a category in
 `Unreleased`. Comments and fenced examples are not release boundaries; original
 note text, historical sections, and line endings are preserved rather than
-regenerated. No custom markers or generated commit lists are required.
+regenerated. An optional leading `<!-- changelog-unreleased:instructions`
+comment, closed by `-->` on its own line, stays under `Unreleased`; ordinary
+comments travel with the notes as before. This marked comment must occur only
+once and before all other Unreleased content. Code examples of the marker are
+not treated as instructions. Old changelogs without the marker remain supported.
 
 Keep managed comparison links as single-line Markdown definitions at the end of
 the document. Ordinary reference titles and angle-bracket destinations are
@@ -136,20 +145,73 @@ English prose quality and historical accuracy still require review; these are
 not inferred from syntax. `--dry-run` performs content validation and can inspect
 uncommitted draft notes, but a real run requires a clean working tree.
 
+### Collecting independent entries
+
+Only **direct children** of `changelog-unreleased/` matching `changes-*.md` are
+candidates. A missing directory is equivalent to zero entries. `AGENTS.md`,
+other names/extensions, and ordinary subdirectories are ignored and preserved.
+A candidate whose name, UTC timestamp, content or file type is invalid stops the
+release; `--allow-empty-changelog` does not bypass malformed input. Linked
+entry directories/files and non-regular candidate files are rejected.
+
+Filenames use `changes-YYYYMMDDTHHMMSS.sssZ-<topic>.md`, with the actual UTC
+creation instant, not the release date. Timestamps are not changed on revision,
+compared with the release clock, or used to infer dependencies. Topics contain
+lowercase ASCII letters, digits and single separating hyphens. Timestamp ties
+are sorted by the full filename. No random suffix is used.
+
+Each entry contains one category and one paragraph-style bullet with optional
+exactly-two-space-indented continuation lines and inline Markdown. These stricter
+rules do not apply to legacy direct notes, which retain their paragraphs,
+comments, code examples and existing category order. New entries follow direct
+notes within their category; when a category contains a level-four or deeper
+subheading, prepend entries to the entire category body rather than splitting
+an existing list item or adding entries to that subsection. Missing categories
+are appended in the order Added, Changed, Deprecated, Removed, Fixed, Security. Fragment-only
+releases use that same category order. Each category heading appears only once.
+
+`--allow-empty-changelog` is needed only when neither input contains notes.
+`--dry-run` validates uncommitted entries too, lists the exact planned deletions,
+and prints the rendered new release body (including its comparison link).
+Preparation and publication share `changelog_format.py`; the complete generated
+changelog must pass the publication renderer's reference rules and 125,000-byte
+UTF-8 body limit before a branch is created. No body is silently truncated.
+
+A real run requires collected files to be tracked by Git without skip-worktree
+or assume-unchanged flags. Tracked entries missing from a sparse checkout also
+stop release preparation. Ignored untracked entries can be previewed but never
+consumed. The entry inventory and contents are rechecked before mutation, after
+branch creation, and before deletion. This detects ordinary intervening edits,
+including checkout-hook changes; it is not a concurrency lock. Only the explicit
+update/deletion paths are staged, never the whole directory or working tree.
+They are passed as a NUL-delimited standard-input list, avoiding command-line
+length limits when collecting many files.
+
+Deletions happen on the release branch. Merge the release back to `develop`
+before starting another release so consumed entries are not collected again.
+New independently named entries added on `develop` after the release branch was
+cut remain for the next release. Editing an already-consumed entry on another
+branch may still produce a modify/delete conflict that needs human review.
+No registry or automatic semantic deduplication hides those conflicts.
+
 ### Failure handling and targeted tests
 
 Release files must be regular files, not symlinks. Each file is staged beside its
 destination and replaced by rename, preserving its permissions; a write failure
 does not truncate that destination. The whole operation is **not** a transaction
-across files, branch creation, and Git hooks. Do not run concurrent release
-preparations. If writing or committing fails, inspect `git status`, the index,
+across file updates, entry deletions, branch creation, and Git hooks. Do not run
+concurrent release preparations. If writing or committing fails, inspect `git status`, the index,
 and the current branch. Prepared work is left available for recovery; the script
-does not reset or discard it automatically.
+does not reset or discard it automatically. Consumed entries are recoverable
+from the pre-release commit; do not blindly rerun on a partially prepared branch.
+Check whether the generated notes contain every expected entry, then either
+finish the reviewed release commit or deliberately restore the pre-release state.
 
 Run the release-script tests without building or testing the application:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_release_start.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+node --test scripts/tests/release-notes-workflow.test.mjs
 ```
 
 The integration tests use isolated temporary Git repositories and do not publish
@@ -170,8 +232,9 @@ JavaScript in that workflow, using `actions/github-script` pinned by
 run `gh actions-lock` to regenerate the lockfile and check it with
 `gh actions-lock --verify` (also enforced by `verify-lockfile.yml`). The Python
 planner only reads files and prints a complete JSON (JavaScript Object Notation)
-plan. It reuses `release_start.py`'s Markdown scanner, without running release
-preparation or Git commands. It runs in a read-only Docker container with
+plan. It shares the pure scanner and renderer in `changelog_format.py` with release
+preparation, without running release preparation or Git commands. It runs in a
+read-only Docker container with
 `--network none`, no credentials or Docker socket, read-only script/input mounts,
 and no writable host mount. Stdout is redirected to the plan by the host shell.
 The planner's Python image is digest-pinned and pulled explicitly before running

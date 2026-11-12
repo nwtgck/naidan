@@ -7,6 +7,7 @@ on:
       - CHANGELOG.md
       - scripts/plan_release_notes.py
       - scripts/release_start.py
+      - scripts/changelog_format.py
       - .github/workflows/sync-release-notes.yml
   workflow_dispatch:
     inputs:
