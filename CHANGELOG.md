@@ -34,6 +34,10 @@ Do not add entries directly here during ordinary development.
 - Checked BF16 and IQ weight layouts and explicit floating-point casts for registered graphs. Backend support remains runtime-specific; unsupported operations fail explicitly.
 - Registered graph execution using the optional bicore vocabulary/chat/sampling boundary. Native model execution remains separate, and older artifacts without the boundary cannot execute registered graphs.
 
+### Changed
+
+- Replace implicit model-graph string interpolation with explicit `concat`/`decimal` name expressions and scoped `iteration`, `capture`, `carry`, and named output references. The deliberately incompatible `experimental-3` declaration format preserves old registration text for copying but requires replacement and renewed approval before execution.
+
 ### Fixed
 
 - Support explicitly declared scalar-or-array model metadata with exact layer counts and missing-key defaults. Preserve strict array indexing, reject malformed layer flags, and report metadata type, length, and index errors separately.

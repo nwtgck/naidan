@@ -1,100 +1,134 @@
 import { z } from 'zod';
 import { parseConcatenatedJson } from '@/utils/json-stream-parser';
-import { graphNameSchema, graphNumberSchema, graphConditionSchema, type GraphNumber, type GraphCondition } from './expressions';
+import { graphNameSchema, graphNameExpressionSchema, graphNumberSchema, graphConditionSchema, type GraphNumber, type GraphCondition } from './expressions';
 import { graphWeightTypeSchema } from './tensor-layout';
-import { tensorOperatorNodeSchema } from './operators';
+import { createTensorOperatorNodeSchema } from './operators';
+import { validateModelGraphScopes } from './scope-validation';
 
-// Deliberately unstable experimental data language. Stored definitions are
-// user-authored data: preserve their source, never silently reinterpret them.
-export const modelGraphFormat = 'naidan.model-graph/experimental-2';
-export const modelGraphCapabilities = ['tensor-graph/v1', 'decoder-kv-linear/v1', 'rotary-normal-neox/v1', 'tensor-operators/v2', 'persistent-state/v1', 'declaration-expansion/v1', 'decoder-inputs/v1'] as const;
+// Deliberately unstable: old source remains exportable in storage, but must not
+// acquire new semantics or execution authority through an automatic migration.
+export const modelGraphFormat = 'naidan.model-graph/experimental-3';
+export const modelGraphCapabilities = ['tensor-graph/v1', 'decoder-kv-linear/v1', 'rotary-normal-neox/v1', 'tensor-operators/v2', 'persistent-state/v1', 'scoped-declarations/v1', 'decoder-inputs/v1'] as const;
+export type GraphReference = string | { local: string } | { capture: string } | { carry: string } | { output: { block: string; port: string } };
+export const graphReferenceSchema: z.ZodType<GraphReference> = z.union([
+  graphNameSchema,
+  z.strictObject({ local: graphNameSchema }), z.strictObject({ capture: graphNameSchema }), z.strictObject({ carry: graphNameSchema }),
+  z.strictObject({ output: z.strictObject({ block: graphNameSchema, port: graphNameSchema }) }),
+]);
+export type Dimension = GraphNumber;
+export type ModelGraphScalar = GraphNumber;
 const nameSchema = graphNameSchema;
 const scalarSchema = graphNumberSchema;
 const dimensionSchema = graphNumberSchema;
-export type Dimension = GraphNumber;
-const inputSchema = nameSchema;
-const unary = { id: nameSchema, input: inputSchema };
-const binary = { id: nameSchema, left: inputSchema, right: inputSchema };
-export const modelGraphNodeSchema = z.discriminatedUnion('op', [
-  z.strictObject({ id: nameSchema, op: z.literal('embedding'), weight: nameSchema }),
-  z.strictObject({ id: nameSchema, op: z.literal('linear'), weight: nameSchema, input: inputSchema }),
-  z.strictObject({ ...unary, op: z.literal('normalizeRms'), epsilon: scalarSchema }),
-  z.strictObject({ ...binary, op: z.literal('add') }),
-  z.strictObject({ ...binary, op: z.literal('subtract') }),
-  z.strictObject({ ...binary, op: z.literal('multiply') }),
-  z.strictObject({ ...unary, op: z.literal('sigmoid') }),
-  z.strictObject({ ...unary, op: z.literal('silu') }),
-  z.strictObject({ ...unary, op: z.literal('contiguous') }),
-  z.strictObject({ ...unary, op: z.literal('scale'), value: scalarSchema }),
-  z.strictObject({ ...unary, op: z.literal('reshape'), shape: z.array(dimensionSchema).min(1).max(4) }),
-  z.strictObject({ ...unary, op: z.literal('permute'), axes: z.tuple([z.number().int().min(0).max(3), z.number().int().min(0).max(3), z.number().int().min(0).max(3), z.number().int().min(0).max(3)]) }),
-  z.strictObject({
-    ...unary,
-    op: z.literal('rotaryEmbedding'),
-    dimensions: dimensionSchema,
-    mode: z.enum(['normal', 'neox']),
-    frequencyBase: scalarSchema,
-    frequencyScale: scalarSchema,
-    scaling: z.strictObject({ contextOriginal: scalarSchema, extensionFactor: scalarSchema, attentionFactor: scalarSchema, betaFast: scalarSchema, betaSlow: scalarSchema }).optional(),
-    frequencyFactors: nameSchema.optional(),
-  }),
-  tensorOperatorNodeSchema,
-  z.strictObject({ id: nameSchema, op: z.literal('stateRead'), slot: nameSchema }),
-  z.strictObject({ id: nameSchema, op: z.literal('input'), source: z.enum(['tokenIds', 'positions', 'positionsF32']) }),
-  z.strictObject({ id: nameSchema, op: z.literal('attentionCached'), query: inputSchema, key: inputSchema, value: inputSchema, slot: nameSchema, window: z.number().int().nonnegative().max(131072), scale: z.union([z.literal('inverseSqrtHead'), scalarSchema]) }),
-]);
+
+function nodeSchema<T extends z.ZodType>({ reference }: { reference: T }) {
+  const inputSchema = reference;
+  const unary = { id: nameSchema, input: inputSchema };
+  const binary = { id: nameSchema, left: inputSchema, right: inputSchema };
+  return z.discriminatedUnion('op', [
+    z.strictObject({ id: nameSchema, op: z.literal('embedding'), weight: reference }),
+    z.strictObject({ id: nameSchema, op: z.literal('linear'), weight: reference, input: inputSchema }),
+    z.strictObject({ ...unary, op: z.literal('normalizeRms'), epsilon: scalarSchema }),
+    z.strictObject({ ...binary, op: z.literal('add') }),
+    z.strictObject({ ...binary, op: z.literal('subtract') }),
+    z.strictObject({ ...binary, op: z.literal('multiply') }),
+    z.strictObject({ ...unary, op: z.literal('sigmoid') }),
+    z.strictObject({ ...unary, op: z.literal('silu') }),
+    z.strictObject({ ...unary, op: z.literal('contiguous') }),
+    z.strictObject({ ...unary, op: z.literal('scale'), value: scalarSchema }),
+    z.strictObject({ ...unary, op: z.literal('reshape'), shape: z.array(dimensionSchema).min(1).max(4) }),
+    z.strictObject({ ...unary, op: z.literal('permute'), axes: z.tuple([z.number().int().min(0).max(3), z.number().int().min(0).max(3), z.number().int().min(0).max(3), z.number().int().min(0).max(3)]) }),
+    z.strictObject({
+      ...unary,
+      op: z.literal('rotaryEmbedding'),
+      dimensions: dimensionSchema,
+      mode: z.enum(['normal', 'neox']),
+      frequencyBase: scalarSchema,
+      frequencyScale: scalarSchema,
+      scaling: z.strictObject({ contextOriginal: scalarSchema, extensionFactor: scalarSchema, attentionFactor: scalarSchema, betaFast: scalarSchema, betaSlow: scalarSchema }).optional(),
+      frequencyFactors: reference.optional(),
+    }),
+    createTensorOperatorNodeSchema({ reference }),
+    z.strictObject({ id: nameSchema, op: z.literal('stateRead'), slot: reference }),
+    z.strictObject({ id: nameSchema, op: z.literal('input'), source: z.enum(['tokenIds', 'positions', 'positionsF32']) }),
+    z.strictObject({ id: nameSchema, op: z.literal('attentionCached'), query: inputSchema, key: inputSchema, value: inputSchema, slot: reference, window: z.number().int().nonnegative().max(131072), scale: z.union([z.literal('inverseSqrtHead'), scalarSchema]) }),
+  ]);
+}
+
+export const modelGraphNodeSchema = nodeSchema({ reference: graphNameSchema });
 export type ModelGraphNode = z.infer<typeof modelGraphNodeSchema>;
-const weightSchema = z.strictObject({ id: nameSchema, tensor: z.string().min(1).max(256), shape: z.array(dimensionSchema).min(1).max(4), types: z.array(graphWeightTypeSchema).min(1).max(32) });
+export const declaredModelGraphNodeSchema = nodeSchema({ reference: graphReferenceSchema });
+export type DeclaredModelGraphNode = z.infer<typeof declaredModelGraphNodeSchema>;
+const weightShape = { id: nameSchema, shape: z.array(dimensionSchema).min(1).max(4), types: z.array(graphWeightTypeSchema).min(1).max(32) };
+const weightSchema = z.strictObject({ ...weightShape, tensor: graphNameExpressionSchema });
+const flatWeightSchema = z.strictObject({ ...weightShape, tensor: z.string().min(1).max(256) });
 const cacheSlotSchema = z.strictObject({ id: nameSchema, headSize: dimensionSchema, heads: dimensionSchema, precision: z.enum(['F16', 'F32']) });
 const stateTensorSchema = z.strictObject({ id: nameSchema, shape: z.array(dimensionSchema).min(1).max(4), precision: z.enum(['F32', 'F16', 'BF16']), initial: z.literal('zeros') });
-const updateSchema = z.strictObject({ slot: nameSchema, value: nameSchema });
+const updateSchema = z.strictObject({ slot: graphReferenceSchema, value: graphReferenceSchema });
+const flatUpdateSchema = z.strictObject({ slot: nameSchema, value: nameSchema });
 export type ModelGraphWeight = z.infer<typeof weightSchema>;
 export type ModelGraphCacheSlot = z.infer<typeof cacheSlotSchema>;
 export type ModelGraphStateTensor = z.infer<typeof stateTensorSchema>;
 export type ModelGraphStateUpdate = z.infer<typeof updateSchema>;
-export type ModelGraphEntry = ModelGraphNode
-  | { id: string; op: 'repeat'; index: string; count: GraphNumber; weights: ModelGraphWeight[]; slots: ModelGraphCacheSlot[]; tensors: ModelGraphStateTensor[]; updates: ModelGraphStateUpdate[]; nodes: ModelGraphEntry[] }
-  | { id: string; op: 'choose'; condition: GraphCondition; then: ModelGraphEntry[]; otherwise: ModelGraphEntry[] };
-const entrySchema: z.ZodType<ModelGraphEntry> = z.lazy(() => z.union([
-  modelGraphNodeSchema,
+export type GraphScopeBody = { weights: ModelGraphWeight[]; slots: ModelGraphCacheSlot[]; tensors: ModelGraphStateTensor[]; updates: ModelGraphStateUpdate[]; nodes: ModelGraphEntry[] };
+export type ModelGraphEntry = DeclaredModelGraphNode
+  | { id: string; op: 'repeat'; index: string; count: GraphNumber; capture: Record<string, GraphReference>; carry: Record<string, { initial: GraphReference; next: GraphReference }>; body: GraphScopeBody; outputs: Record<string, GraphReference> }
+  | { id: string; op: 'choose'; condition: GraphCondition; capture: Record<string, GraphReference>; then: GraphScopeBody & { outputs: Record<string, GraphReference> }; otherwise: GraphScopeBody & { outputs: Record<string, GraphReference> } };
+const references = z.record(nameSchema, graphReferenceSchema).refine(value => Object.keys(value).length <= 256, 'Too many scope ports');
+export const graphScopeBodySchema: z.ZodType<GraphScopeBody> = z.lazy(() => z.strictObject({
+  weights: z.array(weightSchema).max(8192),
+  slots: z.array(cacheSlotSchema).max(256),
+  tensors: z.array(stateTensorSchema).max(256),
+  updates: z.array(updateSchema).max(256),
+  nodes: z.array(entrySchema).max(16384),
+}));
+const branchSchema = z.lazy(() => z.strictObject({
+  weights: z.array(weightSchema).max(8192),
+  slots: z.array(cacheSlotSchema).max(256),
+  tensors: z.array(stateTensorSchema).max(256),
+  updates: z.array(updateSchema).max(256),
+  nodes: z.array(entrySchema).max(16384),
+  outputs: references,
+}));
+export const entrySchema: z.ZodType<ModelGraphEntry> = z.lazy(() => z.union([
+  declaredModelGraphNodeSchema,
   z.strictObject({
     id: nameSchema,
     op: z.literal('repeat'),
-    index: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/),
+    index: nameSchema,
     count: graphNumberSchema,
-    weights: z.array(weightSchema).max(8192),
-    slots: z.array(cacheSlotSchema).max(256),
-    tensors: z.array(stateTensorSchema).max(256),
-    updates: z.array(updateSchema).max(256),
-    nodes: z.array(entrySchema).max(16384),
+    capture: references,
+    carry: z.record(nameSchema, z.strictObject({ initial: graphReferenceSchema, next: graphReferenceSchema })).refine(value => Object.keys(value).length <= 256, 'Too many loop-carried values'),
+    body: graphScopeBodySchema,
+    outputs: references,
   }),
-  z.strictObject({ id: nameSchema, op: z.literal('choose'), condition: graphConditionSchema, then: z.array(entrySchema).max(16384), otherwise: z.array(entrySchema).max(16384) }),
+  z.strictObject({ id: nameSchema, op: z.literal('choose'), condition: graphConditionSchema, capture: references, then: branchSchema, otherwise: branchSchema }),
 ]));
 const baseShape = {
   format: z.literal(modelGraphFormat),
   name: z.string().trim().min(1).max(120),
-  applicability: z.strictObject({
-    architecture: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/),
-    metadata: z.array(z.strictObject({ key: z.string().min(1).max(256), value: z.union([z.string().max(1024), z.number().finite(), z.boolean(), z.array(z.union([z.string().max(1024), z.number().finite(), z.boolean()])).max(4096)]) })).max(64),
-  }),
+  applicability: z.strictObject({ architecture: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/), metadata: z.array(z.strictObject({ key: z.string().min(1).max(256), value: z.union([z.string().max(1024), z.number().finite(), z.boolean(), z.array(z.union([z.string().max(1024), z.number().finite(), z.boolean()])).max(4096)]) })).max(64) }),
   requiredCapabilities: z.array(z.enum(modelGraphCapabilities)).min(1).max(modelGraphCapabilities.length),
   parameters: z.array(z.strictObject({ name: nameSchema, value: scalarSchema })).max(256),
-  weights: z.array(weightSchema).max(8192),
-  state: z.strictObject({
-    profile: z.literal('decoder-state/v2'),
-    slots: z.array(cacheSlotSchema).max(256),
-    tensors: z.array(stateTensorSchema).max(256),
-    updates: z.array(updateSchema).max(256),
-  }),
-  outputs: z.strictObject({ logits: nameSchema }),
   annotations: z.string().max(4096).optional(),
 };
-export const modelGraphDefinitionSchema = z.strictObject({ ...baseShape, graph: z.strictObject({ nodes: z.array(entrySchema).min(1).max(16384) }) });
-export const expandedModelGraphDefinitionSchema = z.strictObject({ ...baseShape, graph: z.strictObject({ nodes: z.array(modelGraphNodeSchema).min(1).max(16384) }) });
+export const modelGraphDefinitionSchema = z.strictObject({
+  ...baseShape,
+  weights: z.array(weightSchema).max(8192),
+  state: z.strictObject({ profile: z.literal('decoder-state/v2'), slots: z.array(cacheSlotSchema).max(256), tensors: z.array(stateTensorSchema).max(256), updates: z.array(updateSchema).max(256) }),
+  outputs: z.strictObject({ logits: graphReferenceSchema }),
+  graph: z.strictObject({ nodes: z.array(entrySchema).min(1).max(16384) }),
+});
+export const expandedModelGraphDefinitionSchema = z.strictObject({
+  ...baseShape,
+  weights: z.array(flatWeightSchema).max(8192),
+  state: z.strictObject({ profile: z.literal('decoder-state/v2'), slots: z.array(cacheSlotSchema).max(256), tensors: z.array(stateTensorSchema).max(256), updates: z.array(flatUpdateSchema).max(256) }),
+  outputs: z.strictObject({ logits: nameSchema }),
+  graph: z.strictObject({ nodes: z.array(modelGraphNodeSchema).min(1).max(16384) }),
+});
 export type ModelGraphDefinition = z.infer<typeof modelGraphDefinitionSchema>;
 export type ExpandedModelGraphDefinition = z.infer<typeof expandedModelGraphDefinitionSchema>;
 export type ModelGraphWeightType = z.infer<typeof graphWeightTypeSchema>;
-export type ModelGraphScalar = GraphNumber;
 
 export function parseModelGraphDefinitions({ input }: { input: string }): { source: string; definition: ModelGraphDefinition }[] {
   const results = parseConcatenatedJson({ input });
@@ -113,13 +147,12 @@ export function parseModelGraphDefinitions({ input }: { input: string }): { sour
     }
     const parsed = modelGraphDefinitionSchema.safeParse(result.data);
     if (!parsed.success) {
-      const errors = parsed.error.issues.slice(0, 5).map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ');
-      throw new Error(`Object ${index + 1}: ${errors}`);
+      throw new Error(`Object ${index + 1}: ${parsed.error.issues.slice(0, 5).map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`);
     }
-    // Macro branches are structurally checked now and semantically checked
-    // after bounded expansion against the selected model's metadata.
-    if (parsed.data.graph.nodes.every(node => node.op !== 'repeat' && node.op !== 'choose')) {
-      validateModelGraphReferences({ definition: expandedModelGraphDefinitionSchema.parse(parsed.data) });
+    validateModelGraphScopes({ definition: parsed.data });
+    const flat = expandedModelGraphDefinitionSchema.safeParse(parsed.data);
+    if (flat.success) {
+      validateModelGraphReferences({ definition: flat.data });
     }
     return { source: result.raw, definition: parsed.data };
   });

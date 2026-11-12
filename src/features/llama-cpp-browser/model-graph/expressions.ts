@@ -1,19 +1,28 @@
 import { z } from 'zod';
 
-export const graphNameSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_.${}+-]{0,191}$/);
+// Identifiers are literal symbols, never a formatting language. External GGUF
+// names have a separate, explicit expression grammar below.
+export const graphNameSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/);
+export type GraphNameExpression = string | { concat: GraphNameExpression[] } | { decimal: GraphNumber };
+const nameLiteralSchema = z.string().min(1).max(256).refine(value => !value.includes('\0') && value.isWellFormed() && new TextEncoder().encode(value).length <= 256, 'Invalid or oversized external name');
+export const graphNameExpressionSchema: z.ZodType<GraphNameExpression> = z.lazy(() => z.union([
+  nameLiteralSchema,
+  z.strictObject({ concat: z.array(graphNameExpressionSchema).min(1).max(32) }),
+  z.strictObject({ decimal: graphNumberSchema }),
+]));
 export type GraphMetadataValue = string | number | boolean | readonly (string | number | boolean)[];
 /** Metadata storage is a contract, not an implicit scalar/array coercion.
  * Indexed scalars require explicit broadcast and a checked logical length.
  * Fallbacks apply only to an absent key, never invalid types or array lengths. */
 export type GraphMetadataReference =
-  | { metadata: string; index?: never; length?: never; scalar?: never; fallback?: never }
-  | { metadata: string; index: GraphNumber; length?: GraphNumber; scalar?: never; fallback?: never }
-  | { metadata: string; fallback: GraphNumber; index?: never; length?: never; scalar?: never }
-  | { metadata: string; index: GraphNumber; length: GraphNumber; scalar: 'broadcast'; fallback?: GraphNumber };
+  | { metadata: GraphNameExpression; index?: never; length?: never; scalar?: never; fallback?: never }
+  | { metadata: GraphNameExpression; index: GraphNumber; length?: GraphNumber; scalar?: never; fallback?: never }
+  | { metadata: GraphNameExpression; fallback: GraphNumber; index?: never; length?: never; scalar?: never }
+  | { metadata: GraphNameExpression; index: GraphNumber; length: GraphNumber; scalar: 'broadcast'; fallback?: GraphNumber };
 export type GraphNumber = number
-  | { parameter: string } | { variable: string }
+  | { parameter: string } | { iteration: string }
   | GraphMetadataReference
-  | { tensor: string; dimension: number }
+  | { tensor: GraphNameExpression; dimension: number }
   | { inputTokens: true } | { cacheTokens: true } | { capacity: true }
   | { sum: GraphNumber[] } | { product: GraphNumber[] }
   | { subtract: [GraphNumber, GraphNumber] } | { quotient: [GraphNumber, GraphNumber] }
@@ -21,7 +30,7 @@ export type GraphNumber = number
   | { minimum: GraphNumber[] } | { maximum: GraphNumber[] } | { sqrt: GraphNumber };
 
 function graphMetadataShapes() {
-  const metadata = z.string().min(1).max(256);
+  const metadata = graphNameExpressionSchema;
   return [
     { metadata },
     { metadata, index: graphNumberSchema, length: graphNumberSchema.optional() },
@@ -34,9 +43,9 @@ export const graphNumberSchema: z.ZodType<GraphNumber> = z.lazy(() => {
   const [scalar, indexed, defaulted, broadcast] = graphMetadataShapes();
   return z.union([
     z.number().finite(),
-    z.strictObject({ parameter: graphNameSchema }), z.strictObject({ variable: graphNameSchema }),
+    z.strictObject({ parameter: graphNameSchema }), z.strictObject({ iteration: graphNameSchema }),
     z.strictObject(scalar), z.strictObject(indexed), z.strictObject(defaulted), z.strictObject(broadcast),
-    z.strictObject({ tensor: z.string().min(1).max(256), dimension: z.number().int().min(0).max(3) }),
+    z.strictObject({ tensor: graphNameExpressionSchema, dimension: z.number().int().min(0).max(3) }),
     z.strictObject({ inputTokens: z.literal(true) }), z.strictObject({ cacheTokens: z.literal(true) }), z.strictObject({ capacity: z.literal(true) }),
     z.strictObject({ sum: z.array(graphNumberSchema).min(2).max(16) }),
     z.strictObject({ product: z.array(graphNumberSchema).min(2).max(16) }),
@@ -66,7 +75,7 @@ export const graphConditionSchema: z.ZodType<GraphCondition> = z.lazy(() => {
 });
 export type GraphExpressionEnvironment = {
   parameters: ReadonlyMap<string, number>;
-  variables: ReadonlyMap<string, number>;
+  iterations: ReadonlyMap<string, number>;
   metadata: ReadonlyMap<string, GraphMetadataValue>;
   tensors: ReadonlyMap<string, { shape: readonly number[] }>;
   inputTokens: number | undefined; cacheTokens: number | undefined; capacity: number | undefined;
@@ -81,9 +90,39 @@ export function createGraphExpressionEvaluator({ environment, maximumSteps }: { 
       throw new Error('Model graph expression budget exceeded');
     }
   };
+  const externalName = ({ value, depth }: { value: GraphNameExpression; depth: number }): string => {
+    tick({ depth });
+    let result: string;
+    if (typeof value === 'string') {
+      result = value;
+    } else if ('concat' in value) {
+      // Check the growing buffer, rather than allocating an unbounded join.
+      result = '';
+      for (const part of value.concat) {
+        result += externalName({ value: part, depth: depth + 1 });
+        if (result.length > 256) {
+          throw new Error('External model graph name exceeds 256 bytes');
+        }
+      }
+    } else if ('decimal' in value) {
+      const number = evaluate({ value: value.decimal, depth: depth + 1 });
+      if (!Number.isSafeInteger(number)) {
+        throw new Error('Decimal name component requires an exact safe integer');
+      }
+      result = String(number);
+    } else {
+      const exhaustive: never = value;
+      throw new Error(String(exhaustive));
+    }
+    if (!result.length || result.includes('\0') || !result.isWellFormed() || new TextEncoder().encode(result).length > 256) {
+      throw new Error('Invalid or oversized external model graph name');
+    }
+    return result;
+  };
   const metadataValue = ({ reference, depth }: { reference: GraphMetadataReference; depth: number }): GraphMetadataValue | undefined => {
-    const { metadata: key, index, length, scalar, fallback, ...unhandled } = reference;
+    const { metadata: name, index, length, scalar, fallback, ...unhandled } = reference;
     unhandled satisfies Record<PropertyKey, never>;
+    const key = externalName({ value: name, depth: depth + 1 });
     const value = environment.metadata.get(key);
     if (index === undefined) {
       // Presence is distinct from validity: a provided wrong type must not
@@ -146,18 +185,18 @@ export function createGraphExpressionEvaluator({ environment, maximumSteps }: { 
       if ('parameter' in value) {
         return environment.parameters.get(value.parameter);
       }
-      if ('variable' in value) {
-        return environment.variables.get(value.variable);
+      if ('iteration' in value) {
+        return environment.iterations.get(value.iteration);
       }
       if ('metadata' in value) {
         const found = metadataValue({ reference: value, depth });
         if (typeof found !== 'number') {
-          throw new Error(`Expected numeric model metadata: ${value.metadata}`);
+          throw new Error(`Expected numeric model metadata: ${externalName({ value: value.metadata, depth: depth + 1 })}`);
         }
         return found;
       }
       if ('tensor' in value) {
-        return environment.tensors.get(value.tensor)?.shape[value.dimension];
+        return environment.tensors.get(externalName({ value: value.tensor, depth: depth + 1 }))?.shape[value.dimension];
       }
       if ('inputTokens' in value) {
         return environment.inputTokens;
@@ -234,7 +273,7 @@ export function createGraphExpressionEvaluator({ environment, maximumSteps }: { 
       if (reference.index !== undefined && (typeof found !== typeof equals || (typeof found === 'number' && !Number.isFinite(found)))) {
         // An invalid per-layer flag must not silently select the other branch
         // (for example, turn every attention layer into a non-RoPE layer).
-        throw new Error(`Metadata array condition expects ${typeof equals}: ${reference.metadata} (received ${typeof found})`);
+        throw new Error(`Metadata array condition expects ${typeof equals}: ${externalName({ value: reference.metadata, depth: depth + 1 })} (received ${typeof found})`);
       }
       return found === equals;
     }
@@ -257,26 +296,13 @@ export function createGraphExpressionEvaluator({ environment, maximumSteps }: { 
     condition({ value }: { value: GraphCondition }): boolean {
       return condition({ value, depth: 0 });
     },
+    name({ value }: { value: GraphNameExpression }): string {
+      return externalName({ value, depth: 0 });
+    },
     get steps(): number {
       return steps;
     },
   };
-}
-
-export function formatGraphName({ text, variables }: { text: string; variables: ReadonlyMap<string, number> }): string {
-  // Exactly ${identifier}, ${identifier+integer}, ${identifier-integer}; never eval.
-  const result = text.replace(/\$\{([A-Za-z][A-Za-z0-9_]*)([+-]\d+)?\}/g, (_match, name: string, offset: string | undefined) => {
-    const value = variables.get(name);
-    const resolved = value === undefined ? undefined : value + (offset === undefined ? 0 : Number(offset));
-    if (resolved === undefined || !Number.isSafeInteger(resolved)) {
-      throw new Error(`Unknown or unsafe declaration variable: ${name}`);
-    }
-    return String(resolved);
-  });
-  if (result.includes('${') || result.length > 256) {
-    throw new Error('Invalid model graph name template');
-  }
-  return result;
 }
 
 export const TEST_ONLY = {

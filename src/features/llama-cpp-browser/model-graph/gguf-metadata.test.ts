@@ -41,7 +41,7 @@ describe('bounded graph metadata arrays', () => {
       const { inventory } = inspect({ bytes: metadataGguf({ items: [item] }) }).inspect();
       const stored = inventory.metadata.get(item.key);
       expect(stored).toEqual('value' in item ? item.value : item.values);
-      const evaluator = createGraphExpressionEvaluator({ environment: { parameters: new Map(), variables: new Map(), metadata: inventory.metadata, tensors: inventory.tensors, inputTokens: undefined, cacheTokens: undefined, capacity: undefined }, maximumSteps: 100 });
+      const evaluator = createGraphExpressionEvaluator({ environment: { parameters: new Map(), iterations: new Map(), metadata: inventory.metadata, tensors: inventory.tensors, inputTokens: undefined, cacheTokens: undefined, capacity: undefined }, maximumSteps: 100 });
       expect(evaluator.number({ value: { metadata: item.key, index: 2, length: 3, scalar: 'broadcast' } })).toBe('value' in item ? 20 : 30);
     }
   });

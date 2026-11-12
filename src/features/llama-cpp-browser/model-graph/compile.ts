@@ -62,11 +62,11 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
     parameters.set(parameter.name, parameter.value);
   }
   const expression = createGraphExpressionEvaluator({
-    environment: { parameters, variables: new Map(), metadata: inventory.metadata, tensors: inventory.tensors, inputTokens, cacheTokens, capacity },
+    environment: { parameters, iterations: new Map(), metadata: inventory.metadata, tensors: inventory.tensors, inputTokens, cacheTokens, capacity },
     maximumSteps: 200000,
   });
   const persistentExpression = createGraphExpressionEvaluator({
-    environment: { parameters, variables: new Map(), metadata: inventory.metadata, tensors: inventory.tensors, inputTokens: undefined, cacheTokens: undefined, capacity },
+    environment: { parameters, iterations: new Map(), metadata: inventory.metadata, tensors: inventory.tensors, inputTokens: undefined, cacheTokens: undefined, capacity },
     maximumSteps: 200000,
   });
   const scalar = ({ value }: { value: ModelGraphScalar }): number => {

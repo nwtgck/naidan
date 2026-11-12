@@ -186,3 +186,22 @@ it('unlocks file input after a failed read without clearing the draft', async ()
   expect(picker.attributes('disabled')).toBeUndefined();
   expect(wrapper.get<HTMLTextAreaElement>('[data-testid="model-graph-input"]').element.value).toBe(source({ name: 'Draft' }));
 });
+
+it('retains and copies experimental-2 text without granting it experimental-3 authority', async () => {
+  await saveInitial({ input: source({ name: 'Old format' }) });
+  const snapshot = await storageService.loadModelGraphRegistry();
+  const previous = { ...graphFixture().definition, format: 'naidan.model-graph/experimental-2' };
+  const original = JSON.stringify(previous);
+  const digest = modelGraphSourceDigest({ source: original });
+  await storageService.updateModelGraphRegistry({ access: snapshot.access, registrations: snapshot.registrations.map(entry => ({ ...entry, source: original, sourceSha256: digest, rule: { mode: 'replaceNative', architecture: 'fixture', approvedSha256: digest } })) });
+  using mounted = panel({ input: '' });
+  await vi.waitFor(() => expect(mounted.wrapper.find('select').exists()).toBe(true));
+  const current = await storageService.loadModelGraphRegistry();
+  expect(current.registrations[0]!.source).toBe(original);
+  const copy = mounted.wrapper.get('[data-testid="model-graph-registration"]').findAll('button').find(button => button.text().includes('Copy definitions'));
+  await copy!.trigger('click');
+  expect(mocks.clipboard).toHaveBeenCalledWith(original);
+  await mounted.wrapper.get('select').setValue('disabled');
+  await vi.waitFor(async () => expect((await storageService.loadModelGraphRegistry()).registrations[0]?.rule.mode).toBe('disabled'));
+  expect((await storageService.loadModelGraphRegistry()).registrations[0]!.source).toBe(original);
+});

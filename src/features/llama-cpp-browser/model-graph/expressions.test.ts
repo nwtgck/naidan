@@ -3,12 +3,12 @@ import { createGraphExpressionEvaluator, graphConditionSchema, graphNumberSchema
 
 function evaluator({ metadata }: { metadata: readonly [string, GraphMetadataValue][] }) {
   return createGraphExpressionEvaluator({
-    environment: { parameters: new Map(), variables: new Map([['layer', 2]]), metadata: new Map(metadata), tensors: new Map(), inputTokens: undefined, cacheTokens: undefined, capacity: undefined },
+    environment: { parameters: new Map(), iterations: new Map([['layer', 2]]), metadata: new Map(metadata), tensors: new Map(), inputTokens: undefined, cacheTokens: undefined, capacity: undefined },
     maximumSteps: 1000,
   });
 }
 
-const layered = { metadata: 'fixture.limit', index: { variable: 'layer' }, length: 3, scalar: 'broadcast' } as const;
+const layered = { metadata: 'fixture.limit', index: { iteration: 'layer' }, length: 3, scalar: 'broadcast' } as const;
 
 describe('explicit model metadata forms', () => {
   it('keeps existing indexed references strict and distinguishes scalar, missing and bounds errors', () => {
@@ -79,7 +79,7 @@ describe('explicit model metadata forms', () => {
   });
 
   it('charges fallback recursion and index/length calculations to the shared budget', () => {
-    const environment = { parameters: new Map(), variables: new Map(), metadata: new Map(), tensors: new Map(), inputTokens: undefined, cacheTokens: undefined, capacity: undefined };
+    const environment = { parameters: new Map(), iterations: new Map(), metadata: new Map(), tensors: new Map(), inputTokens: undefined, cacheTokens: undefined, capacity: undefined };
     const limited = createGraphExpressionEvaluator({ environment, maximumSteps: 3 });
     expect(() => limited.number({ value: { ...layered, index: 0, length: 3, fallback: 0 } })).toThrow('budget');
     let value: GraphNumber = 0;

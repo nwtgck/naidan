@@ -4,137 +4,1276 @@ import { graphTensorBytes } from './tensor-layout';
 import type { GraphMetadataValue } from './expressions';
 import type { ModelGraphInventory, ModelGraphTensorInfo } from './compile';
 
-/** Exact user-supplied Ripple-65B declaration (2026-11-12). This is test data,
- * not a built-in architecture and not a claim of real-model numerical validation. */
+/** Test-only, scoped authoring of the supplied model; never a production model dispatcher. */
 export function ricursiveDeclarationFixture(): ModelGraphDefinition {
-  const input = `\
-{
-  "format": "naidan.model-graph/experimental-2",
-  "name": "Ricursive Ripple-65B Preview (unverified GGUF declaration)",
-  "applicability": {
-    "architecture": "ricursive",
-    "metadata": [
-      {"key":"ricursive.block_count","value":80},
-      {"key":"ricursive.embedding_length","value":5120},
-      {"key":"ricursive.attention.head_count","value":80},
-      {"key":"ricursive.attention.head_count_kv","value":8}
-    ]
-  },
-  "requiredCapabilities": [
-    "tensor-graph/v1",
-    "decoder-kv-linear/v1",
-    "rotary-normal-neox/v1",
-    "tensor-operators/v2",
-    "declaration-expansion/v1"
-  ],
-  "parameters": [],
-  "weights": [
-    {"id":"embedding","tensor":"token_embd.weight","shape":[5120,100352],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-    {"id":"outNormWeight","tensor":"output_norm.weight","shape":[5120],"types":["F32","F16","BF16"]},
-    {"id":"lmHead","tensor":"output.weight","shape":[5120,100352],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]}
-  ],
-  "state": {
-    "profile": "decoder-state/v2",
-    "slots": [],
-    "tensors": [],
-    "updates": []
-  },
-  "graph": {
-    "nodes": [
-      {"id":"tokensEmbedded","op":"embedding","weight":"embedding"},
-      {"id":"h.-1","op":"scale","input":"tokensEmbedded","value":{"metadata":"ricursive.embedding_scale"}},
-      {
-        "id": "allLayers",
-        "op": "repeat",
-        "index": "layer",
-        "count": 80,
-        "weights": [
-          {"id":"attnNorm.\${layer}","tensor":"blk.\${layer}.attn_norm.weight","shape":[5120],"types":["F32","F16","BF16"]},
-          {"id":"qW.\${layer}","tensor":"blk.\${layer}.attn_q.weight","shape":[5120,10240],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"kW.\${layer}","tensor":"blk.\${layer}.attn_k.weight","shape":[5120,1024],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"vW.\${layer}","tensor":"blk.\${layer}.attn_v.weight","shape":[5120,1024],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"oW.\${layer}","tensor":"blk.\${layer}.attn_output.weight","shape":[10240,5120],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"qNormW.\${layer}","tensor":"blk.\${layer}.attn_q_norm.weight","shape":[128],"types":["F32","F16","BF16"]},
-          {"id":"kNormW.\${layer}","tensor":"blk.\${layer}.attn_k_norm.weight","shape":[128],"types":["F32","F16","BF16"]},
-          {"id":"attnGateW.\${layer}","tensor":"blk.\${layer}.attn_gate.weight","shape":[5120,10240],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"vresW.\${layer}","tensor":"blk.\${layer}.attn_vres_lambda.weight","shape":[1],"types":["F32","F16","BF16"]},
-          {"id":"postAttnW.\${layer}","tensor":"blk.\${layer}.post_attention_norm.weight","shape":[5120],"types":["F32","F16","BF16"]},
-          {"id":"ffnNormW.\${layer}","tensor":"blk.\${layer}.ffn_norm.weight","shape":[5120],"types":["F32","F16","BF16"]},
-          {"id":"ffnGateW.\${layer}","tensor":"blk.\${layer}.ffn_gate.weight","shape":[5120,40960],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"ffnUpW.\${layer}","tensor":"blk.\${layer}.ffn_up.weight","shape":[5120,40960],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"ffnDownW.\${layer}","tensor":"blk.\${layer}.ffn_down.weight","shape":[40960,5120],"types":["F32","F16","BF16","Q4_0","Q4_1","Q5_0","Q5_1","Q8_0","Q2_K","Q3_K","Q4_K","Q5_K","Q6_K","IQ2_XXS","IQ2_XS","IQ3_XXS","IQ1_S","IQ4_NL","IQ3_S","IQ2_S","IQ4_XS","IQ1_M"]},
-          {"id":"postFfnW.\${layer}","tensor":"blk.\${layer}.post_ffw_norm.weight","shape":[5120],"types":["F32","F16","BF16"]}
+  return parseModelGraphDefinitions({
+    input: JSON.stringify({
+      "format": "naidan.model-graph/experimental-3",
+      "name": "Ricursive Ripple-65B Preview (unverified GGUF declaration)",
+      "applicability": {
+        "architecture": "ricursive",
+        "metadata": [
+          {
+            "key": "ricursive.block_count",
+            "value": 80,
+          },
+          {
+            "key": "ricursive.embedding_length",
+            "value": 5120,
+          },
+          {
+            "key": "ricursive.attention.head_count",
+            "value": 80,
+          },
+          {
+            "key": "ricursive.attention.head_count_kv",
+            "value": 8,
+          }
         ],
-        "slots": [
-          {"id":"kv.\${layer}","headSize":128,"heads":8,"precision":"F16"}
-        ],
+      },
+      "requiredCapabilities": [
+        "tensor-graph/v1",
+        "decoder-kv-linear/v1",
+        "rotary-normal-neox/v1",
+        "tensor-operators/v2",
+        "scoped-declarations/v1"
+      ],
+      "parameters": [],
+      "weights": [
+        {
+          "id": "embedding",
+          "tensor": "token_embd.weight",
+          "shape": [
+            5120,
+            100352
+          ],
+          "types": [
+            "F32",
+            "F16",
+            "BF16",
+            "Q4_0",
+            "Q4_1",
+            "Q5_0",
+            "Q5_1",
+            "Q8_0",
+            "Q2_K",
+            "Q3_K",
+            "Q4_K",
+            "Q5_K",
+            "Q6_K",
+            "IQ2_XXS",
+            "IQ2_XS",
+            "IQ3_XXS",
+            "IQ1_S",
+            "IQ4_NL",
+            "IQ3_S",
+            "IQ2_S",
+            "IQ4_XS",
+            "IQ1_M"
+          ],
+        },
+        {
+          "id": "outNormWeight",
+          "tensor": "output_norm.weight",
+          "shape": [
+            5120
+          ],
+          "types": [
+            "F32",
+            "F16",
+            "BF16"
+          ],
+        },
+        {
+          "id": "lmHead",
+          "tensor": "output.weight",
+          "shape": [
+            5120,
+            100352
+          ],
+          "types": [
+            "F32",
+            "F16",
+            "BF16",
+            "Q4_0",
+            "Q4_1",
+            "Q5_0",
+            "Q5_1",
+            "Q8_0",
+            "Q2_K",
+            "Q3_K",
+            "Q4_K",
+            "Q5_K",
+            "Q6_K",
+            "IQ2_XXS",
+            "IQ2_XS",
+            "IQ3_XXS",
+            "IQ1_S",
+            "IQ4_NL",
+            "IQ3_S",
+            "IQ2_S",
+            "IQ4_XS",
+            "IQ1_M"
+          ],
+        }
+      ],
+      "state": {
+        "profile": "decoder-state/v2",
+        "slots": [],
         "tensors": [],
         "updates": [],
-        "nodes": [
-          {"id":"an.\${layer}","op":"normalizeRms","input":"h.\${layer-1}","epsilon":{"metadata":"ricursive.attention.layer_norm_rms_epsilon"}},
-          {"id":"anW32.\${layer}","op":"tensor","operator":"cast","inputs":["attnNorm.\${layer}"],"attributes":{"type":"F32"}},
-          {"id":"ai.\${layer}","op":"multiply","left":"an.\${layer}","right":"anW32.\${layer}"},
-          {"id":"q.\${layer}","op":"linear","weight":"qW.\${layer}","input":"ai.\${layer}"},
-          {"id":"k.\${layer}","op":"linear","weight":"kW.\${layer}","input":"ai.\${layer}"},
-          {"id":"vresW32.\${layer}","op":"tensor","operator":"cast","inputs":["vresW.\${layer}"],"attributes":{"type":"F32"}},
-          {"id":"mix.\${layer}","op":"sigmoid","input":"vresW32.\${layer}"},
-          {"id":"delta.\${layer}","op":"subtract","left":"ai.\${layer}","right":"h.-1"},
-          {"id":"mixdelta.\${layer}","op":"multiply","left":"delta.\${layer}","right":"mix.\${layer}"},
-          {"id":"vinput.\${layer}","op":"add","left":"h.-1","right":"mixdelta.\${layer}"},
-          {"id":"v.\${layer}","op":"linear","weight":"vW.\${layer}","input":"vinput.\${layer}"},
-          {"id":"q3.\${layer}","op":"reshape","input":"q.\${layer}","shape":[128,80,{"inputTokens":true}]},
-          {"id":"k3.\${layer}","op":"reshape","input":"k.\${layer}","shape":[128,8,{"inputTokens":true}]},
-          {"id":"v3.\${layer}","op":"reshape","input":"v.\${layer}","shape":[128,8,{"inputTokens":true}]},
-          {"id":"qn.\${layer}","op":"normalizeRms","input":"q3.\${layer}","epsilon":{"metadata":"ricursive.attention.layer_norm_rms_epsilon"}},
-          {"id":"kn.\${layer}","op":"normalizeRms","input":"k3.\${layer}","epsilon":{"metadata":"ricursive.attention.layer_norm_rms_epsilon"}},
-          {"id":"qnW32.\${layer}","op":"tensor","operator":"cast","inputs":["qNormW.\${layer}"],"attributes":{"type":"F32"}},
-          {"id":"knW32.\${layer}","op":"tensor","operator":"cast","inputs":["kNormW.\${layer}"],"attributes":{"type":"F32"}},
-          {"id":"qnorm.\${layer}","op":"multiply","left":"qn.\${layer}","right":"qnW32.\${layer}"},
-          {"id":"knorm.\${layer}","op":"multiply","left":"kn.\${layer}","right":"knW32.\${layer}"},
-          {
-            "id": "attentionChoice.\${layer}",
-            "op": "choose",
-            "condition": {"metadata":"ricursive.attention.sliding_window_pattern","index":{"variable":"layer"},"equals":true},
-            "then": [
-              {"id":"qr.\${layer}","op":"rotaryEmbedding","input":"qnorm.\${layer}","dimensions":128,"mode":"neox","frequencyBase":{"metadata":"ricursive.rope.freq_base"},"frequencyScale":1},
-              {"id":"kr.\${layer}","op":"rotaryEmbedding","input":"knorm.\${layer}","dimensions":128,"mode":"neox","frequencyBase":{"metadata":"ricursive.rope.freq_base"},"frequencyScale":1},
-              {"id":"attention.\${layer}","op":"attentionCached","query":"qr.\${layer}","key":"kr.\${layer}","value":"v3.\${layer}","slot":"kv.\${layer}","window":1024,"scale":"inverseSqrtHead"}
-            ],
-            "otherwise": [
-              {"id":"attention.\${layer}","op":"attentionCached","query":"qnorm.\${layer}","key":"knorm.\${layer}","value":"v3.\${layer}","slot":"kv.\${layer}","window":0,"scale":"inverseSqrtHead"}
-            ]
-          },
-          {"id":"ag.\${layer}","op":"linear","weight":"attnGateW.\${layer}","input":"ai.\${layer}"},
-          {"id":"agSig.\${layer}","op":"sigmoid","input":"ag.\${layer}"},
-          {"id":"attnGated.\${layer}","op":"multiply","left":"attention.\${layer}","right":"agSig.\${layer}"},
-          {"id":"attnProj.\${layer}","op":"linear","weight":"oW.\${layer}","input":"attnGated.\${layer}"},
-          {"id":"attnPost.\${layer}","op":"normalizeRms","input":"attnProj.\${layer}","epsilon":{"metadata":"ricursive.attention.layer_norm_rms_epsilon"}},
-          {"id":"attnPostW32.\${layer}","op":"tensor","operator":"cast","inputs":["postAttnW.\${layer}"],"attributes":{"type":"F32"}},
-          {"id":"attnPostScaled.\${layer}","op":"multiply","left":"attnPost.\${layer}","right":"attnPostW32.\${layer}"},
-          {"id":"resid.\${layer}","op":"add","left":"h.\${layer-1}","right":"attnPostScaled.\${layer}"},
-          {"id":"fn.\${layer}","op":"normalizeRms","input":"resid.\${layer}","epsilon":{"metadata":"ricursive.attention.layer_norm_rms_epsilon"}},
-          {"id":"fnW32.\${layer}","op":"tensor","operator":"cast","inputs":["ffnNormW.\${layer}"],"attributes":{"type":"F32"}},
-          {"id":"ffnInput.\${layer}","op":"multiply","left":"fn.\${layer}","right":"fnW32.\${layer}"},
-          {"id":"ffnGate.\${layer}","op":"linear","weight":"ffnGateW.\${layer}","input":"ffnInput.\${layer}"},
-          {"id":"ffnUp.\${layer}","op":"linear","weight":"ffnUpW.\${layer}","input":"ffnInput.\${layer}"},
-          {"id":"swiglu.\${layer}","op":"tensor","operator":"swigluClamped","inputs":["ffnGate.\${layer}","ffnUp.\${layer}"],"attributes":{"limit":{"metadata":"ricursive.swiglu_clamp","index":{"variable":"layer"}}}},
-          {"id":"ffnDown.\${layer}","op":"linear","weight":"ffnDownW.\${layer}","input":"swiglu.\${layer}"},
-          {"id":"ffnPost.\${layer}","op":"normalizeRms","input":"ffnDown.\${layer}","epsilon":{"metadata":"ricursive.attention.layer_norm_rms_epsilon"}},
-          {"id":"ffnPostW32.\${layer}","op":"tensor","operator":"cast","inputs":["postFfnW.\${layer}"],"attributes":{"type":"F32"}},
-          {"id":"ffnPostScaled.\${layer}","op":"multiply","left":"ffnPost.\${layer}","right":"ffnPostW32.\${layer}"},
-          {"id":"h.\${layer}","op":"add","left":"resid.\${layer}","right":"ffnPostScaled.\${layer}"}
-        ]
       },
-      {"id":"outputNormalized","op":"normalizeRms","input":"h.79","epsilon":{"metadata":"ricursive.attention.layer_norm_rms_epsilon"}},
-      {"id":"outputNormW32","op":"tensor","operator":"cast","inputs":["outNormWeight"],"attributes":{"type":"F32"}},
-      {"id":"outputScaled","op":"multiply","left":"outputNormalized","right":"outputNormW32"},
-      {"id":"logits","op":"linear","weight":"lmHead","input":"outputScaled"}
-    ]
-  },
-  "outputs": {"logits":"logits"},
-  "annotations": "Unverified structural declaration for Ripple-65B. Requires real-GGUF tensor/metadata verification, numerical comparison and matching bicore extension. Do not approve for production."
-}`;
-  return parseModelGraphDefinitions({ input })[0]!.definition;
+      "graph": {
+        "nodes": [
+          {
+            "id": "tokensEmbedded",
+            "op": "embedding",
+            "weight": {
+              "local": "embedding",
+            },
+          },
+          {
+            "id": "initialHidden",
+            "op": "scale",
+            "input": {
+              "local": "tokensEmbedded",
+            },
+            "value": {
+              "metadata": "ricursive.embedding_scale",
+            },
+          },
+          {
+            "id": "allLayers",
+            "op": "repeat",
+            "index": "layer",
+            "count": 80,
+            "capture": {
+              "initialHidden": {
+                "local": "initialHidden",
+              },
+            },
+            "carry": {
+              "hidden": {
+                "initial": {
+                  "local": "initialHidden",
+                },
+                "next": {
+                  "local": "h",
+                },
+              },
+            },
+            "body": {
+              "weights": [
+                {
+                  "id": "attnNorm",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_norm.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16"
+                  ],
+                },
+                {
+                  "id": "qW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_q.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120,
+                    10240
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "kW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_k.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120,
+                    1024
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "vW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_v.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120,
+                    1024
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "oW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_output.weight"
+                    ],
+                  },
+                  "shape": [
+                    10240,
+                    5120
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "qNormW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_q_norm.weight"
+                    ],
+                  },
+                  "shape": [
+                    128
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16"
+                  ],
+                },
+                {
+                  "id": "kNormW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_k_norm.weight"
+                    ],
+                  },
+                  "shape": [
+                    128
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16"
+                  ],
+                },
+                {
+                  "id": "attnGateW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_gate.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120,
+                    10240
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "vresW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".attn_vres_lambda.weight"
+                    ],
+                  },
+                  "shape": [
+                    1
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16"
+                  ],
+                },
+                {
+                  "id": "postAttnW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".post_attention_norm.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16"
+                  ],
+                },
+                {
+                  "id": "ffnNormW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".ffn_norm.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16"
+                  ],
+                },
+                {
+                  "id": "ffnGateW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".ffn_gate.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120,
+                    40960
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "ffnUpW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".ffn_up.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120,
+                    40960
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "ffnDownW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".ffn_down.weight"
+                    ],
+                  },
+                  "shape": [
+                    40960,
+                    5120
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16",
+                    "Q4_0",
+                    "Q4_1",
+                    "Q5_0",
+                    "Q5_1",
+                    "Q8_0",
+                    "Q2_K",
+                    "Q3_K",
+                    "Q4_K",
+                    "Q5_K",
+                    "Q6_K",
+                    "IQ2_XXS",
+                    "IQ2_XS",
+                    "IQ3_XXS",
+                    "IQ1_S",
+                    "IQ4_NL",
+                    "IQ3_S",
+                    "IQ2_S",
+                    "IQ4_XS",
+                    "IQ1_M"
+                  ],
+                },
+                {
+                  "id": "postFfnW",
+                  "tensor": {
+                    "concat": [
+                      "blk.",
+                      {
+                        "decimal": {
+                          "iteration": "layer",
+                        },
+                      },
+                      ".post_ffw_norm.weight"
+                    ],
+                  },
+                  "shape": [
+                    5120
+                  ],
+                  "types": [
+                    "F32",
+                    "F16",
+                    "BF16"
+                  ],
+                }
+              ],
+              "slots": [
+                {
+                  "id": "kv",
+                  "headSize": 128,
+                  "heads": 8,
+                  "precision": "F16",
+                }
+              ],
+              "tensors": [],
+              "updates": [],
+              "nodes": [
+                {
+                  "id": "an",
+                  "op": "normalizeRms",
+                  "input": {
+                    "carry": "hidden",
+                  },
+                  "epsilon": {
+                    "metadata": "ricursive.attention.layer_norm_rms_epsilon",
+                  },
+                },
+                {
+                  "id": "anW32",
+                  "op": "tensor",
+                  "operator": "cast",
+                  "inputs": [
+                    {
+                      "local": "attnNorm",
+                    }
+                  ],
+                  "attributes": {
+                    "type": "F32",
+                  },
+                },
+                {
+                  "id": "ai",
+                  "op": "multiply",
+                  "left": {
+                    "local": "an",
+                  },
+                  "right": {
+                    "local": "anW32",
+                  },
+                },
+                {
+                  "id": "q",
+                  "op": "linear",
+                  "weight": {
+                    "local": "qW",
+                  },
+                  "input": {
+                    "local": "ai",
+                  },
+                },
+                {
+                  "id": "k",
+                  "op": "linear",
+                  "weight": {
+                    "local": "kW",
+                  },
+                  "input": {
+                    "local": "ai",
+                  },
+                },
+                {
+                  "id": "vresW32",
+                  "op": "tensor",
+                  "operator": "cast",
+                  "inputs": [
+                    {
+                      "local": "vresW",
+                    }
+                  ],
+                  "attributes": {
+                    "type": "F32",
+                  },
+                },
+                {
+                  "id": "mix",
+                  "op": "sigmoid",
+                  "input": {
+                    "local": "vresW32",
+                  },
+                },
+                {
+                  "id": "delta",
+                  "op": "subtract",
+                  "left": {
+                    "local": "ai",
+                  },
+                  "right": {
+                    "capture": "initialHidden",
+                  },
+                },
+                {
+                  "id": "mixdelta",
+                  "op": "multiply",
+                  "left": {
+                    "local": "delta",
+                  },
+                  "right": {
+                    "local": "mix",
+                  },
+                },
+                {
+                  "id": "vinput",
+                  "op": "add",
+                  "left": {
+                    "capture": "initialHidden",
+                  },
+                  "right": {
+                    "local": "mixdelta",
+                  },
+                },
+                {
+                  "id": "v",
+                  "op": "linear",
+                  "weight": {
+                    "local": "vW",
+                  },
+                  "input": {
+                    "local": "vinput",
+                  },
+                },
+                {
+                  "id": "q3",
+                  "op": "reshape",
+                  "input": {
+                    "local": "q",
+                  },
+                  "shape": [
+                    128,
+                    80,
+                    {
+                      "inputTokens": true,
+                    }
+                  ],
+                },
+                {
+                  "id": "k3",
+                  "op": "reshape",
+                  "input": {
+                    "local": "k",
+                  },
+                  "shape": [
+                    128,
+                    8,
+                    {
+                      "inputTokens": true,
+                    }
+                  ],
+                },
+                {
+                  "id": "v3",
+                  "op": "reshape",
+                  "input": {
+                    "local": "v",
+                  },
+                  "shape": [
+                    128,
+                    8,
+                    {
+                      "inputTokens": true,
+                    }
+                  ],
+                },
+                {
+                  "id": "qn",
+                  "op": "normalizeRms",
+                  "input": {
+                    "local": "q3",
+                  },
+                  "epsilon": {
+                    "metadata": "ricursive.attention.layer_norm_rms_epsilon",
+                  },
+                },
+                {
+                  "id": "kn",
+                  "op": "normalizeRms",
+                  "input": {
+                    "local": "k3",
+                  },
+                  "epsilon": {
+                    "metadata": "ricursive.attention.layer_norm_rms_epsilon",
+                  },
+                },
+                {
+                  "id": "qnW32",
+                  "op": "tensor",
+                  "operator": "cast",
+                  "inputs": [
+                    {
+                      "local": "qNormW",
+                    }
+                  ],
+                  "attributes": {
+                    "type": "F32",
+                  },
+                },
+                {
+                  "id": "knW32",
+                  "op": "tensor",
+                  "operator": "cast",
+                  "inputs": [
+                    {
+                      "local": "kNormW",
+                    }
+                  ],
+                  "attributes": {
+                    "type": "F32",
+                  },
+                },
+                {
+                  "id": "qnorm",
+                  "op": "multiply",
+                  "left": {
+                    "local": "qn",
+                  },
+                  "right": {
+                    "local": "qnW32",
+                  },
+                },
+                {
+                  "id": "knorm",
+                  "op": "multiply",
+                  "left": {
+                    "local": "kn",
+                  },
+                  "right": {
+                    "local": "knW32",
+                  },
+                },
+                {
+                  "id": "attentionChoice",
+                  "op": "choose",
+                  "condition": {
+                    "metadata": "ricursive.attention.sliding_window_pattern",
+                    "index": {
+                      "iteration": "layer",
+                    },
+                    "equals": true,
+                  },
+                  "capture": {
+                    "qnorm": {
+                      "local": "qnorm",
+                    },
+                    "knorm": {
+                      "local": "knorm",
+                    },
+                    "v3": {
+                      "local": "v3",
+                    },
+                    "kv": {
+                      "local": "kv",
+                    },
+                  },
+                  "then": {
+                    "weights": [],
+                    "slots": [],
+                    "tensors": [],
+                    "updates": [],
+                    "nodes": [
+                      {
+                        "id": "qr",
+                        "op": "rotaryEmbedding",
+                        "input": {
+                          "capture": "qnorm",
+                        },
+                        "dimensions": 128,
+                        "mode": "neox",
+                        "frequencyBase": {
+                          "metadata": "ricursive.rope.freq_base",
+                        },
+                        "frequencyScale": 1,
+                      },
+                      {
+                        "id": "kr",
+                        "op": "rotaryEmbedding",
+                        "input": {
+                          "capture": "knorm",
+                        },
+                        "dimensions": 128,
+                        "mode": "neox",
+                        "frequencyBase": {
+                          "metadata": "ricursive.rope.freq_base",
+                        },
+                        "frequencyScale": 1,
+                      },
+                      {
+                        "id": "attention",
+                        "op": "attentionCached",
+                        "query": {
+                          "local": "qr",
+                        },
+                        "key": {
+                          "local": "kr",
+                        },
+                        "value": {
+                          "capture": "v3",
+                        },
+                        "slot": {
+                          "capture": "kv",
+                        },
+                        "window": 1024,
+                        "scale": "inverseSqrtHead",
+                      }
+                    ],
+                    "outputs": {
+                      "attention": {
+                        "local": "attention",
+                      },
+                    },
+                  },
+                  "otherwise": {
+                    "weights": [],
+                    "slots": [],
+                    "tensors": [],
+                    "updates": [],
+                    "nodes": [
+                      {
+                        "id": "attention",
+                        "op": "attentionCached",
+                        "query": {
+                          "capture": "qnorm",
+                        },
+                        "key": {
+                          "capture": "knorm",
+                        },
+                        "value": {
+                          "capture": "v3",
+                        },
+                        "slot": {
+                          "capture": "kv",
+                        },
+                        "window": 0,
+                        "scale": "inverseSqrtHead",
+                      }
+                    ],
+                    "outputs": {
+                      "attention": {
+                        "local": "attention",
+                      },
+                    },
+                  },
+                },
+                {
+                  "id": "ag",
+                  "op": "linear",
+                  "weight": {
+                    "local": "attnGateW",
+                  },
+                  "input": {
+                    "local": "ai",
+                  },
+                },
+                {
+                  "id": "agSig",
+                  "op": "sigmoid",
+                  "input": {
+                    "local": "ag",
+                  },
+                },
+                {
+                  "id": "attnGated",
+                  "op": "multiply",
+                  "left": {
+                    "output": {
+                      "block": "attentionChoice",
+                      "port": "attention",
+                    },
+                  },
+                  "right": {
+                    "local": "agSig",
+                  },
+                },
+                {
+                  "id": "attnProj",
+                  "op": "linear",
+                  "weight": {
+                    "local": "oW",
+                  },
+                  "input": {
+                    "local": "attnGated",
+                  },
+                },
+                {
+                  "id": "attnPost",
+                  "op": "normalizeRms",
+                  "input": {
+                    "local": "attnProj",
+                  },
+                  "epsilon": {
+                    "metadata": "ricursive.attention.layer_norm_rms_epsilon",
+                  },
+                },
+                {
+                  "id": "attnPostW32",
+                  "op": "tensor",
+                  "operator": "cast",
+                  "inputs": [
+                    {
+                      "local": "postAttnW",
+                    }
+                  ],
+                  "attributes": {
+                    "type": "F32",
+                  },
+                },
+                {
+                  "id": "attnPostScaled",
+                  "op": "multiply",
+                  "left": {
+                    "local": "attnPost",
+                  },
+                  "right": {
+                    "local": "attnPostW32",
+                  },
+                },
+                {
+                  "id": "resid",
+                  "op": "add",
+                  "left": {
+                    "carry": "hidden",
+                  },
+                  "right": {
+                    "local": "attnPostScaled",
+                  },
+                },
+                {
+                  "id": "fn",
+                  "op": "normalizeRms",
+                  "input": {
+                    "local": "resid",
+                  },
+                  "epsilon": {
+                    "metadata": "ricursive.attention.layer_norm_rms_epsilon",
+                  },
+                },
+                {
+                  "id": "fnW32",
+                  "op": "tensor",
+                  "operator": "cast",
+                  "inputs": [
+                    {
+                      "local": "ffnNormW",
+                    }
+                  ],
+                  "attributes": {
+                    "type": "F32",
+                  },
+                },
+                {
+                  "id": "ffnInput",
+                  "op": "multiply",
+                  "left": {
+                    "local": "fn",
+                  },
+                  "right": {
+                    "local": "fnW32",
+                  },
+                },
+                {
+                  "id": "ffnGate",
+                  "op": "linear",
+                  "weight": {
+                    "local": "ffnGateW",
+                  },
+                  "input": {
+                    "local": "ffnInput",
+                  },
+                },
+                {
+                  "id": "ffnUp",
+                  "op": "linear",
+                  "weight": {
+                    "local": "ffnUpW",
+                  },
+                  "input": {
+                    "local": "ffnInput",
+                  },
+                },
+                {
+                  "id": "swiglu",
+                  "op": "tensor",
+                  "operator": "swigluClamped",
+                  "inputs": [
+                    {
+                      "local": "ffnGate",
+                    },
+                    {
+                      "local": "ffnUp",
+                    }
+                  ],
+                  "attributes": {
+                    "limit": {
+                      "metadata": "ricursive.swiglu_clamp",
+                      "index": {
+                        "iteration": "layer",
+                      },
+                    },
+                  },
+                },
+                {
+                  "id": "ffnDown",
+                  "op": "linear",
+                  "weight": {
+                    "local": "ffnDownW",
+                  },
+                  "input": {
+                    "local": "swiglu",
+                  },
+                },
+                {
+                  "id": "ffnPost",
+                  "op": "normalizeRms",
+                  "input": {
+                    "local": "ffnDown",
+                  },
+                  "epsilon": {
+                    "metadata": "ricursive.attention.layer_norm_rms_epsilon",
+                  },
+                },
+                {
+                  "id": "ffnPostW32",
+                  "op": "tensor",
+                  "operator": "cast",
+                  "inputs": [
+                    {
+                      "local": "postFfnW",
+                    }
+                  ],
+                  "attributes": {
+                    "type": "F32",
+                  },
+                },
+                {
+                  "id": "ffnPostScaled",
+                  "op": "multiply",
+                  "left": {
+                    "local": "ffnPost",
+                  },
+                  "right": {
+                    "local": "ffnPostW32",
+                  },
+                },
+                {
+                  "id": "h",
+                  "op": "add",
+                  "left": {
+                    "local": "resid",
+                  },
+                  "right": {
+                    "local": "ffnPostScaled",
+                  },
+                }
+              ],
+            },
+            "outputs": {
+              "hidden": {
+                "carry": "hidden",
+              },
+            },
+          },
+          {
+            "id": "outputNormalized",
+            "op": "normalizeRms",
+            "input": {
+              "output": {
+                "block": "allLayers",
+                "port": "hidden",
+              },
+            },
+            "epsilon": {
+              "metadata": "ricursive.attention.layer_norm_rms_epsilon",
+            },
+          },
+          {
+            "id": "outputNormW32",
+            "op": "tensor",
+            "operator": "cast",
+            "inputs": [
+              {
+                "local": "outNormWeight",
+              }
+            ],
+            "attributes": {
+              "type": "F32",
+            },
+          },
+          {
+            "id": "outputScaled",
+            "op": "multiply",
+            "left": {
+              "local": "outputNormalized",
+            },
+            "right": {
+              "local": "outputNormW32",
+            },
+          },
+          {
+            "id": "logits",
+            "op": "linear",
+            "weight": {
+              "local": "lmHead",
+            },
+            "input": {
+              "local": "outputScaled",
+            },
+          }
+        ],
+      },
+      "outputs": {
+        "logits": {
+          "local": "logits",
+        },
+      },
+      "annotations": "Scoped experimental-3 declaration. Explicit concat/decimal form GGUF names; capture/carry and output ports connect values. Preserves the scalar/array metadata semantics and equations of the supplied example. Fixed Ripple-65B dimensions; real 65B/WebGPU execution is unverified.",
+    }),
+  })[0]!.definition;
 }
 
 /** Only metadata and tensor descriptors: never allocates the model's weights. */

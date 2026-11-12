@@ -44,7 +44,8 @@ describe('reviewed Ricursive metadata contracts', () => {
       expect(nodes).toHaveLength(80);
       for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i]!.node;
-        expect(node).toMatchObject({ id: `swiglu.${i}`, op: 'tensor' });
+        expect(node.op).toBe('tensor');
+        expect(node.id.endsWith('.swiglu')).toBe(true);
         expect(plan.definition.graph.nodes.find(entry => entry.id === node.id)).toMatchObject({ attributes: { limit: { index: i, length: { metadata: 'ricursive.block_count' }, scalar: 'broadcast' } } });
       }
     }
@@ -54,14 +55,14 @@ describe('reviewed Ricursive metadata contracts', () => {
     const plan = compile({ clamp, embeddingScale: undefined, swaBase: undefined }).run();
     expect(plan.nodes.filter(({ node }) => node.op === 'silu')).toHaveLength(80);
     expect(plan.nodes.filter(({ node }) => node.op === 'tensor' && node.operation.nativeFunctions.includes('ggml_swiglu_clamp'))).toHaveLength(0);
-    expect(plan.nodes.find(({ node }) => node.id === 'h.-1')?.node.op).toBe('contiguous');
+    expect(plan.nodes.find(({ node }) => node.id.endsWith('.initialHidden'))?.node.op).toBe('contiguous');
   });
 
   it('supports mixed zero and positive layer clamps, optional no-scale embeddings and the SWA-specific base', () => {
     const plan = compile({ clamp: Array.from({ length: 80 }, (_, i) => i % 2 ? 0 : 10), embeddingScale: 0, swaBase: 5000 }).run();
     expect(plan.nodes.filter(({ node }) => node.op === 'silu')).toHaveLength(40);
     expect(plan.nodes.filter(({ node }) => node.op === 'tensor' && node.operation.nativeFunctions.includes('ggml_swiglu_clamp'))).toHaveLength(40);
-    expect(plan.nodes.find(({ node }) => node.id === 'h.-1')?.node.op).toBe('contiguous');
+    expect(plan.nodes.find(({ node }) => node.id.endsWith('.initialHidden'))?.node.op).toBe('contiguous');
     for (const { node } of plan.nodes) {
       if (node.op === 'rotaryEmbedding') {
         expect(node.frequencyBase).toBe(5000);

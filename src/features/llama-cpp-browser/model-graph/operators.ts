@@ -459,24 +459,29 @@ export const modelGraphOperators = {
 
 export type TensorOperatorName = keyof typeof modelGraphOperators;
 export const tensorOperatorNames = Object.keys(modelGraphOperators) as [TensorOperatorName, ...TensorOperatorName[]];
-export const tensorOperatorNodeSchema = z.strictObject({
-  id: graphNameSchema,
-  op: z.literal('tensor'),
-  operator: z.enum(tensorOperatorNames),
-  inputs: z.array(graphNameSchema).max(4),
-  attributes: z.record(z.string(), z.unknown()),
-}).superRefine((node, context) => {
-  const descriptor = modelGraphOperators[node.operator];
-  if (node.inputs.length !== descriptor.inputCount) {
-    context.addIssue({ code: 'custom', message: `Expected ${descriptor.inputCount} tensor operands`, path: ['inputs'] });
-  }
-  const attributes = descriptor.syntax.safeParse(node.attributes);
-  if (!attributes.success) {
-    for (const issue of attributes.error.issues) {
-      context.addIssue({ code: 'custom', message: issue.message, path: ['attributes', ...issue.path] });
+
+export function createTensorOperatorNodeSchema<T extends z.ZodType>({ reference }: { reference: T }) {
+  return z.strictObject({
+    id: graphNameSchema,
+    op: z.literal('tensor'),
+    operator: z.enum(tensorOperatorNames),
+    inputs: z.array(reference).max(4),
+    attributes: z.record(z.string(), z.unknown()),
+  }).superRefine((node, context) => {
+    const descriptor = modelGraphOperators[node.operator];
+    if (node.inputs.length !== descriptor.inputCount) {
+      context.addIssue({ code: 'custom', message: `Expected ${descriptor.inputCount} tensor operands`, path: ['inputs'] });
     }
-  }
-});
+    const attributes = descriptor.syntax.safeParse(node.attributes);
+    if (!attributes.success) {
+      for (const issue of attributes.error.issues) {
+        context.addIssue({ code: 'custom', message: issue.message, path: ['attributes', ...issue.path] });
+      }
+    }
+  });
+}
+
+export const tensorOperatorNodeSchema = createTensorOperatorNodeSchema({ reference: graphNameSchema });
 export type TensorOperatorNode = z.infer<typeof tensorOperatorNodeSchema>;
 
 export function bindTensorOperator({ node, inputs, number }: { node: TensorOperatorNode; inputs: readonly GraphTensorLayout[]; number: Resolver }): BoundTensorOperation {

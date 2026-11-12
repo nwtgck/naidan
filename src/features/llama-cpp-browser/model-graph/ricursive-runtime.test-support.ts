@@ -31,7 +31,7 @@ function buildSmallRicursiveFixture({ precision, declaration, metadataOverrides 
       return new Map([[5120, 16], [100352, 24], [10240, 32], [1024, 16], [40960, 32], [128, 8], [80, 4], [8, 2]]).get(value) ?? value;
     }
     if (typeof value === 'string') {
-      return value === 'h.79' ? 'h.4' : value;
+      return value;
     }
     if (Array.isArray(value)) {
       return value.map(entry => replace({ value: entry }));
@@ -81,13 +81,13 @@ function buildSmallRicursiveFixture({ precision, declaration, metadataOverrides 
   const choosePrecision = ({ entries }: { entries: ModelGraphDefinition['graph']['nodes'] }): void => {
     for (const entry of entries) {
       switch (entry.op) {
-      case 'repeat': entry.slots.forEach(slot => {
+      case 'repeat': entry.body.slots.forEach(slot => {
         slot.precision = precision;
       });
-        choosePrecision({ entries: entry.nodes });
+        choosePrecision({ entries: entry.body.nodes });
         break;
-      case 'choose': choosePrecision({ entries: entry.then });
-        choosePrecision({ entries: entry.otherwise });
+      case 'choose': choosePrecision({ entries: entry.then.nodes });
+        choosePrecision({ entries: entry.otherwise.nodes });
         break;
       case 'embedding': case 'linear': case 'normalizeRms': case 'add': case 'subtract': case 'multiply': case 'sigmoid': case 'silu':
       case 'contiguous': case 'scale': case 'reshape': case 'permute': case 'rotaryEmbedding': case 'tensor': case 'stateRead': case 'input': case 'attentionCached': break;
