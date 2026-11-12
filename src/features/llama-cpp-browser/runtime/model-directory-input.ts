@@ -1,3 +1,4 @@
+import { modelPublicationDirectoryName } from '@/logic/model-file-publication';
 import { directoryForGgufFile } from '@/logic/model-directory-input';
 import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-id';
 import { LlamaCppBrowserError, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
@@ -21,7 +22,7 @@ export function localRepositoryInput({ directory }: { directory: ModelDirectoryI
       ...directory,
       files: directory.files.filter(({ relativePath }) => {
         const name = relativePath.split('/').at(-1)!;
-        return name !== modelImportPendingName && !/^\..+\.gguf\.(?:pending|complete)$/i.test(name);
+        return name !== modelImportPendingName && !relativePath.split('/').includes(modelPublicationDirectoryName) && !name.endsWith('.tmp') && !/^\..+\.gguf\.(?:pending|complete)$/i.test(name);
       }),
     },
   });
@@ -37,7 +38,7 @@ export function normalizeModelDirectoryInput({ directory }: { directory: ModelDi
   }
   const paths = new Set<string>();
   for (const { relativePath } of parsed.files) {
-    if (!relativePath.split('/').every(name => isModelSourceSegment({ name })) || relativePath.split('/')[0] === modelImportPendingName || paths.has(relativePath)) {
+    if (!relativePath.split('/').every(name => isModelSourceSegment({ name })) || relativePath.split('/')[0] === modelImportPendingName || relativePath.split('/').includes(modelPublicationDirectoryName) || relativePath.endsWith('.tmp') || paths.has(relativePath)) {
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     }
     paths.add(relativePath);

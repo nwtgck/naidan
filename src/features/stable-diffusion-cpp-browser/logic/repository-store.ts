@@ -1,5 +1,6 @@
+import { createFileMoveSupportCache, moveStagedFile, publicationFileName } from '@/utils/file-system-publication';
 import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/inventory-worker/types';
-import { modelFileIsPending, modelFileMarker, publishModelFile, readModelFileReceipt, type ModelFileReceipt } from '@/logic/model-file-publication';
+import { modelFileIsPending, modelFileMarker, modelPublicationDirectoryName, publishModelFile, readModelFileReceipt, type ModelFileReceipt } from '@/logic/model-file-publication';
 import { readJournal } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { z } from 'zod';
 import { validModelPath } from './model-path';
@@ -86,7 +87,7 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
     }
     for await (const [name, entry] of directory.entries()) {
       signal?.throwIfAborted();
-      if (name === '.git' || name === pendingName || /^\..*\.(complete|pending)$/.test(name)) {
+      if (name === '.git' || name === pendingName || name === modelPublicationDirectoryName || name.endsWith('.tmp') || /^\..*\.(complete|pending)$/.test(name)) {
         continue;
       }
       if (++count > 20_000) {
@@ -109,8 +110,8 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
         const file = storedFile.file;
         const receipt = await readModelFileReceipt({ directory, name, file });
         // Legacy user imports were committed with a repository-wide marker.
-        // Remote files require a per-file receipt: the old image downloader
-        // wrote no receipt, so explicit Download verifies and adopts those bytes.
+        // Remote files require verified publication metadata: either a legacy
+        // receipt or a registered move. Old markerless bytes need explicit adoption.
         if (requiresReceipt) {
           const source = receipt?.source;
           if (!receipt || source?.kind !== 'hugging-face' || source.path !== path ||
@@ -304,7 +305,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
   // Validate BEFORE the first persistent write. A README/config/tokenizer file is
   // retained; unsupported weights are reported by inspection, not discarded.
   for (const entry of directory.files) {
-    if (entry.relativePath.split('/')[0] === pendingName || entry.relativePath.split('/').includes('.git') || entry.relativePath.split('/').some(part => /^\..*\.(complete|pending)$/.test(part)) || paths.has(entry.relativePath)) {
+    if (entry.relativePath.split('/')[0] === pendingName || entry.relativePath.split('/').includes('.git') || entry.relativePath.split('/').includes(modelPublicationDirectoryName) || entry.relativePath.endsWith('.tmp') || entry.relativePath.split('/').some(part => /^\..*\.(complete|pending)$/.test(part)) || paths.has(entry.relativePath)) {
       throw new Error('Reserved or duplicate repository path');
     }
     paths.add(entry.relativePath);
@@ -343,6 +344,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
     const folders: { parent: FileSystemDirectoryHandle, name: string }[] = [];
     const known = new Map<string, FileSystemDirectoryHandle>([['', root]]);
     let completed = 0;
+    const moveSupport = createFileMoveSupportCache();
     async function makeFile({ parent, name }: { parent: FileSystemDirectoryHandle, name: string }): Promise<(typeof created)[number]> {
       for await (const [existing] of parent.entries()) {
         if (existing === name) {
@@ -372,7 +374,8 @@ export async function importImageRepository({ input, signal, onProgress }: {
           parent = folder;
           prefix = next;
         }
-        const record = await makeFile({ parent, name });
+        const publication = await moveSupport.detect({ directory: parent });
+        const record = await makeFile({ parent, name: publicationFileName({ name, support: publication }) });
         const writer = await record.handle.createWritable();
         const reader = file.stream().getReader();
         const cancelRead = (): void => {
@@ -409,11 +412,30 @@ export async function importImageRepository({ input, signal, onProgress }: {
           if (published.size !== file.size) {
             throw new Error('Local copy size mismatch');
           }
-          const receipt = await makeFile({ parent, name: modelFileMarker({ name, state: 'complete' }) });
-          await publishModelFile({ directory: parent, name, handle: record.handle, file: published, source: { kind: 'local' } });
-          const receiptFile = await receipt.handle.getFile();
-          receipt.size = receiptFile.size;
-          receipt.modified = receiptFile.lastModified;
+          signal?.throwIfAborted();
+          switch (publication) {
+          case 'supported': {
+            await moveStagedFile({ directory: parent, name, handle: record.handle, snapshot: published, moveSupport });
+            // Rollback follows the renamed entry, never a stale temporary name.
+            record.name = name;
+            const moved = await record.handle.getFile();
+            record.size = moved.size;
+            record.modified = moved.lastModified;
+            break;
+          }
+          case 'unsupported': {
+            const receipt = await makeFile({ parent, name: modelFileMarker({ name, state: 'complete' }) });
+            await publishModelFile({ directory: parent, name, handle: record.handle, file: published, source: { kind: 'local' } });
+            const receiptFile = await receipt.handle.getFile();
+            receipt.size = receiptFile.size;
+            receipt.modified = receiptFile.lastModified;
+            break;
+          }
+          default: {
+            const exhaustive: never = publication;
+            throw new Error(String(exhaustive));
+          }
+          }
         } catch (error) {
           await reader.cancel().catch(() => undefined);
           await writer.abort().catch(() => undefined);

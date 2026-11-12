@@ -1,3 +1,4 @@
+import { pendingDownloadDeletionFiles } from '@/logic/hugging-face-download/deletion';
 import { directoryForModelFile } from './model-directory-input';
 import { withModelFileMarkers } from '@/logic/model-file-publication';
 import { hostDownloadMarker, hostDownloadMarkerPath } from '@/features/llama-cpp-browser/hugging-face/host-download-marker';
@@ -138,8 +139,19 @@ async function captureRemovalPlans({ target, root, selectedRelativePaths, projec
   selectedRelativePaths: string[], projectorRelativePaths: string[], affectedVariants: number,
 }): Promise<ModelRemovalRequest> {
   const { files } = await scanDeletionTree({ folder: root.folder });
-  const selected = [...new Set(withModelFileMarkers({ paths: selectedRelativePaths }))];
-  const projectors = [...new Set(withModelFileMarkers({ paths: projectorRelativePaths }))];
+  const pending = await (async () => {
+    const location = target.location;
+    switch (location.kind) {
+    case 'opfs-user': return [];
+    case 'hugging-face': case 'host': return pendingDownloadDeletionFiles({ folder: root.folder, repository: location.repository, signal: undefined });
+    default: {
+      const exhaustive: never = location;
+      throw new Error(String(exhaustive));
+    }
+    }
+  })();
+  const selected = [...new Set(withModelFileMarkers({ paths: [...selectedRelativePaths, ...pending.filter(entry => selectedRelativePaths.includes(entry.path)).flatMap(entry => entry.paths)] }))];
+  const projectors = [...new Set(withModelFileMarkers({ paths: [...projectorRelativePaths, ...pending.filter(entry => projectorRelativePaths.includes(entry.path)).flatMap(entry => entry.paths)] }))];
   const plan = deletionPlanSchema.parse({
     target,
     ...root,
@@ -275,9 +287,16 @@ export async function prepareRepositoryRemoval({ location, signal }: { location:
           }
           selectedRelativePaths = ownedDownloadPaths({ location, journal });
         } else {
-          const directory = selectRepositoryModel({ models: await repositoryDirectories({ repository: location.repository, destination: repositoryDestination({ location }), signal }), repository: location.repository, variant: undefined });
-          projectorRelativePaths = directory.projectorFile ? [directory.projectorFile.relativePath] : [];
-          selectedRelativePaths = directory.files.filter(file => !projectorRelativePaths.includes(file.relativePath)).map(file => file.relativePath);
+          const downloads = await pendingDownloadDeletionFiles({ folder: root.folder, repository: location.repository, signal });
+          const models = await repositoryDirectories({ repository: location.repository, destination: repositoryDestination({ location }), signal });
+          if (models.length || !downloads.length) {
+            const directory = selectRepositoryModel({ models, repository: location.repository, variant: undefined });
+            projectorRelativePaths = directory.projectorFile ? [directory.projectorFile.relativePath] : [];
+            selectedRelativePaths = directory.files.filter(file => !projectorRelativePaths.includes(file.relativePath)).map(file => file.relativePath);
+          } else {
+            selectedRelativePaths = [];
+          }
+          selectedRelativePaths.push(...downloads.flatMap(entry => entry.paths));
         }
         signal?.throwIfAborted();
         return captureRemovalPlans({ target: { kind: 'repository', location, journal }, root, selectedRelativePaths, projectorRelativePaths, affectedVariants: 0 });

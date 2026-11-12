@@ -1,9 +1,10 @@
+import { createFileMoveSupportCache, moveStagedFile, temporaryFileName, type FileMoveSupportCache } from '@/utils/file-system-publication';
 import { pendingDownloadSchema, readPendingDownload } from './pending';
 import type { DownloadFetch } from './fetch-types';
 import { createSha256Hasher, type Sha256Hasher } from '@/utils/sha256';
 import { responseOffset } from './response';
 import { withDownloadRepository } from './storage';
-import { modelFileMarker, optionalModelFile, publishModelFile, readModelMarkerJson, writeModelMarkerJson } from '@/logic/model-file-publication';
+import { modelFileMarker, modelPublicationDirectoryName, optionalModelFile, publishModelFile, readModelFileRegistration, readModelMarkerJson, registerModelFileMove, writeModelMarkerJson } from '@/logic/model-file-publication';
 import { inspectWeightFile, type ModelMetadataFile } from '@/logic/model-file-inspection/metadata';
 import { huggingFaceFileSchema, type HuggingFaceFile } from './source';
 import { openModelDownloadAccess, type ModelDownloadAccess } from './access';
@@ -59,8 +60,9 @@ function sameSource({ a, b }: { a: HuggingFaceFile, b: HuggingFaceFile }): boole
  * when their small GGUF header looks valid. Sync writes checkpoint after flush;
  * resume hashes the stored prefix before accepting any Range response suffix.
  */
-export async function saveHuggingFaceFile({ file, signal, report, fetch, destination, expectedRoot, validation }: {
+export async function saveHuggingFaceFile({ file, signal, report, fetch, destination, expectedRoot, validation, moveSupport }: {
   fetch: DownloadFetch,
+  moveSupport?: FileMoveSupportCache,
   file: HuggingFaceFile, signal: AbortSignal, report: ({ progress }: { progress: FileTransferProgress }) => void,
   destination?: DownloadDestination,
   expectedRoot: FileSystemDirectoryHandle | undefined,
@@ -68,6 +70,7 @@ export async function saveHuggingFaceFile({ file, signal, report, fetch, destina
 }): Promise<void> {
   file = huggingFaceFileSchema.parse(file);
   const target = destination ?? { kind: 'opfs' };
+  const support = moveSupport ?? createFileMoveSupportCache();
   await withDownloadRepository({
     repository: file.repository,
     destination: target,
@@ -79,12 +82,14 @@ export async function saveHuggingFaceFile({ file, signal, report, fetch, destina
       }
       const parts = file.path.split('/');
       const name = parts.pop()!;
+      if (parts.includes(modelPublicationDirectoryName) || name === modelPublicationDirectoryName || name.endsWith('.tmp') || /^\..*\.(complete|pending)$/.test(name)) {
+        throw new Error('Reserved download publication filename');
+      }
       let directory = root;
       for (const part of parts) {
         directory = await directory.getDirectoryHandle(part, { create: true });
       }
       const pendingName = modelFileMarker({ name, state: 'pending' });
-      const completeName = modelFileMarker({ name, state: 'complete' });
       const pendingHandle = await optionalModelFile({ directory, name: pendingName });
       let pending: ReturnType<typeof readPendingDownload> | undefined;
       let ownedMarker = pendingHandle;
@@ -121,11 +126,8 @@ export async function saveHuggingFaceFile({ file, signal, report, fetch, destina
           throw new Error('Another download owns this pending file; existing data was preserved');
         }
       }
-      let handle = await optionalModelFile({ directory, name });
-      if (handle && !pending) {
-      // Upgrade old markerless downloads by verification, never by size alone.
-      // This also reuses a llama.cpp-installed encoder without downloading its
-      // payload again. An unrelated existing file is never truncated.
+      const registration = await readModelFileRegistration({ directory, name });
+      const verifyFinal = async ({ handle }: { handle: FileSystemFileHandle }): Promise<File> => {
         const snapshot = await handle.getFile();
         if (snapshot.size !== file.size || await hashFile({ file: snapshot, signal, report: ({ bytes }) => report({ progress: { phase: 'verifying', bytes, processed: 0 } }) }) !== file.sha256) {
           throw new Error(`Existing file differs from the pinned source; preserved without overwrite: ${file.path}`);
@@ -140,28 +142,101 @@ export async function saveHuggingFaceFile({ file, signal, report, fetch, destina
         }
         }
         signal.throwIfAborted();
-        await publishModelFile({ directory, name, handle, file: snapshot, source: sourceReceipt({ file }) });
+        const current = await directory.getFileHandle(name);
+        const now = await current.getFile();
+        if (!await current.isSameEntry(handle) || now.size !== snapshot.size || now.lastModified !== snapshot.lastModified) {
+          throw new Error('Model changed during verification');
+        }
+        return snapshot;
+      };
+      let handle = await optionalModelFile({ directory, name });
+      if (handle && !pending) {
+        // Explicit adoption verifies old markerless bytes, never merely their
+        // size or today's browser capability. Existing .complete files survive.
+        const snapshot = await verifyFinal({ handle });
+        const capability = registration ? 'supported' : await support.detect({ directory });
+        signal.throwIfAborted();
+        switch (capability) {
+        case 'supported':
+          await registerModelFileMove({ directory, name, source: sourceReceipt({ file }), replacement: 'verified-final' });
+          break;
+        case 'unsupported':
+          await publishModelFile({ directory, name, handle, file: snapshot, source: sourceReceipt({ file }) });
+          break;
+        default: {
+          const exhaustive: never = capability;
+          throw new Error(String(exhaustive));
+        }
+        }
         return;
       }
-      if (!pending) {
-        pending = { version: 2, kind: 'naidan-file-download', source: file, bytes: 0, state: 'partial' };
-        await writePending();
+      const temporaryName = temporaryFileName({ name });
+      // A pre-existing journal with bytes in its final path remains legacy.
+      // An empty journal with no body can safely choose a protocol, including
+      // after a crash between journal creation and source registration.
+      let publication: 'move' | 'legacy' = registration ? 'move' : 'legacy';
+      if (!pending || (!registration && !handle && pending.bytes === 0)) {
+        const capability = await support.detect({ directory });
+        if (registration && capability !== 'supported') {
+          throw new DOMException('This file requires move publication', 'NotSupportedError');
+        }
+        publication = registration || capability === 'supported' ? 'move' : 'legacy';
+        if (publication === 'move' && await optionalModelFile({ directory, name: temporaryName })) {
+          throw new Error('An unowned temporary file already exists; preserved without overwrite');
+        }
+        signal.throwIfAborted();
+        if (!pending) {
+          pending = { version: 2, kind: 'naidan-file-download', source: file, bytes: 0, state: 'partial' };
+          await writePending();
+        }
+      }
+      switch (publication) {
+      case 'move': {
+        await assertPending();
+        await registerModelFileMove({ directory, name, source: sourceReceipt({ file }), replacement: 'reject' });
+        const staged = await optionalModelFile({ directory, name: temporaryName });
+        if (handle) {
+          // A completed rename may outlive the Worker before pending is removed.
+          if (staged || pending.bytes !== file.size || pending.state !== 'partial') {
+            throw new Error('Move publication has conflicting files; existing data was preserved');
+          }
+          await verifyFinal({ handle });
+          await assertPending();
+          signal.throwIfAborted();
+          await directory.removeEntry(pendingName);
+          return;
+        }
+        handle = staged;
+        break;
+      }
+      case 'legacy': break;
+      default: {
+        const exhaustive: never = publication;
+        throw new Error(String(exhaustive));
+      }
       }
       if (!handle) {
         if (pending.bytes !== 0) {
           throw new Error('Pending model file is missing; its journal was preserved');
         }
-        handle = await directory.getFileHandle(name, { create: true });
+        const writeName = (() => {
+          switch (publication) {
+          case 'move': return temporaryName;
+          case 'legacy': return name;
+          default: {
+            const exhaustive: never = publication;
+            throw new Error(String(exhaustive));
+          }
+          }
+        })();
+        handle = await directory.getFileHandle(writeName, { create: true });
         if ((await handle.getFile()).size !== 0) {
           throw new Error('Model destination changed during creation');
         }
       }
       await assertPending();
-      // A crash may leave both markers. Pending continues to suppress the file
-      // until this exact source is verified and its receipt is republished.
-      if (await optionalModelFile({ directory, name: completeName })) {
-        await directory.removeEntry(completeName);
-      }
+      // Pending suppresses stale receipts. Never delete an existing .complete
+      // merely to change the publication format.
       let access: ModelDownloadAccess | undefined;
       let received = pending.bytes, processed = 0, checkpointBytes = pending.bytes;
       let hash: Sha256Hasher = createSha256Hasher();
@@ -296,7 +371,17 @@ export async function saveHuggingFaceFile({ file, signal, report, fetch, destina
         }
         }
         await assertPending();
-        await publishModelFile({ directory, name, handle, file: snapshot, source: sourceReceipt({ file }) });
+        signal.throwIfAborted();
+        switch (publication) {
+        case 'move': await moveStagedFile({ directory, name, handle, snapshot, moveSupport: support });
+          break;
+        case 'legacy': await publishModelFile({ directory, name, handle, file: snapshot, source: sourceReceipt({ file }) });
+          break;
+        default: {
+          const exhaustive: never = publication;
+          throw new Error(String(exhaustive));
+        }
+        }
         signal.throwIfAborted();
         // The sole publication point. A failure above retains pending, even if
         // writing the complete receipt itself was interrupted.

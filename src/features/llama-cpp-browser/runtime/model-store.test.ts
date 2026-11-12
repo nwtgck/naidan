@@ -7,6 +7,7 @@ import { importStoredModel, listStoredModels, prepareModelRemoval, removeStoredM
 
 type StoredFile = { kind: 'file', content: Uint8Array, getFile: () => Promise<NodeFile>, createWritable: () => Promise<ReturnType<typeof makeWriter>> };
 type StoredDirectory = { kind: 'directory', children: Map<string, StoredFile | StoredDirectory>,
+  isSameEntry: (other: StoredDirectory) => Promise<boolean>,
   getDirectoryHandle: (name: string, options?: { create?: boolean }) => Promise<StoredDirectory>,
   getFileHandle: (name: string, options?: { create?: boolean }) => Promise<StoredFile>,
   removeEntry: (name: string, options?: { recursive?: boolean }) => Promise<void>,
@@ -52,6 +53,9 @@ function makeDirectory(): StoredDirectory {
   return {
     kind: 'directory',
     children,
+    async isSameEntry(other) {
+      return other.children === children;
+    },
     async getDirectoryHandle(name, options) {
       let entry = children.get(name);
       if (!entry && options?.create) {

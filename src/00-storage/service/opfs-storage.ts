@@ -1,4 +1,5 @@
 import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
+import { createFileMoveSupportCache, moveStagedFile, optionalFile, temporaryFileName } from '@/utils/file-system-publication';
 import { iterateAttachmentParts } from './message-attachments';
 import { readLegacyUploadedFileMetadata, remapLegacyUploadedFileReferences } from './legacy-uploaded-file-content';
 import { createLegacyUploadedFileId } from './legacy-uploaded-file-id';
@@ -63,6 +64,8 @@ const NAIDAN_RPC_REGISTRY_FILE = 'naidan-rpc-connections.json';
 
 type BinaryShardIndex = BinaryShardIndexDto;
 
+const binaryMoveDirectoryName = '.move';
+
 let volumeSynchronizer: StorageSynchronizer | undefined;
 
 async function getVolumeSynchronizer(): Promise<StorageSynchronizer> {
@@ -78,6 +81,7 @@ function isVolumeEntryNotFound({ error }: { error: unknown }): boolean {
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
   private readonly STORAGE_DIR = 'naidan-storage';
+  private readonly fileMoveSupport = createFileMoveSupportCache();
   readonly canPersistBinary = true;
 
   async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
@@ -521,10 +525,31 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   private async saveShardIndex({ shard, index }: { shard: string, index: BinaryShardIndex }): Promise<void> {
     const dir = await this.getShardDir({ shard: shard });
-    const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
-    await writable.close();
+    const existing = await optionalFile({ directory: dir, name: 'index.json' });
+    const fileHandle = existing ?? await dir.getFileHandle('index.json', { create: true });
+    const initial = existing ? undefined : await fileHandle.getFile();
+    let writable: FileSystemWritableFileStream | undefined;
+    try {
+      writable = await fileHandle.createWritable();
+      await writable.write(JSON.stringify(BinaryShardIndexSchemaDto.parse(index)));
+      await writable.close();
+    } catch (error) {
+      await writable?.abort().catch(() => undefined);
+      // A failed first metadata write must not leave an empty, invalid shard
+      // index that prevents every later save. Never repair existing metadata.
+      if (initial?.size === 0) {
+        try {
+          const current = await optionalFile({ directory: dir, name: 'index.json' });
+          if (current && await current.isSameEntry(fileHandle)) {
+            const now = await current.getFile();
+            if (now.size === 0 && now.lastModified === initial.lastModified) {
+              await dir.removeEntry('index.json');
+            }
+          }
+        } catch { /* Preserve uncertain entries and the original storage error. */ }
+      }
+      throw error;
+    }
   }
 
   private async hydrateAttachments({ nodes }: { nodes: MessageNode[] }): Promise<void> {
@@ -537,7 +562,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         const shard = this.getBinaryObjectShardPath({ id: att.binaryObjectId });
         let index = shardCache.get(shard);
         if (!index) {
-          index = await this.loadShardIndex({ shard });
+          index = await this.visibleShardIndex({ shard });
           shardCache.set(shard, index);
         }
         const meta = index.objects[idToRaw({ id: att.binaryObjectId })];
@@ -803,6 +828,51 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Binary Object Storage ---
 
+  private async withBinaryShardLock<T>({ shard, operation }: { shard: string, operation: () => Promise<T> }): Promise<T> {
+    const synchronizer = await getVolumeSynchronizer();
+    // Always below the facade's metadata lock. Readers take the same lane so
+    // they cannot pair an older index snapshot with a newly moved body.
+    return synchronizer.withLock({ lockKey: `naidan-binary-shard:${shard}`, fn: operation });
+  }
+
+  private async findBinaryMoveDirectory({ directory }: { directory: FileSystemDirectoryHandle }): Promise<FileSystemDirectoryHandle | undefined> {
+    try {
+      return await directory.getDirectoryHandle(binaryMoveDirectoryName);
+    } catch (error) {
+      if (isVolumeEntryNotFound({ error })) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  private async binaryObjectIsStaged({ directory, rawId }: { directory: FileSystemDirectoryHandle, rawId: string }): Promise<boolean> {
+    const moved = await this.findBinaryMoveDirectory({ directory });
+    return !!moved && !!await optionalFile({ directory: moved, name: temporaryFileName({ name: `${rawId}.bin` }) });
+  }
+
+  private async visibleShardIndex({ shard }: { shard: string }): Promise<BinaryShardIndex> {
+    return this.withBinaryShardLock({
+      shard,
+      operation: async () => {
+        const index = await this.loadShardIndex({ shard });
+        const directory = await this.getShardDir({ shard });
+        const moved = await this.findBinaryMoveDirectory({ directory });
+        if (moved) {
+          // Enumerate staging once, rather than two filesystem lookups for
+          // every indexed attachment. Only this read snapshot is filtered.
+          const suffix = '.bin.tmp';
+          for await (const { name } of moved.values()) {
+            if (name.endsWith(suffix)) {
+              delete index.objects[name.slice(0, -suffix.length)];
+            }
+          }
+        }
+        return index;
+      },
+    });
+  }
+
   private async saveFileWithMetadata({ blob, binaryObjectId, name, mimeType, createdAt }: {
     blob: Blob,
     binaryObjectId: BinaryObjectId,
@@ -811,32 +881,63 @@ export class OPFSStorageProvider extends IStorageProvider {
     createdAt: number,
   }): Promise<void> {
     const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-    const dir = await this.getShardDir({ shard: shard });
-
-    // Do not touch an existing body if its shard metadata cannot be read safely.
-    const index = await this.loadShardIndex({ shard });
-
-    // 1. Write Blob
-    const binFileName = `${idToRaw({ id: binaryObjectId })}.bin`;
-    const fileHandle = await dir.getFileHandle(binFileName, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    // Convert blob to ArrayBuffer for compatibility
-    await writable.write(await blob.arrayBuffer());
-    await writable.close();
-
-    // 2. Write Marker
-    const markerName = `.${binFileName}.complete`;
-    await dir.getFileHandle(markerName, { create: true });
-
-    // 3. Update Index
-    index.objects[idToRaw({ id: binaryObjectId })] = {
-      id: idToRaw({ id: binaryObjectId }),
-      mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
-      size: blob.size,
-      createdAt,
-      name,
-    };
-    await this.saveShardIndex({ shard: shard, index: index });
+    await this.withBinaryShardLock({
+      shard,
+      operation: async () => {
+        const dir = await this.getShardDir({ shard });
+        // A corrupt index must fail before touching an existing body.
+        const index = await this.loadShardIndex({ shard });
+        const rawId = idToRaw({ id: binaryObjectId });
+        const binFileName = `${rawId}.bin`;
+        const moved = await dir.getDirectoryHandle(binaryMoveDirectoryName, { create: true });
+        const publication = await this.fileMoveSupport.detect({ directory: moved });
+        const temporaryName = temporaryFileName({ name: binFileName });
+        const previous = await optionalFile({ directory: moved, name: binFileName });
+        const temporary = await optionalFile({ directory: moved, name: temporaryName });
+        if (publication === 'unsupported' && (previous || temporary)) {
+          throw new Error('This binary object requires file move support');
+        }
+        const staged = publication === 'supported';
+        const target = staged ? moved : dir;
+        const targetName = staged ? temporaryName : binFileName;
+        const replacement = previous ? { handle: previous, snapshot: await previous.getFile() } : undefined;
+        // .move is a private, dedicated namespace: its <id>.bin.tmp belongs to
+        // that ID, including after a crash. An explicit save may retry it. Do not
+        // adopt or remove similarly named files in the legacy shard directory.
+        const fileHandle = await target.getFileHandle(targetName, { create: true });
+        const writable = await fileHandle.createWritable();
+        try {
+          await writable.write(await blob.arrayBuffer());
+          await writable.close();
+        } catch (error) {
+          await writable.abort().catch(() => undefined);
+          throw error;
+        }
+        const snapshot = await fileHandle.getFile();
+        if (snapshot.size !== blob.size) {
+          throw new Error('Binary object size changed while saving');
+        }
+        index.objects = {
+          ...index.objects,
+          [rawId]: {
+            id: rawId,
+            mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
+            size: blob.size,
+            createdAt,
+            name,
+          },
+        };
+        if (staged) {
+          // Commit unchanged metadata BEFORE rename. Until rename removes .tmp,
+          // all readers suppress this ID, even if an old .complete survives.
+          await this.saveShardIndex({ shard, index });
+          await moveStagedFile({ directory: moved, name: binFileName, handle: fileHandle, snapshot, moveSupport: this.fileMoveSupport, replacement });
+        } else {
+          await dir.getFileHandle(`.${binFileName}.complete`, { create: true });
+          await this.saveShardIndex({ shard, index });
+        }
+      },
+    });
   }
 
   async saveFile({ blob, binaryObjectId, name, mimeType }: {
@@ -854,27 +955,39 @@ export class OPFSStorageProvider extends IStorageProvider {
     });
   }
 
+  private async readBinaryFile({ directory, index, rawId }: { directory: FileSystemDirectoryHandle, index: BinaryShardIndex, rawId: string }): Promise<Blob | null> {
+    const name = `${rawId}.bin`;
+    const moved = await this.findBinaryMoveDirectory({ directory });
+    if (moved && await optionalFile({ directory: moved, name: temporaryFileName({ name }) })) {
+      return null;
+    }
+    const published = moved && await optionalFile({ directory: moved, name });
+    const handle = published ?? await directory.getFileHandle(name);
+    if (!published) {
+      // A legacy markerless file is NOT a move publication, even if an old
+      // index happens to contain metadata with the same byte count.
+      await directory.getFileHandle(`.${name}.complete`);
+    }
+    const file = await handle.getFile();
+    const metadata = Object.hasOwn(index.objects, rawId) ? index.objects[rawId] : undefined;
+    if (published && metadata?.size !== file.size) {
+      return null;
+    }
+    const mimeType = metadata?.mimeType;
+    return mimeType === undefined || mimeType === file.type ? file : file.slice(0, file.size, mimeType);
+  }
+
   async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
     try {
       const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-      const dir = await this.getShardDir({ shard: shard });
-      const rawId = idToRaw({ id: binaryObjectId });
-      const fileName = `${rawId}.bin`;
-      const markerName = `.${fileName}.complete`;
-
-      // Verify completion marker
-      await dir.getFileHandle(markerName);
-
-      const fileHandle = await dir.getFileHandle(fileName);
-      const { file, index } = await promiseAllKeyed({
-        file: fileHandle.getFile(),
-        index: this.loadShardIndex({ shard: shard }),
+      return await this.withBinaryShardLock({
+        shard,
+        operation: async () => {
+          const directory = await this.getShardDir({ shard });
+          const index = await this.loadShardIndex({ shard });
+          return this.readBinaryFile({ directory, index, rawId: idToRaw({ id: binaryObjectId }) });
+        },
       });
-      const mimeType = index.objects[rawId]?.mimeType;
-
-      return mimeType === undefined || mimeType === file.type
-        ? file
-        : file.slice(0, file.size, mimeType);
     } catch (e) {
       console.error('Failed to get file from OPFS storage:', e);
       return null;
@@ -884,9 +997,19 @@ export class OPFSStorageProvider extends IStorageProvider {
   async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null> {
     try {
       const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-      const index = await this.loadShardIndex({ shard: shard });
-      const dto = index.objects[idToRaw({ id: binaryObjectId })];
-      return dto === undefined ? null : binaryObjectToDomain({ dto });
+      return await this.withBinaryShardLock({
+        shard,
+        operation: async () => {
+          const index = await this.loadShardIndex({ shard });
+          const directory = await this.getShardDir({ shard });
+          const rawId = idToRaw({ id: binaryObjectId });
+          if (await this.binaryObjectIsStaged({ directory, rawId })) {
+            return null;
+          }
+          const dto = index.objects[rawId];
+          return dto === undefined ? null : binaryObjectToDomain({ dto });
+        },
+      });
     } catch (e) {
       console.error('Failed to get binary object info:', e);
       return null;
@@ -902,7 +1025,11 @@ export class OPFSStorageProvider extends IStorageProvider {
         case 'directory': {
           // Check if shard has any files other than index.json
           for await (const shardEntry of (entry as FileSystemDirectoryHandle).values()) {
-            if (shardEntry.name !== 'index.json') {
+            if (shardEntry.kind === 'directory' && shardEntry.name === binaryMoveDirectoryName) {
+              for await (const _entry of shardEntry.values()) {
+                return true;
+              }
+            } else if (shardEntry.name !== 'index.json') {
               return true;
             }
           }
@@ -930,7 +1057,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         const kind = shardEntry.kind;
         switch (kind) {
         case 'directory': {
-          const index = await this.loadShardIndex({ shard: shardEntry.name });
+          const index = await this.visibleShardIndex({ shard: shardEntry.name });
           for (const obj of Object.values(index.objects)) {
             yield binaryObjectToDomain({ dto: obj });
           }
@@ -950,32 +1077,39 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
-    await this.ensureRoot();
     const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-    const dir = await this.getShardDir({ shard: shard });
-    const fileName = `${idToRaw({ id: binaryObjectId })}.bin`;
-    const markerName = `.${fileName}.complete`;
-
-    try {
-      await dir.removeEntry(fileName);
-    } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
-        throw error;
-      }
-    }
-    try {
-      await dir.removeEntry(markerName);
-    } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
-        throw error;
-      }
-    }
-
-    const index = await this.loadShardIndex({ shard: shard });
-    if (index.objects[idToRaw({ id: binaryObjectId })]) {
-      delete index.objects[idToRaw({ id: binaryObjectId })];
-      await this.saveShardIndex({ shard: shard, index: index });
-    }
+    await this.withBinaryShardLock({
+      shard,
+      operation: async () => {
+        const directory = await this.getShardDir({ shard });
+        const index = await this.loadShardIndex({ shard });
+        const rawId = idToRaw({ id: binaryObjectId });
+        const name = `${rawId}.bin`;
+        const remove = async ({ parent, fileName }: { parent: FileSystemDirectoryHandle, fileName: string }): Promise<void> => {
+          try {
+            await parent.removeEntry(fileName);
+          } catch (error) {
+            if (!isVolumeEntryNotFound({ error })) {
+              throw error;
+            }
+          }
+        };
+        // Delete the legacy copy first so a failed deletion cannot reveal it after
+        // removing its replacement. Existing markers are removed only by this
+        // explicit object deletion, never by saving or reading new-format data.
+        await remove({ parent: directory, fileName: name });
+        await remove({ parent: directory, fileName: `.${name}.complete` });
+        const moved = await this.findBinaryMoveDirectory({ directory });
+        if (moved) {
+          await remove({ parent: moved, fileName: name });
+          await remove({ parent: moved, fileName: temporaryFileName({ name }) });
+        }
+        if (Object.hasOwn(index.objects, rawId)) {
+          delete index.objects[rawId];
+          await this.saveShardIndex({ shard, index });
+        }
+      },
+    });
   }
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
@@ -1044,20 +1178,39 @@ export class OPFSStorageProvider extends IStorageProvider {
         switch (kind) {
         case 'directory': {
           const shard = shardEntry.name;
-          const index = await this.loadShardIndex({ shard: shard });
+          const index = await this.visibleShardIndex({ shard });
           for (const bId of Object.keys(index.objects)) {
-            const meta = index.objects[bId]!;
-            const blob = await this.getFile({ binaryObjectId: toBinaryObjectId({ raw: bId }) });
-            if (blob) {
-              yield {
-                type: 'binary_object' as const,
-                id: bId,
-                name: meta.name ?? 'file',
-                mimeType: meta.mimeType,
-                size: meta.size,
-                createdAt: meta.createdAt,
-                blob,
-              };
+            // Do not hold a lock over a generator yield. Read each metadata/body
+            // pair together: a save may have replaced the ID since enumeration.
+            const entry = await this.withBinaryShardLock({
+              shard,
+              operation: async (): Promise<MigrationChunkDto | undefined> => {
+                const current = await this.loadShardIndex({ shard });
+                const meta = current.objects[bId];
+                if (!meta) {
+                  return undefined;
+                }
+                const directory = await this.getShardDir({ shard });
+                let blob: Blob | null;
+                try {
+                  blob = await this.readBinaryFile({ directory, index: current, rawId: bId });
+                } catch (error) {
+                  console.error('Failed to get file from OPFS storage:', error);
+                  return undefined;
+                }
+                return blob ? {
+                  type: 'binary_object',
+                  id: bId,
+                  name: meta.name ?? 'file',
+                  mimeType: meta.mimeType,
+                  size: meta.size,
+                  createdAt: meta.createdAt,
+                  blob,
+                } : undefined;
+              },
+            });
+            if (entry) {
+              yield entry;
             }
           }
           break;

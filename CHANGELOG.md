@@ -27,10 +27,16 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+### Changed
+
+- Publish new Hugging Face model downloads, local llama.cpp and image-model imports, and browser-stored attachments through `.tmp` files and native file moves when supported. Probe each destination in memory before writing, retain legacy publication when moves are unavailable, and keep existing `.complete` files without creating new ones for move-based saves.
+- Preserve download resume metadata and source verification, distinguish move-based files from legacy data without changing persisted DTOs or probing during reads, and keep interrupted publications unavailable until they are finalized. Explicit deletion includes owned staging files without removing unrelated files or another model's source metadata.
+
 ### Fixed
 
 - Recover the development privacy broker after rapid HTML error-and-repair saves, and cancel pending rebuilds when its server closes.
 - Reject trailing junk, duplicate keys and malformed concatenated JSON imports instead of accepting a valid-looking prefix.
+- Limit failed local llama.cpp import cleanup to files still owned by that import instead of recursively deleting a directory that may contain competing writes.
 
 ## [0.66.0] - 2026-11-11
 
