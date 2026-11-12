@@ -17,6 +17,8 @@ import { remoteImageFileKey } from './remote-image-model-editor';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
 import ImageGenerationResults from './components/ImageGenerationResults.vue';
 import ImageGenerationProgress from './components/ImageGenerationProgress.vue';
+import { createImageGenerationRunSink } from './session/run-sink';
+import { toImageGenerationOperationId, toImageGenerationRunId, toImageGenerationSessionId } from '@/01-models/ids';
 vi.mock('@/components/SettingsSelect.vue', async () => ({
   default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
 }));
@@ -2195,6 +2197,52 @@ it('uses confirmed remote request values for results, history and reuse instead 
 });
 
 describe('multiple request preparation', () => {
+  it('accepts and saves each real prepared request after its snapshot has been copied for publication', async () => {
+    const view = open();
+    view.seedMode.value = 'fixed';
+    const common = view.captureDraft!()!;
+    common.modelSelection = undefined;
+    common.vaeTileSizePreference = 32;
+    const plans = await view.prepareRequests!({
+      requests: ['first', 'second'].map(prompt => ({ draft: { ...common, request: { ...common.request, parameters: { ...common.request.parameters, prompt } } }, count: 1 })),
+      signal: new AbortController().signal,
+    });
+    const sessionId = toImageGenerationSessionId({ raw: 'session-aa' });
+    const operationId = toImageGenerationOperationId({ raw: 'operation-aa' });
+    for (const [index, plan] of plans.entries()) {
+      const snapshot = plan.snapshot;
+      const create = vi.fn().mockResolvedValue(undefined);
+      const commit = vi.fn().mockResolvedValue(undefined);
+      const update = vi.fn().mockResolvedValue(undefined);
+      const sink = createImageGenerationRunSink({
+        sessionId,
+        operationId,
+        count: plan.seeds.length,
+        sources: [],
+        plannedRun: {
+          id: toImageGenerationRunId({ raw: `run-${index}` }),
+          sessionId,
+          operationId,
+          acceptedOrder: undefined,
+          revision: 0,
+          createdAt: snapshot.createdAt,
+          request: snapshot.request,
+          seeds: [...plan.seeds],
+          sources: [],
+          execution: { type: 'queued' },
+        },
+        persistence: { create, commit, update },
+        changed: vi.fn(),
+      });
+      await plan.execute({ submission: sink.submission, signal: undefined });
+      expect(view.failure.value).toBe('');
+      expect(sink.snapshot()).toMatchObject({ run: { request: snapshot.request, execution: { type: 'completed' } }, received: 1, needsRetry: false });
+      expect(create).toHaveBeenCalledOnce();
+      expect(commit).toHaveBeenCalledOnce();
+    }
+    expect(mocks.generate.mock.calls.map(([input]) => input.request.parameters.prompt)).toEqual(['first', 'second']);
+  });
+
   it('freezes all requests before inference, restores shared controls and rejects capability reuse', async () => {
     const view = open();
     view.seedMode.value = 'fixed';

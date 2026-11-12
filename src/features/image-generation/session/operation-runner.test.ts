@@ -5,7 +5,7 @@ import { createImageGenerationStorageHarness, generationRunFixture, generationSe
 import { listImageGenerationOperations } from '@/00-storage/service/image-generation/operations';
 import { toImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationOperation } from '@/01-models/image-generation';
-import { finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
+import { copyImageGenerationSnapshot, finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import type { PreparedImageGeneration } from '@/features/image-generation/generation-submission';
 import { runImageGenerationOperation } from './operation-runner';
 import { recoverImageGenerationOperation } from './operation-recovery';
@@ -63,7 +63,9 @@ function plan({ name, count = 1, fail = false, cancel, during }: { name: string,
   run.request.imageInputs = { initImage: undefined, referenceImages: [], strength: 0.75 };
   const snapshot = { id: toImageGenerationId({ raw: `image-${name}` }), request: run.request, inputFiles: [], createdAt: 1 };
   return {
-    snapshot,
+    get snapshot() {
+      return copyImageGenerationSnapshot({ snapshot });
+    },
     seeds: run.seeds,
     async execute({ submission }) {
       if (!submission) {
@@ -133,6 +135,22 @@ describe('generation operation coordinator with real metadata storage', () => {
       },
     });
     expect(await states({ operation })).toEqual(['completed']);
+  });
+
+  it.each([0, 1])('reports the original failure and request position when request %i fails before acceptance', async index => {
+    const plans = [plan({ name: 'red' }), plan({ name: 'blue' }), plan({ name: 'green' })];
+    const original = plans[index]!;
+    plans[index] = {
+      ...original,
+      async execute({ submission }) {
+        await submission!.finished({ completion: { type: 'failed', message: 'The prepared model configuration does not match.' } });
+      },
+    };
+    await expect(runImageGenerationOperation({ store, sessionId: session.id, plans, sources: [], signal: signal(), progress: vi.fn() })).rejects.toThrow(`Request ${index + 1}/3: The prepared model configuration does not match.`);
+    const operation = (await listImageGenerationOperations({ store, sessionId: session.id })).items[0]!;
+    expect(calls).toEqual(index === 0 ? [] : ['red']);
+    expect(await states({ operation })).toEqual(index === 0 ? ['interrupted', 'interrupted', 'interrupted'] : ['completed', 'interrupted', 'interrupted']);
+    expect(imagePendingRuns.list()).toHaveLength(0);
   });
 
   it('retries failed parent acceptance without inference or new identities', async () => {

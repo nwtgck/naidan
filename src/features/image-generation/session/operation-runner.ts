@@ -62,10 +62,11 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
       imagePendingOperations.retain({ store: destination, operation, message: error instanceof Error ? error.message : String(error), save });
       throw error;
     }
-    let next = 0;
+    let next = 0, currentRequest = 0;
     let problem: unknown;
     try {
       while (next < plans.length) {
+        currentRequest = next;
         signal.throwIfAborted();
         const index = next;
         const planned = requests[index]!;
@@ -97,7 +98,17 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
         }
         const execution = state.run?.execution;
         if (!execution) {
-          throw new Error('Generation was not accepted.');
+          const completion = state.completion;
+          switch (completion?.type) {
+          case 'failed': throw new Error(completion.message);
+          case 'cancelled': throw new Error('Generation was cancelled before the request was accepted.');
+          case 'interrupted': throw new Error('Generation was interrupted before the request was accepted.');
+          case 'completed': case undefined: throw new Error('Generation ended before the request was accepted.');
+          default: {
+            const exhaustive: never = completion;
+            throw new Error(String(exhaustive));
+          }
+          }
         }
         switch (execution.type) {
         case 'completed': break;
@@ -110,7 +121,7 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
         }
       }
     } catch (error) {
-      problem = error;
+      problem = new Error(`Request ${currentRequest + 1}/${plans.length}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
     notify({ state: { operation, index: next, total: plans.length, phase: 'finishing' } });
     const remaining = requests.slice(next);
