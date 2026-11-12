@@ -281,6 +281,7 @@ export type ExperimentalImageGenerationDraftDto = dtozod.infer<typeof Experiment
 export type ExperimentalImageGenerationRequestDto = dtozod.infer<typeof ExperimentalImageGenerationRequestSchemaDto>;
 
 const ImageGenerationRunBaseSchemaDto = dtozod.object({
+  operationId: ExperimentalImageGenerationIdSchemaDto.optional(),
   acceptedOrder: missingAsUndefined(ExperimentalImageGenerationActivityOrderSchemaDto),
   id: ExperimentalImageGenerationIdSchemaDto,
   sessionId: ExperimentalImageGenerationIdSchemaDto,
@@ -297,6 +298,17 @@ const ImageGenerationRunBaseSchemaDto = dtozod.object({
   execution: ExperimentalImageGenerationRunExecutionSchemaDto,
 });
 
+
+/** A generation operation is independent of single/bulk input UI. */
+export const ExperimentalImageGenerationOperationSchemaDto = dtozod.object({
+  version: dtozod.literal(1),
+  id: ExperimentalImageGenerationIdSchemaDto,
+  sessionId: ExperimentalImageGenerationIdSchemaDto,
+  createdAt: ExperimentalImageGenerationTimestampSchemaDto,
+  runIds: dtozod.array(ExperimentalImageGenerationIdSchemaDto),
+});
+export type ExperimentalImageGenerationOperationDto = dtozod.infer<typeof ExperimentalImageGenerationOperationSchemaDto>;
+export const ExperimentalImageGenerationOperationIndexSchemaDto = dtozod.object({ items: dtozod.array(ExperimentalImageGenerationOperationSchemaDto) });
 
 export const ExperimentalImageGenerationRunSchemaDto = resolveMissingAsUndefined(ImageGenerationRunBaseSchemaDto);
 export type ExperimentalImageGenerationRunDto = dtozod.infer<typeof ExperimentalImageGenerationRunSchemaDto>;
@@ -351,6 +363,7 @@ export const ExperimentalImageGenerationAssetAnnotationsSchemaDto = dtozod.objec
 export type ExperimentalImageGenerationAssetAnnotationsDto = dtozod.infer<typeof ExperimentalImageGenerationAssetAnnotationsSchemaDto>;
 
 export const ExperimentalImageGenerationRunSummarySchemaDto = dtozod.object({
+  operationId: ExperimentalImageGenerationIdSchemaDto.optional(),
   id: ExperimentalImageGenerationIdSchemaDto,
   sessionId: ExperimentalImageGenerationIdSchemaDto,
   revision: ExperimentalImageGenerationRevisionSchemaDto,

@@ -1,3 +1,5 @@
+import { ExperimentalImageGenerationCompositionSchemaDto } from '@/00-storage/00-dto/image-generation-composition.dto';
+import { imageGenerationOperationTable } from './image-generation/operations';
 import { idToRaw, toBinaryObjectId, type BinaryObjectId, type ImageGenerationSessionId } from '@/01-models/ids';
 import { ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { readImageGenerationBinaryDeletion } from './image-generation/deletions';
@@ -56,6 +58,22 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
         }
         inputs({ request: draft.request });
         await retain({ path: 'draft.json' });
+      }
+      const compositionText = await readImageGenerationText({ directory: location, name: 'composition-draft.json' });
+      if (compositionText !== undefined) {
+        const composition = ExperimentalImageGenerationCompositionSchemaDto.parse(JSON.parse(compositionText));
+        if (composition.sessionId !== id) {
+          throw new Error('The composition belongs to another session.');
+        }
+        await retain({ path: 'composition-draft.json' });
+      }
+      const operations = await imageGenerationOperationTable({ directory: location, sessionId: id, create: false });
+      const operationList = await operations.list();
+      if (operationList.warningCount) {
+        throw new Error('Some generation operations cannot be exported safely. Preserve the raw OPFS directory.');
+      }
+      for (const operation of operationList.items) {
+        await retain({ path: `operations/${operation.id.slice(-2).toLowerCase()}/${operation.id}.json` });
       }
       const runTable = await imageGenerationRunTable({ directory: location, sessionId: id, create: false });
       const runList = await runTable.list();

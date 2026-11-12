@@ -2193,3 +2193,51 @@ it('uses confirmed remote request values for results, history and reuse instead 
   await view.reuseHistory({ record });
   expect([view.stepsPreference.value, view.guidancePreference.value, view.vaeTileSizePreference.value]).toEqual([6, 1, 16]);
 });
+
+describe('multiple request preparation', () => {
+  it('freezes all requests before inference, restores shared controls and rejects capability reuse', async () => {
+    const view = open();
+    view.seedMode.value = 'fixed';
+    const common = view.captureDraft!()!;
+    common.modelSelection = undefined;
+    common.vaeTileSizePreference = 32;
+    const first = { ...common, request: { ...common.request, parameters: { ...common.request.parameters, prompt: 'first', seed: '42' } } };
+    const second = { ...common, request: { ...common.request, parameters: { ...common.request.parameters, prompt: 'second', seed: '77', width: 512 } } };
+    const original = { ...view.parameters.value };
+    const plans = await view.prepareRequests!({ requests: [{ draft: first, count: 1 }, { draft: second, count: 1 }], signal: new AbortController().signal });
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(plans.map(plan => plan.snapshot.request.parameters.prompt)).toEqual(['first', 'second']);
+    expect(plans.map(plan => plan.seeds)).toEqual([['42'], ['77']]);
+    expect(view.parameters.value).toEqual(original);
+    first.request.parameters.prompt = 'mutated input';
+    plans[0]!.snapshot.request.parameters.prompt = 'mutated snapshot';
+    view.parameters.value.prompt = 'next editor';
+    await plans[0]!.execute({ submission: undefined, signal: undefined });
+    expect(mocks.generate.mock.calls[0]![0].request.parameters.prompt).toBe('first');
+    await expect(plans[0]!.execute({ submission: undefined, signal: undefined })).rejects.toThrow();
+    expect(mocks.generate).toHaveBeenCalledOnce();
+  });
+
+  it('does not create plans after an input image cannot be restored and keeps the common draft', async () => {
+    const view = open();
+    const common = view.captureDraft!()!;
+    const { toBinaryObjectId } = await import('@/01-models/ids');
+    const broken = { ...common, modelSelection: undefined, request: { ...common.request, imageInputs: { ...common.request.imageInputs, initImage: { binaryObjectId: toBinaryObjectId({ raw: 'missing-aa' }), name: 'missing.png' } } } };
+    mocks.getFile.mockResolvedValue(undefined);
+    await expect(view.prepareRequests!({ requests: [{ draft: broken, count: 1 }], signal: new AbortController().signal })).rejects.toThrow('missing');
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(view.parameters.value.prompt).toBe(common.request.parameters.prompt);
+    expect(view.busy.value).toBe(false);
+  });
+
+  it('cancels preparation without invoking inference and restores the editing form', async () => {
+    const view = open();
+    const common = view.captureDraft!()!;
+    const abort = new AbortController();
+    abort.abort();
+    await expect(view.prepareRequests!({ requests: [{ draft: common, count: 1 }], signal: abort.signal })).rejects.toThrow();
+    expect(mocks.generate).not.toHaveBeenCalled();
+    expect(view.busy.value).toBe(false);
+    expect(view.parameters.value.prompt).toBe(common.request.parameters.prompt);
+  });
+});

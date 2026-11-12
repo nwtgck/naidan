@@ -119,17 +119,38 @@ export function createImageGenerationStorageHarness() {
   }
   const root = new MockDirectory({ name: '', path: '' });
   const tails = new Map<string, Promise<unknown>>();
+  const waiting = new Map<string, number>();
   const getDirectory = vi.fn(async () => root);
   vi.stubGlobal('navigator', {
     storage: { getDirectory },
     locks: {
       // eslint-disable-next-line local-rules-named-args/require-named-args -- LockManager.request is a browser positional contract.
-      request<T>(name: string, operation: () => Promise<T>): Promise<T> {
+      request<T>(name: string, operationOrOptions: LockOptions | ((lock: Lock | null) => Promise<T> | T), callback?: (lock: Lock | null) => Promise<T> | T): Promise<T> {
+        const options = typeof operationOrOptions === 'function' ? {} : operationOrOptions;
+        const operation = typeof operationOrOptions === 'function' ? operationOrOptions : callback;
+        if (!operation) {
+          throw new Error('Lock callback is required.');
+        }
+        if (options.ifAvailable && waiting.has(name)) {
+          return Promise.resolve(operation(null));
+        }
+        waiting.set(name, (waiting.get(name) ?? 0) + 1);
         const pending = (tails.get(name) ?? Promise.resolve()).then(async () => {
           acquired.push(name);
-          return operation();
+          return operation({ name, mode: 'exclusive' });
         });
-        tails.set(name, pending.catch(() => {}));
+        const tail = pending.catch(() => {}).finally(() => {
+          const count = (waiting.get(name) ?? 1) - 1;
+          if (count) {
+            waiting.set(name, count);
+          } else {
+            waiting.delete(name);
+          }
+          if (tails.get(name) === tail) {
+            tails.delete(name);
+          }
+        });
+        tails.set(name, tail);
         return pending;
       },
     },

@@ -1,0 +1,1 @@
+export const imageComposition__export_notice = (): string => "Alle gespeicherten bestätigten Bilder dieses Vorgangs einschließlich archivierter Bilder herunterladen? Eingabebilder, Vorschauen, Verbindungsdaten und Modellpfade sind ausgeschlossen. Prompts und Parameter sind enthalten.";

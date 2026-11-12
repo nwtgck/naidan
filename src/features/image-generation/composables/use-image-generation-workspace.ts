@@ -1,3 +1,12 @@
+import { useImageComposition } from '@/features/image-generation/composition/use-image-composition';
+import { resolveImageCompositionDraft } from '@/features/image-generation/composition/draft';
+import { validateImageGenerationInputs } from '@/features/image-generation/composition/input';
+import { runImageGenerationOperation, type ImageOperationProgress } from '@/features/image-generation/session/operation-runner';
+import { withImageOperationExecution } from '@/features/image-generation/session/operation-lock';
+import { protectImageOperationSaves } from '@/features/image-generation/session/operation-saves';
+import { imagePendingOperations } from '@/features/image-generation/session/pending-operations';
+import { listImageGenerationOperations } from '@/00-storage/service/image-generation/operations';
+import type { ImageGenerationOperation } from '@/01-models/image-generation';
 import { compareImageGenerationSessions } from '@/01-models/image-generation';
 import { isRemoteImageRuntime } from '@/01-models/image-generation-remote';
 import { imagePendingSessionUses } from '@/features/image-generation/session/pending-session-uses';
@@ -42,6 +51,10 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   const presentationKey = computed(() => JSON.stringify([store.value?.storeId, selectedSessionId.value]));
   const sessionPresentation = useImageSessionPresentation({ generation, selectedKey: presentationKey });
   const runs = shallowRef<ImageGenerationRunSummary[]>([]);
+  const operations = shallowRef<ImageGenerationOperation[]>([]);
+  const compositionRunning = ref(false), singleSubmitting = ref(false);
+  const generationOperationProgress = shallowRef<ImageOperationProgress>();
+  let compositionAbort: AbortController | undefined;
   const runsWithAssets = shallowRef<ImageGenerationRunId[]>([]);
   const tiles = shallowRef<ImageGenerationTile[]>([]);
   const nextCursor = shallowRef<ImageGenerationAssetPage['nextCursor']>();
@@ -194,7 +207,19 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     void runRevision.value;
     return owner?.snapshot();
   });
-  const hasPendingSave = computed(() => runState.value?.needsRetry ?? false);
+  const hasPendingSave = computed(() => {
+    void runRevision.value;
+    return imagePendingRuns.list().some(entry => entry.state.needsRetry) || imagePendingOperations.list().length > 0;
+  });
+  const unsubscribeOperations = imagePendingOperations.subscribe({
+    listener() {
+      if (disposed) {
+        return;
+      }
+      runRevision.value++;
+      void refresh({ append: false });
+    },
+  });
   let seenReceived = 0;
   const unsubscribeRuns = imagePendingRuns.subscribe({
     listener() {
@@ -215,6 +240,106 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   const reusing = ref(false);
   const busy = computed(() => starting.value || switching.value || mutation.value || reusing.value);
   const userTags = computed(() => catalog.value?.tags.filter(tag => tag.state === 'active') ?? []);
+  const composition = useImageComposition({
+    store,
+    sessionId: selectedSessionId,
+    blocked: computed(() => busy.value || generation.busy.value || singleSubmitting.value || !editorReady.value || hasPendingSave.value),
+    commonCount: count,
+    captureDraft: () => generation.captureDraft?.(),
+  });
+  const compositionSupported = computed(() => available.value && !!generation.prepareRequests);
+  function cancelComposition(): void {
+    compositionAbort?.abort(new DOMException('Generation cancelled.', 'AbortError'));
+    generation.cancel();
+  }
+  async function generateComposition(): Promise<void> {
+    if (!compositionSupported.value || !composition.editable.value || generation.formDisabled.value || disposed) {
+      return;
+    }
+    failure.value = '';
+    const common = generation.captureDraft?.();
+    if (!common || !generation.prepareRequests) {
+      return;
+    }
+    let requests;
+    try {
+      const { inputs } = validateImageGenerationInputs({ inputs: composition.state.value.jobs.map(job => job.input), defaultCount: count.value });
+      requests = inputs.map(input => ({ draft: resolveImageCompositionDraft({ common, input, slots: composition.state.value.slots }), count: input.count ?? count.value }));
+    } catch (error) {
+      failure.value = errorText({ error });
+      return;
+    }
+    let session = currentSession.value;
+    if (!session) {
+      composition.carryToNewSession();
+      session = await newSession({ preserveDraft: true });
+      composition.cancelCarry();
+    }
+    const target = store.value;
+    if (!session || !target || !editorReady.value) {
+      return;
+    }
+    // Save the common editor before preparation temporarily restores job models.
+    rememberDraft();
+    const destination = session.id, token = epoch;
+    const abort = new AbortController();
+    compositionAbort = abort;
+    starting.value = true;
+    compositionRunning.value = true;
+    generationOperationProgress.value = undefined;
+    const inputs = common.request.imageInputs;
+    const inputIds = new Set([inputs.initImage?.binaryObjectId, ...inputs.referenceImages.map(image => image.binaryObjectId)]);
+    const lineage = (sources.get(destination) ?? []).filter(source => source.source.role === 'settings' || source.binaryObjectId && inputIds.has(source.binaryObjectId)).map(source => source.source);
+    sessionPresentation.begin({ key: JSON.stringify([target.storeId, destination]) });
+    try {
+      if (!await flushDraft() || !await composition.flush()) {
+        throw new Error(await ensureStrings.imageGeneration__saving_required());
+      }
+      if (disposed || epoch !== token || store.value?.storeId !== target.storeId) {
+        throw new Error('The image storage changed before preparation.');
+      }
+      const plans = await generation.prepareRequests({ requests, signal: abort.signal });
+      if (disposed || epoch !== token || store.value?.storeId !== target.storeId) {
+        throw new Error('The image storage changed during preparation.');
+      }
+      await runImageGenerationOperation({
+        store: target,
+        sessionId: destination,
+        plans,
+        sources: lineage,
+        signal: abort.signal,
+        progress({ state }) {
+          if (!disposed && token === epoch) {
+            generationOperationProgress.value = state;
+            const phase = state.phase;
+            switch (phase) {
+            case 'accepting': break;
+            case 'running': case 'finishing': void refresh({ append: false });
+              break;
+            default: {
+              const exhaustive: never = phase;
+              throw new Error(String(exhaustive));
+            }
+            }
+          }
+        },
+      });
+      await retrySessionUse();
+    } catch (error) {
+      if (!disposed && token === epoch) {
+        failure.value = errorText({ error });
+      }
+    } finally {
+      sessionPresentation.finish();
+      compositionAbort = undefined;
+      starting.value = false;
+      compositionRunning.value = false;
+      if (!disposed && token === epoch) {
+        await refresh({ append: false });
+      }
+    }
+  }
+
   function errorText({ error }: { error: unknown }): string {
     return error instanceof Error ? error.message : String(error);
   }
@@ -271,6 +396,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     editingSessionId.value = undefined;
     tiles.value = [];
     runs.value = [];
+    operations.value = [];
     selection.value = [];
     closeDetails();
     loading.value = false;
@@ -301,6 +427,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     if (!target || !sessionId) {
       tiles.value = [];
       runs.value = [];
+      operations.value = [];
       runsWithAssets.value = [];
       loading.value = false;
       return;
@@ -338,6 +465,17 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       nextCursor.value = result.page.nextCursor;
       runs.value = result.runs.items;
       warnings.value = [...result.page.warnings, ...result.runs.warnings].map(warning => `${warning.path}: ${warning.message}`);
+      try {
+        const grouped = await listImageGenerationOperations({ store: target, sessionId });
+        if (!disposed && token === queryEpoch && selectedSessionId.value === sessionId) {
+          operations.value = grouped.items;
+          warnings.value = [...warnings.value, ...grouped.warnings.map(warning => `${warning.path}: ${warning.message}`)];
+        }
+      } catch (error) {
+        if (!disposed && token === queryEpoch) {
+          warnings.value = [...warnings.value, errorText({ error })];
+        }
+      }
     } catch (error) {
       if (!disposed && token === queryEpoch) {
         failure.value = errorText({ error });
@@ -499,6 +637,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     nextCursor.value = undefined;
     tiles.value = [];
     runs.value = [];
+    operations.value = [];
     runsWithAssets.value = [];
     total.value = 0;
     failure.value = '';
@@ -554,6 +693,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       closeDetails();
       tiles.value = [];
       runs.value = [];
+      operations.value = [];
       runsWithAssets.value = [];
       total.value = 0;
       nextCursor.value = undefined;
@@ -757,6 +897,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
         closeDetails();
         tiles.value = [];
         runs.value = [];
+        operations.value = [];
         runsWithAssets.value = [];
         nextCursor.value = undefined;
         total.value = 0;
@@ -971,6 +1112,17 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     }
   }
   async function generate(): Promise<void> {
+    if (singleSubmitting.value || compositionRunning.value) {
+      return;
+    }
+    singleSubmitting.value = true;
+    try {
+      await performSingleGeneration();
+    } finally {
+      singleSubmitting.value = false;
+    }
+  }
+  async function performSingleGeneration(): Promise<void> {
     if (!available.value) {
       if (disposed || busy.value || generation.formDisabled.value) {
         return;
@@ -1019,17 +1171,29 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     const acceptedOwner = owner;
     sessionPresentation.begin({ key: JSON.stringify([target.storeId, destination]) });
     try {
-      await generation.generate({
-        submission: {
-          ...acceptedOwner.submission,
-          async accepted({ snapshot, seeds }) {
-            await acceptedOwner.submission.accepted({ snapshot, seeds });
-            if (disposed || store.value?.storeId !== target.storeId) {
-              return;
+      await withImageOperationExecution({
+        store: target,
+        operationId: acceptedOwner.operationId,
+        execute: async () => {
+          try {
+            await generation.generate({
+              submission: {
+                ...acceptedOwner.submission,
+                async accepted({ snapshot, seeds }) {
+                  await acceptedOwner.submission.accepted({ snapshot, seeds });
+                  if (!disposed && store.value?.storeId === target.storeId) {
+                    await retrySessionUse();
+                  }
+                },
+              },
+            });
+          } finally {
+            try {
+              await acceptedOwner.retire();
+            } finally {
+              await protectImageOperationSaves({ store: target, operationId: acceptedOwner.operationId });
             }
-            // An ordering write is not a native failure or a second submission.
-            await retrySessionUse();
-          },
+          }
         },
       });
     } catch (error) {
@@ -1038,12 +1202,9 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       }
     } finally {
       sessionPresentation.finish();
-      try {
+      // Also retire when an ownership check failed before execute began.
+      if (!acceptedOwner.snapshot().run) {
         await acceptedOwner.retire();
-      } catch (error) {
-        if (!disposed) {
-          failure.value = errorText({ error });
-        }
       }
     }
     runRevision.value++;
@@ -1285,8 +1446,18 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
   }
   const editor: ImageGenerationView = {
     ...generation,
-    generate,
-    formDisabled: computed(() => generation.formDisabled.value || busy.value || available.value && !editorReady.value || hasPendingSave.value),
+    generate: () => {
+      const mode = composition.state.value.mode;
+      switch (mode) {
+      case 'multiple': return generateComposition();
+      case 'single': return generate();
+      default: {
+        const exhaustive: never = mode;
+        throw new Error(String(exhaustive));
+      }
+      }
+    },
+    formDisabled: computed(() => generation.formDisabled.value || singleSubmitting.value || busy.value || available.value && !editorReady.value || hasPendingSave.value),
     draftDisabled: computed(() => generation.draftDisabled.value || busy.value || available.value && !editorReady.value),
   };
   watch([text, onlyFavorite, filterTagId, visibility], () => {
@@ -1305,6 +1476,9 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     generation.library.selectedCandidateKey.value, generation.library.components.value.map(value => value.selectedCandidateKey), generation.weightResidency.value,
     generation.gpuBudgetMiB.value, generation.preview.value, generation.seedMode.value, generation.layout.value, generation.debug.value,
     generation.retainModel.value, generation.keepPreviews.value, generation.maxPreviews.value, generation.maxResults.value, count.value], () => {
+    if (compositionRunning.value) {
+      return;
+    }
     touchDraft();
     if (!editorReady.value || (generation.draftRestoreDisabled?.value ?? generation.draftDisabled.value)) {
       return;
@@ -1316,7 +1490,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     }, 500);
   }, { deep: true, flush: 'sync' });
   watch(() => generation.draftRestoreDisabled?.value ?? generation.formDisabled.value, value => {
-    if (!value) {
+    if (!value && !compositionRunning.value) {
       void restoreActiveDraft();
     }
   });
@@ -1330,6 +1504,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
         throw new Error(String(exhaustive));
       }
       }
+      compositionAbort?.abort(new Error('The storage changed.'));
       initialized.value = false;
       epoch++;
       queryEpoch++;
@@ -1360,6 +1535,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
       sources.clear();
       tiles.value = [];
       runs.value = [];
+      operations.value = [];
       runsWithAssets.value = [];
       selection.value = [];
       closeDetails();
@@ -1371,6 +1547,7 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     void reload();
   });
   onScopeDispose(() => {
+    compositionAbort?.abort(new DOMException('Workspace closed.', 'AbortError'));
     translationMemory.clear();
     rememberDraft();
     void saveDraft();
@@ -1382,8 +1559,16 @@ export function useImageGenerationWorkspace({ generation, requestedSessionId }: 
     void queries.dispose();
     unsubscribe();
     unsubscribeRuns();
+    unsubscribeOperations();
   });
   return {
+    composition,
+    compositionSupported,
+    compositionRunning,
+    generationOperationProgress,
+    generateComposition,
+    cancelComposition,
+    operations,
     sessionUseFailure,
     sessionUseSaving,
     retrySessionUse,

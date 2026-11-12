@@ -1,3 +1,4 @@
+import { imageGenerationOperationTable } from './operations';
 import {
   ExperimentalImageGenerationActivityJournalSchemaDto,
   type ExperimentalImageGenerationActivityJournalDto,
@@ -106,6 +107,14 @@ export async function applyImageGenerationActivity({ directory, sessionId, runId
   if (!run) {
     await finishImageGenerationActivity({ directory, sessionId, runId });
     return undefined;
+  }
+  if (run.operationId !== undefined) {
+    const operation = await (await imageGenerationOperationTable({ directory: location, sessionId, create: false })).load({ id: run.operationId });
+    if (!operation || !operation.runIds.includes(runId)) {
+      // Staged child records do not prove acceptance. Keep the reservation for
+      // the parent's idempotent retry, without reordering an unrelated session.
+      return undefined;
+    }
   }
   const journal = await readImageGenerationActivity({ directory });
   assertActivityJournal({ journal });

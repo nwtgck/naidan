@@ -27,6 +27,12 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+### Added
+
+- Multiple editable image-generation requests in one session, with shared settings, per-request overrides, duplication and ordering. Paste YAML documents or JSON Lines directly with automatic format detection and explicit model-configuration slot assignment.
+- Unified generation-operation groups for single and multiple requests, sequential execution with frozen settings, recoverable metadata saves, and operation-scoped result ZIP downloads. Session backups also include operation membership and composition drafts.
+- Persisted composition checkpoints with conflict detection and explicit interrupted-operation recovery that protects active inference and unsaved results in other tabs. Existing image-generation records remain readable without rewriting their image identities.
+
 ## [0.66.0] - 2026-11-11
 
 ### Added

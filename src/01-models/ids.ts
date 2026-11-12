@@ -42,6 +42,8 @@ export type LocalModelSourceId = BrandedId<'LocalModelSourceId'>;
 export type ImageGenerationId = BrandedId<'ImageGenerationId'>;
 export type ImageGenerationStoreId = BrandedId<'ImageGenerationStoreId'>;
 export type ImageGenerationSessionId = BrandedId<'ImageGenerationSessionId'>;
+export type ImageGenerationOperationId = BrandedId<'ImageGenerationOperationId'>;
+export type ImageGenerationJobId = BrandedId<'ImageGenerationJobId'>;
 export type ImageGenerationRunId = BrandedId<'ImageGenerationRunId'>;
 export type ImageGenerationAssetId = BrandedId<'ImageGenerationAssetId'>;
 export type ImageGenerationTagId = BrandedId<'ImageGenerationTagId'>;
@@ -144,6 +146,10 @@ export function toImageGenerationTagId({ raw }: { raw: string }): ImageGeneratio
 
 export function toImageGenerationBindingId({ raw }: { raw: string }): ImageGenerationBindingId {
   return raw as unknown as ImageGenerationBindingId;
+}
+
+export function toImageGenerationOperationId({ raw }: { raw: string }): ImageGenerationOperationId {
+  return raw as unknown as ImageGenerationOperationId;
 }
 
 export function toImageGenerationDraftRevisionId({ raw }: { raw: string }): ImageGenerationDraftRevisionId {

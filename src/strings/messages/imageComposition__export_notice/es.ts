@@ -1,0 +1,1 @@
+export const imageComposition__export_notice = (): string => "¿Descargar todas las imágenes confirmadas y guardadas de esta operación, incluidas las archivadas? Se excluyen entradas, vistas previas, conexiones y rutas de modelos. Se incluyen prompts y parámetros.";

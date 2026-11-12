@@ -1,0 +1,1 @@
+export const imageComposition__slot_help = (): string => "Choose models with the existing controls, then assign the configuration to each named slot. Omitted slots use the shared model configuration.";

@@ -1,0 +1,1 @@
+export const imageComposition__export_notice = (): string => "Download all saved confirmed images from this generation operation, including archived images? Input images, previews, connection details and model paths are excluded. Prompts and generation parameters are included.";

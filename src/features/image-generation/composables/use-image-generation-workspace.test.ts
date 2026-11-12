@@ -1871,3 +1871,77 @@ it('does not let an older failed session-order update block the next accepted se
   expect(fixture.view.sessionUseFailure.value).toBe('');
   expect(fixture.native).toHaveBeenCalledTimes(2);
 });
+
+async function enableMultipleRequests({ h }: { h: Awaited<ReturnType<typeof ready>> }) {
+  h.generation.prepareRequests = async ({ requests, signal }) => requests.map(({ draft, count }) => {
+    if (!draft.request.runtime) {
+      throw new Error('Missing test runtime.');
+    }
+    signal.throwIfAborted();
+    const snapshot = { id: toImageGenerationId({ raw: 'prepared-aa' }), createdAt: Date.now(), request: { ...structuredClone(draft.request), runtime: draft.request.runtime }, inputFiles: draft.files };
+    const seeds = planImageGenerationSeeds({ baseSeed: snapshot.request.parameters.seed, count });
+    return {
+      snapshot,
+      seeds,
+      async execute({ submission }) {
+        if (!submission) {
+          throw new Error('Missing test submission.');
+        }
+        await submission.accepted({ snapshot, seeds });
+        for (const [index, seed] of seeds.entries()) {
+          await h.native();
+          const output = finishImageGenerationSnapshot({ snapshot: { ...snapshot, request: { ...snapshot.request, parameters: { ...snapshot.request.parameters, seed } } }, result: { png: new Blob(['pixels']), width: snapshot.request.parameters.width, height: snapshot.request.parameters.height, modelVersion: 'fixture', uniformOutput: false }, previews: [], elapsedMs: 1 });
+          await submission.output({ index, ...output });
+        }
+        await submission.finished({ completion: { type: 'completed' } });
+      },
+    };
+  });
+}
+
+it('keeps multiple generation gestures in one session and preserves separate prompts/counts and the shared draft', async () => {
+  const h = await ready();
+  await enableMultipleRequests({ h });
+  h.generation.parameters.value.prompt = 'shared unchanged';
+  h.view.count.value = 2;
+  h.view.composition.setMode({ mode: 'multiple' });
+  h.view.composition.pastedText.value = `\
+prompt: red
+---
+prompt: blue
+count: 1
+width: 512`;
+  await flushPromises();
+  await h.view.composition.parse();
+  h.view.composition.importJobs({ replace: false });
+  await h.view.generateComposition();
+  await flushPromises();
+  expect(h.view.failure.value).toBe('');
+  expect(h.view.sessions.value).toHaveLength(1);
+  expect(h.view.operations.value).toHaveLength(1);
+  expect(h.view.operations.value[0]!.runIds).toHaveLength(2);
+  expect(h.view.tiles.value).toHaveLength(3);
+  expect(h.view.runs.value.map(run => run.prompt).sort()).toEqual(['blue', 'red']);
+  expect(h.generation.parameters.value.prompt).toBe('shared unchanged');
+  expect(h.view.composition.state.value.jobs).toHaveLength(2);
+  expect(h.view.composition.dirty.value).toBe(false);
+  const sessionId = h.view.selectedSessionId.value;
+  h.view.composition.setMode({ mode: 'single' });
+  await h.view.generate();
+  await flushPromises();
+  expect(h.view.sessions.value).toHaveLength(1);
+  expect(h.view.selectedSessionId.value).toBe(sessionId);
+  expect(h.view.operations.value.map(operation => operation.runIds.length).sort()).toEqual([1, 2]);
+  expect(h.view.runs.value).toHaveLength(3);
+});
+
+it('does not accept any request when a pasted model slot is unassigned', async () => {
+  const h = await ready();
+  await enableMultipleRequests({ h });
+  h.view.composition.add();
+  h.view.composition.update({ id: h.view.composition.state.value.jobs[0]!.id, input: { prompt: 'red', uiModelConfigurationSlot: 'choose here' } });
+  await h.view.generateComposition();
+  expect(h.view.failure.value).toContain('choose here');
+  expect(h.native).not.toHaveBeenCalled();
+  expect(h.view.sessions.value).toEqual([]);
+});

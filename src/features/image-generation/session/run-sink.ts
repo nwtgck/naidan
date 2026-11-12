@@ -1,5 +1,5 @@
 import { generateId } from '@/01-models/id';
-import type { ImageGenerationAssetId, ImageGenerationRunId, ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationAssetId, ImageGenerationOperationId, ImageGenerationRunId, ImageGenerationSessionId } from '@/01-models/ids';
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import type { ImageGenerationAsset, ImageGenerationRun, ImageGenerationRunExecution, ImageGenerationSource } from '@/01-models/image-generation';
 import type { ImageGenerationSubmission, ImageGenerationCompletion } from '@/features/image-generation/generation-submission';
@@ -13,9 +13,9 @@ export type ImageGenerationRunPersistence = {
 
 /** A failed acknowledgement retries the SAME identities, bytes and revisions.
  * Completion is deferred until every received image has been persisted. */
-export function createImageGenerationRunSink({ sessionId, count, sources, persistence, changed }: {
+export function createImageGenerationRunSink({ sessionId, count, sources, persistence, changed, operationId, plannedRun }: {
   sessionId: ImageGenerationSessionId, count: number, sources: ImageGenerationSource[], persistence: ImageGenerationRunPersistence,
-  changed: () => void,
+  changed: () => void, operationId?: ImageGenerationOperationId, plannedRun?: ImageGenerationRun,
 }) {
   let run: ImageGenerationRun | undefined;
   let inputs: HistoryBinaryFile[] = [];
@@ -104,7 +104,8 @@ export function createImageGenerationRunSink({ sessionId, count, sources, persis
         throw new Error('Accepted seeds must match the requested output count and base seed.');
       }
       startedAt = Date.now();
-      run = {
+      const acceptedRun: ImageGenerationRun = {
+        ...(operationId === undefined ? {} : { operationId }),
         acceptedOrder: undefined,
         id: generateId<ImageGenerationRunId>(),
         sessionId,
@@ -115,6 +116,14 @@ export function createImageGenerationRunSink({ sessionId, count, sources, persis
         sources: sources.map(source => ({ ...source })),
         execution: { type: 'queued' },
       };
+      if (plannedRun) {
+        if (plannedRun.sessionId !== sessionId || plannedRun.operationId !== operationId || plannedRun.revision !== 0 || plannedRun.execution.type !== 'queued' || JSON.stringify(plannedRun.request) !== JSON.stringify(acceptedRun.request) || JSON.stringify(plannedRun.seeds) !== JSON.stringify(seeds) || JSON.stringify(plannedRun.sources) !== JSON.stringify(sources)) {
+          throw new Error('The prepared generation no longer matches its accepted request.');
+        }
+        run = structuredClone(plannedRun);
+      } else {
+        run = acceptedRun;
+      }
       inputs = snapshot.inputFiles.map(file => ({ ...file }));
       changed();
       await publish();

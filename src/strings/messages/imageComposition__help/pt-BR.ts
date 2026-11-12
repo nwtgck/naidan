@@ -1,0 +1,1 @@
+export const imageComposition__help = (): string => "Cada solicitação herda os ajustes compartilhados, exceto os substituídos. A execução segue a ordem da lista e para em caso de falha ou cancelamento.";

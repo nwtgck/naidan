@@ -1,0 +1,1 @@
+export const imageComposition__recover_notice = (): string => "Solo se marcan las solicitudes incompletas si ninguna pestaña conserva la operación o resultados sin guardar. No genera ni elimina imágenes.";

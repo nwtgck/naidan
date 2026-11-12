@@ -19,5 +19,13 @@ export type ImageGenerationSubmission = {
   finished({ completion }: { completion: ImageGenerationCompletion }): Promise<void>,
 };
 
+/** Prepared capabilities live only in memory. The coordinator saves the whole
+ * operation before consuming them; persistence retries never call execute. */
+export type PreparedImageGeneration = {
+  readonly snapshot: ImageGenerationSnapshot,
+  readonly seeds: readonly string[],
+  execute({ submission, signal }: { submission: ImageGenerationSubmission | undefined, signal: AbortSignal | undefined }): Promise<void>,
+};
+
 export const TEST_ONLY = {
 };

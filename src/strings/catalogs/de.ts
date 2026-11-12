@@ -2712,6 +2712,41 @@ import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__su
 import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/de';
 import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/de';
 import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/de';
+import { imageComposition__add } from '@/strings/messages/imageComposition__add/de';
+import { imageComposition__append } from '@/strings/messages/imageComposition__append/de';
+import { imageComposition__assign } from '@/strings/messages/imageComposition__assign/de';
+import { imageComposition__assigned } from '@/strings/messages/imageComposition__assigned/de';
+import { imageComposition__auto } from '@/strings/messages/imageComposition__auto/de';
+import { imageComposition__down } from '@/strings/messages/imageComposition__down/de';
+import { imageComposition__download_results } from '@/strings/messages/imageComposition__download_results/de';
+import { imageComposition__duplicate } from '@/strings/messages/imageComposition__duplicate/de';
+import { imageComposition__export_notice } from '@/strings/messages/imageComposition__export_notice/de';
+import { imageComposition__generate } from '@/strings/messages/imageComposition__generate/de';
+import { imageComposition__help } from '@/strings/messages/imageComposition__help/de';
+import { imageComposition__inherit } from '@/strings/messages/imageComposition__inherit/de';
+import { imageComposition__multiple } from '@/strings/messages/imageComposition__multiple/de';
+import { imageComposition__operation } from '@/strings/messages/imageComposition__operation/de';
+import { imageComposition__overrides } from '@/strings/messages/imageComposition__overrides/de';
+import { imageComposition__parse } from '@/strings/messages/imageComposition__parse/de';
+import { imageComposition__paste } from '@/strings/messages/imageComposition__paste/de';
+import { imageComposition__paste_help } from '@/strings/messages/imageComposition__paste_help/de';
+import { imageComposition__pending_metadata } from '@/strings/messages/imageComposition__pending_metadata/de';
+import { imageComposition__random } from '@/strings/messages/imageComposition__random/de';
+import { imageComposition__recover } from '@/strings/messages/imageComposition__recover/de';
+import { imageComposition__recover_notice } from '@/strings/messages/imageComposition__recover_notice/de';
+import { imageComposition__reload } from '@/strings/messages/imageComposition__reload/de';
+import { imageComposition__reload_notice } from '@/strings/messages/imageComposition__reload_notice/de';
+import { imageComposition__remove } from '@/strings/messages/imageComposition__remove/de';
+import { imageComposition__replace } from '@/strings/messages/imageComposition__replace/de';
+import { imageComposition__replace_notice } from '@/strings/messages/imageComposition__replace_notice/de';
+import { imageComposition__save_only } from '@/strings/messages/imageComposition__save_only/de';
+import { imageComposition__shared_negative_prompt } from '@/strings/messages/imageComposition__shared_negative_prompt/de';
+import { imageComposition__single } from '@/strings/messages/imageComposition__single/de';
+import { imageComposition__slot_help } from '@/strings/messages/imageComposition__slot_help/de';
+import { imageComposition__summary } from '@/strings/messages/imageComposition__summary/de';
+import { imageComposition__unassigned } from '@/strings/messages/imageComposition__unassigned/de';
+import { imageComposition__unsupported } from '@/strings/messages/imageComposition__unsupported/de';
+import { imageComposition__up } from '@/strings/messages/imageComposition__up/de';
 import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/de';
 import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/de';
 import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/de';
@@ -6590,6 +6625,41 @@ export const catalog = {
   imageBenchmark__timeout,
   imageBenchmark__unavailable_components,
   imageBenchmark__warm,
+  imageComposition__add,
+  imageComposition__append,
+  imageComposition__assign,
+  imageComposition__assigned,
+  imageComposition__auto,
+  imageComposition__down,
+  imageComposition__download_results,
+  imageComposition__duplicate,
+  imageComposition__export_notice,
+  imageComposition__generate,
+  imageComposition__help,
+  imageComposition__inherit,
+  imageComposition__multiple,
+  imageComposition__operation,
+  imageComposition__overrides,
+  imageComposition__parse,
+  imageComposition__paste,
+  imageComposition__paste_help,
+  imageComposition__pending_metadata,
+  imageComposition__random,
+  imageComposition__recover,
+  imageComposition__recover_notice,
+  imageComposition__reload,
+  imageComposition__reload_notice,
+  imageComposition__remove,
+  imageComposition__replace,
+  imageComposition__replace_notice,
+  imageComposition__save_only,
+  imageComposition__shared_negative_prompt,
+  imageComposition__single,
+  imageComposition__slot_help,
+  imageComposition__summary,
+  imageComposition__unassigned,
+  imageComposition__unsupported,
+  imageComposition__up,
   imageGeneration__action_applied,
   imageGeneration__active_images,
   imageGeneration__actual_seed,

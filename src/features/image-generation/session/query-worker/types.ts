@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { idToRaw, toBinaryObjectId, toImageGenerationAssetId, toImageGenerationRunId, toImageGenerationSessionId, toImageGenerationStoreId, toImageGenerationTagId } from '@/01-models/ids';
+import { idToRaw, toBinaryObjectId, toImageGenerationAssetId, toImageGenerationRunId, toImageGenerationOperationId, toImageGenerationSessionId, toImageGenerationStoreId, toImageGenerationTagId } from '@/01-models/ids';
 import type { ImageGenerationAssetPage, ImageGenerationAssetQuery, ImageGenerationReadResult, ImageGenerationRunSummary } from '@/01-models/image-generation';
 import type { ImageGenerationStoreAccess } from '@/00-storage/service/image-generation';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
@@ -61,7 +61,7 @@ export const generationQueryResultSchema = z.object({
     warnings,
     warningCount: integer,
   }).strict()),
-  runs: z.object({ items: z.array(z.object({ id: runId, sessionId, revision: integer, createdAt: integer, prompt: z.string(), modelName: z.string(), requestedCount: z.number().int().min(1).max(64), execution }).strict()), warnings, warningCount: integer }).strict(),
+  runs: z.object({ items: z.array(z.object({ id: runId, operationId: rawId.transform(raw => toImageGenerationOperationId({ raw })).optional(), sessionId, revision: integer, createdAt: integer, prompt: z.string(), modelName: z.string(), requestedCount: z.number().int().min(1).max(64), execution }).strict()), warnings, warningCount: integer }).strict(),
 }).strict();
 export type ImageGenerationQuery = { store: ImageGenerationStoreAccess, sessionId: ImageGenerationRunSummary['sessionId'], query: ImageGenerationAssetQuery };
 export type ImageGenerationQueryResult = { runsWithAssets: ReturnType<typeof toImageGenerationRunId>[], deletedAssetIds: ReturnType<typeof toImageGenerationAssetId>[], pendingDeletions: { assetId: ReturnType<typeof toImageGenerationAssetId>, sessionId: ReturnType<typeof toImageGenerationSessionId>, revision: number }[], page: ImageGenerationAssetPage, runs: ImageGenerationReadResult<ImageGenerationRunSummary> };
@@ -126,7 +126,7 @@ export function generationResultToWire({ value }: { value: ImageGenerationQueryR
       })),
       nextCursor: value.page.nextCursor && { ...value.page.nextCursor, id: idToRaw({ id: value.page.nextCursor.id }) },
     },
-    runs: { ...value.runs, items: value.runs.items.map(run => ({ ...run, id: idToRaw({ id: run.id }), sessionId: idToRaw({ id: run.sessionId }) })) },
+    runs: { ...value.runs, items: value.runs.items.map(({ operationId, ...run }) => ({ ...run, ...(operationId === undefined ? {} : { operationId: idToRaw({ id: operationId }) }), id: idToRaw({ id: run.id }), sessionId: idToRaw({ id: run.sessionId }) })) },
   };
 }
 
