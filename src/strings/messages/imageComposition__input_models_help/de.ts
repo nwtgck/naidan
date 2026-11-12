@@ -1,0 +1,1 @@
+export const imageComposition__input_models_help = (): string => "Für eine andere Modellkonfiguration uiModelConfigurationSlot angeben und diesem Slot nach dem Import in der Oberfläche eine Konfiguration zuweisen.";

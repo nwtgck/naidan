@@ -8,6 +8,7 @@ import { idToRaw, type ImageGenerationRunId, type ImageGenerationTagId } from '@
 import type { ImageGenerationRunExecution } from '@/01-models/image-generation';
 import type { ImageGenerationTile, ImageGenerationWorkspaceView } from '@/features/image-generation/composables/use-image-generation-workspace';
 import ImageGenerationOperationActions from './ImageGenerationOperationActions.vue';
+import ImageGenerationOperationGroup from './ImageGenerationOperationGroup.vue';
 import { groupImageGenerationOperations } from '@/features/image-generation/composition/presentation';
 import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 import ImageGenerationAssetCard from './ImageGenerationAssetCard.vue';
@@ -117,8 +118,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p v-if="!view.tiles.value.length && !view.loading.value" tw-class="rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 px-5 py-8 text-sm text-gray-500 dark:text-gray-400 text-center">{{ lazyStrings.imageGeneration__empty_gallery() }}</p>
       <div v-if="mode === 'gallery'" tw-class="grid grid-cols-2 @[30rem]/gallery:grid-cols-3 @[46rem]/gallery:grid-cols-4 gap-3"><ImageGenerationAssetCard :prompt="runById.get(tile.runId)?.prompt" v-for="tile in view.tiles.value" :key="idToRaw({ id: tile.id })" :tile="tile" :view="view" /></div>
       <div v-else tw-class="space-y-5">
-        <section v-for="operationGroup in groupedOperations" :key="operationGroup.key" tw-class="space-y-3" data-testid="workspace-operation">
-          <ImageGenerationOperationActions v-if="operationGroup.operation" :operation="operationGroup.operation" :store="view.store.value" :unfinished="view.runs.value.some(run => operationGroup.operation?.runIds.includes(run.id) && (run.execution.type === 'queued' || run.execution.type === 'running'))" :disabled="view.mutation.value || view.compositionRunning.value || view.busy.value || view.hasPendingSave.value" @updated="view.refresh({ append: false })" />
+        <ImageGenerationOperationGroup v-for="operationGroup in groupedOperations" :key="operationGroup.key" :operation="operationGroup.operation" data-testid="workspace-operation">
+          <template #actions><ImageGenerationOperationActions v-if="operationGroup.operation" :operation="operationGroup.operation" :store="view.store.value" :unfinished="view.runs.value.some(run => operationGroup.operation?.runIds.includes(run.id) && (run.execution.type === 'queued' || run.execution.type === 'running'))" :saved-image-count="operationGroup.operation.runIds.reduce((total, runId) => total + (view.savedImageCounts.value.get(runId) ?? 0), 0)" :download-disabled="view.mutation.value" :recovery-disabled="view.mutation.value || view.compositionRunning.value || view.busy.value || view.hasPendingSave.value" @updated="view.refresh({ append: false })" /></template>
           <section v-for="group in operationGroup.groups" :key="idToRaw({ id: group.run.id })" tw-class="space-y-3" data-testid="workspace-run">
             <header tw-class="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-1"><div tw-class="flex items-start gap-2"><p tw-class="min-w-0 flex-1 line-clamp-2 text-sm leading-relaxed font-medium break-words select-text">{{ group.run.prompt }}</p><ImageGenerationCopyButton :text="group.run.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="workspace-copy-run-prompt" /></div><div tw-class="flex items-center gap-2 min-w-0">
               <p tw-class="min-w-0 flex-1 truncate text-[11px] text-gray-500 dark:text-gray-400" :title="group.run.modelName">{{ group.run.modelName }} · {{ statusLabel({ execution: group.run.execution }) }} · {{ group.run.requestedCount }}</p>
@@ -131,7 +132,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             </header>
             <div tw-class="grid grid-cols-2 @[30rem]/gallery:grid-cols-3 @[46rem]/gallery:grid-cols-4 gap-3"><ImageGenerationAssetCard v-for="tile in group.images" :key="idToRaw({ id: tile.id })" :tile="tile" :view="view" /></div>
           </section>
-        </section>
+        </ImageGenerationOperationGroup>
       </div>
       <button v-if="view.nextCursor.value" type="button" @click="view.refresh({ append: true })" :disabled="view.loading.value" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-3 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.imageGeneration__load_more() }}</button>
     </template>

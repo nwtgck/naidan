@@ -1,0 +1,1 @@
+export const imageComposition__input_values_help = (): string => "En seed, usa una cadena entre comillas para un valor fijo o null para un valor aleatorio. steps, guidance y vaeTileSize también aceptan auto.";

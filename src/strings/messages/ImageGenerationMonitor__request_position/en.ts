@@ -1,0 +1,1 @@
+export const ImageGenerationMonitor__request_position = ({ current, total, image, images }: { current: number, total: number, image: number, images: number }): string => `Prompt ${current} / ${total} · Image ${image} / ${images}`;

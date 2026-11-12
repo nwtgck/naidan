@@ -14,7 +14,7 @@ type Snapshot = {
 
 /** The existing galleries own bytes and URLs. This layer only associates their
  * IDs and small presentation snapshots with a session, never another engine. */
-export function useImageSessionPresentation({ generation, selectedKey }: { generation: ImageGenerationView, selectedKey: Readonly<Ref<string>> }) {
+export function useImageSessionPresentation({ generation, selectedKey, operationActive }: { generation: ImageGenerationView, selectedKey: Readonly<Ref<string>>, operationActive: Readonly<Ref<boolean>> | undefined }) {
   const ownerKey = shallowRef<string>();
   const revision = shallowRef(0);
   const snapshots = new Map<string, Snapshot>();
@@ -101,7 +101,11 @@ export function useImageSessionPresentation({ generation, selectedKey }: { gener
   watch(() => [generation.latestRun.value, generation.progress.value, generation.failure.value, generation.invalid.value,
     generation.cancelled.value, generation.previewError.value, generation.diagnosticText.value, generation.diagnosticStatus.value,
     generation.diagnosticFeedback.value, generation.results.value, generation.previewSnapshots.value, generation.livePreview.value], capture, { flush: 'sync' });
-  watch(generation.busy, value => {
+  const busy = computed(() => generation.busy.value || operationActive?.value === true);
+  // A multi-request operation briefly releases the engine after preparation and
+  // between requests. Its presentation remains owned until the whole operation
+  // retires, including final metadata saves.
+  watch(busy, value => {
     if (!value && capturing) {
       finish();
     }
@@ -122,7 +126,7 @@ export function useImageSessionPresentation({ generation, selectedKey }: { gener
     diagnosticText: computed(() => snapshot.value?.diagnosticText ?? ''),
     diagnosticStatus: computed(() => snapshot.value?.diagnosticStatus ?? ''),
     diagnosticFeedback: computed(() => snapshot.value?.diagnosticFeedback ?? ''),
-    busy: computed(() => belongs.value && generation.busy.value),
+    busy: computed(() => belongs.value && busy.value),
     stopping: computed(() => belongs.value && generation.stopping.value),
     results: computed(() => {
       void revision.value;
@@ -177,7 +181,7 @@ export function useImageSessionPresentation({ generation, selectedKey }: { gener
     startedAt = undefined;
     revision.value++;
   }
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), view, begin, finish, clear, ownerKey, startedAt: computed(() => snapshot.value?.startedAt), otherRunning: computed(() => generation.busy.value && !belongs.value) };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), view, begin, finish, clear, ownerKey, startedAt: computed(() => snapshot.value?.startedAt), otherRunning: computed(() => busy.value && !belongs.value) };
 }
 
 export const TEST_ONLY = {

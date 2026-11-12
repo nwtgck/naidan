@@ -1,0 +1,1 @@
+export const imageComposition__input_values_help = (): string => "Für seed eine Zeichenfolge in Anführungszeichen für einen festen Wert oder null für Zufall verwenden. steps, guidance und vaeTileSize akzeptieren auch auto.";

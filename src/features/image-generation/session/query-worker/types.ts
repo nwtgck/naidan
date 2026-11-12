@@ -39,6 +39,7 @@ const execution = z.discriminatedUnion('type', [
 ]);
 export const generationQueryResultSchema = z.object({
   runsWithAssets: z.array(runId),
+  savedImageCounts: z.array(z.object({ runId, count: integer }).strict()),
   deletedAssetIds: z.array(assetId),
   pendingDeletions: z.array(z.object({ assetId, sessionId, revision: integer }).strict()),
   page: resolveMissingAsUndefined(z.object({
@@ -64,7 +65,7 @@ export const generationQueryResultSchema = z.object({
   runs: z.object({ items: z.array(z.object({ id: runId, operationId: rawId.transform(raw => toImageGenerationOperationId({ raw })).optional(), sessionId, revision: integer, createdAt: integer, prompt: z.string(), modelName: z.string(), requestedCount: z.number().int().min(1).max(64), execution }).strict()), warnings, warningCount: integer }).strict(),
 }).strict();
 export type ImageGenerationQuery = { store: ImageGenerationStoreAccess, sessionId: ImageGenerationRunSummary['sessionId'], query: ImageGenerationAssetQuery };
-export type ImageGenerationQueryResult = { runsWithAssets: ReturnType<typeof toImageGenerationRunId>[], deletedAssetIds: ReturnType<typeof toImageGenerationAssetId>[], pendingDeletions: { assetId: ReturnType<typeof toImageGenerationAssetId>, sessionId: ReturnType<typeof toImageGenerationSessionId>, revision: number }[], page: ImageGenerationAssetPage, runs: ImageGenerationReadResult<ImageGenerationRunSummary> };
+export type ImageGenerationQueryResult = { runsWithAssets: ReturnType<typeof toImageGenerationRunId>[], savedImageCounts: { runId: ReturnType<typeof toImageGenerationRunId>, count: number }[], deletedAssetIds: ReturnType<typeof toImageGenerationAssetId>[], pendingDeletions: { assetId: ReturnType<typeof toImageGenerationAssetId>, sessionId: ReturnType<typeof toImageGenerationSessionId>, revision: number }[], page: ImageGenerationAssetPage, runs: ImageGenerationReadResult<ImageGenerationRunSummary> };
 export interface ImageGenerationQueryWorker { query({ request }: { request: z.input<typeof generationQueryRequestSchema> }): Promise<z.input<typeof generationQueryResultSchema>> }
 export interface ImageGenerationQueryClient {
   query({ store, sessionId, query }: { store: ImageGenerationQuery['store'], sessionId: ImageGenerationQuery['sessionId'], query: ImageGenerationQuery['query'] }): Promise<ImageGenerationQueryResult>,
@@ -107,6 +108,7 @@ export function generationQueryToWire({ value }: { value: ImageGenerationQuery }
 export function generationResultToWire({ value }: { value: ImageGenerationQueryResult }): z.input<typeof generationQueryResultSchema> {
   return {
     runsWithAssets: value.runsWithAssets.map(id => idToRaw({ id })),
+    savedImageCounts: value.savedImageCounts.map(({ runId, count }) => ({ runId: idToRaw({ id: runId }), count })),
     deletedAssetIds: value.deletedAssetIds.map(id => idToRaw({ id })),
     pendingDeletions: value.pendingDeletions.map(item => ({ ...item, assetId: idToRaw({ id: item.assetId }), sessionId: idToRaw({ id: item.sessionId }) })),
     page: {

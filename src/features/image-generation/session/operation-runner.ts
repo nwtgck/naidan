@@ -13,7 +13,12 @@ import { imagePendingSessionUses } from './pending-session-uses';
 import { protectImageOperationSaves } from './operation-saves';
 import { withImageOperationExecution } from './operation-lock';
 
-export type ImageOperationProgress = { operation: ImageGenerationOperation, index: number, total: number, phase: 'accepting' | 'running' | 'finishing' };
+export type ImageOperationProgress = {
+  operation: ImageGenerationOperation, index: number, total: number, phase: 'accepting' | 'running' | 'finishing',
+  status: 'active' | 'completed' | 'cancelled' | 'failed',
+  completedImages: number, savedImages: number, totalImages: number,
+  request: { runId: ImageGenerationRunId, received: number, total: number, saving: boolean } | undefined,
+};
 
 /** All requests are resolved before this function is called. Publication of the
  * immutable parent is the acceptance boundary; no native work precedes it. */
@@ -48,18 +53,34 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
   // Safe to keep for saving retries: none of these closures captures `plans`,
   // `progress`, a view, or a native execution capability.
   const accept = createOperationAcceptance({ store: destination, operation, requests });
-  const notify = ({ state }: { state: ImageOperationProgress }) => {
+  const totalImages = plans.reduce((total, plan) => total + plan.seeds.length, 0);
+  const imageCounts = new Map<ImageGenerationRunId, { received: number, saved: number }>();
+  let activeRequest: ImageOperationProgress['request'];
+  const notify = ({ index, phase, status }: { index: number, phase: ImageOperationProgress['phase'], status: ImageOperationProgress['status'] }) => {
     try {
-      progress({ state: { ...state, operation: structuredClone(state.operation) } });
+      progress({
+        state: {
+          operation: structuredClone(operation),
+          index,
+          total: plans.length,
+          phase,
+          status,
+          totalImages,
+          completedImages: [...imageCounts.values()].reduce((total, counts) => total + counts.received, 0),
+          savedImages: [...imageCounts.values()].reduce((total, counts) => total + counts.saved, 0),
+          request: activeRequest && { ...activeRequest },
+        },
+      });
     } catch { /* Presentation cannot abort durable work. */ }
   };
   const execute = async (): Promise<ImageGenerationOperation> => {
-    notify({ state: { operation, index: 0, total: plans.length, phase: 'accepting' } });
+    notify({ index: 0, phase: 'accepting', status: 'active' });
     try {
       await accept();
     } catch (error) {
       const save = createOperationFinalization({ store: destination, requests, reason: 'interrupted', accept });
       imagePendingOperations.retain({ store: destination, operation, message: error instanceof Error ? error.message : String(error), save });
+      notify({ index: 0, phase: 'finishing', status: signal.aborted ? 'cancelled' : 'failed' });
       throw error;
     }
     let next = 0, currentRequest = 0;
@@ -78,7 +99,15 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
           plannedRun: planned.run,
           persistence: createImageRunPersistence({ store: destination, operation }),
         });
-        notify({ state: { operation, index, total: plans.length, phase: 'running' } });
+        const observe = () => {
+          const state = owner.snapshot();
+          const unsaved = state.pending.filter(output => output.asset.result.confirmation !== 'unconfirmed').length;
+          imageCounts.set(planned.run.id, { received: state.received, saved: Math.max(0, state.received - unsaved) });
+          activeRequest = { runId: planned.run.id, received: state.received, total: planned.run.seeds.length, saving: state.saving };
+          notify({ index, phase: 'running', status: 'active' });
+        };
+        const unsubscribe = imagePendingRuns.subscribe({ listener: observe });
+        observe();
         try {
           await plans[index]!.execute({ submission: owner.submission, signal });
         } finally {
@@ -90,6 +119,8 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
             if (owner.snapshot().run) {
               next = index + 1;
             }
+            observe();
+            unsubscribe();
           }
         }
         const state = owner.snapshot();
@@ -123,7 +154,7 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
     } catch (error) {
       problem = new Error(`Request ${currentRequest + 1}/${plans.length}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
-    notify({ state: { operation, index: next, total: plans.length, phase: 'finishing' } });
+    notify({ index: next, phase: 'finishing', status: 'active' });
     const remaining = requests.slice(next);
     if (remaining.length) {
       const save = createOperationFinalization({ store: destination, requests: remaining, reason: signal.aborted ? 'cancelled' : 'interrupted', accept: undefined });
@@ -135,8 +166,10 @@ export async function runImageGenerationOperation({ store, sessionId, plans, sou
       }
     }
     if (problem !== undefined) {
+      notify({ index: next, phase: 'finishing', status: signal.aborted ? 'cancelled' : 'failed' });
       throw problem;
     }
+    notify({ index: next, phase: 'finishing', status: 'completed' });
     return operation;
   };
   return withImageOperationExecution({

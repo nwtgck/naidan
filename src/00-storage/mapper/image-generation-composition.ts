@@ -1,5 +1,5 @@
 import { idToRaw, toImageGenerationSessionId } from '@/01-models/ids';
-import type { ExperimentalImageGenerationCompositionDto, ExperimentalImageGenerationModelConfigurationDto } from '@/00-storage/00-dto/image-generation-composition.dto';
+import type { ExperimentalImageGenerationCompositionDto, ExperimentalImageGenerationModelConfigurationDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import type { ImageCompositionDraft, ImageModelConfiguration } from '@/01-models/image-generation';
 import { imageGenerationModelFileToDto, imageGenerationModelFileToDomain, imageGenerationRuntimeToDto, imageGenerationRuntimeToDomain } from './image-generation-history';
 import { imageInferenceLocationToDto, imageInferenceLocationToDomain, remoteImageModelEditorToDto, remoteImageModelEditorToDomain } from './image-generation-editor';

@@ -908,6 +908,9 @@ import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageB
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/es';
 import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/es';
 import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/es';
+import { ImageCompositionFields__model_configuration_slot } from '@/strings/messages/ImageCompositionFields__model_configuration_slot/es';
+import { ImageCompositionFields__shared } from '@/strings/messages/ImageCompositionFields__shared/es';
+import { ImageCompositionModeSelect__input_mode } from '@/strings/messages/ImageCompositionModeSelect__input_mode/es';
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/es';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/es';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/es';
@@ -1040,6 +1043,13 @@ import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/Imag
 import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/es';
 import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/es';
 import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/es';
+import { ImageGenerationMonitor__images_generated } from '@/strings/messages/ImageGenerationMonitor__images_generated/es';
+import { ImageGenerationMonitor__preparing_generation } from '@/strings/messages/ImageGenerationMonitor__preparing_generation/es';
+import { ImageGenerationMonitor__request_position } from '@/strings/messages/ImageGenerationMonitor__request_position/es';
+import { ImageGenerationMonitor__saving_results } from '@/strings/messages/ImageGenerationMonitor__saving_results/es';
+import { ImageGenerationMonitor__unsaved_images } from '@/strings/messages/ImageGenerationMonitor__unsaved_images/es';
+import { ImageGenerationOperationActions__no_completed_images } from '@/strings/messages/ImageGenerationOperationActions__no_completed_images/es';
+import { ImageGenerationOperationActions__saving_results } from '@/strings/messages/ImageGenerationOperationActions__saving_results/es';
 import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/es';
 import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/es';
 import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/es';
@@ -2717,6 +2727,7 @@ import { imageComposition__append } from '@/strings/messages/imageComposition__a
 import { imageComposition__assign } from '@/strings/messages/imageComposition__assign/es';
 import { imageComposition__assigned } from '@/strings/messages/imageComposition__assigned/es';
 import { imageComposition__auto } from '@/strings/messages/imageComposition__auto/es';
+import { imageComposition__copy_example } from '@/strings/messages/imageComposition__copy_example/es';
 import { imageComposition__down } from '@/strings/messages/imageComposition__down/es';
 import { imageComposition__download_results } from '@/strings/messages/imageComposition__download_results/es';
 import { imageComposition__duplicate } from '@/strings/messages/imageComposition__duplicate/es';
@@ -2724,6 +2735,10 @@ import { imageComposition__export_notice } from '@/strings/messages/imageComposi
 import { imageComposition__generate } from '@/strings/messages/imageComposition__generate/es';
 import { imageComposition__help } from '@/strings/messages/imageComposition__help/es';
 import { imageComposition__inherit } from '@/strings/messages/imageComposition__inherit/es';
+import { imageComposition__input_examples } from '@/strings/messages/imageComposition__input_examples/es';
+import { imageComposition__input_models_help } from '@/strings/messages/imageComposition__input_models_help/es';
+import { imageComposition__input_structure_help } from '@/strings/messages/imageComposition__input_structure_help/es';
+import { imageComposition__input_values_help } from '@/strings/messages/imageComposition__input_values_help/es';
 import { imageComposition__multiple } from '@/strings/messages/imageComposition__multiple/es';
 import { imageComposition__operation } from '@/strings/messages/imageComposition__operation/es';
 import { imageComposition__overrides } from '@/strings/messages/imageComposition__overrides/es';
@@ -4821,6 +4836,9 @@ export const catalog = {
   ImageBenchmarkResult__image_memory_limit_reached,
   ImageBenchmarkResult__image_not_retained,
   ImageBenchmarkResult__no_image,
+  ImageCompositionFields__model_configuration_slot,
+  ImageCompositionFields__shared,
+  ImageCompositionModeSelect__input_mode,
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
@@ -4953,6 +4971,13 @@ export const catalog = {
   ImageGenerationLab__record_detailed_logs,
   ImageGenerationLab__saved_models,
   ImageGenerationLab__select_missing_files,
+  ImageGenerationMonitor__images_generated,
+  ImageGenerationMonitor__preparing_generation,
+  ImageGenerationMonitor__request_position,
+  ImageGenerationMonitor__saving_results,
+  ImageGenerationMonitor__unsaved_images,
+  ImageGenerationOperationActions__no_completed_images,
+  ImageGenerationOperationActions__saving_results,
   ImageGenerationPreview__preview_from_cancelled_generation,
   ImageGenerationPreview__preview_from_failed_generation,
   ImageGenerationProgress__processing_step,
@@ -6630,6 +6655,7 @@ export const catalog = {
   imageComposition__assign,
   imageComposition__assigned,
   imageComposition__auto,
+  imageComposition__copy_example,
   imageComposition__down,
   imageComposition__download_results,
   imageComposition__duplicate,
@@ -6637,6 +6663,10 @@ export const catalog = {
   imageComposition__generate,
   imageComposition__help,
   imageComposition__inherit,
+  imageComposition__input_examples,
+  imageComposition__input_models_help,
+  imageComposition__input_structure_help,
+  imageComposition__input_values_help,
   imageComposition__multiple,
   imageComposition__operation,
   imageComposition__overrides,

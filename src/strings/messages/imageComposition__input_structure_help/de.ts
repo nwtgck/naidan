@@ -1,0 +1,1 @@
+export const imageComposition__input_structure_help = (): string => "Verwende pro YAML-Dokument (mit --- trennen) oder JSONL-Zeile ein flaches Objekt. prompt ist erforderlich. Nicht angegebene Felder verwenden die gemeinsamen Einstellungen. Keine umschließenden defaults-, jobs- oder overrides-Strukturen hinzufügen.";

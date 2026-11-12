@@ -1,6 +1,6 @@
 import type { ImageCompositionDraft } from '@/01-models/image-generation';
 import { imageCompositionToDto, imageCompositionToDomain } from '@/00-storage/mapper/image-generation-composition';
-import { ExperimentalImageGenerationCompositionSchemaDto, type ExperimentalImageGenerationCompositionDto } from '@/00-storage/00-dto/image-generation-composition.dto';
+import { ExperimentalImageGenerationCompositionSchemaDto, type ExperimentalImageGenerationCompositionDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationRawIdSchema, readImageGenerationText, writeImageGenerationText } from './files';
 import { imageGenerationSessionDirectory } from './tables';
 import { assertImageGenerationReplacement, withImageGenerationStore, type ImageGenerationStoreAccess } from './context';

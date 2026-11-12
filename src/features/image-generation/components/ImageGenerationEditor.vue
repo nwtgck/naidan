@@ -161,11 +161,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </fieldset>
         </ImageSettingsSection>
       </section>
-      <slot name="prompt-mode" />
       <slot name="prompt-editor">
         <section tw-class="space-y-2" data-testid="image-prompt-section">
           <div tw-class="rounded-xl border border-gray-200/80 bg-white dark:bg-gray-900/40 px-3.5 pb-1.5 pt-2 transition-colors hover:border-gray-300 focus-within:border-blue-400/70 focus-within:ring-2 focus-within:ring-blue-500/10 dark:border-gray-700/70 dark:hover:border-gray-600 dark:focus-within:border-blue-500/60">
-            <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'prompt'" :text="parameters.prompt" /><ImageGenerationCopyButton :text="parameters.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="image-copy-draft-prompt" /></div></div>
+            <div tw-class="flex flex-wrap items-center justify-between gap-2">
+              <div tw-class="flex min-w-0 max-w-full items-center gap-1.5"><label :for="id + '-prompt'" tw-class="shrink-0 text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__prompt() }}</label><slot name="prompt-mode" /></div>
+              <div tw-class="ml-auto flex shrink-0 items-center gap-1"><slot name="prompt-actions" :field="'prompt'" :text="parameters.prompt" /><ImageGenerationCopyButton :text="parameters.prompt" :label="lazyStrings.imageGeneration__copy_prompt()" data-testid="image-copy-draft-prompt" /></div>
+            </div>
             <textarea :id="id + '-prompt'" :placeholder="lazyStrings.stableDiffusionCppBrowser__prompt()" :disabled="draftDisabled" v-model="parameters.prompt" rows="4" maxlength="4096" required data-testid="image-prompt" tw-class="block w-full resize-y border-0 bg-transparent px-0.5 py-2 text-sm leading-7 text-gray-800 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-100" />
           </div>
           <div tw-class="rounded-xl border border-gray-200/80 bg-gray-50/70 dark:bg-gray-800/20 px-3.5 pb-1.5 pt-2 transition-colors hover:border-gray-300 focus-within:border-blue-400/70 focus-within:ring-2 focus-within:ring-blue-500/10 dark:border-gray-700/70 dark:hover:border-gray-600 dark:focus-within:border-blue-500/60">

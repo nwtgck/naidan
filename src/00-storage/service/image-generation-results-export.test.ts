@@ -42,6 +42,29 @@ async function setup() {
 const root = '/naidan-storage/experimental/image-generation/sessions/aa/session-aa';
 
 describe('operation result export boundary', () => {
+  it('captures only currently saved outputs while generation continues and keeps that snapshot fixed', async () => {
+    const catalog = (await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' }))!;
+    const store = { storageType: 'opfs' as const, storeId: catalog.id };
+    const session = generationSessionFixture({ id: 'session-aa' });
+    await service.saveImageGenerationSession({ store, session, expectedRevision: undefined });
+    const operationId = toImageGenerationOperationId({ raw: 'operation-aa' });
+    const run = { ...generationRunFixture({ id: 'run-aa', sessionId: session.id, count: 2, seed: '42' }), operationId };
+    await service.createImageGenerationRun({ store, run, writeInputs: async () => {} });
+    await saveImageGenerationOperation({ store, operation: { id: operationId, sessionId: session.id, createdAt: 10, runIds: [run.id] } });
+    await service.updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, expectedRevision: 0, execution: { type: 'running', startedAt: 11 } });
+    const first = generationAssetFixture({ id: 'asset-aa', run, index: 0 });
+    await service.commitImageGenerationAsset({ store, asset: first, writeImages: async () => {} });
+    const captured = await collectImageGenerationResultsMetadata({ store, sessionId: session.id, operationId, exportedAt: 20 });
+    expect(captured.files.map(file => file.id)).toEqual([first.result.binaryObjectId]);
+    expect(captured.manifest.requests[0]!.execution.type).toBe('running');
+    const second = generationAssetFixture({ id: 'asset-bb', run, index: 1 });
+    await service.commitImageGenerationAsset({ store, asset: second, writeImages: async () => {} });
+    const later = await collectImageGenerationResultsMetadata({ store, sessionId: session.id, operationId, exportedAt: 30 });
+    expect(later.files.map(file => file.id)).toEqual([first.result.binaryObjectId, second.result.binaryObjectId]);
+    expect(captured.files.map(file => file.id)).toEqual([first.result.binaryObjectId]);
+    expect(captured.manifest.requests[0]!.outputs).toHaveLength(1);
+  });
+
   it('uses parent order and only owned final images, excludes private paths, arguments and preview/input references', async () => {
     const h = await setup();
     const result = await collectImageGenerationResultsMetadata({ store: h.store, sessionId: h.session.id, operationId: h.operation.id, exportedAt: 30 });

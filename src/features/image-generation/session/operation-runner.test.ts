@@ -7,7 +7,7 @@ import { toImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationOperation } from '@/01-models/image-generation';
 import { copyImageGenerationSnapshot, finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import type { PreparedImageGeneration } from '@/features/image-generation/generation-submission';
-import { runImageGenerationOperation } from './operation-runner';
+import { runImageGenerationOperation, type ImageOperationProgress } from './operation-runner';
 import { recoverImageGenerationOperation } from './operation-recovery';
 import { withImageOperationExecution } from './operation-lock';
 import { imagePendingRuns } from './pending-runs';
@@ -115,6 +115,16 @@ describe('generation operation coordinator with real metadata storage', () => {
     expect(imagePendingRuns.list()).toHaveLength(0);
   });
 
+  it('reports every generated image separately from saving across requests with different counts', async () => {
+    const progress: ImageOperationProgress[] = [];
+    await runImageGenerationOperation({ store, sessionId: session.id, plans: [plan({ name: 'red', count: 2 }), plan({ name: 'blue', count: 3 })], sources: [], signal: signal(), progress: ({ state }) => progress.push(state) });
+    expect(progress[0]).toMatchObject({ phase: 'accepting', completedImages: 0, savedImages: 0, totalImages: 5, total: 2 });
+    expect(progress).toContainEqual(expect.objectContaining({ index: 0, completedImages: 1, savedImages: 0, request: expect.objectContaining({ received: 1, total: 2 }) }));
+    expect(progress).toContainEqual(expect.objectContaining({ index: 0, completedImages: 1, savedImages: 1 }));
+    expect(progress).toContainEqual(expect.objectContaining({ index: 1, completedImages: 2, savedImages: 2, request: expect.objectContaining({ received: 0, total: 3 }) }));
+    expect(progress.at(-1)).toMatchObject({ index: 2, status: 'completed', completedImages: 5, savedImages: 5, totalImages: 5 });
+  });
+
   it.each(['failure', 'cancel'] as const)('preserves earlier results and never starts later requests after %s', async mode => {
     const abort = new AbortController();
     await expect(runImageGenerationOperation({ store, sessionId: session.id, plans: [plan({ name: 'red' }), plan({ name: 'blue', fail: mode === 'failure', cancel: mode === 'cancel' ? abort : undefined }), plan({ name: 'green' })], sources: [], signal: abort.signal, progress: vi.fn() })).rejects.toThrow();
@@ -179,7 +189,9 @@ describe('generation operation coordinator with real metadata storage', () => {
 
   it('keeps unsaved pixels protected from recovery and retries metadata without inference', async () => {
     failAsset = true;
-    await expect(runImageGenerationOperation({ store, sessionId: session.id, plans: [plan({ name: 'red' }), plan({ name: 'blue' })], sources: [], signal: signal(), progress: vi.fn() })).rejects.toThrow('lost asset');
+    const progress: ImageOperationProgress[] = [];
+    await expect(runImageGenerationOperation({ store, sessionId: session.id, plans: [plan({ name: 'red' }), plan({ name: 'blue' })], sources: [], signal: signal(), progress: ({ state }) => progress.push(state) })).rejects.toThrow('lost asset');
+    expect(progress.at(-1)).toMatchObject({ status: 'failed', completedImages: 1, savedImages: 0, totalImages: 2 });
     const operation = (await listImageGenerationOperations({ store, sessionId: session.id })).items[0]!;
     const pending = imagePendingRuns.list()[0]!;
     expect(pending.state.pending).toHaveLength(1);

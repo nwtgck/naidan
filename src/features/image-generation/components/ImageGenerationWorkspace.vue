@@ -4,6 +4,7 @@ import ImageRecoveredOutputs from './ImageRecoveredOutputs.vue';
 import ImagePendingRuns from './ImagePendingRuns.vue';
 import ImagePendingOperations from './ImagePendingOperations.vue';
 import ImageCompositionEditor from './ImageCompositionEditor.vue';
+import ImageCompositionModeSelect from './ImageCompositionModeSelect.vue';
 import { computed, defineAsyncComponent, onScopeDispose, ref, useId, watch } from 'vue';
 import { useElementSize } from '@vueuse/core';
 import { onBeforeRouteLeave } from 'vue-router';
@@ -177,12 +178,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen
               <p v-if="view.editorDeferred.value" data-testid="workspace-editor-deferred" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.imageGeneration__viewing_other() }}</p>
               <ImageGenerationEditor :context="JSON.stringify([view.store.value?.storeId, view.selectedSessionId.value, view.draftRevision.value])" :view="view.editor" :active="active" @manage-models="emit('models')"><template #prompt-actions="{ field, text }"><ImageGenerationTranslationButton :workspace="view" :text="text" :field="field" :active="active && view.editorReady.value" /></template>
                 <template #prompt-mode>
-                  <div tw-class="flex gap-2" role="group" :aria-label="lazyStrings.imageComposition__multiple()">
-                    <button v-for="choice in ['single', 'multiple'] as const" :key="choice" type="button" :disabled="!view.composition.editable.value" :aria-pressed="view.composition.state.value.mode === choice" @click="view.composition.setMode({ mode: choice })" :data-testid="'composition-mode-' + choice" :tw-class="['rounded-lg px-3 py-2 text-xs disabled:opacity-40', view.composition.state.value.mode === choice ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400']">{{ choice === 'single' ? lazyStrings.imageComposition__single() : lazyStrings.imageComposition__multiple() }}</button>
-                  </div>
+                  <ImageCompositionModeSelect :id="inputId + '-input-mode'" :mode="view.composition.state.value.mode" :disabled="!view.composition.editable.value" @update:mode="view.composition.setMode({ mode: $event })" />
                 </template>
                 <template v-if="view.composition.state.value.mode === 'multiple'" #prompt-editor>
-                  <ImageCompositionEditor :editor="view.composition" :shared="{ ...generation.parameters.value, count, steps: generation.stepsPreference.value, guidance: generation.guidancePreference.value, vaeTileSize: generation.vaeTileSizePreference.value, seed: generation.seedMode.value === 'random' ? null : generation.parameters.value.seed }" :supported="view.compositionSupported.value" :running="view.compositionRunning.value" :stopping="generation.stopping.value" :progress="view.generationOperationProgress.value" @shared-negative-prompt="view.setPromptDraft({ field: 'negativePrompt', value: $event })" @generate="view.generateComposition()" @cancel="view.cancelComposition()" @force-cancel="generation.forceCancel()" />
+                  <ImageCompositionEditor :editor="view.composition" :shared="{ ...generation.parameters.value, count, steps: generation.stepsPreference.value, guidance: generation.guidancePreference.value, vaeTileSize: generation.vaeTileSizePreference.value, seed: generation.seedMode.value === 'random' ? null : generation.parameters.value.seed }" :supported="view.compositionSupported.value" :running="view.compositionRunning.value" :stopping="generation.stopping.value" :progress="view.generationOperationProgress.value" @shared-negative-prompt="view.setPromptDraft({ field: 'negativePrompt', value: $event })" @generate="view.generateComposition()" @cancel="view.cancelComposition()" @force-cancel="generation.forceCancel()">
+                    <template #input-mode><ImageCompositionModeSelect :id="inputId + '-input-mode'" :mode="view.composition.state.value.mode" :disabled="!view.composition.editable.value" @update:mode="view.composition.setMode({ mode: $event })" /></template>
+                  </ImageCompositionEditor>
                 </template>
               </ImageGenerationEditor>
               <ImageSettingsSection :open="!!view.sessionPresentation.view.failure.value || !view.available.value" :title="lazyStrings.imageGeneration__more_execution()" :summary="undefined" compact>

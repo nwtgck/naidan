@@ -7,6 +7,8 @@ const props = defineProps<{
   size?: 'monitor' | 'compact',
   presentation?: 'visual' | 'compact-progress',
   startedAt?: number,
+  fallbackPhaseLabel?: string,
+  phasePosition?: 'above-preview' | 'below-preview',
   busy: boolean, supported: boolean, active: boolean, stopping: boolean, progress: Progress | undefined,
   width: number, height: number, image: { url: string, width: number, height: number } | undefined,
 }>();
@@ -65,7 +67,7 @@ const phaseLabel = computed(() => {
     return lazyStrings.stableDiffusionCppBrowser__stopping_retained();
   }
   if (!props.progress) {
-    return lazyStrings.llamaCppBrowserDownloads__waiting();
+    return props.fallbackPhaseLabel ?? lazyStrings.llamaCppBrowserDownloads__waiting();
   }
   switch (props.progress.phase) {
   case 'runtime': return lazyStrings.stableDiffusionCppBrowser__loading_runtime();
@@ -97,6 +99,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div v-if="units" role="progressbar" :aria-label="phaseLabel" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="phasePercent" tw-class="h-1 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700"><div :style="{ width: `${phasePercent}%` }" tw-class="h-full bg-blue-500"></div></div>
   </div>
   <div v-else-if="visible" data-testid="image-generation-progress" :data-running="running && !image" class="generation-progress" tw-class="w-full">
+    <div v-if="phasePosition === 'above-preview'" tw-class="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+      <p role="status" aria-live="polite" data-testid="image-generation-phase">{{ phaseLabel }}<template v-if="sampling && stopping && units"> · {{ samplingStatus }}</template><template v-else-if="image && units && !sampling"> · {{ phasePercent }}%</template></p>
+      <span data-testid="image-generation-elapsed" tw-class="tabular-nums">{{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ elapsedSeconds }} s</span>
+    </div>
     <div :style="{ aspectRatio: `${width} / ${height}`, maxWidth: `${heightLimit * width / height}vh` }" data-testid="image-generation-canvas" tw-class="relative w-full mx-auto overflow-hidden rounded-2xl flex items-center justify-center bg-gray-50/50 dark:bg-gray-900/30">
       <img v-if="image" :src="image.url" :width="image.width" :height="image.height" :style="{ maxWidth: `min(100%, ${image.width}px)` }" :alt="lazyStrings.stableDiffusionCppBrowser__preview_title()" data-testid="image-generation-current-preview" tw-class="max-h-full object-contain" />
       <template v-else>
@@ -127,7 +133,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </template>
     </div>
-    <div tw-class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+    <div v-if="phasePosition !== 'above-preview'" tw-class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
       <p role="status" aria-live="polite" data-testid="image-generation-phase">{{ phaseLabel }}<template v-if="sampling && stopping && units"> · {{ samplingStatus }}</template><template v-else-if="image && units && !sampling"> · {{ phasePercent }}%</template></p>
       <span data-testid="image-generation-elapsed" tw-class="tabular-nums">{{ lazyStrings.stableDiffusionCppBrowser__generation_time() }} {{ elapsedSeconds }} s</span>
     </div>

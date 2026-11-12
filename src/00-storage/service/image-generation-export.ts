@@ -1,7 +1,6 @@
-import { ExperimentalImageGenerationCompositionSchemaDto } from '@/00-storage/00-dto/image-generation-composition.dto';
 import { imageGenerationOperationTable } from './image-generation/operations';
 import { idToRaw, toBinaryObjectId, type BinaryObjectId, type ImageGenerationSessionId } from '@/01-models/ids';
-import { ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { ExperimentalImageGenerationCompositionSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { readImageGenerationBinaryDeletion } from './image-generation/deletions';
 import { withImageGenerationStore, type ImageGenerationStoreAccess } from './image-generation/context';
 import { imageGenerationRawIdSchema, readImageGenerationText } from './image-generation/files';
