@@ -642,7 +642,8 @@ sys.exit(module.main())
         directory = self.root / 'changelog-unreleased'
         directory.mkdir(exist_ok=True)
         (directory / 'AGENTS.md').write_text('Entry instructions.\n', encoding='utf-8')
-        name = f'changelog-unreleased/changes-20261112T063045.123Z-{topic}.md'
+        category = content.splitlines()[0].removeprefix('### ').lower()
+        name = f'changelog-unreleased/changes-20261112T063045.123Z-{topic}-{category}.md'
         (self.root / name).write_text(content, encoding='utf-8')
         return name
 
@@ -657,7 +658,8 @@ sys.argv = [release.__file__, *sys.argv[1:]]
                               env=self.env, capture_output=True, text=True, check=False)
 
     def test_fragments_commit_exact_deletions_and_preserve_other_files_and_develop(self):
-        names = [self.write_fragment(topic='one'), self.write_fragment(topic='two', content='### Added\n\n- A fragment feature.\n')]
+        names = [self.write_fragment(topic='one', content='### Fixed\n\n- A fragment fix.\n- A related fix.\n'),
+                 self.write_fragment(topic='two', content='### Added\n\n- A fragment feature.\n')]
         directory = self.root / 'changelog-unreleased'
         for name in ('notes.md', 'changes-example.txt'):
             (directory / name).write_text('Not consumed.\n')
@@ -676,6 +678,7 @@ sys.argv = [release.__file__, *sys.argv[1:]]
         body = (self.root / 'CHANGELOG.md').read_text()
         self.assertIn('A reviewed fix.', body)
         self.assertIn('A fragment fix.', body)
+        self.assertIn('A related fix.', body)
         self.assertIn('A fragment feature.', body)
         for name in names:
             self.assertIn('### ', self.git(args=['show', f'develop:{name}']))
@@ -706,11 +709,11 @@ sys.argv = [release.__file__, *sys.argv[1:]]
         self.assertEqual(self.snapshot(), before)
 
     def test_malformed_fragment_is_not_bypassed_by_empty_or_dry_run_options(self):
-        name = self.write_fragment(content='### Fixed\n\n- First.\n- Second.\n')
+        name = self.write_fragment(content='### Fixed\n\n- First.\n  - Nested.\n')
         self.commit_fixture()
         for args in (['patch'], ['patch', '--dry-run'], ['patch', '--allow-empty-changelog']):
             with self.subTest(args=args):
-                self.assert_unchanged_failure(args=args, message='one paragraph-style bullet')
+                self.assert_unchanged_failure(args=args, message='Only inline Markdown')
         self.assertTrue((self.root / name).is_file())
 
     def test_ignored_untracked_entry_is_never_deleted(self):
@@ -816,14 +819,14 @@ original_git = release.run_git_command
 def edited_checkout(*, args, capture_output=False):
     result = original_git(args=args, capture_output=capture_output)
     if args[:2] == ['checkout', '-b']:
-        (release.FRAGMENTS_PATH / 'changes-20261112T063045.124Z-new.md').write_text('New draft.')
+        (release.FRAGMENTS_PATH / 'changes-20261112T063045.124Z-new-added.md').write_text('New draft.')
     return result
 release.run_git_command = edited_checkout
 '''
         result = self.invoke_patched(args=['patch'], patch=patch)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('inventory changed', result.stderr)
-        self.assertTrue((self.root / 'changelog-unreleased/changes-20261112T063045.124Z-new.md').exists())
+        self.assertTrue((self.root / 'changelog-unreleased/changes-20261112T063045.124Z-new-added.md').exists())
         self.assertEqual(self.git(args=['diff', '--cached', '--name-only']), '')
 
     def test_write_failure_does_not_delete_collected_entries(self):
