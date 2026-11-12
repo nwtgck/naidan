@@ -148,44 +148,6 @@ describe('staged file publication', () => {
     expect(moves.calls).toHaveLength(0);
   });
 
-  it('replaces only an explicitly supplied unchanged destination', async () => {
-    const moves: MemoryMoves = { calls: [] };
-    const directory = new MemoryDirectory('files', moves);
-    const previous = await directory.getFileHandle('file', { create: true });
-    previous.data = new TextEncoder().encode('old');
-    const handle = await directory.getFileHandle('file.tmp', { create: true });
-    handle.data = new TextEncoder().encode('new');
-    const result = await moveStagedFile({ directory: native({ directory }), name: 'file', handle: handle as unknown as FileSystemFileHandle, snapshot: await handle.getFile(), moveSupport: createFileMoveSupportCache(), replacement: { handle: previous as unknown as FileSystemFileHandle, snapshot: await previous.getFile() } });
-    expect(await (await result.getFile()).text()).toBe('new');
-    expect(directory.children.get('file')).toBe(handle);
-    expect(directory.children.has('file.tmp')).toBe(false);
-  });
-
-  it.each(['removed', 'replaced', 'modified'] as const)('preserves both entries when the requested replacement was %s', async change => {
-    const moves: MemoryMoves = { calls: [] };
-    const directory = new MemoryDirectory('files', moves);
-    const previous = await directory.getFileHandle('file', { create: true });
-    const replacement = { handle: previous as unknown as FileSystemFileHandle, snapshot: await previous.getFile() };
-    const handle = await directory.getFileHandle('file.tmp', { create: true });
-    switch (change) {
-    case 'removed': directory.children.delete('file');
-      break;
-    case 'replaced': directory.children.set('file', new MemoryFile('file'));
-      break;
-    case 'modified': previous.modified++;
-      break;
-    default: {
-      const exhaustive: never = change;
-      throw new Error(String(exhaustive));
-    }
-    }
-    const current = directory.children.get('file');
-    await expect(moveStagedFile({ directory: native({ directory }), name: 'file', handle: handle as unknown as FileSystemFileHandle, snapshot: await handle.getFile(), moveSupport: createFileMoveSupportCache(), replacement })).rejects.toThrow('replacement changed');
-    expect(directory.children.get('file')).toBe(current);
-    expect(directory.children.get('file.tmp')).toBe(handle);
-    expect(moves.calls).toHaveLength(0);
-  });
-
   it('preserves changed staging and invalidates capability after an actual move fails', async () => {
     const moves: MemoryMoves = { calls: [] };
     const directory = new MemoryDirectory('files', moves);

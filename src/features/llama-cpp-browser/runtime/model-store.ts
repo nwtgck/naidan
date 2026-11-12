@@ -150,8 +150,10 @@ async function captureRemovalPlans({ target, root, selectedRelativePaths, projec
     }
     }
   })();
-  const selected = [...new Set(withModelFileMarkers({ paths: [...selectedRelativePaths, ...pending.filter(entry => selectedRelativePaths.includes(entry.path)).flatMap(entry => entry.paths)] }))];
-  const projectors = [...new Set(withModelFileMarkers({ paths: [...projectorRelativePaths, ...pending.filter(entry => projectorRelativePaths.includes(entry.path)).flatMap(entry => entry.paths)] }))];
+  // Expand receipts for the requested final names only. A staging pathname
+  // is not another model whose .pending/.complete files we own.
+  const selected = [...new Set([...withModelFileMarkers({ paths: selectedRelativePaths }), ...pending.filter(entry => selectedRelativePaths.includes(entry.path)).flatMap(entry => entry.paths)])];
+  const projectors = [...new Set([...withModelFileMarkers({ paths: projectorRelativePaths }), ...pending.filter(entry => projectorRelativePaths.includes(entry.path)).flatMap(entry => entry.paths)])];
   const plan = deletionPlanSchema.parse({
     target,
     ...root,
@@ -296,7 +298,7 @@ export async function prepareRepositoryRemoval({ location, signal }: { location:
           } else {
             selectedRelativePaths = [];
           }
-          selectedRelativePaths.push(...downloads.flatMap(entry => entry.paths));
+          selectedRelativePaths.push(...downloads.map(entry => entry.path));
         }
         signal?.throwIfAborted();
         return captureRemovalPlans({ target: { kind: 'repository', location, journal }, root, selectedRelativePaths, projectorRelativePaths, affectedVariants: 0 });

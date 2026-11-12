@@ -65,17 +65,17 @@ async function probeFileMove({ directory }: { directory: FileSystemDirectoryHand
     await writer.close();
     writer = undefined;
     try {
-      // The directory+name overload also works on implementations that do not
-      // expose the name-only convenience overload (notably WebKit).
+      // Use the same explicit directory+name overload for the probe and
+      // publication; do not infer support for one overload from another.
       await handle.move(directory, to);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'NotSupportedError') {
         return { support: 'unsupported', cacheable: true };
       }
       if (error instanceof DOMException && error.name === 'AbortError') {
-        // Some Chromium versions report disabled non-OPFS moves as AbortError.
-        // It also denotes transient failures, so choose legacy ONLY for this
-        // pre-write probe and do not cache it as established non-support.
+        // An abort does not distinguish unavailable moves from a transient
+        // failure. Use legacy ONLY for this pre-write probe and retry detection
+        // next time rather than recording established non-support.
         return { support: 'unsupported', cacheable: false };
       }
       throw error;
@@ -150,13 +150,11 @@ export function createFileMoveSupportCache(): FileMoveSupportCache {
 }
 
 /** The caller must close its writer before entering this function. Existing
- * destinations are rejected unless the caller explicitly supplies the previous
- * entry and snapshot to replace. On a host filesystem this
- * preflight is best effort: external programs need not honor Naidan's lock.
+ * destinations are rejected. This preflight is best effort on host filesystems:
+ * external programs need not honor Naidan's lock.
  */
-export async function moveStagedFile({ directory, name, handle, snapshot, moveSupport, replacement }: {
+export async function moveStagedFile({ directory, name, handle, snapshot, moveSupport }: {
   directory: FileSystemDirectoryHandle, name: string, handle: FileSystemFileHandle, snapshot: File, moveSupport: FileMoveSupportCache,
-  replacement?: { handle: FileSystemFileHandle, snapshot: File },
 }): Promise<FileSystemFileHandle> {
   const temporaryName = temporaryFileName({ name });
   const current = await directory.getFileHandle(temporaryName);
@@ -165,12 +163,7 @@ export async function moveStagedFile({ directory, name, handle, snapshot, moveSu
     throw new Error('Staged file changed before publication');
   }
   const destination = await optionalFile({ directory, name });
-  if (replacement) {
-    const previous = await destination?.getFile();
-    if (!destination || !await destination.isSameEntry(replacement.handle) || previous?.size !== replacement.snapshot.size || previous.lastModified !== replacement.snapshot.lastModified) {
-      throw new Error('Publication replacement changed; both files were preserved');
-    }
-  } else if (destination) {
+  if (destination) {
     throw new Error('Publication destination already exists; both files were preserved');
   }
   try {

@@ -54,6 +54,29 @@ describe('local import staging', () => {
     expect((await user()).children.size).toBe(0);
   });
 
+  it('cleans its image file even when the move reports a failure after renaming it', async () => {
+    moves.afterMove = ({ to }) => {
+      if (to === 'model.gguf') {
+        throw new Error('Failed after rename');
+      }
+    };
+    await expect(importImageRepository({ input, signal: undefined, onProgress: () => undefined })).rejects.toThrow('Failed after rename');
+    expect((await user()).children.size).toBe(0);
+  });
+
+  it('cleans its llama.cpp file even when the move reports a failure after renaming it', async () => {
+    const bytes = new Uint8Array(256);
+    bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+    const directory = { rootName: 'late-failure', files: [{ relativePath: 'model.gguf', file: new File([bytes], 'model.gguf') }] };
+    moves.afterMove = ({ to }) => {
+      if (to === 'model.gguf') {
+        throw new Error('Failed after rename');
+      }
+    };
+    await expect(importModelDirectory({ directory, signal: undefined, onProgress: () => undefined })).rejects.toThrow('Failed after rename');
+    expect((await user()).children.size).toBe(0);
+  });
+
   it('preserves an unrelated final and keeps the partial repository hidden', async () => {
     let foreign: MemoryFile | undefined;
     await expect(importImageRepository({
@@ -145,8 +168,25 @@ describe('local import staging', () => {
     expect((await user()).children.size).toBe(0);
   });
 
-  it('does not replay source publication metadata when importing a saved repository', () => {
-    const directory = { rootName: 'lm', files: ['model.gguf', 'model.gguf.tmp', '.naidan-source/model.gguf', 'nested/.naidan-source/other.gguf', '.model.gguf.complete'].map(relativePath => ({ relativePath, file: new File([''], relativePath) })) };
+  it('filters only existing import markers from llama.cpp input', () => {
+    const directory = { rootName: 'lm', files: ['model.gguf', '.model.gguf.complete', '.llama-cpp-import-pending'].map(relativePath => ({ relativePath, file: new File([''], relativePath) })) };
     expect(localRepositoryInput({ directory }).files.map(file => file.relativePath)).toEqual(['model.gguf']);
+  });
+
+  it.each(['config.tmp', 'config.tmp/nested.json'])('keeps a legitimate %s input instead of reserving the suffix globally', async relativePath => {
+    const files = [...input.files, { relativePath, file: new File(['auxiliary'], 'config.tmp') }];
+    await importImageRepository({ input: { ...input, files }, signal: undefined, onProgress: () => undefined });
+    const listed = await listImageRepositories({ signal: undefined });
+    expect(listed[0]?.files.map(file => file.relativePath)).toContain(relativePath);
+  });
+
+  it.each(['config.json.tmp', 'config.json.tmp/nested.json'])('uses the base path only for a real staging collision with %s', async relativePath => {
+    const files = [...input.files, { relativePath, file: new File(['auxiliary'], 'config.json.tmp') }];
+    await importImageRepository({ input: { ...input, files }, signal: undefined, onProgress: () => undefined });
+    const directory = await (await user()).getDirectoryHandle('local');
+    expect(await (await (await directory.getFileHandle('config.json')).getFile()).text()).toBe('{}');
+    expect((await listImageRepositories({ signal: undefined }))[0]?.files.map(file => file.relativePath)).toContain(relativePath);
+    expect(moves.calls.some(call => call.to === 'config.json')).toBe(false);
+    expect(moves.calls.some(call => call.to === 'model.gguf')).toBe(true);
   });
 });

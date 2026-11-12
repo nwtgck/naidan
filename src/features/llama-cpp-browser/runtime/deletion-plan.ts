@@ -1,4 +1,3 @@
-import { modelPublicationDirectoryName } from '@/logic/model-file-publication';
 import { z } from 'zod';
 import { modelSchema } from '@/features/llama-cpp-browser/types';
 
@@ -91,14 +90,14 @@ export async function executeDeletionPlan({ folder, files, selectedRelativePaths
     return 'changed';
   }
   // Remove payloads before ownership/publication metadata. If a payload delete
-  // fails or execution stops, its remaining .tmp must still have a journal and
-  // source declaration that let another explicit deletion recognize ownership.
+  // fails or execution stops, its remaining .tmp must still have the journal
+  // that lets another explicit deletion recognize ownership.
   const priority = ({ relativePath: path }: { relativePath: string }): number => {
     const name = path.split('/').at(-1)!;
     if (/^\..+\.pending$/.test(name)) {
       return 2;
     }
-    return path.split('/').includes(modelPublicationDirectoryName) || /^\..+\.complete$/.test(name) ? 1 : 0;
+    return /^\..+\.complete$/.test(name) ? 1 : 0;
   };
   const ordered = [...files].sort((left, right) => priority(left) - priority(right));
   // Never recursively delete: an external file explorer need not honor our lock.

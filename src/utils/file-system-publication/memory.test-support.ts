@@ -187,7 +187,7 @@ export class MemoryDirectory {
       if (moves && !file.move) {
         file.move = async (directory, destination) => {
           // Model the common directory+name overload strictly. Accepting a
-          // name-only call here would hide a WebKit compatibility regression.
+          // name-only call here would hide a production overload mismatch.
           if (directory?.children !== this.children || typeof destination !== 'string') {
             throw new TypeError('Expected the current directory and a new name');
           }

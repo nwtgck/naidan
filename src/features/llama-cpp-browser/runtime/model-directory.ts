@@ -1,10 +1,10 @@
-import { createFileMoveSupportCache, moveStagedFile, optionalFile, publicationFileName } from '@/utils/file-system-publication';
+import { createFileMoveSupportCache, moveStagedFile, optionalFile, publicationFileName, temporaryFileName } from '@/utils/file-system-publication';
 import { localRepositoryInput, modelImportPendingName, normalizeModelDirectoryInput } from './model-directory-input';
 import { isModelSourceSegment, localRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
 import { readStoredModelFile, type ModelFile, type StoredModelFile } from '@/logic/model-file-system';
 import { resolveModelFiles } from './model-file-selection';
 export { resolveModelFiles } from './model-file-selection';
-import { modelPublicationDirectoryName, modelFileIsPending } from '@/logic/model-file-publication';
+import { modelFileIsPending } from '@/logic/model-file-publication';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
@@ -87,9 +87,6 @@ export async function readModelFiles({ folder, prefix, storageKind, signal }: { 
     signal?.throwIfAborted();
     if (!validSegment({ name })) {
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-    }
-    if (name === modelPublicationDirectoryName) {
-      continue;
     }
     const relativePath = prefix + name;
     switch (entry.kind) {
@@ -308,6 +305,15 @@ async function writeModelDirectory({ directory, onProgress, signal, collision, l
   }
   const folder = await parent.getDirectoryHandle(rootName, { create: true });
   const moveSupport = createFileMoveSupportCache();
+  const inputEntries = new Set(paths);
+  for (const path of paths) {
+    const parts = path.split('/');
+    parts.pop();
+    while (parts.length) {
+      inputEntries.add(parts.join('/'));
+      parts.pop();
+    }
+  }
   const created: { parent: FileSystemDirectoryHandle, name: string, finalName: string, handle: FileSystemFileHandle, size: number, modified: number }[] = [];
   const createdFolders: { parent: FileSystemDirectoryHandle, name: string, handle: FileSystemDirectoryHandle }[] = [];
   const knownFolders = new Map<string, FileSystemDirectoryHandle>([['', folder]]);
@@ -329,7 +335,12 @@ async function writeModelDirectory({ directory, onProgress, signal, collision, l
         }
         parent = next;
       }
-      const publication = await moveSupport.detect({ directory: parent });
+      // A real input may already be named <name>.tmp (or use it as a
+      // directory). Keep the base write path for this collision only.
+      const temporaryPath = temporaryFileName({ name });
+      const stagedPath = parts.length ? `${parts.join('/')}/${temporaryPath}` : temporaryPath;
+      const collides = inputEntries.has(stagedPath);
+      const publication = collides ? 'unsupported' : await moveSupport.detect({ directory: parent });
       const destinationName = publicationFileName({ name, support: publication });
       if (await optionalFile({ directory: parent, name: destinationName })) {
         throw new Error('Import destination changed; existing file was preserved');

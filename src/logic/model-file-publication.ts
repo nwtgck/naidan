@@ -18,20 +18,11 @@ export function withModelFileMarkers({ paths }: { paths: readonly string[] }): s
   return paths.flatMap(path => {
     const parts = path.split('/');
     const name = parts.pop()!;
-    if (parts.includes(modelPublicationDirectoryName)) {
-      return [path];
-    }
-    const prefix = parts.length ? `${parts.join('/')}/` : '';
-    const pendingBody = /^\.(.+)\.pending$/.exec(name)?.[1];
-    const body = pendingBody ?? (name.endsWith('.tmp') ? name.slice(0, -4) : name);
-    const source = `${prefix}${modelPublicationDirectoryName}/${body}`;
-    if (pendingBody || name.endsWith('.tmp')) {
-      return [path, source];
-    }
     if (name.startsWith('.')) {
       return [path];
     }
-    return [path, `${prefix}${modelFileMarker({ name, state: 'pending' })}`, `${prefix}${modelFileMarker({ name, state: 'complete' })}`, source];
+    const prefix = parts.length ? `${parts.join('/')}/` : '';
+    return [path, `${prefix}${modelFileMarker({ name, state: 'pending' })}`, `${prefix}${modelFileMarker({ name, state: 'complete' })}`];
   });
 }
 
@@ -74,62 +65,6 @@ export const modelFileReceiptSchema = z.object({
 }).strict();
 export type ModelFileReceipt = z.infer<typeof modelFileReceiptSchema>;
 
-// Only source identity is persisted here, using the existing source schema.
-// Its presence declares the move protocol BEFORE bytes are written; it is not
-// a completion marker. The final pathname and absence of pending publish bytes.
-export const modelPublicationDirectoryName = '.naidan-source';
-export type ModelFileRegistration = { source: ModelFileReceipt['source'] };
-
-async function sourceDirectory({ directory }: { directory: FileSystemDirectoryHandle }): Promise<FileSystemDirectoryHandle | undefined> {
-  try {
-    return await directory.getDirectoryHandle(modelPublicationDirectoryName);
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'NotFoundError') {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-export async function readModelFileRegistration({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<ModelFileRegistration | undefined> {
-  const sources = await sourceDirectory({ directory });
-  const handle = sources && await optionalModelFile({ directory: sources, name });
-  if (!handle) {
-    return undefined;
-  }
-  // Malformed or inaccessible provenance must not authorize legacy fallback.
-  return { source: modelFileSourceSchema.parse(await readModelMarkerJson({ handle })) };
-}
-
-/** Call under the model mutation lock, before creating new bytes (with pending)
- * or after fully verifying an existing final. No DTO or journal version changes
- * are needed: source metadata is the same shape used in legacy receipts. */
-export async function registerModelFileMove({ directory, name, source, replacement }: {
-  directory: FileSystemDirectoryHandle, name: string, source: ModelFileReceipt['source'], replacement: 'reject' | 'verified-final',
-}): Promise<void> {
-  modelFileMarker({ name, state: 'pending' });
-  if (name === modelPublicationDirectoryName || name.endsWith('.tmp')) {
-    throw new Error('Reserved model publication filename');
-  }
-  const value = modelFileSourceSchema.parse(source);
-  const previous = await readModelFileRegistration({ directory, name });
-  if (previous) {
-    if (JSON.stringify(previous.source) === JSON.stringify(value)) {
-      return;
-    }
-    switch (replacement) {
-    case 'reject': throw new Error('Model publication source changed; existing data was preserved');
-    case 'verified-final': break;
-    default: {
-      const exhaustive: never = replacement;
-      throw new Error(String(exhaustive));
-    }
-    }
-  }
-  const sources = await directory.getDirectoryHandle(modelPublicationDirectoryName, { create: true });
-  await writeModelMarkerJson({ directory: sources, name, value });
-}
-
 export async function readModelMarkerJson({ handle }: { handle: FileSystemFileHandle }): Promise<unknown> {
   const file = await handle.getFile();
   if (file.size > 64 * 1024) {
@@ -171,10 +106,6 @@ export async function writeModelMarkerJson({ directory, name, value }: { directo
 export async function readModelFileReceipt({ directory, name, file }: { directory: FileSystemDirectoryHandle, name: string, file: File }): Promise<ModelFileReceipt | undefined> {
   if (await modelFileIsPending({ directory, name })) {
     return undefined;
-  }
-  const registration = await readModelFileRegistration({ directory, name });
-  if (registration) {
-    return { version: 1, kind: 'naidan-model-file', size: file.size, lastModified: file.lastModified, source: registration.source };
   }
   const handle = await optionalModelFile({ directory, name: modelFileMarker({ name, state: 'complete' }) });
   if (!handle) {

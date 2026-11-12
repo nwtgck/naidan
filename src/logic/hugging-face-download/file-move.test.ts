@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryDirectory, MemoryFile, type MemoryMoves } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
+import { MemoryDirectory, MemoryFile, type MemoryMoves } from '@/utils/file-system-publication/memory.test-support';
 import { prepareRepositoryRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
-import { listImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
+import { listHostImageRepositories, listImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { createFileMoveSupportCache } from '@/utils/file-system-publication';
-import { modelPublicationDirectoryName, readModelFileReceipt } from '@/logic/model-file-publication';
+import { readModelFileReceipt } from '@/logic/model-file-publication';
 import { saveHuggingFaceFile } from './file';
 import type { DownloadFetch } from './fetch-types';
 import type { DownloadDestination } from '@/01-models/download';
@@ -71,7 +71,7 @@ function argumentsFor({ kind }: { kind: 'opfs' | 'host' }): Parameters<typeof sa
 }
 
 describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
-  it('explicitly removes an interrupted download and only its source metadata', async () => {
+  it('explicitly removes an interrupted download and its journal, not unrelated files', async () => {
     const directory = await folder({ kind });
     const abort = new AbortController();
     await expect(saveHuggingFaceFile({
@@ -86,30 +86,159 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     const foreign = await put({ directory, name: 'unowned.tmp', data: new Uint8Array([4]) });
     const location = kind === 'host' ? { kind: 'host' as const, directoryId: 'linked', repository: source.repository } : { kind: 'hugging-face' as const, repository: source.repository };
     const { plan } = await prepareRepositoryRemoval({ location, signal: undefined });
-    expect(plan.files.map(file => file.relativePath).sort()).toEqual(['weights/.model.gguf.pending', `weights/${modelPublicationDirectoryName}/model.gguf`, 'weights/model.gguf.tmp']);
+    expect(plan.files.map(file => file.relativePath).sort()).toEqual(['weights/.model.gguf.pending', 'weights/model.gguf.tmp']);
     expect(await removeStoredModel({ plan })).toBe('deleted');
     expect([...directory.children.keys()]).toEqual(['unowned.tmp']);
     expect(directory.children.get('unowned.tmp')).toBe(foreign);
   });
 
-  it('resumes an empty base-version journal before source registration without a schema upgrade', async () => {
+  it("does not expand a staging pathname into another file's completion and pending markers", async () => {
+    const directory = await folder({ kind });
+    moves.beforeMove = ({ to }) => {
+      if (to === 'model.gguf') {
+        throw new Error('Pause before publication');
+      }
+    };
+    await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow('Pause');
+    const foreignReceipt = await put({ directory, name: '.model.gguf.tmp.complete', data: new TextEncoder().encode('foreign receipt') });
+    const foreignPending = await put({ directory, name: '.model.gguf.tmp.pending', data: new TextEncoder().encode(JSON.stringify({ version: 2, kind: 'naidan-file-download', source: { ...source, repository: 'other/repo', path: 'weights/model.gguf.tmp' }, bytes: 0, state: 'partial' })) });
+    const location = kind === 'host' ? { kind: 'host' as const, directoryId: 'linked', repository: source.repository } : { kind: 'hugging-face' as const, repository: source.repository };
+    const { plan } = await prepareRepositoryRemoval({ location, signal: undefined });
+    expect(plan.files.map(file => file.relativePath).sort()).toEqual(['weights/.model.gguf.pending', 'weights/model.gguf.tmp']);
+    expect(await removeStoredModel({ plan })).toBe('deleted');
+    expect(directory.children.get('.model.gguf.tmp.complete')).toBe(foreignReceipt);
+    expect(directory.children.get('.model.gguf.tmp.pending')).toBe(foreignPending);
+  });
+
+  it('leaves oversized unrelated pending files out of its deletion plan', async () => {
+    const directory = await folder({ kind });
+    moves.beforeMove = ({ to }) => {
+      if (to === 'model.gguf') {
+        throw new Error('Pause before publication');
+      }
+    };
+    await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow('Pause');
+    const foreign = await put({ directory, name: '.unrelated.pending', data: new Uint8Array(64 * 1024 + 1) });
+    const location = kind === 'host' ? { kind: 'host' as const, directoryId: 'linked', repository: source.repository } : { kind: 'hugging-face' as const, repository: source.repository };
+    const { plan } = await prepareRepositoryRemoval({ location, signal: undefined });
+    expect(plan.files.map(file => file.relativePath).sort()).toEqual(['weights/.model.gguf.pending', 'weights/model.gguf.tmp']);
+    expect(await removeStoredModel({ plan })).toBe('deleted');
+    expect(directory.children.get('.unrelated.pending')).toBe(foreign);
+  });
+
+  it('hides owned staging from image readers without probing or hiding ordinary tmp files', async () => {
+    const directory = await folder({ kind });
+    moves.beforeMove = ({ to }) => {
+      if (to === 'model.gguf') {
+        throw new Error('Pause before publication');
+      }
+    };
+    await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow('Pause');
+    const ordinary = await put({ directory, name: 'notes.tmp', data: new TextEncoder().encode('ordinary') });
+    const probes = moves.calls.length;
+    const repositories = kind === 'host'
+      ? await listHostImageRepositories({ directories: [{ directoryId: 'linked', directoryName: 'Models' }], signal: undefined })
+      : await listImageRepositories({ signal: undefined });
+    expect(repositories).toHaveLength(1);
+    expect(repositories[0]!.files.some(file => file.relativePath === 'weights/model.gguf.tmp')).toBe(false);
+    expect(repositories[0]!.issues?.some(issue => issue.relativePath === 'weights/model.gguf.tmp')).toBe(true);
+    if (kind === 'host') {
+      expect(repositories[0]!.files.some(file => file.relativePath === 'weights/notes.tmp')).toBe(true);
+    }
+    expect(directory.children.get('notes.tmp')).toBe(ordinary);
+    expect(moves.calls).toHaveLength(probes);
+  });
+
+  it('records the actual post-move snapshot in the existing completion receipt', async () => {
+    const directory = await folder({ kind });
+    moves.afterMove = async ({ to }) => {
+      if (to === 'model.gguf') {
+        (await directory.getFileHandle(to)).modified += 100;
+      }
+    };
+    await saveHuggingFaceFile(argumentsFor({ kind }));
+    const snapshot = await (await directory.getFileHandle('model.gguf')).getFile();
+    const receipt = await readModelFileReceipt({ directory: directory as unknown as FileSystemDirectoryHandle, name: 'model.gguf', file: snapshot });
+    expect(receipt?.lastModified).toBe(snapshot.lastModified);
+    expect(receipt?.source).toEqual({ kind: 'hugging-face', repository: source.repository, revision: source.revision, path: source.path, sha256: source.sha256 });
+    expect([...directory.children.keys()].sort()).toEqual(['.model.gguf.complete', 'model.gguf']);
+  });
+
+  it('preserves the journal and old receipt when deleting the owned payload fails', async () => {
+    const directory = await folder({ kind });
+    moves.beforeMove = ({ to }) => {
+      if (to === 'model.gguf') {
+        throw new Error('Pause before publication');
+      }
+    };
+    await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow('Pause');
+    const oldReceipt = await put({ directory, name: '.model.gguf.complete', data: new TextEncoder().encode('old receipt') });
+    const location = kind === 'host' ? { kind: 'host' as const, directoryId: 'linked', repository: source.repository } : { kind: 'hugging-face' as const, repository: source.repository };
+    const { plan } = await prepareRepositoryRemoval({ location, signal: undefined });
+    const remove = directory.removeEntry.bind(directory);
+    using failure = vi.spyOn(directory, 'removeEntry').mockImplementation(async (name, options) => {
+      if (name === 'model.gguf.tmp') {
+        throw new DOMException('Busy', 'NoModificationAllowedError');
+      }
+      return remove(name, options);
+    });
+    await expect(removeStoredModel({ plan })).rejects.toThrow('Busy');
+    expect(directory.children.has('.model.gguf.pending')).toBe(true);
+    expect(directory.children.get('.model.gguf.complete')).toBe(oldReceipt);
+    expect(directory.children.has('model.gguf.tmp')).toBe(true);
+    failure.mockRestore();
+    expect(await removeStoredModel({ plan })).toBe('deleted');
+    expect(directory.children.size).toBe(0);
+  });
+
+  it('preserves a corrupt full-size owned final on this attempt, then restarts explicitly', async () => {
+    const directory = await folder({ kind });
+    const final = await put({ directory, name: 'model.gguf', data: new Uint8Array(bytes.length).fill(9) });
+    const journal = await put({ directory, name: '.model.gguf.pending', data: new TextEncoder().encode(JSON.stringify({ version: 2, kind: 'naidan-file-download', source, bytes: bytes.length, state: 'partial' })) });
+    const fetch = vi.fn(transfer);
+    await expect(saveHuggingFaceFile({ ...argumentsFor({ kind }), fetch })).rejects.toThrow('SHA-256');
+    expect(final.data).toEqual(new Uint8Array(bytes.length).fill(9));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(JSON.parse(await (await journal.getFile()).text()).state).toBe('invalid');
+    await saveHuggingFaceFile({ ...argumentsFor({ kind }), fetch });
+    expect(final.data).toEqual(bytes);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect([...directory.children.keys()].sort()).toEqual(['.model.gguf.complete', 'model.gguf']);
+  });
+
+  it("does not adopt another download's staged bytes as a legitimate .tmp target", async () => {
+    const directory = await folder({ kind });
+    const staged = await put({ directory, name: 'model.gguf.tmp', data: bytes });
+    const journal = await put({ directory, name: '.model.gguf.pending', data: new TextEncoder().encode(JSON.stringify({ version: 2, kind: 'naidan-file-download', source, bytes: bytes.length, state: 'partial' })) });
+    const fetch = vi.fn(transfer);
+    await expect(saveHuggingFaceFile({ ...argumentsFor({ kind }), file: { ...source, path: 'weights/model.gguf.tmp' }, fetch })).rejects.toThrow('staging for another');
+    expect(fetch).not.toHaveBeenCalled();
+    expect([...directory.children.values()]).toEqual([staged, journal]);
+  });
+
+  it("can save a legitimate .tmp target when it is not another download's staging", async () => {
+    const directory = await folder({ kind });
+    await saveHuggingFaceFile({ ...argumentsFor({ kind }), file: { ...source, path: 'weights/extra.tmp' } });
+    expect((await directory.getFileHandle('extra.tmp')).data).toEqual(bytes);
+    expect([...directory.children.keys()].sort()).toEqual(['.extra.tmp.complete', 'extra.tmp']);
+  });
+
+  it('resumes an empty base-version journal without a schema upgrade', async () => {
     const directory = await folder({ kind });
     await put({ directory, name: '.model.gguf.pending', data: new TextEncoder().encode(JSON.stringify({ version: 2, kind: 'naidan-file-download', source, bytes: 0, state: 'partial' })) });
     await saveHuggingFaceFile(argumentsFor({ kind }));
     expect((await directory.getFileHandle('model.gguf')).data).toEqual(bytes);
-    expect(directory.children.has('.model.gguf.complete')).toBe(false);
+    expect(directory.children.has('.model.gguf.complete')).toBe(true);
     expect(directory.children.has('.model.gguf.pending')).toBe(false);
-    const declared = await (await (await directory.getDirectoryHandle(modelPublicationDirectoryName)).getFileHandle('model.gguf')).getFile();
-    expect(JSON.parse(await declared.text())).toEqual({ kind: 'hugging-face', repository: source.repository, revision: source.revision, path: source.path, sha256: source.sha256 });
+    expect([...directory.children.keys()].sort()).toEqual(['.model.gguf.complete', 'model.gguf']);
   });
 
-  it('retries source registration if its first atomic write failed before creating data', async () => {
+  it('recovers a receipt write failure after move without copying or downloading again', async () => {
     const directory = await folder({ kind });
-    const sources = await directory.getDirectoryHandle(modelPublicationDirectoryName, { create: true });
     const original = MemoryFile.prototype.createWritable;
     let failed = false;
     using interception = vi.spyOn(MemoryFile.prototype, 'createWritable').mockImplementation(async function (this: MemoryFile, options) {
-      if (this.name === 'model.gguf' && sources.children.get(this.name) === this && !failed) {
+      if (this.name === '.model.gguf.complete' && !failed) {
         failed = true;
         throw new DOMException('Full', 'QuotaExceededError');
       }
@@ -118,21 +247,19 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow('Full');
     expect(interception).toHaveBeenCalled();
     expect(directory.children.has('model.gguf.tmp')).toBe(false);
-    expect(directory.children.has('model.gguf')).toBe(false);
-    expect(sources.children.size).toBe(0);
-    const pending = JSON.parse(await (await directory.getFileHandle('.model.gguf.pending')).getFile().then(file => file.text()));
-    expect(pending).toEqual({ version: 2, kind: 'naidan-file-download', source, bytes: 0, state: 'partial' });
-    await saveHuggingFaceFile(argumentsFor({ kind }));
     expect((await directory.getFileHandle('model.gguf')).data).toEqual(bytes);
-    expect(directory.children.has('.model.gguf.complete')).toBe(false);
-  });
-
-  it('rejects source namespaces in download paths before writing any file', async () => {
-    const options = argumentsFor({ kind });
-    await expect(saveHuggingFaceFile({ ...options, file: { ...source, path: '.naidan-source/model.gguf' } })).rejects.toThrow();
-    const directory = await folder({ kind });
-    expect(directory.children.size).toBe(0);
-    expect(moves.calls).toHaveLength(0);
+    const pending = JSON.parse(await (await directory.getFileHandle('.model.gguf.pending')).getFile().then(file => file.text()));
+    expect(pending).toEqual({ version: 2, kind: 'naidan-file-download', source, bytes: bytes.length, state: 'partial' });
+    interception.mockRestore();
+    const final = await directory.getFileHandle('model.gguf');
+    using writer = vi.spyOn(final, 'createWritable').mockRejectedValue(new Error('Final must not reopen'));
+    using sync = vi.spyOn(final, 'createSyncAccessHandle').mockRejectedValue(new Error('Final must not reopen'));
+    const fetch = vi.fn(transfer);
+    await saveHuggingFaceFile({ ...argumentsFor({ kind }), fetch });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(writer).not.toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
+    expect([...directory.children.keys()].sort()).toEqual(['.model.gguf.complete', 'model.gguf']);
   });
 
   it('rejects deletion after pending staging changes following confirmation', async () => {
@@ -149,11 +276,10 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     temporary.modified++;
     expect(await removeStoredModel({ plan })).toBe('changed');
     expect(directory.children.get('model.gguf.tmp')).toBe(temporary);
-    expect(directory.children.has(modelPublicationDirectoryName)).toBe(true);
     expect(directory.children.has('.model.gguf.pending')).toBe(true);
   });
 
-  it('writes only .tmp until validation, then publishes without a new .complete', async () => {
+  it('writes only .tmp until validation, then leaves only the base-format receipt and final', async () => {
     const directory = await folder({ kind });
     let observed = false;
     await saveHuggingFaceFile({
@@ -169,7 +295,7 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     });
     expect(observed).toBe(true);
     expect((await directory.getFileHandle('model.gguf')).data).toEqual(bytes);
-    expect([...directory.children.keys()].sort()).toEqual([modelPublicationDirectoryName, 'model.gguf'].sort());
+    expect([...directory.children.keys()].sort()).toEqual(['.model.gguf.complete', 'model.gguf'].sort());
     const file = await (await directory.getFileHandle('model.gguf')).getFile();
     const receipt = await readModelFileReceipt({ directory: directory as unknown as FileSystemDirectoryHandle, name: 'model.gguf', file });
     expect(receipt).toMatchObject({ version: 1, source: { kind: 'hugging-face', repository: source.repository, revision: source.revision, path: source.path, sha256: source.sha256 } });
@@ -184,7 +310,6 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     expect((await directory.getFileHandle('model.gguf')).data).toEqual(bytes);
     expect(directory.children.has('.model.gguf.complete')).toBe(true);
     expect(directory.children.has('model.gguf.tmp')).toBe(false);
-    expect(directory.children.has(modelPublicationDirectoryName)).toBe(false);
   });
 
   it('resumes a partial .tmp using Range and never exposes the partial final name', async () => {
@@ -206,7 +331,7 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     await saveHuggingFaceFile({ ...argumentsFor({ kind }), fetch });
     expect(new Headers(fetch.mock.calls[0]![0].request.headers).get('range')).toBe('bytes=32-');
     expect((await directory.getFileHandle('model.gguf')).data).toEqual(bytes);
-    expect(directory.children.has('.model.gguf.complete')).toBe(false);
+    expect(directory.children.has('.model.gguf.complete')).toBe(true);
   });
 
   it('recovers a crash after move without reopening the final writer or downloading again', async () => {
@@ -232,7 +357,7 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     expect(syncWriter).not.toHaveBeenCalled();
     expect(asyncWriter).not.toHaveBeenCalled();
     expect(directory.children.has('.model.gguf.pending')).toBe(false);
-    expect(directory.children.has('.model.gguf.complete')).toBe(false);
+    expect(directory.children.has('.model.gguf.complete')).toBe(true);
   });
 
   it('keeps verified staging on a move failure, and retries without another payload', async () => {
@@ -278,17 +403,19 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     expect(directory.children.has('.model.gguf.pending')).toBe(false);
   });
 
-  it('adopts verified old bytes without changing an existing .complete', async () => {
+  it('adopts verified old bytes using the existing receipt format without deleting the receipt', async () => {
     const directory = await folder({ kind });
     const final = await put({ directory, name: 'model.gguf', data: bytes });
     const markerBytes = new TextEncoder().encode('{"historical":"preserve exactly"}');
     const marker = await put({ directory, name: '.model.gguf.complete', data: markerBytes });
     const fetch = vi.fn(transfer);
+    using remove = vi.spyOn(directory, 'removeEntry');
     await saveHuggingFaceFile({ ...argumentsFor({ kind }), fetch });
     expect(fetch).not.toHaveBeenCalled();
     expect(directory.children.get('model.gguf')).toBe(final);
     expect(directory.children.get('.model.gguf.complete')).toBe(marker);
-    expect(marker.data).toEqual(markerBytes);
+    expect(remove).not.toHaveBeenCalled();
+    expect(JSON.parse(await (await marker.getFile()).text()).source).toMatchObject({ repository: source.repository, revision: source.revision });
     expect(moves.calls.filter(call => call.to === 'model.gguf')).toHaveLength(0);
   });
 
@@ -303,7 +430,7 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     expect(receipt?.source).toMatchObject({ revision: updated.revision });
     expect(fetch).not.toHaveBeenCalled();
     expect(directory.children.get('model.gguf')).toBe(final);
-    expect(directory.children.has('.model.gguf.complete')).toBe(false);
+    expect(directory.children.has('.model.gguf.complete')).toBe(true);
     await expect(saveHuggingFaceFile({ ...argumentsFor({ kind }), file: { ...source, sha256: '0'.repeat(64) } })).rejects.toThrow('differs');
     expect((await readModelFileReceipt({ directory: directory as unknown as FileSystemDirectoryHandle, name: 'model.gguf', file: await final.getFile() }))?.source).toMatchObject({ revision: updated.revision });
   });
@@ -313,7 +440,6 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     const final = await put({ directory, name: 'model.gguf', data: new Uint8Array(bytes.length).fill(9) });
     await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow('differs from the pinned source');
     expect(directory.children.get('model.gguf')).toBe(final);
-    expect(directory.children.has(modelPublicationDirectoryName)).toBe(false);
     expect(moves.calls).toHaveLength(0);
   });
 
@@ -323,7 +449,6 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     await put({ directory, name: '.model.gguf.pending', data: new TextEncoder().encode(JSON.stringify({ version: 2, kind: 'naidan-file-download', source, bytes: 32, state: 'partial' })) });
     await saveHuggingFaceFile(argumentsFor({ kind }));
     expect(directory.children.has('.model.gguf.complete')).toBe(true);
-    expect(directory.children.has(modelPublicationDirectoryName)).toBe(false);
     expect(moves.calls).toHaveLength(0);
   });
 
@@ -335,7 +460,6 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     await saveHuggingFaceFile(argumentsFor({ kind }));
     expect((await directory.getFileHandle('model.gguf')).data).toEqual(bytes);
     expect(directory.children.has('.model.gguf.complete')).toBe(true);
-    expect(directory.children.has(modelPublicationDirectoryName)).toBe(false);
   });
 
   it('does not weaken permission failures into a direct-write fallback', async () => {
@@ -349,13 +473,33 @@ describe.each(['opfs', 'host'] as const)('%s move downloads', kind => {
     expect(directory.children.size).toBe(0);
   });
 
-  it('preserves a corrupt registry rather than initializing it over existing data', async () => {
+  it('preserves a missing nonempty journal body instead of redownloading into a new file', async () => {
     const directory = await folder({ kind });
-    const registry = await put({ directory, name: modelPublicationDirectoryName, data: new TextEncoder().encode('{broken') });
-    await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow();
-    expect(await (await registry.getFile()).text()).toBe('{broken');
-    expect(directory.children.has('model.gguf.tmp')).toBe(false);
-    expect(directory.children.has('.model.gguf.pending')).toBe(false);
+    const marker = await put({ directory, name: '.model.gguf.pending', data: new TextEncoder().encode(JSON.stringify({ version: 2, kind: 'naidan-file-download', source, bytes: 32, state: 'partial' })) });
+    const fetch = vi.fn(transfer);
+    await expect(saveHuggingFaceFile({ ...argumentsFor({ kind }), fetch })).rejects.toThrow('missing');
+    expect(fetch).not.toHaveBeenCalled();
+    expect([...directory.children.values()]).toEqual([marker]);
+    expect(moves.calls).toHaveLength(0);
+  });
+
+  it('preserves staging and the journal when move becomes unsupported between sessions', async () => {
+    const directory = await folder({ kind });
+    moves.beforeMove = ({ to }) => {
+      if (to === 'model.gguf') {
+        throw new DOMException('Locked', 'NoModificationAllowedError');
+      }
+    };
+    await expect(saveHuggingFaceFile(argumentsFor({ kind }))).rejects.toThrow('Locked');
+    const staged = await directory.getFileHandle('model.gguf.tmp');
+    moves.beforeMove = () => {
+      throw new DOMException('Unsupported', 'NotSupportedError');
+    };
+    const fetch = vi.fn(transfer);
+    await expect(saveHuggingFaceFile({ ...argumentsFor({ kind }), fetch })).rejects.toMatchObject({ name: 'NotSupportedError' });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(directory.children.get('model.gguf.tmp')).toBe(staged);
+    expect([...directory.children.keys()].sort()).toEqual(['.model.gguf.pending', 'model.gguf.tmp']);
   });
 });
 
@@ -373,5 +517,5 @@ it('reuses one in-memory probe for multiple files and reads new publications wit
   expect(repositories[0]?.files.map(file => file.relativePath)).toEqual(['weights/model.gguf', 'weights/other.gguf']);
   expect(repositories[0]?.files.every(file => file.receipt?.version === 1)).toBe(true);
   expect(moves.calls).toHaveLength(count);
-  expect(directory.children.has('.model.gguf.complete')).toBe(false);
+  expect(directory.children.has('.model.gguf.complete')).toBe(true);
 });

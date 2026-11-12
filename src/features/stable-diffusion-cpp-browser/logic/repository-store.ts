@@ -1,6 +1,6 @@
-import { createFileMoveSupportCache, moveStagedFile, publicationFileName } from '@/utils/file-system-publication';
+import { createFileMoveSupportCache, moveStagedFile, publicationFileName, temporaryFileName } from '@/utils/file-system-publication';
 import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/inventory-worker/types';
-import { modelFileIsPending, modelFileMarker, modelPublicationDirectoryName, publishModelFile, readModelFileReceipt, type ModelFileReceipt } from '@/logic/model-file-publication';
+import { modelFileIsPending, modelFileMarker, publishModelFile, readModelFileReceipt, type ModelFileReceipt } from '@/logic/model-file-publication';
 import { readJournal } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { z } from 'zod';
 import { validModelPath } from './model-path';
@@ -87,7 +87,7 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
     }
     for await (const [name, entry] of directory.entries()) {
       signal?.throwIfAborted();
-      if (name === '.git' || name === pendingName || name === modelPublicationDirectoryName || name.endsWith('.tmp') || /^\..*\.(complete|pending)$/.test(name)) {
+      if (name === '.git' || name === pendingName || /^\..*\.(complete|pending)$/.test(name)) {
         continue;
       }
       if (++count > 20_000) {
@@ -102,7 +102,9 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
       case 'directory': await walk({ directory: entry, prefix: path + '/', depth: depth + 1 });
         break;
       case 'file': {
-        if (hidden.has(path) || await modelFileIsPending({ directory, name })) {
+        const stagingFor = name.endsWith('.tmp') ? name.slice(0, -4) : undefined;
+        if (hidden.has(path) || await modelFileIsPending({ directory, name }) ||
+            (stagingFor && await modelFileIsPending({ directory, name: stagingFor }))) {
           issues.push({ relativePath: path, message: 'Download is incomplete. Resume the catalog download.' });
           break;
         }
@@ -110,8 +112,8 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
         const file = storedFile.file;
         const receipt = await readModelFileReceipt({ directory, name, file });
         // Legacy user imports were committed with a repository-wide marker.
-        // Remote files require verified publication metadata: either a legacy
-        // receipt or a registered move. Old markerless bytes need explicit adoption.
+        // Remote files require a verified per-file receipt. Old markerless
+        // bytes need explicit adoption, not an inference from move support.
         if (requiresReceipt) {
           const source = receipt?.source;
           if (!receipt || source?.kind !== 'hugging-face' || source.path !== path ||
@@ -305,11 +307,12 @@ export async function importImageRepository({ input, signal, onProgress }: {
   // Validate BEFORE the first persistent write. A README/config/tokenizer file is
   // retained; unsupported weights are reported by inspection, not discarded.
   for (const entry of directory.files) {
-    if (entry.relativePath.split('/')[0] === pendingName || entry.relativePath.split('/').includes('.git') || entry.relativePath.split('/').includes(modelPublicationDirectoryName) || entry.relativePath.endsWith('.tmp') || entry.relativePath.split('/').some(part => /^\..*\.(complete|pending)$/.test(part)) || paths.has(entry.relativePath)) {
+    if (entry.relativePath.split('/')[0] === pendingName || entry.relativePath.split('/').includes('.git') || entry.relativePath.split('/').some(part => /^\..*\.(complete|pending)$/.test(part)) || paths.has(entry.relativePath)) {
       throw new Error('Reserved or duplicate repository path');
     }
     paths.add(entry.relativePath);
   }
+  const inputEntries = new Set(paths);
   for (const path of paths) {
     const parent = path.split('/');
     parent.pop();
@@ -317,6 +320,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
       if (paths.has(parent.join('/'))) {
         throw new Error('File/directory path collision');
       }
+      inputEntries.add(parent.join('/'));
       parent.pop();
     }
   }
@@ -340,12 +344,12 @@ export async function importImageRepository({ input, signal, onProgress }: {
     }
     signal?.throwIfAborted();
     const root = await user.getDirectoryHandle(directory.rootName, { create: true });
-    const created: { parent: FileSystemDirectoryHandle, name: string, handle: FileSystemFileHandle, size: number, modified: number }[] = [];
+    const created: { parent: FileSystemDirectoryHandle, name: string, finalName: string | undefined, handle: FileSystemFileHandle, size: number, modified: number }[] = [];
     const folders: { parent: FileSystemDirectoryHandle, name: string }[] = [];
     const known = new Map<string, FileSystemDirectoryHandle>([['', root]]);
     let completed = 0;
     const moveSupport = createFileMoveSupportCache();
-    async function makeFile({ parent, name }: { parent: FileSystemDirectoryHandle, name: string }): Promise<(typeof created)[number]> {
+    async function makeFile({ parent, name, finalName }: { parent: FileSystemDirectoryHandle, name: string, finalName?: string }): Promise<(typeof created)[number]> {
       for await (const [existing] of parent.entries()) {
         if (existing === name) {
           throw new Error('Repository destination changed during import');
@@ -353,7 +357,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
       }
       const handle = await parent.getFileHandle(name, { create: true });
       const file = await handle.getFile();
-      const record = { parent, name, handle, size: file.size, modified: file.lastModified };
+      const record = { parent, name, finalName, handle, size: file.size, modified: file.lastModified };
       created.push(record);
       return record;
     }
@@ -374,8 +378,11 @@ export async function importImageRepository({ input, signal, onProgress }: {
           parent = folder;
           prefix = next;
         }
-        const publication = await moveSupport.detect({ directory: parent });
-        const record = await makeFile({ parent, name: publicationFileName({ name, support: publication }) });
+        const stagedName = temporaryFileName({ name });
+        const stagedPath = prefix ? `${prefix}/${stagedName}` : stagedName;
+        const collides = inputEntries.has(stagedPath);
+        const publication = collides ? 'unsupported' : await moveSupport.detect({ directory: parent });
+        const record = await makeFile({ parent, name: publicationFileName({ name, support: publication }), finalName: name });
         const writer = await record.handle.createWritable();
         const reader = file.stream().getReader();
         const cancelRead = (): void => {
@@ -453,13 +460,15 @@ export async function importImageRepository({ input, signal, onProgress }: {
       // still matching this import's handles/metadata, then EMPTY directories.
       // Never recursively sweep the root or remove someone else's changed data.
       for (const record of [...created].reverse().filter(entry => entry.name !== pendingName)) {
-        try {
-          const current = await record.parent.getFileHandle(record.name);
-          const file = await current.getFile();
-          if (await current.isSameEntry(record.handle) && file.size === record.size && file.lastModified === record.modified) {
-            await record.parent.removeEntry(record.name);
-          }
-        } catch { /* preserve ambiguous leftovers */ }
+        for (const name of new Set([record.name, record.finalName].filter((name): name is string => name !== undefined))) {
+          try {
+            const current = await record.parent.getFileHandle(name);
+            const file = await current.getFile();
+            if (await current.isSameEntry(record.handle) && file.size === record.size && file.lastModified === record.modified) {
+              await record.parent.removeEntry(name);
+            }
+          } catch { /* preserve ambiguous leftovers */ }
+        }
       }
       for (const folder of [...folders].reverse()) {
         await folder.parent.removeEntry(folder.name).catch(() => undefined);

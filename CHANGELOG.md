@@ -29,8 +29,8 @@ Do not add entries directly here during ordinary development.
 
 ### Changed
 
-- Publish new Hugging Face model downloads, local llama.cpp and image-model imports, and browser-stored attachments through `.tmp` files and native file moves when supported. Probe each destination in memory before writing, retain legacy publication when moves are unavailable, and keep existing `.complete` files without creating new ones for move-based saves.
-- Preserve download resume metadata and source verification, distinguish move-based files from legacy data without changing persisted DTOs or probing during reads, and keep interrupted publications unavailable until they are finalized. Explicit deletion includes owned staging files without removing unrelated files or another model's source metadata.
+- Stage Hugging Face model downloads and local llama.cpp and image-model imports in `.tmp` files and use native file moves when supported. Detect support once per destination in memory; keep the existing write path where moves are unavailable.
+- Preserve existing download journals and verified-source receipts, including recovery after a move is interrupted before finalization. Successful move-based local imports need no per-file completion markers. Explicit download removal includes only staging files owned by matching journals.
 
 ### Fixed
 
