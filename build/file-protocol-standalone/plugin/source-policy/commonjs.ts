@@ -2,9 +2,9 @@ import { parse } from '@babel/parser';
 import type { Node } from '@babel/types';
 import { builtinModules } from 'node:module';
 import type { Plugin } from 'vite';
-import type { StandaloneBuildDiagnostics } from '../diagnostics.js';
-import { isOutputChunk } from '../output-graph.js';
-import { isBabelNode, isBabelNodeType } from './babel-node.js';
+import type { StandaloneBuildDiagnostics } from '../diagnostics.ts';
+import { isOutputChunk } from '../output-graph.ts';
+import { isBabelNode, isBabelNodeType } from './babel-node.ts';
 
 type CommonJsRequireCall = Readonly<{kind: string; staticSpecifier: string | null; dynamic: boolean; start: number | null; end: number | null}>;
 

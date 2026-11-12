@@ -9,7 +9,7 @@ import {
 } from '@vue/compiler-sfc';
 import * as ts from 'typescript';
 
-import { stripModuleQuery } from './module-id';
+import { stripModuleQuery } from './module-id.ts';
 
 const supportedBindings = new Set(['lazyStrings', 'ensureStrings']);
 const generatedTemplateContexts = new Set(['$setup', '_ctx', '__returned__']);

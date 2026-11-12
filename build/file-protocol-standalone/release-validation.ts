@@ -9,14 +9,14 @@ import {
   measureStandaloneWorkerMetricsFromDisk,
   type StandaloneWorkerBudgets,
   type StandaloneWorkerMetrics,
-} from './release-build-metrics.js';
+} from './release-build-metrics.ts';
 import {
   auditLicenseCoverage,
   collectBundledPackageInstances,
   type LicenseDependencyRecord,
-} from './release-license-audit.js';
-import { createStandaloneWorkerDebugBuildReport } from './release-debug-build-report.js';
-import { assertFileProtocolStandaloneHtmlAfterRewrite } from './html-validation.js';
+} from './release-license-audit.ts';
+import { createStandaloneWorkerDebugBuildReport } from './release-debug-build-report.ts';
+import { assertFileProtocolStandaloneHtmlAfterRewrite } from './html-validation.ts';
 
 type ReleaseWorkerDefinition = Readonly<{name: string; sourceEntry: string}>;
 

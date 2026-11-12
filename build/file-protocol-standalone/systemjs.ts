@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createBuildDom } from '../jsdom';
+import { createBuildDom } from '../jsdom.ts';
 
-import type { BuildLicenseDependency } from '../license-dependencies';
+import type { BuildLicenseDependency } from '../license-dependencies.ts';
 const pluginName = 'file-protocol-standalone';
 
 export function readSystemJsLicenseDependency({ packageJsonPath }: {

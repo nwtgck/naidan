@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { BinaryObjectId, HostModelDirectoryId, ImageGenerationId, NaidanRpcRegistrationId, NaidanRpcPeerPublicKey } from './ids';
+import type { BinaryObjectId, HostModelDirectoryId, ImageGenerationId, NaidanRpcRegistrationId, NaidanRpcPeerPublicKey } from './ids.ts';
 
 /** Shared by the image workspace and its public persistence service. */
 export type ImageGenerationModelFile = {

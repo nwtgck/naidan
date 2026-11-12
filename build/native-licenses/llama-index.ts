@@ -1,4 +1,4 @@
-import type { NativeLicenseIndex } from './index-types';
+import type { NativeLicenseIndex } from './index-types.ts';
 
 // A literal import keeps the actual installed JSON in TypeScript's program.
 // Do not replace this with JSON.parse(...), an ambient *.json declaration, or as.

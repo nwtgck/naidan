@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { chatProfileSchema, gpuProfilingProfile } from './types';
+import { chatProfileSchema, gpuProfilingProfile } from './types.ts';
 
 const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegative().refine(Number.isSafeInteger), sha256: z.string().regex(/^[0-9a-f]{64}$/) });
 const sourceCommit = z.string().regex(/^[0-9a-f]{40}$/);

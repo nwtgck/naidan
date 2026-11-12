@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { URLSearchParams } from 'node:url';
 import type { Plugin } from 'vite';
-import type { StandaloneBuildDiagnostics } from './diagnostics.js';
-import type { NormalizedWorkerDefinition } from './worker-definition.js';
+import type { StandaloneBuildDiagnostics } from './diagnostics.ts';
+import type { NormalizedWorkerDefinition } from './worker-definition.ts';
 
 function isStylesheetSideEffectModuleId({ moduleId }: Readonly<{moduleId: string}>): boolean {
   const [pathname, query = ''] = moduleId.split('?', 2);

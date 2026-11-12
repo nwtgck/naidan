@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin } from 'vite';
-import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries';
-import { MODEL_PAGE_PREFIX, modelIdFromPagePath } from '../src/features/llama-cpp-browser/model-launch/page-url';
-import { renderModelPageHtml, renderPublicAppHtml } from './model-page-html';
-import { createSiteSitemap } from './site-sitemap';
+import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries.ts';
+import { MODEL_PAGE_PREFIX, modelIdFromPagePath } from '../src/features/llama-cpp-browser/model-launch/page-url.ts';
+import { renderModelPageHtml, renderPublicAppHtml } from './model-page-html.ts';
+import { createSiteSitemap } from './site-sitemap.ts';
 
 const entriesModule = '/src/features/llama-cpp-browser/model-launch/page-entries.ts';
 

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import MagicString from 'magic-string';
 import { z } from 'zod';
-import originalProvenance from './provenance.json';
-import originalReplacements from './replacements';
+import originalProvenance from './provenance.json' with { type: 'json' };
+import originalReplacements from './replacements.ts';
 
 export const TRANSFORMERS_JS_FIXES_PROVENANCE = z.object({
   schemaVersion: z.literal(1),

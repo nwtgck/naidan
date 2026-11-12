@@ -3,8 +3,8 @@ import {
   measureStandaloneWorkerMetricsFromDisk,
   type StandaloneChunkSummary,
   type StandaloneWorkerEntrySummary,
-} from './release-build-metrics.js';
-import { collectBundledPackageInstances, type BundledPackageRecord } from './release-license-audit.js';
+} from './release-build-metrics.ts';
+import { collectBundledPackageInstances, type BundledPackageRecord } from './release-license-audit.ts';
 
 
 type DebugWorkerDefinition = StandaloneWorkerEntrySummary & Readonly<{sourceEntry?: string}>;

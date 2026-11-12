@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite';
-import type { StandaloneBuildDiagnostics } from './diagnostics.js';
+import type { StandaloneBuildDiagnostics } from './diagnostics.ts';
 
 export function createVitePreloadHelperCompatibilityPlugin({ diagnostics }: Readonly<{diagnostics: StandaloneBuildDiagnostics}>): Plugin {
   return {

@@ -7,18 +7,18 @@ import type { ViteDevServer } from 'vite';
 import {
   RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX,
   RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX,
-} from './virtual-modules';
+} from './virtual-modules.ts';
 
-import type { BoundaryStringCatalogState } from './catalog-state';
+import type { BoundaryStringCatalogState } from './catalog-state.ts';
 import {
   classifyBoundaryStringFile,
   type BoundaryStringFileKind,
   type BoundaryStringProjectPaths,
-} from './message-catalog';
+} from './message-catalog.ts';
 import type {
   BoundaryStringSourceRecord,
   BoundaryStringSourceRegistry,
-} from './source-registry';
+} from './source-registry.ts';
 
 const STRUCTURE_REVISION_SETTLE_MILLISECONDS = 50;
 const STRUCTURE_REVISION_MAX_WAIT_MILLISECONDS = 300;

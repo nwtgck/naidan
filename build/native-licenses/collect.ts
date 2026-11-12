@@ -1,8 +1,8 @@
-import type { NaidanLicense } from '../../src/01-models/naidan-license';
-import type { NativeLicenseIndex } from './index-types';
+import type { NaidanLicense } from '../../src/01-models/naidan-license.ts';
+import type { NativeLicenseIndex } from './index-types.ts';
 
-import type { NativeLicenseSource, NativeLicenseRuntime } from '../../src/01-models/native-license-build-source';
-export type { NativeLicenseSource } from '../../src/01-models/native-license-build-source';
+import type { NativeLicenseSource, NativeLicenseRuntime } from '../../src/01-models/native-license-build-source.ts';
+export type { NativeLicenseSource } from '../../src/01-models/native-license-build-source.ts';
 
 function assertRelativePath({ value }: { value: string }): void {
   if (!value || (/[\\:]/u.test(value) || [...value].some(character => character.charCodeAt(0) < 32)) || value.split('/').some(part => !part || part === '.' || part === '..')) {

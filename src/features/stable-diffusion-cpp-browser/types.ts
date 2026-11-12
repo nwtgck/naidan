@@ -1,9 +1,9 @@
 import { z } from 'zod';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- The Vite build configuration also imports this schema without the app alias.
-import { imageGenerationSamplingSchema } from '../../01-models/image-generation-history';
-import { validModelPath } from './logic/model-path';
-import { profileOptions, samplerOptions, schedulerOptions, defaultPreviewSettings } from './form-options';
-export { defaultPreviewSettings } from './form-options';
+import { imageGenerationSamplingSchema } from '../../01-models/image-generation-history.ts';
+import { validModelPath } from './logic/model-path.ts';
+import { profileOptions, samplerOptions, schedulerOptions, defaultPreviewSettings } from './form-options.ts';
+export { defaultPreviewSettings } from './form-options.ts';
 
 export const profileSchema = z.enum(profileOptions);
 

@@ -1,4 +1,4 @@
-import type { PreviewSettings } from './types';
+import type { PreviewSettings } from './types.ts';
 
 /** Presentation choices only. No validation, device probing or runtime imports. */
 export const profileOptions = ['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'] as const;

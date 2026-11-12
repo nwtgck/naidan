@@ -13,7 +13,7 @@ import {
   type SourcePosition,
   type TailwindCandidateOccurrence,
   type TwModuleSourceType,
-} from './tw-class-core';
+} from './tw-class-core.ts';
 
 const moduleExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
 const sourceReadBatchSize = 32;

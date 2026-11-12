@@ -7,7 +7,7 @@ import {
   collectTwCandidateOccurrencesFromVueSource,
   transformTwCallsInModule,
   transformTwCallsInVueSource,
-} from './tw-class-core';
+} from './tw-class-core.ts';
 import {
   analyzeSourceModules,
   createSourceModuleAnalysisCache,
@@ -16,7 +16,7 @@ import {
   isStaticTailwindSourcePath,
   serializeSourceAnalysis,
   type SourceModuleAnalysis,
-} from './source-module-analyzer';
+} from './source-module-analyzer.ts';
 import {
   createCssOwnerKey,
   createCssOwnershipPlan,
@@ -25,12 +25,12 @@ import {
   writeCssOwnershipDebugFiles,
   type CssOwnershipPlan,
   type CssRuntimeFragment,
-} from './css-ownership-planner';
-import { createRefreshCoordinator } from './refresh-coordinator';
+} from './css-ownership-planner.ts';
+import { createRefreshCoordinator } from './refresh-coordinator.ts';
 import {
   createTailwindCssRegistrationModuleSource,
   createTailwindCssRuntimeModuleSource,
-} from './tailwind-css-runtime-source';
+} from './tailwind-css-runtime-source.ts';
 
 
 export interface TwClassVitePlugin extends Plugin {

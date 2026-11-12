@@ -2,7 +2,7 @@
 // !!! ALLOW-EXTERNAL-COMMAND git status:* !!! -- Observe this checkout's working tree during builds.
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { runCommandSync } from './command';
+import { runCommandSync } from './command.ts';
 
 type AppSourceIdentity = {
   sourceCommit: string | undefined,

@@ -2,7 +2,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { normalizePath, type Plugin } from 'vite';
-import { TRANSFORMERS_JS_FIXES_PROVENANCE, transformersJsFixesSha256, applyTransformersJsFixes } from './transform';
+import { TRANSFORMERS_JS_FIXES_PROVENANCE, transformersJsFixesSha256, applyTransformersJsFixes } from './transform.ts';
 
 export function readTransformersJsFixesPackage({ projectRoot }: { projectRoot: string }) {
   const packageRoot = realpathSync(path.join(projectRoot, 'node_modules/@huggingface/transformers'));

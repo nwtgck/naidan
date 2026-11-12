@@ -1,19 +1,19 @@
 import path from 'node:path';
 
-import type { NaidanLicense } from '../src/01-models/naidan-license';
+import type { NaidanLicense } from '../src/01-models/naidan-license.ts';
 import license from 'rollup-plugin-license';
 import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-license';
 import type { FunctionPluginHooks, NormalizedOutputOptions, OutputChunk, PluginContext } from 'rolldown';
 import type { Plugin, ResolvedConfig } from 'vite';
 
-import { serializeLicenseCatalogFactory } from './license-payload';
-import { collectRenderedModuleLicenseDependencies } from './rendered-module-license-dependencies';
+import { serializeLicenseCatalogFactory } from './license-payload.ts';
+import { collectRenderedModuleLicenseDependencies } from './rendered-module-license-dependencies.ts';
 import {
   collectDevelopmentLicenseDependencies,
   convertRollupLicenseDependency,
   mergeBuildLicenseDependencies,
   type BuildLicenseDependency,
-} from './license-dependencies';
+} from './license-dependencies.ts';
 
 export const NAIDAN_LICENSE_MODULE_ID = 'virtual:naidan-licenses';
 const resolvedLicenseModuleId = `\0${NAIDAN_LICENSE_MODULE_ID}`;

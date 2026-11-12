@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { NaidanStandaloneWorkerDefinition } from '../plugin-types.js';
+import type { NaidanStandaloneWorkerDefinition } from '../plugin-types.ts';
 
 export type NormalizedWorkerDefinition = NaidanStandaloneWorkerDefinition & Readonly<{entry: string}>;
 

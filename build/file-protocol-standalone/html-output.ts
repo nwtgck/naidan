@@ -1,4 +1,4 @@
-import { createBuildDom } from '../jsdom';
+import { createBuildDom } from '../jsdom.ts';
 
 function hasStartOffset(value: unknown): value is Readonly<{startOffset: number}> {
   return value !== null

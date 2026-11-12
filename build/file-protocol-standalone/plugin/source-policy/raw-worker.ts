@@ -7,10 +7,10 @@ import type {
   RawWorkerOutputDiagnostic,
   StandaloneBuildDiagnostics,
   WorkerConstructorKind,
-} from '../diagnostics.js';
-import { isOutputChunk } from '../output-graph.js';
-import { isBabelNode, isBabelNodeType, staticMemberPropertyName } from './babel-node.js';
-import { babelTraverse } from '../../babel-runtime.js';
+} from '../diagnostics.ts';
+import { isOutputChunk } from '../output-graph.ts';
+import { isBabelNode, isBabelNodeType, staticMemberPropertyName } from './babel-node.ts';
+import { babelTraverse } from '../../babel-runtime.ts';
 
 type WorkerResolution = Readonly<{kind: WorkerConstructorKind; calleeForm: string}>;
 type BabelNodePath = NodePath<Node>;

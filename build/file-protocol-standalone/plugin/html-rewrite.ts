@@ -1,16 +1,16 @@
 import { Buffer } from 'node:buffer';
 import path from 'node:path';
 import type { OutputAsset, OutputChunk } from 'rolldown';
-import type { StandaloneBuildDiagnostics } from './diagnostics.js';
+import type { StandaloneBuildDiagnostics } from './diagnostics.ts';
 import {
   assertFileProtocolStandaloneHtmlAfterRewrite,
   assertFileProtocolStandaloneHtmlBeforeRewrite,
   resolveFileProtocolStandaloneHtmlReference,
   type FileProtocolStandaloneHtmlSourceRange,
-} from '../html-validation.js';
-import { insertFileProtocolStandaloneBootstrap } from '../html-output.js';
-import { FILE_PROTOCOL_STANDALONE_ELEMENT_IDS } from '../../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.js';
-import { createFileProtocolStandaloneEntryBootstrapSource } from '../file-protocol-startup-support.js';
+} from '../html-validation.ts';
+import { insertFileProtocolStandaloneBootstrap } from '../html-output.ts';
+import { FILE_PROTOCOL_STANDALONE_ELEMENT_IDS } from '../../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.ts';
+import { createFileProtocolStandaloneEntryBootstrapSource } from '../file-protocol-startup-support.ts';
 
 function slash(value: string): string {
   return value.split(path.sep).join('/');

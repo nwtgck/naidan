@@ -13,9 +13,9 @@ import type { Plugin } from 'vite';
 import type {
   StandaloneBuildDiagnostics,
   ViteWorkerQueryRecord,
-} from '../diagnostics.js';
-import { babelTraverse } from '../../babel-runtime.js';
-import { isBabelNodeType } from './babel-node.js';
+} from '../diagnostics.ts';
+import { babelTraverse } from '../../babel-runtime.ts';
+import { isBabelNodeType } from './babel-node.ts';
 
 function viteWorkerQueryFlags(specifier: string): string[] {
   const queryIndex = specifier.indexOf('?');

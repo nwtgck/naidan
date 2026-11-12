@@ -1,7 +1,7 @@
 import type { JSDOM } from 'jsdom';
-import { createBuildDom } from '../../jsdom';
+import { createBuildDom } from '../../jsdom.ts';
 
-import { STANDALONE_PACKAGE_LOCALE_META_NAME } from '../../../src/features/file-protocol-standalone/logic/package-locale-contract.js';
+import { STANDALONE_PACKAGE_LOCALE_META_NAME } from '../../../src/features/file-protocol-standalone/logic/package-locale-contract.ts';
 
 export const PACKAGE_LOCALE_META_NAME = STANDALONE_PACKAGE_LOCALE_META_NAME;
 

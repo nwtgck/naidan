@@ -1,7 +1,7 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Vite configuration imports these schemas before application aliases are available.
-import { parseGenerationMetrics } from '../../01-models/generation-metrics';
+import { parseGenerationMetrics } from '../../01-models/generation-metrics.ts';
 import { z } from 'zod';
-import { errorDetails, maximumErrorDetailsLength } from './error-details';
+import { errorDetails, maximumErrorDetailsLength } from './error-details.ts';
 
 export const chatProfileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm32']);
 // Diagnostic artifacts are deliberately not part of ordinary chat selection.

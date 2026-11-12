@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { UI_LOCALES } from '../../src/01-models/ui-locale';
+import { UI_LOCALES } from '../../src/01-models/ui-locale.ts';
 
 const localeModuleFileNames = new Set<string>(UI_LOCALES.map((locale) => `${locale}.ts`));
 

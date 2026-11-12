@@ -3,7 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-license';
 
-import type { NaidanLicense } from '../src/01-models/naidan-license';
+import type { NaidanLicense } from '../src/01-models/naidan-license.ts';
 
 // Package audits continue to require a package version; native notices are
 // combined only after this scanner/merge/audit path.
