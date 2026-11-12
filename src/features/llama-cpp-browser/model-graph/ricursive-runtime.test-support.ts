@@ -1,3 +1,4 @@
+import { reviewedRicursiveDeclarationFixture } from './ricursive-reviewed.test-support';
 import { ricursiveDeclarationFixture } from './ricursive.test-support';
 import { expandModelGraphDefinition } from './expand';
 import { parseModelGraphDefinitions, type ModelGraphDefinition } from './definition';
@@ -7,7 +8,24 @@ import type { GraphMetadataValue } from './expressions';
 /** Scale only dimensions and windows of the supplied declaration. Retain its
  * five-layer sliding/full cycle, gates, value blending and normalization order. */
 export function smallRicursiveFixture({ precision }: { precision: 'F32' | 'F16' }) {
-  const declaration = ricursiveDeclarationFixture();
+  return buildSmallRicursiveFixture({ precision, declaration: ricursiveDeclarationFixture(), metadataOverrides: [] });
+}
+
+export function smallReviewedRicursiveFixture({ precision, clamp, embeddingScale, swaBase }: {
+  precision: 'F32' | 'F16'; clamp: number | readonly number[] | undefined; embeddingScale: number | undefined; swaBase: number | undefined;
+}) {
+  return buildSmallRicursiveFixture({
+    precision,
+    declaration: reviewedRicursiveDeclarationFixture(),
+    metadataOverrides: [
+      ['ricursive.swiglu_clamp', clamp], ['ricursive.embedding_scale', embeddingScale], ['ricursive.rope.freq_base_swa', swaBase],
+    ],
+  });
+}
+
+function buildSmallRicursiveFixture({ precision, declaration, metadataOverrides }: {
+  precision: 'F32' | 'F16'; declaration: ModelGraphDefinition; metadataOverrides: readonly [string, GraphMetadataValue | undefined][];
+}) {
   const replace = ({ value }: { value: unknown }): unknown => {
     if (typeof value === 'number') {
       return new Map([[5120, 16], [100352, 24], [10240, 32], [1024, 16], [40960, 32], [128, 8], [80, 4], [8, 2]]).get(value) ?? value;
@@ -25,6 +43,10 @@ export function smallRicursiveFixture({ precision }: { precision: 'F32' | 'F16' 
   };
   const definition = parseModelGraphDefinitions({ input: JSON.stringify(replace({ value: declaration })) })[0]!.definition;
   definition.applicability.metadata.find(entry => entry.key === 'ricursive.block_count')!.value = 5;
+  const windowConstraint = definition.applicability.metadata.find(entry => entry.key === 'ricursive.attention.sliding_window');
+  if (windowConstraint) {
+    windowConstraint.value = 2;
+  }
   const metadata = new Map<string, GraphMetadataValue>([
     ...definition.applicability.metadata.map(({ key, value }): [string, GraphMetadataValue] => [key, value]),
     ['ricursive.attention.sliding_window', 2], ['ricursive.embedding_scale', 4],
@@ -32,6 +54,26 @@ export function smallRicursiveFixture({ precision }: { precision: 'F32' | 'F16' 
     ['ricursive.attention.sliding_window_pattern', [true, true, true, true, false]],
     ['ricursive.swiglu_clamp', [0.3, 0.4, 0.5, 0.6, 0.7]],
   ]);
+  for (const [key, value] of metadataOverrides) {
+    if (value === undefined) {
+      metadata.delete(key);
+    } else {
+      metadata.set(key, value);
+    }
+  }
+  const rawClamp = metadata.get('ricursive.swiglu_clamp');
+  const clamps = Array.from({ length: 5 }, (_, layer) => {
+    const limit: unknown = rawClamp === undefined ? 0 : typeof rawClamp === 'number' ? rawClamp : Array.isArray(rawClamp) ? rawClamp[layer] : undefined;
+    if (typeof limit !== 'number') {
+      throw new Error('Invalid reference clamp');
+    }
+    return limit;
+  });
+  const scale = metadata.get('ricursive.embedding_scale') ?? 0;
+  const base = metadata.get('ricursive.rope.freq_base_swa') ?? metadata.get('ricursive.rope.freq_base');
+  if (typeof scale !== 'number' || typeof base !== 'number') {
+    throw new Error('Invalid scalar reference metadata');
+  }
   const provisional: ModelGraphInventory = { architecture: 'ricursive', vocabularySize: 24, metadata, tensors: new Map() };
   const flat = expandModelGraphDefinition({ definition, inventory: provisional });
   // Cache rounding is independently modeled below for F16. Weight precision is
@@ -85,12 +127,12 @@ export function smallRicursiveFixture({ precision }: { precision: 'F32' | 'F16' 
     });
   }
   const inventory = { ...provisional, tensors };
-  return { definition, inventory, locations, reference: createReference({ values, precision }) };
+  return { definition, inventory, locations, reference: createReference({ values, precision, clamps, embeddingScale: scale === 0 ? 1 : scale, frequencyBase: base }) };
 }
 
 /** Scalar reference for the official Ricursive equations; it does not walk or
  * lower the declaration, call GGML, or use the production operator catalog. */
-function createReference({ values, precision }: { values: ReadonlyMap<string, Float32Array>; precision: 'F32' | 'F16' }) {
+function createReference({ values, precision, clamps, embeddingScale, frequencyBase }: { values: ReadonlyMap<string, Float32Array>; precision: 'F32' | 'F16'; clamps: readonly number[]; embeddingScale: number; frequencyBase: number }) {
   const heads = 4, kvHeads = 2, headSize = 8, width = 16;
   const history: { keys: number[][]; vals: number[][] }[] = Array.from({ length: 5 }, () => ({ keys: [], vals: [] }));
   let position = 0;
@@ -117,7 +159,7 @@ function createReference({ values, precision }: { values: ReadonlyMap<string, Fl
     const result = [...input];
     for (let offset = 0; offset < input.length; offset += headSize) {
       for (let i = 0; i < headSize / 2; i++) {
-        const theta = position / 10000 ** (2 * i / headSize), cosine = Math.cos(theta), sine = Math.sin(theta);
+        const theta = position / frequencyBase ** (2 * i / headSize), cosine = Math.cos(theta), sine = Math.sin(theta);
         const a = input[offset + i]!, b = input[offset + i + headSize / 2]!;
         result[offset + i] = a * cosine - b * sine;
         result[offset + i + headSize / 2] = a * sine + b * cosine;
@@ -150,7 +192,7 @@ function createReference({ values, precision }: { values: ReadonlyMap<string, Fl
   return {
     step({ token }: { token: number }): number[] {
       const embedding = weight({ name: 'token_embd.weight' });
-      const initial = Array.from(embedding.subarray(token * width, (token + 1) * width), x => x * 4);
+      const initial = Array.from(embedding.subarray(token * width, (token + 1) * width), x => x * embeddingScale);
       let hidden = initial;
       for (let layer = 0; layer < 5; layer++) {
         const name = ({ suffix }: { suffix: string }) => `blk.${layer}.${suffix}.weight`;
@@ -223,8 +265,11 @@ function createReference({ values, precision }: { values: ReadonlyMap<string, Fl
         const residual = hidden.map((x, i) => x + post[i]!);
         const ffInput = norm({ input: residual, name: name({ suffix: 'ffn_norm' }), size: width });
         const ffGate = linear({ input: ffInput, name: name({ suffix: 'ffn_gate' }) }), up = linear({ input: ffInput, name: name({ suffix: 'ffn_up' }) });
-        const limit = [0.3, 0.4, 0.5, 0.6, 0.7][layer]!;
+        const limit = clamps[layer]!;
         const active = ffGate.map((x, i) => {
+          if (limit === 0) {
+            return x / (1 + Math.exp(-x)) * up[i]!;
+          }
           const clipped = Math.min(x, limit);
           return clipped / (1 + Math.exp(-clipped)) * Math.max(-limit, Math.min(limit, up[i]!));
         });

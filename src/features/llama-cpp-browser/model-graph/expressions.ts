@@ -2,42 +2,68 @@ import { z } from 'zod';
 
 export const graphNameSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_.${}+-]{0,191}$/);
 export type GraphMetadataValue = string | number | boolean | readonly (string | number | boolean)[];
+/** Metadata storage is a contract, not an implicit scalar/array coercion.
+ * Indexed scalars require explicit broadcast and a checked logical length.
+ * Fallbacks apply only to an absent key, never invalid types or array lengths. */
+export type GraphMetadataReference =
+  | { metadata: string; index?: never; length?: never; scalar?: never; fallback?: never }
+  | { metadata: string; index: GraphNumber; length?: GraphNumber; scalar?: never; fallback?: never }
+  | { metadata: string; fallback: GraphNumber; index?: never; length?: never; scalar?: never }
+  | { metadata: string; index: GraphNumber; length: GraphNumber; scalar: 'broadcast'; fallback?: GraphNumber };
 export type GraphNumber = number
   | { parameter: string } | { variable: string }
-  | { metadata: string; index?: GraphNumber }
+  | GraphMetadataReference
   | { tensor: string; dimension: number }
   | { inputTokens: true } | { cacheTokens: true } | { capacity: true }
   | { sum: GraphNumber[] } | { product: GraphNumber[] }
   | { subtract: [GraphNumber, GraphNumber] } | { quotient: [GraphNumber, GraphNumber] }
   | { modulo: [GraphNumber, GraphNumber] } | { power: [GraphNumber, GraphNumber] }
   | { minimum: GraphNumber[] } | { maximum: GraphNumber[] } | { sqrt: GraphNumber };
-export const graphNumberSchema: z.ZodType<GraphNumber> = z.lazy(() => z.union([
-  z.number().finite(),
-  z.strictObject({ parameter: graphNameSchema }), z.strictObject({ variable: graphNameSchema }),
-  z.strictObject({ metadata: z.string().min(1).max(256), index: graphNumberSchema.optional() }),
-  z.strictObject({ tensor: z.string().min(1).max(256), dimension: z.number().int().min(0).max(3) }),
-  z.strictObject({ inputTokens: z.literal(true) }), z.strictObject({ cacheTokens: z.literal(true) }), z.strictObject({ capacity: z.literal(true) }),
-  z.strictObject({ sum: z.array(graphNumberSchema).min(2).max(16) }),
-  z.strictObject({ product: z.array(graphNumberSchema).min(2).max(16) }),
-  z.strictObject({ subtract: z.tuple([graphNumberSchema, graphNumberSchema]) }),
-  z.strictObject({ quotient: z.tuple([graphNumberSchema, graphNumberSchema]) }),
-  z.strictObject({ modulo: z.tuple([graphNumberSchema, graphNumberSchema]) }),
-  z.strictObject({ power: z.tuple([graphNumberSchema, graphNumberSchema]) }),
-  z.strictObject({ minimum: z.array(graphNumberSchema).min(2).max(16) }),
-  z.strictObject({ maximum: z.array(graphNumberSchema).min(2).max(16) }),
-  z.strictObject({ sqrt: graphNumberSchema }),
-]));
+
+function graphMetadataShapes() {
+  const metadata = z.string().min(1).max(256);
+  return [
+    { metadata },
+    { metadata, index: graphNumberSchema, length: graphNumberSchema.optional() },
+    { metadata, fallback: graphNumberSchema },
+    { metadata, index: graphNumberSchema, length: graphNumberSchema, scalar: z.literal('broadcast'), fallback: graphNumberSchema.optional() },
+  ] as const;
+}
+
+export const graphNumberSchema: z.ZodType<GraphNumber> = z.lazy(() => {
+  const [scalar, indexed, defaulted, broadcast] = graphMetadataShapes();
+  return z.union([
+    z.number().finite(),
+    z.strictObject({ parameter: graphNameSchema }), z.strictObject({ variable: graphNameSchema }),
+    z.strictObject(scalar), z.strictObject(indexed), z.strictObject(defaulted), z.strictObject(broadcast),
+    z.strictObject({ tensor: z.string().min(1).max(256), dimension: z.number().int().min(0).max(3) }),
+    z.strictObject({ inputTokens: z.literal(true) }), z.strictObject({ cacheTokens: z.literal(true) }), z.strictObject({ capacity: z.literal(true) }),
+    z.strictObject({ sum: z.array(graphNumberSchema).min(2).max(16) }),
+    z.strictObject({ product: z.array(graphNumberSchema).min(2).max(16) }),
+    z.strictObject({ subtract: z.tuple([graphNumberSchema, graphNumberSchema]) }),
+    z.strictObject({ quotient: z.tuple([graphNumberSchema, graphNumberSchema]) }),
+    z.strictObject({ modulo: z.tuple([graphNumberSchema, graphNumberSchema]) }),
+    z.strictObject({ power: z.tuple([graphNumberSchema, graphNumberSchema]) }),
+    z.strictObject({ minimum: z.array(graphNumberSchema).min(2).max(16) }),
+    z.strictObject({ maximum: z.array(graphNumberSchema).min(2).max(16) }),
+    z.strictObject({ sqrt: graphNumberSchema }),
+  ]);
+});
 export type GraphCondition =
   | { compare: 'equal' | 'notEqual' | 'less' | 'lessEqual' | 'greater' | 'greaterEqual'; left: GraphNumber; right: GraphNumber }
-  | { metadata: string; index?: GraphNumber; equals: string | number | boolean }
+  | (GraphMetadataReference & { equals: string | number | boolean })
   | { all: GraphCondition[] } | { any: GraphCondition[] } | { not: GraphCondition };
-export const graphConditionSchema: z.ZodType<GraphCondition> = z.lazy(() => z.union([
-  z.strictObject({ compare: z.enum(['equal', 'notEqual', 'less', 'lessEqual', 'greater', 'greaterEqual']), left: graphNumberSchema, right: graphNumberSchema }),
-  z.strictObject({ metadata: z.string().min(1).max(256), index: graphNumberSchema.optional(), equals: z.union([z.string(), z.number().finite(), z.boolean()]) }),
-  z.strictObject({ all: z.array(graphConditionSchema).min(1).max(16) }),
-  z.strictObject({ any: z.array(graphConditionSchema).min(1).max(16) }),
-  z.strictObject({ not: graphConditionSchema }),
-]));
+export const graphConditionSchema: z.ZodType<GraphCondition> = z.lazy(() => {
+  const [scalar, indexed, defaulted, broadcast] = graphMetadataShapes();
+  const equals = z.union([z.string(), z.number().finite(), z.boolean()]);
+  return z.union([
+    z.strictObject({ compare: z.enum(['equal', 'notEqual', 'less', 'lessEqual', 'greater', 'greaterEqual']), left: graphNumberSchema, right: graphNumberSchema }),
+    z.strictObject({ ...scalar, equals }), z.strictObject({ ...indexed, equals }), z.strictObject({ ...defaulted, equals }), z.strictObject({ ...broadcast, equals }),
+    z.strictObject({ all: z.array(graphConditionSchema).min(1).max(16) }),
+    z.strictObject({ any: z.array(graphConditionSchema).min(1).max(16) }),
+    z.strictObject({ not: graphConditionSchema }),
+  ]);
+});
 export type GraphExpressionEnvironment = {
   parameters: ReadonlyMap<string, number>;
   variables: ReadonlyMap<string, number>;
@@ -55,16 +81,60 @@ export function createGraphExpressionEvaluator({ environment, maximumSteps }: { 
       throw new Error('Model graph expression budget exceeded');
     }
   };
-  const metadataValue = ({ key, index, depth }: { key: string; index: GraphNumber | undefined; depth: number }): GraphMetadataValue | undefined => {
+  const metadataValue = ({ reference, depth }: { reference: GraphMetadataReference; depth: number }): GraphMetadataValue | undefined => {
+    const { metadata: key, index, length, scalar, fallback, ...unhandled } = reference;
+    unhandled satisfies Record<PropertyKey, never>;
     const value = environment.metadata.get(key);
     if (index === undefined) {
-      return value;
+      // Presence is distinct from validity: a provided wrong type must not
+      // borrow a fallback that was intended only for older/missing metadata.
+      return !environment.metadata.has(key) && fallback !== undefined
+        ? evaluate({ value: fallback, depth: depth + 1 }) : value;
     }
     const offset = evaluate({ value: index, depth: depth + 1 });
-    if (!Array.isArray(value) || !Number.isSafeInteger(offset) || offset < 0 || offset >= value.length) {
-      throw new Error(`Metadata array index is outside its declared array: ${key}`);
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new Error(`Metadata array index must be a non-negative integer: ${key} (index ${offset})`);
     }
-    return value[offset];
+    const expected = length === undefined ? undefined : evaluate({ value: length, depth: depth + 1 });
+    if (expected !== undefined && (!Number.isSafeInteger(expected) || expected < 1)) {
+      throw new Error(`Metadata array length must be a positive integer: ${key} (length ${expected})`);
+    }
+    if (expected !== undefined && offset >= expected) {
+      throw new Error(`Metadata array index is outside its declared array: ${key} (index ${offset}, declared length ${expected})`);
+    }
+    if (Array.isArray(value)) {
+      if (expected !== undefined && value.length !== expected) {
+        throw new Error(`Metadata array length mismatch: ${key} (expected ${expected}, received ${value.length})`);
+      }
+      if (offset >= value.length || !Object.hasOwn(value, offset) || value[offset] === undefined) {
+        throw new Error(`Metadata array index is outside its declared array: ${key} (index ${offset}, actual length ${value.length})`);
+      }
+      return value[offset];
+    }
+    switch (scalar) {
+    case 'broadcast':
+      // Schema validation requires a logical length for broadcast. Keep the
+      // same check for typed compiler callers that bypass the parser.
+      if (expected === undefined) {
+        throw new Error(`Scalar metadata broadcast requires a declared length: ${key}`);
+      }
+      if (!environment.metadata.has(key)) {
+        if (fallback !== undefined) {
+          return evaluate({ value: fallback, depth: depth + 1 });
+        }
+        throw new Error(`Missing model metadata: ${key}`);
+      }
+      return value;
+    case undefined:
+      if (!environment.metadata.has(key)) {
+        throw new Error(`Missing model metadata array: ${key}`);
+      }
+      throw new Error(`Expected metadata array: ${key} (received ${typeof value}; scalar broadcast must be declared explicitly)`);
+    default: {
+      const exhaustive: never = scalar;
+      throw new Error(String(exhaustive));
+    }
+    }
   };
   const evaluate = ({ value, depth }: { value: GraphNumber; depth: number }): number => {
     tick({ depth });
@@ -80,7 +150,7 @@ export function createGraphExpressionEvaluator({ environment, maximumSteps }: { 
         return environment.variables.get(value.variable);
       }
       if ('metadata' in value) {
-        const found = metadataValue({ key: value.metadata, index: value.index, depth });
+        const found = metadataValue({ reference: value, depth });
         if (typeof found !== 'number') {
           throw new Error(`Expected numeric model metadata: ${value.metadata}`);
         }
@@ -159,7 +229,14 @@ export function createGraphExpressionEvaluator({ environment, maximumSteps }: { 
       }
     }
     if ('metadata' in value) {
-      return metadataValue({ key: value.metadata, index: value.index, depth }) === value.equals;
+      const { equals, ...reference } = value;
+      const found = metadataValue({ reference, depth });
+      if (reference.index !== undefined && (typeof found !== typeof equals || (typeof found === 'number' && !Number.isFinite(found)))) {
+        // An invalid per-layer flag must not silently select the other branch
+        // (for example, turn every attention layer into a non-RoPE layer).
+        throw new Error(`Metadata array condition expects ${typeof equals}: ${reference.metadata} (received ${typeof found})`);
+      }
+      return found === equals;
     }
     if ('all' in value) {
       return value.all.every(item => condition({ value: item, depth: depth + 1 }));

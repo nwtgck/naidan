@@ -36,6 +36,7 @@ Do not add entries directly here during ordinary development.
 
 ### Fixed
 
+- Support explicitly declared scalar-or-array model metadata with exact layer counts and missing-key defaults. Preserve strict array indexing, reject malformed layer flags, and report metadata type, length, and index errors separately.
 - Measure registered model graph compute buffers with the native allocator before allocation, instead of double-counting persistent state and summing every intermediate tensor. Preserve the existing budgets and report the state, compute, context, and batch sizes when a real limit is exceeded.
 - Keep model graph declaration parsing and operator catalogs out of the initial Worker protocol bundle while preserving request authority validation.
 - Recover the development privacy broker after rapid HTML error-and-repair saves, and cancel pending rebuilds when its server closes.

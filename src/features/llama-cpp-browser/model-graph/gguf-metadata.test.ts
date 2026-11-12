@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { inspectModelGraphGguf, readModelGraphArchitecture } from './gguf';
+import { createGraphExpressionEvaluator } from './expressions';
 import { metadataGguf } from './gguf-metadata.test-support';
 
 function inspect({ bytes }: { bytes: Uint8Array }) {
@@ -30,6 +31,19 @@ describe('bounded graph metadata arrays', () => {
     expect(parsed.inventory.metadata.get('fixture.heads')).toEqual([8, 16]);
     expect(parsed.inventory.metadata.has('tokenizer.ggml.tokens')).toBe(false);
     expect(parsed.inventory.vocabularySize).toBe(2);
+  });
+
+  it('retains scalar and array GGUF storage forms and lets the declaration choose broadcast explicitly', () => {
+    for (const item of [
+      { key: 'ricursive.swiglu_clamp', type: 6, value: 20 },
+      { key: 'ricursive.swiglu_clamp', type: 6, values: [10, 20, 30] },
+    ]) {
+      const { inventory } = inspect({ bytes: metadataGguf({ items: [item] }) }).inspect();
+      const stored = inventory.metadata.get(item.key);
+      expect(stored).toEqual('value' in item ? item.value : item.values);
+      const evaluator = createGraphExpressionEvaluator({ environment: { parameters: new Map(), variables: new Map(), metadata: inventory.metadata, tensors: inventory.tensors, inputTokens: undefined, cacheTokens: undefined, capacity: undefined }, maximumSteps: 100 });
+      expect(evaluator.number({ value: { metadata: item.key, index: 2, length: 3, scalar: 'broadcast' } })).toBe('value' in item ? 20 : 30);
+    }
   });
 
   it.each([NaN, Infinity, -Infinity])('rejects non-finite metadata %s', number => {

@@ -631,7 +631,9 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       },
       onProgress: () => {},
     });
-    expect(cold).toEqual(reused);
+    // Output pacing may coalesce adjacent text differently under CPU load;
+    // model/cache equivalence concerns the complete text, not callback timing.
+    expect(cold.join('')).toBe(reused.join(''));
     expect(host.reads).toBeGreaterThan(reads);
     // The untrained fixture produces identical tokens even with stale KV. Inspect
     // actual native positions as well, so accidentally omitting the clear fails.

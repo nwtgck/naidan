@@ -1,4 +1,4 @@
-export function metadataGguf({ items }: { items: { key: string; type: number; values: readonly (string | number | boolean)[]; count?: number }[] }): Uint8Array {
+export function metadataGguf({ items }: { items: ({ key: string; type: number; values: readonly (string | number | boolean)[]; count?: number } | { key: string; type: number; value: string | number | boolean })[] }): Uint8Array {
   const chunks: Uint8Array[] = [];
   const u32 = ({ value }: { value: number }) => {
     const bytes = new Uint8Array(4);
@@ -30,10 +30,15 @@ export function metadataGguf({ items }: { items: { key: string; type: number; va
   string({ value: 'b' });
   for (const item of items) {
     string({ value: item.key });
-    u32({ value: 9 });
-    u32({ value: item.type });
-    u64({ value: item.count ?? item.values.length });
-    for (const value of item.values) {
+    const values = 'value' in item ? [item.value] : item.values;
+    if ('value' in item) {
+      u32({ value: item.type });
+    } else {
+      u32({ value: 9 });
+      u32({ value: item.type });
+      u64({ value: item.count ?? item.values.length });
+    }
+    for (const value of values) {
       switch (item.type) {
       case 4:
         if (typeof value !== 'number') {

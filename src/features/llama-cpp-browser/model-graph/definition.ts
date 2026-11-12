@@ -4,8 +4,8 @@ import { graphNameSchema, graphNumberSchema, graphConditionSchema, type GraphNum
 import { graphWeightTypeSchema } from './tensor-layout';
 import { tensorOperatorNodeSchema } from './operators';
 
-// Deliberately incompatible experimental data language. No persisted user has
-// adopted this prototype; old sources remain copyable, never auto-reinterpreted.
+// Deliberately unstable experimental data language. Stored definitions are
+// user-authored data: preserve their source, never silently reinterpret them.
 export const modelGraphFormat = 'naidan.model-graph/experimental-2';
 export const modelGraphCapabilities = ['tensor-graph/v1', 'decoder-kv-linear/v1', 'rotary-normal-neox/v1', 'tensor-operators/v2', 'persistent-state/v1', 'declaration-expansion/v1', 'decoder-inputs/v1'] as const;
 const nameSchema = graphNameSchema;
