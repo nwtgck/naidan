@@ -103,7 +103,17 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
         break;
       case 'file': {
         const stagingFor = name.endsWith('.tmp') ? name.slice(0, -4) : undefined;
-        if (hidden.has(path) || await modelFileIsPending({ directory, name }) ||
+        const hideTemporary = (() => {
+          switch (publication) {
+          case 'opfs-hugging-face': case 'host': return stagingFor !== undefined;
+          case 'opfs-user': return /\.(?:gguf|safetensors|sft)\.tmp$/i.test(name);
+          default: {
+            const exhaustive: never = publication;
+            throw new Error(String(exhaustive));
+          }
+          }
+        })();
+        if (hideTemporary || hidden.has(path) || await modelFileIsPending({ directory, name }) ||
             (stagingFor && await modelFileIsPending({ directory, name: stagingFor }))) {
           issues.push({ relativePath: path, message: 'Download is incomplete. Resume the catalog download.' });
           break;
@@ -112,9 +122,9 @@ async function readTree({ folder, repositoryKey, hidden, signal, onProgress, pub
         const file = storedFile.file;
         const receipt = await readModelFileReceipt({ directory, name, file });
         // Legacy user imports were committed with a repository-wide marker.
-        // Remote files require a verified per-file receipt. Old markerless
-        // bytes need explicit adoption, not an inference from move support.
-        if (requiresReceipt) {
+        // A finished move is a normal file with no receipt. Legacy receipts
+        // still carry provenance, but their absence cannot hide new downloads.
+        if (requiresReceipt && receipt) {
           const source = receipt?.source;
           if (!receipt || source?.kind !== 'hugging-face' || source.path !== path ||
               ![ `huggingface.co/${source.repository}/resolve/main`, `huggingface.co/${source.repository}/resolve/${source.revision}` ].includes(repositoryKey)) {

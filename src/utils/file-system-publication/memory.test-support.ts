@@ -253,5 +253,3 @@ export class MemoryDirectory {
     return other === this;
   }
 }
-export const TEST_ONLY = {
-};

@@ -88,6 +88,7 @@ it('downloads -> verifies -> publishes -> inventories -> selects the actual thre
   expect(view.selectedModels()?.map(model => [model.slot, model.relativePath])).toEqual(files.map(file => [file.role, file.path]));
   expect(view.components.value.find(component => component.slot === 'lm')?.selectedCandidateKey).toContain(files[2]!.path);
   const inventory = await listImageRepositories({ signal: undefined });
+  // This fixture implements no native move, so legacy receipts remain.
   expect(inventory.flatMap(repo => repo.files).every(file => file.receipt?.source.kind === 'hugging-face')).toBe(true);
   const identities = view.selectedModels()!.map(model => model.modelFilesReuseKey);
   expect(identities.every(id => typeof id === 'string' && id.includes('huggingface.co/'))).toBe(true);

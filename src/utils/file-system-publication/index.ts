@@ -182,6 +182,3 @@ export async function moveStagedFile({ directory, name, handle, snapshot, moveSu
     throw error;
   }
 }
-
-export const TEST_ONLY = {
-};

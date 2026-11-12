@@ -459,10 +459,18 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         return false;
       }
       const receipt = candidate.files[0]?.receipt, source = receipt?.source;
-      // A selectable, markerless host adapter is not proof this catalog artifact
-      // was acquired. Completion requires the exact published source and bytes.
-      return source?.kind === 'hugging-face' && source.repository === expected.repository && source.revision === expected.revision && source.path === expected.path
-        && receipt?.size === expected.size && source.sha256 === expected.sha256;
+      if (receipt) {
+        return source?.kind === 'hugging-face' && source.repository === expected.repository && source.revision === expected.revision && source.path === expected.path
+          && receipt.size === expected.size && source.sha256 === expected.sha256;
+      }
+      // A markerless move leaves no persistent provenance receipt. Catalog
+      // availability is a best-effort path/size match (like linked Host FS),
+      // NOT a claim that the bytes remained SHA-verified after download.
+      return candidate.files[0]?.file.size === expected.size && (
+        candidate.hostSource?.repository === expected.repository ||
+        candidate.repositoryKey === `huggingface.co/${expected.repository}/resolve/main` ||
+        candidate.repositoryKey === `huggingface.co/${expected.repository}/resolve/${expected.revision}`
+      );
     });
   }
   function chooseRecipe({ recipeId, selections: requested }: { recipeId: string, selections: ImageRecipeSelection }): void {

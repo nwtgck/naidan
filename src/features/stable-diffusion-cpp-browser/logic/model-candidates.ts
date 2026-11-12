@@ -304,10 +304,27 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       const configPath = relativeCompanionPath({ indexPath: path, reference: 'config.json' });
       const facts = fingerprint({ tensors, metadata, config: configs.get(configPath) ?? configs.get('config.json') });
       const files = [path, ...members.filter(member => member !== path)].map(name => fileMap.get(name)).filter((entry): entry is RepositoryFile => entry !== undefined);
-      // Published immutable catalog provenance can identify a training variant
-      // whose exported header has no training label. Require structure AND receipt.
+      // Legacy receipts provide exact pinned provenance. New downloads leave
+      // only the file itself: a recognized Hugging Face repository/path can
+      // hint at a catalog variant, but it is NOT a persistent hash receipt.
       const source = fileMap.get(path)?.receipt?.source;
-      if ((facts.family === 'z-image' || facts.family === 'qwen-image-2.1' || facts.family === 'flux2-klein-4b' || facts.family === 'anima' || facts.family === 'krea2' || facts.family === 'ernie-image') && source?.kind === 'hugging-face') {
+      const location = /^huggingface\.co\/([^/]+\/[^/]+)\/resolve\/(?:main|[a-f0-9]{40})$/.exec(repository.repositoryKey);
+      const catalog = (() => {
+        switch (source?.kind) {
+        case 'hugging-face': return { repository: source.repository, path: source.path, revision: source.revision };
+        case undefined: {
+          const repositoryName = location?.[1] ?? repository.hostSource?.repository;
+          return repositoryName ? { repository: repositoryName, path, revision: undefined } : undefined;
+        }
+        case 'local': return undefined;
+        default: {
+          const exhaustive: never = source;
+          throw new Error(String(exhaustive));
+        }
+        }
+      })();
+      const catalogRepository = catalog?.repository, catalogPath = catalog?.path, pinnedRevision = catalog?.revision;
+      if ((facts.family === 'z-image' || facts.family === 'qwen-image-2.1' || facts.family === 'flux2-klein-4b' || facts.family === 'anima' || facts.family === 'krea2' || facts.family === 'ernie-image') && catalogRepository && catalogPath) {
         const family = facts.family;
         const recipeIds = (() => {
           switch (family) {
@@ -323,33 +340,36 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
           }
           }
         })();
-        const recipe = imageModelRecipes.find(recipe => recipeIds.includes(recipe.id)
+        const matchingRecipes = imageModelRecipes.filter(recipe => recipeIds.includes(recipe.id)
           && recipe.components.some(component => component.role === 'diffusion' && component.options.some(option =>
-            option.repository === source.repository && option.revision === source.revision && option.path === source.path)));
+            option.repository === catalogRepository && (pinnedRevision === undefined || option.revision === pinnedRevision) && option.path === catalogPath)));
+        // A path shared by several recipes cannot distinguish their variants.
+        const recipe = matchingRecipes.length === 1 ? matchingRecipes[0] : undefined;
         if (recipe) {
+          const evidence = pinnedRevision ? 'verified catalog download receipt' : 'catalog path hint (source not verified on read)';
           switch (recipe.id) {
           case 'z-image-turbo':
             facts.variant = 'turbo';
             facts.turboHint = true;
-            facts.evidence.push('Turbo variant: verified catalog download receipt');
+            facts.evidence.push(`Turbo variant: ${evidence}`);
             break;
           case 'z-image-base': case 'qwen-image-2.1':
             facts.variant = 'base';
             facts.turboHint = false;
-            facts.evidence.push('Base variant: verified catalog download receipt');
+            facts.evidence.push(`Base variant: ${evidence}`);
             break;
           case 'qwen-image-2.1-turbo':
             facts.variant = 'turbo';
             facts.turboHint = true;
-            facts.evidence.push('Turbo variant: catalog download receipt');
+            facts.evidence.push(`Turbo variant: ${evidence}`);
             break;
           case 'flux2-klein-4b':
             facts.variant = 'distilled';
-            facts.evidence.push('Distilled variant: verified catalog download receipt');
+            facts.evidence.push(`Distilled variant: ${evidence}`);
             break;
           case 'anima-turbo-1.1': case 'krea2-turbo': case 'ernie-image-turbo':
             facts.variant = 'turbo';
-            facts.evidence.push('Turbo variant: verified catalog download receipt');
+            facts.evidence.push(`Turbo variant: ${evidence}`);
             break;
           case 'sdxl-base-1.0': case 'minimax-h3-image': break;
           default: {

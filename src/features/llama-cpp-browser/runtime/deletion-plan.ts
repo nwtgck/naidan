@@ -89,19 +89,8 @@ export async function executeDeletionPlan({ folder, files, selectedRelativePaths
   if (JSON.stringify(selected) !== JSON.stringify(files)) {
     return 'changed';
   }
-  // Remove payloads before ownership/publication metadata. If a payload delete
-  // fails or execution stops, its remaining .tmp must still have the journal
-  // that lets another explicit deletion recognize ownership.
-  const priority = ({ relativePath: path }: { relativePath: string }): number => {
-    const name = path.split('/').at(-1)!;
-    if (/^\..+\.pending$/.test(name)) {
-      return 2;
-    }
-    return /^\..+\.complete$/.test(name) ? 1 : 0;
-  };
-  const ordered = [...files].sort((left, right) => priority(left) - priority(right));
   // Never recursively delete: an external file explorer need not honor our lock.
-  for (const file of ordered) {
+  for (const file of files) {
     try {
       const { parent, name } = await parentDirectory({ folder, path: file.relativePath });
       const latest = await (await parent.getFileHandle(name)).getFile();
