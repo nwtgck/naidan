@@ -1,3 +1,4 @@
+import { requireImageGenerationOperationMembership } from './image-generation/operations';
 import { applyImageGenerationActivity, finishImageGenerationActivity, recoverImageGenerationActivities, reserveImageGenerationActivity } from './image-generation/activity';
 import { compareImageGenerationSessions } from '@/01-models/image-generation';
 import { assertImageGenerationBinariesNotDeleted } from './image-generation/deletions';
@@ -275,7 +276,7 @@ export async function createImageGenerationRun({ store, run, writeInputs }: { st
   const requested = ExperimentalImageGenerationRunSchemaDto.parse(imageGenerationRunToDto({ run }));
   assertImageGenerationPathIds({
     ids: [
-      requested.id, requested.sessionId,
+      requested.id, requested.sessionId, ...(requested.operationId === undefined ? [] : [requested.operationId]),
       ...requested.sources.flatMap(source => [source.sessionId, source.assetId]),
       ...(requested.request.imageInputs.initImage ? [requested.request.imageInputs.initImage.binaryObjectId] : []),
       ...requested.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
@@ -394,6 +395,9 @@ export async function updateImageGenerationRunExecution({ store, sessionId, runI
       const current = await table.load({ id });
       if (!current) {
         throw new Error('Image Generation run does not exist.');
+      }
+      if (accepted.type === 'running' && current.operationId !== undefined) {
+        await requireImageGenerationOperationMembership({ directory: session, sessionId: rawSessionId, operationId: current.operationId, runId: id });
       }
       const next = ExperimentalImageGenerationRunSchemaDto.parse({ ...current, revision: expectedRevision + 1, execution: accepted });
       assertImageGenerationReplacement({ current, next, expectedRevision });

@@ -1,0 +1,1 @@
+export const ImageGenerationMonitor__request_position = ({ current, total, image, images }: { current: number, total: number, image: number, images: number }): string => `프롬프트 ${current} / ${total} · 이미지 ${image} / ${images}`;

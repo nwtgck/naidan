@@ -27,7 +27,8 @@ VERSION_PATTERN = re.compile(r'^(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]
 CHANGE_CATEGORY_ORDER = ('Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security')
 CHANGE_CATEGORIES = set(CHANGE_CATEGORY_ORDER)
 FRAGMENT_NAME_PATTERN = re.compile(
-    r'changes-(?P<timestamp>[0-9]{8}T[0-9]{6}\.[0-9]{3}Z)-[a-z0-9]+(?:-[a-z0-9]+)*\.md'
+    r'changes-(?P<timestamp>[0-9]{8}T[0-9]{6}\.[0-9]{3}Z)-[a-z0-9]+(?:-[a-z0-9]+)*-'
+    r'(?P<category>added|changed|deprecated|removed|fixed|security)\.md'
 )
 INSTRUCTIONS_START = '<!-- changelog-unreleased:instructions'
 
@@ -36,7 +37,7 @@ class ChangelogFragment(NamedTuple):
     path: Path
     original: str
     category: str
-    bullet: str
+    bullets: tuple[str, ...]
 
 
 def main() -> int:
@@ -172,10 +173,10 @@ def changelog_fragment_paths(*, directory: Path) -> tuple[Path, ...]:
 
 
 def parse_changelog_fragment(*, path: Path, content: str) -> ChangelogFragment:
-    """Parse one heading and one paragraph-style item, not arbitrary Markdown."""
+    """Parse one category and paragraph-style items for a single topic."""
     match = FRAGMENT_NAME_PATTERN.fullmatch(path.name)
     if match is None:
-        raise SystemExit(f'Invalid changelog fragment filename: {path}; expected changes-YYYYMMDDTHHMMSS.sssZ-<topic>.md')
+        raise SystemExit(f'Invalid changelog fragment filename: {path}; expected changes-YYYYMMDDTHHMMSS.sssZ-<topic>-<changelog-category>.md')
     try:
         datetime.strptime(match.group('timestamp'), '%Y%m%dT%H%M%S.%fZ')
     except ValueError as exc:
@@ -193,17 +194,26 @@ def parse_changelog_fragment(*, path: Path, content: str) -> ChangelogFragment:
     if not lines or lines[0].rstrip(' \t') not in {f'### {name}' for name in CHANGE_CATEGORIES}:
         raise SystemExit(f'Invalid category heading in changelog fragment: {path}')
     category = lines.pop(0).rstrip(' \t')[4:]
+    if category.lower() != match.group('category'):
+        raise SystemExit(f'Changelog fragment filename category does not match its heading: {path}')
     if not lines or lines[0].strip():
         raise SystemExit(f'Expected a blank line after the fragment heading: {path}')
     while lines and not lines[0].strip():
         lines.pop(0)
-    if (not lines or not lines[0].startswith('- ') or not lines[0][2:].strip()
-            or lines[0][2:3].isspace()):
-        raise SystemExit(f'Expected one nonempty - bullet in changelog fragment: {path}')
-    for index, line in enumerate(lines):
-        if index and (not line.startswith('  ') or not line[2:].strip() or line[2:3].isspace()):
-            raise SystemExit(f'Use one paragraph-style bullet with indented continuation lines: {path}')
-        prose = (line[2:] if index == 0 else line).strip()
+    items: list[list[str]] = []
+    continuation = False
+    for line in lines:
+        if not line.strip():
+            continuation = False
+            continue
+        if line.startswith('- ') and line[2:].strip() and not line[2:3].isspace():
+            items.append([line])
+            continuation = True
+        elif continuation and line.startswith('  ') and not line[2:3].isspace():
+            items[-1].append(line)
+        else:
+            raise SystemExit(f'Use nonempty - bullets with indented continuation lines: {path}')
+        prose = line[2:].strip()
         # Restrict fragments to inline Markdown. Legacy Unreleased notes still
         # accept paragraphs, nested structure, comments and code examples.
         if (re.match(r'(?:#{1,6}(?:[ \t]|$)|[-+*](?:[ \t]|$)|[0-9]+[.)](?:[ \t]|$)|>|~{3,}|\[[^\]]+\]:)', prose)
@@ -212,14 +222,17 @@ def parse_changelog_fragment(*, path: Path, content: str) -> ChangelogFragment:
         ticks = re.match(r'(`{3,})(.*)', prose)
         if ticks is not None and re.search(r'(?<!`)' + re.escape(ticks.group(1)) + r'(?!`)', ticks.group(2)) is None:
             raise SystemExit(f'Fenced blocks are not allowed in a fragment bullet: {path}')
-    bullet = '\n'.join(lines)
-    try:
-        visible = markdown_lines(content=bullet)
-    except SystemExit as exc:
-        raise SystemExit(f'Invalid Markdown in changelog fragment {path}: {exc}') from exc
-    if visible != list(enumerate(lines)):
-        raise SystemExit(f'Comments and fenced blocks are not allowed in changelog fragments: {path}')
-    return ChangelogFragment(path=path, original=content, category=category, bullet=bullet)
+    if not items:
+        raise SystemExit(f'Expected at least one nonempty - bullet in changelog fragment: {path}')
+    bullets = tuple('\n'.join(item) for item in items)
+    for item, bullet in zip(items, bullets):
+        try:
+            visible = markdown_lines(content=bullet)
+        except SystemExit as exc:
+            raise SystemExit(f'Invalid Markdown in changelog fragment {path}: {exc}') from exc
+        if visible != list(enumerate(item)):
+            raise SystemExit(f'Comments and fenced blocks are not allowed in changelog fragments: {path}')
+    return ChangelogFragment(path=path, original=content, category=category, bullets=bullets)
 
 
 def load_changelog_fragments(*, directory: Path) -> tuple[ChangelogFragment, ...]:
@@ -257,7 +270,7 @@ def merge_changelog_fragments(*, content: str, fragments: tuple[ChangelogFragmen
     grouped: dict[str, list[str]] = {}
     # Fixed-width UTC filenames sort chronologically; topic breaks timestamp ties.
     for fragment in sorted(fragments, key=lambda item: item.path.name):
-        grouped.setdefault(fragment.category, []).append(fragment.bullet.replace('\n', newline))
+        grouped.setdefault(fragment.category, []).extend(bullet.replace('\n', newline) for bullet in fragment.bullets)
     lines = content.splitlines(keepends=True)
     visible = markdown_lines(content=content)
     categories = [(index, text.strip()[4:].rstrip()) for index, text in visible
@@ -274,7 +287,7 @@ def merge_changelog_fragments(*, content: str, fragments: tuple[ChangelogFragmen
         has_subsection = any(start < i < end and re.match(r' {0,3}#{4,6}(?:[ \t]|$)', text)
                              for i, text in visible)
         insertion = start + 1 if has_subsection else end
-        edits.append((insertion, (newline + newline).join(bullets)))
+        edits.append((insertion, newline.join(bullets)))
     for index, body in reversed(edits):
         before = ''.join(lines[:index]).rstrip('\r\n')
         after = ''.join(lines[index:]).lstrip('\r\n')
@@ -283,7 +296,7 @@ def merge_changelog_fragments(*, content: str, fragments: tuple[ChangelogFragmen
     for name in CHANGE_CATEGORY_ORDER:
         if name in grouped:
             content = (content.rstrip('\r\n') + newline + newline if content.strip('\r\n') else '') + (
-                f'### {name}' + newline + newline + (newline + newline).join(grouped[name]) + newline
+                f'### {name}' + newline + newline + newline.join(grouped[name]) + newline
             )
     return content
 

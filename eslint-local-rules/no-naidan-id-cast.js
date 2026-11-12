@@ -21,6 +21,8 @@ const NAIDAN_ID_TYPES = new Set([
   'ImageGenerationId',
   'ImageGenerationStoreId',
   'ImageGenerationSessionId',
+  'ImageGenerationOperationId',
+  'ImageGenerationJobId',
   'ImageGenerationRunId',
   'ImageGenerationAssetId',
   'ImageGenerationTagId',

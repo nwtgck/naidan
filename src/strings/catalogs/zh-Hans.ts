@@ -908,6 +908,9 @@ import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageB
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/zh-Hans';
 import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/zh-Hans';
 import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/zh-Hans';
+import { ImageCompositionFields__model_configuration_slot } from '@/strings/messages/ImageCompositionFields__model_configuration_slot/zh-Hans';
+import { ImageCompositionFields__shared } from '@/strings/messages/ImageCompositionFields__shared/zh-Hans';
+import { ImageCompositionModeSelect__input_mode } from '@/strings/messages/ImageCompositionModeSelect__input_mode/zh-Hans';
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/zh-Hans';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/zh-Hans';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/zh-Hans';
@@ -1040,6 +1043,13 @@ import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/Imag
 import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/zh-Hans';
 import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/zh-Hans';
 import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/zh-Hans';
+import { ImageGenerationMonitor__images_generated } from '@/strings/messages/ImageGenerationMonitor__images_generated/zh-Hans';
+import { ImageGenerationMonitor__preparing_generation } from '@/strings/messages/ImageGenerationMonitor__preparing_generation/zh-Hans';
+import { ImageGenerationMonitor__request_position } from '@/strings/messages/ImageGenerationMonitor__request_position/zh-Hans';
+import { ImageGenerationMonitor__saving_results } from '@/strings/messages/ImageGenerationMonitor__saving_results/zh-Hans';
+import { ImageGenerationMonitor__unsaved_images } from '@/strings/messages/ImageGenerationMonitor__unsaved_images/zh-Hans';
+import { ImageGenerationOperationActions__no_completed_images } from '@/strings/messages/ImageGenerationOperationActions__no_completed_images/zh-Hans';
+import { ImageGenerationOperationActions__saving_results } from '@/strings/messages/ImageGenerationOperationActions__saving_results/zh-Hans';
 import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/zh-Hans';
 import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/zh-Hans';
 import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/zh-Hans';
@@ -2712,6 +2722,46 @@ import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__su
 import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/zh-Hans';
 import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/zh-Hans';
 import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/zh-Hans';
+import { imageComposition__add } from '@/strings/messages/imageComposition__add/zh-Hans';
+import { imageComposition__append } from '@/strings/messages/imageComposition__append/zh-Hans';
+import { imageComposition__assign } from '@/strings/messages/imageComposition__assign/zh-Hans';
+import { imageComposition__assigned } from '@/strings/messages/imageComposition__assigned/zh-Hans';
+import { imageComposition__auto } from '@/strings/messages/imageComposition__auto/zh-Hans';
+import { imageComposition__copy_example } from '@/strings/messages/imageComposition__copy_example/zh-Hans';
+import { imageComposition__down } from '@/strings/messages/imageComposition__down/zh-Hans';
+import { imageComposition__download_results } from '@/strings/messages/imageComposition__download_results/zh-Hans';
+import { imageComposition__duplicate } from '@/strings/messages/imageComposition__duplicate/zh-Hans';
+import { imageComposition__export_notice } from '@/strings/messages/imageComposition__export_notice/zh-Hans';
+import { imageComposition__generate } from '@/strings/messages/imageComposition__generate/zh-Hans';
+import { imageComposition__help } from '@/strings/messages/imageComposition__help/zh-Hans';
+import { imageComposition__inherit } from '@/strings/messages/imageComposition__inherit/zh-Hans';
+import { imageComposition__input_examples } from '@/strings/messages/imageComposition__input_examples/zh-Hans';
+import { imageComposition__input_models_help } from '@/strings/messages/imageComposition__input_models_help/zh-Hans';
+import { imageComposition__input_structure_help } from '@/strings/messages/imageComposition__input_structure_help/zh-Hans';
+import { imageComposition__input_values_help } from '@/strings/messages/imageComposition__input_values_help/zh-Hans';
+import { imageComposition__multiple } from '@/strings/messages/imageComposition__multiple/zh-Hans';
+import { imageComposition__operation } from '@/strings/messages/imageComposition__operation/zh-Hans';
+import { imageComposition__overrides } from '@/strings/messages/imageComposition__overrides/zh-Hans';
+import { imageComposition__parse } from '@/strings/messages/imageComposition__parse/zh-Hans';
+import { imageComposition__paste } from '@/strings/messages/imageComposition__paste/zh-Hans';
+import { imageComposition__paste_help } from '@/strings/messages/imageComposition__paste_help/zh-Hans';
+import { imageComposition__pending_metadata } from '@/strings/messages/imageComposition__pending_metadata/zh-Hans';
+import { imageComposition__random } from '@/strings/messages/imageComposition__random/zh-Hans';
+import { imageComposition__recover } from '@/strings/messages/imageComposition__recover/zh-Hans';
+import { imageComposition__recover_notice } from '@/strings/messages/imageComposition__recover_notice/zh-Hans';
+import { imageComposition__reload } from '@/strings/messages/imageComposition__reload/zh-Hans';
+import { imageComposition__reload_notice } from '@/strings/messages/imageComposition__reload_notice/zh-Hans';
+import { imageComposition__remove } from '@/strings/messages/imageComposition__remove/zh-Hans';
+import { imageComposition__replace } from '@/strings/messages/imageComposition__replace/zh-Hans';
+import { imageComposition__replace_notice } from '@/strings/messages/imageComposition__replace_notice/zh-Hans';
+import { imageComposition__save_only } from '@/strings/messages/imageComposition__save_only/zh-Hans';
+import { imageComposition__shared_negative_prompt } from '@/strings/messages/imageComposition__shared_negative_prompt/zh-Hans';
+import { imageComposition__single } from '@/strings/messages/imageComposition__single/zh-Hans';
+import { imageComposition__slot_help } from '@/strings/messages/imageComposition__slot_help/zh-Hans';
+import { imageComposition__summary } from '@/strings/messages/imageComposition__summary/zh-Hans';
+import { imageComposition__unassigned } from '@/strings/messages/imageComposition__unassigned/zh-Hans';
+import { imageComposition__unsupported } from '@/strings/messages/imageComposition__unsupported/zh-Hans';
+import { imageComposition__up } from '@/strings/messages/imageComposition__up/zh-Hans';
 import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/zh-Hans';
 import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/zh-Hans';
 import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/zh-Hans';
@@ -4786,6 +4836,9 @@ export const catalog = {
   ImageBenchmarkResult__image_memory_limit_reached,
   ImageBenchmarkResult__image_not_retained,
   ImageBenchmarkResult__no_image,
+  ImageCompositionFields__model_configuration_slot,
+  ImageCompositionFields__shared,
+  ImageCompositionModeSelect__input_mode,
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
@@ -4918,6 +4971,13 @@ export const catalog = {
   ImageGenerationLab__record_detailed_logs,
   ImageGenerationLab__saved_models,
   ImageGenerationLab__select_missing_files,
+  ImageGenerationMonitor__images_generated,
+  ImageGenerationMonitor__preparing_generation,
+  ImageGenerationMonitor__request_position,
+  ImageGenerationMonitor__saving_results,
+  ImageGenerationMonitor__unsaved_images,
+  ImageGenerationOperationActions__no_completed_images,
+  ImageGenerationOperationActions__saving_results,
   ImageGenerationPreview__preview_from_cancelled_generation,
   ImageGenerationPreview__preview_from_failed_generation,
   ImageGenerationProgress__processing_step,
@@ -6590,6 +6650,46 @@ export const catalog = {
   imageBenchmark__timeout,
   imageBenchmark__unavailable_components,
   imageBenchmark__warm,
+  imageComposition__add,
+  imageComposition__append,
+  imageComposition__assign,
+  imageComposition__assigned,
+  imageComposition__auto,
+  imageComposition__copy_example,
+  imageComposition__down,
+  imageComposition__download_results,
+  imageComposition__duplicate,
+  imageComposition__export_notice,
+  imageComposition__generate,
+  imageComposition__help,
+  imageComposition__inherit,
+  imageComposition__input_examples,
+  imageComposition__input_models_help,
+  imageComposition__input_structure_help,
+  imageComposition__input_values_help,
+  imageComposition__multiple,
+  imageComposition__operation,
+  imageComposition__overrides,
+  imageComposition__parse,
+  imageComposition__paste,
+  imageComposition__paste_help,
+  imageComposition__pending_metadata,
+  imageComposition__random,
+  imageComposition__recover,
+  imageComposition__recover_notice,
+  imageComposition__reload,
+  imageComposition__reload_notice,
+  imageComposition__remove,
+  imageComposition__replace,
+  imageComposition__replace_notice,
+  imageComposition__save_only,
+  imageComposition__shared_negative_prompt,
+  imageComposition__single,
+  imageComposition__slot_help,
+  imageComposition__summary,
+  imageComposition__unassigned,
+  imageComposition__unsupported,
+  imageComposition__up,
   imageGeneration__action_applied,
   imageGeneration__active_images,
   imageGeneration__actual_seed,

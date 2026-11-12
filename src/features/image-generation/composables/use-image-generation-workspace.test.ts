@@ -12,6 +12,7 @@ import ImageGenerationEditor from '@/features/image-generation/components/ImageG
 import ImageGenerationAssetViewer from '@/features/image-generation/components/ImageGenerationAssetViewer.vue';
 import ImageGenerationMonitor from '@/features/image-generation/components/ImageGenerationMonitor.vue';
 import ImageGenerationProgress from '@/features/image-generation/components/ImageGenerationProgress.vue';
+import type { ImageGenerationSubmission } from '@/features/image-generation/generation-submission';
 import { DOMWrapper } from '@vue/test-utils';
 import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
@@ -239,7 +240,7 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
     throw new Error('Missing Workspace.');
   }
   views.push({ wrapper, view });
-  return { generation, view, native, restored, wrapper };
+  return { generation, view, native, restored, wrapper, busy };
 }
 
 async function ready() {
@@ -1870,4 +1871,208 @@ it('does not let an older failed session-order update block the next accepted se
   await fixture.view.retrySessionUse();
   expect(fixture.view.sessionUseFailure.value).toBe('');
   expect(fixture.native).toHaveBeenCalledTimes(2);
+});
+
+async function enableMultipleRequests({ h }: { h: Awaited<ReturnType<typeof ready>> }) {
+  h.generation.prepareRequests = async ({ requests, signal }) => {
+    h.busy.value = true;
+    const plans = requests.map(({ draft, count }) => {
+      if (!draft.request.runtime) {
+        throw new Error('Missing test runtime.');
+      }
+      signal.throwIfAborted();
+      const snapshot = { id: toImageGenerationId({ raw: 'prepared-aa' }), createdAt: Date.now(), request: { ...structuredClone(draft.request), runtime: draft.request.runtime }, inputFiles: draft.files };
+      const seeds = planImageGenerationSeeds({ baseSeed: snapshot.request.parameters.seed, count });
+      return {
+        snapshot,
+        seeds,
+        async execute({ submission, signal }: { submission: ImageGenerationSubmission | undefined, signal: AbortSignal | undefined }) {
+          if (!submission) {
+            throw new Error('Missing test submission.');
+          }
+          h.busy.value = true;
+          try {
+            h.generation.latestRun.value = { status: 'running', width: snapshot.request.parameters.width, height: snapshot.request.parameters.height };
+            await submission.accepted({ snapshot, seeds });
+            for (const [index, seed] of seeds.entries()) {
+              signal?.throwIfAborted();
+              h.generation.progress.value = { phase: 'sampling', step: 0, steps: 8 };
+              await h.native();
+              signal?.throwIfAborted();
+              h.generation.progress.value = undefined;
+              const output = finishImageGenerationSnapshot({ snapshot: { ...snapshot, request: { ...snapshot.request, parameters: { ...snapshot.request.parameters, seed } } }, result: { png: new Blob(['pixels']), width: snapshot.request.parameters.width, height: snapshot.request.parameters.height, modelVersion: 'fixture', uniformOutput: false }, previews: [], elapsedMs: 1 });
+              await submission.output({ index, ...output });
+            }
+            await submission.finished({ completion: { type: 'completed' } });
+          } catch (error) {
+            await submission.finished({ completion: signal?.aborted ? { type: 'cancelled' } : { type: 'failed', message: error instanceof Error ? error.message : String(error) } });
+            throw error;
+          } finally {
+            h.generation.progress.value = undefined;
+            h.busy.value = false;
+          }
+        },
+      };
+    });
+    h.busy.value = false;
+    return plans;
+  };
+}
+
+it('keeps multiple generation gestures in one session and preserves separate prompts/counts and the shared draft', async () => {
+  const h = await ready();
+  await enableMultipleRequests({ h });
+  h.generation.parameters.value.prompt = 'shared unchanged';
+  h.view.count.value = 2;
+  h.view.composition.setMode({ mode: 'multiple' });
+  h.view.composition.pastedText.value = `\
+prompt: red
+---
+prompt: blue
+count: 1
+width: 512`;
+  await flushPromises();
+  await h.view.composition.parse();
+  h.view.composition.importJobs({ replace: false });
+  await h.view.generateComposition();
+  await flushPromises();
+  expect(h.view.failure.value).toBe('');
+  expect(h.view.sessions.value).toHaveLength(1);
+  expect(h.view.operations.value).toHaveLength(1);
+  expect(h.view.operations.value[0]!.runIds).toHaveLength(2);
+  expect(h.view.tiles.value).toHaveLength(3);
+  expect(h.view.runs.value.map(run => run.prompt).sort()).toEqual(['blue', 'red']);
+  expect(h.generation.parameters.value.prompt).toBe('shared unchanged');
+  expect(h.view.composition.state.value.jobs).toHaveLength(2);
+  expect(h.view.composition.dirty.value).toBe(false);
+  const sessionId = h.view.selectedSessionId.value;
+  h.view.composition.setMode({ mode: 'single' });
+  await h.view.generate();
+  await flushPromises();
+  expect(h.view.sessions.value).toHaveLength(1);
+  expect(h.view.selectedSessionId.value).toBe(sessionId);
+  expect(h.view.operations.value.map(operation => operation.runIds.length).sort()).toEqual([1, 2]);
+  expect(h.view.runs.value).toHaveLength(3);
+  expect(h.view.compositionProgress.value).toBeUndefined();
+});
+
+it('does not accept any request when a pasted model slot is unassigned', async () => {
+  const h = await ready();
+  await enableMultipleRequests({ h });
+  h.view.composition.add();
+  h.view.composition.update({ id: h.view.composition.state.value.jobs[0]!.id, input: { prompt: 'red', uiModelConfigurationSlot: 'choose here' } });
+  await h.view.generateComposition();
+  expect(h.view.failure.value).toContain('choose here');
+  expect(h.native).not.toHaveBeenCalled();
+  expect(h.view.sessions.value).toEqual([]);
+});
+
+it('keeps operation progress live and refreshes every saved image before the next prompt finishes', async () => {
+  const h = await ready();
+  await enableMultipleRequests({ h });
+  h.view.composition.setMode({ mode: 'multiple' });
+  h.view.composition.pastedText.value = `\
+prompt: red
+count: 2
+---
+prompt: blue
+count: 3`;
+  await flushPromises();
+  await h.view.composition.parse();
+  h.view.composition.importJobs({ replace: false });
+  const first = Promise.withResolvers<void>(), second = Promise.withResolvers<void>(), third = Promise.withResolvers<void>();
+  h.native.mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise).mockImplementationOnce(() => third.promise);
+  const task = h.view.generateComposition();
+  const surface = mount(ImageGenerationMonitor, { props: { workspace: h.view, generation: h.generation, active: true, compact: false } });
+  await using _cleanup = {
+    async [Symbol.asyncDispose]() {
+      first.resolve();
+      second.resolve();
+      third.resolve();
+      await task;
+      surface.unmount();
+    },
+  };
+  await vi.waitFor(() => expect(h.native).toHaveBeenCalledTimes(1));
+  expect(surface.get('[data-testid="operation-image-count"]').text()).toBe('0 / 5 images generated');
+  expect(surface.get('[data-testid="operation-request-position"]').text()).toContain('Prompt 1 / 2 · Image 1 / 2');
+  expect(surface.get('[data-testid="image-generation-phase"]').text()).toBe('Processing step 1 / 8');
+  first.resolve();
+  await vi.waitFor(() => expect(h.native).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(h.view.tiles.value).toHaveLength(1));
+  expect(h.view.compositionProgress.value).toMatchObject({ completedImages: 1, savedImages: 1, totalImages: 5 });
+  expect([...h.view.savedImageCounts.value.values()]).toEqual([1]);
+  expect(surface.get('[data-testid="operation-image-count"]').text()).toBe('1 / 5 images generated');
+  expect(surface.get('[data-testid="operation-request-position"]').text()).toContain('Image 2 / 2');
+  second.resolve();
+  await vi.waitFor(() => expect(h.native).toHaveBeenCalledTimes(3));
+  expect(surface.get('[data-testid="operation-request-position"]').text()).toContain('Prompt 2 / 2 · Image 1 / 3');
+  expect(surface.get('[data-testid="image-generation-phase"]').text()).toBe('Processing step 1 / 8');
+  third.resolve();
+  await task;
+  await flushPromises();
+  expect(h.view.compositionProgress.value).toMatchObject({ status: 'completed', completedImages: 5, savedImages: 5 });
+  expect(surface.get('[data-testid="operation-image-progress"]').attributes('aria-valuenow')).toBe('5');
+  expect(surface.get('[data-testid="operation-result"]').text()).toBe('Completed');
+  expect(h.view.tiles.value).toHaveLength(5);
+});
+
+it('retains generated counts after cancellation without starting later prompts', async () => {
+  const h = await ready();
+  await enableMultipleRequests({ h });
+  h.view.composition.setMode({ mode: 'multiple' });
+  h.view.composition.pastedText.value = `\
+prompt: red
+count: 2
+---
+prompt: blue`;
+  await flushPromises();
+  await h.view.composition.parse();
+  h.view.composition.importJobs({ replace: false });
+  const gate = Promise.withResolvers<void>();
+  h.native.mockImplementationOnce(async () => {}).mockImplementationOnce(() => gate.promise);
+  const task = h.view.generateComposition();
+  await using _cleanup = {
+    async [Symbol.asyncDispose]() {
+      gate.resolve();
+      await task;
+    },
+  };
+  await vi.waitFor(() => expect(h.native).toHaveBeenCalledTimes(2));
+  h.view.cancelComposition();
+  gate.resolve();
+  await task;
+  expect(h.native).toHaveBeenCalledTimes(2);
+  expect(h.view.compositionProgress.value).toMatchObject({ status: 'cancelled', completedImages: 1, savedImages: 1, totalImages: 3 });
+});
+
+it('keeps generated and saved counts separate after a save failure and saving retry', async () => {
+  const h = await ready();
+  await enableMultipleRequests({ h });
+  h.view.composition.add();
+  h.view.composition.update({ id: h.view.composition.state.value.jobs[0]!.id, input: { prompt: 'red', count: 2 } });
+  let failed = false;
+  mocks.publish.mockImplementation(async (value: Publication) => {
+    if (value.publication.type === 'asset' && !failed) {
+      failed = true;
+      throw new Error('quota');
+    }
+    await publish(value);
+  });
+  await h.view.generateComposition();
+  expect(h.view.compositionProgress.value).toMatchObject({ status: 'failed', completedImages: 1, savedImages: 0, totalImages: 2 });
+  const surface = mount(ImageGenerationMonitor, { props: { workspace: h.view, generation: h.generation, active: true, compact: false } });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      surface.unmount();
+    },
+  };
+  expect(surface.get('[data-testid="operation-image-count"]').text()).toBe('1 / 2 images generated');
+  expect(surface.get('[data-testid="operation-unsaved-images"]').text()).toMatch(/^1 unsaved image/);
+  await surface.get('[data-testid="workspace-pending-save"] button').trigger('click');
+  await flushPromises();
+  expect(h.native).toHaveBeenCalledTimes(1);
+  expect(h.view.compositionProgress.value).toMatchObject({ completedImages: 1, savedImages: 1 });
+  expect(h.view.tiles.value).toHaveLength(1);
+  expect(surface.find('[data-testid="operation-unsaved-images"]').exists()).toBe(false);
 });

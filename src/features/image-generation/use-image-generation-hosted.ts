@@ -12,12 +12,12 @@ import { prepareLocalImageExecution } from './providers/local';
 import type { ImageExecutionJob } from './execution/types';
 import { generateId } from '@/01-models/id';
 import { findDraftImage, findDraftModelFile, type ImageGenerationDraft } from './generation-draft';
-import type { ImageGenerationCompletion, ImageGenerationSubmission } from './generation-submission';
+import type { ImageGenerationCompletion, ImageGenerationSubmission, PreparedImageGeneration } from './generation-submission';
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import { downloadBlob } from '@/utils/stream-download';
 import { nanoid } from 'nanoid';
 import { createImageDiagnosticBuffer, type ImageDiagnostic } from '@/features/stable-diffusion-cpp-browser/diagnostics';
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 import { rawConfiguration, initialProfile, supportsJspi, supportsMemory64, useImageLibrary, createImageEngineClient, inspectImageInventory } from '@/features/image-generation/providers/local-environment';
 import { configurationSchema, getImageRuntimeFeatures, requestSchema, previewSettingsSchema, type PreviewFrame, type ModelSlot, type Request } from '@/features/stable-diffusion-cpp-browser/types';
@@ -38,7 +38,7 @@ import type { StorageType } from '@/01-models/types';
 import type { BinaryObjectId, ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord, ImageGenerationSampling } from '@/01-models/image-generation-history';
 import { useImageGenerationHistory } from './history/use-image-generation-history';
-import { snapshotImageGeneration, recoverImageGenerationSnapshot, finishImageGenerationSnapshot } from './history/snapshot';
+import { copyImageGenerationSnapshot, snapshotImageGeneration, recoverImageGenerationSnapshot, finishImageGenerationSnapshot } from './history/snapshot';
 import { prepareImageHistoryReuse, prepareImageDraftReuse } from './history/reuse';
 import { downloadImageBlob, imageGenerationDownloadBlob, type ImageGenerationExportImage } from './history/download';
 
@@ -50,6 +50,9 @@ export function useImageGeneration(): ImageGenerationView {
   const form = createImageForm({ profile: initialProfile(), runtimeFeatures: getImageRuntimeFeatures({ configuration }), modelFacts });
   const { retainModel, modelResident, preview, keepPreviews, maxPreviews, maxResults, previewError, livePreview, previewSnapshots, debug, diagnosticText, diagnosticStatus, diagnosticFeedback, profile, layout, files, parameters, stepsPreference, guidancePreference, resolvedSteps, resolvedGuidance, vaeTileSizePreference, weightResidency, gpuBudgetMiB, progress, failure, invalid, cancelled, stopping, results } = form;
   const controller = shallowRef<AbortController>();
+  const preparingRequests = ref(false);
+  const preparingOne = ref(false);
+  let preparationController: AbortController | undefined;
   const seedMode = ref<'random' | 'fixed'>('random');
   const benchmarkActive = ref(false);
   const preferenceRestoring = ref(false);
@@ -747,8 +750,11 @@ export function useImageGeneration(): ImageGenerationView {
     invalid.value = false;
   }
   async function restoreDraft({ draft }: { draft: ImageGenerationDraft }): Promise<void> {
+    await restoreDraftChecked({ draft });
+  }
+  async function restoreDraftChecked({ draft }: { draft: ImageGenerationDraft }): Promise<boolean> {
     if (draftRestoreDisabled.value || disposed) {
-      return;
+      return false;
     }
     const revision = storageRevision.value;
     if (draft.inferenceLocation?.kind === 'local' || draft.request.runtime && draft.request.runtime.profile !== 'naidan-rpc') {
@@ -772,7 +778,7 @@ export function useImageGeneration(): ImageGenerationView {
       getImage: async ({ binaryObjectId }) => findDraftImage({ files: draft.files, binaryObjectId }) ?? await history.getImage({ binaryObjectId }),
     }) : await restoreUnfinishedDraft({ draft });
     if (!restored || disposed || revision !== storageRevision.value) {
-      return;
+      return false;
     }
     // Only new metadata carries automatic intent. Legacy numeric drafts are fixed,
     // even when their value equals the current browser standard.
@@ -799,6 +805,7 @@ export function useImageGeneration(): ImageGenerationView {
         inputIds.set(file, image.binaryObjectId);
       }
     });
+    return true;
   }
   async function restoreUnfinishedDraft({ draft }: { draft: ImageGenerationDraft }): Promise<boolean> {
     const revision = storageRevision.value;
@@ -1109,11 +1116,183 @@ export function useImageGeneration(): ImageGenerationView {
     // history/reuse error, or leave download errors visible on another pane.
     return { status: 'failed', message };
   }
-  async function generate({ submission }: { submission: ImageGenerationSubmission | undefined }): Promise<void> {
-    if (remote.value) {
-      return generateRemote({ submission });
+  function preparedGeneration({ execution, snapshot, seeds, historyWriter }: {
+    execution: PreparedImageExecution, snapshot: import('./history/snapshot').ImageGenerationSnapshot, seeds: string[],
+    historyWriter: ReturnType<typeof storageService.createImageGenerationHistoryWriter> | undefined,
+  }): PreparedImageGeneration {
+    const policy = preparingRequests.value ? { retain: retainModel.value, enabled: preview.value.enabled, keep: keepPreviews.value } : undefined;
+    let consumed = false;
+    return {
+      get snapshot() {
+        return copyImageGenerationSnapshot({ snapshot });
+      },
+      get seeds() {
+        return [...seeds];
+      },
+      async execute({ submission, signal }) {
+        if (consumed || disposed || busy.value) {
+          throw new Error('This generation plan is no longer available.');
+        }
+        signal?.throwIfAborted();
+        consumed = true;
+        const operation = new AbortController();
+        const abort = () => operation.abort(signal?.reason);
+        signal?.addEventListener('abort', abort, { once: true });
+        try {
+          await execute({ execution, snapshot, seeds, submission, operation, policy, historyWriter });
+        } finally {
+          signal?.removeEventListener('abort', abort);
+        }
+      },
+    };
+  }
+
+  async function prepareGeneration({ count, signal, historyWriter }: { count: number, signal: AbortSignal | undefined, historyWriter: ReturnType<typeof storageService.createImageGenerationHistoryWriter> | undefined }): Promise<PreparedImageGeneration | undefined> {
+    if (formDisabled.value || disposed) {
+      return undefined;
     }
-    if (!supported.value || !artifact.value || formDisabled.value || historyActions.missingFiles.value.length || library.importing.value || disposed) {
+    signal?.throwIfAborted();
+    const operation = new AbortController();
+    const abort = () => operation.abort(signal?.reason);
+    signal?.addEventListener('abort', abort, { once: true });
+    preparingOne.value = true;
+    if (!preparingRequests.value) {
+      preparationController = operation;
+    }
+    failure.value = '';
+    invalid.value = false;
+    try {
+      if (!remote.value) {
+        const plan = await prepareLocalGeneration({ count, signal: operation.signal, historyWriter });
+        operation.signal.throwIfAborted();
+        return plan;
+      }
+      controller.value = operation;
+      const seed = (() => {
+        const mode = seedMode.value;
+        switch (mode) {
+        case 'random': return randomSeed();
+        case 'fixed': return parameters.value.seed;
+        default: {
+          const exhaustive: never = mode;
+          throw new Error(String(exhaustive));
+        }
+        }
+      })();
+      const seeds = planImageGenerationSeeds({ baseSeed: seed, count });
+      const execution = await inferenceLocation.prepare({ seed, createdAt: Date.now(), signal: operation.signal });
+      operation.signal.throwIfAborted();
+      if (disposed) {
+        return undefined;
+      }
+      parameters.value.seed = seed;
+      return preparedGeneration({ execution, snapshot: execution.snapshot, seeds, historyWriter });
+    } catch (error) {
+      if (!disposed && !operation.signal.aborted) {
+        failure.value = error instanceof Error ? error.message : String(error);
+      }
+      if (operation.signal.aborted) {
+        throw error;
+      }
+      return undefined;
+    } finally {
+      preparingOne.value = false;
+      if (preparationController === operation) {
+        preparationController = undefined;
+      }
+      signal?.removeEventListener('abort', abort);
+      if (controller.value === operation) {
+        controller.value = undefined;
+      }
+    }
+  }
+
+  async function generate({ submission }: { submission: ImageGenerationSubmission | undefined }): Promise<void> {
+    if (preparingRequests.value || preparingOne.value || formDisabled.value || disposed) {
+      return;
+    }
+    const historyWriter = submission === undefined && historySaving.enabled.value && historySaving.supported.value ? storageService.createImageGenerationHistoryWriter() : undefined;
+    const plan = await prepareGeneration({ count: submission?.count ?? 1, signal: undefined, historyWriter });
+    if (plan) {
+      await plan.execute({ submission, signal: undefined });
+    }
+  }
+
+  async function prepareRequests({ requests, signal }: { requests: { draft: ImageGenerationDraft, count: number }[], signal: AbortSignal }): Promise<PreparedImageGeneration[]> {
+    if (preparingRequests.value || formDisabled.value || disposed) {
+      throw new Error('Wait for the image editor to become available.');
+    }
+    if (!requests.length || requests.length > 128) {
+      throw new Error('Use 1–128 generation requests.');
+    }
+    const common = captureDraft();
+    if (!common) {
+      throw new Error('The shared image configuration is unavailable.');
+    }
+    const revision = storageRevision.value;
+    const operation = new AbortController();
+    const abort = () => operation.abort(signal.reason);
+    signal.throwIfAborted();
+    signal.addEventListener('abort', abort, { once: true });
+    preparationController = operation;
+    preparingRequests.value = true;
+    const plans: PreparedImageGeneration[] = [];
+    let preparationError: unknown;
+    let preparationFailed = false;
+    let restorationError: unknown;
+    let restorationFailed = false;
+    try {
+      for (const [index, request] of requests.entries()) {
+        operation.signal.throwIfAborted();
+        if (disposed || revision !== storageRevision.value) {
+          throw new Error('The image storage changed during preparation.');
+        }
+        const restored = await restoreDraftChecked({ draft: request.draft });
+        if (!restored || historyActions.error.value || historyActions.missingFiles.value.length) {
+          throw new Error(`Request ${index + 1}: ${historyActions.error.value || historyActions.missingFiles.value.join(', ') || 'The requested configuration could not be restored.'}`);
+        }
+        const plan = await prepareGeneration({ count: request.count, signal: operation.signal, historyWriter: undefined });
+        if (!plan) {
+          throw new Error(`Request ${index + 1}: ${failure.value || 'Check the model configuration and generation parameters.'}`);
+        }
+        plans.push(plan);
+      }
+    } catch (error) {
+      preparationFailed = true;
+      preparationError = error;
+    } finally {
+      try {
+        if (!disposed && revision === storageRevision.value) {
+          if (!await restoreDraftChecked({ draft: common })) {
+            restorationFailed = true;
+            restorationError = new Error('The shared configuration could not be restored. Check the editor before generating.');
+          }
+          // Preference watchers must observe restoration while still suspended.
+          await nextTick();
+        }
+      } catch (error) {
+        restorationFailed = true;
+        restorationError = error;
+      } finally {
+        signal.removeEventListener('abort', abort);
+        preparationController = undefined;
+        preparingRequests.value = false;
+      }
+    }
+    if (restorationFailed) {
+      throw restorationError;
+    }
+    if (preparationFailed) {
+      throw preparationError;
+    }
+    operation.signal.throwIfAborted();
+    if (disposed || revision !== storageRevision.value) {
+      throw new Error('The image storage changed during preparation.');
+    }
+    return plans;
+  }
+  async function prepareLocalGeneration({ count, signal, historyWriter }: { count: number, signal: AbortSignal, historyWriter: ReturnType<typeof storageService.createImageGenerationHistoryWriter> | undefined }): Promise<PreparedImageGeneration | undefined> {
+    if (!supported.value || !artifact.value || historyActions.missingFiles.value.length || library.importing.value || disposed) {
       return;
     }
     if ((stepsPreference.value === 'auto' || guidancePreference.value === 'auto' || parameters.value.vaeTiling && vaeTileSizePreference.value === 'auto') && !library.selectedCandidateKey.value) {
@@ -1123,7 +1302,7 @@ export function useImageGeneration(): ImageGenerationView {
       let pending = manualInspectionPromise ?? (!manualFacts.value ? inspectManualFiles() : undefined);
       do {
         await pending;
-        if (disposed || formDisabled.value || remote.value || library.selectedCandidateKey.value || files.value !== selectedFiles || layout.value !== selectedLayout || manualSelectionRevision !== selectedRevision) {
+        if (disposed || signal.aborted || remote.value || library.selectedCandidateKey.value || files.value !== selectedFiles || layout.value !== selectedLayout || manualSelectionRevision !== selectedRevision) {
           return;
         }
         pending = manualInspectionPromise;
@@ -1194,7 +1373,7 @@ export function useImageGeneration(): ImageGenerationView {
     }
     let seeds: string[];
     try {
-      seeds = planImageGenerationSeeds({ baseSeed: parsed.data.parameters.seed, count: submission?.count ?? 1 });
+      seeds = planImageGenerationSeeds({ baseSeed: parsed.data.parameters.seed, count });
     } catch {
       invalid.value = true;
       return;
@@ -1227,49 +1406,15 @@ export function useImageGeneration(): ImageGenerationView {
         modelResident.value = resident;
       },
     });
-    await execute({ execution, snapshot, seeds, submission, operation: new AbortController() });
+    return preparedGeneration({ execution, snapshot, seeds, historyWriter });
   }
-  async function generateRemote({ submission }: { submission: ImageGenerationSubmission | undefined }): Promise<void> {
-    if (formDisabled.value || disposed) {
-      return;
-    }
-    const operation = new AbortController();
-    controller.value = operation;
-    failure.value = '';
-    invalid.value = false;
-    try {
-      const seed = (() => {
-        switch (seedMode.value) {
-        case 'random': return randomSeed();
-        case 'fixed': return parameters.value.seed;
-        default: {
-          const exhaustive: never = seedMode.value;
-          throw new Error(String(exhaustive));
-        }
-        }
-      })();
-      const seeds = planImageGenerationSeeds({ baseSeed: seed, count: submission?.count ?? 1 });
-      const execution = await inferenceLocation.prepare({ seed, createdAt: Date.now(), signal: operation.signal });
-      if (disposed || operation.signal.aborted) {
-        return;
-      }
-      parameters.value.seed = seed;
-      await execute({ execution, snapshot: execution.snapshot, seeds, submission, operation });
-    } catch (error) {
-      if (!disposed && !operation.signal.aborted) {
-        failure.value = error instanceof Error ? error.message : String(error);
-      }
-    } finally {
-      if (controller.value === operation) {
-        controller.value = undefined;
-      }
-    }
-  }
-  async function execute({ execution, snapshot, seeds, submission, operation }: {
+  async function execute({ execution, snapshot, seeds, submission, operation, policy, historyWriter }: {
     execution: PreparedImageExecution, snapshot: import('./history/snapshot').ImageGenerationSnapshot,
     seeds: string[], submission: ImageGenerationSubmission | undefined, operation: AbortController,
+    policy: { retain: boolean, enabled: boolean, keep: boolean } | undefined,
+    historyWriter: ReturnType<typeof storageService.createImageGenerationHistoryWriter> | undefined,
   }): Promise<void> {
-    const retainAfterRun = retainModel.value;
+    const retainAfterRun = policy?.retain ?? retainModel.value;
     let nativeFailed = false, nativeStarted = false;
     let reservation: { release(): void } | undefined;
     invalid.value = false;
@@ -1277,8 +1422,6 @@ export function useImageGeneration(): ImageGenerationView {
     cancelled.value = false;
     stopping.value = false;
     activeHistoryId = snapshot.id;
-    const saveThisGeneration = submission === undefined && historySaving.enabled.value && historySaving.supported.value;
-    const historyWriter = saveThisGeneration ? storageService.createImageGenerationHistoryWriter() : undefined;
     const runPreviewIds = new Set<number>();
     diagnosticBuffer.clear();
     diagnosticText.value = '';
@@ -1354,14 +1497,14 @@ export function useImageGeneration(): ImageGenerationView {
               }
             },
             onPreview({ frame }) {
-              if (disposed || operation.signal.aborted || stopping.value || !preview.value.enabled) {
+              if (disposed || operation.signal.aborted || stopping.value || !(policy?.enabled ?? preview.value.enabled)) {
                 return;
               }
               const { png, ...metadata } = frame;
               const entry = { ...metadata, elapsedMs: Math.max(0, now() - generateStartedAt) };
               liveGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: entry });
               livePreview.value = liveGallery.entries()[0];
-              if (keepPreviews.value) {
+              if (policy?.keep ?? keepPreviews.value) {
                 const saved = snapshotGallery.add({ blob: png, width: frame.width, height: frame.height, metadata: { ...entry, request: imageSnapshot.request } });
                 runPreviewIds.add(saved.id);
                 previewSnapshots.value = snapshotGallery.entries();
@@ -1559,6 +1702,7 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }
   function cancel(): void {
+    preparationController?.abort();
     if (!busy.value || (!progress.value && !submissionActive) || stopping.value) {
       return;
     }
@@ -1569,6 +1713,7 @@ export function useImageGeneration(): ImageGenerationView {
     }
   }
   function forceCancel(): void {
+    preparationController?.abort();
     if (!busy.value || (!progress.value && !submissionActive)) {
       return;
     }
@@ -1578,6 +1723,7 @@ export function useImageGeneration(): ImageGenerationView {
   const { settings, initialized, captureExperimentalStorage, updateExperimentalForStorage } = useSettings();
   const { addErrorEvent } = useGlobalEvents();
   useImageInferencePreferences({
+    suspended: preparingRequests,
     settings,
     initialized,
     inferenceLocation,
@@ -1588,6 +1734,7 @@ export function useImageGeneration(): ImageGenerationView {
     },
   });
   const nativePreferences = useImagePreferences({
+    suspended: preparingRequests,
     settings,
     initialized,
     captureStorage: captureExperimentalStorage,
@@ -1629,6 +1776,7 @@ export function useImageGeneration(): ImageGenerationView {
     disposed = true;
     engineState.dispose();
     manualInspection?.abort();
+    preparationController?.abort();
     controller.value?.abort();
     client?.dispose();
     unsubscribeStorage();
@@ -1640,7 +1788,7 @@ export function useImageGeneration(): ImageGenerationView {
     finalGallery.clear();
     clearPreviews();
   });
-  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, resolvedVaeTileSize, inferenceLocation, captureDraft, restoreDraft, resetDraft, draftRestoreDisabled, engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy, supported, formDisabled, draftDisabled, unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, setRetainModel, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
+  return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), ...form, resolvedVaeTileSize, inferenceLocation, captureDraft, restoreDraft, resetDraft, draftRestoreDisabled: computed(() => draftRestoreDisabled.value || preparingRequests.value || preparingOne.value), engineState: engineState.view, seedMode, randomizeSeed, history, historySaving, historyActions, reuseHistory, useHistoryImage, savedHistoryId, downloadHistory, downloadResult, downloadPreview, clearHistoryMissingFiles, acquireBenchmark, releaseBenchmark, library, busy: computed(() => busy.value || preparingRequests.value || preparingOne.value), supported, formDisabled: computed(() => formDisabled.value || preparingRequests.value || preparingOne.value), draftDisabled: computed(() => draftDisabled.value || preparingRequests.value || preparingOne.value), unavailable, recommendation, manualInspectionState, inspectManualFiles, applyRecommendedSettings, chooseFile, resetFiles, removeResult, clearResults, removePreview, clearPreviews, releaseModel, setRetainModel, prepareRequests, generate, cancel, forceCancel, copyDiagnostics, saveDiagnostics };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

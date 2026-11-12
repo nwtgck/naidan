@@ -2,7 +2,7 @@ import type { ImageInferenceLocationPreference, RemoteImageModelEditor } from '.
 import type { BrowserImageModelSelection, Endpoint, LmParameters } from './types';
 import { z } from 'zod';
 import type { ImageGenerationRecord } from './image-generation-history';
-import { idToRaw, type ChatId, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId, type ImageGenerationStoreId, type ImageGenerationTagId } from './ids';
+import { idToRaw, type ChatId, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationOperationId, type ImageGenerationSessionId, type ImageGenerationStoreId, type ImageGenerationTagId } from './ids';
 
 /** Image Generation metadata, not native Worker session/run correlation numbers. */
 export type ImageGenerationTag = {
@@ -99,6 +99,12 @@ export type ImageGenerationSessionDraft = {
   maxResults: number,
 };
 
+/** Model assignment owned by an editable composition, not a model-set registry.
+ * Browser File capabilities stay outside persisted domain configuration. */
+export type ImageModelConfiguration = Pick<ImageGenerationSessionDraft, 'inferenceLocation' | 'layout' | 'modelSelection' | 'remoteModelEditor' | 'loraStates'> & {
+  request: Pick<ImageGenerationDraftRequest, 'models' | 'loras' | 'runtime'>,
+};
+
 export type ImageGenerationSource = {
   role: 'settings' | 'initial-image' | 'reference-image',
   sessionId: ImageGenerationSessionId,
@@ -114,7 +120,17 @@ export type ImageGenerationRunExecution =
   | { type: 'interrupted', finishedAt: number };
 
 /** Request and output plan never change after acceptance. Only execution changes. */
+export type ImageGenerationOperation = {
+  id: ImageGenerationOperationId,
+  sessionId: ImageGenerationSessionId,
+  createdAt: number,
+  /** Immutable submission order; even a single request has one operation. */
+  runIds: ImageGenerationRunId[],
+};
+
 export type ImageGenerationRun = {
+  /** Missing only on base-format runs; they form implicit singleton operations. */
+  operationId?: ImageGenerationOperationId,
   /** Assigned once when published; absent on legacy or not-yet-published runs. */
   acceptedOrder: number | undefined,
   id: ImageGenerationRunId,
@@ -157,7 +173,7 @@ export type ImageGenerationAssetSummary = Omit<ImageGenerationAsset, 'result' | 
   previewCount: number,
 };
 
-export type ImageGenerationRunSummary = Pick<ImageGenerationRun, 'id' | 'sessionId' | 'revision' | 'createdAt' | 'execution'> & {
+export type ImageGenerationRunSummary = Pick<ImageGenerationRun, 'id' | 'sessionId' | 'revision' | 'createdAt' | 'execution' | 'operationId'> & {
   prompt: string,
   modelName: string,
   requestedCount: number,
@@ -252,6 +268,30 @@ export function canTransitionImageGenerationRun({ from, to }: { from: ImageGener
   }
   }
 }
+
+
+
+/** Editable input intent, not an accepted native request. Missing fields inherit
+ * from the common form; explicit null requests a fresh random seed. */
+export type ImageCompositionInput = Omit<Partial<ImageGenerationRecord['request']['parameters']>, 'prompt' | 'seed' | 'steps' | 'guidance' | 'vaeTileSize'> & {
+  prompt: string,
+  seed?: string | null,
+  steps?: number | 'auto',
+  guidance?: number | 'auto',
+  vaeTileSize?: number | 'auto',
+  count?: number,
+  uiModelConfigurationSlot?: string,
+};
+
+/** A domain checkpoint. The storage service owns its DTO version and mapping. */
+export type ImageCompositionDraft = {
+  sessionId: ImageGenerationSessionId,
+  revision: number,
+  updatedAt: number,
+  mode: 'single' | 'multiple',
+  jobs: { id: string, input: ImageCompositionInput }[],
+  slots: { name: string, configuration: ImageModelConfiguration }[],
+};
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 export const TEST_ONLY = {

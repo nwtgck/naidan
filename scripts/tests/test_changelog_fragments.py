@@ -16,7 +16,7 @@ import release_start as release
 import test_release_start as legacy
 
 
-NAME = 'changes-20261112T063045.123Z-workflow-branching.md'
+NAME = 'changes-20261112T063045.123Z-workflow-branching-fixed.md'
 ENTRY = '### Fixed\n\n- Fix conditional branching.\n'
 INSTRUCTIONS = '''<!-- changelog-unreleased:instructions
 See changelog-unreleased/AGENTS.md.
@@ -25,8 +25,9 @@ See changelog-unreleased/AGENTS.md.
 
 
 def fragment(*, category: str = 'Fixed', body: str = 'Independent fix.',
-             name: str = NAME) -> release.ChangelogFragment:
-    return release.parse_changelog_fragment(path=Path(name), content=f'### {category}\n\n- {body}\n')
+             name: str | None = None) -> release.ChangelogFragment:
+    path = Path(name if name is not None else NAME.replace('-fixed.md', f'-{category.lower()}.md'))
+    return release.parse_changelog_fragment(path=path, content=f'### {category}\n\n- {body}\n')
 
 
 def prepare(*, notes: str, fragments: tuple[release.ChangelogFragment, ...],
@@ -42,44 +43,63 @@ class FragmentParsingTests(unittest.TestCase):
             with self.subTest(category=category):
                 item = fragment(category=category, body='**Breaking:** Fix `<!--`, café and [a link](https://example.test).  \n  Keep the hard break.')
                 self.assertEqual(item.category, category)
-                self.assertIn('test).  \n  Keep', item.bullet)
+                self.assertIn('test).  \n  Keep', item.bullets[0])
 
     def test_inline_code_with_long_backtick_delimiters_is_not_a_fenced_block(self):
         for body in ('```literal```', '````literal`backtick````', 'Fix the example.\n  ```literal```'):
             with self.subTest(body=body):
-                self.assertEqual(fragment(body=body).bullet, '- ' + body)
+                self.assertEqual(fragment(body=body).bullets[0], '- ' + body)
 
     def test_line_endings_outer_blank_lines_and_no_final_newline(self):
         for content in (ENTRY, ENTRY.rstrip('\n'), '\n \n' + ENTRY + '\n ', ENTRY.replace('\n', '\r\n')):
             with self.subTest(content=content):
                 item = release.parse_changelog_fragment(path=Path(NAME), content=content)
-                self.assertEqual(item.bullet, '- Fix conditional branching.')
+                self.assertEqual(item.bullets[0], '- Fix conditional branching.')
                 self.assertEqual(item.original, content)
 
     def test_filename_dates_are_real_utc_calendar_values_not_release_dates(self):
         for timestamp in ('00010101T000000.000Z', '20280229T235959.999Z', '99991231T235959.999Z'):
             with self.subTest(timestamp=timestamp):
-                item = fragment(name=f'changes-{timestamp}-topic-2.md')
+                item = fragment(name=f'changes-{timestamp}-topic-2-fixed.md')
                 self.assertEqual(item.category, 'Fixed')
         for timestamp in ('20260229T000000.000Z', '20261301T000000.000Z', '20261131T000000.000Z',
                           '00000101T000000.000Z', '20261112T240000.000Z', '20261112T006000.000Z',
                           '20261112T000060.000Z', '20261112T000000.00Z', '20261112T000000.0000Z',
                           '20261112T000000Z', '20261112T000000.000+0000', '２０２６1112T000000.000Z'):
             with self.subTest(timestamp=timestamp), self.assertRaises(SystemExit):
-                fragment(name=f'changes-{timestamp}-topic.md')
+                fragment(name=f'changes-{timestamp}-topic-fixed.md')
 
     def test_invalid_topics_and_names_are_rejected(self):
         for name in ('changes.md', 'changes-bad.md', NAME.upper(), NAME.replace('workflow-branching', '-bad'),
                      NAME.replace('workflow-branching', 'bad--topic'), NAME.replace('workflow-branching', 'bad_thing'),
                      NAME.replace('workflow-branching', 'bad-'), NAME.replace('workflow-branching', 'é'),
-                     NAME.replace('workflow-branching', 'Topic'), NAME.replace('changes-', 'entry-', 1)):
+                     NAME.replace('workflow-branching', 'Topic'), NAME.replace('changes-', 'entry-', 1),
+                     NAME.replace('-fixed.md', '.md'), NAME.replace('-fixed.md', '-Fixed.md'),
+                     NAME.replace('-fixed.md', '-unknown.md')):
             with self.subTest(name=name), self.assertRaisesRegex(SystemExit, 'filename'):
                 fragment(name=name)
+
+    def test_filename_category_must_match_heading(self):
+        for category in release.CHANGE_CATEGORY_ORDER:
+            if category == 'Fixed':
+                continue
+            with self.subTest(category=category), self.assertRaisesRegex(SystemExit, 'does not match'):
+                fragment(category=category, name=NAME)
+
+    def test_multiple_bullets_for_one_topic_preserve_prose_and_order(self):
+        for separator in ('\n', '\n\n', '\n \n\n'):
+            for newline in ('\n', '\r\n'):
+                with self.subTest(separator=separator, newline=newline):
+                    content = ('### Fixed\n\n- First fix.  \n  Continued.' + separator
+                               + '- Second `fix`.\n  More detail.\n').replace('\n', newline)
+                    item = release.parse_changelog_fragment(path=Path(NAME), content=content)
+                    self.assertEqual(item.bullets, ('- First fix.  \n  Continued.', '- Second `fix`.\n  More detail.'))
+                    self.assertEqual(item.original, content)
 
     def test_rejects_invalid_or_ambiguous_item_structures(self):
         for content in ('', '### Fix\n\n- A fix.', '### Fixed\n- A fix.', '### Fixed\n\n',
                         '### Fixed\n\n- ', '### Fixed\n\n- [ ]', '### Fixed\n\n- [x]',
-                        '### Fixed\n\n- A fix.\n- Another fix.', '### Fixed\n\n* A fix.',
+                        '### Fixed\n\n* A fix.',
                         '### Fixed\n\n- A fix.\n### Added\n\n- A feature.',
                         '### Fixed\n\n- A fix.\n\nA paragraph.', '### Fixed\n\n- A fix.\n  - Nested.',
                         '### Fixed\n\n- A fix.\n  1. Nested.', '### Fixed\n\n- ### Heading',
@@ -174,7 +194,7 @@ class FragmentFilesystemTests(unittest.TestCase):
 
     def test_staging_many_paths_uses_exact_nul_delimited_stdin(self):
         root = PureWindowsPath('C:/repo')
-        paths = [root / f'changelog-unreleased/changes-20261112T063045.123Z-entry-{i}.md' for i in range(2000)]
+        paths = [root / f'changelog-unreleased/changes-20261112T063045.123Z-entry-{i}-fixed.md' for i in range(2000)]
         with mock.patch.object(release, 'REPO_ROOT', root), mock.patch.object(release, 'run_git_command') as git:
             release.stage_release_paths(paths=paths)
         args = git.call_args.kwargs
@@ -217,7 +237,7 @@ class FragmentIntegrationFormatTests(unittest.TestCase):
         self.assertIn(legacy.HISTORY, actual)
 
     def test_fragment_only_is_sorted_by_category_timestamp_and_topic(self):
-        items = tuple(fragment(category=category, body=category, name=NAME.replace('branching', category.lower()))
+        items = tuple(fragment(category=category, body=category, name=NAME.replace('branching', category.lower()).replace('-fixed.md', f'-{category.lower()}.md'))
                       for category in reversed(release.CHANGE_CATEGORY_ORDER))
         body = self.body(actual=prepare(notes=INSTRUCTIONS, fragments=items))
         positions = [body.index(f'### {category}') for category in release.CHANGE_CATEGORY_ORDER]
@@ -231,9 +251,20 @@ class FragmentIntegrationFormatTests(unittest.TestCase):
         self.assertLess(body.index('Tie A.'), body.index('Tie Z.'))
         self.assertLess(body.index('Tie Z.'), body.index('Later.'))
 
+    def test_topic_bullets_stay_together_in_timestamp_order(self):
+        topic = release.parse_changelog_fragment(path=Path(NAME), content='### Fixed\n\n- First.\n- Second.\n')
+        earlier = fragment(body='Earlier.', name=NAME.replace('063045', '063044').replace('workflow', 'z'))
+        later = fragment(body='Later.', name=NAME.replace('063045', '063046').replace('workflow', 'a'))
+        for newline in ('\n', '\r\n'):
+            for permutation in itertools.permutations((topic, earlier, later)):
+                body = self.body(actual=prepare(notes='', fragments=permutation, newline=newline))
+                self.assertEqual([line for line in body.splitlines() if line.startswith('- ')],
+                                 ['- Earlier.', '- First.', '- Second.', '- Later.'])
+                self.assertIn('- Earlier.\n- First.\n- Second.\n- Later.', body)
+
     def test_preserves_legacy_category_order_and_adds_only_missing_categories(self):
         notes = 'Introduction.\n\n### Security\n\n- Existing security fix.\n\n### Added\n\n- Existing feature.'
-        items = tuple(fragment(category=category, name=NAME.replace('branching', category.lower()))
+        items = tuple(fragment(category=category, name=NAME.replace('branching', category.lower()).replace('-fixed.md', f'-{category.lower()}.md'))
                       for category in release.CHANGE_CATEGORY_ORDER)
         body = self.body(actual=prepare(notes=notes, fragments=items))
         categories = [line for line in body.splitlines() if line.startswith('### ')]
@@ -359,8 +390,11 @@ Continued prose.
 
     def test_randomized_input_order_preserves_every_unique_item_once(self):
         rng = random.Random(7)
-        items = [fragment(category=rng.choice(release.CHANGE_CATEGORY_ORDER), body=f'Unique item {i:03d}.',
-                          name=f'changes-20261112T063045.{i:03d}Z-topic.md') for i in range(120)]
+        items = []
+        for i in range(120):
+            category = rng.choice(release.CHANGE_CATEGORY_ORDER)
+            items.append(fragment(category=category, body=f'Unique item {i:03d}.',
+                                  name=f'changes-20261112T063045.{i:03d}Z-topic-{category.lower()}.md'))
         expected = prepare(notes=legacy.NOTES, fragments=tuple(items))
         for _ in range(25):
             rng.shuffle(items)

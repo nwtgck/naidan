@@ -1,0 +1,1 @@
+export const imageComposition__recover_notice = (): string => "Unfertige Anfragen nur markieren, wenn kein Tab den Vorgang oder ungespeicherte Ergebnisse besitzt. Es werden keine Bilder erzeugt oder gelöscht.";

@@ -154,14 +154,27 @@ A candidate whose name, UTC timestamp, content or file type is invalid stops the
 release; `--allow-empty-changelog` does not bypass malformed input. Linked
 entry directories/files and non-regular candidate files are rejected.
 
-Filenames use `changes-YYYYMMDDTHHMMSS.sssZ-<topic>.md`, with the actual UTC
+Filenames use `changes-YYYYMMDDTHHMMSS.sssZ-<topic>-<changelog-category>.md`, with the actual UTC
 creation instant, not the release date. Timestamps are not changed on revision,
 compared with the release clock, or used to infer dependencies. Topics contain
 lowercase ASCII letters, digits and single separating hyphens. Timestamp ties
-are sorted by the full filename. No random suffix is used.
+are sorted by the full filename. No random suffix is used. The final component
+is one of `added`, `changed`, `deprecated`, `removed`, `fixed`, or `security`,
+and must match the category heading in the file. Group notes for the same topic
+and category in one file; split different topics or categories into separate
+files. Keep the original filename when updating a topic.
 
-Each entry contains one category and one paragraph-style bullet with optional
-exactly-two-space-indented continuation lines and inline Markdown. These stricter
+For example, `changes-20261112T063045.123Z-image-generation-added.md` has a
+`### Added` heading and may contain several related feature bullets. A fix to
+previously released image-generation behavior goes in
+`changes-20261112T064500.456Z-image-generation-fixed.md` with `### Fixed`.
+Both files use the same `image-generation` topic. The category suffix describes
+the kind of change, while the leading timestamp preserves chronological sorting.
+
+Each entry contains one category and one or more paragraph-style bullets with optional
+exactly-two-space-indented continuation lines and inline Markdown. Write bullets
+without blank lines between them. Blank-separated bullets are also accepted;
+the collected output uses consecutive bullets and preserves their written order. These stricter
 rules do not apply to legacy direct notes, which retain their paragraphs,
 comments, code examples and existing category order. New entries follow direct
 notes within their category; when a category contains a level-four or deeper

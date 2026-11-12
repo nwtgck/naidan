@@ -3,7 +3,8 @@ import { cloneOptionalEndpoint } from '@/01-models/endpoint';
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
 import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
-import type { ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationOperationId, ImageGenerationSessionId } from '@/01-models/ids';
+import type { ImageGenerationResultExportSnapshot } from './image-generation-results-export';
 import type { ImageGenerationExportSnapshot } from './image-generation-export';
 import type { ImageGenerationAsset, ImageGenerationSessionDraft, ImageGenerationRun } from '@/01-models/image-generation';
 import type { ImageGenerationStoreAccess } from './image-generation';
@@ -1549,6 +1550,35 @@ export class StorageService {
           binaries.push({ id, blob });
         }
         return { metadata, binaries };
+      },
+    });
+  }
+
+  async captureImageGenerationResults({ store, sessionId, operationId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, operationId: ImageGenerationOperationId }): Promise<ImageGenerationResultExportSnapshot> {
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') {
+      throw new Error('Image Generation export requires OPFS.');
+    }
+    const provider = this.getProvider();
+    const { collectImageGenerationResultsMetadata } = await import('./image-generation-results-export');
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      ...this.getLockOptions({ source: 'captureImageGenerationResults' }),
+      fn: async () => {
+        if (this.getProvider() !== provider) {
+          throw new Error('The storage provider changed before export.');
+        }
+        const { manifest, files } = await collectImageGenerationResultsMetadata({ store, sessionId, operationId, exportedAt: Date.now() });
+        const images: ImageGenerationResultExportSnapshot['images'] = [];
+        for (const reference of files) {
+          const blob = await provider.getFile({ binaryObjectId: reference.id });
+          if (!blob) {
+            throw new Error(`A result image is missing: ${idToRaw({ id: reference.id })}`);
+          }
+          const extension = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'bin';
+          reference.output.filename = `${reference.base}.${extension}`;
+          images.push({ path: reference.output.filename, blob });
+        }
+        return { manifest: new Blob([JSON.stringify(manifest, undefined, 2)], { type: 'application/json' }), images };
       },
     });
   }

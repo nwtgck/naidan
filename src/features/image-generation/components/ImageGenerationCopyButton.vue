@@ -51,8 +51,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <span tw-class="inline-flex min-w-0 items-center gap-1">
-    <button v-bind="$attrs" type="button" @click.stop="copy" :disabled="!text || state === 'copying'" :title="state === 'failed' ? lazyStrings.imageGeneration__copy_failed() : label" :aria-label="label" :tw-class="['shrink-0 inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', state === 'failed' ? 'text-red-600 dark:text-red-400' : state === 'copied' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400']">
-      <CheckIcon v-if="state === 'copied'" aria-hidden="true" tw-class="w-3.5 h-3.5" />
+    <button v-bind="$attrs" type="button" @click.stop="copy" :disabled="!text || state === 'copying'" :title="state === 'failed' ? lazyStrings.imageGeneration__copy_failed() : label" :aria-label="label" :tw-class="['shrink-0 inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', state === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400']">
+      <CheckIcon v-if="state === 'copied'" aria-hidden="true" tw-class="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
       <AlertCircleIcon v-else-if="state === 'failed'" aria-hidden="true" tw-class="w-3.5 h-3.5" />
       <CopyIcon v-else aria-hidden="true" tw-class="w-3.5 h-3.5" />
       <span v-if="showLabel">{{ state === 'copied' ? lazyStrings.imageGeneration__copied() : label }}</span>

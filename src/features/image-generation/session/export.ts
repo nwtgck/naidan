@@ -1,3 +1,4 @@
+import type { ImageGenerationResultExportSnapshot } from '@/00-storage/service/image-generation-results-export';
 import type { ImageGenerationExportSnapshot } from '@/00-storage/service/image-generation-export';
 import { idToRaw } from '@/01-models/ids';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
@@ -44,6 +45,34 @@ export function createImageGenerationArchive({ snapshot, exportedAt }: { snapsho
     }
   })();
   // The stream reports the same failure to the download consumer.
+  void completed.catch(() => undefined);
+  return { stream: output.stream, completed };
+}
+
+/** Results export deliberately does not include inputs, previews, storage
+ * locators or peer credentials. Filenames are derived from ordinal positions. */
+export function createImageGenerationResultsArchive({ snapshot, exportedAt }: { snapshot: ImageGenerationResultExportSnapshot, exportedAt: number }) {
+  const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
+  const directory = createMemoryZipCentralDirectoryStore();
+  const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
+  const completed = (async () => {
+    try {
+      await writer.addFile({ name: 'manifest.json', modifiedAt: new Date(exportedAt), compression: 'store', stream: snapshot.manifest.stream() });
+      for (const image of snapshot.images) {
+        if (!/^images\/\d{3}\/\d{2}\.(png|jpg|webp|bin)$/u.test(image.path)) {
+          throw new Error('Invalid generated ZIP entry path.');
+        }
+        await writer.addFile({ name: image.path, modifiedAt: new Date(exportedAt), compression: 'store', stream: image.blob.stream() });
+      }
+      await writer.finalize();
+      await output.close();
+    } catch (error) {
+      await output.abort({ reason: error }).catch(() => undefined);
+      throw error;
+    } finally {
+      await directory.dispose();
+    }
+  })();
   void completed.catch(() => undefined);
   return { stream: output.stream, completed };
 }

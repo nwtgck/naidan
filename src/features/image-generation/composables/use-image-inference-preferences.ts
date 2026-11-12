@@ -7,7 +7,8 @@ import type { ImageInferenceLocationView } from './use-image-inference-location'
 
 /** Uses the normal Settings provider. Accepted edits can drain after leaving
  * the view, but can never cross a provider replacement or restore boundary. */
-export function useImageInferencePreferences({ settings, initialized, inferenceLocation, captureStorage, updateForStorage, failed }: {
+export function useImageInferencePreferences({ settings, initialized, inferenceLocation, captureStorage, updateForStorage, failed, suspended }: {
+  suspended?: Readonly<Ref<boolean>>,
   settings: Readonly<Ref<Settings>>, initialized: Readonly<Ref<boolean>>, inferenceLocation: ImageInferenceLocationView,
   captureStorage(): () => boolean,
   updateForStorage({ isCurrent, updater }: {
@@ -120,7 +121,7 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
     hydrated = true;
   }, { immediate: true, deep: true, flush: 'sync' });
   watch(inferenceLocation.capturePreferences, value => {
-    if (!hydrated || disposed || !previous || !isCurrent) {
+    if (suspended?.value || !hydrated || disposed || !previous || !isCurrent) {
       return;
     }
     if (!isCurrent()) {

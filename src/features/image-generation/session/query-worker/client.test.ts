@@ -24,7 +24,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const query = { visibility: 'active' as const, text: '', tags: [], match: 'all' as const, runId: undefined, cursor: undefined, limit: 40 };
 const request = { store: { storageType: 'opfs' as const, storeId: toImageGenerationStoreId({ raw: 'store-aa' }) }, sessionId: toImageGenerationSessionId({ raw: 'session-aa' }), query };
-const page = { runsWithAssets: [], deletedAssetIds: [], pendingDeletions: [], page: { items: [], total: 0, nextCursor: undefined, warnings: [], warningCount: 0 }, runs: { items: [], warnings: [], warningCount: 0 } };
+const page = { runsWithAssets: [], savedImageCounts: [], deletedAssetIds: [], pendingDeletions: [], page: { items: [], total: 0, nextCursor: undefined, warnings: [], warningCount: 0 }, runs: { items: [], warnings: [], warningCount: 0 } };
 
 it.each(['error', 'messageerror'])('rejects pending reads on %s and permits retry with a new Worker', async event => {
   const oldRead = Promise.withResolvers<typeof page>();

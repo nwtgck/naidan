@@ -6,7 +6,8 @@ import type { createImageForm } from '@/features/image-generation/form';
 import type { ImageLibraryView } from './library-view';
 
 /** The editor stores preferences, never a draft prompt, image or temporary File. */
-export function useImagePreferences({ settings, initialized, captureStorage, updateForStorage, form, seedMode, historyEnabled, library, localModels, restoring, restored, failed }: {
+export function useImagePreferences({ settings, initialized, captureStorage, updateForStorage, form, seedMode, historyEnabled, library, localModels, restoring, restored, failed, suspended }: {
+  suspended?: Readonly<Ref<boolean>>,
   settings: Readonly<Ref<Settings>>,
   initialized: Readonly<Ref<boolean>>,
   captureStorage(): () => boolean,
@@ -128,7 +129,7 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     }
   }
   watch(snapshot, value => {
-    if (!hydrated || restoring.value || disposed || !storageOwner?.()) {
+    if (suspended?.value || !hydrated || restoring.value || disposed || !storageOwner?.()) {
       return;
     }
     const patch: BrowserImageGenerationSettings = {};

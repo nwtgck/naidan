@@ -908,6 +908,9 @@ import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageB
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/en';
 import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/en';
 import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/en';
+import { ImageCompositionFields__model_configuration_slot } from '@/strings/messages/ImageCompositionFields__model_configuration_slot/en';
+import { ImageCompositionFields__shared } from '@/strings/messages/ImageCompositionFields__shared/en';
+import { ImageCompositionModeSelect__input_mode } from '@/strings/messages/ImageCompositionModeSelect__input_mode/en';
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/en';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/en';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/en';
@@ -1040,6 +1043,13 @@ import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/Imag
 import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/en';
 import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/en';
 import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/en';
+import { ImageGenerationMonitor__images_generated } from '@/strings/messages/ImageGenerationMonitor__images_generated/en';
+import { ImageGenerationMonitor__preparing_generation } from '@/strings/messages/ImageGenerationMonitor__preparing_generation/en';
+import { ImageGenerationMonitor__request_position } from '@/strings/messages/ImageGenerationMonitor__request_position/en';
+import { ImageGenerationMonitor__saving_results } from '@/strings/messages/ImageGenerationMonitor__saving_results/en';
+import { ImageGenerationMonitor__unsaved_images } from '@/strings/messages/ImageGenerationMonitor__unsaved_images/en';
+import { ImageGenerationOperationActions__no_completed_images } from '@/strings/messages/ImageGenerationOperationActions__no_completed_images/en';
+import { ImageGenerationOperationActions__saving_results } from '@/strings/messages/ImageGenerationOperationActions__saving_results/en';
 import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/en';
 import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/en';
 import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/en';
@@ -2712,6 +2722,46 @@ import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__su
 import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/en';
 import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/en';
 import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/en';
+import { imageComposition__add } from '@/strings/messages/imageComposition__add/en';
+import { imageComposition__append } from '@/strings/messages/imageComposition__append/en';
+import { imageComposition__assign } from '@/strings/messages/imageComposition__assign/en';
+import { imageComposition__assigned } from '@/strings/messages/imageComposition__assigned/en';
+import { imageComposition__auto } from '@/strings/messages/imageComposition__auto/en';
+import { imageComposition__copy_example } from '@/strings/messages/imageComposition__copy_example/en';
+import { imageComposition__down } from '@/strings/messages/imageComposition__down/en';
+import { imageComposition__download_results } from '@/strings/messages/imageComposition__download_results/en';
+import { imageComposition__duplicate } from '@/strings/messages/imageComposition__duplicate/en';
+import { imageComposition__export_notice } from '@/strings/messages/imageComposition__export_notice/en';
+import { imageComposition__generate } from '@/strings/messages/imageComposition__generate/en';
+import { imageComposition__help } from '@/strings/messages/imageComposition__help/en';
+import { imageComposition__inherit } from '@/strings/messages/imageComposition__inherit/en';
+import { imageComposition__input_examples } from '@/strings/messages/imageComposition__input_examples/en';
+import { imageComposition__input_models_help } from '@/strings/messages/imageComposition__input_models_help/en';
+import { imageComposition__input_structure_help } from '@/strings/messages/imageComposition__input_structure_help/en';
+import { imageComposition__input_values_help } from '@/strings/messages/imageComposition__input_values_help/en';
+import { imageComposition__multiple } from '@/strings/messages/imageComposition__multiple/en';
+import { imageComposition__operation } from '@/strings/messages/imageComposition__operation/en';
+import { imageComposition__overrides } from '@/strings/messages/imageComposition__overrides/en';
+import { imageComposition__parse } from '@/strings/messages/imageComposition__parse/en';
+import { imageComposition__paste } from '@/strings/messages/imageComposition__paste/en';
+import { imageComposition__paste_help } from '@/strings/messages/imageComposition__paste_help/en';
+import { imageComposition__pending_metadata } from '@/strings/messages/imageComposition__pending_metadata/en';
+import { imageComposition__random } from '@/strings/messages/imageComposition__random/en';
+import { imageComposition__recover } from '@/strings/messages/imageComposition__recover/en';
+import { imageComposition__recover_notice } from '@/strings/messages/imageComposition__recover_notice/en';
+import { imageComposition__reload } from '@/strings/messages/imageComposition__reload/en';
+import { imageComposition__reload_notice } from '@/strings/messages/imageComposition__reload_notice/en';
+import { imageComposition__remove } from '@/strings/messages/imageComposition__remove/en';
+import { imageComposition__replace } from '@/strings/messages/imageComposition__replace/en';
+import { imageComposition__replace_notice } from '@/strings/messages/imageComposition__replace_notice/en';
+import { imageComposition__save_only } from '@/strings/messages/imageComposition__save_only/en';
+import { imageComposition__shared_negative_prompt } from '@/strings/messages/imageComposition__shared_negative_prompt/en';
+import { imageComposition__single } from '@/strings/messages/imageComposition__single/en';
+import { imageComposition__slot_help } from '@/strings/messages/imageComposition__slot_help/en';
+import { imageComposition__summary } from '@/strings/messages/imageComposition__summary/en';
+import { imageComposition__unassigned } from '@/strings/messages/imageComposition__unassigned/en';
+import { imageComposition__unsupported } from '@/strings/messages/imageComposition__unsupported/en';
+import { imageComposition__up } from '@/strings/messages/imageComposition__up/en';
 import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/en';
 import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/en';
 import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/en';
@@ -4789,6 +4839,9 @@ export const catalog = {
   ImageBenchmarkResult__image_memory_limit_reached,
   ImageBenchmarkResult__image_not_retained,
   ImageBenchmarkResult__no_image,
+  ImageCompositionFields__model_configuration_slot,
+  ImageCompositionFields__shared,
+  ImageCompositionModeSelect__input_mode,
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
@@ -4921,6 +4974,13 @@ export const catalog = {
   ImageGenerationLab__record_detailed_logs,
   ImageGenerationLab__saved_models,
   ImageGenerationLab__select_missing_files,
+  ImageGenerationMonitor__images_generated,
+  ImageGenerationMonitor__preparing_generation,
+  ImageGenerationMonitor__request_position,
+  ImageGenerationMonitor__saving_results,
+  ImageGenerationMonitor__unsaved_images,
+  ImageGenerationOperationActions__no_completed_images,
+  ImageGenerationOperationActions__saving_results,
   ImageGenerationPreview__preview_from_cancelled_generation,
   ImageGenerationPreview__preview_from_failed_generation,
   ImageGenerationProgress__processing_step,
@@ -6593,6 +6653,46 @@ export const catalog = {
   imageBenchmark__timeout,
   imageBenchmark__unavailable_components,
   imageBenchmark__warm,
+  imageComposition__add,
+  imageComposition__append,
+  imageComposition__assign,
+  imageComposition__assigned,
+  imageComposition__auto,
+  imageComposition__copy_example,
+  imageComposition__down,
+  imageComposition__download_results,
+  imageComposition__duplicate,
+  imageComposition__export_notice,
+  imageComposition__generate,
+  imageComposition__help,
+  imageComposition__inherit,
+  imageComposition__input_examples,
+  imageComposition__input_models_help,
+  imageComposition__input_structure_help,
+  imageComposition__input_values_help,
+  imageComposition__multiple,
+  imageComposition__operation,
+  imageComposition__overrides,
+  imageComposition__parse,
+  imageComposition__paste,
+  imageComposition__paste_help,
+  imageComposition__pending_metadata,
+  imageComposition__random,
+  imageComposition__recover,
+  imageComposition__recover_notice,
+  imageComposition__reload,
+  imageComposition__reload_notice,
+  imageComposition__remove,
+  imageComposition__replace,
+  imageComposition__replace_notice,
+  imageComposition__save_only,
+  imageComposition__shared_negative_prompt,
+  imageComposition__single,
+  imageComposition__slot_help,
+  imageComposition__summary,
+  imageComposition__unassigned,
+  imageComposition__unsupported,
+  imageComposition__up,
   imageGeneration__action_applied,
   imageGeneration__active_images,
   imageGeneration__actual_seed,
