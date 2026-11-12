@@ -56,7 +56,7 @@ describe('model graph declarations', () => {
     expect(run).toThrow('Weight type or shape');
   });
 
-  it('rejects fractional dimensions, missing parameters, and excessive memory', () => {
+  it('rejects fractional dimensions, missing parameters, and invalid budgets', () => {
     const first = compile();
 first.definition.parameters[0]!.value = 1.5;
 expect(first.run).toThrow();
@@ -64,7 +64,7 @@ const second = compile();
 second.definition.parameters = [];
 expect(second.run).toThrow();
 const { definition, inventory } = graphFixture();
-expect(() => compileModelGraph({ definition, inventory, inputTokens: 16, cacheTokens: 16, capacity: 16, maximumScratchBytes: 16 })).toThrow('budget');
+expect(() => compileModelGraph({ definition, inventory, inputTokens: 16, cacheTokens: 16, capacity: 16, maximumScratchBytes: 0 })).toThrow('dimensions');
   });
 
   it('validates quantization block size and multiplication overflow', () => {

@@ -1,3 +1,5 @@
+import { allocateModelGraph } from './graph-allocation';
+import { checkModelGraphAddressWidth, checkModelGraphMemoryBudget } from './memory-budget';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { compileModelGraph, type ModelGraphInventory, type ModelGraphPlan } from './compile';
 import { graphStorageFormats } from './tensor-layout';
@@ -22,8 +24,12 @@ export async function createModelGraphEngine({ core, definition, inventory, loca
   }
   const capacity = Math.ceil(contextSize / 64) * 64;
   const initialPlan = compileModelGraph({ definition, inventory, inputTokens: 1, cacheTokens: 64, capacity, maximumScratchBytes });
+  checkModelGraphAddressWidth({ pointerBytes: core.pointerBytes, largestTensorBytes: initialPlan.largestTensorBytes, stateBytes: initialPlan.stateBytes });
   const expandedDefinition = initialPlan.definition;
   const api = core.api;
+  if (typeof api.ggml_backend_sched_reserve_size !== 'function') {
+    throw new Error('The installed core cannot measure registered graph allocation sizes');
+  }
   for (const { node } of initialPlan.nodes) {
     switch (node.op) {
     case 'tensor': {
@@ -69,6 +75,7 @@ export async function createModelGraphEngine({ core, definition, inventory, loca
   };
   let cpu = 0n, gpu = 0n, scheduler = 0n, weightContext = 0n, weightBuffer = 0n, stateContext = 0n, stateBuffer = 0n;
   let staging = 0n, stagingSize = 0, logitsMemory = 0n;
+  let allocatedStateBytes = BigInt(initialPlan.stateBytes);
   let past = 0, closed = false, failed = false, running = false;
   const persistent = new Map<string, bigint>();
   const weights = new Map<string, bigint>(), states = new Map<string, { key: bigint, value: bigint }>();
@@ -277,6 +284,13 @@ export async function createModelGraphEngine({ core, definition, inventory, loca
         persistent.set(tensor.id, value);
       }
       stateBuffer = checked({ pointer: await api.ggml_backend_alloc_ctx_tensors(stateContext, gpu || cpu), operation: 'state buffer' });
+      allocatedStateBytes = await api.ggml_backend_buffer_get_size(stateBuffer);
+      // The native buffer may include alignment; never undercount the checked
+      // tensor payload if a backend reports less than the logical state size.
+      if (allocatedStateBytes < BigInt(initialPlan.stateBytes)) {
+        allocatedStateBytes = BigInt(initialPlan.stateBytes);
+      }
+      checkModelGraphMemoryBudget({ phase: 'state', stateBytes: allocatedStateBytes, computeBytes: 0n, maximumBytes: maximumScratchBytes, contextTokens: capacity, batchTokens: 1 });
       await api.ggml_backend_buffer_clear(stateBuffer, 0);
     }
     logitsMemory = core.alloc({ bytes: inventory.vocabularySize * 4 });
@@ -310,6 +324,7 @@ export async function createModelGraphEngine({ core, definition, inventory, loca
         await api.ggml_set_input(input);
       }
     }
+    const writes: { tensor: bigint; backend: bigint }[] = [];
     const values = new Map(weights);
     const lookup = ({ id }: { id: string }): bigint => {
       const tensor = values.get(id);
@@ -400,8 +415,7 @@ export async function createModelGraphEngine({ core, definition, inventory, loca
         if (!await api.ggml_backend_dev_supports_op(stateDevice, updatedKey) || !await api.ggml_backend_dev_supports_op(stateDevice, updatedValue)) {
           throw new Error('Selected backend does not support this persistent KV write');
         }
-        await api.ggml_backend_sched_set_tensor_backend(scheduler, updatedKey, gpu || cpu);
-        await api.ggml_backend_sched_set_tensor_backend(scheduler, updatedValue, gpu || cpu);
+        writes.push({ tensor: updatedKey, backend: gpu || cpu }, { tensor: updatedValue, backend: gpu || cpu });
         const width = ({ F16: 2, F32: 4 } satisfies Record<typeof slot.precision, number>)[slot.precision];
         const key = await api.ggml_view_3d(context, updatedKey, BigInt(slot.headSize), BigInt(plan.cacheTokens), BigInt(slot.heads), BigInt(slot.headSize * width), BigInt(slot.headSize * capacity * width), 0n);
         const value = await api.ggml_view_3d(context, updatedValue, BigInt(slot.headSize), BigInt(plan.cacheTokens), BigInt(slot.heads), BigInt(slot.headSize * width), BigInt(slot.headSize * capacity * width), 0n);
@@ -455,9 +469,18 @@ export async function createModelGraphEngine({ core, definition, inventory, loca
       }
     }
     const allocationStart = performance.now();
-    if (!await api.ggml_backend_sched_alloc_graph(scheduler, next.graph)) {
-      throw new Error('Registered graph backend allocation failed');
-    }
+    await allocateModelGraph({
+      core,
+      scheduler,
+      graph: next.graph,
+      backends: gpu ? [gpu, cpu] : [cpu],
+      writes,
+      stateBytes: allocatedStateBytes,
+      maximumBytes: maximumScratchBytes,
+      contextTokens: capacity,
+      batchTokens: plan.inputTokens,
+      signal: buildSignal,
+    });
     for (const constant of next.constants) {
       const elements = constant.shape.reduce((total, size) => total * size, 1);
       for (let offset = 0; offset < elements;) {
@@ -534,6 +557,7 @@ export async function createModelGraphEngine({ core, definition, inventory, loca
           const graphReused = graph !== undefined && graph.plan.inputTokens === tokens.length && graph.plan.cacheTokens === cacheTokens;
           if (!graphReused) {
             const plan = compileModelGraph({ definition: expandedDefinition, inventory, inputTokens: tokens.length, cacheTokens, capacity, maximumScratchBytes });
+            checkModelGraphAddressWidth({ pointerBytes: core.pointerBytes, largestTensorBytes: plan.largestTensorBytes, stateBytes: plan.stateBytes });
             const result = await build({ plan, signal: stepSignal });
             buildMs = result.buildMs;
             allocationMs = result.allocationMs;

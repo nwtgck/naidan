@@ -1,3 +1,4 @@
+import { checkModelGraphMemoryBudget } from './memory-budget';
 import type { Dimension, ModelGraphDefinition, ModelGraphNode, ModelGraphScalar, ModelGraphWeightType } from './definition';
 import { expandModelGraphDefinition } from './expand';
 import { createGraphExpressionEvaluator, type GraphMetadataValue } from './expressions';
@@ -27,8 +28,8 @@ export type ModelGraphPlan = {
   cacheTokens: number,
   capacity: number,
   vocabularySize: number,
-  estimatedScratchBytes: number,
   stateBytes: number,
+  largestTensorBytes: number,
 };
 
 export function modelGraphTensorBytes({ shape, type }: { shape: readonly number[]; type: GraphTensorType }): number {
@@ -106,6 +107,7 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
     return tensor;
   };
   const sameShape = ({ left, right }: { left: readonly number[], right: readonly number[] }): boolean => graphSameShape({ left, right });
+  let largestTensorBytes = 0;
   const weights = definition.weights.map(weight => {
     const tensor = inventory.tensors.get(weight.tensor);
     const shape = weight.shape.map(value => dimension({ value, allowTokens: false }));
@@ -115,6 +117,7 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
     if (modelGraphTensorBytes({ shape, type: tensor.type }) !== tensor.bytes) {
       throw new Error(`Invalid weight byte size: ${weight.tensor}`);
     }
+    largestTensorBytes = Math.max(largestTensorBytes, tensor.bytes);
     tensors.set(weight.id, { shape, type: tensor.type, contiguous: true, indices: undefined });
     return { id: weight.id, tensor };
   });
@@ -127,14 +130,18 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
   if (persistent.length && inputTokens !== 1) {
     throw new Error('General recurrent state is evaluated one token at a time');
   }
-  let stateBytes = persistent.reduce((total, tensor) => total + modelGraphTensorBytes({ shape: tensor.shape, type: tensor.precision }), 0);
+  let stateBytes = 0n;
+  for (const tensor of persistent) {
+    const bytes = modelGraphTensorBytes({ shape: tensor.shape, type: tensor.precision });
+    largestTensorBytes = Math.max(largestTensorBytes, bytes);
+    stateBytes += BigInt(bytes);
+  }
   for (const slot of slots) {
-    stateBytes += 2 * modelGraphTensorBytes({ shape: [slot.headSize, capacity, slot.heads], type: slot.precision });
+    const bytes = modelGraphTensorBytes({ shape: [slot.headSize, capacity, slot.heads], type: slot.precision });
+    largestTensorBytes = Math.max(largestTensorBytes, bytes);
+    stateBytes += 2n * BigInt(bytes);
   }
-  if (!Number.isSafeInteger(stateBytes) || stateBytes > maximumScratchBytes) {
-    throw new Error('State allocation budget exceeded');
-  }
-  let estimatedScratchBytes = stateBytes;
+  checkModelGraphMemoryBudget({ phase: 'state', stateBytes, computeBytes: 0n, maximumBytes: maximumScratchBytes, contextTokens: capacity, batchTokens: inputTokens });
   let extraTensorCount = persistent.length;
   const nodes: ModelGraphPlan['nodes'] = [];
   for (const source of definition.graph.nodes) {
@@ -177,7 +184,6 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
       outputType = operation.tensor.type;
       contiguous = operation.tensor.layout === 'contiguous';
       indices = operation.tensor.indices;
-      estimatedScratchBytes += operation.scratchBytes;
       extraTensorCount += operation.extraTensorCount;
       break;
     }
@@ -309,8 +315,6 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
       }
       node = { ...source, scale };
       shape = [slot.headSize * query.shape[1]!, inputTokens];
-      // Include a padded half-precision causal mask and contiguous Q/K/V copies.
-      estimatedScratchBytes += Math.ceil(inputTokens / 64) * 64 * cacheTokens * 2 + (query.shape[0]! * query.shape[1]! + 2 * slot.headSize * slot.heads) * inputTokens * 4;
       break;
     }
     default: {
@@ -318,10 +322,10 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
       throw new Error(String(exhaustive));
     }
     }
-    estimatedScratchBytes += modelGraphTensorBytes({ shape, type: outputType });
-    if (!Number.isSafeInteger(estimatedScratchBytes) || estimatedScratchBytes + stateBytes > maximumScratchBytes) {
-      throw new Error('Graph allocation budget exceeded');
-    }
+    // Check arithmetic before creating native metadata. The scheduler measures
+    // peak compute storage later: aliases, shared masks and nonoverlapping
+    // activation lifetimes are not independent retained allocations.
+    largestTensorBytes = Math.max(largestTensorBytes, modelGraphTensorBytes({ shape, type: outputType }));
     tensors.set(node.id, { shape, type: outputType, contiguous, indices });
     nodes.push({ node, shape });
   }
@@ -336,7 +340,7 @@ export function compileModelGraph({ definition: declaration, inventory, inputTok
   if (!output.contiguous || !sameShape({ left: output.shape, right: [inventory.vocabularySize, inputTokens] })) {
     throw new Error('Logits must be contiguous with shape [vocabulary, input tokens]');
   }
-  return { definition, tensors: persistent, updates: definition.state.updates, extraTensorCount, weights, slots, nodes, logits: definition.outputs.logits, inputTokens, cacheTokens, capacity, vocabularySize: inventory.vocabularySize, estimatedScratchBytes, stateBytes };
+  return { definition, tensors: persistent, updates: definition.state.updates, extraTensorCount, weights, slots, nodes, logits: definition.outputs.logits, inputTokens, cacheTokens, capacity, vocabularySize: inventory.vocabularySize, stateBytes: Number(stateBytes), largestTensorBytes };
 }
 
 export const TEST_ONLY = {

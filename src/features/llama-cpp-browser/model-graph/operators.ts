@@ -60,7 +60,6 @@ export type OperatorLoweringContext = {
 export type BoundTensorOperation = {
   tensor: GraphTensorLayout;
   extraTensorCount: number;
-  scratchBytes: number;
   nativeFunctions: readonly (keyof Core['api'])[];
   lower: ({ environment }: { environment: OperatorLoweringContext }) => Promise<bigint>;
 };
@@ -100,7 +99,7 @@ function elementwise({ fn }: { fn: ({ environment }: { environment: OperatorLowe
   return ({ input }: { input: readonly GraphTensorLayout[] }) => {
     const a = input[0]!;
     requireGraphF32({ tensor: a });
-    return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, scratchBytes: 0, lower: fn };
+    return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, lower: fn };
   };
 }
 
@@ -129,7 +128,7 @@ function pointwise({ broadcasting, call }: {
       throw new Error(String(exhaustive));
     }
     }
-    return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, scratchBytes: 0, lower: call };
+    return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, lower: call };
   };
 }
 
@@ -139,7 +138,7 @@ function normalization({ fn }: { fn: ({ environment, epsilon }: { environment: O
     if (attributes.epsilon <= 0 || attributes.epsilon > 1) {
       throw new Error('Normalization epsilon must be in (0, 1]');
     }
-    return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment }: { environment: OperatorLoweringContext }) => fn({ environment, epsilon: attributes.epsilon }) };
+    return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, lower: ({ environment }: { environment: OperatorLoweringContext }) => fn({ environment, epsilon: attributes.epsilon }) };
   };
 }
 
@@ -172,7 +171,7 @@ export const modelGraphOperators = {
     functions: ['ggml_scale_bias'],
     prepare: ({ input, attributes }) => {
       requireGraphF32({ tensor: input[0]! });
-      return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_scale_bias(e.context, e.inputs[0]!, attributes.scale, attributes.bias) };
+      return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_scale_bias(e.context, e.inputs[0]!, attributes.scale, attributes.bias) };
     },
   }),
   clamp: operator({
@@ -184,7 +183,7 @@ export const modelGraphOperators = {
       if (attributes.minimum > attributes.maximum) {
         throw new Error('Clamp minimum exceeds maximum');
       }
-      return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_clamp(e.context, e.inputs[0]!, attributes.minimum, attributes.maximum) };
+      return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_clamp(e.context, e.inputs[0]!, attributes.minimum, attributes.maximum) };
     },
   }),
   swigluClamped: operator({
@@ -197,7 +196,7 @@ export const modelGraphOperators = {
       if (!graphSameShape({ left: input[0]!.shape, right: input[1]!.shape }) || attributes.limit <= 0) {
         throw new Error('Clamped SwiGLU needs equal shapes and a positive limit');
       }
-      return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_swiglu_clamp(e.context, e.inputs[0]!, e.inputs[1]!, attributes.limit) };
+      return { tensor: activation({ shape: input[0]!.shape }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_swiglu_clamp(e.context, e.inputs[0]!, e.inputs[1]!, attributes.limit) };
     },
   }),
   matmul: operator({
@@ -215,7 +214,7 @@ export const modelGraphOperators = {
       if (aa[0] !== bb[0] || bb[2] % aa[2] || bb[3] % aa[3]) {
         throw new Error('Invalid batched matrix product shape');
       }
-      return { tensor: activation({ shape: [aa[1], bb[1], bb[2], bb[3]] }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_mul_mat(e.context, e.inputs[0]!, e.inputs[1]!) };
+      return { tensor: activation({ shape: [aa[1], bb[1], bb[2], bb[3]] }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_mul_mat(e.context, e.inputs[0]!, e.inputs[1]!) };
     },
   }),
   matmulIndexed: operator({
@@ -232,7 +231,7 @@ export const modelGraphOperators = {
       || aa[3] !== 1 || bb[3] !== 1 || ii[2] !== 1 || ii[3] !== 1 || ii[1] !== bb[2] || aa[0] !== bb[0] || ii[0] % bb[1]) {
         throw new Error('Indexed matrix product needs compatible shapes and intrinsically bounded expert indices');
       }
-      return { tensor: activation({ shape: [aa[1], ii[0], bb[2]] }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_mul_mat_id(e.context, e.inputs[0]!, e.inputs[1]!, e.inputs[2]!) };
+      return { tensor: activation({ shape: [aa[1], ii[0], bb[2]] }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_mul_mat_id(e.context, e.inputs[0]!, e.inputs[1]!, e.inputs[2]!) };
     },
   }),
   gatherRows: operator({
@@ -260,7 +259,7 @@ export const modelGraphOperators = {
         }
         }
       })();
-      return { tensor, extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_get_rows(e.context, e.inputs[0]!, e.inputs[1]!) };
+      return { tensor, extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_get_rows(e.context, e.inputs[0]!, e.inputs[1]!) };
     },
   }),
   topK: operator({
@@ -273,7 +272,7 @@ export const modelGraphOperators = {
       if (attributes.count < 1 || attributes.count > a.shape[0]!) {
         throw new Error('Top-K count exceeds the row width');
       }
-      return { tensor: { shape: [attributes.count, ...a.shape.slice(1)], type: 'I32', layout: 'contiguous', indices: { minimum: 0, maximum: a.shape[0]! - 1 } }, extraTensorCount: 1, scratchBytes: graphTensorBytes({ shape: a.shape, type: 'I32' }), lower: ({ environment: e }) => e.core.api.ggml_top_k(e.context, e.inputs[0]!, attributes.count) };
+      return { tensor: { shape: [attributes.count, ...a.shape.slice(1)], type: 'I32', layout: 'contiguous', indices: { minimum: 0, maximum: a.shape[0]! - 1 } }, extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_top_k(e.context, e.inputs[0]!, attributes.count) };
     },
   }),
   cast: operator({
@@ -286,7 +285,7 @@ export const modelGraphOperators = {
       if (!['F32', 'F16', 'BF16'].includes(a.type)) {
         throw new Error('Cast accepts floating point inputs only; it cannot manufacture index bounds');
       }
-      return { tensor: { ...a, type: attributes.type, indices: undefined }, extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_cast(e.context, e.inputs[0]!, e.core.constant({ name: `GGML_TYPE_${attributes.type}` })) };
+      return { tensor: { ...a, type: attributes.type, indices: undefined }, extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_cast(e.context, e.inputs[0]!, e.core.constant({ name: `GGML_TYPE_${attributes.type}` })) };
     },
   }),
   contiguous: operator({
@@ -296,7 +295,6 @@ export const modelGraphOperators = {
     prepare: ({ input }) => ({
       tensor: { ...input[0]!, layout: 'contiguous' },
       extraTensorCount: 1,
-      scratchBytes: 0,
       lower: ({ environment: e }) => e.core.api.ggml_cont(e.context, e.inputs[0]!),
     }),
   }),
@@ -310,7 +308,7 @@ export const modelGraphOperators = {
       if (graphTensorBytes({ shape: a.shape, type: a.type }) !== graphTensorBytes({ shape: attributes.shape, type: a.type })) {
         throw new Error('Reshape changes the tensor size');
       }
-      return { tensor: { ...a, shape: attributes.shape }, extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_reshape_4d(e.context, e.inputs[0]!, ...graphAxes({ shape: attributes.shape }).map(BigInt) as [bigint, bigint, bigint, bigint]) };
+      return { tensor: { ...a, shape: attributes.shape }, extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_reshape_4d(e.context, e.inputs[0]!, ...graphAxes({ shape: attributes.shape }).map(BigInt) as [bigint, bigint, bigint, bigint]) };
     },
   }),
   transpose: operator({
@@ -323,7 +321,7 @@ export const modelGraphOperators = {
       if (graphStorageFormats[a.type].block !== 1) {
         throw new Error('Materialize quantized rows before transposing');
       }
-      return { tensor: { ...a, shape, layout: 'strided' }, extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_transpose(e.context, e.inputs[0]!) };
+      return { tensor: { ...a, shape, layout: 'strided' }, extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_transpose(e.context, e.inputs[0]!) };
     },
   }),
   repeat: operator({
@@ -337,7 +335,7 @@ export const modelGraphOperators = {
       if (to.some((size, index) => size % from[index]!)) {
         throw new Error('Repeat dimensions must be divisible by input dimensions');
       }
-      return { tensor: activation({ shape: to }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_repeat_4d(e.context, e.inputs[0]!, ...to.map(BigInt) as [bigint, bigint, bigint, bigint]) };
+      return { tensor: activation({ shape: to }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_repeat_4d(e.context, e.inputs[0]!, ...to.map(BigInt) as [bigint, bigint, bigint, bigint]) };
     },
   }),
   slice: operator({
@@ -359,7 +357,6 @@ export const modelGraphOperators = {
       return {
         tensor: { ...a, shape, layout: start === 0 && length === original[axis] ? a.layout : 'strided' },
         extraTensorCount: 1,
-        scratchBytes: 0,
         lower: ({ environment: e }) => e.core.api.ggml_view_4d(e.context, e.inputs[0]!, BigInt(shape[0]!), BigInt(shape[1]!), BigInt(shape[2]!), BigInt(shape[3]!), BigInt(strides[1]!), BigInt(strides[2]!), BigInt(strides[3]!), BigInt(offset)),
       };
     },
@@ -377,7 +374,7 @@ export const modelGraphOperators = {
         throw new Error('Concatenation non-axis dimensions differ');
       }
     shape[attributes.axis]! += other[attributes.axis]!;
-    return { tensor: activation({ shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_concat(e.context, e.inputs[0]!, e.inputs[1]!, attributes.axis) };
+    return { tensor: activation({ shape }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_concat(e.context, e.inputs[0]!, e.inputs[1]!, attributes.axis) };
     },
   }),
   sumRows: operator({
@@ -387,7 +384,7 @@ export const modelGraphOperators = {
     prepare: ({ input }) => {
       const a = input[0]!;
       requireGraphF32({ tensor: a });
-      return { tensor: activation({ shape: [1, ...a.shape.slice(1)] }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_sum_rows(e.context, e.inputs[0]!) };
+      return { tensor: activation({ shape: [1, ...a.shape.slice(1)] }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_sum_rows(e.context, e.inputs[0]!) };
     },
   }),
   meanRows: operator({
@@ -397,7 +394,7 @@ export const modelGraphOperators = {
     prepare: ({ input }) => {
       const a = input[0]!;
       requireGraphF32({ tensor: a });
-      return { tensor: activation({ shape: [1, ...a.shape.slice(1)] }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_mean(e.context, e.inputs[0]!) };
+      return { tensor: activation({ shape: [1, ...a.shape.slice(1)] }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_mean(e.context, e.inputs[0]!) };
     },
   }),
   sum: operator({
@@ -406,7 +403,7 @@ export const modelGraphOperators = {
     functions: ['ggml_sum'],
     prepare: ({ input }) => {
       requireGraphF32({ tensor: input[0]! });
-      return { tensor: activation({ shape: [1] }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_sum(e.context, e.inputs[0]!) };
+      return { tensor: activation({ shape: [1] }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_sum(e.context, e.inputs[0]!) };
     },
   }),
   softmax: operator({
@@ -416,7 +413,7 @@ export const modelGraphOperators = {
     prepare: ({ input, attributes }) => {
       const a = input[0]!;
       requireGraphF32({ tensor: a });
-      return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_soft_max_ext(e.context, e.inputs[0]!, 0n, attributes.scale, 0) };
+      return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_soft_max_ext(e.context, e.inputs[0]!, 0n, attributes.scale, 0) };
     },
   }),
   maskedSoftmax: operator({
@@ -431,7 +428,7 @@ export const modelGraphOperators = {
       if (!['F16', 'F32'].includes(mask.type) || aa[0] !== mm[0] || aa[1] > mm[1] || aa[2] % mm[2] || aa[3] % mm[3] || attributes.maxBias < 0) {
         throw new Error('Invalid attention mask layout or bias');
       }
-      return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.core.api.ggml_soft_max_ext(e.context, e.inputs[0]!, e.inputs[1]!, attributes.scale, attributes.maxBias) };
+      return { tensor: activation({ shape: a.shape }), extraTensorCount: 1, lower: ({ environment: e }) => e.core.api.ggml_soft_max_ext(e.context, e.inputs[0]!, e.inputs[1]!, attributes.scale, attributes.maxBias) };
     },
   }),
   constant: operator({
@@ -443,7 +440,7 @@ export const modelGraphOperators = {
       if (attributes.values.length !== 1 && attributes.values.length !== elements) {
         throw new Error('Constant needs one fill value or exactly the tensor element count');
       }
-      return { tensor: activation({ shape: attributes.shape }), extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.constant({ shape: attributes.shape, type: 'F32', values: attributes.values }) };
+      return { tensor: activation({ shape: attributes.shape }), extraTensorCount: 1, lower: ({ environment: e }) => e.constant({ shape: attributes.shape, type: 'F32', values: attributes.values }) };
     },
   }),
   indexList: operator({
@@ -455,7 +452,7 @@ export const modelGraphOperators = {
       if (attributes.values.length !== elements) {
         throw new Error('Index list length does not match its tensor shape');
       }
-      return { tensor: { shape: attributes.shape, type: 'I32', layout: 'contiguous', indices: { minimum: Math.min(...attributes.values), maximum: Math.max(...attributes.values) } }, extraTensorCount: 1, scratchBytes: 0, lower: ({ environment: e }) => e.constant({ shape: attributes.shape, type: 'I32', values: attributes.values }) };
+      return { tensor: { shape: attributes.shape, type: 'I32', layout: 'contiguous', indices: { minimum: Math.min(...attributes.values), maximum: Math.max(...attributes.values) } }, extraTensorCount: 1, lower: ({ environment: e }) => e.constant({ shape: attributes.shape, type: 'I32', values: attributes.values }) };
     },
   }),
 } satisfies Record<string, Operator>;
