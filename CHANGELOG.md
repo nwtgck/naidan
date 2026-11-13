@@ -27,6 +27,13 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.68.0] - 2026-11-13
+
+### Changed
+
+- Align Vite configuration dependencies with native Node ESM loading, removing compatibility warnings while preserving the current bundled configuration loader.
+- Enforce explicit file paths and native-compatible imports in the Vite configuration dependency graph with ESLint and configuration-loading regression tests.
+
 ## [0.67.0] - 2026-11-12
 
 ### Changed
@@ -1146,7 +1153,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.67.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.68.0...develop
+[0.68.0]: https://github.com/nwtgck/naidan/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/nwtgck/naidan/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/nwtgck/naidan/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/nwtgck/naidan/compare/v0.64.0...v0.65.0
