@@ -5,9 +5,9 @@ import { pathToFileURL } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { createModelGraphEngine } from './engine';
-import { smallRicursiveFixture, smallReviewedRicursiveFixture } from './ricursive-runtime.test-support';
+import { smallSyntheticArchitectureFixture } from './synthetic-architecture-runtime.test-support';
 
-describe('scaled user Ricursive declaration on real CPU Wasm', () => {
+describe('synthetic architecture declarations on real CPU Wasm', () => {
   let core: Core;
 
   beforeAll(async () => {
@@ -17,14 +17,14 @@ describe('scaled user Ricursive declaration on real CPU Wasm', () => {
   });
 
   it.each(['F32', 'F16'] as const)('matches independent scalar equations with %s cache across prefill, sliding/full attention, reuse, growth and reset', async precision => {
-    const { definition, inventory, locations, reference } = smallRicursiveFixture({ precision });
+    const { definition, inventory, locations, reference } = smallSyntheticArchitectureFixture({ precision, clamp: [0.3, 0.4, 0.5], embeddingScale: 4, ropeBase: undefined });
     const engine = await createModelGraphEngine({ core, definition, inventory, locations, contextSize: 128, batchSize: 64, backend: 'cpu', threads: 1, maximumScratchBytes: 1024 * 1024, signal: undefined, onWeightProgress: undefined });
     await using _owner = {
       async [Symbol.asyncDispose]() {
         await engine.close();
       },
     };
-    const batches = [[1, 2, 3], [4], [5], Array.from({ length: 60 }, (_, i) => i % 24), [6]];
+    const batches = [[1, 2, 3], [4], [5], Array.from({ length: 60 }, (_, i) => i % inventory.vocabularySize), [6]];
     const read = () => {
       const bytes = core.bytes({ pointer: engine.logitsPointer, length: inventory.vocabularySize * 4 });
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -48,15 +48,15 @@ describe('scaled user Ricursive declaration on real CPU Wasm', () => {
   });
 
   const forms = [
-    { name: 'scalar', clamp: 0.2, embeddingScale: 4, swaBase: undefined },
-    { name: 'uniform vector', clamp: [0.2, 0.2, 0.2, 0.2, 0.2], embeddingScale: 4, swaBase: undefined },
-    { name: 'mixed disabled/enabled layers and alternate RoPE base', clamp: [0, 0.3, 0, 0.2, 0.7], embeddingScale: 4, swaBase: 200 },
-    { name: 'zero clamp and zero embedding scale', clamp: 0, embeddingScale: 0, swaBase: undefined },
-    { name: 'missing optional metadata', clamp: undefined, embeddingScale: undefined, swaBase: undefined },
+    { name: 'scalar', clamp: 0.2, embeddingScale: 4, ropeBase: undefined },
+    { name: 'uniform vector', clamp: [0.2, 0.2, 0.2], embeddingScale: 4, ropeBase: undefined },
+    { name: 'mixed disabled/enabled layers and alternate RoPE base', clamp: [0, 0.3, 0.7], embeddingScale: 4, ropeBase: 200 },
+    { name: 'zero clamp and zero embedding scale', clamp: 0, embeddingScale: 0, ropeBase: undefined },
+    { name: 'missing optional metadata', clamp: undefined, embeddingScale: undefined, ropeBase: undefined },
   ];
 
-  it.each(forms.flatMap(form => (['F32', 'F16'] as const).map(precision => ({ ...form, precision }))))('matches scalar reference for $name with $precision cache', async ({ precision, clamp, embeddingScale, swaBase }) => {
-    const { definition, inventory, locations, reference } = smallReviewedRicursiveFixture({ precision, clamp, embeddingScale, swaBase });
+  it.each(forms.flatMap(form => (['F32', 'F16'] as const).map(precision => ({ ...form, precision }))))('matches scalar reference for $name with $precision cache', async ({ precision, clamp, embeddingScale, ropeBase }) => {
+    const { definition, inventory, locations, reference } = smallSyntheticArchitectureFixture({ precision, clamp, embeddingScale, ropeBase });
     const engine = await createModelGraphEngine({ core, definition, inventory, locations, contextSize: 128, batchSize: 64, backend: 'cpu', threads: 1, maximumScratchBytes: 1024 * 1024, signal: undefined, onWeightProgress: undefined });
     await using _owner = {
       async [Symbol.asyncDispose]() {
@@ -68,7 +68,7 @@ describe('scaled user Ricursive declaration on real CPU Wasm', () => {
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       return Array.from({ length: inventory.vocabularySize }, (_, i) => view.getFloat32(i * 4, true));
     };
-    for (const tokens of [[1, 2, 3], [4], [5], Array.from({ length: 60 }, (_, i) => i % 24), [6]]) {
+    for (const tokens of [[1, 2, 3], [4], [5], Array.from({ length: 60 }, (_, i) => i % inventory.vocabularySize), [6]]) {
       let expected: number[] = [];
       for (const token of tokens) {
         expected = reference.step({ token });

@@ -1,11 +1,11 @@
 import path from 'node:path';
 
-import type { BoundaryStringSourceAnalysis } from './analyze';
+import type { BoundaryStringSourceAnalysis } from './analyze.ts';
 import {
   createBoundaryId,
   createBoundaryVersion,
   type BoundaryStringBoundaryDefinition,
-} from './virtual-modules';
+} from './virtual-modules.ts';
 
 export type BoundaryStringSourceRecord = {
   analysis: BoundaryStringSourceAnalysis;

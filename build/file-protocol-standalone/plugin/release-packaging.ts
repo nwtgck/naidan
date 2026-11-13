@@ -5,19 +5,19 @@ import type { Plugin } from 'vite';
 import {
   BOUNDARY_STRING_LOCALES,
   type BoundaryStringLocale,
-} from '../../boundary-strings/message-catalog.js';
-import { assertFileProtocolStandaloneHtmlAfterRewrite } from '../html-validation.js';
+} from '../../boundary-strings/message-catalog.ts';
+import { assertFileProtocolStandaloneHtmlAfterRewrite } from '../html-validation.ts';
 import {
   assertLocalePackageModuleEdgeSafety,
   assertLocalePackageWorkerEntryProvenance,
   collectPackageModuleGraph,
   createLocalePackagePlan,
   toPackageChunks,
-} from './locale-package-plan.js';
+} from './locale-package-plan.ts';
 import {
   assertPackageLocaleMetadata,
   insertPackageLocaleMetadata,
-} from './package-html.js';
+} from './package-html.ts';
 
 export type FileProtocolStandalonePackageVariant = Readonly<{
   id: 'all-locales' | `locale-${BoundaryStringLocale}`;

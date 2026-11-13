@@ -3,7 +3,7 @@ import { RUNTIME_MODULE_ID } from 'rolldown';
 import {
   parseResolvedBoundaryModuleId,
   parseResolvedPackModuleIdentity,
-} from '../../boundary-strings/virtual-modules.js';
+} from '../../boundary-strings/virtual-modules.ts';
 
 export type RenderedModuleInfo = Readonly<{ renderedLength: number }>;
 export type PackageChunk = Readonly<{

@@ -1,7 +1,7 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Shared by Node publication/typecheck and the browser; Node has no application alias.
-import type { PageMetadata } from '../../../logic/document-metadata';
+import type { PageMetadata } from '../../../logic/document-metadata.ts';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Used by both the Hosted build and the browser before application aliases.
-import { hfRepositories, type ModelNaming } from '../hugging-face/model-repositories';
+import { hfRepositories, type ModelNaming } from '../hugging-face/model-repositories.ts';
 
 export function modelLaunchLabel({ repository, variant, modelNaming }: {
   repository: string,

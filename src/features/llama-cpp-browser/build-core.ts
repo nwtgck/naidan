@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build entry is also checked without the app alias.
-import type { NativeLicenseSource } from '../../01-models/native-license-build-source';
+import type { NativeLicenseSource } from '../../01-models/native-license-build-source.ts';
 import { normalizePath, type Plugin } from 'vite';
-import { gpuProfilingProfile, profileSchema, type LlamaCppProfile } from './types';
-import { hostedArtifactProfiles, readLlamaArtifactPackage, readQ8DiagnosticArtifact } from './build-artifact-package';
-import { createLlamaCppRuntimeAssetsPlugin } from './build-runtime-assets';
+import { gpuProfilingProfile, profileSchema, type LlamaCppProfile } from './types.ts';
+import { hostedArtifactProfiles, readLlamaArtifactPackage, readQ8DiagnosticArtifact } from './build-artifact-package.ts';
+import { createLlamaCppRuntimeAssetsPlugin } from './build-runtime-assets.ts';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
-import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
+import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types.ts';
 
 // Standalone selects either embedded JSPI artifact through Worker capability checks.
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;

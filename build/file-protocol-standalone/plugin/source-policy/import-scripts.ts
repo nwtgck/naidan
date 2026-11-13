@@ -4,9 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { OutputChunk, PluginContext } from 'rolldown';
 import type { Plugin } from 'vite';
-import type { StandaloneBuildDiagnostics } from '../diagnostics.js';
-import type { NormalizedWorkerDefinition } from '../worker-definition.js';
-import { isBabelNode, isBabelNodeType } from './babel-node.js';
+import type { StandaloneBuildDiagnostics } from '../diagnostics.ts';
+import type { NormalizedWorkerDefinition } from '../worker-definition.ts';
+import { isBabelNode, isBabelNodeType } from './babel-node.ts';
 
 type ImportScriptsCall = Readonly<{staticSpecifiers: string[]; unsupportedArguments: string[]; start: number | null; end: number | null; deferred: boolean; guarded: boolean; topLevelUnsafeForUi: boolean}>;
 type ImportScriptsAssetRecord = Readonly<{realSourcePath: string; source: string; outputFileName: string}>;

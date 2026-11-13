@@ -2,9 +2,9 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { build, normalizePath, type Plugin } from 'vite';
 import { parseAst } from 'rolldown/parseAst';
-import { createBuildDom } from './jsdom';
-import { createTestOnlyBoundaryPlugin } from './test-only-boundary';
-import { createNodeEnvBoundaryPlugin } from './node-env-boundary';
+import { createBuildDom } from './jsdom.ts';
+import { createTestOnlyBoundaryPlugin } from './test-only-boundary.ts';
+import { createNodeEnvBoundaryPlugin } from './node-env-boundary.ts';
 
 const BROKER_HTML = '/privacy-fetch-broker.html';
 const BROKER_ENTRY = '/src/features/privacy-fetch/broker-entry.ts';

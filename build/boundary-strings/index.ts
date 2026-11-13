@@ -6,45 +6,45 @@ import type { Plugin, ResolvedConfig } from 'vite';
 import {
   analyzeBoundaryStringSource,
   type BoundaryStringSourceAnalysis,
-} from './analyze';
+} from './analyze.ts';
 import {
   createBoundaryStringCatalogState,
   type BoundaryStringCatalogResolution,
   type BoundaryStringCatalogState,
-} from './catalog-state';
+} from './catalog-state.ts';
 import {
   compactBoundaryStringsModule,
   createBoundaryStringsCompactionState,
   type BoundaryStringsCompactionState,
-} from './compaction';
+} from './compaction.ts';
 import {
   BoundaryStringDiagnosticError,
   createBoundaryStringDiagnosticModuleSource,
   unknownBoundaryDiagnostic,
   unknownMessageKeyDiagnostic,
   type BoundaryStringDiagnostic,
-} from './diagnostics';
+} from './diagnostics.ts';
 import {
   BOUNDARY_STRING_LOCALES,
   createBoundaryStringProjectPaths,
   readBoundaryStringMessageCatalog,
   type BoundaryStringMessageCatalog,
   type BoundaryStringProjectPaths,
-} from './message-catalog';
+} from './message-catalog.ts';
 import {
   isSupportedSourceModuleId,
   normalizeModuleId,
   stripModuleQuery,
-} from './module-id';
+} from './module-id.ts';
 import {
   createBoundaryStringServeCoordinator,
   type BoundaryStringServeCoordinator,
-} from './serve-coordinator';
-import { boundaryStringProcessServeState } from './serve-session-state';
+} from './serve-coordinator.ts';
+import { boundaryStringProcessServeState } from './serve-session-state.ts';
 import {
   createBoundaryStringSourceRegistry,
   type BoundaryStringSourceRegistry,
-} from './source-registry';
+} from './source-registry.ts';
 import {
   boundaryModuleId,
   createBoundaryRegistrationModuleSource,
@@ -53,7 +53,7 @@ import {
   parseResolvedPackModuleId,
   resolveBoundaryStringsVirtualId,
   type BoundaryStringBoundaryDefinition,
-} from './virtual-modules';
+} from './virtual-modules.ts';
 
 // Boundary Strings preserves key-per-file authoring without either eagerly
 // loading every locale message or producing one dynamic chunk per message. The

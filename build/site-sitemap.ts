@@ -1,5 +1,5 @@
-import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries';
-import { SITE_METADATA } from '../src/logic/document-metadata';
+import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries.ts';
+import { SITE_METADATA } from '../src/logic/document-metadata.ts';
 
 function escapeXml({ value }: { value: string }): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');

@@ -4,7 +4,7 @@ import path from 'node:path';
 import MagicString from 'magic-string';
 import * as ts from 'typescript';
 
-import { messageKeyFromLocaleModuleId, stripModuleQuery } from './module-id';
+import { messageKeyFromLocaleModuleId, stripModuleQuery } from './module-id.ts';
 
 const compactIdentifierCharacters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ$_';
 

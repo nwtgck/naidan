@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
-import { createGzipAsset } from '../../../build/gzip-asset';
-import { readQ8DiagnosticArtifact, type readLlamaArtifactPackage } from './build-artifact-package';
-import { gpuProfilingProfile, type LlamaCppProfile } from './types';
+import { createGzipAsset } from '../../../build/gzip-asset.ts';
+import { readQ8DiagnosticArtifact, type readLlamaArtifactPackage } from './build-artifact-package.ts';
+import { gpuProfilingProfile, type LlamaCppProfile } from './types.ts';
 
 /** Copy the installed artifact, never compile llama.cpp as part of Naidan's build. */
 export function createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }: { artifact: ReturnType<typeof readLlamaArtifactPackage>, profiles: readonly LlamaCppProfile[] }): Plugin {

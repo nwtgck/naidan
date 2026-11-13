@@ -1,6 +1,6 @@
-import { createBuildDom } from './jsdom';
+import { createBuildDom } from './jsdom.ts';
 import type { Plugin } from 'vite';
-import { HOME_METADATA, SITE_METADATA, applyDocumentCanonicalUrl, applyDocumentMetadata } from '../src/logic/document-metadata';
+import { HOME_METADATA, SITE_METADATA, applyDocumentCanonicalUrl, applyDocumentMetadata } from '../src/logic/document-metadata.ts';
 
 const metadataMarker = '<!-- naidan-document-metadata -->';
 

@@ -2,8 +2,8 @@ import {
   isBoundaryStringDiagnosticError,
   unknownMessageKeyDiagnostic,
   type BoundaryStringDiagnostic,
-} from './diagnostics';
-import type { BoundaryStringMessageCatalog } from './message-catalog';
+} from './diagnostics.ts';
+import type { BoundaryStringMessageCatalog } from './message-catalog.ts';
 
 export type BoundaryStringCatalogResolution =
   | {

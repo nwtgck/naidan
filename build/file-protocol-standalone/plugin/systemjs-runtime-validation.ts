@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import type { Plugin } from 'vite';
-import { assertMatchingSystemJsSourceMap, assertSupportedSystemJsRuntime } from '../systemjs.js';
+import { assertMatchingSystemJsSourceMap, assertSupportedSystemJsRuntime } from '../systemjs.ts';
 
 export function createSystemJsRuntimeValidationPlugin({
   systemRuntimePath,

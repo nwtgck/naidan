@@ -35,8 +35,8 @@ describe('bounded graph metadata arrays', () => {
 
   it('retains scalar and array GGUF storage forms and lets the declaration choose broadcast explicitly', () => {
     for (const item of [
-      { key: 'ricursive.swiglu_clamp', type: 6, value: 20 },
-      { key: 'ricursive.swiglu_clamp', type: 6, values: [10, 20, 30] },
+      { key: 'fixture.clamp', type: 6, value: 20 },
+      { key: 'fixture.clamp', type: 6, values: [10, 20, 30] },
     ]) {
       const { inventory } = inspect({ bytes: metadataGguf({ items: [item] }) }).inspect();
       const stored = inventory.metadata.get(item.key);

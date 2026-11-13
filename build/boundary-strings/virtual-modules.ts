@@ -3,12 +3,12 @@ import crypto from 'node:crypto';
 import {
   compactedMessageKey,
   type BoundaryStringsCompactionState,
-} from './compaction';
+} from './compaction.ts';
 import {
   BOUNDARY_STRING_LOCALES,
   type BoundaryStringLocale,
   type BoundaryStringMessageDefinition,
-} from './message-catalog';
+} from './message-catalog.ts';
 
 export const BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX = 'virtual:naidan-boundary-strings/boundary/';
 export const RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX = `\0${BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX}`;

@@ -3,9 +3,9 @@ import path from 'node:path';
 
 import * as ts from 'typescript';
 
-import { UI_LOCALES, type UiLocale } from '../../src/01-models/ui-locale.js';
+import { UI_LOCALES, type UiLocale } from '../../src/01-models/ui-locale.ts';
 
-import { createBoundaryStringDiagnosticError } from './diagnostics';
+import { createBoundaryStringDiagnosticError } from './diagnostics.ts';
 
 export const BOUNDARY_STRING_LOCALES = UI_LOCALES;
 export type BoundaryStringLocale = UiLocale;

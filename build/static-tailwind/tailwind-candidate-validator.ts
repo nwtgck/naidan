@@ -5,9 +5,9 @@ import { pathToFileURL } from 'node:url';
 
 import { __unstable__loadDesignSystem, compile } from 'tailwindcss';
 
-import { postprocessStaticTailwindCss } from './css-postprocessor';
-import { isTailwindMarkerCandidate } from './marker-candidates';
-import type { TailwindCandidateOccurrence } from './tw-class-core';
+import { postprocessStaticTailwindCss } from './css-postprocessor.ts';
+import { isTailwindMarkerCandidate } from './marker-candidates.ts';
+import type { TailwindCandidateOccurrence } from './tw-class-core.ts';
 
 const require = createRequire(import.meta.url);
 

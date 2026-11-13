@@ -1,4 +1,4 @@
-import type { NativeLicenseIndex } from './index-types';
+import type { NativeLicenseIndex } from './index-types.ts';
 
 // Invoked only for an available installed hosted runtime. Keeping the import
 // inside the function preserves standalone and the absent-image-package path.

@@ -2,13 +2,13 @@ import { transformAsync } from '@babel/core';
 import { Buffer } from 'node:buffer';
 import type { OutputAsset, OutputChunk } from 'rolldown';
 import type { Plugin } from 'vite';
-import type { ChunkDiagnostic, StandaloneBuildDiagnostics } from './diagnostics.js';
-import { rewriteStandaloneHtml } from './html-rewrite.js';
+import type { ChunkDiagnostic, StandaloneBuildDiagnostics } from './diagnostics.ts';
+import { rewriteStandaloneHtml } from './html-rewrite.ts';
 import {
   createSystemJsFileScriptLoaderPatchSource,
   createSystemJsPhysicalLoadRecoverySource,
-} from '../file-protocol-startup-support.js';
-import { babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin } from '../babel-runtime.js';
+} from '../file-protocol-startup-support.ts';
+import { babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin } from '../babel-runtime.ts';
 
 async function transformOutputChunkToSystemJsInPlace({
   output,

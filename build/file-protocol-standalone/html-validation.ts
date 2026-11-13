@@ -1,13 +1,13 @@
 import path from 'node:path';
 import type { JSDOM } from 'jsdom';
-import { createBuildDom } from '../jsdom';
+import { createBuildDom } from '../jsdom.ts';
 
 import {
   FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
   FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
-} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.js';
+} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.ts';
 
 const pluginName = 'file-protocol-standalone';
 const executableScriptTypes = new Set([

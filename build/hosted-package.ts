@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Plugin } from 'vite';
-import { createZipPackages } from './zip-packages';
-import { getStandalonePackageFileNames } from './hosted-standalone-packages';
+import { createZipPackages } from './zip-packages.ts';
+import { getStandalonePackageFileNames } from './hosted-standalone-packages.ts';
 
 /** The ZIP is a release consumer, never an intermediate build step. */
 export function createHostedPackagePlugin({ version, locales }: { version: string, locales: readonly string[] }): Plugin {

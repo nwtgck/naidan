@@ -1,11 +1,11 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Also loaded by the Hosted Vite build and isolated Vite dev module graph, before app aliases.
-import { hfRepositories, type HfRepositoryEntry } from '../hugging-face/model-repositories';
-import { modelLaunchMetadata, modelLaunchLabel } from './document-metadata';
-import { modelIdFromPagePath, modelPagePath } from './page-url';
+import { hfRepositories, type HfRepositoryEntry } from '../hugging-face/model-repositories.ts';
+import { modelLaunchMetadata, modelLaunchLabel } from './document-metadata.ts';
+import { modelIdFromPagePath, modelPagePath } from './page-url.ts';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Shared Node/browser code must not depend on the application-only alias.
-import { SITE_METADATA, type PageMetadata } from '../../../logic/document-metadata';
+import { SITE_METADATA, type PageMetadata } from '../../../logic/document-metadata.ts';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Pure helper shared with Node publication code before app aliases.
-import { exactObject } from '../../../utils/exact-object';
+import { exactObject } from '../../../utils/exact-object.ts';
 
 export type ModelPageEntry = Readonly<{
   modelId: string,

@@ -1,4 +1,4 @@
-import type { NaidanStandaloneWorkerDefinition } from './plugin.js';
+import type { NaidanStandaloneWorkerDefinition } from './plugin.ts';
 
 export const FILE_PROTOCOL_STANDALONE_WORKERS = [
   { name: 'file-download-worker', entry: 'src/logic/hugging-face-download/worker/entry.ts', virtualId: 'virtual:file-protocol-standalone/worker/file-download', defaultWorkerName: 'naidan-file-download' },

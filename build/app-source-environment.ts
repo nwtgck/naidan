@@ -2,7 +2,7 @@ import {
   READ_ENV_PATH, READ_ENV_HOME, READ_ENV_XDG_CONFIG_HOME, READ_ENV_TMPDIR,
   READ_ENV_SYSTEMROOT, READ_ENV_WINDIR, READ_ENV_USERPROFILE, READ_ENV_HOMEDRIVE,
   READ_ENV_HOMEPATH, READ_ENV_TEMP, READ_ENV_TMP,
-} from './node-env';
+} from './node-env.ts';
 
 /** Inherit OS paths and ordinary user Git configuration, not arbitrary GIT_* overrides. */
 export function createAppSourceGitEnvironment({ platform = process.platform }: { platform?: NodeJS.Platform } = {}): NodeJS.ProcessEnv {

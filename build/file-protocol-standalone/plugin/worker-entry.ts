@@ -1,14 +1,14 @@
 import fs from 'node:fs/promises';
 import type { Plugin } from 'vite';
-import type { StandaloneBuildDiagnostics } from './diagnostics.js';
-import type { NormalizedWorkerDefinition } from './worker-definition.js';
-import { createStandaloneWorkerRuntimeModuleSource } from '../standalone-worker-runtime-source.js';
-import { FILE_PROTOCOL_STANDALONE_GLOBAL_NAME } from '../../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.js';
+import type { StandaloneBuildDiagnostics } from './diagnostics.ts';
+import type { NormalizedWorkerDefinition } from './worker-definition.ts';
+import { createStandaloneWorkerRuntimeModuleSource } from '../standalone-worker-runtime-source.ts';
+import { FILE_PROTOCOL_STANDALONE_GLOBAL_NAME } from '../../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.ts';
 import {
   STANDALONE_PACKAGE_LOCALE_META_NAME,
   STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME,
-} from '../../../src/features/file-protocol-standalone/logic/package-locale-contract.js';
-import { UI_LOCALES } from '../../../src/01-models/ui-locale.js';
+} from '../../../src/features/file-protocol-standalone/logic/package-locale-contract.ts';
+import { UI_LOCALES } from '../../../src/01-models/ui-locale.ts';
 
 type WorkerEntryRecord = NormalizedWorkerDefinition & Readonly<{referenceId: string; resolvedVirtualId: string}>;
 

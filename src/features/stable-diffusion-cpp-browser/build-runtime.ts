@@ -1,14 +1,14 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build entry is also checked without the app alias.
-import type { NativeLicenseSource } from '../../01-models/native-license-build-source';
-import { READ_ENV_NAIDAN_STABLE_DIFFUSION_CORE_DIR } from '../../../build/node-env';
+import type { NativeLicenseSource } from '../../01-models/native-license-build-source.ts';
+import { READ_ENV_NAIDAN_STABLE_DIFFUSION_CORE_DIR } from '../../../build/node-env.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { createGzipAsset } from '../../../build/gzip-asset';
+import { createGzipAsset } from '../../../build/gzip-asset.ts';
 import { z } from 'zod';
 import type { Plugin } from 'vite';
-import { profileSchema, configurationSchema, type Configuration, type Artifact } from './types';
-import { assertImageRuntimeContract } from './runtime-contract';
+import { profileSchema, configurationSchema, type Configuration, type Artifact } from './types.ts';
+import { assertImageRuntimeContract } from './runtime-contract.ts';
 
 const virtualId = 'virtual:stable-diffusion-cpp-browser/config';
 const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegative().refine(Number.isSafeInteger), sha256: z.string().regex(/^[0-9a-f]{64}$/) });

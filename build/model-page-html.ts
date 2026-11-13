@@ -1,7 +1,7 @@
-import { createBuildDom } from './jsdom';
-import { MODEL_PAGE_PREFIX } from '../src/features/llama-cpp-browser/model-launch/page-url';
-import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries';
-import { applyDocumentCanonicalUrl, applyDocumentMetadata } from '../src/logic/document-metadata';
+import { createBuildDom } from './jsdom.ts';
+import { MODEL_PAGE_PREFIX } from '../src/features/llama-cpp-browser/model-launch/page-url.ts';
+import type { ModelPageEntry } from '../src/features/llama-cpp-browser/model-launch/page-entries.ts';
+import { applyDocumentCanonicalUrl, applyDocumentMetadata } from '../src/logic/document-metadata.ts';
 
 /** Resolve before parser-discovered scripts/styles. Do not pin ZIPs to /. */
 function installHostedBase({ document, entry }: { document: Document, entry: ModelPageEntry | undefined }): void {

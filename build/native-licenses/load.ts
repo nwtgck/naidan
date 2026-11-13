@@ -3,11 +3,11 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
-import { importLlamaLicenseIndex } from './llama-index';
-import { importImageLicenseIndex } from './image-index';
-import { assertNativeLicenseTypeContract } from './typecheck';
-import { collectNativeLicenseDependencies, type NativeLicenseSource } from './collect';
-import type { NativeLicenseIndex } from './index-types';
+import { importLlamaLicenseIndex } from './llama-index.ts';
+import { importImageLicenseIndex } from './image-index.ts';
+import { assertNativeLicenseTypeContract } from './typecheck.ts';
+import { collectNativeLicenseDependencies, type NativeLicenseSource } from './collect.ts';
+import type { NativeLicenseIndex } from './index-types.ts';
 
 // Only arbitrary externally selected directories need runtime shape validation.
 // Installed JSONs use literal imports + satisfies, checked before consuming them.

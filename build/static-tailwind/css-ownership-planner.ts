@@ -10,12 +10,12 @@ import postcss, {
   type Node,
   type Rule,
 } from 'postcss';
-import { assertStaticTailwindCssHasNoRelativeUrls } from './css-postprocessor';
+import { assertStaticTailwindCssHasNoRelativeUrls } from './css-postprocessor.ts';
 import {
   compileTailwindCss,
   createTailwindCandidateValidator,
   type TailwindDependencyObserver,
-} from './tailwind-candidate-validator';
+} from './tailwind-candidate-validator.ts';
 
 export type CandidateGroup = {
   id: string;

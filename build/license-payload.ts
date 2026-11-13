@@ -1,4 +1,4 @@
-import type { NaidanLicense } from '../src/01-models/naidan-license';
+import type { NaidanLicense } from '../src/01-models/naidan-license.ts';
 
 /**
  * Serializes a license catalog factory as one self-contained JavaScript expression.

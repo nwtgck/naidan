@@ -4,7 +4,7 @@ import { brotliCompressSync, constants } from 'node:zlib';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
-import type { StandaloneEmbeddedBinary } from '../../../src/features/file-protocol-standalone/build-types';
+import type { StandaloneEmbeddedBinary } from '../../../src/features/file-protocol-standalone/build-types.ts';
 
 type BinaryDiagnostic = {
   virtualId: string;

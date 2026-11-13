@@ -1,5 +1,5 @@
-import type { FileProtocolStandalonePackageVariant } from './file-protocol-standalone/plugin/release-packaging';
-import type { ZipPackageDefinition } from './zip-packages';
+import type { FileProtocolStandalonePackageVariant } from './file-protocol-standalone/plugin/release-packaging.ts';
+import type { ZipPackageDefinition } from './zip-packages.ts';
 
 export function standaloneZipDefinitions({ version, variants }: {
   version: string;

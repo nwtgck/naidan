@@ -7,11 +7,11 @@ import type {
   StandaloneBuildDiagnostics,
   WorkerRealmGlobalDiagnostic,
   WorkerRealmGlobalReference,
-} from '../diagnostics.js';
-import { collectChunkClosure } from '../output-graph.js';
-import type { NormalizedWorkerDefinition } from '../worker-definition.js';
-import { isBabelNodeType, staticMemberPropertyName } from './babel-node.js';
-import { babelTraverse } from '../../babel-runtime.js';
+} from '../diagnostics.ts';
+import { collectChunkClosure } from '../output-graph.ts';
+import type { NormalizedWorkerDefinition } from '../worker-definition.ts';
+import { isBabelNodeType, staticMemberPropertyName } from './babel-node.ts';
+import { babelTraverse } from '../../babel-runtime.ts';
 
 type AvailabilityState = 'available' | 'unavailable' | 'unknown';
 type GlobalObjectPropertyChain = Readonly<{root: string; segments: Array<Readonly<{name: string; optional: boolean}>>}>;

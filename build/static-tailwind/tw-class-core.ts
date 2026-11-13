@@ -24,11 +24,11 @@ import {
   ts,
   unwrapTypeScriptExpression,
   visitTypeScriptAst,
-} from './typescript-ast-utils';
+} from './typescript-ast-utils.ts';
 import {
   tailwindClassAttributeBySource,
   type TailwindClassAttributeDefinition,
-} from './tailwind-class-attributes';
+} from './tailwind-class-attributes.ts';
 
 const virtualModuleId = 'virtual:naidan-tailwind';
 

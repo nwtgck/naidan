@@ -1,9 +1,9 @@
 /// <reference types="vitest" />
-import { readNativeLicenseDependencies } from './build/native-licenses/load';
-import { createTestOnlyBoundaryPlugin } from './build/test-only-boundary';
-import { createDocsDevBridge } from './build/docs-dev-bridge';
-import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diffusion-cpp-browser/build-runtime';
-import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core';
+import { readNativeLicenseDependencies } from './build/native-licenses/load.ts';
+import { createTestOnlyBoundaryPlugin } from './build/test-only-boundary.ts';
+import { createDocsDevBridge } from './build/docs-dev-bridge.ts';
+import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diffusion-cpp-browser/build-runtime.ts';
+import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core.ts';
 import VueRouter from 'vue-router/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 import type { Alias, Plugin } from 'vite';
@@ -15,47 +15,47 @@ import { createRequire } from 'node:module';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream';
 import { promisify } from 'node:util';
-import pkg from './package.json';
+import pkg from './package.json' with { type: 'json' };
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
-import { createNaidanStandalonePlugin } from './build/file-protocol-standalone/plugin.js';
+import { createNaidanStandalonePlugin } from './build/file-protocol-standalone/plugin.ts';
 import {
   createFileProtocolStandaloneWorkerDefinitions,
   FILE_PROTOCOL_STANDALONE_WORKERS,
-} from './build/file-protocol-standalone/worker-definitions';
-import { readSystemJsLicenseDependency } from './build/file-protocol-standalone/systemjs';
-import { createLicenseModulePlugins } from './build/license-module';
-import { createBoundaryStringsPlugin } from './build/boundary-strings';
-import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
-import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
-import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
-import { createDocumentMetadataHtmlPlugin } from './build/document-metadata-html';
-import { createModelPagesPlugin } from './build/model-pages';
-import { createHostedPackagePlugin } from './build/hosted-package';
-import { createModelPageDevPlugin } from './build/model-page-dev';
-import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
-import { createPrivacyFetchBrokerDevPlugin } from './build/privacy-fetch-broker-dev';
-import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
-import { createZipPackages } from './build/zip-packages';
-import { standaloneZipDefinitions } from './build/standalone-zip-packages';
-import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
-import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
-import { createTransformersJsFixesViteConfig } from './build/transformers-js-fixes/plugin';
-import { UI_LOCALES } from './src/01-models/ui-locale';
-import type { BuildLicenseDependency } from './build/license-dependencies';
+} from './build/file-protocol-standalone/worker-definitions.ts';
+import { readSystemJsLicenseDependency } from './build/file-protocol-standalone/systemjs.ts';
+import { createLicenseModulePlugins } from './build/license-module.ts';
+import { createBoundaryStringsPlugin } from './build/boundary-strings/index.ts';
+import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core.ts';
+import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin.ts';
+import { createInitialThemeHtmlPlugin } from './build/initial-theme-html.ts';
+import { createDocumentMetadataHtmlPlugin } from './build/document-metadata-html.ts';
+import { createModelPagesPlugin } from './build/model-pages.ts';
+import { createHostedPackagePlugin } from './build/hosted-package.ts';
+import { createModelPageDevPlugin } from './build/model-page-dev.ts';
+import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets.ts';
+import { createPrivacyFetchBrokerDevPlugin } from './build/privacy-fetch-broker-dev.ts';
+import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation.ts';
+import { createZipPackages } from './build/zip-packages.ts';
+import { standaloneZipDefinitions } from './build/standalone-zip-packages.ts';
+import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages.ts';
+import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets.ts';
+import { createTransformersJsFixesViteConfig } from './build/transformers-js-fixes/plugin.ts';
+import { UI_LOCALES } from './src/01-models/ui-locale.ts';
+import type { BuildLicenseDependency } from './build/license-dependencies.ts';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
-import { createPWABuild } from './build/pwa';
-import { readAppSourceForConfig } from './build/app-source';
-import { READ_ENV_VITEST } from './build/node-env';
-import { createAppSourceGitEnvironment } from './build/app-source-environment';
-import { createNodeEnvBoundaryPlugin } from './build/node-env-boundary';
+import { createPWABuild } from './build/pwa.ts';
+import { readAppSourceForConfig } from './build/app-source.ts';
+import { READ_ENV_VITEST } from './build/node-env.ts';
+import { createAppSourceGitEnvironment } from './build/app-source-environment.ts';
+import { createNodeEnvBoundaryPlugin } from './build/node-env-boundary.ts';
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
 const standaloneSystemJsSourceMapPath = require.resolve('systemjs/dist/system.min.js.map');
 const standaloneSystemJsPackageJsonPath = require.resolve('systemjs/package.json');
 const standaloneWorkerRuntimeUnavailablePath = path.resolve(
-  __dirname,
+  import.meta.dirname,
   'src/features/file-protocol-standalone/worker/standalone-worker-runtime-unavailable.ts',
 );
 
@@ -70,7 +70,7 @@ const standaloneBuildBudgets = {
 const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker';
 
 function ensureExistingPath(relativePath: string): string {
-  const absolutePath = path.resolve(__dirname, relativePath);
+  const absolutePath = path.resolve(import.meta.dirname, relativePath);
   if (!fs.existsSync(absolutePath)) {
     throw new Error(`Alias target does not exist: ${relativePath}`);
   }
@@ -86,7 +86,7 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }): Plugin => ({
   apply: 'build',
   async closeBundle() {
     console.log('  \u231B Compressing WASM files to .gz...');
-    const distDir = path.resolve(__dirname, outDir);
+    const distDir = path.resolve(import.meta.dirname, outDir);
 
     if (!fs.existsSync(distDir)) {
       return;
@@ -131,22 +131,22 @@ export default defineConfig(({ mode, command }) => {
   const isStandalone = mode === 'standalone';
   const pwaBuild = createPWABuild();
   const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
-  const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode });
-  const imageBuild = createStableDiffusionCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode });
+  const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
+  const imageBuild = createStableDiffusionCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const isHosted = mode === 'hosted';
-  const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: __dirname, mode: isStandalone ? 'standalone' : 'browser' });
+  const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: import.meta.dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
-    ? path.resolve(__dirname, `dist/debug-tailwind-${mode}`)
+    ? path.resolve(import.meta.dirname, `dist/debug-tailwind-${mode}`)
     : undefined;
   // Use nested directories in dist/ to keep things organized
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted';
   const rollupInput: Record<string, string> = isStandalone
     ? {
-      index: path.resolve(__dirname, 'index.html'),
+      index: path.resolve(import.meta.dirname, 'index.html'),
     }
     : {
-      app: path.resolve(__dirname, 'index.html'),
-      privacyFetchBroker: path.resolve(__dirname, 'privacy-fetch-broker.html'),
+      app: path.resolve(import.meta.dirname, 'index.html'),
+      privacyFetchBroker: path.resolve(import.meta.dirname, 'privacy-fetch-broker.html'),
     };
   const standaloneAliases: Alias[] = isStandalone
     ? createStandaloneFacadeAliases({
@@ -182,7 +182,7 @@ export default defineConfig(({ mode, command }) => {
       __APP_SOURCE__: JSON.stringify(readAppSourceForConfig({
         mode,
         executionContext: READ_ENV_VITEST() === 'true' ? 'vitest' : 'vite',
-        rootDir: __dirname,
+        rootDir: import.meta.dirname,
         environment: createAppSourceGitEnvironment(),
       })),
     },
@@ -195,7 +195,7 @@ export default defineConfig(({ mode, command }) => {
         }] : []),
         ...(mode === 'test' ? FILE_PROTOCOL_STANDALONE_WORKERS.map(({ virtualId }) => ({
           find: virtualId,
-          replacement: path.resolve(__dirname, 'src/test-mocks/standalone-worker.test-support.ts'),
+          replacement: path.resolve(import.meta.dirname, 'src/test-mocks/standalone-worker.test-support.ts'),
         })) : []),
         // The standalone verification route is present in hosted/development
         // route graphs, and Vite resolves its static virtual Worker imports
@@ -207,19 +207,19 @@ export default defineConfig(({ mode, command }) => {
         })) : []),
         {
           find: '@',
-          replacement: path.resolve(__dirname, 'src'),
+          replacement: path.resolve(import.meta.dirname, 'src'),
         },
       ],
     },
     ...transformersJsFixes,
     worker: {
       ...transformersJsFixes.worker,
-      plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin(), createNodeEnvBoundaryPlugin({ rootDir: __dirname })]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
+      plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin(), createNodeEnvBoundaryPlugin({ rootDir: import.meta.dirname })]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode }).corePlugin],
     },
     plugins: [
       mode !== 'test' && createDocsDevBridge(),
       (mode !== 'test' || command === 'build') && createTestOnlyBoundaryPlugin(),
-      (mode !== 'test' || command === 'build') && createNodeEnvBoundaryPlugin({ rootDir: __dirname }),
+      (mode !== 'test' || command === 'build') && createNodeEnvBoundaryPlugin({ rootDir: import.meta.dirname }),
       imageBuild.plugin,
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
@@ -232,10 +232,10 @@ export default defineConfig(({ mode, command }) => {
         /* options */
       }),
       createTwClassVitePlugin({
-        projectRoot: __dirname,
-        sourceRoot: path.resolve(__dirname, 'src'),
-        entryModule: path.resolve(__dirname, 'src/main.ts'),
-        tailwindCssPath: path.resolve(__dirname, 'src/style.css'),
+        projectRoot: import.meta.dirname,
+        sourceRoot: path.resolve(import.meta.dirname, 'src'),
+        entryModule: path.resolve(import.meta.dirname, 'src/main.ts'),
+        tailwindCssPath: path.resolve(import.meta.dirname, 'src/style.css'),
         debugOutputDirectory: tailwindDebugOutputDirectory,
         // Source modules import canonical runtime CSS fragment modules. Rolldown
         // places private and shared fragments according to its actual chunk graph.
@@ -264,7 +264,7 @@ export default defineConfig(({ mode, command }) => {
           },
         ],
       }),
-      isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: __dirname }),
+      isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: import.meta.dirname }),
       !isStandalone && llamaCppBuild.runtimeAssetsPlugin,
       llamaCppBuild.corePlugin,
       ...createLicenseModulePlugins({
@@ -299,17 +299,17 @@ export default defineConfig(({ mode, command }) => {
             + 'in all eight release ZIP variants; renew when the Worker/source graph or these assumptions change.',
         },
         releaseValidation: {
-          outputDirectory: path.resolve(__dirname, outDir),
+          outputDirectory: path.resolve(import.meta.dirname, outDir),
           omitFileNames: ['robots.txt'],
           budgets: standaloneBuildBudgets,
           getCollectedLicenseDependencies: () => standaloneCollectedLicenseDependencies,
           requiredExternalLicenseIdentities: standaloneSystemJsLicenseDependency === undefined
             ? []
             : [`${standaloneSystemJsLicenseDependency.name}@${standaloneSystemJsLicenseDependency.version}`],
-          debugReportFile: path.resolve(__dirname, 'dist/debug-file-protocol-standalone-build-report.json'),
-          releaseReportFile: path.resolve(__dirname, 'dist/debug-file-protocol-standalone-release-validation.json'),
+          debugReportFile: path.resolve(import.meta.dirname, 'dist/debug-file-protocol-standalone-build-report.json'),
+          releaseReportFile: path.resolve(import.meta.dirname, 'dist/debug-file-protocol-standalone-release-validation.json'),
           sanitizeModuleId(moduleId) {
-            const relative = path.relative(__dirname, moduleId).replaceAll('\\', '/');
+            const relative = path.relative(import.meta.dirname, moduleId).replaceAll('\\', '/');
             return relative === '' || relative.startsWith('../') || path.isAbsolute(relative)
               ? moduleId
               : `<naidan>/${relative}`;
@@ -317,8 +317,8 @@ export default defineConfig(({ mode, command }) => {
         },
         releasePackaging: {
           packageRelease: ({ variants }) => createZipPackages({
-            sourceDirectory: path.resolve(__dirname, outDir),
-            archiveDirectory: path.resolve(__dirname, 'dist'),
+            sourceDirectory: path.resolve(import.meta.dirname, outDir),
+            archiveDirectory: path.resolve(import.meta.dirname, 'dist'),
             version: pkg.version,
             packages: standaloneZipDefinitions({ version: pkg.version, variants }),
           }),
@@ -400,9 +400,9 @@ const copyZipPlugin = (): Plugin => ({
   name: 'copy-zip-plugin',
   apply: 'build',
   async closeBundle() {
-    const hostedDistDir = path.resolve(__dirname, 'dist/hosted');
+    const hostedDistDir = path.resolve(import.meta.dirname, 'dist/hosted');
     const copiedFileNames = copyStandalonePackagesToHosted({
-      sourceDirectory: path.resolve(__dirname, 'dist'),
+      sourceDirectory: path.resolve(import.meta.dirname, 'dist'),
       hostedDirectory: hostedDistDir,
       locales: UI_LOCALES,
     });

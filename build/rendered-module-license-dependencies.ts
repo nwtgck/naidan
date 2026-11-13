@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import type { BuildLicenseDependency } from './license-dependencies';
+import type { BuildLicenseDependency } from './license-dependencies.ts';
 
 type PackageJson = Readonly<{
   name?: unknown,

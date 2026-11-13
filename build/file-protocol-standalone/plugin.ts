@@ -1,11 +1,11 @@
-import { createEmbeddedBinaryPlugin } from './plugin/embedded-binary.js';
+import { createEmbeddedBinaryPlugin } from './plugin/embedded-binary.ts';
 import path from 'node:path';
 import type { PluginOption } from 'vite';
 import type {
   NaidanStandalonePluginOptions,
   NaidanStandalonePolicies,
   NaidanStandaloneSourceAudit,
-} from './plugin-types.js';
+} from './plugin-types.ts';
 import type {
   ClassicScriptAssetDiagnostic,
   ChunkDiagnostic,
@@ -16,41 +16,41 @@ import type {
   ViteWorkerQueryDiagnostic,
   VirtualModuleDiagnostic,
   WorkerRealmGlobalDiagnostic,
-} from './plugin/diagnostics.js';
-import { normalizeWorkerDefinitions } from './plugin/worker-definition.js';
-import { createStandaloneBuildConfigPlugin } from './plugin/build-config.js';
-import { createSystemJsRuntimeValidationPlugin } from './plugin/systemjs-runtime-validation.js';
+} from './plugin/diagnostics.ts';
+import { normalizeWorkerDefinitions } from './plugin/worker-definition.ts';
+import { createStandaloneBuildConfigPlugin } from './plugin/build-config.ts';
+import { createSystemJsRuntimeValidationPlugin } from './plugin/systemjs-runtime-validation.ts';
 import {
   createWorkerEntryPlugin,
   ERROR_MESSAGE_TYPE,
   INIT_MESSAGE_TYPE,
   READY_MESSAGE_TYPE,
-} from './plugin/worker-entry.js';
-import { createViteWorkerQueryPolicyPlugin } from './plugin/source-policy/vite-worker-query.js';
-import { createImportScriptsAssetPlugin } from './plugin/source-policy/import-scripts.js';
+} from './plugin/worker-entry.ts';
+import { createViteWorkerQueryPolicyPlugin } from './plugin/source-policy/vite-worker-query.ts';
+import { createImportScriptsAssetPlugin } from './plugin/source-policy/import-scripts.ts';
 import {
   createWorkerRealmGlobalGuardPlugin,
   DEFAULT_UI_ONLY_GLOBALS,
-} from './plugin/source-policy/worker-realm-globals.js';
-import { createRawWorkerConstructorPolicyPlugin } from './plugin/source-policy/raw-worker.js';
-import { createCommonJsCompatibilityPlugin } from './plugin/source-policy/commonjs.js';
-import { createWorkerCssGuardPlugin } from './plugin/worker-css.js';
-import { createExternalWasmGuardPlugin } from './plugin/external-wasm.js';
-import { createVitePreloadHelperCompatibilityPlugin } from './plugin/preload-helper.js';
-import { createEffectFreeEmptyCssPruningPlugin } from './plugin/empty-css.js';
-import { createSystemJsOutputPlugin } from './plugin/systemjs-output.js';
-import { createFileProtocolStandaloneReleasePackagingPlugin } from './plugin/release-packaging.js';
+} from './plugin/source-policy/worker-realm-globals.ts';
+import { createRawWorkerConstructorPolicyPlugin } from './plugin/source-policy/raw-worker.ts';
+import { createCommonJsCompatibilityPlugin } from './plugin/source-policy/commonjs.ts';
+import { createWorkerCssGuardPlugin } from './plugin/worker-css.ts';
+import { createExternalWasmGuardPlugin } from './plugin/external-wasm.ts';
+import { createVitePreloadHelperCompatibilityPlugin } from './plugin/preload-helper.ts';
+import { createEffectFreeEmptyCssPruningPlugin } from './plugin/empty-css.ts';
+import { createSystemJsOutputPlugin } from './plugin/systemjs-output.ts';
+import { createFileProtocolStandaloneReleasePackagingPlugin } from './plugin/release-packaging.ts';
 import {
   createFileProtocolStandaloneReleaseValidationPlugin,
   type FileProtocolStandaloneSourceAuditSummary,
-} from './release-validation.js';
+} from './release-validation.ts';
 
 export type {
   NaidanStandalonePluginOptions,
   NaidanStandalonePolicies,
   NaidanStandaloneSourceAudit,
   NaidanStandaloneWorkerDefinition,
-} from './plugin-types.js';
+} from './plugin-types.ts';
 
 function createSourceAuditDiagnostic(
   sourceAudit: NaidanStandaloneSourceAudit,

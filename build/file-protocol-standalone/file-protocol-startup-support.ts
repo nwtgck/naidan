@@ -2,7 +2,7 @@ import {
   DEBUG_FILE_PROTOCOL_STANDALONE_DIAGNOSTICS_FORMAT,
   DEBUG_FILE_PROTOCOL_STANDALONE_STARTUP_FORMAT,
   FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
-} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.js';
+} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.ts';
 
 export function createFileProtocolStandaloneEntryBootstrapSource({ entryFileName, slowStartupNoticeDelayMs = 15_000 }: Readonly<{entryFileName: string; slowStartupNoticeDelayMs?: number}>): string {
   return `/* file-protocol-standalone: bootstrap application entry */

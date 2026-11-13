@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Plugin } from 'vite';
-import { listModelPageEntries } from '../src/features/llama-cpp-browser/model-launch/page-entries';
-import { renderModelPageHtml, renderPublicAppHtml } from './model-page-html';
-import { createSiteSitemap } from './site-sitemap';
+import { listModelPageEntries } from '../src/features/llama-cpp-browser/model-launch/page-entries.ts';
+import { renderModelPageHtml, renderPublicAppHtml } from './model-page-html.ts';
+import { createSiteSitemap } from './site-sitemap.ts';
 
 /** Emit model pages with the app, before Workbox and release packaging run. */
 export function createModelPagesPlugin(): Plugin {

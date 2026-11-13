@@ -7,7 +7,7 @@ import type { Plugin } from 'vite';
 import {
   HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST,
   type HostedTransformersRuntimeAssetManifestEntry,
-} from '../src/features/transformers-js/runtime/runtime-asset-manifest';
+} from '../src/features/transformers-js/runtime/runtime-asset-manifest.ts';
 
 interface HostedTransformersRuntimeEmittedAsset {
   fileName: string,
