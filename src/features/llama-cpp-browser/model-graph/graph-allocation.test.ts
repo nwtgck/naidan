@@ -8,10 +8,10 @@ import { createModelGraphEngine } from './engine';
 import { constantNode, tensorDefinition } from './tensor-runtime.test-support';
 import { checkModelGraphAddressWidth } from './memory-budget';
 import type { ModelGraphNode } from './definition';
-import { smallRicursiveFixture } from './ricursive-runtime.test-support';
+import { smallSyntheticArchitectureFixture } from './synthetic-architecture-runtime.test-support';
 
 /** Small real CPU tensors exercise the native allocator. Large model tests in
- * memory-budget.test.ts only expand descriptors and never allocate 65B weights. */
+ * memory-budget.test.ts only expand descriptors and never allocate their described weights. */
 describe('measured graph allocations on real CPU Wasm', () => {
   let core: Core;
 
@@ -167,7 +167,7 @@ describe('measured graph allocations on real CPU Wasm', () => {
       return original(scheduler, tensor);
     });
     using execute = vi.spyOn(core.api, 'ggml_backend_sched_graph_compute');
-    const { definition, inventory, locations } = smallRicursiveFixture({ precision: 'F16' });
+    const { definition, inventory, locations } = smallSyntheticArchitectureFixture({ precision: 'F16', clamp: [0.3, 0.4, 0.5], embeddingScale: 4, ropeBase: undefined });
     const engine = await createModelGraphEngine({ core, definition, inventory, locations, contextSize: 128, batchSize: 4, backend: 'cpu', threads: 1, maximumScratchBytes: 1024 * 1024, signal: undefined, onWeightProgress: undefined });
     await using _engine = {
       async [Symbol.asyncDispose]() {
