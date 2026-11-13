@@ -22,7 +22,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   let base: Core;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     base = await createCore({
       profile: 'cpu-wasm32',
       baseURL,

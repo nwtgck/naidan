@@ -52,7 +52,7 @@ let capability: Promise<VisionBf16Capability> | undefined;
 
 /** Metadata only. Never instantiate Wasm or load a model to render Settings. */
 export function loadVisionBf16Capability(): Promise<VisionBf16Capability> {
-  capability ??= import('llama-cpp-browser-core/api/schema.mjs').then(module => inspectVisionBf16Capability({ schema: module.default }));
+  capability ??= import('browser-inference-core/llama-cpp/api/schema.mjs').then(module => inspectVisionBf16Capability({ schema: module.default }));
   return capability;
 }
 

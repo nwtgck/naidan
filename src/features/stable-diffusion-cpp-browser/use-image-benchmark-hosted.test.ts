@@ -19,7 +19,7 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
       profile: 'webgpu-wasm32-asyncify',
       modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`,
       wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`,
-      helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`,
+      helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/host/index.mjs`,
       schemaSha256: '1'.repeat(64),
       wasmBytes: 8,
       wasmSha256: '0'.repeat(64),

@@ -24,7 +24,7 @@ describe('collectRenderedModuleLicenseDependencies', () => {
   });
 
   it('includes a rendered private dependency and its complete notice', async () => {
-    const packageDirectory = path.dirname(require.resolve('llama-cpp-browser-core/manifest.json'));
+    const packageDirectory = path.dirname(require.resolve('browser-inference-core/manifest.json'));
     const moduleId = path.join(packageDirectory, 'profiles/webgpu-wasm64-jspi/browser/core.mjs');
     const metadata = JSON.parse(readFileSync(path.join(packageDirectory, 'package.json'), 'utf8'));
     expect(metadata.private).toBe(true);

@@ -12,7 +12,7 @@ describe('explicit Q8 kernel benchmark', () => {
   let base: Core;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     base = await createCore({
       profile: 'cpu-wasm32',
       baseURL,

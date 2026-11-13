@@ -32,10 +32,11 @@ updates:
         update-types:
           - minor
           - patch
-    # These two packages intentionally share a pinned browser-inference-core
-    # commit. Update both hashes together after compatibility testing.
+    # The unified artifact is pinned after both runtime consumers are verified.
+    # Keep legacy aliases ignored until their dependency entries are removed.
     # Ignore also suppresses security update PRs for these dependencies.
     ignore:
+      - dependency-name: browser-inference-core
       - dependency-name: llama-cpp-browser-core
       - dependency-name: stable-diffusion-cpp-browser-core
       - dependency-name: "@huggingface/transformers"

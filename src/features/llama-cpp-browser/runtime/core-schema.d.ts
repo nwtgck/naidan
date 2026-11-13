@@ -1,4 +1,4 @@
-declare module 'llama-cpp-browser-core/api/schema.mjs' {
+declare module 'browser-inference-core/llama-cpp/api/schema.mjs' {
   const schema: unknown;
   export default schema;
 }

@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import createNativeModule from 'llama-cpp-browser-core/profiles/cpu-wasm32/test/core.mjs';
+import createNativeModule from 'browser-inference-core/llama-cpp/profiles/cpu-wasm32/test/core.mjs';
 import { attachCore } from '@/features/llama-cpp-browser/runtime/core';
 import type { ChatPromptPart } from '@/features/llama-cpp-browser/runtime/chat-bindings';
 import { createByteBpeMetadataGguf } from './test-utils/synthetic-gguf.test-support';
@@ -22,7 +22,7 @@ NEXT`;
   let vocab = 0n;
 
   beforeAll(async () => {
-    const folder = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/cpu-wasm32/test');
+    const folder = path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/cpu-wasm32/test');
     const module = await createNativeModule({
       wasmBinary: await readFile(path.join(folder, 'core.wasm')),
       print() {},

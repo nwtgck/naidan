@@ -213,8 +213,8 @@ expect(trialRates({ trial }).generationTokensPerSecond).toBeUndefined();
 
   it('records only the llama published-artifact identity and treats incompatible manifests as unknown', () => {
     const sha256 = 'a'.repeat(64), sourceCommit = 'b'.repeat(40);
-    const llama = { path: 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256 };
-    expect(runtimeBuildEvidence({ manifest: { formatVersion: 3, sourceCommit, files: [llama, { ...llama, path: 'stable-diffusion-cpp-browser-core/core.wasm' }] } })).toEqual({ sourceCommit, files: [llama] });
+    const llama = { path: 'runtimes/llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256 };
+    expect(runtimeBuildEvidence({ manifest: { formatVersion: 4, sourceCommit, files: [llama, { ...llama, path: 'stable-diffusion-cpp-browser-core/core.wasm' }] } })).toEqual({ sourceCommit, files: [llama] });
     expect(runtimeBuildEvidence({ manifest: { formatVersion: 1 } })).toBeUndefined();
   });
 });
@@ -366,7 +366,7 @@ it('keeps app and runtime identity beside native model and Flash Attention obser
   source.environment.appSource = { sourceCommit: 'a'.repeat(40), workingTree: 'dirty' };
   source.environment.runtimeBuild = {
     sourceCommit: 'b'.repeat(40),
-    files: [{ path: 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256: 'c'.repeat(64) }],
+    files: [{ path: 'runtimes/llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256: 'c'.repeat(64) }],
   };
   trial.memoryDiagnostics = {
     samples: [],

@@ -28,7 +28,7 @@ describe('lazy image runtime assets', () => {
 
   it('prepares only the requested Wasm and retries a corrected payload without changing the catalog', async () => {
     const { directory, sourceCommit } = fixture();
-    const filename = path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.wasm');
+    const filename = path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.wasm');
     const original = readFileSync(filename);
     writeFileSync(filename, Buffer.alloc(original.length));
     vi.stubEnv('NAIDAN_STABLE_DIFFUSION_CORE_DIR', directory);
@@ -96,7 +96,7 @@ function fixture({ omitFunction, mutateSchema }: { omitFunction?: string, mutate
   const files: { path: string, bytes: number, sha256: string }[] = [];
   const profiles: Record<string, unknown> = {};
   const add = ({ relative, data }: { relative: string, data: Buffer }) => {
-    const absolute = path.join(directory, 'stable-diffusion-cpp-browser-core', relative);
+    const absolute = path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core', relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
     writeFileSync(absolute, data);
     files.push({ path: relative, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') });
@@ -113,15 +113,15 @@ function fixture({ omitFunction, mutateSchema }: { omitFunction?: string, mutate
   const schema = Buffer.from(JSON.stringify(contract));
   const schemaSha256 = createHash('sha256').update(schema).digest('hex');
   add({ relative: 'api/schema.json', data: schema });
-  for (const relative of ['api/schema.mjs', 'examples/runtime/index.mjs', 'examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs']) {
+  for (const relative of ['api/schema.mjs', 'host/index.mjs', 'host/bindings.mjs', 'host/read-only-file.mjs']) {
     add({ relative, data: Buffer.from('export const fixtureOnly = true;') });
   }
   add({ relative: 'LICENSE', data: Buffer.from('fixture license') });
   add({ relative: 'licenses/test.txt', data: Buffer.from('fixture notice') });
   const image = { formatVersion: 2, runtime: 'stable-diffusion-cpp', abiVersion: 2, schemaSha256, capabilities: { ggufFileOffsetBits: 64, callerOwnedRandomAccess: true, upstreamApi: true }, sourceCommit, experimental: true, files, profiles };
   const inner = Buffer.from(JSON.stringify(image));
-  writeFileSync(path.join(directory, 'stable-diffusion-cpp-browser-core/manifest.json'), inner);
-  const root = { formatVersion: 3, sourceCommit, files: [...files.map(file => ({ ...file, path: 'stable-diffusion-cpp-browser-core/' + file.path })), { path: 'stable-diffusion-cpp-browser-core/manifest.json', bytes: inner.length, sha256: createHash('sha256').update(inner).digest('hex') }] };
+  writeFileSync(path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core/manifest.json'), inner);
+  const root = { formatVersion: 4, sourceCommit, runtimes: { 'llama-cpp': { manifest: 'runtimes/llama-cpp-browser-core/manifest.json', manifestFormatVersion: 2 }, 'stable-diffusion-cpp': { manifest: 'runtimes/stable-diffusion-cpp-browser-core/manifest.json', manifestFormatVersion: 2 } }, files: [...files.map(file => ({ ...file, path: 'runtimes/stable-diffusion-cpp-browser-core/' + file.path })), { path: 'runtimes/stable-diffusion-cpp-browser-core/manifest.json', bytes: inner.length, sha256: createHash('sha256').update(inner).digest('hex') }] };
   writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify(root));
   return { directory, sourceCommit };
 }
@@ -132,6 +132,7 @@ describe('optional image build integration', () => {
     const id = ({ file }: { file: string }) => path.join(rootDir, 'src/features/stable-diffusion-cpp-browser', file);
     expect(() => assertStandaloneImageModule({ rootDir, id: id({ file: 'components/ImageEngineState.vue' }) })).not.toThrow();
     expect(() => assertStandaloneImageModule({ rootDir, id: id({ file: 'use-image-engine-state.ts' }) })).not.toThrow();
+    expect(() => assertStandaloneImageModule({ rootDir, id: '/fixture/node_modules/browser-inference-core/runtimes/stable-diffusion-cpp-browser-core/host/index.mjs' })).toThrow('Hosted image artifact');
     for (const file of ['engine-state.ts', 'worker/engine-state.ts', 'worker/client-hosted.ts', 'worker/impl.ts']) {
       expect(() => assertStandaloneImageModule({ rootDir, id: id({ file }) })).toThrow('Hosted image implementation');
     }
@@ -191,7 +192,7 @@ describe('optional image build integration', () => {
 
   it('rejects modified code rather than using a cached/fallback runtime', () => {
     const { directory } = fixture();
-    writeFileSync(path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs'), 'changed');
+    writeFileSync(path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs'), 'changed');
     expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('size mismatch');
   });
 
@@ -205,31 +206,31 @@ describe('optional image build integration', () => {
   });
 });
 
-it('rejects the previously published ABI 1 rather than pretending it implements the new API', () => {
+it.each([1, 2])('rejects ABI 1 in manifest format %s rather than pretending it implements the new API', formatVersion => {
   const { directory } = fixture();
-  const imagePath = path.join(directory, 'stable-diffusion-cpp-browser-core/manifest.json');
+  const imagePath = path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core/manifest.json');
   const old = JSON.parse(readFileSync(imagePath, 'utf8'));
   old.abiVersion = 1;
-  old.formatVersion = 1;
+  old.formatVersion = formatVersion;
   const bytes = Buffer.from(JSON.stringify(old));
   writeFileSync(imagePath, bytes);
   const rootPath = path.join(directory, 'manifest.json');
   const root = JSON.parse(readFileSync(rootPath, 'utf8'));
-  const entry = root.files.find((item: { path: string }) => item.path === 'stable-diffusion-cpp-browser-core/manifest.json');
+  const entry = root.files.find((item: { path: string }) => item.path === 'runtimes/stable-diffusion-cpp-browser-core/manifest.json');
   entry.bytes = bytes.length;
   entry.sha256 = createHash('sha256').update(bytes).digest('hex');
   writeFileSync(rootPath, JSON.stringify(root));
-  expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('ABI 2');
+  expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow(formatVersion === 1 ? 'expected format 2' : 'ABI 2');
 });
 
 /** Update an inner fixture and its parent digest, without forging file hashes. */
 function changeImageManifest({ directory, change }: { directory: string, change: (json: string) => string }): void {
-  const file = path.join(directory, 'stable-diffusion-cpp-browser-core/manifest.json');
+  const file = path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core/manifest.json');
   const bytes = Buffer.from(change(readFileSync(file, 'utf8')));
   writeFileSync(file, bytes);
   const rootPath = path.join(directory, 'manifest.json');
   const root = JSON.parse(readFileSync(rootPath, 'utf8'));
-  const entry = root.files.find((item: { path: string }) => item.path === 'stable-diffusion-cpp-browser-core/manifest.json');
+  const entry = root.files.find((item: { path: string }) => item.path === 'runtimes/stable-diffusion-cpp-browser-core/manifest.json');
   entry.bytes = bytes.length;
   entry.sha256 = createHash('sha256').update(bytes).digest('hex');
   writeFileSync(rootPath, JSON.stringify(root));
@@ -243,7 +244,7 @@ it('rejects compiled-only artifacts until actual browser smoke has passed', () =
 
 it('detects same-size module corruption with its digest', () => {
   const { directory } = fixture();
-  const file = path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
+  const file = path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
   const bytes = readFileSync(file);
   bytes[0] = bytes[0]! ^ 1;
   writeFileSync(file, bytes);
@@ -252,7 +253,7 @@ it('detects same-size module corruption with its digest', () => {
 
 it('rejects an oversized requested payload before loading that payload into memory', async () => {
   const { directory, sourceCommit } = fixture();
-  const file = path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.wasm');
+  const file = path.join(directory, 'runtimes/stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.wasm');
   writeFileSync(file, new Uint8Array(8192));
   const result = readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory });
   const readWasm = result.files.get(`stable-diffusion-cpp-runtime/${sourceCommit}/webgpu-wasm32-jspi/core.wasm.gz`);

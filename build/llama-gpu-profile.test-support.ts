@@ -11,9 +11,9 @@ export function createProfilingArtifactFixture({ diagnostic = 'complete', legacy
   diagnostic?: 'complete' | 'missing' | 'partial', legacyCpu64?: boolean,
 } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-gpu-package-'));
-  const packageRoot = path.join(root, 'node_modules/llama-cpp-browser-core');
+  const packageRoot = path.join(root, 'node_modules/browser-inference-core');
   const inventory: { path: string, bytes: number, sha256: string }[] = [];
-  const prefix = 'llama-cpp-browser-core/';
+  const prefix = 'runtimes/llama-cpp-browser-core/';
   const sourceCommit = '1'.repeat(40);
   const profiles = [...ordinaryProfiles, ...(legacyCpu64 ? ['cpu-wasm64'] : [])];
   switch (diagnostic) {
@@ -47,7 +47,7 @@ export function createProfilingArtifactFixture({ diagnostic = 'complete', legacy
   const license = put({ relative: prefix + 'LICENSE', data: 'Copyright fixture authors. Test fixture only.\n' });
   inventory.push({ ...license, path: 'LICENSE' });
   const manifest = put({ relative: prefix + 'manifest.json', data: JSON.stringify({ formatVersion: 2, sourceCommit, files: inventory }) });
-  put({ relative: 'manifest.json', data: JSON.stringify({ formatVersion: 3, sourceCommit, runtimes: { 'llama-cpp': { manifest: prefix + 'manifest.json', manifestFormatVersion: 2 } }, files: [...inventory.map(entry => ({ ...entry, path: prefix + entry.path })), manifest] }) });
+  put({ relative: 'manifest.json', data: JSON.stringify({ formatVersion: 4, sourceCommit, runtimes: { 'stable-diffusion-cpp': { manifest: 'runtimes/stable-diffusion-cpp-browser-core/manifest.json', manifestFormatVersion: 2 }, 'llama-cpp': { manifest: prefix + 'manifest.json', manifestFormatVersion: 2 } }, files: [...inventory.map(entry => ({ ...entry, path: prefix + entry.path })), manifest] }) });
   return {
     root,
     packageRoot,

@@ -67,7 +67,7 @@ function capturedModel({ modelId }: { modelId: string }): ResolvedModel {
 vi.mock('../runtime/load-runtime', () => ({
   loadRuntime: async () => {
   // Real supplied Wasm, not a mock core. Only file access and runtime deployment are injected.
-    const folder = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core');
+    const folder = path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core');
     host.modelLoads++;
     host.core = await createCore({
       profile: integrationProfile,

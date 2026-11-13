@@ -2,7 +2,7 @@ import { isDiagnosticsEditValid, type DiagnosticsQueryConfig } from '@/features/
 import { diagnosticsModelSelection, resolveDiagnosticsModels, type DiagnosticsModelSelection } from '@/features/llama-cpp-browser/diagnostics/model-selection';
 import { buildAllowsGpuProfiling, gpuProfilingUnavailableReason } from '@/features/llama-cpp-browser/performance/profiling-mode';
 import { resolvePerformanceModelInput } from '@/features/llama-cpp-browser/performance/model-input';
-import rawRuntimeManifest from 'llama-cpp-browser-core/manifest.json';
+import rawRuntimeManifest from 'browser-inference-core/manifest.json';
 import { runtimeBuildEvidence } from '@/features/llama-cpp-browser/performance/runtime-evidence';
 import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import { nanoid } from 'nanoid';

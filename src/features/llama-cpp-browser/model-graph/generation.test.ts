@@ -75,7 +75,7 @@ describe('registered graph generation with real CPU execution and native samplin
   const bytes = createPositionSensitiveGguf({ chatTemplate: 'chatml' });
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({ profile: 'cpu-wasm32', baseURL, moduleOptions: { wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {} } });
     await core.api.llama_backend_init();
     core.module.FS.writeFile('/generation-fixture.gguf', bytes);

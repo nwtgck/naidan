@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { pathToFileURL } from 'node:url';
-import { attachCore, mountReadOnlyFile, schema, type Core } from 'stable-diffusion-cpp-browser-core/stable-diffusion-cpp/examples/runtime';
-import type createNativeModule from 'stable-diffusion-cpp-browser-core/stable-diffusion-cpp/profiles/webgpu-wasm32-asyncify/test/core.d.ts';
+import { attachCore, mountReadOnlyFile, schema, type Core } from 'browser-inference-core/stable-diffusion-cpp/host';
+import type createNativeModule from 'browser-inference-core/stable-diffusion-cpp/profiles/webgpu-wasm32-asyncify/test/core.mjs';
 import { createModelFileReadCache, createModelFileSource, type SyncBlobReader } from './gguf-file';
 import { assertImageRuntimeContract } from '@/features/stable-diffusion-cpp-browser/runtime-contract';
 import type { NativeApi } from './core-types';
@@ -17,11 +17,11 @@ let native: Awaited<ReturnType<typeof createNativeModule>>;
 let core: Core;
 let imageApi: NativeApi;
 const nativeDiagnostics: string[] = [];
-const bf16WeightRetention = z.object({ capabilities: z.object({ bf16WeightRetention: z.boolean().optional() }) }).parse(JSON.parse(readFileSync(path.resolve('node_modules/stable-diffusion-cpp-browser-core/stable-diffusion-cpp-browser-core/manifest.json'), 'utf8'))).capabilities.bf16WeightRetention === true;
+const bf16WeightRetention = z.object({ capabilities: z.object({ bf16WeightRetention: z.boolean().optional() }) }).parse(JSON.parse(readFileSync(path.resolve('node_modules/browser-inference-core/runtimes/stable-diffusion-cpp-browser-core/manifest.json'), 'utf8'))).capabilities.bf16WeightRetention === true;
 
 beforeAll(async () => {
   assertImageRuntimeContract({ schema, bf16WeightRetention });
-  const root = path.resolve('node_modules/stable-diffusion-cpp-browser-core/stable-diffusion-cpp-browser-core');
+  const root = path.resolve('node_modules/browser-inference-core/runtimes/stable-diffusion-cpp-browser-core');
   const folder = path.join(root, 'profiles/webgpu-wasm32-asyncify/test');
   const imported: unknown = await import(/* @vite-ignore */ pathToFileURL(path.join(folder, 'core.mjs')).href);
   if (!imported || typeof imported !== 'object' || !('default' in imported) || typeof imported.default !== 'function') {

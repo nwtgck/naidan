@@ -58,7 +58,7 @@ globalThis.imageQueryClients = { createImageHistoryClient, createImageGeneration
   expect(modules.some(id => id.endsWith('/image-generation/session/query-worker/impl.ts'))).toBe(true);
   const forbidden = modules.filter(id => /\/(?:llama-cpp-browser|transformers-js)\//u.test(id)
     || /\/stable-diffusion-cpp-browser\/(?:worker|runtime|inference)\//u.test(id)
-    || /(?:llama-cpp-browser-core|stable-diffusion-cpp-browser-core)/u.test(id));
+    || /(?:browser-inference-core|llama-cpp-browser-core|stable-diffusion-cpp-browser-core)/u.test(id));
   expect(forbidden).toEqual([]);
   expect(result.output.filter(item => /\.wasm(?:\.|$)/iu.test(item.fileName))).toEqual([]);
   for (const chunk of chunks) {

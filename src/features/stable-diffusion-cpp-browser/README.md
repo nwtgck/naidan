@@ -7,21 +7,28 @@ Worker or request a GPU adapter. Settings/results are temporary page-local state
 
 ## Published bicore integration
 
-The normal dependency installation now supplies the image runtime separately:
+The migration target is one `browser-inference-core` dependency, pinned to a
+reviewed artifact commit. It contains both runtimes:
 
 ```text
-stable-diffusion-cpp-browser-core
-  -> github:nwtgck/browser-inference-core#789e317286c3f9bfb88198c30485e8aa2500f025
+node_modules/browser-inference-core/
+  manifest.json                          # root format 4
+  runtimes/llama-cpp-browser-core/
+  runtimes/stable-diffusion-cpp-browser-core/
+    manifest.json                        # image format 2
+    api/
+    host/
+    profiles/
 ```
 
-This is a dependency name for the existing **Browser Inference Core (bicore)**
-artifact repository, not a separately published registry package. Keep Naidan's
-existing `llama-cpp-browser-core` dependency pinned; reuse its scoped dispatch
-adapter without altering its tensor computation or generated-code checks. The image
-package's `resolved` and `integrity` lock fields come from the supplied CI-generated
-consumer metadata. The underlying package remains `llama-cpp-browser-core`.
-Its image runtime files live under `stable-diffusion-cpp-browser-core/` inside
-the installed dependency; the runtime identifier remains `stable-diffusion-cpp`.
+The shared build-time reader verifies the root and selected runtime manifests,
+their source commit and their complete inventory. Payloads, especially Wasm,
+remain lazy. Runtime instances and their upstream pins are independent even
+though the artifact package and consumer dependency commit are shared.
+The `resolved` and `integrity` lock fields must come from the actual published
+artifact; a source checkout or a synthetic test package is not a substitute.
+The migration snapshot still needs that publication and dependency-lock update
+before it is an installable consumer change. It does not accept legacy layouts.
 Installation has no compiler, postinstall hook, model download or generated-code rewrite. Model acquisition is a separate explicit action in the hosted UI.
 
 ```sh
@@ -35,9 +42,9 @@ Open `/#/image-generation` from the sidebar quick-access link, import a local re
 then start generation explicitly. No environment variable or manual
 copy into node_modules is needed with the committed dependency installed.
 
-The pinned artifact is source commit
+Before this migration, the independently installed image artifact was source commit
 `42623f0eabc6dc1bd853252d3a08e11aa0b48914`, image ABI 2 / image manifest format 2.
-The supplied build report records all three profiles in both variants as compiled
+Its historical build report records all three profiles in both variants as compiled
 and browser-smoke validated, including real-Wasm Worker/public-record/callback
 tests, sparse GGUF/safetensors/shard I/O, and synthetic Qwen BF16 timestep
 arithmetic on CPU and deep graph construction/selection in the test variants.
@@ -566,10 +573,12 @@ unchecked post-load Wasm rewriting is used.
 
 ## Image WebGPU dispatch boundary
 
-The image runtime is pinned independently to artifact
+The original dispatch investigation used independently installed image artifact
 `cd726c3f08fa54563d4bad132d1bc488f1700046` (reported source
-`473ed681c49fb6790f74087cea42ddf92aad5b1e`). Do not update the text
-`llama-cpp-browser-core` dependency just to update this sibling runtime.
+`473ed681c49fb6790f74087cea42ddf92aad5b1e`). That is historical evidence, not the
+current migration's dependency pin. The unified artifact must be reviewed for
+both consumers; changing its package commit does not merge their upstream pins
+or WebAssembly instances.
 
 A completed denoising run can still fail in VAE decoding: the supplied Qwen
 log requested `dispatchWorkgroups(65536, 1, 1)` on a device whose per-axis

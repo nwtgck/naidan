@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { PerformanceSnapshot } from './types';
 
 const manifestSchema = z.object({
-  formatVersion: z.literal(3),
+  formatVersion: z.literal(4),
   sourceCommit: z.string().regex(/^[0-9a-f]{40}$/),
   files: z.array(z.object({ path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/) })),
 });
@@ -16,7 +16,7 @@ export function runtimeBuildEvidence({ manifest }: { manifest: unknown }): Perfo
   return {
     sourceCommit: parsed.data.sourceCommit,
     files: parsed.data.files.filter(file =>
-      file.path.startsWith('llama-cpp-browser-core/profiles/') || file.path.startsWith('llama-cpp-browser-core/api/')),
+      file.path.startsWith('runtimes/llama-cpp-browser-core/profiles/') || file.path.startsWith('runtimes/llama-cpp-browser-core/api/')),
   };
 }
 

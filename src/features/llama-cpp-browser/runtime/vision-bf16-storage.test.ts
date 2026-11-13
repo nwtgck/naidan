@@ -4,7 +4,7 @@ import type { Core } from './core';
 import { visionBf16Metadata } from './vision-bf16-storage.test-support';
 
 const host = vi.hoisted(() => ({ schema: undefined as unknown }));
-vi.mock('llama-cpp-browser-core/api/schema.mjs', () => ({
+vi.mock('browser-inference-core/llama-cpp/api/schema.mjs', () => ({
   get default() {
     return host.schema;
   },

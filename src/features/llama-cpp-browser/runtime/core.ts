@@ -2,9 +2,9 @@ import { associateGpuRequests, createGpuRequestObserver } from './webgpu-request
 import { copyNativeUtf8 } from './native-utf8';
 import { loadCoreModule, type CoreModuleOptions } from '@/features/llama-cpp-browser/runtime/artifacts';
 import { z } from 'zod';
-import rawSchema from 'llama-cpp-browser-core/api/schema.mjs';
-import type { LowLevelFunctions } from 'llama-cpp-browser-core/api/functions.js';
-import type { MainModule } from 'llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs';
+import rawSchema from 'browser-inference-core/llama-cpp/api/schema.mjs';
+import type { LowLevelFunctions } from 'browser-inference-core/llama-cpp/api/functions';
+import type { MainModule } from 'browser-inference-core/llama-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs';
 import type { ChatParams, NativeChat } from './chat-bindings';
 import { gpuProfilingProfile, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';

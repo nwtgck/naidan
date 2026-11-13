@@ -11,8 +11,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
 
 const repo = process.cwd();
-const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
-const q8SchemaPath = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
+const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
+const q8SchemaPath = path.join(repo, 'node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
 const q8SchemaAssetName = 'llama-cpp-browser-runtime/profiles/webgpu-wasm64-jspi-gpu-profile/q8-diagnostic-v1.schema.json';
 
 const callbackGetters = [
@@ -22,24 +22,24 @@ const callbackGetters = [
 
 describe('shared browser core package integration', () => {
   it('keeps the committed dependency and lock entry on the same immutable artifact', () => {
-    const dependencyName = 'llama-cpp-browser-core';
+    const dependencyName = 'browser-inference-core';
     const packageFile = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8')));
     const lockFile = z.object({
       packages: z.object({
         '': z.object({ dependencies: z.record(z.string(), z.string()) }),
-        'node_modules/llama-cpp-browser-core': z.object({ resolved: z.string(), integrity: z.string() }),
+        'node_modules/browser-inference-core': z.object({ resolved: z.string(), integrity: z.string() }),
       }),
     }).parse(JSON.parse(readFileSync(path.join(repo, 'package-lock.json'), 'utf8')));
     const specifier = packageFile.dependencies[dependencyName];
     expect(specifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);
     expect(lockFile.packages[''].dependencies[dependencyName]).toBe(specifier);
-    const entry = lockFile.packages['node_modules/llama-cpp-browser-core'];
+    const entry = lockFile.packages['node_modules/browser-inference-core'];
     expect(entry.resolved).toBe(`git+ssh://git@github.com/nwtgck/browser-inference-core.git#${specifier?.split('#')[1]}`);
     expect(entry.integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
   });
 
   it('ships the versioned callback metadata exports declared by the pinned package', () => {
-    const base = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/api');
+    const base = path.join(repo, 'node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/api');
     const schema = z.object({
       callbackMetadata: z.object({ version: z.literal(1), getters: z.array(z.object({ name: z.string(), export: z.string() })) }),
     }).parse(JSON.parse(readFileSync(path.join(base, 'schema.json'), 'utf8')));
@@ -78,7 +78,7 @@ describe('shared browser core package integration', () => {
       if (!bytes) {
         throw new Error(`Missing hosted runtime asset: ${profile}`);
       }
-      expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
+      expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
     }
     if (existsSync(q8SchemaPath)) {
       const schema = files.get(q8SchemaAssetName);
@@ -105,11 +105,11 @@ describe('shared browser core package integration', () => {
       },
     };
     const id = `virtual:llama-cpp-browser-core/${profile}`;
-    const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const realPath = path.join(repo, `node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const resolved = await server.environments.client.pluginContainer.resolveId(id);
     expect(resolved?.id).toBe(realPath);
     expect(server.config.optimizeDeps.exclude).toContain(id);
-    expect(server.config.optimizeDeps.exclude).toContain('llama-cpp-browser-core');
+    expect(server.config.optimizeDeps.exclude).toContain('browser-inference-core');
     writeFileSync(path.join(root, 'main.js'), `export const load = () => import(${JSON.stringify(id)});`);
     const importer = await server.transformRequest('/main.js');
     expect(importer?.code).toContain(`/@fs${realPath}`);
@@ -136,9 +136,9 @@ describe('shared browser core package integration', () => {
         rmSync(root, { recursive: true, force: true });
       },
     };
-    const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
-    cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
-    const relative = `llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`;
+    const artifact = path.join(root, 'node_modules/browser-inference-core');
+    cpSync(path.join(repo, 'node_modules/browser-inference-core'), artifact, { recursive: true });
+    const relative = `runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`;
     const data = Buffer.from(readFileSync(path.join(artifact, relative), 'utf8') + '\n');
     const updates = [{ relative, data }];
     const mode = profile === 'cpu-wasm32' ? 'hosted' : 'standalone';
@@ -148,13 +148,13 @@ describe('shared browser core package integration', () => {
       updates.push({ relative: wasmRelative, data: Buffer.concat([readFileSync(path.join(artifact, wasmRelative)), Buffer.from([0, 1, 0])]) });
     }
     const inventory = z.object({ files: z.array(z.object({ path: z.string(), bytes: z.number(), sha256: z.string() })) }).passthrough();
-    const innerPath = path.join(artifact, 'llama-cpp-browser-core/manifest.json');
+    const innerPath = path.join(artifact, 'runtimes/llama-cpp-browser-core/manifest.json');
     const inner = inventory.parse(JSON.parse(readFileSync(innerPath, 'utf8')));
     const rootPath = path.join(artifact, 'manifest.json');
     const rootManifest = inventory.parse(JSON.parse(readFileSync(rootPath, 'utf8')));
     for (const update of updates) {
       writeFileSync(path.join(artifact, update.relative), update.data);
-      const innerFile = inner.files.find(file => file.path === update.relative.slice('llama-cpp-browser-core/'.length));
+      const innerFile = inner.files.find(file => file.path === update.relative.slice('runtimes/llama-cpp-browser-core/'.length));
       const coreFile = rootManifest.files.find(file => file.path === update.relative);
       if (!innerFile || !coreFile) {
         throw new Error('Missing test inventory entries');
@@ -166,7 +166,7 @@ describe('shared browser core package integration', () => {
     }
     const innerData = JSON.stringify(inner);
     writeFileSync(innerPath, innerData);
-    const innerManifest = rootManifest.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
+    const innerManifest = rootManifest.files.find(file => file.path === 'runtimes/llama-cpp-browser-core/manifest.json');
     if (!innerManifest) {
       throw new Error('Missing test runtime manifest');
     }
@@ -185,13 +185,13 @@ describe('shared browser core package integration', () => {
       expect(binary.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
     }
     writeFileSync(path.join(artifact, relative), Buffer.concat([data, Buffer.from(' ')]));
-    expect(() => load.call({ addWatchFile() {} } as never, path.join(artifact, relative))).toThrow('Core artifact integrity mismatch');
-    expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode })).toThrow('Core artifact integrity mismatch');
+    expect(() => load.call({ addWatchFile() {} } as never, path.join(artifact, relative))).toThrow('Bicore artifact integrity mismatch');
+    expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode })).toThrow('Bicore artifact integrity mismatch');
   });
 
   it.each(['complete-buffer', 'partial-view'] as const)('initializes real CPU Wasm from a supplied %s with no fetch or Node imports', async input => {
     const profile = 'cpu-wasm32';
-    const id = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const id = path.join(repo, `node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const source = readFileSync(id, 'utf8');
     const binary = readFileSync(id.replace('core.mjs', 'core.wasm'));
     const storage = new Uint8Array(binary.length + 32);

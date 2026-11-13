@@ -11,7 +11,7 @@ describe('native call adaptation', () => {
   let core: Core;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({
       profile: 'cpu-wasm32',
       baseURL,
@@ -78,7 +78,7 @@ describe('native call adaptation', () => {
         },
       });
     });
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     const jspiCore = await createCore({
       profile,
       baseURL,
