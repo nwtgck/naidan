@@ -307,10 +307,10 @@ describe('installed image core contracts on CPU', () => {
   });
 
   it.each([
-    { name: 'mixed BF16/F16 timestep arithmetic', probe: 'sdc_test_qwen_timestep' },
-    { name: 'BF16 parameter file loading and arithmetic', probe: 'sdc_test_bf16_weights' },
-    { name: '3D convolution bias arithmetic', probe: 'sdc_test_conv3d_bias' },
-  ])('evaluates $name with the actual CPU backend', async ({ probe }) => {
+    { name: 'mixed BF16/F16 timestep arithmetic', exportName: '_sdc_test_qwen_timestep' },
+    { name: 'BF16 parameter file loading and arithmetic', exportName: '_sdc_test_bf16_weights' },
+    { name: '3D convolution bias arithmetic', exportName: '_sdc_test_conv3d_bias' },
+  ] as const)('evaluates $name with the actual CPU backend', async ({ exportName }) => {
     const backend = core.utf8('CPU');
     using _cleanup = {
       [Symbol.dispose]() {
@@ -318,10 +318,10 @@ describe('installed image core contracts on CPU', () => {
       },
     };
     nativeDiagnostics.length = 0;
-    expect(typeof native['_' + probe]).toBe('function');
+    expect(typeof native[exportName]).toBe('function');
     // These test-only exports use native pointers, rather than the normalized
     // bigint bridge. ccall owns the complete Asyncify return before cleanup.
-    const result = await native.ccall(probe, 'number', ['number'], [Number(backend)], { async: true });
+    const result = await native.ccall(exportName.slice(1), 'number', ['number'], [Number(backend)], { async: true });
     expect(result, nativeDiagnostics.join('\n')).toBe(1);
   });
 });

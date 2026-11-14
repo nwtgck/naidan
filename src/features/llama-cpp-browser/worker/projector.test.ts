@@ -44,9 +44,14 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   });
   const close = vi.fn();
   const free = vi.fn();
+  const constant = vi.fn<Core['constant']>(({ name }) => {
+    throw new Error(`Unexpected fixture constant: ${name}`);
+  });
   const core = {
     pointerBytes,
     api,
+    constant,
+    hasFunction: ({ name }: { name: string }) => typeof Reflect.get(api, name) === 'function',
     module: { addFunction, removeFunction },
     fieldLayout: ({ field }: { field: string }) => ({ offset: 0n, size: field === 'ne' ? 32 : field === 'src' ? pointerBytes * 10 : 4, kind: field === 'ne' || field === 'src' ? 'array' : 'signed' }),
     enumValues: () => [{ name: 'GGML_OP_ADD', value: 2 }],
@@ -56,7 +61,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     setField: ({ field, value }: { field: string, value: number | bigint }) => fields.set(field, value),
   } as unknown as Core;
   const file = { storageKind: 'opfs', relativePath: 'mmproj.gguf', file: new File(['x'], 'mmproj.gguf'), handle: { createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close }) } } as unknown as ModelFile;
-  return { core, file, api, fields, addFunction, removeFunction, order, close, free };
+  return { core, file, api, fields, addFunction, removeFunction, order, close, free, constant };
 }
 
 describe('projector callback ownership', () => {
@@ -220,12 +225,13 @@ function modern({ pointerBytes, requested }: { pointerBytes: 4 | 8, requested: n
   const f = fixture({ pointerBytes });
   const initialize = vi.fn(async () => 500n), version = vi.fn(async () => 1), query = vi.fn(async () => requested);
   Object.assign(f.core.api, { mtmd_init_from_file_with_vision_bf16_storage: initialize, mtmd_vision_bf16_storage_version: version, mtmd_context_vision_bf16_storage: query });
-  Object.assign(f.core.module, { _lcb_mtmd_init_from_file_with_vision_bf16_storage: initialize, _lcb_mtmd_vision_bf16_storage_version: version, _lcb_mtmd_context_vision_bf16_storage: query });
-  Object.assign(f.core, {
-    constant: ({ name }: { name: string }) => {
-      const values: Record<string, number> = { MTMD_VISION_BF16_STORAGE_INVALID: -1, MTMD_VISION_BF16_STORAGE_LEGACY_EXPAND: 0, MTMD_VISION_BF16_STORAGE_RETAIN_CHECKED: 1 };
-      return values[name];
-    },
+  f.constant.mockImplementation(({ name }) => {
+    const values: Record<string, number> = { MTMD_VISION_BF16_STORAGE_INVALID: -1, MTMD_VISION_BF16_STORAGE_LEGACY_EXPAND: 0, MTMD_VISION_BF16_STORAGE_RETAIN_CHECKED: 1 };
+    const value = values[name];
+    if (value === undefined) {
+      throw new Error(`Unexpected fixture constant: ${name}`);
+    }
+    return value;
   });
   return { ...f, initialize, version, query };
 }

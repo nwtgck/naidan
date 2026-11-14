@@ -13,7 +13,7 @@ type PackageJson = Readonly<{
 
 const licenseFilePattern = /^(?:license|licence)(?:$|[._-])/iu;
 
-function packageNameFromModuleId(moduleId: string): string | undefined {
+function packageRootFromModuleId({ moduleId }: { moduleId: string }): string | undefined {
   const normalized = moduleId.replaceAll('\\', '/').split('?', 1)[0] ?? moduleId;
   const marker = '/node_modules/';
   const markerIndex = normalized.lastIndexOf(marker);
@@ -22,27 +22,33 @@ function packageNameFromModuleId(moduleId: string): string | undefined {
   }
   const remainder = normalized.slice(markerIndex + marker.length);
   const segments = remainder.split('/');
-  return remainder.startsWith('@')
+  const name = remainder.startsWith('@')
     ? (segments.length >= 2 ? `${segments[0]}/${segments[1]}` : undefined)
     : segments[0] || undefined;
+  return name === undefined ? undefined : path.normalize(normalized.slice(0, markerIndex + marker.length) + name);
 }
 
-async function findOwningPackageJson({ moduleId, expectedName }: {
+async function findOwningPackageJson({ moduleId, packageRoot }: {
   moduleId: string,
-  expectedName: string,
+  packageRoot: string,
 }): Promise<{ packageJsonPath: string, packageJson: PackageJson } | undefined> {
   let current = path.dirname(moduleId.split('?', 1)[0] ?? moduleId);
   for (;;) {
     const packageJsonPath = path.join(current, 'package.json');
     try {
       const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as PackageJson;
-      if (packageJson.name === expectedName && typeof packageJson.version === 'string') {
+      if (typeof packageJson.name === 'string' && typeof packageJson.version === 'string') {
         return { packageJsonPath, packageJson };
       }
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
         throw error;
       }
+    }
+    // An npm alias can differ from package.json.name. Stay inside that installed
+    // dependency so a missing identity never falls through to the application.
+    if (current === packageRoot) {
+      return undefined;
     }
     const parent = path.dirname(current);
     if (parent === current) {
@@ -95,11 +101,11 @@ export async function collectRenderedModuleLicenseDependencies({ moduleIds }: {
 }): Promise<readonly BuildLicenseDependency[]> {
   const byPackageJson = new Map<string, BuildLicenseDependency>();
   for (const moduleId of moduleIds) {
-    const packageName = packageNameFromModuleId(moduleId);
-    if (packageName === undefined) {
+    const packageRoot = packageRootFromModuleId({ moduleId });
+    if (packageRoot === undefined) {
       continue;
     }
-    const found = await findOwningPackageJson({ moduleId, expectedName: packageName });
+    const found = await findOwningPackageJson({ moduleId, packageRoot });
     if (found === undefined) {
       throw new Error(`Unable to locate package.json for rendered module: ${moduleId}`);
     }

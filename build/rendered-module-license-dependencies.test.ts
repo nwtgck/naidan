@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -42,5 +43,32 @@ describe('collectRenderedModuleLicenseDependencies', () => {
     await expect(collectRenderedModuleLicenseDependencies({
       moduleIds: ['/tmp/naidan/src/local-module.ts'],
     })).resolves.toEqual([]);
+  });
+
+  it.each(['llama-cpp-browser-core', 'stable-diffusion-cpp-browser-core'])('reads aggregate package metadata installed as %s', async dependencyName => {
+    const moduleId = require.resolve(`${dependencyName}/manifest.json`);
+    const directory = path.dirname(moduleId);
+    const metadata = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+    await expect(collectRenderedModuleLicenseDependencies({ moduleIds: [moduleId] })).resolves.toEqual([{
+      name: metadata.name,
+      version: metadata.version,
+      license: metadata.license,
+      licenseText: readFileSync(path.join(directory, 'LICENSE'), 'utf8'),
+    }]);
+  });
+
+  it('does not use the application identity when an installed dependency has no package metadata', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'rendered-license-'));
+    using _cleanup = {
+      [Symbol.dispose]() {
+        rmSync(root, { recursive: true, force: true });
+      },
+    };
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'application', version: '1.0.0' }));
+    const directory = path.join(root, 'node_modules', 'installed-alias');
+    mkdirSync(directory, { recursive: true });
+    const moduleId = path.join(directory, 'index.mjs');
+    writeFileSync(moduleId, 'export {};');
+    await expect(collectRenderedModuleLicenseDependencies({ moduleIds: [moduleId] })).rejects.toThrow('Unable to locate package.json');
   });
 });
