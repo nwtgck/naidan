@@ -52,6 +52,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     sha256: q8Diagnostic.sha256,
   };
   const availabilityId = '\0' + virtualPrefix + 'availability';
+  const runtimeBuildId = '\0' + virtualPrefix + 'runtime-build';
   const unavailableProfileId = '\0' + virtualPrefix + 'unavailable-gpu-profile';
   const cores = profiles.map(profile => {
     // Verify at plugin creation too: an optimizer cache must not hide corrupt input.
@@ -90,6 +91,9 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         if (id === virtualPrefix + 'availability') {
           return availabilityId;
         }
+        if (id === virtualPrefix + 'runtime-build') {
+          return runtimeBuildId;
+        }
         if (!isStandalone && !gpuProfilingAvailable && id === virtualPrefix + gpuProfilingProfile) {
           return unavailableProfileId;
         }
@@ -104,7 +108,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         return resolved;
       },
       load(id) {
-        if (id === availabilityId) {
+        if (id === runtimeBuildId) {
           if (runtimeBuildDirty) {
             const current = readLlamaArtifactPackage({ rootDir });
             runtimeBuild = runtimeBuildEvidence({
@@ -116,13 +120,19 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
           for (const manifestPath of manifestPaths) {
             this.addWatchFile(manifestPath);
           }
+          // Diagnostics identity must stay out of the capability module loaded at startup.
+          return `export const runtimeBuild = ${JSON.stringify(runtimeBuild)};`;
+        }
+        if (id === availabilityId) {
+          for (const manifestPath of manifestPaths) {
+            this.addWatchFile(manifestPath);
+          }
           if (q8Diagnostic) {
             this.addWatchFile(q8Diagnostic.filePath);
           }
           return `\
 export const gpuProfilingAvailable = ${gpuProfilingAvailable};
 export const q8KernelDiagnosticSchemaAsset = ${JSON.stringify(q8KernelDiagnosticSchemaAsset)};
-export const runtimeBuild = ${JSON.stringify(runtimeBuild)};
 `;
         }
         if (id === unavailableProfileId) {

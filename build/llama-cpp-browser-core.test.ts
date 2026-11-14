@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createContext, SourceTextModule } from 'node:vm';
 import { gunzipSync } from 'node:zlib';
 import { createServer } from 'vite';
+import { rolldown } from 'rolldown';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
@@ -23,9 +24,9 @@ const callbackGetters = [
   'ggml_backend_dev_count', 'ggml_backend_dev_get', 'ggml_backend_dev_name', 'ggml_backend_dev_supports_op',
 ] as const;
 
-async function availabilityNamespace({ source }: { source: unknown }) {
+async function moduleNamespace({ source }: { source: unknown }) {
   if (typeof source !== 'string') {
-    throw new Error('Expected availability source');
+    throw new Error('Expected virtual module source');
   }
   const module = new SourceTextModule(source);
   await module.link(() => {
@@ -36,17 +37,20 @@ async function availabilityNamespace({ source }: { source: unknown }) {
 }
 
 describe('shared browser core package integration', () => {
-  it('exports only the published runtime identity summary through availability and watches both manifests', async () => {
+  it('keeps runtime identity separate from startup capabilities and watches both manifests', async () => {
     const artifact = artifactPackage.readLlamaArtifactPackage({ rootDir: repo });
     const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin;
     if (typeof resolveId !== 'function' || typeof load !== 'function') {
       throw new Error('Expected availability hooks');
     }
-    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
+    const availabilityId = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
+    const availability = await moduleNamespace({ source: await load.call({ addWatchFile() {} } as never, String(availabilityId)) });
+    expect(Object.keys(availability).sort()).toEqual(['gpuProfilingAvailable', 'q8KernelDiagnosticSchemaAsset']);
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
     const watched: string[] = [];
     const source = await load.call({ addWatchFile: (file: string) => watched.push(file) } as never, String(id));
-    const exports = await availabilityNamespace({ source });
-    expect(Object.keys(exports).sort()).toEqual(['gpuProfilingAvailable', 'q8KernelDiagnosticSchemaAsset', 'runtimeBuild']);
+    const exports = await moduleNamespace({ source });
+    expect(Object.keys(exports)).toEqual(['runtimeBuild']);
     expect(Reflect.get(exports, 'runtimeBuild')).toEqual({
       sourceCommit: artifact.sourceCommit,
       files: [...artifact.files.values()].filter(file => file.path.startsWith('profiles/') || file.path.startsWith('api/'))
@@ -55,15 +59,72 @@ describe('shared browser core package integration', () => {
     expect(watched).toEqual(expect.arrayContaining(artifact.manifestPaths));
   });
 
+  it.each(['hosted', 'standalone'] as const)('keeps diagnostics evidence outside the initial module closure in %s', async mode => {
+    const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: repo, mode }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function') {
+      throw new Error('Expected virtual module hooks');
+    }
+    const runtimeBuildId = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
+    const bundle = await rolldown({
+      input: 'fixture:initial',
+      plugins: [{
+        name: 'lazy-diagnostics-fixture',
+        resolveId(source, importer, options) {
+          if (source.startsWith('fixture:')) {
+            return source;
+          }
+          return resolveId.call(this as never, source, importer, options as never);
+        },
+        load(id) {
+          if (id === 'fixture:initial') {
+            return `\
+import * as availability from 'virtual:llama-cpp-browser-core/availability';
+export { availability };
+export const openDiagnostics = () => import('fixture:diagnostics');
+`;
+          }
+          if (id === 'fixture:diagnostics') {
+            return "export { runtimeBuild } from 'virtual:llama-cpp-browser-core/runtime-build';";
+          }
+          return load.call(this as never, id);
+        },
+      }],
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await bundle.close();
+      },
+    };
+    const { output } = await bundle.generate({ format: 'es' });
+    const chunks = output.filter(item => item.type === 'chunk');
+    const entry = chunks.find(chunk => chunk.isEntry);
+    if (!entry) {
+      throw new Error('Expected initial fixture chunk');
+    }
+    const byFile = new Map(chunks.map(chunk => [chunk.fileName, chunk]));
+    const initialFiles = new Set<string>();
+    const pending = [entry.fileName];
+    for (const fileName of pending) {
+      if (initialFiles.has(fileName)) {
+        continue;
+      }
+      initialFiles.add(fileName);
+      pending.push(...byFile.get(fileName)!.imports);
+    }
+    const moduleIds = chunks.filter(chunk => initialFiles.has(chunk.fileName)).flatMap(chunk => Object.keys(chunk.modules));
+    expect(moduleIds).not.toContain(runtimeBuildId);
+    expect(chunks.filter(chunk => !initialFiles.has(chunk.fileName)).flatMap(chunk => Object.keys(chunk.modules))).toContain(runtimeBuildId);
+  });
+
   it('leaves runtime identity unavailable when an older current-format manifest omits its runtime name', async () => {
     using fixture = createProfilingArtifactFixture();
     const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: fixture.root, mode: 'hosted' }).corePlugin;
     if (typeof resolveId !== 'function' || typeof load !== 'function') {
       throw new Error('Expected availability hooks');
     }
-    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
     const source = await load.call({ addWatchFile() {} } as never, String(id));
-    const exports = await availabilityNamespace({ source });
+    const exports = await moduleNamespace({ source });
     expect(Object.hasOwn(exports, 'runtimeBuild')).toBe(true);
     expect(Reflect.get(exports, 'runtimeBuild')).toBeUndefined();
   });
@@ -76,8 +137,8 @@ describe('shared browser core package integration', () => {
     if (typeof resolveId !== 'function' || typeof load !== 'function' || typeof watchChange !== 'function') {
       throw new Error('Expected availability hooks');
     }
-    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
-    const initial = await availabilityNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
+    const initial = await moduleNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
     expect(Reflect.get(initial, 'runtimeBuild')).toBeUndefined();
     expect(read).toHaveBeenCalledTimes(1);
     await watchChange.call({} as never, fixture.file({ profile: 'cpu-wasm32', name: 'core.mjs' }), { event: 'update' });
@@ -103,7 +164,7 @@ describe('shared browser core package integration', () => {
         },
         files: [{ path: relative, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') }],
       }));
-      const exports = await availabilityNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
+      const exports = await moduleNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
       expect(Reflect.get(exports, 'runtimeBuild')).toEqual({
         sourceCommit,
         files: artifact.runtimeMetadata.files.filter(file => file.path.startsWith('profiles/') || file.path.startsWith('api/'))
