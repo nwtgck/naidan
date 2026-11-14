@@ -100,5 +100,5 @@ export const messages = {
   standalone_guide_title: 'ブラウザでAIを起動する',
   standalone_guide_description: 'インストーラーや配信用サーバーなしでNaidanのスタンドアロン版を開きます。',
   desktop_sandbox_comparison: ({ locale }: { locale: DocsLocale }) => <>配布方式やOS側の保護でも範囲は変わります。サンドボックス化されたデスクトップアプリは、通常のデスクトッププロセスより狭い境界で動かせます。 <ExternalLink href="https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox" locale={locale}>Apple：macOSのApp Sandbox</ExternalLink></>,
-  local_only_connection_guide: ({ locale }: { locale: DocsLocale }) => <DocsLink locale={locale} page="csp-editions">Naidanのローカルのみ版での接続先制限を見る <span aria-hidden="true">→</span></DocsLink>,
+  local_only_connection_guide: ({ locale }: { locale: DocsLocale }) => <DocsLink locale={locale} page="csp-edition">Naidanのローカルのみ版での接続先制限を見る <span aria-hidden="true">→</span></DocsLink>,
 } satisfies typeof import('./en').messages;

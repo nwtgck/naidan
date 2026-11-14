@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 import AppEntryLink from '../components/AppEntryLink.vue';
 import { appDestinationPath, appEntryFallbackUrl, appEntryUrl, isAppEntryPath } from '../navigation/app-entry';
 import { updateAppEntryLinks } from '../client/app-entry-enhancement';
-import { createSiteFixture, startSiteDev } from './site.test-support';
+import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('Docs app entry links', () => {
   it('uses app hash routes and preserves model launch query values', () => {
@@ -22,6 +22,24 @@ describe('Docs app entry links', () => {
     const hashQuery = new URL(href).hash.split('?')[1];
     expect(new URLSearchParams(hashQuery).get('llama-cpp-browser-model')).toBe(model);
     expect(href).toMatch(/^https:\/\/naidan\.nwtgck\.org\/#\/\?/);
+  });
+
+  it.each([
+    { screen: 'translation', path: '/#/translation' },
+    { screen: 'live-conversation', path: '/#/live-conversation' },
+    { screen: 'workflow', path: '/#/workflows' },
+  ] as const)('opens the app screen for $screen from either guide language', async ({ screen, path }) => {
+    for (const locale of ['en', 'ja'] as const) {
+      const destination = { kind: 'screen', screen } as const;
+      const html = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination, locale, display: 'path' }) }));
+      using parsed = parsePage({ html });
+      const anchor = parsed.document.querySelector<HTMLAnchorElement>('a[data-docs-app-entry-path]');
+      expect(anchor?.getAttribute('href')).toBe(`https://naidan.nwtgck.org${path}`);
+      expect(anchor?.getAttribute('data-docs-app-entry-path')).toBe(path);
+      expect(anchor?.textContent).toBe(path);
+      updateAppEntryLinks({ document: parsed.document, locationHref: `https://preview.example/docs/${locale}/${screen}/` });
+      expect(anchor?.href).toBe(`https://preview.example${path}`);
+    }
   });
 
   it.each([

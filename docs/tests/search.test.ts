@@ -38,7 +38,7 @@ describe('Docs search', () => {
       entries: [
         { href: '/docs/ja/file-access/', title: 'ファイルを選ぶ', description: '読む範囲を選ぶ', headings: ['読み取り権限'], paragraphs: ['ファイルを読み取る範囲を選択します。'] },
         { href: '/docs/ja/data-storage/', title: '保存先', description: '場所を選ぶ', headings: ['ファイルを選ぶ'], paragraphs: ['保存する場所を選択します。'] },
-        { href: '/docs/ja/chat-groups/', title: 'チャット', description: '会話を整理する', headings: ['会話'], paragraphs: ['ファイルを選ぶと会話に添付できます。'] },
+        { href: '/docs/ja/chat-group/', title: 'チャット', description: '会話を整理する', headings: ['会話'], paragraphs: ['ファイルを選ぶと会話に添付できます。'] },
       ],
     };
     expect(searchDocs({ index, query: 'ファイル 選ぶ' }).map(item => item.href)).toEqual(index.entries.map(item => item.href));

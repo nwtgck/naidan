@@ -23,6 +23,21 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <BackupSettingsStep stage="export" :messages="s" />
         <figcaption class="caption">{{ s.export_options_caption }}</figcaption>
       </figure>
+      <p><RenderText :node="s.view_generated_zip_instructions()" /></p>
+      <figure class="guide-figure">
+        <BackupSettingsStep stage="archive" :messages="s" />
+        <figcaption class="caption">{{ s.generated_zip_caption }}</figcaption>
+      </figure>
+    </section>
+
+    <section class="walkthrough-step" aria-labelledby="backup-base64">
+      <h2 id="backup-base64">{{ s.base64_heading }}</h2>
+      <p><RenderText :node="s.base64_instructions()" /></p>
+      <figure class="guide-figure">
+        <BackupSettingsStep stage="base64" :messages="s" />
+        <figcaption class="caption">{{ s.base64_caption }}</figcaption>
+      </figure>
+      <p>{{ s.base64_explanation }}</p>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="backup-preview">

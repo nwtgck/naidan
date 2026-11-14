@@ -65,7 +65,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
       { page: 'endpoint-type-llama-cpp-browser', title: s.gguf_setup_guide_title, description: s.gguf_setup_guide_description },
-      { page: 'in-browser-models', title: s.browser_models_guide_title, description: s.browser_models_guide_description },
+      { page: 'in-browser-model', title: s.browser_models_guide_title, description: s.browser_models_guide_description },
       { page: 'standalone', title: s.standalone_guide_title, description: s.standalone_guide_description },
       { page: 'hosted', title: s.hosted_zip_guide_title, description: s.hosted_zip_guide_description },
     ]" />

@@ -52,7 +52,7 @@ describe('Wesh sysfs guide', () => {
     expect(article?.textContent).toContain('/sys/fs/naidan/binary-objects/by-id/{id}/data');
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
       `/docs/${locale}/tool-browser-shell/`, `/docs/${locale}/tool-wikipedia/`,
-      `/docs/${locale}/files-and-folders-settings/`, `/docs/${locale}/file-explorer/`,
+      `/docs/${locale}/file-and-folder-settings/`, `/docs/${locale}/file-explorer/`,
     ]);
   });
 });

@@ -32,6 +32,17 @@ describe('media workflow guides', () => {
     }
     expect(page.document.querySelector('[data-testid="image-step-generate"]')?.textContent).toContain(copy.generating_image);
     expect(page.document.querySelector('[data-testid="image-step-generate"]')?.textContent).toContain(copy.completed);
+    const generation = page.document.querySelector('[data-testid="image-step-generate"]');
+    expect(generation?.querySelector('.prompt-heading')?.textContent).toContain(locale === 'en' ? 'Multiple prompts' : '複数入力');
+    expect(generation?.querySelector('[data-testid="image-generate-busy"]')?.getAttribute('aria-disabled')).toBe('true');
+    expect(generation?.querySelector('[data-testid="image-generate-busy"]')?.textContent).toBe(copy.generate);
+    expect(generation?.querySelector('.generation-actions .cancel')?.textContent).toBe(locale === 'en' ? 'Cancel' : '中止');
+    const generationInstructions = page.document.querySelector('#image-generate')?.parentElement;
+    const generationLabels = [...generationInstructions?.querySelectorAll('p .ui-label') ?? []].map(label => label.textContent);
+    expect(generationLabels).toEqual(expect.arrayContaining(locale === 'en' ? ['Single prompt', 'Auto', 'Fixed'] : ['通常入力', '自動', '固定']));
+    expect(generationInstructions?.textContent).toContain(locale === 'en' ? 'standard value otherwise' : 'なければNaidanの標準値');
+    const reuseInstructions = page.document.querySelector('#image-reuse')?.parentElement;
+    expect(reuseInstructions?.textContent).toContain(locale === 'en' ? 'seed is fixed too' : 'シードも固定されます');
     expect(page.document.querySelectorAll('[data-testid^="image-step-"] > .canvas')).toHaveLength(4);
     expect(page.document.querySelector('[data-testid="image-step-model"] [data-testid="image-models-screen"]')?.textContent).toContain(copy.model_catalog);
     expect(page.document.querySelector('[data-testid="image-step-model"] [data-testid="image-model-options"]')?.textContent).toContain(copy.search_choices);
@@ -60,6 +71,7 @@ describe('media workflow guides', () => {
     expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/endpoint-type-llama-cpp-browser/`);
     expect(related?.textContent).toContain(copy.run_a_gguf_model_in_your_browser);
     expect(related?.textContent).toContain(copy.start_a_chat_with_a_local_gguf_model);
+    expect(related?.querySelector(`a[href="/docs/${locale}/image-generation-multi-prompt/"]`)?.textContent).toContain(copy.generate_images_from_multiple_prompts);
   });
 
   it.each([{ copy: audioEn, locale: 'en', common: commonEn }, { copy: audioJa, locale: 'ja', common: commonJa }] as const)('renders speech generation and explicit WAV saving in both languages', async ({ copy, locale, common }) => {

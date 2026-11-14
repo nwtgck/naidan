@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BrainCircuitIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FileUpIcon, FolderOpenIcon, GlobeIcon, HardDriveIcon, MousePointer2Icon, SearchIcon, Settings2Icon, SettingsIcon } from 'lucide-vue-next';
+import { ArrowRightIcon, BrainCircuitIcon, CheckIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, FileUpIcon, FolderOpenIcon, GlobeIcon, HardDriveIcon, MousePointer2Icon, SearchIcon, Settings2Icon, SettingsIcon } from 'lucide-vue-next';
 import type { messages as llamaEnglish } from '../../pages/endpoint-type-llama-cpp-browser/messages/en';
 import type { messages as transformersEnglish } from '../../pages/endpoint-type-transformers-js/messages/en';
 
@@ -65,29 +65,35 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div class="stage-content">
             <template v-if="llama">
               <div v-if="stage === 'open'" class="compact-stack">
-                <div class="context-card"><div class="section-title"><DownloadIcon :size="18" />{{ llama.hugging_face }}</div><span class="label">{{ llama.repository }}</span><div class="input-look code muted">{{ llama.sample_repository }}</div></div>
+                <div class="context-card"><div class="section-title"><DownloadIcon :size="18" />{{ llama.hugging_face }}</div><span class="label">{{ llama.find_models }}</span><div class="input-look muted">{{ llama.search_placeholder }}</div></div>
                 <div class="context-card runtime-card"><div class="section-title"><BrainCircuitIcon :size="18" />{{ llama.inference_settings }}</div><div class="field"><span class="label">{{ llama.inference_profile }}</span><div class="input-look">{{ llama.automatic }}<ChevronDownIcon :size="17" /></div></div></div>
               </div>
 
               <div v-else-if="stage === 'import'" class="compact-stack">
                 <div class="section-title"><FileUpIcon :size="18" />{{ llama.gguf_model_files }}</div>
-                <div class="import-modes"><span class="selected"><HardDriveIcon :size="14" />{{ llama.save_in_browser }}</span><span><FolderOpenIcon :size="14" />{{ llama.link_folder }}</span><span>{{ llama.use_temporarily }}</span></div>
+                <div class="import-modes"><span class="selected"><FileUpIcon :size="14" />{{ llama.load_model }}</span><span><FolderOpenIcon :size="14" />{{ llama.link_folder }}</span></div>
+                <div class="copy-choice" data-testid="llama-import-copy-off"><span>{{ llama.copy_model_files }}</span><span class="toggle-look"><span /></span></div>
                 <div class="drop-area">
                   <FileUpIcon :size="24" /><strong>{{ llama.drop_gguf_files_or_folders }}</strong>
-                  <p class="import-help">{{ llama.saved_import_help }}</p>
-                  <div class="choice-row"><span class="secondary-action import-action"><FolderOpenIcon :size="16" />{{ llama.choose_gguf_files }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span><span class="secondary-action"><FolderOpenIcon :size="16" />{{ llama.choose_model_folder }}</span></div>
+                  <p class="import-help">{{ llama.local_import_help }}</p>
+                  <div class="choice-row"><span class="secondary-action"><FolderOpenIcon :size="16" />{{ llama.choose_model_folder }}</span><span class="secondary-action import-action"><FileUpIcon :size="16" />{{ llama.choose_gguf_files }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
                 </div>
-                <div class="operation-status importing-status"><span>{{ llama.importing_model }}</span><span class="progress-track"><span /></span></div>
-                <div class="section-title"><HardDriveIcon :size="18" />{{ llama.imported_models }}</div>
-                <div class="model-row imported-result"><span class="model-name code">{{ llama.sample_model_id }}</span><span class="tag">GGUF</span></div>
+                <div class="importing-status import-help">{{ llama.importing_model }}</div>
+                <div class="temporary-save-notice imported-result"><div class="notice-heading"><HardDriveIcon :size="16" /><strong>{{ llama.save_model_notice }}</strong></div><span class="code">{{ llama.sample_model_id }}</span><p class="import-help">{{ llama.save_model_help }}</p><div class="choice-row end"><span class="later-action">{{ llama.use_until_reload }}</span><span class="action">{{ llama.save_in_browser }}</span></div></div>
+                <div class="temporary-folders imported-result"><div class="section-title"><FolderOpenIcon :size="18" />{{ llama.open_model_folders }}</div><div class="model-row"><span class="model-name code">{{ llama.sample_model_id }}</span><span class="secondary-action">{{ llama.unregister_folder }}</span></div></div>
               </div>
 
               <div v-else-if="stage === 'download'" class="compact-stack">
-                <div class="section-title"><DownloadIcon :size="18" />{{ llama.hugging_face }}</div>
-                <div class="field"><span class="label">{{ llama.repository }}</span><div class="entry-row"><div class="input-look code animated-input"><span class="input-placeholder">{{ llama.sample_repository }}</span><span class="input-value">{{ llama.entered_repository }}</span></div><span class="secondary-action check-model"><SearchIcon :size="16" />{{ llama.check_model }}<MousePointer2Icon class="pointer check-pointer" :size="23" /></span></div></div>
-                <div class="repository-search"><SearchIcon :size="14" /><span>{{ llama.find_models }}</span><ChevronDownIcon :size="14" /></div>
-                <div class="choice-row wrap model-options"><span class="label">{{ llama.quantization }}</span><span class="input-look small-input quantization-choice"><span class="switch-label before">{{ llama.choose_model_files }}</span><span class="switch-label after">{{ llama.sample_quantization }}</span><ChevronDownIcon :size="16" /><span class="choice-menu quantization-menu"><span class="menu-option">{{ llama.choose_model_files }}</span><span class="menu-option target-option">{{ llama.sample_quantization }}<MousePointer2Icon class="pointer menu-pointer" :size="21" /></span></span></span><span class="label">{{ llama.download_destination }}</span><span class="input-look small-input">{{ llama.browser_storage }}<ChevronDownIcon :size="16" /></span></div>
-                <div class="choice-row end"><span class="action download-action"><DownloadIcon :size="16" />{{ llama.download }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
+                <div class="download-toolbar"><div class="section-title"><DownloadIcon :size="18" />{{ llama.hugging_face }}</div><div class="destination-choice"><span class="label">{{ llama.download_destination }}</span><span class="input-look small-input"><HardDriveIcon :size="14" />{{ llama.browser_storage }}<ChevronDownIcon :size="16" /></span><span class="secondary-action"><FolderOpenIcon :size="14" />{{ llama.link_folder }}</span></div></div>
+                <div class="field repository-search"><span class="label">{{ llama.find_models }}</span><div class="entry-row"><div class="input-look code animated-input"><span class="input-placeholder">{{ llama.search_placeholder }}</span><span class="input-value">{{ llama.entered_repository }}</span></div><span class="secondary-action search-action"><SearchIcon :size="16" />{{ llama.search }}<MousePointer2Icon class="pointer search-pointer" :size="23" /></span></div></div>
+                <div class="model-row repository-result"><span class="repository-open"><span class="model-name code">{{ llama.entered_repository }}</span><ArrowRightIcon :size="16" /><MousePointer2Icon class="pointer repository-pointer" :size="23" /></span><ExternalLinkIcon :size="16" /></div>
+                <div class="model-options repository-preview">
+                  <span class="code repository-name">Hugging Face · {{ llama.entered_repository }}</span>
+                  <div class="choice-row wrap"><span class="label">{{ llama.quantization }}</span><span class="input-look small-input quantization-choice"><span class="switch-label before">{{ llama.choose_model_files }}</span><span class="switch-label after">{{ llama.sample_quantization }}</span><ChevronDownIcon :size="16" /><span class="choice-menu quantization-menu"><span class="menu-option">{{ llama.choose_model_files }}</span><span class="menu-option target-option">{{ llama.sample_quantization }}<MousePointer2Icon class="pointer menu-pointer" :size="21" /></span></span></span></div>
+                  <div class="choice-row wrap"><span class="label">{{ llama.multimodal_support }}</span><span class="toggle-look on"><span /></span></div>
+                  <div class="choice-row wrap"><span class="label">{{ llama.multimodal_quantization }}</span><span class="input-look small-input">{{ llama.sample_companion }}<ChevronDownIcon :size="16" /></span></div>
+                  <div class="choice-row end"><span class="download-size"><HardDriveIcon :size="14" />{{ llama.sample_download_size }}</span><span class="action download-action"><DownloadIcon :size="16" />{{ llama.download }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
+                </div>
                 <div class="operation-status downloading-status"><span>{{ llama.downloading_model }}</span><span class="progress-track"><span /></span></div>
                 <div class="section-title downloaded-result"><HardDriveIcon :size="18" />{{ llama.imported_models }}</div>
                 <div class="model-row downloaded-result"><span class="model-name code">{{ llama.downloaded_model_id }}</span><span class="tag">GGUF</span></div>
@@ -157,6 +163,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --soft:var(--muted);
   --accent:var(--blue);
   --action-ink:#081622;
+  container-type: inline-size;
   position: relative;
   width: 100%;
   max-width: 680px;
@@ -204,21 +211,21 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   --camera-start-y:-20px;
   --camera-start-z:.92;
   --camera-focus-x:-275px;
-  --camera-focus-y:-35px;
+  --camera-focus-y:-165px;
   --camera-focus-z:1;
   --camera-end-x:-275px;
-  --camera-end-y:-180px;
+  --camera-end-y:-365px;
   --camera-end-z:1;
 }
 .mode-llama.stage-download {
   --camera-start-x:-275px;
-  --camera-start-y:-180px;
+  --camera-start-y:-20px;
   --camera-start-z:1;
   --camera-focus-x:-275px;
-  --camera-focus-y:-18px;
+  --camera-focus-y:-190px;
   --camera-focus-z:1;
   --camera-end-x:-275px;
-  --camera-end-y:-205px;
+  --camera-end-y:-355px;
   --camera-end-z:1;
 }
 .mode-llama.stage-default {
@@ -277,6 +284,94 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   }
   100% {
     transform: translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z));
+  }
+}
+.mode-llama.stage-import .camera-canvas {
+  animation-name: import-camera-move;
+}
+.mode-llama.stage-download .camera-canvas {
+  animation-name: download-camera-move;
+}
+@keyframes import-camera-move {
+  0%,12% {
+    transform: translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z));
+  }
+  27%,57% {
+    transform: translate(var(--camera-focus-x),var(--camera-focus-y)) scale(var(--camera-focus-z));
+  }
+  75%,96% {
+    transform: translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z));
+  }
+  100% {
+    transform: translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z));
+  }
+}
+@keyframes download-camera-move {
+  0%,40% {
+    transform: translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z));
+  }
+  49%,74% {
+    transform: translate(var(--camera-focus-x),var(--camera-focus-y)) scale(var(--camera-focus-z));
+  }
+  88%,96% {
+    transform: translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z));
+  }
+  100% {
+    transform: translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z));
+  }
+}
+@keyframes llama-input-placeholder {
+  0%,5%,100% {
+    opacity: 1;
+  }
+  14%,96% {
+    opacity: 0;
+  }
+}
+@keyframes llama-input-value {
+  0%,5%,100% {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  14%,96% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes repository-result {
+  0%,25%,100% {
+    opacity: 0;
+  }
+  32%,96% {
+    opacity: 1;
+  }
+}
+@keyframes pointer-repository {
+  0%,32%,46%,100% {
+    opacity: 0;
+    transform: translate(9px,9px);
+  }
+  36%,41% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes search-press {
+  0%,17%,30%,100% {
+    box-shadow: none;
+  }
+  22%,27% {
+    box-shadow: 0 0 0 5px color-mix(in srgb,var(--accent) 22%,transparent);
+  }
+}
+@keyframes pointer-search {
+  0%,17%,30%,100% {
+    opacity: 0;
+    transform: translate(9px,9px);
+  }
+  22%,27% {
+    opacity: 1;
+    transform: none;
   }
 }
 .stage-open .camera-canvas {
@@ -435,7 +530,7 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
 }
 .import-modes {
   display: grid;
-  grid-template-columns: repeat(3,minmax(0,1fr));
+  grid-template-columns: repeat(2,minmax(0,1fr));
   gap: 4px;
   padding: 4px;
   border-radius: 10px;
@@ -469,16 +564,104 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   font-size: 11px;
   line-height: 1.55;
 }
-.repository-search {
+.copy-choice {
   display: flex;
   align-items: center;
-  gap: 7px;
-  color: var(--soft);
+  justify-content: space-between;
+  gap: 15px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--field);
   font-size: 12px;
   font-weight: 650;
 }
-.repository-search span {
+.toggle-look {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 20px;
+  background: var(--line);
+}
+.toggle-look > span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+}
+.toggle-look.on {
+  background: var(--accent);
+}
+.toggle-look.on > span {
+  transform: translateX(16px);
+}
+.temporary-save-notice {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  font-size: 12px;
+}
+.later-action {
+  min-width: 0;
+  color: var(--soft);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.notice-heading,.download-size {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.notice-heading svg {
+  color: var(--soft);
+  flex: none;
+}
+.temporary-folders {
+  display: grid;
+  gap: 10px;
+}
+.download-toolbar,.destination-choice,.repository-preview {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.destination-choice {
+  grid-template-columns: auto minmax(0,1fr) auto;
+  align-items: center;
+}
+.repository-result {
+  position: relative;
+  animation: repository-result 11s linear infinite;
+}
+.repository-open {
+  position: relative;
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 36px;
+}
+.repository-open .pointer {
+  right: 2px;
+  bottom: -4px;
+  animation: pointer-repository 11s linear infinite;
+}
+.repository-name {
+  color: var(--soft);
+  font-size: 12px;
+}
+.download-size {
+  margin-right: auto;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 750;
 }
 .context-card {
   display: grid;
@@ -784,6 +967,12 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
   opacity: 0;
   animation: input-value 11s linear infinite;
 }
+.mode-llama.stage-download .input-placeholder {
+  animation-name: llama-input-placeholder;
+}
+.mode-llama.stage-download .input-value {
+  animation-name: llama-input-value;
+}
 .model-options {
   animation: options-appear 11s linear infinite;
 }
@@ -822,11 +1011,13 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
 .mode-transformers.stage-download .progress-track > span {
   animation: transformers-progress-fill 11s linear infinite;
 }
-.stage-download .check-model {
-  animation: check-press 11s linear infinite,check-enabled 11s linear infinite;
+.mode-llama.stage-download .search-action {
+  animation: search-press 11s linear infinite;
 }
-.stage-download .check-pointer {
-  animation: pointer-check 11s linear infinite;
+.mode-llama.stage-download .search-pointer {
+  right: 3px;
+  bottom: -4px;
+  animation: pointer-search 11s linear infinite;
 }
 .stage-import .import-action {
   animation: import-press 11s linear infinite;
@@ -1264,13 +1455,13 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
 }
 @keyframes options-appear {
   0%,38% {
-    opacity: .15;
+    opacity: 0;
   }
   44%,95% {
     opacity: 1;
   }
   100% {
-    opacity: .15;
+    opacity: 0;
   }
 }
 @keyframes quant-before {
@@ -1289,38 +1480,12 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
     opacity: 1;
   }
 }
-@keyframes check-press {
-  0%,32%,56%,100% {
-    box-shadow: none;
-  }
-  39%,49% {
-    box-shadow: 0 0 0 5px color-mix(in srgb,var(--accent) 22%,transparent);
-  }
-}
-@keyframes check-enabled {
-  0%,19%,100% {
-    opacity: .5;
-  }
-  30%,96% {
-    opacity: 1;
-  }
-}
 @keyframes download-enabled {
   0%,49%,100% {
     opacity: .5;
   }
   58%,96% {
     opacity: 1;
-  }
-}
-@keyframes pointer-check {
-  0%,32%,56%,100% {
-    opacity: 0;
-    transform: translate(9px,9px);
-  }
-  39%,49% {
-    opacity: 1;
-    transform: none;
   }
 }
 @keyframes download-press {
@@ -1759,6 +1924,30 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
     opacity: 0;
   }
 }
+@media(min-width:541px) {
+  .camera-canvas {
+    /* Keep the focused body within the camera while preserving its full size
+       wherever space permits. Navigation-focused poses retain their own pan. */
+    --content-pan-x:clamp(-107px,calc(100cqw - 672px),0px);
+  }
+  .settings-panel {
+    width: min(805px,calc(100cqw + 240px));
+  }
+  .browser-model-camera:not(.stage-open) .camera-canvas {
+    --camera-start-x:calc(-275px + var(--content-pan-x));
+    --camera-end-x:calc(-275px + var(--content-pan-x));
+  }
+  .mode-llama.stage-import .camera-canvas,
+  .mode-transformers.stage-download .camera-canvas {
+    --camera-start-x:calc(-234px + var(--content-pan-x));
+  }
+  .browser-model-camera:not(.stage-open):not(.stage-save) .camera-canvas {
+    --camera-focus-x:calc(-275px + var(--content-pan-x));
+  }
+  .stage-open .camera-canvas {
+    --camera-end-x:calc(-234px + var(--content-pan-x));
+  }
+}
 @media(max-width:540px) {
   .browser-model-camera {
     height: 320px;
@@ -1809,6 +1998,12 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
     left: 20px;
     width: 300px;
   }
+  .destination-choice {
+    grid-template-columns: minmax(0,1fr) auto;
+  }
+  .destination-choice > .label {
+    grid-column: 1/-1;
+  }
   .entry-row,.choice-row {
     flex-wrap: wrap;
   }
@@ -1840,21 +2035,21 @@ html:has(#docs-light-theme:checked) .browser-model-camera {
     --camera-start-y:-20px;
     --camera-start-z:.85;
     --camera-focus-x:-255px;
-    --camera-focus-y:-45px;
+    --camera-focus-y:-190px;
     --camera-focus-z:.85;
     --camera-end-x:-255px;
-    --camera-end-y:-220px;
+    --camera-end-y:-390px;
     --camera-end-z:.85;
   }
   .mode-llama.stage-download {
     --camera-start-x:-255px;
-    --camera-start-y:-220px;
+    --camera-start-y:-20px;
     --camera-start-z:.85;
     --camera-focus-x:-255px;
-    --camera-focus-y:-20px;
+    --camera-focus-y:-230px;
     --camera-focus-z:.85;
     --camera-end-x:-255px;
-    --camera-end-y:-240px;
+    --camera-end-y:-380px;
     --camera-end-z:.85;
   }
   .mode-llama.stage-default {
@@ -1912,6 +2107,7 @@ html:has(#docs-pause-motion:checked) .browser-model-camera .camera-canvas {
 }
 html:has(#docs-pause-motion:checked) .browser-model-camera .settings-panel,
 html:has(#docs-pause-motion:checked) .browser-model-camera .imported-result,
+html:has(#docs-pause-motion:checked) .browser-model-camera .repository-result,
 html:has(#docs-pause-motion:checked) .browser-model-camera .downloaded-result,
 html:has(#docs-pause-motion:checked) .browser-model-camera .progress-scene,
 html:has(#docs-pause-motion:checked) .browser-model-camera .connection-content {
@@ -1959,7 +2155,7 @@ html:has(#docs-pause-motion:checked) .browser-model-camera .pointer {
   .camera-canvas {
     transform: translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z));
   }
-  .settings-panel,.imported-result,.downloaded-result,.progress-scene,.connection-content,.input-value,.switch-label.after,.phase-ready,.model-options,.model-management {
+  .settings-panel,.imported-result,.repository-result,.downloaded-result,.progress-scene,.connection-content,.input-value,.switch-label.after,.phase-ready,.model-options,.model-management {
     opacity: 1;
     clip-path: none;
     transform: none;

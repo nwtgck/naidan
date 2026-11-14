@@ -36,7 +36,7 @@ export const messages = {
   extracted_folder_example: () => <>この例では、中にあるバージョン付きフォルダは <code>naidan-hosted-0.24.1/</code> です。index.htmlとassetsなどの補助ファイルを一緒に保ちます。</>,
   windows_python_fallback: () => <>この手順ではPython 3が使える必要があります。Windowsでpython3コマンドが見つからない場合は、代わりに <code>py -m http.server 8000 --bind 127.0.0.1</code> を実行します。</>,
   local_address_example: () => <>ブラウザで <code>http://127.0.0.1:8000/</code> を開きます。Naidanの画面が表示されれば、ファイルを配信できています。</>,
-  model_setup_guides: ({ locale }: { locale: DocsLocale }) => <>次の手順は<DocsLink locale={locale} page="in-browser-models">ブラウザ内モデルのガイド</DocsLink>、<DocsLink locale={locale} page="endpoint-type-llama-cpp-browser">GGUFの設定ガイド</DocsLink>、または<DocsLink locale={locale} page="local-ai-servers">ローカルエンジンのガイド</DocsLink>を参照してください。</>,
+  model_setup_guides: ({ locale }: { locale: DocsLocale }) => <>次の手順は<DocsLink locale={locale} page="in-browser-model">ブラウザ内モデルのガイド</DocsLink>、<DocsLink locale={locale} page="endpoint-type-llama-cpp-browser">GGUFの設定ガイド</DocsLink>、または<DocsLink locale={locale} page="local-ai-server">ローカルエンジンのガイド</DocsLink>を参照してください。</>,
   origin_storage_notice: () => <>ブラウザ内の保存データは展開先フォルダではなく、サイトのオリジン（スキーム・ホスト名・ポート）に結び付きます。保存した会話を継続するには同じオリジンを使います。ただし<UiLabel text="一時保存" />の会話や設定は再読み込みで失われます。オリジンを変える場合は必要な会話データを先にバックアップします。そのZIPにダウンロード済みのモデル本体やキャッシュは含まれません。</>,
   pwa_update_guidance: ({ locale }: { locale: DocsLocale }) => <>Naidanに更新の案内が表示されたら、その案内に従ってください。PWAの準備とオフラインでの確認は、<DocsLink locale={locale} page="pwa">NaidanをPWAとしてオフラインで使う</DocsLink>を参照してください。ガイドは公開Hosted版のアドレスを例にしています。自己配信版で試すときは、配信した同じURLとブラウザで確認します。ZIPが手元にあるだけでは、オフライン動作を確認できません。</>,
 } satisfies typeof import('./en').messages;

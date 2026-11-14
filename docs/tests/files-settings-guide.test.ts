@@ -1,9 +1,9 @@
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import SettingsPage from '../pages/files-and-folders-settings/index.vue';
-import { messages as english } from '../pages/files-and-folders-settings/messages/en';
-import { messages as japanese } from '../pages/files-and-folders-settings/messages/ja';
+import SettingsPage from '../pages/file-and-folder-settings/index.vue';
+import { messages as english } from '../pages/file-and-folder-settings/messages/en';
+import { messages as japanese } from '../pages/file-and-folder-settings/messages/ja';
 import { messages as commonEnglish } from '../messages/common/en';
 import { messages as commonJapanese } from '../messages/common/ja';
 import { parsePage } from './site.test-support';
@@ -34,6 +34,7 @@ describe('Files and folders Settings guide', () => {
     expect(article?.querySelector('[data-testid="files-settings-step-copy"]')?.textContent).toContain(s.copied_status);
     expect(article?.querySelector('[data-testid="files-settings-step-manage"]')?.textContent).toContain(s.copied_status);
     expect(article?.textContent).toContain(s.after_adding_a_folder);
+    expect(article?.querySelector('#files-settings-manage')?.parentElement?.textContent).toContain(s.chat_copy_progress);
     expect(article?.querySelectorAll('figure button, figure input, figure a')).toHaveLength(0);
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
       `/docs/${locale}/file-access/`, `/docs/${locale}/tool-browser-shell/`,

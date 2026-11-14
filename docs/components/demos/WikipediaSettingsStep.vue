@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpenIcon, CalculatorIcon, InfoIcon, ListIcon, MousePointer2Icon, SquarePenIcon, TerminalIcon } from 'lucide-vue-next';
+import { BookOpenIcon, CalculatorIcon, ListIcon, MousePointer2Icon, SquarePenIcon, TerminalIcon } from 'lucide-vue-next';
 import NaidanChatInput from './NaidanChatInput.vue';
 import type { CommonMessages } from '../../messages/types';
 
@@ -26,7 +26,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div class="tool-sheet">
       <div class="sheet-handle" />
       <div class="sheet-title">{{ messages.options_sheet }}</div>
-      <div class="tool-session-note"><InfoIcon :size="11" /><span>{{ messages.tool_session_notice }}</span></div>
       <div class="tool-card muted"><span class="tool-icon"><CalculatorIcon :size="15" /></span><span class="tool-name">{{ messages.calculator_tool }}</span><span class="toggle"><i /></span></div>
       <div class="tool-card muted"><span class="tool-icon"><ListIcon :size="15" /></span><span class="tool-name">{{ messages.choices_tool }}</span><span class="toggle"><i /></span></div>
       <div class="tool-card wikipedia"><span class="tool-icon"><BookOpenIcon :size="15" /></span><span class="tool-label"><strong>{{ messages.wikipedia_tool }}</strong><small>{{ messages.wikipedia_tool_description }}</small></span><span v-if="stage === 'enabled'" class="tool-inherit">{{ messages.inherit_global_label }}</span><span class="toggle"><b class="off">{{ messages.off_status }}</b><b class="on">{{ messages.on_status }}</b><i /><MousePointer2Icon v-if="stage === 'enabled'" class="wiki-pointer" :size="21" /></span></div>
@@ -144,18 +143,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .08em;
-}
-.tool-session-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 5px;
-  margin: 7px 0;
-  color: var(--muted);
-  font-size: 8px;
-  line-height: 1.4;
-}
-.tool-session-note svg {
-  flex: none;
 }
 .tool-inherit {
   flex: none;
@@ -448,7 +435,12 @@ html:has(#docs-pause-motion:checked) .stage-enabled .mount-detail {
     font-size: 11px;
   }
   .tool-card {
+    gap: 6px;
     min-height: 36px;
+  }
+  .tool-icon {
+    width: 22px;
+    height: 22px;
   }
   .wiki-settings-scene {
     height: 340px;

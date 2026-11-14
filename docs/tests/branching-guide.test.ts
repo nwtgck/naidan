@@ -21,7 +21,7 @@ describe('conversation branching guide', () => {
       throw new Error('Missing branching guide');
     }
     expect(article.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
-    expect(article.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-models/`);
+    expect(article.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-model/`);
     const demo = readBranchingMessages({ locale }).messages;
     const labels = [...article.querySelectorAll('.ui-label')].map(element => element.textContent);
     for (const expected of [demo.ui.sendAndBranch, demo.ui.moreActions, demo.ui.fork, demo.controls.replay, update]) {

@@ -45,6 +45,12 @@ describe('Naidan RPC guide', () => {
     expect(article?.querySelector('[data-testid="rpc-step-provide"]')?.textContent).toContain(copy.apply_provided_methods);
     expect(article?.querySelector('[data-testid="rpc-step-use"]')?.textContent).toContain(copy.sample_peer_model);
     expect(article?.querySelector('.rpc-note .ui-label')?.textContent).toBe(locale === 'en' ? 'Components' : '構成');
+    const images = article?.querySelector('[data-testid="rpc-image-option"]');
+    const imageLabels = [...images?.querySelectorAll('.ui-label') ?? []].map(label => label.textContent);
+    expect(imageLabels).toEqual(expect.arrayContaining(locale === 'en' ? ['Image model', 'Select automatically', 'Auto', 'Reuse saved settings'] : ['画像モデル本体', '自動で選択', '自動', '保存した設定を再利用']));
+    expect(images?.textContent).toContain(locale === 'en' ? 'select the files manually' : '手動でファイルを選んで');
+    expect(images?.textContent).toContain(locale === 'en' ? 'resolved on the serving device' : '提供側で実際に動かすモデルに合わせて確定');
+    expect(images?.textContent).toContain(locale === 'en' ? 'Keep both devices up to date' : '両方の端末を最新版');
     expect(article?.textContent).toContain(copy.peer_data_boundary);
     expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/endpoint-type-llama-cpp-browser/`);
     expect(article?.querySelectorAll('figure button, figure input, figure select, figure a')).toHaveLength(0);

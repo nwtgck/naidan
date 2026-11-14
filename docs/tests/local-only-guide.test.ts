@@ -1,9 +1,9 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import LocalOnlyPage from '../pages/csp-editions/index.vue';
-import { messages as english } from '../pages/csp-editions/messages/en';
-import { messages as japanese } from '../pages/csp-editions/messages/ja';
+import LocalOnlyPage from '../pages/csp-edition/index.vue';
+import { messages as english } from '../pages/csp-edition/messages/en';
+import { messages as japanese } from '../pages/csp-edition/messages/ja';
 import { messages as commonEnglish } from '../messages/common/en';
 import { messages as commonJapanese } from '../messages/common/ja';
 import { parsePage } from './site.test-support';
@@ -21,6 +21,7 @@ describe('Local-only connection guide', () => {
       s.choose_hosted_version_title,
       s.connect_local_server_title,
       s.connection_policy_scope_title,
+      s.in_app_guidance_title,
       s.inspect_policy_and_traffic_title,
     ]);
 
@@ -53,9 +54,15 @@ describe('Local-only connection guide', () => {
     expect([...article?.querySelectorAll('.allowed-destinations code') ?? []].map(element => element.textContent)).toEqual([
       "'self'", 'http://localhost:*', 'http://127.0.0.1:*',
     ]);
+    const guidance = article?.querySelector('.in-app-guidance');
+    expect(guidance?.nextElementSibling?.querySelector('.guide-steps')).not.toBeNull();
+    expect([...guidance?.querySelectorAll('a') ?? []].map(link => link.getAttribute('href'))).toEqual([
+      `/docs/${locale}/in-browser-model/`, `/docs/${locale}/data-backup/`,
+    ]);
+    expect(guidance?.textContent).toContain(s.in_app_guidance_explanation);
     expect(article?.querySelectorAll('.guide-steps > li')).toHaveLength(3);
     expect(article?.textContent).toContain('Content-Security-Policy');
     expect(article?.textContent).toContain('connect-src');
-    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-servers/`);
+    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-server/`);
   });
 });

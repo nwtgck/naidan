@@ -31,6 +31,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <section class="media-step" aria-labelledby="image-generate">
       <h2 id="image-generate">{{ s.enter_a_prompt_and_generate_an_image }}</h2>
+      <p><RenderText :node="s.start_with_one_prompt()" /></p>
+      <p><RenderText :node="s.use_automatic_generation_settings()" /></p>
       <p><RenderText :node="s.generate_and_review_an_image()" /></p>
       <figure class="guide-figure"><ImageCreationStep stage="generate" :messages="s" /><figcaption class="caption">{{ s.image_generation_progress }}</figcaption></figure>
     </section>
@@ -43,7 +45,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <section class="media-note" aria-labelledby="image-storage"><h2 id="image-storage">{{ s.keep_work_for_later }}</h2><p><RenderText :node="s.image_session_storage_and_exports()" /></p><p>{{ s.temporary_models_and_saved_results }}</p></section>
     <section class="media-note" aria-labelledby="image-next"><h2 id="image-next">{{ s.after_your_first_image }}</h2><p>{{ s.more_ways_to_work_with_images }}</p></section>
-    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.run_a_gguf_model_in_your_browser, description: s.start_a_chat_with_a_local_gguf_model }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.run_a_gguf_model_in_your_browser, description: s.start_a_chat_with_a_local_gguf_model }, { page: 'image-generation-multi-prompt', title: s.generate_images_from_multiple_prompts, description: s.reuse_shared_settings_for_several_prompts }]" />
   </article>
 </template>
 

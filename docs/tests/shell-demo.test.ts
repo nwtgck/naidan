@@ -45,7 +45,9 @@ describe('shell guide tool-call demonstration', () => {
     expect(tools?.querySelector('[data-testid="docs-shell-open-pointer"]')).not.toBeNull();
     const sheet = open?.querySelector('[data-testid="docs-shell-tools-sheet"]');
     expect(sheet?.textContent).toContain(strings.shell_tool_label);
-    expect(sheet?.textContent).toContain(strings.tool_session_notice);
+    expect(sheet?.querySelector('.tool-session-note')).toBeNull();
+    expect(walkthrough?.querySelector('.tool-settings-persistence .ui-label')?.textContent).toBe(locale === 'en' ? 'Tool config persistence' : 'ツール設定の永続化');
+    expect(document.querySelector('.live-shell-boundary a')?.getAttribute('href')).toBe(`/docs/${locale}/live-conversation/`);
     expect(sheet?.textContent).not.toContain(common.chrome_reasoning);
     expect(enable?.querySelector('[data-testid="docs-shell-switch"]')?.textContent).toContain(strings.on_status);
     expect(enable?.querySelector('[data-testid="docs-shell-settings-result"]')?.textContent).toContain(strings.shell_settings_label);

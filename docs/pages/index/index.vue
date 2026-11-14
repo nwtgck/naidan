@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DocsLink from '../../components/DocsLink.vue';
-import { BookOpenIcon, GithubIcon } from 'lucide-vue-next';
+import { BookOpenIcon, DownloadIcon, GithubIcon, ImagesIcon, LanguagesIcon, LayersIcon, MicIcon, ScanEyeIcon, SearchIcon, WorkflowIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
 import AppEntryLink from '../../components/AppEntryLink.vue';
 import HomeChatResponseDemo from '../../components/HomeChatResponseDemo.vue';
@@ -25,10 +25,16 @@ const features = [
 ] as const satisfies readonly { titleKey: keyof HomeMessages; bodyKey: keyof HomeMessages; page: DocsPageId; icon: string }[];
 
 const guideCards = [
-  { titleKey: 'organize_chats_guide_title', bodyKey: 'organize_chats_guide_description', page: 'chat-groups', icon: '#i-grid' },
-  { titleKey: 'wikipedia_guide_title', bodyKey: 'wikipedia_guide_description', page: 'tool-wikipedia', icon: '#i-search' },
-  { titleKey: 'offline_pwa_guide_title', bodyKey: 'offline_pwa_guide_description', page: 'pwa', icon: '#i-download' },
-] as const satisfies readonly { titleKey: keyof HomeMessages; bodyKey: keyof HomeMessages; page: DocsPageId; icon: string }[];
+  { titleKey: 'translate_locally_guide_title', bodyKey: 'translate_locally_guide_description', page: 'translation' },
+  { titleKey: 'voice_conversation_guide_title', bodyKey: 'voice_conversation_guide_description', page: 'live-conversation' },
+  { titleKey: 'workflow_guide_title', bodyKey: 'workflow_guide_description', page: 'workflow' },
+  { titleKey: 'multi_prompt_image_guide_title', bodyKey: 'multi_prompt_image_guide_description', page: 'image-generation-multi-prompt' },
+  { titleKey: 'image_understanding_guide_title', bodyKey: 'image_understanding_guide_description', page: 'image-understanding' },
+  { titleKey: 'chat_search_guide_title', bodyKey: 'chat_search_guide_description', page: 'chat-search' },
+  { titleKey: 'organize_chats_guide_title', bodyKey: 'organize_chats_guide_description', page: 'chat-group' },
+  { titleKey: 'wikipedia_guide_title', bodyKey: 'wikipedia_guide_description', page: 'tool-wikipedia' },
+  { titleKey: 'offline_pwa_guide_title', bodyKey: 'offline_pwa_guide_description', page: 'pwa' },
+] as const satisfies readonly { titleKey: keyof HomeMessages; bodyKey: keyof HomeMessages; page: DocsPageId }[];
 
 defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -114,7 +120,7 @@ defineExpose({
         <div class="mechanism-list">
           <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">01</span><div><h3>{{ s.browser_access_heading }}</h3><p>{{ s.browser_access_description }}</p></div></section>
           <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">02</span><div><h3>{{ s.local_model_processing_heading }}</h3><p>{{ s.local_model_processing_description }}</p></div></section>
-          <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">03</span><div><h3>{{ s.network_scope_heading }}</h3><p><RenderText :node="s.network_scope_description({ locale, page: 'csp-editions' })" /></p></div></section>
+          <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">03</span><div><h3>{{ s.network_scope_heading }}</h3><p><RenderText :node="s.network_scope_description({ locale, page: 'csp-edition' })" /></p></div></section>
         </div>
       </div>
       <p class="boundary-footnote">{{ s.model_downloads_and_external_connections }}</p>
@@ -156,8 +162,8 @@ defineExpose({
       <div class="models-section">
         <h2 class="section-title">{{ s.model_locations_heading }}</h2>
         <div class="pair-grid">
-          <DocsLink :locale="locale" page="in-browser-models" class="model-card panel" data-testid="docs-model-guide"><h3><span>{{ s.run_model_in_browser_heading }}</span><span aria-hidden="true">→</span></h3><p>{{ s.run_model_in_browser_description }}</p></DocsLink>
-          <DocsLink :locale="locale" page="local-ai-servers" class="model-card panel" data-testid="docs-model-guide"><h3><span>{{ s.connect_local_engine_heading }}</span><span aria-hidden="true">→</span></h3><p>{{ s.connect_local_engine_description }}</p></DocsLink>
+          <DocsLink :locale="locale" page="in-browser-model" class="model-card panel" data-testid="docs-model-guide"><h3><span>{{ s.run_model_in_browser_heading }}</span><span aria-hidden="true">→</span></h3><p>{{ s.run_model_in_browser_description }}</p></DocsLink>
+          <DocsLink :locale="locale" page="local-ai-server" class="model-card panel" data-testid="docs-model-guide"><h3><span>{{ s.connect_local_engine_heading }}</span><span aria-hidden="true">→</span></h3><p>{{ s.connect_local_engine_description }}</p></DocsLink>
         </div>
       </div>
     </div>
@@ -212,19 +218,29 @@ defineExpose({
           <p class="section-description">{{ s.guides_introduction }}</p>
         </div>
       </div>
-      <div class="article-grid">
-        <DocsLink
-          v-for="guide in guideCards"
-          :key="guide.page"
-          class="article-card"
-          data-testid="docs-home-guide-card"
-          :locale="locale" :page="guide.page"
-        >
-          <span class="card-top"><span class="card-icon"><svg class="icon lg" aria-hidden="true"><use :href="guide.icon" /></svg></span><span class="card-arrow" aria-hidden="true">→</span></span>
-          <h3 class="card-title">{{ s[guide.titleKey] }}</h3>
-          <p class="card-desc">{{ s[guide.bodyKey] }}</p>
-        </DocsLink>
-      </div>
+      <ul class="home-guide-list">
+        <li v-for="guide in guideCards" :key="guide.page">
+          <DocsLink
+            class="home-guide-card"
+            data-testid="docs-home-guide-card"
+            :locale="locale" :page="guide.page"
+          >
+            <span class="home-guide-icon" aria-hidden="true">
+              <LanguagesIcon v-if="guide.page === 'translation'" :size="20" />
+              <MicIcon v-else-if="guide.page === 'live-conversation'" :size="20" />
+              <WorkflowIcon v-else-if="guide.page === 'workflow'" :size="20" />
+              <ImagesIcon v-else-if="guide.page === 'image-generation-multi-prompt'" :size="20" />
+              <ScanEyeIcon v-else-if="guide.page === 'image-understanding'" :size="20" />
+              <SearchIcon v-else-if="guide.page === 'chat-search'" :size="20" />
+              <LayersIcon v-else-if="guide.page === 'chat-group'" :size="20" />
+              <BookOpenIcon v-else-if="guide.page === 'tool-wikipedia'" :size="20" />
+              <DownloadIcon v-else-if="guide.page === 'pwa'" :size="20" />
+            </span>
+            <div class="home-guide-card-copy"><h3>{{ s[guide.titleKey] }}</h3><p>{{ s[guide.bodyKey] }}</p></div>
+            <span class="home-guide-card-arrow" aria-hidden="true">→</span>
+          </DocsLink>
+        </li>
+      </ul>
     </div>
   </section>
 </template>
@@ -689,33 +705,69 @@ defineExpose({
   line-height: 1.95;
 }
 
-.article-grid {
+.home-guide-list {
+  display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: 1fr;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-
-.article-grid .article-card {
-  min-height: 172px;
-  padding: 19px;
+.home-guide-list li {
+  min-width: 0;
 }
-
-.article-grid .card-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+.home-guide-card {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 12px;
+  align-items: start;
+  gap: 11px;
+  height: 100%;
+  padding: 17px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+  color: var(--text);
+  text-decoration: none;
+  transition: background-color .15s ease;
 }
-.article-grid .card-title {
-  margin-top: 15px;
+.home-guide-icon {
+  margin-top: 3px;
+  color: var(--blue);
+}
+.home-guide-card-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.home-guide-card h3 {
+  margin: 0 0 7px;
   font-size: 15px;
+  font-weight: 750;
+  line-height: 1.6;
 }
-.article-grid .card-desc {
-  max-width: none;
+.home-guide-card p {
+  margin: 0;
+  color: var(--muted);
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.75;
+}
+.home-guide-card-arrow {
+  color: var(--subtle);
+  line-height: 1.6;
+}
+.home-guide-card:hover {
+  background: var(--surface);
+}
+.home-guide-card:hover h3 {
+  color: var(--blue);
+}
+.home-guide-card:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
 }
 
 @media(max-width:900px) {
-  .article-grid {
+  .home-guide-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .hero-brand {
@@ -774,12 +826,8 @@ defineExpose({
     font-size: 14px;
   }
 
-  .article-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .article-grid .article-card {
-    min-height: 150px;
+  .home-guide-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .panel {

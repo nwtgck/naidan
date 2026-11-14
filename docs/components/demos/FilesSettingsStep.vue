@@ -8,7 +8,7 @@ import {
 
 defineProps<{
   stage: 'open' | 'files' | 'choose' | 'copy' | 'manage',
-  messages: typeof import('../../pages/files-and-folders-settings/messages/en').messages,
+  messages: typeof import('../../pages/file-and-folder-settings/messages/en').messages,
 }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import {
   ArchiveIcon, ChevronLeftIcon, ChevronRightIcon, Columns3Icon, CopyIcon, DownloadIcon,
-  EyeIcon, FileIcon, FilePlusIcon, FileTextIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon,
+  EyeIcon, FileArchiveIcon, FileIcon, FilePlusIcon, FileTextIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon,
   FolderSearchIcon,
   HistoryIcon, LayoutGridIcon, ListIcon, LockIcon, LockOpenIcon, MoreVerticalIcon,
   MousePointer2Icon, RefreshCwIcon, SearchIcon, SettingsIcon, UploadIcon, XIcon,
 } from 'lucide-vue-next';
 
 defineProps<{
-  stage: 'open' | 'browse' | 'upload' | 'download' | 'organize';
+  stage: 'open' | 'browse' | 'archive' | 'upload' | 'download' | 'organize';
   messages: typeof import('../../pages/file-explorer/messages/en').messages;
 }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -36,6 +36,26 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
     </div>
 
+    <div v-else-if="stage === 'archive'" class="archive-scene">
+      <div class="archive-window archive-start">
+        <div class="explorer-head"><strong>{{ messages.opfs_explorer_title }}</strong><XIcon :size="15" /></div>
+        <div class="archive-toolbar"><span>{{ messages.opfs_root }}</span><ChevronRightIcon :size="12" /><strong>{{ messages.project_folder }}</strong><LockIcon :size="15" /></div>
+        <div class="archive-start-list"><div class="archive-row"><FolderIcon :size="18" />{{ messages.output_folder }}</div><div class="archive-row chosen"><FileArchiveIcon :size="18" />{{ messages.archive_filename }}<MousePointer2Icon class="archive-open-pointer" :size="20" /></div></div>
+      </div>
+      <div class="archive-window archive-inner" data-testid="explorer-archive-view">
+        <div class="explorer-head"><strong>{{ messages.opfs_explorer_title }}</strong><XIcon :size="15" /></div>
+        <div class="archive-toolbar"><span>{{ messages.project_folder }}</span><ChevronRightIcon :size="12" /><strong><FileArchiveIcon :size="14" />{{ messages.archive_filename }}</strong><ChevronRightIcon :size="12" /><span>{{ messages.docs_folder }}</span><LockIcon class="archive-disabled" :size="15" /></div>
+        <div class="archive-strip"><FileArchiveIcon :size="14" />{{ messages.zip_archive }}<span>·</span>{{ messages.archive_read_only }}</div>
+        <div class="archive-body"><div class="archive-list"><div class="archive-row chosen"><FileTextIcon :size="16" /><strong>{{ messages.notes_filename }}</strong></div><div class="archive-row"><ArchiveIcon :size="16" /><span>assets.zip</span></div><div class="archive-copy-menu"><strong><CopyIcon :size="14" />{{ messages.copy_action }}</strong><span><DownloadIcon :size="14" />{{ messages.download_action }}</span></div></div><div class="archive-preview"><div class="preview-head"><strong>{{ messages.notes_filename }}</strong><XIcon :size="14" /></div><pre>{{ messages.project_note_content }}</pre></div></div>
+      </div>
+      <div class="archive-window archive-outside" data-testid="explorer-archive-copy-result">
+        <div class="explorer-head"><strong>{{ messages.opfs_explorer_title }}</strong><XIcon :size="15" /></div>
+        <div class="archive-toolbar"><span>{{ messages.project_folder }}</span><ChevronRightIcon :size="12" /><strong>{{ messages.output_folder }}</strong><LockOpenIcon :size="15" /></div>
+        <div class="archive-start-list"><div class="archive-row pasted-file"><FileTextIcon :size="18" /><strong>{{ messages.notes_filename }}</strong></div></div>
+        <div class="archive-paste-menu"><strong>{{ messages.paste_action }}</strong><MousePointer2Icon :size="20" /></div>
+      </div>
+    </div>
+
     <div v-else class="workbench">
       <div class="explorer-head"><strong>{{ messages.opfs_explorer_title }}</strong><XIcon :size="15" /></div>
       <div class="explorer-tools">
@@ -59,7 +79,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div class="overlay-shade" />
         <div class="zip-dialog">
           <header><strong><ArchiveIcon :size="17" />{{ messages.zip_upload_title }}</strong><XIcon :size="15" /></header>
-          <div class="zip-grid"><div class="zip-choices"><div class="archive-name"><ArchiveIcon :size="20" /><strong>{{ messages.archive_filename }}</strong></div><strong class="option">{{ messages.keep_zip_file }}</strong><strong class="option chosen">{{ messages.extract_and_place }}</strong><small>{{ messages.project_root_handling }}</small><span class="root-choice">{{ messages.keep_project_root }}</span><span class="root-choice selected-choice">{{ messages.place_project_contents }}</span></div><div class="zip-preview"><strong>{{ messages.placement_preview }}</strong><small>{{ messages.not_changed_yet }}</small><div class="preview-row"><FolderIcon :size="16" /><span>{{ messages.output_folder }}/</span><em>{{ messages.planned_addition }}</em></div><div class="preview-row"><FileTextIcon :size="16" /><span>{{ messages.notes_filename }}</span><em>{{ messages.planned_overwrite }}</em></div></div></div>
+          <div class="zip-grid"><div class="zip-choices"><div class="archive-name"><ArchiveIcon :size="20" /><strong>{{ messages.archive_filename }}</strong></div><strong class="option">{{ messages.keep_zip_file }}</strong><strong class="option chosen">{{ messages.extract_and_place }}</strong><small>{{ messages.project_root_handling }}</small><span class="root-choice selected-choice">{{ messages.place_project_contents }}</span><span class="root-choice">{{ messages.keep_project_root }}</span></div><div class="zip-preview"><strong>{{ messages.placement_preview }}</strong><small>{{ messages.not_changed_yet }}</small><div class="preview-row"><FolderIcon :size="16" /><span>{{ messages.output_folder }}/</span><em>{{ messages.planned_addition }}</em></div><div class="preview-row"><FileTextIcon :size="16" /><span>{{ messages.notes_filename }}</span><em>{{ messages.planned_overwrite }}</em></div></div></div>
           <footer><span>{{ messages.upload_files_action }}</span></footer>
         </div>
       </div>
@@ -1185,6 +1205,250 @@ html:has(#docs-pause-motion:checked) .camera.stage-organize .status-bar .after-c
   }
   .organize-menu {
     left: 95px;
+  }
+}
+
+.archive-scene,.archive-window {
+  position: absolute;
+  inset: 0;
+}
+.archive-window {
+  background: var(--p);
+}
+.archive-start {
+  animation: archive-start 12s linear infinite;
+}
+.archive-inner {
+  opacity: 0;
+  animation: archive-inside 12s linear infinite;
+}
+.archive-outside {
+  opacity: 0;
+  animation: archive-outside 12s linear infinite;
+}
+.archive-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 43px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--l);
+  color: var(--m);
+  font-size: 11px;
+}
+.archive-toolbar strong {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--t);
+}
+.archive-toolbar > svg:last-child {
+  margin-left: auto;
+}
+.archive-toolbar .archive-disabled {
+  opacity: .45;
+}
+.archive-strip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 7px 13px;
+  border-bottom: 1px solid var(--l);
+  background: var(--f);
+  color: var(--m);
+  font-size: 11px;
+}
+.archive-strip > svg {
+  color: var(--a);
+}
+.archive-body {
+  display: grid;
+  grid-template-columns: minmax(120px,.8fr) minmax(0,1.2fr);
+  height: 232px;
+}
+.archive-list {
+  position: relative;
+  min-width: 0;
+  padding: 10px;
+}
+.archive-start-list {
+  padding: 12px;
+}
+.archive-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.archive-row strong,.archive-row span {
+  min-width: 0;
+}
+.archive-row > svg {
+  color: var(--m);
+}
+.archive-row.chosen {
+  background: var(--a);
+  color: white;
+}
+.archive-row.chosen > svg {
+  color: white;
+}
+.archive-open-pointer {
+  position: absolute;
+  left: 150px;
+  bottom: -10px;
+  fill: var(--p);
+  color: var(--t)!important;
+}
+.archive-preview {
+  min-width: 0;
+  border-left: 1px solid var(--l);
+  background: var(--f);
+}
+.archive-preview pre {
+  margin: 0;
+  padding: 12px;
+  color: var(--t);
+  font: 12px/1.65 ui-monospace,monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  animation: archive-preview 12s linear infinite;
+}
+.archive-copy-menu,.archive-paste-menu {
+  position: absolute;
+  z-index: 2;
+  top: 60px;
+  left: 19px;
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  border: 1px solid var(--l);
+  border-radius: 9px;
+  background: var(--p);
+  box-shadow: 0 10px 26px #0003;
+  opacity: 0;
+  animation: archive-copy 12s linear infinite;
+}
+.archive-copy-menu > *,.archive-paste-menu > strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px;
+  font-size: 11px;
+}
+.archive-copy-menu > strong,.archive-paste-menu > strong {
+  border-radius: 5px;
+  background: color-mix(in srgb,var(--a) 10%,var(--p));
+  color: var(--a);
+}
+.archive-paste-menu {
+  top: 144px;
+  left: 35px;
+  opacity: 1;
+  animation: none;
+}
+.archive-paste-menu > svg {
+  position: absolute;
+  right: 3px;
+  bottom: -8px;
+  color: var(--t);
+  fill: var(--p);
+}
+.pasted-file {
+  color: var(--a);
+  background: color-mix(in srgb,var(--a) 10%,var(--p));
+}
+@keyframes archive-start {
+  0%,13% {
+    opacity: 1;
+  }
+  21%,100% {
+    opacity: 0;
+  }
+}
+@keyframes archive-inside {
+  0%,15% {
+    opacity: 0;
+  }
+  23%,68% {
+    opacity: 1;
+  }
+  76%,100% {
+    opacity: 0;
+  }
+}
+@keyframes archive-preview {
+  0%,27% {
+    opacity: 0;
+  }
+  35%,100% {
+    opacity: 1;
+  }
+}
+@keyframes archive-copy {
+  0%,43%,68%,100% {
+    opacity: 0;
+  }
+  49%,61% {
+    opacity: 1;
+  }
+}
+@keyframes archive-outside {
+  0%,71% {
+    opacity: 0;
+  }
+  80%,100% {
+    opacity: 1;
+  }
+}
+html:has(#docs-pause-motion:checked) .camera .archive-start,
+html:has(#docs-pause-motion:checked) .camera .archive-inner {
+  opacity: 0;
+}
+html:has(#docs-pause-motion:checked) .camera .archive-outside {
+  opacity: 1;
+}
+@media(prefers-reduced-motion:reduce) {
+  .archive-start,.archive-inner {
+    opacity: 0;
+  }
+  .archive-outside {
+    opacity: 1;
+  }
+}
+@container (max-width:430px) {
+  .archive-toolbar {
+    flex-wrap: wrap;
+    gap: 5px;
+    padding-inline: 9px;
+  }
+  .archive-toolbar > span:first-child {
+    display: none;
+  }
+  .archive-toolbar > svg:nth-child(2) {
+    display: none;
+  }
+  .archive-body {
+    grid-template-columns: 120px minmax(0,1fr);
+  }
+  .archive-list {
+    padding: 7px 3px;
+  }
+  .archive-copy-menu {
+    left: 4px;
+    min-width: 110px;
+    max-width: 110px;
+  }
+  .archive-preview pre {
+    padding: 10px;
+    font-size: 11px;
   }
 }
 </style>

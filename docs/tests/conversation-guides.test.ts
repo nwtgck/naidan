@@ -5,11 +5,11 @@ import postcss from 'postcss';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import CompactPage from '../pages/chat-context-compaction/index.vue';
-import GroupsPage from '../pages/chat-groups/index.vue';
+import GroupsPage from '../pages/chat-group/index.vue';
 import { messages as compactEn } from '../pages/chat-context-compaction/messages/en';
 import { messages as compactJa } from '../pages/chat-context-compaction/messages/ja';
-import { messages as groupsEn } from '../pages/chat-groups/messages/en';
-import { messages as groupsJa } from '../pages/chat-groups/messages/ja';
+import { messages as groupsEn } from '../pages/chat-group/messages/en';
+import { messages as groupsJa } from '../pages/chat-group/messages/ja';
 import { messages as commonEn } from '../messages/common/en';
 import { messages as commonJa } from '../messages/common/ja';
 import { parsePage } from './site.test-support';
@@ -23,9 +23,9 @@ describe('conversation guides', () => {
     using page = parsePage({ html });
     const { document } = page;
     expect(document.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
-    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-servers/`);
+    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-server/`);
     expect(document.querySelector('.prerequisite a')?.textContent?.length).toBeGreaterThan(0);
-    expect(document.querySelectorAll('.prerequisite a')[1]?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-models/`);
+    expect(document.querySelectorAll('.prerequisite a')[1]?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-model/`);
     expect(document.querySelectorAll('section.walkthrough-step')).toHaveLength(4);
     expect([...document.querySelectorAll('section.walkthrough-step')].map(section => section.querySelector('h2')?.textContent)).toEqual([
       copy.open_compact_context_heading, copy.choose_recent_messages_heading, copy.start_summary_heading, copy.review_shorter_path_heading,
@@ -64,7 +64,7 @@ describe('conversation guides', () => {
     expect(document.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(document.querySelector('h1')?.textContent).toBe(copy.title);
     expect([...document.querySelectorAll('.prerequisite a')].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/in-browser-models/`, `/docs/${locale}/local-ai-servers/`,
+      `/docs/${locale}/in-browser-model/`, `/docs/${locale}/local-ai-server/`,
     ]);
     expect([...document.querySelectorAll('section.walkthrough-step')].map(section => section.querySelector('h2')?.textContent)).toEqual([
       copy.create_group_heading, copy.choose_group_model_heading, copy.set_group_instructions_heading,

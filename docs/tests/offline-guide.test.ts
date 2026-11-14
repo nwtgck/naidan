@@ -10,9 +10,9 @@ import { parsePage } from './site.test-support';
 
 describe('offline browser AI guide', () => {
   it.each([
-    { locale: 'en', s: english, common: commonEnglish },
-    { locale: 'ja', s: japanese, common: commonJapanese },
-  ] as const)('renders the online preparation and offline verification journey in $locale', async ({ locale, s, common }) => {
+    { locale: 'en', s: english, common: commonEnglish, importControls: ['Copy model files into the browser', 'Load model', 'Save in browser', 'Link folder'], waitBeforeReload: 'Wait for saving to finish before reloading.', temporaryBoundary: 'selected files last until this page reloads or closes' },
+    { locale: 'ja', s: japanese, common: commonJapanese, importControls: ['モデルファイルをブラウザ内にコピー', 'モデルを読み込む', 'ブラウザに保存', 'フォルダをリンク'], waitBeforeReload: '再読み込み前に保存完了を確認してください。', temporaryBoundary: '選んだファイルはこのページを再読み込みするか閉じるまで使えます' },
+  ] as const)('renders the online preparation and offline verification journey in $locale', async ({ locale, s, common, importControls, waitBeforeReload, temporaryBoundary }) => {
     const html = await renderToString(createSSRApp(OfflinePage, { locale, s, common }));
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-run-offline"]');
@@ -26,7 +26,10 @@ describe('offline browser AI guide', () => {
     ]);
     expect(article?.querySelector('[data-testid="offline-step-model"]')?.textContent).toContain(s.model_file_name);
     expect(article?.querySelector('[data-testid="offline-step-verify"]')?.textContent).toContain(s.offline_status);
-    expect(article?.querySelector('[data-testid="offline-model-reload-guidance"]')?.textContent).toContain(locale === 'en' ? 'Use temporarily' : '一時的に使用');
+    const reloadGuidance = article?.querySelector('[data-testid="offline-model-reload-guidance"]');
+    expect([...reloadGuidance?.querySelectorAll('.ui-label') ?? []].map(label => label.textContent)).toEqual(expect.arrayContaining([...importControls]));
+    expect(reloadGuidance?.textContent).toContain(waitBeforeReload);
+    expect(reloadGuidance?.textContent).toContain(temporaryBoundary);
     const chatInputs = article?.querySelectorAll('[data-testid="docs-chat-input"]');
     expect(chatInputs).toHaveLength(2);
     for (const input of chatInputs ?? []) {
@@ -42,7 +45,7 @@ describe('offline browser AI guide', () => {
     expect(article?.querySelectorAll('figure .lucide-send')).toHaveLength(0);
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
       `/docs/${locale}/endpoint-type-llama-cpp-browser/`,
-      `/docs/${locale}/in-browser-models/`,
+      `/docs/${locale}/in-browser-model/`,
       `/docs/${locale}/standalone/`,
       `/docs/${locale}/hosted/`,
     ]);

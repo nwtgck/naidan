@@ -85,7 +85,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p><RenderText :node="s.additional_settings()" /></p>
     <p><RenderText :node="s.automatic_title_inheritance()" /></p>
     <p class="closing-note"><RenderText :node="s.restore_inherited_settings()" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'chat-groups', title: s.chat_groups_guide, description: s.organize_chats_and_settings_by_purpose }, { page: 'endpoint-type-ollama', title: s.connect_to_ollama_guide, description: s.choose_ollama_connection_and_model }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'chat-group', title: s.chat_groups_guide, description: s.organize_chats_and_settings_by_purpose }, { page: 'endpoint-type-ollama', title: s.connect_to_ollama_guide, description: s.choose_ollama_connection_and_model }]" />
   </article>
 </template>
 

@@ -2,7 +2,7 @@ import { DOCS_PUBLIC_ORIGIN } from '../build/seo';
 import type { ModelPageId } from '../../src/features/llama-cpp-browser/hugging-face/model-repositories';
 
 export type AppDestination =
-  | { kind: 'screen'; screen: 'home' | 'gguf-manager' | 'transformers-js-manager' | 'connection' | 'files-settings' | 'folders-settings' | 'image-generation' | 'audio-generation' }
+  | { kind: 'screen'; screen: 'home' | 'gguf-manager' | 'transformers-js-manager' | 'connection' | 'files-settings' | 'folders-settings' | 'image-generation' | 'audio-generation' | 'translation' | 'live-conversation' | 'workflow' }
   | { kind: 'model'; model: string }
   | { kind: 'model-page'; model: ModelPageId; quant: string | undefined };
 
@@ -18,6 +18,9 @@ export function appDestinationPath({ destination }: { destination: AppDestinatio
     case 'folders-settings': return '/#/settings/volumes';
     case 'image-generation': return '/#/image-generation/';
     case 'audio-generation': return '/#/audio-generation';
+    case 'translation': return '/#/translation';
+    case 'live-conversation': return '/#/live-conversation';
+    case 'workflow': return '/#/workflows';
     default: {
       const unreachable: never = destination.screen;
       throw new Error(`Unknown app screen: ${unreachable}`);

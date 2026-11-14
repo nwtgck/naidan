@@ -9,7 +9,7 @@ export const messages = {
   description: "元の会話を残しながら、前のメッセージの編集、別の回答、別のチャットへの分岐を試せます。",
   choose_a_conversation_path: "元の会話を残しながら、どの地点からどのように続きを作るかを選べます。",
   open_naidan_to_branch: ({ locale, destination }: { locale: DocsLocale; destination: AppDestination }) => <>まず <AppEntryLink locale={locale} destination={destination} display="path" /> を開きます。初回設定が表示されたら、接続先とモデルを選んで設定を完了してから送信や再生成を行います。メッセージのあるチャットを開くか、新しいチャットで何度かやり取りしてから分岐します。</>,
-  in_browser_model_setup_guide: ({ locale }: { locale: DocsLocale }) => <>ブラウザ内モデルを使う場合は、<DocsLink locale={locale} page="in-browser-models">ブラウザ内でAIモデルを動かす手順</DocsLink>をご覧ください。</>,
+  in_browser_model_setup_guide: ({ locale }: { locale: DocsLocale }) => <>ブラウザ内モデルを使う場合は、<DocsLink locale={locale} page="in-browser-model">ブラウザ内でAIモデルを動かす手順</DocsLink>をご覧ください。</>,
   create_and_switch_conversation_paths: "会話の続きを作って切り替える",
   edit_resend_or_regenerate: () => <>メッセージの下で、鉛筆なら編集、送信アイコンなら再送信、円形の矢印なら回答を再生成できます。編集後は<UiLabel text="送信して分岐" />を選びます。</>,
   switch_message_versions: "バージョン番号の左右の矢印で続きを切り替えます。編集・再送信では自分のメッセージの下、再生成では回答の下に表示されます。",

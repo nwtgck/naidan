@@ -3,28 +3,33 @@ export const DOCS_LOCALES = ['en', 'ja'] as const;
 export type DocsLocale = typeof DOCS_LOCALES[number];
 export const DOCS_LOCALE_NAMES = { en: 'English', ja: '日本語' } satisfies Record<DocsLocale, string>;
 
-// The registered article ID also names its URL and source directory.
+// Use singular feature or concept IDs; keep established plurals such as settings and permissions.
+// Each ID matches pages/<id>/ and /docs/{locale}/<id>/ (index uses the locale root).
+// IDs stay independent of article titles and example counts.
 export const DOCS_PAGE_IDS = [
   'index',
   'open-source',
   'file-access',
   'file-explorer',
-  'files-and-folders-settings',
+  'file-and-folder-settings',
   'web-and-native-app-permissions',
-  'browser-boundaries',
-  'csp-editions',
+  'browser-boundary',
+  'csp-edition',
   'chat-branching',
   'chat-context-compaction',
-  'chat-groups',
+  'chat-group',
   'chat-super-edit',
+  'chat-search',
+  'image-understanding',
+  'live-conversation',
   'standalone',
   'hosted',
   'pwa',
-  'in-browser-models',
+  'in-browser-model',
   'endpoint-type-llama-cpp-browser',
   'endpoint-type-transformers-js',
   'endpoint-type-browser-provided-lm',
-  'local-ai-servers',
+  'local-ai-server',
   'endpoint-type-ollama',
   'endpoint-type-openai',
   'endpoint-type-naidan-rpc',
@@ -32,7 +37,10 @@ export const DOCS_PAGE_IDS = [
   'data-storage',
   'data-backup',
   'image-generation',
+  'image-generation-multi-prompt',
   'audio-generation',
+  'translation',
+  'workflow',
   'tool-browser-shell',
   'wesh-sysfs',
   'tool-wikipedia',

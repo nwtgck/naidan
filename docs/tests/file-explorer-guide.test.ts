@@ -19,13 +19,26 @@ describe('File Explorer guide', () => {
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
     expect(article?.querySelector('a[data-docs-app-entry-path]')?.getAttribute('data-docs-app-entry-path')).toBe('/#/');
     expect([...article?.querySelectorAll('section.explorer-step h2') ?? []].map(node => node.textContent)).toEqual([
-      s.open_location_title, s.browse_files_title, s.upload_files_title, s.download_files_title, s.organize_files_title,
+      s.open_location_title, s.browse_files_title, s.browse_zip_title, s.upload_files_title, s.download_files_title, s.organize_files_title,
     ]);
     expect([...article?.querySelectorAll('[data-docs-animation]') ?? []].map(node => node.getAttribute('data-docs-animation'))).toEqual([
-      'explorer-open', 'explorer-browse', 'explorer-upload', 'explorer-download', 'explorer-organize',
+      'explorer-open', 'explorer-browse', 'explorer-archive', 'explorer-upload', 'explorer-download', 'explorer-organize',
     ]);
+    const archive = article?.querySelector('[data-testid="explorer-archive-view"]');
+    expect(archive?.querySelector('.archive-strip')?.textContent).toContain(s.archive_read_only);
+    expect(archive?.querySelector('.archive-toolbar')?.textContent).toContain(s.archive_filename);
+    expect(archive?.querySelector('.archive-preview')?.textContent).toContain(s.project_note_content);
+    expect(archive?.textContent).toContain('assets.zip');
+    const extracted = article?.querySelector('[data-testid="explorer-archive-copy-result"]');
+    expect(extracted?.querySelector('.archive-toolbar')?.textContent).toContain(s.output_folder);
+    expect(extracted?.querySelector('.pasted-file')?.textContent).toContain(s.notes_filename);
+    expect(extracted?.querySelector('.archive-strip')).toBeNull();
     expect(article?.querySelector('[data-testid="explorer-step-upload"]')?.textContent).toContain(s.placement_preview);
     expect(article?.querySelector('[data-testid="explorer-step-upload"]')?.textContent).toContain(s.planned_overwrite);
+    const rootChoices = [...article?.querySelectorAll('[data-testid="explorer-step-upload"] .root-choice') ?? []];
+    expect(rootChoices.map(choice => choice.textContent)).toEqual([s.place_project_contents, s.keep_project_root]);
+    expect(rootChoices[0]?.classList.contains('selected-choice')).toBe(true);
+    expect(rootChoices[1]?.classList.contains('selected-choice')).toBe(false);
     expect(article?.querySelector('[data-testid="explorer-step-download"]')?.textContent).toContain(s.exclude_items);
     for (const stage of ['browse', 'download']) {
       expect(article?.querySelector(`[data-testid="explorer-step-${stage}"] [data-testid="explorer-lock-closed"]`)).not.toBeNull();
