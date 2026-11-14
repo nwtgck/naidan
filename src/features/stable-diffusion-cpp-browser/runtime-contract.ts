@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 const valueSchema = z.object({ kind: z.string(), cType: z.string() });
 const runtimeSchema = z.object({
-  abiVersion: z.literal(2),
-  pointerRepresentation: z.literal('bigint-u64'),
+  abiVersion: z.literal(3),
+  pointerRepresentation: z.literal('bigint_native'),
   functions: z.array(z.object({
     name: z.string(),
     returnType: z.string(),
@@ -84,7 +84,7 @@ const records = {
   sd_preview_info_t: { sample_pass: ['signed', 'int'], total_steps: ['signed', 'int'] },
 } as const satisfies Record<string, Record<string, ValueContract>>;
 
-/** ABI 2 fixes the bridge convention; the generated upstream API also has to match the caller. */
+/** The target-specific ABI catalog must also preserve the upstream caller contract. */
 export function assertImageRuntimeContract({ schema, bf16WeightRetention }: { schema: unknown, bf16WeightRetention?: boolean }): void {
   const parsed = runtimeSchema.safeParse(schema);
   if (!parsed.success) {
@@ -95,7 +95,7 @@ export function assertImageRuntimeContract({ schema, bf16WeightRetention }: { sc
   if (functionMap.size !== parsed.data.functions.length || recordMap.size !== parsed.data.records.length) {
     throw new Error('Image core has duplicate generated function or record names');
   }
-  // Existing ABI-2 artifacts retain their F32/F16 contract. The new function
+  // Artifacts without the optional capability retain their F32/F16 contract. The function
   // becomes mandatory only when their verified manifest advertises retention.
   const requiredFunctions = bf16WeightRetention ? {
     ...functions,

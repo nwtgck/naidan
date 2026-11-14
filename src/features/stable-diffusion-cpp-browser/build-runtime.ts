@@ -1,7 +1,6 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build entry is also checked without the app alias.
 import type { NativeLicenseSource } from '../../01-models/native-license-build-source.ts';
 import { READ_ENV_NAIDAN_STABLE_DIFFUSION_CORE_DIR } from '../../../build/node-env.ts';
-import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { bicoreFileSchema, readBicoreArtifactPackage } from '../../../build/bicore-artifact-package.ts';
 import path from 'node:path';
@@ -16,7 +15,7 @@ const provenanceSchema = z.object({ sourceCommit: z.string(), sourceDirty: z.lit
 const imageManifestSchema = z.object({
   formatVersion: z.literal(2),
   runtime: z.literal('stable-diffusion-cpp'),
-  abiVersion: z.literal(2),
+  abiVersion: z.literal(3),
   schemaSha256: z.string().regex(/^[0-9a-f]{64}$/),
   capabilities: z.object({ ggufFileOffsetBits: z.literal(64), callerOwnedRandomAccess: z.literal(true), upstreamApi: z.literal(true), ggufOriginalShapes: z.boolean().default(false), bf16WeightRetention: z.boolean().default(false) }),
   sourceCommit: z.string(),
@@ -24,6 +23,16 @@ const imageManifestSchema = z.object({
   files: z.array(bicoreFileSchema),
   profiles: z.record(z.string(), z.object({ variants: z.object({ browser: provenanceSchema }) })),
 });
+
+function imageHostModulePaths({ paths }: { paths: Iterable<string> }): string[] {
+  const modules = [...paths].filter(name => (name.startsWith('host/') || name.startsWith('api/')) && name.endsWith('.mjs'));
+  for (const name of ['api/schema.mjs', 'host/index.mjs']) {
+    if (!modules.includes(name)) {
+      throw new Error(`Missing image host entry: ${name}`);
+    }
+  }
+  return modules;
+}
 
 /** Optional, build-time-only integration. No compiler, model download, or install hook. */
 export function readImageArtifacts({ rootDir, mode, artifactDir }: {
@@ -38,7 +47,7 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     throw new Error(String(exhaustive));
   }
   }
-  const directory = artifactDir ?? path.join(rootDir, 'node_modules/browser-inference-core');
+  const directory = artifactDir ?? path.join(rootDir, 'node_modules/stable-diffusion-cpp-browser-core');
   if (!existsSync(directory)) {
     if (artifactDir !== undefined) {
       throw new Error('Explicit image artifact directory does not exist');
@@ -49,21 +58,19 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
   const checked = ({ relative }: { relative: string }) => artifact.readArtifact({ relative }).data;
   const parsedImage = imageManifestSchema.safeParse(artifact.manifest);
   if (!parsedImage.success) {
-    throw new Error('Image runtime ABI 2 with caller-owned large-GGUF access is required; install a compatible bicore artifact with successful browser smoke validation');
+    throw new Error('Image runtime ABI 3 with caller-owned large-GGUF access is required; install a compatible bicore artifact with successful browser smoke validation');
   }
   const image = parsedImage.data;
   const entries = artifact.files;
   const prefix = `stable-diffusion-cpp-runtime/${artifact.sourceCommit}/`;
   const artifacts: Artifact[] = [];
   const schemaBytes = checked({ relative: 'api/schema.json' });
-  if (createHash('sha256').update(schemaBytes).digest('hex') !== image.schemaSha256) {
+  const schema: unknown = JSON.parse(schemaBytes.toString('utf8'));
+  if (z.object({ schemaSha256: z.string() }).parse(schema).schemaSha256 !== image.schemaSha256) {
     throw new Error('Image binding schema fingerprint mismatch');
   }
-  assertImageRuntimeContract({ schema: JSON.parse(schemaBytes.toString('utf8')), bf16WeightRetention: image.capabilities.bf16WeightRetention });
-  for (const name of ['api/schema.mjs', 'host/index.mjs', 'host/bindings.mjs', 'host/read-only-file.mjs']) {
-    if (!entries.has(name)) {
-      throw new Error('Missing image host helper');
-    }
+  assertImageRuntimeContract({ schema, bf16WeightRetention: image.capabilities.bf16WeightRetention });
+  for (const name of imageHostModulePaths({ paths: entries.keys() })) {
     const bytes = checked({ relative: name });
     files.set(prefix + name, async () => bytes);
   }
@@ -153,7 +160,7 @@ const standaloneUiFiles = new Set([
 export function assertStandaloneImageModule({ rootDir, id }: { rootDir: string, id: string }): void {
   const clean = id.split('?')[0]?.replaceAll('\\', '/') ?? '';
   const prefix = path.resolve(rootDir, 'src/features/stable-diffusion-cpp-browser').replaceAll('\\', '/') + '/';
-  if (clean.includes('/node_modules/browser-inference-core/runtimes/stable-diffusion-cpp-browser-core/')) {
+  if (clean.includes('/node_modules/stable-diffusion-cpp-browser-core/runtimes/stable-diffusion-cpp-browser-core/')) {
     throw new Error(`Hosted image artifact reached the standalone bundle: ${id}`);
   }
   if (clean.startsWith(prefix) && !standaloneUiFiles.has(clean.slice(prefix.length))) {
@@ -240,4 +247,5 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
 }
 
 export const TEST_ONLY = {
+  imageHostModulePaths,
 };

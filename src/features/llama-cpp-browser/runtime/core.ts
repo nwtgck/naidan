@@ -1,39 +1,42 @@
 import { associateGpuRequests, createGpuRequestObserver } from './webgpu-request-diagnostics';
 import { copyNativeUtf8 } from './native-utf8';
 import { loadCoreModule, type CoreModuleOptions } from '@/features/llama-cpp-browser/runtime/artifacts';
-import { z } from 'zod';
-import rawSchema from 'browser-inference-core/llama-cpp/api/schema.mjs';
-import type { LowLevelFunctions } from 'browser-inference-core/llama-cpp/api/functions';
-import type { MainModule } from 'browser-inference-core/llama-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs';
+import rawCatalog from 'llama-cpp-browser-core/llama-cpp/api/schema.mjs';
+import { createAbiCaller, fromEmscriptenPointer, toEmscriptenPointer, type PublicKind } from 'llama-cpp-browser-core/llama-cpp/host/abi';
+import { createLowLevelFunctions } from 'llama-cpp-browser-core/llama-cpp/api/functions';
+import type { MainModule } from 'llama-cpp-browser-core/llama-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs';
 import type { ChatParams, NativeChat } from './chat-bindings';
 import { gpuProfilingProfile, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import type { Q8DiagnosticAccess, Q8KernelDiagnosticAdapter } from './q8-kernel-diagnostic';
+import type { ModelGraphNativeExports } from '@/features/llama-cpp-browser/model-graph/native-exports';
+import type { Q8DiagnosticFunctions } from 'llama-cpp-browser-core/llama-cpp/api/extensions';
 
-// Direct access is restricted to width-independent runtime exports. Size-dependent
-// C fields use the generated schema; correlated Embind handles use chat-bindings.
+// Direct access is limited to metadata, allocation and fixed optional extensions.
+// C calls use the shared marshaler; correlated Embind handles use chat-bindings.
 export type CoreModule = Pick<MainModule,
   'HEAPU8' | 'FS' | 'ccall' | 'removeFunction' | 'string_vector' | 'llama_tokens'
   | 'llama_token_sequences' | 'common_reasoning_budget_init' | 'common_reasoning_budget_get_state'
   | 'common_reasoning_budget_get_end_match_copy' | 'common_reasoning_budget_state'
-  | 'common_grammar_trigger' | 'common_grammar_triggers' | 'common_grammar_trigger_type'> & {
+  | 'common_grammar_trigger' | 'common_grammar_triggers' | 'common_grammar_trigger_type'> & Partial<ModelGraphNativeExports> & {
   common_chat_params: new () => ChatParams;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Native allocator ABI.
+  _malloc(bytes: number): number;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Native allocator ABI.
+  _free(pointer: number): void;
+  _bicore_abi_version(): number;
+  _bicore_schema_hash(): number | bigint;
+  _bicore_pointer_bytes(): number;
+  _bicore_file_backed_rows_version?(): number;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Native-width pointer helper, enabled only by the Wasm64 capability.
+  _bicore_model_file_backed_shard?(model: number | bigint): number;
+  _lcb_webgpu_q8_diagnostic_version?: Q8DiagnosticFunctions['version'];
+  _lcb_webgpu_q8_diagnostic_run_v1?: Q8DiagnosticFunctions['runV1'];
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten callback registration ABI.
   addFunction<TArgs extends (number | bigint)[]>(callback: (...args: TArgs) => number, signature: string): number | bigint,
 };
-const kindSchema = z.enum(['pointer', 'record', 'u64', 'i64', 'float', 'signed', 'unsigned', 'boolean', 'array', 'void']);
-const schema = z.object({
-  abiVersion: z.number().int(),
-  schemaSha256: z.string(),
-  constants: z.array(z.string()),
-  records: z.array(z.object({ name: z.string(), id: z.number().int(), fields: z.array(z.object({ name: z.string(), id: z.number().int(), kind: kindSchema })) })),
-  functions: z.array(z.object({ name: z.string(), export: z.string(), returnKind: kindSchema, parameters: z.array(z.object({ kind: kindSchema })) })),
-}).parse(rawSchema);
 type NativeScalar = number | bigint;
-// Positional calls are confined to the generated native ABI, not application APIs.
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Generated C ABI functions have positional scalar arguments.
-type NativeCall = (...args: NativeScalar[]) => NativeScalar | void | Promise<NativeScalar | void>;
 
 function index({ value }: { value: NativeScalar }): number {
   const result = Number(value);
@@ -44,20 +47,28 @@ function index({ value }: { value: NativeScalar }): number {
 }
 
 export function attachCore({ module, callMode }: { module: CoreModule, callMode: 'direct' | 'asyncify' | 'jspi' }) {
-  function native({ name }: { name: string }): NativeCall {
-    const value: unknown = Reflect.get(module, name);
-    if (typeof value !== 'function') {
-      throw new Error(`Missing native export: ${name}`);
+  let busy = false;
+  function assertIdle(): void {
+    if (busy) {
+      throw new Error('Serialize access while a native call is pending');
     }
-    return value as NativeCall;
   }
-  function scalar({ name, args }: { name: string, args: NativeScalar[] }): NativeScalar {
-    const result = native({ name })(...args);
-    if (typeof result !== 'number' && typeof result !== 'bigint') {
-      throw new TypeError(`Expected synchronous scalar: ${name}`);
-    }
-    return result;
-  }
+  const calls = createAbiCaller({
+    module,
+    schema: rawCatalog,
+    suspension: callMode,
+    gate: {
+      enter() {
+        assertIdle();
+        busy = true;
+      },
+      leave() {
+        busy = false;
+      },
+    },
+  });
+  const { schema } = calls;
+  const { pointerBytes } = schema;
   const bytes = ({ pointer, length }: { pointer: bigint, length: NativeScalar }): Uint8Array => {
     const start = index({ value: pointer });
     const size = index({ value: length });
@@ -67,114 +78,15 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     }
     return heap.subarray(start, start + size);
   };
-  if (scalar({ name: '_lcb_abi_version', args: [] }) !== schema.abiVersion) {
-    throw new Error('Native ABI mismatch');
-  }
-  const hash = BigInt(scalar({ name: '_lcb_schema_hash', args: [] }));
-  if (new TextDecoder().decode(bytes({ pointer: hash, length: 64 })) !== schema.schemaSha256) {
-    throw new Error('Native schema mismatch');
-  }
-  const pointerBytes = Number(scalar({ name: '_lcb_pointer_bytes', args: [] }));
-  if (pointerBytes !== 4 && pointerBytes !== 8) {
-    throw new Error('Unsupported pointer ABI');
-  }
-  let busy = false;
-  function assertIdle(): void {
-    if (busy) {
-      throw new Error('Serialize access while a native call is pending');
-    }
-  }
-  const api: Record<string, NativeCall> = Object.create(null);
-  for (const fn of schema.functions) {
-    const call = native({ name: fn.export });
-    // The generated signature belongs to the bound module, not to one call.
-    // Keep validating actual arguments and holding the suspension guard below.
-    const kinds = fn.parameters.map(parameter => parameter.kind);
-    switch (fn.returnKind) {
-    case 'record': kinds.unshift('pointer');
-      break;
-    case 'pointer': case 'u64': case 'i64': case 'float': case 'signed': case 'unsigned': case 'boolean': case 'array': case 'void': break;
-    default: {
-      const exhaustive: never = fn.returnKind;
-      throw new Error(`Unknown return kind: ${exhaustive}`);
-    }
-    }
-    const ccallName = fn.export.slice(1);
-    const ccallReturn = fn.returnKind === 'record' || fn.returnKind === 'void' ? undefined
-      : ['pointer', 'u64', 'i64'].includes(fn.returnKind) ? 'bigint' : 'number';
-    const ccallKinds = kinds.map(kind => ['pointer', 'record', 'u64', 'i64'].includes(kind) ? 'bigint' as const : 'number' as const);
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Adapt generated C ABI calls without changing their signatures.
-    api[fn.name] = async (...args) => {
-      assertIdle();
-      if (args.length !== kinds.length) {
-        throw new TypeError(`Incorrect native argument count: ${fn.name}`);
-      }
-      for (const [i, kind] of kinds.entries()) {
-        const value = args[i];
-        let minimum: number | bigint;
-        let maximum: number | bigint;
-        let integer = true;
-        switch (kind) {
-        case 'pointer': case 'record': case 'u64': minimum = 0n;
-          maximum = (1n << 64n) - 1n;
-          break;
-        case 'i64': minimum = -(1n << 63n);
-          maximum = (1n << 63n) - 1n;
-          break;
-        case 'signed': minimum = -2147483648;
-          maximum = 2147483647;
-          break;
-        case 'unsigned': minimum = 0;
-          maximum = 4294967295;
-          break;
-        case 'boolean': minimum = 0;
-          maximum = 1;
-          break;
-        case 'float': minimum = -Infinity;
-          maximum = Infinity;
-          integer = false;
-          break;
-        case 'array': case 'void': throw new TypeError('Invalid native argument kind');
-        default: {
-          const exhaustive: never = kind;
-          throw new Error(`Unknown argument kind: ${exhaustive}`);
-        }
-        }
-        if (typeof minimum === 'bigint') {
-          if (typeof value !== 'bigint' || value < minimum || value > maximum) {
-            throw new RangeError('Invalid native 64-bit argument');
-          }
-        } else if (typeof value !== 'number' || !Number.isFinite(value) || (integer && !Number.isInteger(value)) || value < minimum || value > maximum) {
-          throw new RangeError('Invalid native numeric argument');
-        }
-      }
-      busy = true;
-      try {
-        switch (callMode) {
-        case 'direct': case 'jspi': return await call(...args);
-        case 'asyncify': {
-          // Raw Asyncify exports can return before unwinding finishes. ccall waits for
-          // the final result and keeps the serialization guard held during suspension.
-          // The generated bridge uses bigint for pointers even in the wasm32 profile.
-          const result: NativeScalar | void = await module.ccall(ccallName, ccallReturn, ccallKinds, args, { async: true });
-          return result;
-        }
-        default: {
-          const exhaustive: never = callMode;
-          throw new Error(`Unhandled native call mode: ${exhaustive}`);
-        }
-        }
-      } finally {
-        busy = false;
-      }
-    };
-  }
+  // The typed invoker owns one completion Promise through native decoding and
+  // gate release. The generated facade returns that Promise without wrapping it.
+  const api = createLowLevelFunctions({ invoker: calls.invoker });
   // ABI metadata belongs to this module instance. Never retain heap views or
   // request/model pointers here: heap growth and allocator reuse are unrelated
   // to the immutable record layouts. Only known schema entries enter the maps.
   const records = new Map(schema.records.map(entry => [entry.name, entry]));
   const recordSizes = new Map<string, number>();
-  const fieldLayouts = new Map<string, Map<string, Readonly<{ kind: z.infer<typeof kindSchema>, offset: bigint, size: number }>>>();
+  const fieldLayouts = new Map<string, Map<string, Readonly<{ kind: PublicKind, offset: bigint, size: number }>>>();
   function record({ name }: { name: string }) {
     const entry = records.get(name);
     if (!entry) {
@@ -194,8 +106,8 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     if (!spec) {
       throw new Error(`Unknown native field: ${name}.${field}`);
     }
-    const offset = BigInt(index({ value: scalar({ name: '_lcb_offsetof_field', args: [entry.id, spec.id] }) }));
-    const size = index({ value: scalar({ name: '_lcb_sizeof_field', args: [entry.id, spec.id] }) });
+    const offset = BigInt(spec.offset);
+    const size = spec.size;
     // Publish only a fully read, immutable result. Failed queries remain misses.
     const layout = Object.freeze({ kind: spec.kind, offset, size });
     let fields = fieldLayouts.get(name);
@@ -217,7 +129,7 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     if (!size) {
       throw new RangeError('Allocation must be nonempty');
     }
-    const pointer = BigInt(scalar({ name: '_lcb_malloc', args: [BigInt(size)] }));
+    const pointer = fromEmscriptenPointer({ value: module._malloc(toEmscriptenPointer({ value: BigInt(size), pointerBytes })), pointerBytes });
     return pointer === 0n ? undefined : pointer;
   }
   function alloc({ bytes }: { bytes: NativeScalar }): bigint {
@@ -233,27 +145,38 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     if (cached !== undefined) {
       return cached;
     }
-    const size = index({ value: scalar({ name: '_lcb_sizeof_record', args: [record({ name }).id] }) });
+    const size = record({ name }).size;
     recordSizes.set(name, size);
     return size;
   };
   function free({ pointer }: { pointer: bigint }): void {
     assertIdle();
-    native({ name: '_lcb_free' })(pointer);
+    module._free(toEmscriptenPointer({ value: pointer, pointerBytes }));
+  }
+  function constant({ name }: { name: string }): number {
+    const encoded = schema.constantValues[name];
+    if (encoded === undefined || !schema.constants.includes(name)) {
+      throw new Error(`Unknown native constant: ${name}`);
+    }
+    const value = Number(BigInt(encoded));
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError('Unsafe native constant');
+    }
+    return value;
   }
   function q8KernelDiagnosticAvailability(): 'available' | 'unavailable' {
     assertIdle();
-    const exports = ['version', 'run_v1', 'schema_hash', 'sizeof_record', 'alignof_record', 'offsetof_field', 'sizeof_field', 'constant']
-      .map(suffix => Reflect.get(module, `_lcb_webgpu_q8_diagnostic_${suffix}`) as unknown);
-    if (exports.every(value => value === undefined)) {
+    const exports = [module._lcb_webgpu_q8_diagnostic_version, module._lcb_webgpu_q8_diagnostic_run_v1];
+    const descriptor = schema.extensions?.['webgpu-q8-diagnostic-v1'];
+    if (descriptor === undefined && exports.every(value => value === undefined)) {
       return 'unavailable';
     }
-    if (exports.some(value => typeof value !== 'function')) {
+    if (descriptor === undefined || exports.some(value => typeof value !== 'function')) {
       throw new Error('Incomplete Q8 diagnostic native exports');
     }
     return 'available';
   }
-  async function createQ8KernelDiagnostic({ schemaBytes }: { schemaBytes: Uint8Array }): Promise<Q8KernelDiagnosticAdapter | undefined> {
+  async function createQ8KernelDiagnostic(): Promise<Q8KernelDiagnosticAdapter | undefined> {
     const availability = q8KernelDiagnosticAvailability();
     switch (availability) {
     case 'unavailable': return undefined;
@@ -263,30 +186,18 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
       throw new Error(`Unhandled Q8 diagnostic availability: ${exhaustive}`);
     }
     }
-    if (schemaBytes.byteLength > 256 * 1024) {
-      throw new Error('Invalid Q8 diagnostic schema bytes');
+    const schemaSnapshot: unknown = structuredClone(schema.extensions?.['webgpu-q8-diagnostic-v1']);
+    const version = module._lcb_webgpu_q8_diagnostic_version;
+    const invoke = module._lcb_webgpu_q8_diagnostic_run_v1;
+    if (typeof version !== 'function' || typeof invoke !== 'function') {
+      throw new Error('Incomplete Q8 diagnostic native exports');
     }
-    const schemaSnapshot = new Uint8Array(schemaBytes);
     const diagnostic = await import('./q8-kernel-diagnostic');
     assertIdle();
     // This access object never leaves the adapter. Its owner can use only these
     // fixed leaves, and holds the ordinary busy gate through report cleanup.
-    const metadata = ({ suffix, args }: { suffix: string, args: NativeScalar[] }) => {
-      assertIdle();
-      return scalar({ name: `_lcb_webgpu_q8_diagnostic_${suffix}`, args });
-    };
     const access: Q8DiagnosticAccess = {
       assertIdle,
-      schemaHash: () => metadata({ suffix: 'schema_hash', args: [] }),
-      recordSize: ({ recordId }) => metadata({ suffix: 'sizeof_record', args: [recordId] }),
-      recordAlignment: ({ recordId }) => metadata({ suffix: 'alignof_record', args: [recordId] }),
-      fieldOffset: ({ recordId, fieldId }) => metadata({ suffix: 'offsetof_field', args: [recordId, fieldId] }),
-      fieldSize: ({ recordId, fieldId }) => metadata({ suffix: 'sizeof_field', args: [recordId, fieldId] }),
-      constant: ({ id }) => metadata({ suffix: 'constant', args: [id] }),
-      bytes: ({ pointer, length }) => {
-        assertIdle();
-        return bytes({ pointer, length });
-      },
       async withAccess({ operation }) {
         assertIdle();
         busy = true;
@@ -297,15 +208,6 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
             throw new Error('Q8 diagnostic runtime must be discarded');
           }
         }
-        const leaf = ({ name, args }: { name: string, args: NativeScalar[] }) => {
-          assertOwner();
-          try {
-            return scalar({ name, args });
-          } catch (error) {
-            poisoned = true;
-            throw error;
-          }
-        };
         try {
           return await operation({
             owner: {
@@ -313,10 +215,28 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
               poison() {
                 poisoned = true;
               },
-              version: ({ backend }) => leaf({ name: '_lcb_webgpu_q8_diagnostic_version', args: [backend] }),
+              version: ({ backend }) => {
+                assertOwner();
+                try {
+                  const value = version(backend);
+                  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+                    throw new TypeError('Expected synchronous Q8 diagnostic version');
+                  }
+                  return value;
+                } catch (error) {
+                  poisoned = true;
+                  throw error;
+                }
+              },
               allocate: ({ length }) => {
-                const pointer = BigInt(leaf({ name: '_lcb_malloc', args: [BigInt(length)] }));
-                return pointer === 0n ? undefined : pointer;
+                assertOwner();
+                try {
+                  const pointer = fromEmscriptenPointer({ value: module._malloc(toEmscriptenPointer({ value: BigInt(length), pointerBytes })), pointerBytes });
+                  return pointer === 0n ? undefined : pointer;
+                } catch (error) {
+                  poisoned = true;
+                  throw error;
+                }
               },
               bytes: ({ pointer, length }) => {
                 assertOwner();
@@ -325,7 +245,7 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
               free: ({ pointer }) => {
                 assertOwner();
                 try {
-                  const result = native({ name: '_lcb_free' })(pointer);
+                  const result = module._free(toEmscriptenPointer({ value: pointer, pointerBytes }));
                   if (result !== undefined) {
                     throw new TypeError('Expected synchronous Q8 diagnostic release');
                   }
@@ -337,7 +257,7 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
               async invoke({ backend, dst, request, report, capacity }) {
                 assertOwner();
                 try {
-                  return await native({ name: '_lcb_webgpu_q8_diagnostic_run_v1' })(backend, dst, request, report, capacity);
+                  return await invoke(backend, dst, request, report, capacity);
                 } catch (error) {
                   poisoned = true;
                   throw error;
@@ -355,18 +275,22 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
         }
       },
     };
-    return diagnostic.createQ8KernelDiagnosticAdapter({ schemaBytes: schemaSnapshot, access });
+    return diagnostic.createQ8KernelDiagnosticAdapter({ schema: schemaSnapshot, access });
   }
   return {
     module,
-    api: api as unknown as LowLevelFunctions,
-    pointerBytes: pointerBytes as 4 | 8,
+    api,
+    pointerBytes,
+    abiFingerprint: schema.schemaSha256,
     assertIdle,
     bytes,
     alloc,
     tryAlloc,
     recordSize,
     fieldLayout,
+    hasFunction({ name }: { name: string }): boolean {
+      return schema.functions.some(fn => fn.name === name);
+    },
     q8KernelDiagnosticAvailability,
     createQ8KernelDiagnostic,
     /** Prepare a read-only native callback reader while idle. This deliberately
@@ -376,54 +300,28 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     createTensorPlacementReader() {
       assertIdle();
       const fields = Object.fromEntries(['op', 'type', 'ne', 'src', 'buffer', 'name', 'flags'].map(field => [field, fieldLayout({ name: 'ggml_tensor', field })]));
-      const constantNames = ({ prefix }: { prefix: string }) => new Map(schema.constants.flatMap((name, id) => name.startsWith(prefix) && !['GGML_OP_POOL_MAX', 'GGML_OP_POOL_AVG', 'GGML_OP_POOL_COUNT'].includes(name)
-        ? [[Number(scalar({ name: '_lcb_constant', args: [id] })), name] as const] : []));
+      const constantNames = ({ prefix }: { prefix: string }) => new Map(schema.constants.flatMap(name => name.startsWith(prefix) && !['GGML_OP_POOL_MAX', 'GGML_OP_POOL_AVG', 'GGML_OP_POOL_COUNT'].includes(name)
+        ? [[constant({ name }), name] as const] : []));
       const ops = constantNames({ prefix: 'GGML_OP_' }), types = constantNames({ prefix: 'GGML_TYPE_' });
-      // JSPI wraps ordinary exports in WebAssembly.promising(), even getters
-      // that never suspend. Never invoke those exports inside a synchronous
-      // native callback. A versioned binding-layer surface keeps this contract
-      // explicit; old JSPI artifacts can still provide safe layout-only data.
-      const versionExport: unknown = Reflect.get(module, '_lcb_callback_metadata_version');
-      const hasCallbackBindings = typeof versionExport === 'function';
-      if (hasCallbackBindings && scalar({ name: '_lcb_callback_metadata_version', args: [] }) !== 1) {
-        throw new Error('Unsupported callback metadata binding version');
-      }
-      const capability = (() => {
-        if (hasCallbackBindings) {
-          return 'synchronous-leaf-bindings-v1' as const;
-        }
-        switch (callMode) {
-        case 'jspi': return 'tensor-layout-only' as const;
-        case 'direct': case 'asyncify': return 'legacy-synchronous-getters' as const;
-        default: {
-          const exhaustive: never = callMode;
-          throw new Error(String(exhaustive));
-        }
-        }
-      })();
-      const gettersAvailable = capability !== 'tensor-layout-only';
+      // ABI 3 excludes these allocation-free getters from JSPI_EXPORTS. Their
+      // original C exports remain synchronous while a compute call is pending.
+      const capability = 'synchronous_direct_exports_v3' as const;
       const getter = ({ name }: { name: string }) => {
         const fn = schema.functions.find(fn => fn.name === name);
-        if (!fn) {
+        const leaves = schema.callbackMetadata.getters.filter(entry => entry.name === name);
+        if (!fn || leaves.length !== 1 || leaves[0]?.export !== fn.export) {
           throw new Error(`Missing diagnostic getter: ${name}`);
         }
-        const exportName = hasCallbackBindings ? `_lcb_callback_${name}` : fn.export;
-        if (gettersAvailable) {
-          native({ name: exportName });
-        } // Fail during setup, not per node.
         return ({ args }: { args: NativeScalar[] }): NativeScalar => {
-          if (!gettersAvailable) {
-            throw new Error('Synchronous callback getter unavailable');
+          const result = calls.callSync({ name, args });
+          if (typeof result !== 'number' && typeof result !== 'bigint') {
+            throw new TypeError(`Expected synchronous scalar: ${name}`);
           }
-          return scalar({ name: exportName, args });
+          return result;
         };
       };
       const description = getter({ name: 'ggml_op_desc' });
-      const computeFlagId = schema.constants.indexOf('GGML_TENSOR_FLAG_COMPUTE');
-      if (computeFlagId < 0) {
-        throw new Error('Missing tensor compute flag');
-      }
-      const computeFlag = Number(scalar({ name: '_lcb_constant', args: [computeFlagId] }));
+      const computeFlag = constant({ name: 'GGML_TENSOR_FLAG_COMPUTE' });
       const bufferName = getter({ name: 'ggml_backend_buffer_name' });
       const bufferHost = getter({ name: 'ggml_backend_buffer_is_host' });
       const supports = getter({ name: 'ggml_backend_dev_supports_op' });
@@ -437,7 +335,7 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
         return new TextDecoder().decode(span.subarray(0, end < 0 ? span.length : end));
       };
       const devices: bigint[] = [];
-      const count = gettersAvailable ? Number(getter({ name: 'ggml_backend_dev_count' })({ args: [] })) : 0;
+      const count = Number(getter({ name: 'ggml_backend_dev_count' })({ args: [] }));
       if (!Number.isSafeInteger(count) || count < 0 || count > 64) {
         throw new Error('Unexpected device registry size');
       }
@@ -479,13 +377,13 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
         });
         return {
           op,
-          description: gettersAvailable ? cstring({ pointer: BigInt(description({ args: [tensor] })), limit: 96 }) : op,
+          description: cstring({ pointer: BigInt(description({ args: [tensor] })), limit: 96 }),
           compute: (view({ tensor, field: 'flags' }).getInt32(0, true) & computeFlag) !== 0,
           ...tensorInfo({ tensor }),
           inputs,
           name: cstring({ pointer: tensor + fields.name!.offset, limit: Math.min(fields.name!.size, 96) }),
-          buffer: buffer === 0n ? 'unallocated' : !gettersAvailable ? 'unavailable' : cstring({ pointer: BigInt(bufferName({ args: [buffer] })), limit: 160 }),
-          storage: buffer === 0n || !gettersAvailable ? 'unknown' as const : bufferHost({ args: [buffer] }) ? 'host' as const : 'device' as const,
+          buffer: buffer === 0n ? 'unallocated' : cstring({ pointer: BigInt(bufferName({ args: [buffer] })), limit: 160 }),
+          storage: buffer === 0n ? 'unknown' as const : bufferHost({ args: [buffer] }) ? 'host' as const : 'device' as const,
           webgpuSupport: !devices.length ? 'unavailable' as const : devices.some(device => supports({ args: [device, tensor] })) ? 'supported' as const : 'unsupported' as const,
           metadataOnly: ['GGML_OP_NONE', 'GGML_OP_VIEW', 'GGML_OP_RESHAPE', 'GGML_OP_PERMUTE', 'GGML_OP_TRANSPOSE'].includes(op),
         };
@@ -494,20 +392,10 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     },
     enumValues({ prefix }: { prefix: string }): { name: string, value: number }[] {
       assertIdle();
-      return schema.constants.flatMap((name, id) => name.startsWith(prefix) ? [{ name, value: Number(scalar({ name: '_lcb_constant', args: [id] })) }] : []);
+      return schema.constants.flatMap(name => name.startsWith(prefix) ? [{ name, value: constant({ name }) }] : []);
     },
     free,
-    constant({ name }: { name: string }): number {
-      const id = schema.constants.indexOf(name);
-      if (id < 0) {
-        throw new Error(`Unknown native constant: ${name}`);
-      }
-      const value = Number(scalar({ name: '_lcb_constant', args: [id] }));
-      if (!Number.isSafeInteger(value)) {
-        throw new RangeError('Unsafe native constant');
-      }
-      return value;
-    },
+    constant,
     allocRecord({ name }: { name: string }): bigint {
       const size = recordSize({ name });
       const pointer = alloc({ bytes: size });
@@ -532,8 +420,10 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
         }
         if (size === 4) {
           view.setFloat32(0, value, true);
-        } else {
+        } else if (size === 8) {
           view.setFloat64(0, value, true);
+        } else {
+          throw new RangeError('Unsupported native float width');
         }
         return;
       case 'signed': case 'i64': signed = true;

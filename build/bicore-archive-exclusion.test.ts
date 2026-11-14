@@ -7,10 +7,11 @@ import path from 'node:path';
 import { expect, it } from 'vitest';
 import { runCommandSync } from './command';
 
-it.runIf(process.platform === 'linux')('the upload workflow omits native Wasm from unified and legacy packages, not host helpers', () => {
+it.runIf(process.platform === 'linux')('the upload workflow omits native Wasm from both runtime dependencies, not host helpers', () => {
   const workflow = readFileSync(path.resolve('.github/workflows/upload-node-modules.yml'), 'utf8');
   const excludes = [...workflow.matchAll(/--exclude='([^']+)'/gu)].map(match => `--exclude=${match[1]}`);
-  expect(excludes).toContain('--exclude=node_modules/browser-inference-core/*.wasm');
+  expect(excludes).toContain('--exclude=node_modules/llama-cpp-browser-core/*.wasm');
+  expect(excludes).toContain('--exclude=node_modules/stable-diffusion-cpp-browser-core/*.wasm');
   const check = workflow.match(/if grep -Eq '([^']+)' "\$contents"/u)?.[1];
   if (!check) {
     throw new Error('Missing post-compression inventory verification');
@@ -22,8 +23,8 @@ it.runIf(process.platform === 'linux')('the upload workflow omits native Wasm fr
     },
   };
   const wasm = [
-    'node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/cpu/browser/core.wasm',
-    'node_modules/browser-inference-core/runtimes/stable-diffusion-cpp-browser-core/profiles/webgpu/browser/core.wasm',
+    'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/cpu/browser/core.wasm',
+    'node_modules/stable-diffusion-cpp-browser-core/runtimes/stable-diffusion-cpp-browser-core/profiles/webgpu/browser/core.wasm',
     'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/cpu/core.wasm',
     'node_modules/stable-diffusion-cpp-browser-core/stable-diffusion-cpp-browser-core/profiles/cpu/core.wasm',
   ];

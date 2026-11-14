@@ -29,7 +29,6 @@ function installSidecars({ fixture, parts }: { fixture: ReturnType<typeof create
     const entry = { path: relative, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
     writeFileSync(path.join(fixture.packageRoot, 'runtimes/llama-cpp-browser-core', relative), bytes);
     inner.files.push(entry);
-    root.files.push({ ...entry, path: 'runtimes/llama-cpp-browser-core/' + relative });
   }
   const innerBytes = Buffer.from(JSON.stringify(inner));
   writeFileSync(innerPath, innerBytes);

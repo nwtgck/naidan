@@ -1,6 +1,6 @@
 import { isUnsupportedReasoningError } from '@/01-models/lm-errors';
 import { renderThinkingTemplate } from '@/features/lm/reasoning-rejection';
-import type { MainModule, common_chat_params, common_chat_prompt, common_chat_templates_inputs, common_chat_msg } from 'browser-inference-core/llama-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs';
+import type { MainModule, common_chat_params, common_chat_prompt, common_chat_templates_inputs, common_chat_msg } from 'llama-cpp-browser-core/llama-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs';
 import { LlamaCppBrowserError, type GenerateInput, type GenerationResult } from '@/features/llama-cpp-browser/types';
 import { logFailure } from '@/features/llama-cpp-browser/debug-log';
 

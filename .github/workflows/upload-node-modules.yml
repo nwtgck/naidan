@@ -81,7 +81,6 @@ jobs:
           # the packages' JavaScript, type declarations, and other resources.
           tar \
             --exclude='node_modules/onnxruntime-node/bin' \
-            --exclude='node_modules/browser-inference-core/*.wasm' \
             --exclude='node_modules/llama-cpp-browser-core/*.wasm' \
             --exclude='node_modules/stable-diffusion-cpp-browser-core/*.wasm' \
             -cf - node_modules \
@@ -93,7 +92,7 @@ jobs:
           test -s "$archive"
           zstd -t "$archive"
           zstd -dc "$archive" | tar -tf - > "$contents"
-          if grep -Eq '^node_modules/onnxruntime-node/bin(/|$)|^node_modules/(browser-inference-core|llama-cpp-browser-core|stable-diffusion-cpp-browser-core)/.*\.wasm$' "$contents"; then
+          if grep -Eq '^node_modules/onnxruntime-node/bin(/|$)|^node_modules/(llama-cpp-browser-core|stable-diffusion-cpp-browser-core)/.*\.wasm$' "$contents"; then
             echo '::error::Excluded binaries were found in the archive'
             exit 1
           fi

@@ -10,7 +10,7 @@ import { visionBf16Metadata } from '@/features/llama-cpp-browser/runtime/vision-
 import { loadProjector, loadProjectorForBackend } from './projector';
 
 const metadata = vi.hoisted(() => ({ value: undefined as unknown }));
-vi.mock('browser-inference-core/llama-cpp/api/schema.mjs', () => ({
+vi.mock('llama-cpp-browser-core/llama-cpp/api/schema.mjs', () => ({
   get default() {
     return metadata.value;
   },

@@ -7,12 +7,15 @@ Worker or request a GPU adapter. Settings/results are temporary page-local state
 
 ## Published bicore integration
 
-The migration target is one `browser-inference-core` dependency, pinned to a
-reviewed artifact commit. It contains both runtimes:
+Naidan keeps two dependencies, `llama-cpp-browser-core` and
+`stable-diffusion-cpp-browser-core`, each pinned independently to a reviewed
+artifact commit. Both artifacts have producer metadata name `browser-inference-core`
+and contain both runtimes; each consumer selects its own dependency directory and
+runtime-qualified public exports. The image dependency is laid out as follows:
 
 ```text
-node_modules/browser-inference-core/
-  manifest.json                          # root format 4
+node_modules/stable-diffusion-cpp-browser-core/
+  manifest.json                          # root format 5
   runtimes/llama-cpp-browser-core/
   runtimes/stable-diffusion-cpp-browser-core/
     manifest.json                        # image format 2
@@ -21,14 +24,14 @@ node_modules/browser-inference-core/
     profiles/
 ```
 
-The shared build-time reader verifies the root and selected runtime manifests,
-their source commit and their complete inventory. Payloads, especially Wasm,
-remain lazy. Runtime instances and their upstream pins are independent even
-though the artifact package and consumer dependency commit are shared.
+The root manifest owns root files and the inner manifest identities. Each inner
+manifest owns its runtime payload inventory. The shared build-time reader verifies
+the root and selected runtime manifests and their source commit; requested payload
+bytes are checked on demand. Payloads, especially Wasm, remain lazy. Runtime
+instances, upstream pins and consumer dependency commits remain independent.
 The `resolved` and `integrity` lock fields must come from the actual published
 artifact; a source checkout or a synthetic test package is not a substitute.
-The migration snapshot still needs that publication and dependency-lock update
-before it is an installable consumer change. It does not accept legacy layouts.
+The reader does not accept legacy layouts.
 Installation has no compiler, postinstall hook, model download or generated-code rewrite. Model acquisition is a separate explicit action in the hosted UI.
 
 ```sh
@@ -576,8 +579,8 @@ unchecked post-load Wasm rewriting is used.
 The original dispatch investigation used independently installed image artifact
 `cd726c3f08fa54563d4bad132d1bc488f1700046` (reported source
 `473ed681c49fb6790f74087cea42ddf92aad5b1e`). That is historical evidence, not the
-current migration's dependency pin. The unified artifact must be reviewed for
-both consumers; changing its package commit does not merge their upstream pins
+current migration's dependency pin. Review each runtime dependency's artifact;
+updating one dependency does not update the other or merge their upstream pins
 or WebAssembly instances.
 
 A completed denoising run can still fail in VAE decoding: the supplied Qwen

@@ -23,8 +23,8 @@ describe('collectRenderedModuleLicenseDependencies', () => {
     expect(dependencies[0]?.licenseText).toEqual(expect.any(String));
   });
 
-  it('includes a rendered private dependency and its complete notice', async () => {
-    const packageDirectory = path.dirname(require.resolve('browser-inference-core/manifest.json'));
+  it.each(['llama-cpp', 'stable-diffusion-cpp'])('includes the rendered %s runtime package and its complete notice', async runtime => {
+    const packageDirectory = path.dirname(require.resolve(`${runtime}-browser-core/${runtime}/manifest.json`));
     const moduleId = path.join(packageDirectory, 'profiles/webgpu-wasm64-jspi/browser/core.mjs');
     const metadata = JSON.parse(readFileSync(path.join(packageDirectory, 'package.json'), 'utf8'));
     expect(metadata.private).toBe(true);

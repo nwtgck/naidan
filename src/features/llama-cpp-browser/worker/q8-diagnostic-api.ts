@@ -1,7 +1,5 @@
-import { z } from 'zod';
 import { q8KernelDiagnosticSchemaAsset } from 'virtual:llama-cpp-browser-core/availability';
 import { gpuProfilingProfile } from '@/features/llama-cpp-browser/types';
-import { loadQ8DiagnosticSchema } from '@/features/llama-cpp-browser/runtime/q8-diagnostic-assets';
 import { loadRuntime } from '@/features/llama-cpp-browser/runtime/load-runtime';
 import { beginGpuMeasurement, readGpuRequests } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { q8DiagnosticWorkerRequestSchema, q8DiagnosticWorkerResultSchema, type Q8DiagnosticWorkerApi, type Q8DiagnosticClient } from '@/features/llama-cpp-browser/performance/q8-diagnostic-worker-types';
@@ -28,18 +26,14 @@ export function createQ8DiagnosticWorkerApi({ onProgress }: { onProgress: Parame
       const started = performance.now();
       const finishMeasurement = beginGpuMeasurement({ now: () => performance.now() });
       try {
-        const schemaBytes = await loadQ8DiagnosticSchema({ profile: gpuProfilingProfile, assetBaseURL: accepted.assetBaseURL, asset, signal: undefined });
-        if (!schemaBytes) {
-          throw new Error('Missing advertised Q8 diagnostic schema');
-        }
         const core = await loadRuntime({ profile: gpuProfilingProfile, assetBaseURL: accepted.assetBaseURL });
-        const diagnostic = await core.createQ8KernelDiagnostic({ schemaBytes });
+        const diagnostic = await core.createQ8KernelDiagnostic();
         if (!diagnostic) {
           return { status: 'unavailable', reason: 'native-exports' };
         }
-        // The adapter already checked the complete canonical JSON against the
-        // compiled extension. Record that identity separately from the asset SHA.
-        const { schemaSha256: compiledSchemaSha256 } = z.object({ schemaSha256: z.string().regex(/^[0-9a-f]{64}$/) }).parse(JSON.parse(new TextDecoder().decode(schemaBytes)));
+        // Record the binary-selected target identity separately from the build's
+        // published metadata-view identity; no second schema fetch is needed.
+        const compiledSchemaSha256 = core.abiFingerprint;
         const setupWallMs = performance.now() - started;
         const benchmark = await runQ8KernelBenchmark({ core, diagnostic, signal: undefined, onProgress });
         return q8DiagnosticWorkerResultSchema.parse({ status: 'completed', schemaAssetSha256: asset.sha256, compiledSchemaSha256, setupWallMs, gpuRequests: readGpuRequests({ core }), benchmark });

@@ -3,6 +3,7 @@ import type { NativePerformanceSignal } from './run-performance';
 import { imageErrorContext, type ImageDiagnosticInput, type createImageTrace } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 import { cancelControlSchema, previewControlSchema, type CancelControl, type CancelledResult, type PreviewControl, type Request, type Progress, type ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core, HostHelpers } from './core-types';
+import { nativePointer } from './native-pointer';
 import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES, type SyncBlobReader } from './gguf-file';
 import { validateModelMounts } from './model-mounts';
 import { assertBf16ConversionFitsMemory } from './bf16-conversion-memory';
@@ -286,7 +287,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     core.module.FS.mkdir('/models');
     const paths = new Map<ModelSlot, string>();
     const directories = new Set(['/models']);
-    const capabilities = core.module._sdc_model_io_capabilities?.() ?? 0;
+    const capabilities = core.module._bicore_model_io_capabilities?.() ?? 0;
     const h3Composition: { primary: boolean, embedding: Awaited<ReturnType<typeof validateModelMounts>>['minimaxH3BF16Embedding'] } = { primary: false, embedding: undefined };
     async function mount({ slot, input }: { slot: string, input: Parameters<typeof validateModelMounts>[0]['input'] }): Promise<string> {
       const { file } = input;
@@ -771,11 +772,11 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     if (nativeCall === 'generate_image' && context) {
       // Pinned sd_cancel_generation performs only an atomic flag store. Never
       // throw from a native callback or call the generic busy-guarded API here.
-      const set = core.module._sdc_sd_cancel_generation;
+      const set = core.module._sd_cancel_generation;
       if (!set) {
         throw new Error('This runtime lacks cooperative image cancellation');
       }
-      set(context, core.constant('SD_CANCEL_ALL'));
+      set(nativePointer({ pointer: context, pointerBytes: core.pointerBytes }), core.constant('SD_CANCEL_ALL'));
     }
     return true;
   }

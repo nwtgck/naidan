@@ -1,11 +1,10 @@
 // @vitest-environment node
 import { readFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { attachCore, createCore, type Core } from './core';
-import { createDiagnosticNativeFixture, diagnosticPrefix, schemaBytes } from './q8-kernel-diagnostic.test-support';
+import { createDiagnosticNativeFixture, diagnosticPrefix } from './q8-kernel-diagnostic.test-support';
 import { Q8KernelDiagnosticFatalError, type Q8KernelDiagnosticPhase, type Q8KernelDiagnosticVariant } from './q8-kernel-diagnostic';
 
 const revision2Auto = {
@@ -22,7 +21,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   let base: Core;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     base = await createCore({
       profile: 'cpu-wasm32',
       baseURL,
@@ -36,23 +35,24 @@ describe('optional Q8 native diagnostic adapter', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it('matches the generated source contract and does not probe optional exports during attach or ordinary calls', async () => {
+  it('uses the declared protocol and does not probe optional exports during attach or ordinary calls', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
-    expect(fixture.schema.schemaSha256).toBe('06990d0ca1aab352f2e06087e1231fa1cf02b2334c2e8feef5279ffc1c57fa94');
+    expect(fixture.schema.baseAbiVersion).toBe(3);
     expect(fixture.probes).toEqual([]);
     expect(typeof await fixture.core.api.ggml_backend_dev_count()).toBe('bigint');
     expect(fixture.probes).toEqual([]);
     expect(fixture.core.q8KernelDiagnosticAvailability()).toBe('available');
-    expect(fixture.probes).toHaveLength(8);
+    expect(fixture.probes).toHaveLength(2);
     expect(fixture.calls).toEqual([]);
     expect(Object.keys(fixture.core)).not.toContain('withAccess');
   });
 
   it('returns unavailable only for a completely absent extension', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
-    fixture.state.omitted = new Set(['version', 'run_v1', 'schema_hash', 'sizeof_record', 'alignof_record', 'offsetof_field', 'sizeof_field', 'constant']);
+    fixture.state.omitted = new Set(['version', 'run_v1']);
+    fixture.omitDescriptor();
     expect(fixture.core.q8KernelDiagnosticAvailability()).toBe('unavailable');
-    await expect(fixture.core.createQ8KernelDiagnostic({ schemaBytes: new Uint8Array([0xff]) })).resolves.toBeUndefined();
+    await expect(fixture.core.createQ8KernelDiagnostic()).resolves.toBeUndefined();
     expect(fixture.calls).toEqual([]);
     fixture.state.omitted.delete('run_v1');
     expect(() => fixture.core.q8KernelDiagnosticAvailability()).toThrow('Incomplete');
@@ -61,15 +61,20 @@ describe('optional Q8 native diagnostic adapter', () => {
     expect(() => fixture.core.q8KernelDiagnosticAvailability()).toThrow('Incomplete');
   });
 
-  it('rejects schema edits, unknown fields, non-ASCII and a mismatched compiled fingerprint before allocating records', async () => {
+  it('rejects changed protocol fields, invalid identifiers and a mismatched compiled target before allocating records', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
-    const modified = structuredClone(fixture.schema);
-    modified.records[0]!.fields[0]!.name = 'tampered';
-    await expect(fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: modified }) })).rejects.toThrow('canonical schema mismatch');
-    await expect(fixture.core.createQ8KernelDiagnostic({ schemaBytes: new TextEncoder().encode(JSON.stringify({ ...fixture.schema, extra: true })) })).rejects.toThrow();
-    await expect(fixture.core.createQ8KernelDiagnostic({ schemaBytes: new TextEncoder().encode('日本語') })).rejects.toThrow('schema bytes');
+    const fields = fixture.schema.records[0]!.fields;
+    const name = fields[0]!.name;
+    fields[0]!.name = 'tampered';
+    await expect(fixture.core.createQ8KernelDiagnostic()).rejects.toThrow('schema entries');
+    fields[0]!.name = '日本語';
+    await expect(fixture.core.createQ8KernelDiagnostic()).rejects.toThrow();
+    fields[0]!.name = name;
+    fields.push({ ...fields[0]!, name: 'extra' });
+    await expect(fixture.core.createQ8KernelDiagnostic()).rejects.toThrow();
+    fields.pop();
     fixture.replaceCompiledHash({ hash: 'f'.repeat(64) });
-    await expect(fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) })).rejects.toThrow('compiled schema mismatch');
+    expect(() => attachCore({ module: fixture.module, callMode: 'jspi' })).toThrow(/ABI|target|metadata/iu);
     expect(fixture.state.allocationCount).toBe(0);
     expect(() => fixture.core.assertIdle()).not.toThrow();
   });
@@ -79,79 +84,73 @@ describe('optional Q8 native diagnostic adapter', () => {
     { leaf: 'offsetof_field', value: 0 }, { leaf: 'sizeof_field', value: 8 }, { leaf: 'offsetof_field', value: 0xffffffff },
   ])('rejects invalid runtime $leaf layout ($value)', async ({ leaf, value }) => {
     using fixture = createDiagnosticNativeFixture({ base });
-    fixture.state.overrides[leaf] = () => value;
-    await expect(fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) })).rejects.toThrow();
+    const record = fixture.schema.records[0]!;
+    if (leaf === 'sizeof_record') {
+      record.size = value;
+    } else if (leaf === 'alignof_record') {
+      record.alignment = value;
+    } else if (leaf === 'sizeof_field') {
+      record.fields[0]!.size = value;
+    } else {
+      record.fields[value === 0 ? 1 : 0]!.offset = value;
+    }
+    await expect(fixture.core.createQ8KernelDiagnostic()).rejects.toThrow();
     expect(fixture.state.allocationCount).toBe(0);
   });
 
-  it('uses supplied record/field IDs, sizes and offsets rather than wire positions', async () => {
+  it('uses supplied sizes and offsets with arbitrary IDs and declaration order', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
-    fixture.state.idShift = 17;
     fixture.state.padding = 16;
     for (const record of fixture.schema.records) {
       record.id += 17;
+      record.size += 16;
       for (const field of record.fields) {
         field.id += 17;
+        field.offset += 16;
       }
     }
-    const canonical = { ...fixture.schema };
-    Reflect.deleteProperty(canonical, 'schemaSha256');
-    fixture.schema.schemaSha256 = createHash('sha256').update(JSON.stringify(canonical, undefined, 2) + '\n').digest('hex');
-    fixture.replaceCompiledHash({ hash: fixture.schema.schemaSha256 });
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    fixture.schema.records.reverse();
+    for (const record of fixture.schema.records) {
+      record.fields.reverse();
+    }
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     const result = await adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'prepare', repetitions: 0 });
     expect(result).toMatchObject({ status: 'ok', algorithm: 'independent', workgroupSize: 128, rowsPerTile: 2, dispatches: 0 });
     expect(fixture.freed).toHaveLength(2);
   });
 
-  it('rechecks the shared idle gate after asynchronous hashing', async () => {
+  it('uses already-bound target metadata without hashing or fetching a second schema', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
-    const digest = crypto.subtle.digest.bind(crypto.subtle);
-    const gate = Promise.withResolvers<ArrayBuffer>();
-    const started = Promise.withResolvers<void>();
-    vi.spyOn(crypto.subtle, 'digest').mockImplementationOnce(async (...args) => {
-      started.resolve();
-      const value = await digest(...args);
-      await gate.promise;
-      return value;
-    });
-    const nativeGate = Promise.withResolvers<bigint>();
-    const module = new Proxy(fixture.module, {
-      get(target, property) {
-        return property === '_lcb_ggml_backend_dev_count' ? () => nativeGate.promise : Reflect.get(target, property, target);
-      },
-    });
-    const core = attachCore({ module, callMode: 'jspi' });
-    const creating = core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
-    await started.promise;
-    const pending = core.api.ggml_backend_dev_count();
-    gate.resolve(new ArrayBuffer(0));
-    await expect(creating).rejects.toThrow('Serialize access');
+    using digest = vi.spyOn(crypto.subtle, 'digest');
+    using fetcher = vi.spyOn(globalThis, 'fetch');
+    expect(await fixture.core.createQ8KernelDiagnostic()).toBeDefined();
+    expect(digest).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
     expect(fixture.calls).toEqual([]);
-    nativeGate.resolve(0n);
-    await pending;
-    expect(() => core.assertIdle()).not.toThrow();
+    expect(() => fixture.core.assertIdle()).not.toThrow();
   });
 
-  it('snapshots schema bytes before the dynamic import await and checks idle again afterward', async () => {
+  it('snapshots target metadata before the dynamic import await and checks idle again afterward', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
-    const source = schemaBytes({ schema: fixture.schema });
-    const creating = fixture.core.createQ8KernelDiagnostic({ schemaBytes: source });
-    source.fill(0);
+    const record = fixture.schema.records[0]!;
+    const size = record.size;
+    const creating = fixture.core.createQ8KernelDiagnostic();
+    record.size = 0;
     expect(await creating).toBeDefined();
-    const nativeGate = Promise.withResolvers<bigint>();
+    record.size = size;
+    const nativeGate = Promise.withResolvers<number>();
     const core = attachCore({
       module: new Proxy(fixture.module, {
         get(target, property) {
-          return property === '_lcb_ggml_backend_dev_count' ? () => nativeGate.promise : Reflect.get(target, property, target);
+          return property === '_ggml_backend_dev_count' ? () => nativeGate.promise : Reflect.get(target, property, target);
         },
       }),
       callMode: 'jspi',
     });
-    const second = core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const second = core.createQ8KernelDiagnostic();
     const pending = core.api.ggml_backend_dev_count();
     await expect(second).rejects.toThrow('Serialize access');
-    nativeGate.resolve(0n);
+    nativeGate.resolve(0);
     await pending;
   });
 
@@ -159,7 +158,7 @@ describe('optional Q8 native diagnostic adapter', () => {
     using fixture = createDiagnosticNativeFixture({ base });
     const gate = Promise.withResolvers<void>();
     fixture.state.delay = gate.promise;
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     const queries = fixture.metadataCalls.length;
     let cleanupChecks = 0;
     fixture.state.onFree = () => {
@@ -202,28 +201,28 @@ describe('optional Q8 native diagnostic adapter', () => {
 
   it('refuses diagnostic setup and execution while an ordinary native call owns the gate', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
-    const nativeGate = Promise.withResolvers<bigint>();
+    const nativeGate = Promise.withResolvers<number>();
     const core = attachCore({
       module: new Proxy(fixture.module, {
         get(target, property) {
-          return property === '_lcb_ggml_backend_dev_count' ? () => nativeGate.promise : Reflect.get(target, property, target);
+          return property === '_ggml_backend_dev_count' ? () => nativeGate.promise : Reflect.get(target, property, target);
         },
       }),
       callMode: 'jspi',
     });
-    const adapter = await core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await core.createQ8KernelDiagnostic();
     const pending = core.api.ggml_backend_dev_count();
-    await expect(core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) })).rejects.toThrow('Serialize access');
+    await expect(core.createQ8KernelDiagnostic()).rejects.toThrow('Serialize access');
     await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'prepare', repetitions: 0 })).rejects.toThrow('Serialize access');
     expect(fixture.state.allocationCount).toBe(0);
-    nativeGate.resolve(0n);
+    nativeGate.resolve(0);
     await pending;
   });
 
   it.each(['cooperative-wg256-r4', 'independent-wg128-r4', 'independent-wg128-r1', 'independent-wg128-r2', 'cooperative-wg128-r2'] as const)('marshals %s and reacquires a grown heap after JSPI', async variant => {
     using fixture = createDiagnosticNativeFixture({ base });
     fixture.state.grow = true;
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     const observed: Readonly<Record<string, number>>[] = [];
     fixture.state.onRequest = ({ request }) => observed.push(request);
     const result = await adapter!.run({ backend: 1n, dst: 2n, variant, phase: 'execute', repetitions: 5 });
@@ -237,7 +236,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   it.each([1, 2, 3, 4, 5])('preserves known native status %s and its report contract', async status => {
     using fixture = createDiagnosticNativeFixture({ base });
     fixture.state.status = status;
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     const result = await adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'execute', repetitions: 1 });
     expect(result.status).toBe(['ok', 'unavailable', 'bad-request', 'unsupported', 'not-prepared', 'busy'][status]);
     expect(result.shaderSha256).toBeUndefined();
@@ -248,7 +247,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   it.each([4, 8, 16, 32, 64])('keeps revision 1 fixed-width independent SG%s reports unchanged', async subgroup => {
     using fixture = createDiagnosticNativeFixture({ base });
     fixture.state.report = { logical_subgroup_size: subgroup, real_min_subgroup_size: subgroup, real_max_subgroup_size: subgroup, outputs_per_workgroup: 2 * 128 / subgroup };
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     const result = await adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'execute', repetitions: 1 });
     expect(result.codegenRevision).toBe(1);
     expect(result.logicalSubgroupSize).toBe(subgroup);
@@ -260,7 +259,7 @@ describe('optional Q8 native diagnostic adapter', () => {
       using fixture = createDiagnosticNativeFixture({ base });
       fixture.state.status = operation.status;
       fixture.state.report = { ...revision2Auto, real_min_subgroup_size: minimum, real_max_subgroup_size: maximum };
-      const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+      const adapter = await fixture.core.createQ8KernelDiagnostic();
       const result = await adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: operation.phase, repetitions: operation.repetitions });
       expect(result).toMatchObject({ codegenRevision: 2, variant: 'auto', algorithm: 'independent', workgroupSize: 128, logicalSubgroupSize: 16, realMinSubgroupSize: minimum, realMaxSubgroupSize: maximum, rowsPerTile: 4, outputsPerWorkgroup: 32, cooperativeSubgroupReduction: false });
       expect(result.status).toBe(operation.status === 0 ? 'ok' : 'not-prepared');
@@ -285,7 +284,7 @@ describe('optional Q8 native diagnostic adapter', () => {
       using fixture = createDiagnosticNativeFixture({ base });
       fixture.state.status = status;
       fixture.state.report = { ...revision2Auto, real_min_subgroup_size: 4, real_max_subgroup_size: 128, [field]: value };
-      const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+      const adapter = await fixture.core.createQ8KernelDiagnostic();
       await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'execute', repetitions: 1 })).rejects.toBeInstanceOf(Q8KernelDiagnosticFatalError);
       expect(fixture.freed).toEqual([]);
       expect(() => fixture.core.assertIdle()).toThrow('Serialize access');
@@ -295,7 +294,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   it.each(['cooperative-wg256-r4', 'independent-wg128-r4', 'independent-wg128-r1', 'independent-wg128-r2', 'cooperative-wg128-r2'] as const)('rejects revision 2 for forced %s even with the AUTO tuple', async variant => {
     using fixture = createDiagnosticNativeFixture({ base });
     fixture.state.report = { ...revision2Auto, real_min_subgroup_size: 16, real_max_subgroup_size: 16 };
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     await expect(adapter!.run({ backend: 1n, dst: 2n, variant, phase: 'execute', repetitions: 1 })).rejects.toBeInstanceOf(Q8KernelDiagnosticFatalError);
     expect(fixture.freed).toEqual([]);
   });
@@ -303,7 +302,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   it('continues rejecting revision 1 independent reports on a variable advertised range', async () => {
     using fixture = createDiagnosticNativeFixture({ base });
     fixture.state.report = { real_min_subgroup_size: 4, real_max_subgroup_size: 128 };
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'execute', repetitions: 1 })).rejects.toBeInstanceOf(Q8KernelDiagnosticFatalError);
     expect(fixture.freed).toEqual([]);
   });
@@ -311,7 +310,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   it.each([1, 2])('cleans up safe allocation failure number %s and releases the gate', async oomAt => {
     using fixture = createDiagnosticNativeFixture({ base });
     fixture.state.oomAt = oomAt;
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'prepare', repetitions: 0 })).rejects.toThrow('allocation failed');
     expect(fixture.freed).toHaveLength(oomAt - 1);
     expect(fixture.state.invokeCount).toBe(0);
@@ -322,7 +321,7 @@ describe('optional Q8 native diagnostic adapter', () => {
     { phase: 'prepare', repetitions: 1 }, { phase: 'execute', repetitions: 0 }, { phase: 'execute', repetitions: 129 }, { phase: 'execute', repetitions: 0.5 },
   ] as const)('rejects invalid $phase repetitions $repetitions before native work', async ({ phase, repetitions }) => {
     using fixture = createDiagnosticNativeFixture({ base });
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase, repetitions })).rejects.toThrow();
     await expect(adapter!.run({ backend: 0n, dst: 2n, variant: 'auto', phase: 'prepare', repetitions: 0 })).rejects.toThrow();
     await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'unknown' as Q8KernelDiagnosticVariant, phase: 'prepare', repetitions: 0 })).rejects.toThrow();
@@ -339,7 +338,7 @@ describe('optional Q8 native diagnostic adapter', () => {
   ])('poisons without freeing records after a corrupt $field report', async ({ field, value }) => {
     using fixture = createDiagnosticNativeFixture({ base });
     fixture.state.report[field] = value;
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     await expect(adapter!.run({ backend: 1n, dst: 2n, variant: 'auto', phase: 'prepare', repetitions: 0 })).rejects.toBeInstanceOf(Q8KernelDiagnosticFatalError);
     expect(fixture.freed).toEqual([]);
     expect(() => fixture.core.assertIdle()).toThrow('Serialize access');
@@ -348,7 +347,7 @@ describe('optional Q8 native diagnostic adapter', () => {
 
   it.each(['reject', 'unknown-result', 'cleanup-trap'] as const)('keeps a %s runtime poisoned until Worker disposal', async failure => {
     using fixture = createDiagnosticNativeFixture({ base });
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     if (failure === 'reject') {
       fixture.state.delay = Promise.reject(new Error('device lost'));
     }
@@ -367,7 +366,7 @@ describe('optional Q8 native diagnostic adapter', () => {
 
   it.each(['zero-digest', 'prepare-not-prepared', 'failure-metadata', 'forced-mismatch'] as const)('rejects an inconsistent %s report without releasing ownership', async failure => {
     using fixture = createDiagnosticNativeFixture({ base });
-    const adapter = await fixture.core.createQ8KernelDiagnostic({ schemaBytes: schemaBytes({ schema: fixture.schema }) });
+    const adapter = await fixture.core.createQ8KernelDiagnostic();
     if (failure === 'zero-digest') {
       fixture.state.zeroDigest = true;
     }

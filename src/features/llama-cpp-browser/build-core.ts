@@ -72,7 +72,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
       enforce: 'pre',
       config() {
         // Keep the source behind this loader in dev as well as production.
-        return { optimizeDeps: { exclude: ['browser-inference-core', ...profileSchema.options.map(profile => virtualPrefix + profile)] } };
+        return { optimizeDeps: { exclude: ['llama-cpp-browser-core', ...profileSchema.options.map(profile => virtualPrefix + profile)] } };
       },
       resolveId(id) {
         if (id === virtualPrefix + 'availability') {

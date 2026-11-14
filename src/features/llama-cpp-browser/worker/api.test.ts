@@ -3,9 +3,10 @@ import type { DeletionPlan } from '@/features/llama-cpp-browser/runtime/deletion
 import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
 import { createGpuRequestObserver } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
+import { audioNativeFixture } from '@/features/audio-generation/test-utils/native.test-support';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import type { generateAudio } from './audio-generation';
-import type { prepareSession } from './session';
+import type { prepareAudioSession, prepareSession } from './session';
 import type { WorkerPrepareCall } from './types';
 import type { WorkerAudioCall } from './types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
@@ -41,13 +42,13 @@ const result = { content: '', reasoningContent: '', toolCalls: [], finishReason:
 
 const completed = () => ({ ...result, toolCalls: [] });
 
-const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), mutation: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
+const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), prepareAudio: vi.fn<typeof prepareAudioSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), mutation: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/runtime/model-mutation-lock', () => ({ withModelMutationLock: calls.mutation }));
 vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
 vi.mock("./audio-generation", () => ({ generateAudio: calls.audio }));
 vi.mock("./generation", () => ({ generate: calls.generate }));
-vi.mock("./session", () => ({ prepareSession: calls.prepare, invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
+vi.mock("./session", () => ({ prepareSession: calls.prepare, prepareAudioSession: calls.prepareAudio, invalidateStoredModel: calls.release, releaseSession: calls.releaseSession }));
 vi.mock("../runtime/model-store", () => ({
   withModelStoreLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
   importStoredModel: calls.import,
@@ -86,6 +87,7 @@ beforeEach(() => {
   graphCalls.generate.mockReset();
   graphCalls.release.mockReset();
   calls.releaseSession.mockReset();
+  calls.prepareAudio.mockReset();
   calls.audio.mockReset();
   calls.audio.mockResolvedValue(audioResult());
   calls.list.mockResolvedValue([]);
@@ -398,6 +400,42 @@ function audioRequest({ generationId }: { generationId: number }): WorkerAudioCa
 }
 
 describe('audio RPC ownership', () => {
+  it.each([false, true])('reaches native synthesis with an attached graph registry (nonempty: %s)', async nonempty => {
+    const native = audioNativeFixture({ pointerBytes: 4 });
+    const entries = importModelGraphRegistrations({ input: JSON.stringify(llamaGraphFixture()), existing: [] });
+    const registrations = nonempty ? modelGraphRequestRegistrations({ registrations: [setModelGraphUseRule({ registration: entries[0]!, mode: 'replace_native', registrations: entries })] }) : [];
+    const actual = await vi.importActual<typeof import('./audio-generation')>('./audio-generation');
+    calls.audio.mockImplementationOnce(actual.generateAudio);
+    calls.prepareAudio.mockResolvedValueOnce({
+      core: native.core,
+      census: undefined,
+      model: 10n,
+      context: 20n,
+      sequenceRemoval: undefined,
+      slidingWindow: 0,
+      cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' },
+      projector: 30n,
+      projectorStorage: undefined,
+      chatMetadata: undefined,
+      preparation: { projector: 'reused', releasedTextContext: false },
+    });
+    const input: WorkerAudioCall = { ...audioRequest({ generationId: 11 }), assetBaseURL: 'https://example.invalid/profiles/', modelGraphRegistrations: registrations };
+    await expect(createWorkerApi().generateAudio(input, () => {}, () => {})).resolves.toEqual(audioResult());
+    expect(calls.prepareAudio).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ modelGraphRegistrations: registrations }) }));
+    expect(native.api.mtmd_helper_gen_audio_set_input).toHaveBeenCalledOnce();
+    expect(native.api.mtmd_helper_gen_audio_step_gen).toHaveBeenCalled();
+    expect(native.api.mtmd_helper_gen_audio_free).toHaveBeenCalledOnce();
+    expect(native.api.llama_sampler_free).toHaveBeenCalledExactlyOnceWith(81n);
+    expect(native.module.removeFunction).toHaveBeenCalledExactlyOnceWith(9);
+    expect(native.owned.size).toBe(0);
+    expect(calls.releaseSession).toHaveBeenCalledExactlyOnceWith({ releaseRuntime: false });
+    if (nonempty) {
+      expect(graphCalls.prepare).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ modelGraphRegistrations: registrations }), purpose: 'audio' }));
+    } else {
+      expect(graphCalls.prepare).not.toHaveBeenCalled();
+    }
+  });
+
   it('validates audio inputs before allocating native state', async () => {
     await expect(createWorkerApi().generateAudio({ ...audioRequest({ generationId: 1 }), text: ' ' }, () => {}, () => {})).rejects.toThrow();
     expect(calls.audio).not.toHaveBeenCalled();

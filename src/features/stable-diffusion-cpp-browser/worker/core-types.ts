@@ -1,6 +1,7 @@
 /* eslint-disable local-rules-named-args/require-named-args -- This file describes external generated ABI/host-helper signatures of an optional artifact, not Naidan-owned command signatures. */
-/** The consumer boundary for the generated, fingerprinted ABI 2 host bindings.
- * Native pointers are bigint on BOTH Wasm widths. Record offsets are never duplicated here.
+/** The consumer boundary for the generated, fingerprinted ABI 3 host bindings.
+ * Public pointers are bigint on both Wasm widths; direct exports use native width.
+ * Record offsets are never duplicated here.
  * Positional calls below follow the upstream and optional host-helper contracts.
  */
 export interface NativeApi {
@@ -38,12 +39,12 @@ export interface CoreModule {
   FS: { mkdir(path: string): unknown };
   addFunction(callback: (...args: (number | bigint)[]) => void, signature: string): number | bigint;
   removeFunction(pointer: number | bigint): void;
-  _sdc_abi_version(): number;
+  _bicore_abi_version(): number;
   /** Reviewed synchronous, allocation-free callback/flag setter. Not a generic busy-time API. */
-  _sdc_sd_set_preview_callback?(callback: bigint, mode: number, interval: number, denoised: number, noisy: number, data: bigint): void;
+  _sd_set_preview_callback?(callback: number | bigint, mode: number, interval: number, denoised: number, noisy: number, data: number | bigint): void;
   /** Reviewed atomic cancellation flag store; no graph access or suspension. */
-  _sdc_sd_cancel_generation?(context: bigint, mode: number): void;
-  _sdc_model_io_capabilities?(): number;
+  _sd_cancel_generation?(context: number | bigint, mode: number): void;
+  _bicore_model_io_capabilities?(): number;
 }
 export interface Core {
   module: CoreModule;

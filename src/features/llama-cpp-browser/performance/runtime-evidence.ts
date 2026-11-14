@@ -1,22 +1,17 @@
-import { z } from 'zod';
 import type { PerformanceSnapshot } from './types';
 
-const manifestSchema = z.object({
-  formatVersion: z.literal(4),
-  sourceCommit: z.string().regex(/^[0-9a-f]{40}$/),
-  files: z.array(z.object({ path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/) })),
-});
-
 /** Published package identity, not proof of the live transformed module bytes. */
-export function runtimeBuildEvidence({ manifest }: { manifest: unknown }): PerformanceSnapshot['environment']['runtimeBuild'] {
-  const parsed = manifestSchema.safeParse(manifest);
-  if (!parsed.success) {
+export function runtimeBuildEvidence({ manifest, runtimeManifest }: {
+  manifest: { formatVersion: number; sourceCommit: string };
+  runtimeManifest: { formatVersion: number; runtime: string; sourceCommit: string; files: readonly { path: string; bytes: number; sha256: string }[] };
+}): PerformanceSnapshot['environment']['runtimeBuild'] {
+  if (manifest.formatVersion !== 5 || runtimeManifest.formatVersion !== 2 || runtimeManifest.runtime !== 'llama-cpp' || manifest.sourceCommit !== runtimeManifest.sourceCommit) {
     return undefined;
   }
   return {
-    sourceCommit: parsed.data.sourceCommit,
-    files: parsed.data.files.filter(file =>
-      file.path.startsWith('runtimes/llama-cpp-browser-core/profiles/') || file.path.startsWith('runtimes/llama-cpp-browser-core/api/')),
+    sourceCommit: manifest.sourceCommit,
+    files: runtimeManifest.files.filter(file => file.path.startsWith('profiles/') || file.path.startsWith('api/'))
+      .map(file => ({ path: `runtimes/llama-cpp-browser-core/${file.path}`, bytes: file.bytes, sha256: file.sha256 })),
   };
 }
 

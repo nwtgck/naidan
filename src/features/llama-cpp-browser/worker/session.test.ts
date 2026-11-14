@@ -858,7 +858,7 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
   function enableFileRows({ index }: { index: number }) {
     const { core, resources, events, mount } = shards();
     Object.assign(core, { pointerBytes: 8 });
-    Object.assign(core.module, { _lcb_file_backed_rows_version: () => 1, _lcb_model_file_backed_shard: () => index });
+    Object.assign(core.module, { _bicore_file_backed_rows_version: () => 1, _bicore_model_file_backed_shard: () => index });
     vi.mocked(core.api.llama_model_free).mockImplementation(async () => {
       events.push('native-free');
     });

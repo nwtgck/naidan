@@ -4,12 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { pathToFileURL } from 'node:url';
-import { attachCore, mountReadOnlyFile, schema, type Core } from 'browser-inference-core/stable-diffusion-cpp/host';
-import type createNativeModule from 'browser-inference-core/stable-diffusion-cpp/profiles/webgpu-wasm32-asyncify/test/core.mjs';
+import { attachCore, mountReadOnlyFile, schema, type Core } from 'stable-diffusion-cpp-browser-core/stable-diffusion-cpp/host';
+import createNativeModule from 'stable-diffusion-cpp-browser-core/stable-diffusion-cpp/profiles/webgpu-wasm32-asyncify/test/core.mjs';
 import { createModelFileReadCache, createModelFileSource, type SyncBlobReader } from './gguf-file';
 import { assertImageRuntimeContract } from '@/features/stable-diffusion-cpp-browser/runtime-contract';
-import type { NativeApi } from './core-types';
+import type { Core as ConsumerCore, CoreModule as ConsumerModule, NativeApi } from './core-types';
 
 // Exercises the installed ABI and real CPU arithmetic with self-authored native
 // tensors. It does not create model contexts, generate images or run GPU kernels.
@@ -17,31 +16,28 @@ let native: Awaited<ReturnType<typeof createNativeModule>>;
 let core: Core;
 let imageApi: NativeApi;
 const nativeDiagnostics: string[] = [];
-const bf16WeightRetention = z.object({ capabilities: z.object({ bf16WeightRetention: z.boolean().optional() }) }).parse(JSON.parse(readFileSync(path.resolve('node_modules/browser-inference-core/runtimes/stable-diffusion-cpp-browser-core/manifest.json'), 'utf8'))).capabilities.bf16WeightRetention === true;
+const bf16WeightRetention = z.object({ capabilities: z.object({ bf16WeightRetention: z.boolean().optional() }) }).parse(JSON.parse(readFileSync(path.resolve('node_modules/stable-diffusion-cpp-browser-core/runtimes/stable-diffusion-cpp-browser-core/manifest.json'), 'utf8'))).capabilities.bf16WeightRetention === true;
 
 beforeAll(async () => {
   assertImageRuntimeContract({ schema, bf16WeightRetention });
-  const root = path.resolve('node_modules/browser-inference-core/runtimes/stable-diffusion-cpp-browser-core');
+  const root = path.resolve('node_modules/stable-diffusion-cpp-browser-core/runtimes/stable-diffusion-cpp-browser-core');
   const folder = path.join(root, 'profiles/webgpu-wasm32-asyncify/test');
-  const imported: unknown = await import(/* @vite-ignore */ pathToFileURL(path.join(folder, 'core.mjs')).href);
-  if (!imported || typeof imported !== 'object' || !('default' in imported) || typeof imported.default !== 'function') {
-    throw new Error('Missing installed image test core factory');
-  }
-  const create = imported.default as typeof createNativeModule;
-  native = await create({
+  native = await createNativeModule({
     wasmBinary: await readFile(path.join(folder, 'core.wasm')),
     print() {},
-    printErr(message) {
+    printErr(message: string) {
       if (nativeDiagnostics.length < 20) {
         nativeDiagnostics.push(message);
       }
     },
   });
   core = attachCore(native, schema, { suspension: 'asyncify' });
-  // The semantic schema check above binds this consumer view to the installed
-  // binary even while an older dependency's declarations are still installed.
-  imageApi = core.api as unknown as NativeApi;
-  expect(native._sdc_abi_version()).toBe(2);
+  const consumerModule: ConsumerModule = native;
+  const consumerCore: ConsumerCore = core;
+  expect(consumerModule).toBe(native);
+  expect(consumerCore.module).toBe(native);
+  imageApi = core.api;
+  expect(native._bicore_abi_version()).toBe(3);
   expect(core.pointerBytes).toBe(4);
 }, 30_000);
 
@@ -209,8 +205,8 @@ describe('installed image core contracts on CPU', () => {
       core.setField('sd_img_gen_params_t', params, 'seed', seed);
       expect(core.getField('sd_img_gen_params_t', params, 'seed')).toBe(seed);
     }
-    expect(() => core.setField('sd_img_gen_params_t', params, 'seed', 9223372036854775808n)).toThrow('range');
-    expect(() => core.setField('sd_img_gen_params_t', params, 'seed', Number(9007199254740993n))).toThrow('exact integer');
+    expect(() => core.setField('sd_img_gen_params_t', params, 'seed', 9223372036854775808n)).toThrow(RangeError);
+    expect(() => core.setField('sd_img_gen_params_t', params, 'seed', Number(9007199254740993n))).toThrow(TypeError);
     await core.api.sd_img_gen_params_init(params);
     expect(core.getField('sd_img_gen_params_t', params, 'seed')).toBe(-1n);
   });

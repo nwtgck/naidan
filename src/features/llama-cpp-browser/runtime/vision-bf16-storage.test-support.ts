@@ -1,4 +1,4 @@
-// Public generated ABI fragments from core 2e4a1d98376d306297aa214472e6de288803ef72.
+// Synthetic ABI 3 declarations for the public vision storage contract.
 export const visionBf16Metadata = {
   "constants": [
     "MTMD_VISION_BF16_STORAGE_INVALID",
@@ -13,7 +13,7 @@ export const visionBf16Metadata = {
   "functions": [
     {
       "name": "mtmd_context_vision_bf16_storage",
-      "export": "_lcb_mtmd_context_vision_bf16_storage",
+      "export": "_mtmd_context_vision_bf16_storage",
       "returnType": "enum mtmd_vision_bf16_storage",
       "returnKind": "signed",
       "parameters": [
@@ -26,8 +26,8 @@ export const visionBf16Metadata = {
     },
     {
       "name": "mtmd_init_from_file_with_vision_bf16_storage",
-      "export": "_lcb_mtmd_init_from_file_with_vision_bf16_storage",
-      "returnType": "struct mtmd_context *(const char *, const struct llama_model *, const struct mtmd_context_params, int32_t)",
+      "export": "_bicore_mtmd_init_from_file_with_vision_bf16_storage",
+      "returnType": "struct mtmd_context *",
       "returnKind": "pointer",
       "parameters": [
         {
@@ -54,7 +54,7 @@ export const visionBf16Metadata = {
     },
     {
       "name": "mtmd_vision_bf16_storage_version",
-      "export": "_lcb_mtmd_vision_bf16_storage_version",
+      "export": "_mtmd_vision_bf16_storage_version",
       "returnType": "uint32_t",
       "returnKind": "unsigned",
       "parameters": [],

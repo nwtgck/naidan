@@ -2,9 +2,9 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { runCommandSync } from './command.ts';
+import { runCommand } from './command.ts';
 import { pathToFileURL } from 'node:url';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { readBicoreArtifactPackage } from './bicore-artifact-package';
@@ -20,7 +20,7 @@ function fixture({ runtime }: { runtime: Runtime }) {
   const entry = ({ relative, data }: { relative: string, data: Buffer }): Entry => ({ path: relative, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') });
   const inner = { formatVersion: 2, runtime: runtime as string, sourceCommit: 'a'.repeat(40), files: [entry({ relative, data: payload })] };
   const root = {
-    formatVersion: 4,
+    formatVersion: 5,
     sourceCommit: inner.sourceCommit,
     runtimes: {
       'llama-cpp': { manifest: 'runtimes/llama-cpp-browser-core/manifest.json', manifestFormatVersion: 2 },
@@ -34,7 +34,7 @@ function fixture({ runtime }: { runtime: Runtime }) {
   function save() {
     const data = Buffer.from(JSON.stringify(inner));
     writeFileSync(path.join(directory, prefix, 'manifest.json'), data);
-    root.files = [...inner.files.map(file => ({ ...file, path: prefix + file.path })), entry({ relative: prefix + 'manifest.json', data })];
+    root.files = [entry({ relative: prefix + 'manifest.json', data })];
     saveRoot();
   }
   function saveRoot() {
@@ -101,14 +101,14 @@ describe.each(['llama-cpp', 'stable-diffusion-cpp'] as const)('bicore %s manifes
     using test = fixture({ runtime });
     test.root.files.push({ ...test.root.files[0]!, path: test.prefix + 'unlisted.wasm' });
     test.saveRoot();
-    expect(() => test.read()).toThrow('unlisted runtime file');
+    expect(() => test.read()).toThrow('root inventory contains a runtime payload');
   });
 
-  it('rejects nested members absent from the root inventory', () => {
+  it('rejects a selected manifest absent from the root inventory', () => {
     using test = fixture({ runtime });
     test.root.files.shift();
     test.saveRoot();
-    expect(() => test.read()).toThrow('inventory differs');
+    expect(() => test.read()).toThrow('Missing bicore artifact');
   });
 
   it.each(['bytes', 'sha256'] as const)('rejects mismatched parent %s before reading payloads', field => {
@@ -119,7 +119,7 @@ test.root.files[0]!.bytes++;
 test.root.files[0]!.sha256 = '0'.repeat(64);
     }
     test.saveRoot();
-    expect(() => test.read()).toThrow('inventory differs');
+    expect(() => test.read()).toThrow('integrity mismatch');
   });
 
   it.each(['root', 'inner'] as const)('rejects duplicate %s entries', scope => {
@@ -130,9 +130,6 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
     } else {
       test.inner.files.push(test.inner.files[0]!);
       test.save();
-      // Keep the parent inventory unique to exercise the inner duplicate check.
-      test.root.files.splice(1, 1);
-      test.saveRoot();
     }
     expect(() => test.read()).toThrow('Duplicate');
   });
@@ -176,7 +173,7 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
     test.root.formatVersion = 3;
     test.saveRoot();
     expect(() => test.read()).toThrow();
-    test.root.formatVersion = 4;
+    test.root.formatVersion = 5;
     test.root.runtimes[runtime].manifest = 'manifest.json';
     test.saveRoot();
     expect(() => test.read()).toThrow();
@@ -194,7 +191,7 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
 // Vitest's transformed imports can accept an extensionless TypeScript dependency
 // that Node's native config loader rejects. Exercise the real consumer entries
 // in a separate untransformed process, without loading any runtime payload.
-it('loads both build consumers through native TypeScript imports', () => {
+it('loads both build consumers through native TypeScript imports', async () => {
   const entries = [
     { file: 'src/features/llama-cpp-browser/build-artifact-package.ts', exported: 'readLlamaArtifactPackage' },
     { file: 'src/features/stable-diffusion-cpp-browser/build-runtime.ts', exported: 'readImageArtifacts' },
@@ -206,11 +203,34 @@ it('loads both build consumers through native TypeScript imports', () => {
     }
     console.log('native bicore build imports passed');
   `;
-  const result = runCommandSync({
+  const outputDirectory = mkdtempSync(path.join(os.tmpdir(), 'native-bicore-imports-'));
+  const stdoutPath = path.join(outputDirectory, 'stdout');
+  const stderrPath = path.join(outputDirectory, 'stderr');
+  using cleanup = {
+    [Symbol.dispose]() {
+      rmSync(outputDirectory, { recursive: true, force: true });
+    },
+  };
+  using stdout = {
+    descriptor: openSync(stdoutPath, 'wx'),
+    [Symbol.dispose]() {
+      closeSync(this.descriptor);
+    },
+  };
+  using stderr = {
+    descriptor: openSync(stderrPath, 'wx'),
+    [Symbol.dispose]() {
+      closeSync(this.descriptor);
+    },
+  };
+  const child = runCommand({
     argv: ['node', '--experimental-strip-types', '--input-type=module', '--eval', source],
-    options: { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000 },
+    options: { cwd: process.cwd(), timeout: 10_000, stdio: ['ignore', stdout.descriptor, stderr.descriptor] },
   });
-  expect(result.error).toBeUndefined();
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout.trim()).toBe('native bicore build imports passed');
+  const status = await new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+  expect(status, readFileSync(stderrPath, 'utf8')).toBe(0);
+  expect(readFileSync(stdoutPath, 'utf8').trim()).toBe('native bicore build imports passed');
 });

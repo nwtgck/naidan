@@ -9,10 +9,11 @@ import { createServer } from 'vite';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
+import catalog from 'llama-cpp-browser-core/llama-cpp/api/schema.mjs';
 
 const repo = process.cwd();
-const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
-const q8SchemaPath = path.join(repo, 'node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
+const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
+const q8SchemaPath = path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
 const q8SchemaAssetName = 'llama-cpp-browser-runtime/profiles/webgpu-wasm64-jspi-gpu-profile/q8-diagnostic-v1.schema.json';
 
 const callbackGetters = [
@@ -22,33 +23,33 @@ const callbackGetters = [
 
 describe('shared browser core package integration', () => {
   it('keeps the committed dependency and lock entry on the same immutable artifact', () => {
-    const dependencyName = 'browser-inference-core';
+    const dependencyName = 'llama-cpp-browser-core';
     const packageFile = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8')));
     const lockFile = z.object({
       packages: z.object({
         '': z.object({ dependencies: z.record(z.string(), z.string()) }),
-        'node_modules/browser-inference-core': z.object({ resolved: z.string(), integrity: z.string() }),
+        'node_modules/llama-cpp-browser-core': z.object({ resolved: z.string(), integrity: z.string() }),
       }),
     }).parse(JSON.parse(readFileSync(path.join(repo, 'package-lock.json'), 'utf8')));
     const specifier = packageFile.dependencies[dependencyName];
     expect(specifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);
     expect(lockFile.packages[''].dependencies[dependencyName]).toBe(specifier);
-    const entry = lockFile.packages['node_modules/browser-inference-core'];
+    const entry = lockFile.packages['node_modules/llama-cpp-browser-core'];
     expect(entry.resolved).toBe(`git+ssh://git@github.com/nwtgck/browser-inference-core.git#${specifier?.split('#')[1]}`);
     expect(entry.integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
   });
 
   it('ships the versioned callback metadata exports declared by the pinned package', () => {
-    const base = path.join(repo, 'node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/api');
+    const base = path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/api');
     const schema = z.object({
-      callbackMetadata: z.object({ version: z.literal(1), getters: z.array(z.object({ name: z.string(), export: z.string() })) }),
+      abiVersion: z.literal(3),
+      callbackMetadata: z.object({ version: z.literal(2), getters: z.array(z.object({ name: z.string(), export: z.string() })) }),
     }).parse(JSON.parse(readFileSync(path.join(base, 'schema.json'), 'utf8')));
     const exports = z.array(z.string()).parse(JSON.parse(readFileSync(path.join(base, 'exports.json'), 'utf8')));
-    expect(schema.callbackMetadata.getters).toEqual([...callbackGetters].sort().map(name => ({ name, export: `_lcb_callback_${name}` })));
-    expect(exports).toContain('_lcb_callback_metadata_version');
+    expect(schema.callbackMetadata.getters).toEqual(expect.arrayContaining(callbackGetters.map(name => ({ name, export: `_${name}` }))));
+    expect(exports).toContain('_bicore_abi_version');
     for (const name of callbackGetters) {
-      expect(exports).toContain(`_lcb_callback_${name}`);
-      expect(exports).toContain(`_lcb_${name}`); // The ordinary Promise surface is not replaced.
+      expect(exports).toContain(`_${name}`);
     }
   });
 
@@ -78,7 +79,7 @@ describe('shared browser core package integration', () => {
       if (!bytes) {
         throw new Error(`Missing hosted runtime asset: ${profile}`);
       }
-      expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
+      expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
     }
     if (existsSync(q8SchemaPath)) {
       const schema = files.get(q8SchemaAssetName);
@@ -105,11 +106,11 @@ describe('shared browser core package integration', () => {
       },
     };
     const id = `virtual:llama-cpp-browser-core/${profile}`;
-    const realPath = path.join(repo, `node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const resolved = await server.environments.client.pluginContainer.resolveId(id);
     expect(resolved?.id).toBe(realPath);
     expect(server.config.optimizeDeps.exclude).toContain(id);
-    expect(server.config.optimizeDeps.exclude).toContain('browser-inference-core');
+    expect(server.config.optimizeDeps.exclude).toContain('llama-cpp-browser-core');
     writeFileSync(path.join(root, 'main.js'), `export const load = () => import(${JSON.stringify(id)});`);
     const importer = await server.transformRequest('/main.js');
     expect(importer?.code).toContain(`/@fs${realPath}`);
@@ -136,8 +137,8 @@ describe('shared browser core package integration', () => {
         rmSync(root, { recursive: true, force: true });
       },
     };
-    const artifact = path.join(root, 'node_modules/browser-inference-core');
-    cpSync(path.join(repo, 'node_modules/browser-inference-core'), artifact, { recursive: true });
+    const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
+    cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
     const relative = `runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`;
     const data = Buffer.from(readFileSync(path.join(artifact, relative), 'utf8') + '\n');
     const updates = [{ relative, data }];
@@ -155,11 +156,10 @@ describe('shared browser core package integration', () => {
     for (const update of updates) {
       writeFileSync(path.join(artifact, update.relative), update.data);
       const innerFile = inner.files.find(file => file.path === update.relative.slice('runtimes/llama-cpp-browser-core/'.length));
-      const coreFile = rootManifest.files.find(file => file.path === update.relative);
-      if (!innerFile || !coreFile) {
+      if (!innerFile) {
         throw new Error('Missing test inventory entries');
       }
-      for (const file of [innerFile, coreFile]) {
+      for (const file of [innerFile]) {
         file.bytes = update.data.length;
         file.sha256 = createHash('sha256').update(update.data).digest('hex');
       }
@@ -191,7 +191,7 @@ describe('shared browser core package integration', () => {
 
   it.each(['complete-buffer', 'partial-view'] as const)('initializes real CPU Wasm from a supplied %s with no fetch or Node imports', async input => {
     const profile = 'cpu-wasm32';
-    const id = path.join(repo, `node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const id = path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const source = readFileSync(id, 'utf8');
     const binary = readFileSync(id.replace('core.mjs', 'core.wasm'));
     const storage = new Uint8Array(binary.length + 32);
@@ -236,21 +236,28 @@ describe('shared browser core package integration', () => {
     if (typeof native !== 'object' || native === null) {
       throw new Error('Missing native module');
     }
-    const version: unknown = Reflect.get(native, '_lcb_callback_metadata_version');
+    const version: unknown = Reflect.get(native, '_bicore_abi_version');
     if (typeof version !== 'function') {
-      throw new Error('Missing synchronous callback metadata version');
+      throw new Error('Missing native ABI version');
     }
-    expect(Reflect.apply(version, native, [])).toBe(1);
+    expect(Reflect.apply(version, native, [])).toBe(3);
+    expect(catalog.callbackMetadata.version).toBe(2);
     for (const name of callbackGetters) {
-      expect(typeof Reflect.get(native, `_lcb_callback_${name}`)).toBe('function');
+      const getter = catalog.callbackMetadata.getters.find(getter => getter.name === name);
+      expect(getter).toEqual({ name, export: `_${name}` });
+      if (getter === undefined) {
+        throw new Error(`Missing synchronous callback getter: ${name}`);
+      }
+      expect(catalog.suspendingExports).not.toContain(getter.export.slice(1));
+      expect(typeof Reflect.get(native, getter.export)).toBe('function');
     }
-    const count: unknown = Reflect.get(native, '_lcb_callback_ggml_backend_dev_count');
+    const count: unknown = Reflect.get(native, '_ggml_backend_dev_count');
     if (typeof count !== 'function') {
       throw new Error('Missing synchronous callback device count');
     }
     const deviceCount: unknown = Reflect.apply(count, native, []);
-    expect(typeof deviceCount).toBe('bigint'); // Not a Promise, even though the ordinary API may be asynchronous.
-    expect(deviceCount).toBeGreaterThanOrEqual(0n);
+    expect(typeof deviceCount).toBe('number'); // Native Wasm32 size_t; synchronous, unlike a suspending call.
+    expect(deviceCount).toBeGreaterThanOrEqual(0);
     expect(instantiate).toHaveBeenCalledOnce();
     const compiledBytes = instantiate.mock.calls[0]?.[0];
     if (!ArrayBuffer.isView(compiledBytes)) {

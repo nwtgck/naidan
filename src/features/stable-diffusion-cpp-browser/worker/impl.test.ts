@@ -24,7 +24,7 @@ function loaded() {
   let callbacks: Parameters<CoreFactory>[0] | undefined;
   const create = vi.fn(async (options: Parameters<CoreFactory>[0]) => {
     callbacks = options;
-    return { _sdc_abi_version: () => 2, HEAPU8: new Uint8Array(), _sdc_model_io_capabilities: () => 3 };
+    return { _bicore_abi_version: () => 3, HEAPU8: new Uint8Array(), _bicore_model_io_capabilities: () => 3 };
   });
   const helpers = { schema: {}, attachCore: vi.fn(() => ({ pointerBytes: 4 })) };
   mocks.load.mockResolvedValue({ create, wasmBinary: new Uint8Array(), moduleUrl: 'https://naidan.invalid/core.mjs', helpers });

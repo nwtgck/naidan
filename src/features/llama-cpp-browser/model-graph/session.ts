@@ -6,7 +6,7 @@ import { openModelFileAccess } from '@/features/llama-cpp-browser/worker/model-f
 import { sameModelFile } from '@/features/llama-cpp-browser/worker/model-file-identity';
 import { releaseSession as releaseNativeSession, prepareRuntime } from '@/features/llama-cpp-browser/worker/session';
 import { parseModelGraphDefinitions } from './definition';
-import { bindModelGraphBoundary, modelGraphNativeSchemaHash } from './native-boundary';
+import { bindModelGraphBoundary } from './native-boundary';
 import { createModelGraphEngine } from './engine';
 import { combineModelGraphGgufs, copyModelGraphVocabularyMetadata, inspectModelGraphGguf, readModelGraphArchitecture, type ModelGraphByteSource } from './gguf';
 import { selectModelGraphRegistration } from './registry';
@@ -176,7 +176,7 @@ export async function prepareRegisteredGraph({ request, signal, onProgress, purp
       onWeightProgress: ({ loadedBytes, totalBytes }) => onProgress({ progress: { phase: 'loading', completed: loadedBytes, total: totalBytes } }),
     });
     signal?.throwIfAborted();
-    const execution: RegisteredGraphSession['execution'] = { kind: 'registeredModelGraph', registrationId: selected.id, label: selected.label, architecture, format: definition.format, definitionSha256: selected.sourceSha256, nativeExtensionSha256: modelGraphNativeSchemaHash };
+    const execution: RegisteredGraphSession['execution'] = { kind: 'registeredModelGraph', registrationId: selected.id, label: selected.label, architecture, format: definition.format, definitionSha256: selected.sourceSha256, nativeExtensionSha256: boundary.schemaSha256 };
     const session: RegisteredGraphSession = { core, boundary, vocabulary, engine, execution, vocabularySize, contextSize, batchSize };
     retained = { request, registration: selected, session };
     transferred = true;

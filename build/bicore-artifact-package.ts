@@ -16,7 +16,7 @@ export const bicoreFileSchema = z.object({
 });
 const sourceCommit = z.string().regex(/^[0-9a-f]{40}$/);
 const rootManifestSchema = z.object({
-  formatVersion: z.literal(4),
+  formatVersion: z.literal(5),
   sourceCommit,
   runtimes: z.object({
     'llama-cpp': z.object({ manifest: z.literal('runtimes/llama-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(2) }),
@@ -102,22 +102,26 @@ export function readBicoreArtifactPackage({ directory, runtime, maxFileBytes }: 
   }
   const files = inventory({ entries: inner.files });
   for (const entry of files.values()) {
-    const parent = rootFiles.get(prefix + entry.path);
-    if (entry.path === 'manifest.json' || !parent || parent.bytes !== entry.bytes || parent.sha256 !== entry.sha256) {
-      throw new Error(`Runtime inventory differs from bicore: ${entry.path}`);
+    if (entry.path === 'manifest.json') {
+      throw new Error('Runtime inventory cannot contain its own manifest');
     }
   }
   for (const relative of rootFiles.keys()) {
-    if (relative.startsWith(prefix) && relative !== manifestRelative && !files.has(relative.slice(prefix.length))) {
-      throw new Error(`Bicore inventory contains an unlisted runtime file: ${relative}`);
+    if (relative === 'manifest.json' || (relative.startsWith('runtimes/') && !Object.values(root.runtimes).some(binding => binding.manifest === relative))) {
+      throw new Error(`Bicore root inventory contains a runtime payload or its own manifest: ${relative}`);
     }
   }
   function readArtifact({ relative }: { relative: string }) {
     assertRelativePath({ relative });
-    if (!files.has(relative)) {
+    const entry = files.get(relative);
+    if (!entry) {
       throw new Error(`Missing runtime artifact: ${relative}`);
     }
-    return readRootFile({ relative: prefix + relative });
+    const result = readFile({ relative: prefix + relative, expectedBytes: entry.bytes });
+    if (result.data.length !== entry.bytes || createHash('sha256').update(result.data).digest('hex') !== entry.sha256) {
+      throw new Error(`Bicore artifact integrity mismatch: ${relative}`);
+    }
+    return { ...result, bytes: entry.bytes, sha256: entry.sha256 };
   }
   return {
     packageRoot,

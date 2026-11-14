@@ -67,7 +67,7 @@ function capturedModel({ modelId }: { modelId: string }): ResolvedModel {
 vi.mock('../runtime/load-runtime', () => ({
   loadRuntime: async () => {
   // Real supplied Wasm, not a mock core. Only file access and runtime deployment are injected.
-    const folder = path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core');
+    const folder = path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core');
     host.modelLoads++;
     host.core = await createCore({
       profile: integrationProfile,
@@ -3946,12 +3946,12 @@ describe('bounded delivery/decode overlap through the native generation loop', (
       // Keep attachCore's real suspension guard active after executing the real
       // native decode. This models a pending asynchronous export, not GPU time.
       const module: Core['module'] = Object.create(core.module);
-      const raw: unknown = Reflect.get(core.module, '_lcb_llama_decode');
+      const raw: unknown = Reflect.get(core.module, '_bicore_llama_decode');
       if (typeof raw !== 'function') {
         throw new Error('Missing native decode export');
       }
-      Object.defineProperty(module, '_lcb_llama_decode', {
-        value: async (context: bigint, batch: bigint) => {
+      Object.defineProperty(module, '_bicore_llama_decode', {
+        value: async (context: number | bigint, batch: number | bigint) => {
           const status: unknown = raw(context, batch);
           if (sampled > 0 && !held) {
             held = true;

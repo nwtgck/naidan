@@ -1,4 +1,5 @@
-import { audioGenerationInputSchema, audioGenerationResultSchema, audioGenerationPreviewSchema, type AudioPreviewEvent, MAX_REFERENCE_SECONDS, MAX_AUDIO_BYTES, type AudioGenerationResult } from '@/features/audio-generation/types';
+import { audioGenerationInputSchema, audioGenerationResultSchema, audioGenerationPreviewSchema, type AudioGenerationInput, type AudioPreviewEvent, MAX_REFERENCE_SECONDS, MAX_AUDIO_BYTES, type AudioGenerationResult } from '@/features/audio-generation/types';
+import { exactObject } from '@/utils/exact-object';
 import { validateAudioWav } from '@/features/audio-generation/wav';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError, type Progress } from '@/features/llama-cpp-browser/types';
@@ -65,8 +66,8 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
   onProgress: ({ progress }: { progress: Progress }) => void, cancellationSignal: AbortSignal | undefined, shouldComplete?: () => boolean, preview?: NativeAudioPreview,
 }): Promise<AudioGenerationResult> {
   // The wire schema also includes transport-only fields; validate the model input separately.
-  const { assetBaseURL: _assetBaseURL, resolvedModel: _resolvedModel, ...input } = request;
-  const accepted = audioGenerationInputSchema.parse(input);
+  const { assetBaseURL: _assetBaseURL, resolvedModel: _resolvedModel, modelGraphRegistrations: _modelGraphRegistrations, ...input } = request;
+  const accepted = audioGenerationInputSchema.parse(exactObject<AudioGenerationInput>()(input));
   const api = core.api;
   let stage: DiagnosticStage = 'audio-info';
   const allocations: bigint[] = [];

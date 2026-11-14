@@ -4,12 +4,14 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { attachCore, createCore, type Core, type CoreModule } from './core';
+import rawCatalog from 'llama-cpp-browser-core/llama-cpp/api/schema.mjs';
+import { z } from 'zod';
 
 describe('module-local native ABI layouts', () => {
   let core: Core;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/browser-inference-core/runtimes/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({
       profile: 'cpu-wasm32',
       baseURL,
@@ -47,7 +49,7 @@ describe('module-local native ABI layouts', () => {
     return { module, counts };
   }
 
-  it('queries each used layout once but writes each actual record and value', () => {
+  it('uses target metadata without native layout queries while writing each actual record and value', () => {
     const { module, counts } = instrument({ overrides: {} });
     const bound = attachCore({ module, callMode: 'direct' });
     const a = bound.allocRecord({ name: 'llama_batch' });
@@ -69,12 +71,9 @@ describe('module-local native ABI layouts', () => {
     };
     expect(read({ pointer: a })).toBe(99);
     expect(read({ pointer: b })).toBe(12);
-    expect(counts.get('_lcb_sizeof_record')).toBe(1);
-    expect(counts.get('_lcb_offsetof_field')).toBe(1);
-    expect(counts.get('_lcb_sizeof_field')).toBe(1);
+    expect(counts.size).toBe(0);
     expect(bound.fieldLayout({ name: 'llama_batch', field: 'token' })).not.toBe(layout);
-    expect(counts.get('_lcb_offsetof_field')).toBe(2);
-    expect(counts.get('_lcb_sizeof_field')).toBe(2);
+    expect(counts.size).toBe(0);
     expect(Object.isFrozen(layout)).toBe(true);
     expect(Reflect.set(layout, 'size', 1)).toBe(false);
     expect(bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' }).size).toBe(4);
@@ -114,27 +113,41 @@ describe('module-local native ABI layouts', () => {
     const layout = first.fieldLayout({ name: 'llama_batch', field: 'token' });
     const second = attachCore({ module, callMode: 'direct' });
     expect(second.fieldLayout({ name: 'llama_batch', field: 'token' })).toEqual(layout);
-    expect(counts.get('_lcb_offsetof_field')).toBe(2);
-    // Synthetic metadata only; this does not execute a wasm64 runtime.
-    const { module: wideModule } = instrument({
-      overrides: {
-        _lcb_pointer_bytes: () => 8,
-        _lcb_offsetof_field: () => layout.offset + 8n,
-        _lcb_sizeof_field: () => 8,
-        _lcb_sizeof_record: () => 128,
+    expect(counts.size).toBe(0);
+    // Exercise target selection with real wasm64 metadata and a controlled
+    // fingerprint only; this does not execute a wasm64 runtime.
+    const targets = z.object({
+      targets: z.record(z.string(), z.object({
+        pointerBytes: z.number(),
+        records: z.array(z.object({ name: z.string(), size: z.number(), fields: z.array(z.object({ name: z.string(), offset: z.number(), size: z.number() })) })),
+      })),
+    }).parse(rawCatalog).targets;
+    const wideTarget = Object.entries(targets).find(([, target]) => target.pointerBytes === 8);
+    if (!wideTarget) {
+      throw new Error('The installed catalog must contain wasm64 metadata');
+    }
+    const [hash, metadata] = wideTarget;
+    const hashPointer = core.alloc({ bytes: 65 });
+    using _cleanupHash = {
+      [Symbol.dispose]() {
+        core.free({ pointer: hashPointer });
       },
-    });
+    };
+    core.bytes({ pointer: hashPointer, length: 65 }).set(new TextEncoder().encode(hash + '\0'));
+    const { module: wideModule } = instrument({ overrides: { _bicore_pointer_bytes: () => 8, _bicore_schema_hash: () => hashPointer } });
     const wide = attachCore({ module: wideModule, callMode: 'direct' });
-    expect(wide.fieldLayout({ name: 'llama_batch', field: 'token' })).toEqual({ kind: 'pointer', offset: layout.offset + 8n, size: 8 });
-    expect(wide.recordSize({ name: 'llama_batch' })).toBe(128);
+    const batch = metadata.records.find(record => record.name === 'llama_batch')!;
+    const token = batch.fields.find(field => field.name === 'token')!;
+    expect(wide.fieldLayout({ name: 'llama_batch', field: 'token' })).toEqual({ kind: 'pointer', offset: BigInt(token.offset), size: 8 });
+    expect(wide.recordSize({ name: 'llama_batch' })).toBe(batch.size);
     expect(first.fieldLayout({ name: 'llama_batch', field: 'token' })).toBe(layout);
   });
 
   it.each(['direct', 'asyncify'] as const)('checks serialization even on warm layout hits in %s mode', async callMode => {
-    const gate = Promise.withResolvers<bigint>();
+    const gate = Promise.withResolvers<number>();
     const { module } = instrument({
       overrides: {
-        _lcb_ggml_backend_dev_count: () => gate.promise,
+        _ggml_backend_dev_count: () => gate.promise,
         ccall: () => gate.promise,
       },
     });
@@ -154,42 +167,40 @@ describe('module-local native ABI layouts', () => {
         expect(action).toThrow('Serialize access');
       }
     } finally {
-      gate.resolve(0n);
+      gate.resolve(0);
       await pending;
       bound.free({ pointer });
     }
     expect(bound.fieldLayout({ name: 'llama_batch', field: 'token' }).kind).toBe('pointer');
   });
 
-  it.each(['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record'])('does not memoize a failed %s query', exportName => {
+  it.each(['_bicore_schema_hash', '_bicore_pointer_bytes', '_bicore_abi_version'])('does not retain failed %s metadata admission', exportName => {
     const original = Reflect.get(core.module, exportName);
     if (typeof original !== 'function') {
       throw new Error('Missing native export');
     }
-    const failure = new WebAssembly.RuntimeError('layout query failed');
+    const failure = new WebAssembly.RuntimeError('metadata admission failed');
     const stub = vi.fn().mockImplementationOnce(() => {
       throw failure;
     }).mockImplementation((...args: (number | bigint)[]) => Reflect.apply(original, core.module, args));
     const { module } = instrument({ overrides: { [exportName]: stub } });
-    const bound = attachCore({ module, callMode: 'direct' });
-    const read = () => exportName === '_lcb_sizeof_record' ? bound.recordSize({ name: 'llama_batch' }) : bound.fieldLayout({ name: 'llama_batch', field: 'token' });
+    const read = () => attachCore({ module, callMode: 'direct' }).fieldLayout({ name: 'llama_batch', field: 'token' });
     expect(read).toThrow(failure);
     const valid = read();
     expect(read()).toEqual(valid);
-    expect(stub).toHaveBeenCalledTimes(2);
+    expect(stub).toHaveBeenCalledTimes(3);
   });
 
-  it.each([-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe offsets or sizes before caching: %s', invalid => {
-    for (const exportName of ['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record']) {
+  it.each([-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe metadata addresses or pointer widths before attaching: %s', invalid => {
+    for (const exportName of ['_bicore_schema_hash', '_bicore_pointer_bytes']) {
       const original = Reflect.get(core.module, exportName);
       if (typeof original !== 'function') {
         throw new Error('Missing native export');
       }
       const stub = vi.fn().mockReturnValueOnce(invalid).mockImplementation((...args: (number | bigint)[]) => Reflect.apply(original, core.module, args));
       const { module } = instrument({ overrides: { [exportName]: stub } });
-      const bound = attachCore({ module, callMode: 'direct' });
-      const read = () => exportName === '_lcb_sizeof_record' ? bound.recordSize({ name: 'llama_batch' }) : bound.fieldLayout({ name: 'llama_batch', field: 'token' });
-      expect(read).toThrow('Unsafe memory index');
+      const read = () => attachCore({ module, callMode: 'direct' }).fieldLayout({ name: 'llama_batch', field: 'token' });
+      expect(read).toThrow();
       expect(read).not.toThrow();
       expect(stub).toHaveBeenCalledTimes(2);
     }

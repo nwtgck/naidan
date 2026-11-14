@@ -5,7 +5,7 @@ import { chatProfileSchema, gpuProfilingProfile } from './types.ts';
 /** Read only the reviewed llama subtree from the combined bicore package. */
 export function readLlamaArtifactPackage({ rootDir }: { rootDir: string }) {
   const artifact = readBicoreArtifactPackage({
-    directory: path.join(rootDir, 'node_modules/browser-inference-core'),
+    directory: path.join(rootDir, 'node_modules/llama-cpp-browser-core'),
     runtime: 'llama-cpp',
     maxFileBytes: undefined,
   });

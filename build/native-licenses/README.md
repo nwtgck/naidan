@@ -1,7 +1,10 @@
 # Native notices
 
-Both installed bicore dependencies supply a runtime-local
-`native-license-index.json`. This is a build input, not an extra public asset.
+The installed `llama-cpp-browser-core` and `stable-diffusion-cpp-browser-core`
+dependencies each supply their runtime-local `native-license-index.json` through
+the runtime-qualified public import path. Their producer metadata name remains
+`browser-inference-core`; their dependency keys and artifact pins are independent. This is a
+build input, not an extra public asset.
 The lazy `virtual:naidan-licenses` payload combines these records with the existing
 JavaScript package records and compresses their notice text together.
 
@@ -29,7 +32,8 @@ rather than pairing new runtime bytes with old notices.
 `NAIDAN_STABLE_DIFFUSION_CORE_DIR` is arbitrary external input, so only that path
 uses a Zod shape check. It must not import the installed package's notices.
 Standalone and missing optional image installations do not load the image index.
-The two runtime dependencies may refer to different bicore revisions.
+Each index belongs to its selected dependency's artifact source revision. The two
+artifact revisions, native runtime instances and upstream pins remain independent.
 
 JavaScript package auditing retains its existing name/version contract. Native
 records have runtime-qualified IDs and a display origin; same-name records are

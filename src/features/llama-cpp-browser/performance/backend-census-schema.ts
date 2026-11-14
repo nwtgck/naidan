@@ -7,7 +7,7 @@ export const backendCensusSchema = z.object({
   // Destination storage and capability are observations, not scheduler IDs.
   placementMeaning: z.literal('destination-buffer-not-execution-backend'),
   // Missing in v3 archives: do not infer capabilities retrospectively.
-  capability: z.enum(['synchronous-leaf-bindings-v1', 'legacy-synchronous-getters', 'tensor-layout-only']).optional(),
+  capability: z.enum(['synchronous_direct_exports_v3', 'synchronous-leaf-bindings-v1', 'legacy-synchronous-getters', 'tensor-layout-only']).optional(),
   observedNodes: z.number().int().nonnegative(),
   droppedNodes: z.number().int().nonnegative(),
   errors: z.number().int().nonnegative(),

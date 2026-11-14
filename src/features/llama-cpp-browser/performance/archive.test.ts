@@ -211,11 +211,32 @@ expect(trialRates({ trial }).generationTokensPerSecond).toBeUndefined();
     expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toHaveLength(4);
   });
 
-  it('records only the llama published-artifact identity and treats incompatible manifests as unknown', () => {
+  it('records llama inner payload identities from a format-5 package and treats incompatible pairs as unknown', async () => {
     const sha256 = 'a'.repeat(64), sourceCommit = 'b'.repeat(40);
-    const llama = { path: 'runtimes/llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256 };
-    expect(runtimeBuildEvidence({ manifest: { formatVersion: 4, sourceCommit, files: [llama, { ...llama, path: 'stable-diffusion-cpp-browser-core/core.wasm' }] } })).toEqual({ sourceCommit, files: [llama] });
-    expect(runtimeBuildEvidence({ manifest: { formatVersion: 1 } })).toBeUndefined();
+    const llama = { path: 'profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256 };
+    const api = { path: 'api/schema.json', bytes: 45, sha256 };
+    const manifest = {
+      formatVersion: 5,
+      sourceCommit,
+      files: ['LICENSE', 'README.md', 'package.json', 'runtimes/llama-cpp-browser-core/manifest.json', 'runtimes/stable-diffusion-cpp-browser-core/manifest.json'].map(path => ({ path, bytes: 1, sha256 })),
+    };
+    const runtimeManifest = { formatVersion: 2, runtime: 'llama-cpp', sourceCommit, files: [{ ...llama, futureMetadata: 'allowed' }, api, { ...llama, path: 'host/index.mjs' }] };
+    const expected = { sourceCommit, files: [llama, api].map(file => ({ ...file, path: `runtimes/llama-cpp-browser-core/${file.path}` })) };
+    const source = snapshot();
+    source.environment.runtimeBuild = runtimeBuildEvidence({ manifest, runtimeManifest });
+    expect(source.environment.runtimeBuild).toEqual(expected);
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    expect(JSON.parse(await zip.file('environment.json')!.async('string')).runtimeBuild).toEqual(expected);
+    for (const pair of [
+      { manifest: { ...manifest, formatVersion: 4 }, runtimeManifest },
+      { manifest, runtimeManifest: { ...runtimeManifest, formatVersion: 1 } },
+      { manifest, runtimeManifest: { ...runtimeManifest, runtime: 'stable-diffusion-cpp' } },
+      { manifest, runtimeManifest: { ...runtimeManifest, sourceCommit: 'c'.repeat(40) } },
+    ]) {
+      expect(runtimeBuildEvidence(pair)).toBeUndefined();
+    }
+    source.environment.runtimeBuild = { ...expected, files: [{ ...expected.files[0]!, sha256: 'invalid' }] };
+    await expect(performanceArchive({ snapshot: source })).rejects.toThrow();
   });
 });
 
