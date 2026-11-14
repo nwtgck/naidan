@@ -127,6 +127,8 @@ export function readBicoreArtifactPackage({ directory, runtime, maxFileBytes }: 
     packageRoot,
     runtimeRoot: path.join(packageRoot, prefix),
     sourceCommit: root.sourceCommit,
+    rootMetadata: { formatVersion: root.formatVersion, sourceCommit: root.sourceCommit },
+    runtimeMetadata: inner,
     manifestPaths: [rootManifestPath, path.join(packageRoot, manifestRelative)],
     manifest,
     files,

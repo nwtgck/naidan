@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
 import catalog from 'llama-cpp-browser-core/llama-cpp/api/schema.mjs';
+import * as artifactPackage from '../src/features/llama-cpp-browser/build-artifact-package';
+import { createProfilingArtifactFixture } from './llama-gpu-profile.test-support';
 
 const repo = process.cwd();
 const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
@@ -21,7 +23,99 @@ const callbackGetters = [
   'ggml_backend_dev_count', 'ggml_backend_dev_get', 'ggml_backend_dev_name', 'ggml_backend_dev_supports_op',
 ] as const;
 
+async function availabilityNamespace({ source }: { source: unknown }) {
+  if (typeof source !== 'string') {
+    throw new Error('Expected availability source');
+  }
+  const module = new SourceTextModule(source);
+  await module.link(() => {
+    throw new Error('Runtime identity must not import a manifest');
+  });
+  await module.evaluate();
+  return module.namespace;
+}
+
 describe('shared browser core package integration', () => {
+  it('exports only the published runtime identity summary through availability and watches both manifests', async () => {
+    const artifact = artifactPackage.readLlamaArtifactPackage({ rootDir: repo });
+    const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function') {
+      throw new Error('Expected availability hooks');
+    }
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
+    const watched: string[] = [];
+    const source = await load.call({ addWatchFile: (file: string) => watched.push(file) } as never, String(id));
+    const exports = await availabilityNamespace({ source });
+    expect(Object.keys(exports).sort()).toEqual(['gpuProfilingAvailable', 'q8KernelDiagnosticSchemaAsset', 'runtimeBuild']);
+    expect(Reflect.get(exports, 'runtimeBuild')).toEqual({
+      sourceCommit: artifact.sourceCommit,
+      files: [...artifact.files.values()].filter(file => file.path.startsWith('profiles/') || file.path.startsWith('api/'))
+        .map(file => ({ ...file, path: `runtimes/llama-cpp-browser-core/${file.path}` })),
+    });
+    expect(watched).toEqual(expect.arrayContaining(artifact.manifestPaths));
+  });
+
+  it('leaves runtime identity unavailable when an older current-format manifest omits its runtime name', async () => {
+    using fixture = createProfilingArtifactFixture();
+    const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: fixture.root, mode: 'hosted' }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function') {
+      throw new Error('Expected availability hooks');
+    }
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
+    const source = await load.call({ addWatchFile() {} } as never, String(id));
+    const exports = await availabilityNamespace({ source });
+    expect(Object.hasOwn(exports, 'runtimeBuild')).toBe(true);
+    expect(Reflect.get(exports, 'runtimeBuild')).toBeUndefined();
+  });
+
+  it('refreshes identity after either manifest changes and retries a failed refresh without another event', async () => {
+    using fixture = createProfilingArtifactFixture();
+    const artifact = artifactPackage.readLlamaArtifactPackage({ rootDir: fixture.root });
+    using read = vi.spyOn(artifactPackage, 'readLlamaArtifactPackage');
+    const { resolveId, load, watchChange } = createLlamaCppBrowserBuild({ rootDir: fixture.root, mode: 'hosted' }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function' || typeof watchChange !== 'function') {
+      throw new Error('Expected availability hooks');
+    }
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
+    const initial = await availabilityNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
+    expect(Reflect.get(initial, 'runtimeBuild')).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
+    await watchChange.call({} as never, fixture.file({ profile: 'cpu-wasm32', name: 'core.mjs' }), { event: 'update' });
+    await load.call({ addWatchFile() {} } as never, String(id));
+    expect(read).toHaveBeenCalledTimes(1);
+
+    let reads = 1;
+    for (const [index, manifestPath] of artifact.manifestPaths.entries()) {
+      await watchChange.call({} as never, manifestPath, { event: 'update' });
+      // A partially written package must fail without clearing the pending refresh.
+      writeFileSync(artifact.manifestPaths[0]!, '{');
+      expect(() => load.call({ addWatchFile() {} } as never, String(id))).toThrow();
+      const sourceCommit = String(index + 2).repeat(40);
+      const relative = 'runtimes/llama-cpp-browser-core/manifest.json';
+      const data = Buffer.from(JSON.stringify({ ...artifact.runtimeMetadata, runtime: 'llama-cpp', sourceCommit }));
+      writeFileSync(artifact.manifestPaths[1]!, data);
+      writeFileSync(artifact.manifestPaths[0]!, JSON.stringify({
+        formatVersion: 5,
+        sourceCommit,
+        runtimes: {
+          'llama-cpp': { manifest: relative, manifestFormatVersion: 2 },
+          'stable-diffusion-cpp': { manifest: 'runtimes/stable-diffusion-cpp-browser-core/manifest.json', manifestFormatVersion: 2 },
+        },
+        files: [{ path: relative, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') }],
+      }));
+      const exports = await availabilityNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
+      expect(Reflect.get(exports, 'runtimeBuild')).toEqual({
+        sourceCommit,
+        files: artifact.runtimeMetadata.files.filter(file => file.path.startsWith('profiles/') || file.path.startsWith('api/'))
+          .map(file => ({ ...file, path: `runtimes/llama-cpp-browser-core/${file.path}` })),
+      });
+      reads += 2;
+      expect(read).toHaveBeenCalledTimes(reads);
+      await load.call({ addWatchFile() {} } as never, String(id));
+      expect(read).toHaveBeenCalledTimes(reads);
+    }
+  });
+
   it('keeps the committed dependency and lock entry on the same immutable artifact', () => {
     const dependencyName = 'llama-cpp-browser-core';
     const packageFile = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8')));

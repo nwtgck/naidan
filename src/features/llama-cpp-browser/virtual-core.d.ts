@@ -17,4 +17,5 @@ declare module 'virtual:llama-cpp-browser-core/webgpu-wasm32-jspi' {
 declare module 'virtual:llama-cpp-browser-core/availability' {
   export const gpuProfilingAvailable: boolean;
   export const q8KernelDiagnosticSchemaAsset: Readonly<{ relativePath: string, bytes: number, sha256: string }> | undefined;
+  export const runtimeBuild: ReturnType<typeof import('./performance/runtime-evidence').runtimeBuildEvidence>;
 }

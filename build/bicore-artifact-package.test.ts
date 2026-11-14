@@ -66,6 +66,9 @@ describe.each(['llama-cpp', 'stable-diffusion-cpp'] as const)('bicore %s manifes
     rmSync(test.filePath);
     const artifact = test.read();
     expect(artifact.sourceCommit).toBe(test.root.sourceCommit);
+    expect(artifact.rootMetadata).toEqual({ formatVersion: 5, sourceCommit: test.root.sourceCommit });
+    expect(artifact.runtimeMetadata).toEqual(test.inner);
+    expect(artifact.manifest).toEqual(test.inner);
     expect([...artifact.files.keys()]).toEqual([test.relative]);
     expect(artifact.manifestPaths).toHaveLength(2);
     expect(() => artifact.readArtifact({ relative: test.relative })).toThrow();
