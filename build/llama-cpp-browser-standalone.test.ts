@@ -26,9 +26,9 @@ import { createZipPackages } from './zip-packages';
 import { restoreLicenseCatalog } from './test-support/license-catalog.test-support';
 
 const repo = process.cwd();
-const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
+const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
 const binaryId = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser';
-const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
+const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
 const binary32Id = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi';
 // The reviewed llama.cpp 338fce artifact uses 1,614,708 Brotli bytes on wasm64
 // and 1,576,336 on wasm32. Keep a fixed 2 MB budget for both profiles with
@@ -103,8 +103,8 @@ describe('manifest-verified standalone native artifacts', () => {
     if (typeof load !== 'function') {
       throw new Error('Expected a load hook');
     }
-    expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
-    expect(() => load.call({} as never, path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/test/core.mjs'))).toThrow('Unavailable llama.cpp artifact');
+    expect(() => load.call({} as never, path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`))).toThrow('Unavailable llama.cpp artifact');
+    expect(() => load.call({} as never, path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/test/core.mjs'))).toThrow('Unavailable llama.cpp artifact');
   });
 
   it('registers both manifest-verified JSPI binaries and core imports for standalone capability selection', () => {
@@ -119,8 +119,8 @@ describe('manifest-verified standalone native artifacts', () => {
     }
     for (const profile of ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi']) {
       expect(resolve.call({} as never, `virtual:llama-cpp-browser-core/${profile}`, undefined, {} as never))
-        .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`));
-      const filePath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`);
+        .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`));
+      const filePath = path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`);
       const bytes = readFileSync(filePath);
       expect(embeddedBinaries.find(binary => binary.filePath === filePath)).toMatchObject({
         bytes: bytes.length,
@@ -273,11 +273,11 @@ describe('manifest-verified standalone native artifacts', () => {
       name: 'llama-cpp-browser-core',
       version: '0.1.0',
       license: 'MIT',
-      licenseText: readFileSync(path.join(repo, 'node_modules/llama-cpp-browser-core/LICENSE'), 'utf8'),
+      licenseText: readFileSync(path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/LICENSE'), 'utf8'),
     }]);
     const chunks = result.output.filter((file): file is Rollup.OutputChunk => file.type === 'chunk');
     const modules = chunks.flatMap(chunk => Object.keys(chunk.modules));
-    expect(modules.filter(id => id.includes('llama-cpp-browser-core/profiles/')).sort()).toEqual([coreId, core32Id].sort());
+    expect(modules.filter(id => id.includes('runtimes/llama-cpp-browser-core/profiles/')).sort()).toEqual([coreId, core32Id].sort());
     expect(modules.filter(id => id.startsWith('\0virtual:file-protocol-standalone/binary/')).sort()).toEqual([binaryId, binary32Id].sort());
     expect(modules.some(id => id.includes('client-hosted.ts') || id.endsWith('/runtime/artifacts.ts') || id.endsWith('/hugging-face/writer-client.ts') || id.includes('browser-external'))).toBe(false);
     expect(modules.some(id => id.endsWith('/embedded-binary.test-support.ts'))).toBe(false);

@@ -5,7 +5,7 @@ import type { Core } from './core-types';
 
 function fixture() {
   const set = vi.fn(async (..._args: unknown[]): Promise<void> => undefined), raw = vi.fn();
-  const core = { api: { sd_set_preview_callback: set }, module: { _sdc_sd_set_preview_callback: raw }, constant: (name: string) => ({ PREVIEW_PROJ: 1, PREVIEW_VAE: 3 })[name as 'PREVIEW_PROJ' | 'PREVIEW_VAE'] } as unknown as Core;
+  const core = { api: { sd_set_preview_callback: set }, module: { _sd_set_preview_callback: raw }, pointerBytes: 8, constant: (name: string) => ({ PREVIEW_PROJ: 1, PREVIEW_VAE: 3 })[name as 'PREVIEW_PROJ' | 'PREVIEW_VAE'] } as unknown as Core;
   const control = createNativePreviewControl({ core, callback: 123, runId: 4, initial: { ...defaultPreviewSettings } });
   const message = ({ revision, enabled, startStep = 1 }: { revision: number, enabled: boolean, startStep?: number }): PreviewControl => ({ type: 'naidan-image-preview-control-v1', runId: 4, revision, settings: { ...defaultPreviewSettings, enabled, startStep, interval: 1 } });
   return { control, core, set, raw, message };
@@ -23,6 +23,15 @@ it('passes the actual six-argument ABI in mode/interval/denoised/noisy order and
   h.control.update({ control: h.message({ revision: 2, enabled: false }) });
   expect(h.raw).toHaveBeenLastCalledWith(123n, 3, 1, 0, 0, 0n);
   expect(h.set).toHaveBeenCalledTimes(1);
+});
+
+it('uses native-width pointers for live wasm32 updates while the public API keeps bigint pointers', async () => {
+  const h = fixture();
+  h.core.pointerBytes = 4;
+  await h.control.start();
+  expect(h.set).toHaveBeenCalledExactlyOnceWith(123n, 3, 2, 0, 0, 0n);
+  h.control.update({ control: h.message({ revision: 1, enabled: true }) });
+  expect(h.raw).toHaveBeenCalledExactlyOnceWith(123, 3, 1, 1, 0, 0);
 });
 
 it('rejects malformed, old, foreign and mode-changing updates; close never calls native', async () => {
@@ -67,7 +76,7 @@ it('waits until the configured step threshold before enabling previews', async (
 
 it('fails explicitly rather than re-entering the generic API if the reviewed scalar setter is absent', async () => {
   const h = fixture();
-  delete h.core.module._sdc_sd_set_preview_callback;
+  delete h.core.module._sd_set_preview_callback;
   await h.control.start();
   expect(() => h.control.update({ control: h.message({ revision: 1, enabled: true }) })).toThrow('live preview control');
   expect(h.set).toHaveBeenCalledTimes(1);

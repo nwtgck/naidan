@@ -11,7 +11,7 @@ describe('synthetic architecture declarations on real CPU Wasm', () => {
   let core: Core;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({ profile: 'cpu-wasm32', baseURL, moduleOptions: { wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {} } });
     await core.api.llama_backend_init();
   });

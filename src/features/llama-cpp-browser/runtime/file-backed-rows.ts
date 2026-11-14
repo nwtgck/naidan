@@ -3,9 +3,12 @@ import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
 /** Optional extension, queried on the actual module, not inferred from a model
  * name or a package version. Old runtimes keep the eager-load behavior. */
-export function fileBackedRowsCapability({ core }: { core: Core }) {
+export function fileBackedRowsCapability({ core }: { core: {
+  assertIdle: Core['assertIdle'], pointerBytes: Core['pointerBytes'],
+  module: { _bicore_file_backed_rows_version?: unknown, _bicore_model_file_backed_shard?: unknown },
+} }) {
   core.assertIdle();
-  const version: unknown = Reflect.get(core.module, '_lcb_file_backed_rows_version');
+  const version = core.module._bicore_file_backed_rows_version;
   if (version === undefined) {
     return undefined;
   }
@@ -16,7 +19,7 @@ export function fileBackedRowsCapability({ core }: { core: Core }) {
   if (value === 0) {
     return undefined;
   }
-  const query: unknown = Reflect.get(core.module, '_lcb_model_file_backed_shard');
+  const query = core.module._bicore_model_file_backed_shard;
   if (value !== 1 || core.pointerBytes !== 8 || typeof query !== 'function') {
     throw new LlamaCppBrowserError({ code: 'runtime-error' });
   }

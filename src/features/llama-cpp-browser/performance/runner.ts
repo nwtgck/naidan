@@ -426,7 +426,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                             switch (capability) {
                             case 'tensor-layout-only': trial.warnings.push('placement-layout-only');
                               break;
-                            case 'legacy-synchronous-getters': case 'synchronous-leaf-bindings-v1': case undefined: break;
+                            case 'synchronous_direct_exports_v3': case 'legacy-synchronous-getters': case 'synchronous-leaf-bindings-v1': case undefined: break;
                             default: {
                               const exhaustive: never = capability;
                               void exhaustive;

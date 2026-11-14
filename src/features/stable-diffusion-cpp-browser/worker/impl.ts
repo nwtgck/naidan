@@ -264,9 +264,9 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
               current?.log({ message });
             },
           });
-          trace.emit({ event: 'complete', stage: 'runtime-init', message: undefined, fields: { wasmBytes: module.HEAPU8?.byteLength ?? 0, ioCapabilities: module._sdc_model_io_capabilities?.() ?? 0 } });
-          if (module._sdc_abi_version() !== 2) {
-            throw new Error('Image core ABI 2 is required for unsplit GGUF');
+          trace.emit({ event: 'complete', stage: 'runtime-init', message: undefined, fields: { wasmBytes: module.HEAPU8?.byteLength ?? 0, ioCapabilities: module._bicore_model_io_capabilities?.() ?? 0 } });
+          if (module._bicore_abi_version() !== 3) {
+            throw new Error('Image core ABI 3 is required');
           }
           const profile = getProfileConfiguration({ profile: request.artifact.profile });
           const core = helpers.attachCore(module, helpers.schema, { suspension: profile.suspension });

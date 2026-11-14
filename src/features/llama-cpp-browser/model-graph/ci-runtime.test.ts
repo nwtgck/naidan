@@ -34,7 +34,7 @@ vi.mock('@/features/llama-cpp-browser/worker/model-file-identity', () => ({ same
 // Follow the installed, pinned runtime just like the other CPU integration
 // tests. Legacy packages may omit this optional extension; a present but broken
 // extension must fail the tests instead of being silently skipped.
-const profiles = path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles');
+const profiles = path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles');
 const runtime = path.join(profiles, 'cpu-wasm32/browser');
 const available = existsSync(path.join(runtime, 'model-graph-v1.schema.json'));
 

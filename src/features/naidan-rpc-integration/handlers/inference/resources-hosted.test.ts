@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => {
         profile,
         modulePath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.mjs`,
         wasmPath: `stable-diffusion-cpp-runtime/${commit}/${profile}/core.wasm.gz`,
-        helpersPath: `stable-diffusion-cpp-runtime/${commit}/examples/runtime/index.mjs`,
+        helpersPath: `stable-diffusion-cpp-runtime/${commit}/host/index.mjs`,
         schemaSha256: 'a'.repeat(64),
         wasmSha256: 'b'.repeat(64),
         wasmBytes: 100,

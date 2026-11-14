@@ -35,9 +35,11 @@ export function imageRuntimeSchemaFixture() {
     ['sd_generation_progress_t', [['stage', 'pointer', 'const char *'], ['detail', 'pointer', 'const char *'], ['unit', 'pointer', 'const char *'], ['sample_pass', 'signed', 'int'], ['completed', 'i64', 'int64_t'], ['total', 'i64', 'int64_t']]],
     ['sd_preview_info_t', [['sample_pass', 'signed', 'int'], ['total_steps', 'signed', 'int']]],
   ];
-  return {
-    abiVersion: 2,
-    pointerRepresentation: 'bigint-u64',
+  const target = {
+    abiVersion: 3,
+    pointerRepresentation: 'bigint_native',
+    pointerBytes: 4,
+    schemaSha256: 'b'.repeat(64),
     functions: signatures.map(([name, returnKind, returnType, parameters]) => ({
       name,
       returnKind,
@@ -46,4 +48,7 @@ export function imageRuntimeSchemaFixture() {
     })),
     records: layouts.map(([name, fields]) => ({ name, fields: fields.map(([name, kind, cType]) => ({ name, kind, cType })) })),
   };
+  // Explicit metadata-only fingerprints; this fixture never claims a compiled
+  // target or substitutes for its native fingerprint check.
+  return { ...target, schemaSha256: 'a'.repeat(64), targets: { [target.schemaSha256]: target } };
 }

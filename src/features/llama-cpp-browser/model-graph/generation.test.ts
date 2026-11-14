@@ -13,61 +13,11 @@ import { combineModelGraphGgufs, inspectModelGraphGguf } from './gguf';
 import { llamaGraphFixture } from './fixtures.test-support';
 import { generateWithRegisteredGraph } from './generation';
 import type { RegisteredGraphSession } from './session';
+import { bindModelGraphBoundary } from './native-boundary';
+import type { ModelGraphNativeExports } from './native-exports';
 
-const calls = vi.hoisted(() => ({ prepare: vi.fn(), release: vi.fn() }));
+const calls = vi.hoisted(() => ({ prepare: vi.fn(), release: vi.fn(), releaseWorkspace: vi.fn<ModelGraphNativeExports['_lcb_model_graph_sampler_workspace_free']>() }));
 vi.mock('./session', () => ({ prepareRegisteredGraph: calls.prepare, releaseRegisteredGraph: calls.release }));
-
-/** Test adapter only: the old published Wasm provides the actual GGML, chat and
- * sampling code, but not the new vocabulary owner ABI. The new owner/ABI is tested
- * separately in bicore's native target. This is not a rebuilt-Wasm acceptance test. */
-function samplingAdapter({ core, vocabularySize }: { core: Core, vocabularySize: number }) {
-  // The fixture runs the real, synchronous cpu-wasm32 exports. These raw
-  // exports are not part of the generic module type (the public API is async).
-  const nativeSampler = core.module as unknown as {
-    _lcb_llama_sampler_apply(sampler: bigint, candidates: bigint): void;
-    _lcb_llama_sampler_accept(sampler: bigint, token: number): void;
-  };
-  expect(typeof nativeSampler._lcb_llama_sampler_apply).toBe('function');
-  expect(typeof nativeSampler._lcb_llama_sampler_accept).toBe('function');
-  const stride = core.recordSize({ name: 'llama_token_data' });
-  const data = core.alloc({ bytes: stride * vocabularySize });
-  const array = core.allocRecord({ name: 'llama_token_data_array' });
-  const selectedOffset = Number(core.fieldLayout({ name: 'llama_token_data_array', field: 'selected' }).offset);
-  const dataOffset = Number(core.fieldLayout({ name: 'llama_token_data_array', field: 'data' }).offset);
-  const idOffset = Number(core.fieldLayout({ name: 'llama_token_data', field: 'id' }).offset);
-  return {
-    sample({ sampler, logits }: { sampler: bigint, logits: bigint }): number {
-      for (let i = 0; i < vocabularySize; i++) {
-        const pointer = data + BigInt(stride * i);
-        const bytes = core.bytes({ pointer: logits + BigInt(i * 4), length: 4 });
-        const logit = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getFloat32(0, true);
-        core.setField({ name: 'llama_token_data', pointer, field: 'id', value: i });
-        core.setField({ name: 'llama_token_data', pointer, field: 'logit', value: logit });
-        core.setField({ name: 'llama_token_data', pointer, field: 'p', value: 0 });
-      }
-      core.setField({ name: 'llama_token_data_array', pointer: array, field: 'data', value: data });
-      core.setField({ name: 'llama_token_data_array', pointer: array, field: 'size', value: BigInt(vocabularySize) });
-      core.setField({ name: 'llama_token_data_array', pointer: array, field: 'selected', value: -1n });
-      core.setField({ name: 'llama_token_data_array', pointer: array, field: 'sorted', value: 0 });
-      nativeSampler._lcb_llama_sampler_apply(sampler, array);
-      const a = core.bytes({ pointer: array, length: core.recordSize({ name: 'llama_token_data_array' }) });
-      const view = new DataView(a.buffer, a.byteOffset, a.byteLength);
-      const selected = Number(view.getBigInt64(selectedOffset, true));
-      const selectedData = BigInt(view.getUint32(dataOffset, true));
-      if (selected < 0 || selected >= vocabularySize) {
-        throw new Error('Test sampler selected an invalid candidate');
-      }
-      const bytes = core.bytes({ pointer: selectedData + BigInt(stride * selected + idOffset), length: 4 });
-      const token = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getInt32(0, true);
-      nativeSampler._lcb_llama_sampler_accept(sampler, token);
-      return token;
-    },
-    close() {
-      core.free({ pointer: data });
-      core.free({ pointer: array });
-    },
-  };
-}
 
 describe('registered graph generation with real CPU execution and native sampling', () => {
   let core: Core, model: bigint, vocab: bigint;
@@ -75,7 +25,7 @@ describe('registered graph generation with real CPU execution and native samplin
   const bytes = createPositionSensitiveGguf({ chatTemplate: 'chatml' });
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({ profile: 'cpu-wasm32', baseURL, moduleOptions: { wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {} } });
     await core.api.llama_backend_init();
     core.module.FS.writeFile('/generation-fixture.gguf', bytes);
@@ -90,6 +40,14 @@ describe('registered graph generation with real CPU execution and native samplin
     core.setField({ name: 'llama_model_params', pointer: params, field: 'n_gpu_layers', value: 0 });
     model = await core.api.llama_model_load_from_file(file, params);
     vocab = await core.api.llama_model_get_vocab(model);
+    const releaseWorkspace = core.module._lcb_model_graph_sampler_workspace_free;
+    if (!releaseWorkspace) {
+      throw new Error('Missing installed model graph workspace release');
+    }
+    vi.spyOn(core.module, '_lcb_model_graph_sampler_workspace_free').mockImplementation(pointer => {
+      calls.releaseWorkspace(pointer);
+      return Reflect.apply(releaseWorkspace, core.module, [pointer]);
+    });
     vi.spyOn(core.chat, 'prepareFromVocabulary').mockImplementation(({ assertIdle, request }) => core.chat.prepare({ assertIdle, model, request }));
     calls.prepare.mockImplementation(() => current);
     calls.release.mockImplementation(async () => {
@@ -101,6 +59,9 @@ describe('registered graph generation with real CPU execution and native samplin
 
   afterEach(async () => {
     await calls.release();
+    expect(calls.releaseWorkspace).toHaveBeenCalled();
+    expect(calls.releaseWorkspace.mock.calls.every(([pointer]) => pointer > 0n)).toBe(true);
+    calls.releaseWorkspace.mockClear();
     calls.release.mockClear();
     calls.prepare.mockClear();
   });
@@ -129,13 +90,7 @@ describe('registered graph generation with real CPU execution and native samplin
       contextSize: 256,
       batchSize: 128,
       vocabulary: { owner: model, vocab, close() {} },
-      boundary: {
-        architectureKnown: () => true,
-        createVocabulary: async () => {
-          throw new Error('Not used by this test');
-        },
-        createSamplerWorkspace: ({ vocabularySize }) => samplingAdapter({ core, vocabularySize }),
-      },
+      boundary: bindModelGraphBoundary({ core }),
       execution: { kind: 'registeredModelGraph', registrationId: 'test-registration', label: 'Test', architecture: 'llama', format: 'naidan.model-graph/experimental-1', definitionSha256: 'a'.repeat(64), nativeExtensionSha256: 'b'.repeat(64) },
     };
     return { modelId: 'user/model.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/model.gguf' }), options: { profile: 'cpu-wasm32', contextTokens: 256 }, messages: [{ role: 'user', content: 'AB' }], temperature: 0, topP: 1, maxTokens: 4, presencePenalty: 0, frequencyPenalty: 0, stop: [], debug: 'on' };

@@ -255,7 +255,7 @@ export function isHeavyEntryModule({ target }: { target: string }): boolean {
   const localInputAdapter = target === 'src/features/llama-cpp-browser/runtime/directory-input.ts'
     || target === 'src/features/llama-cpp-browser/runtime/model-directory-input.ts';
   return target === preservedOnboardingModule || target === '#worker-constructor'
-    || /^(?:@huggingface\/transformers|onnxruntime-web|llama-cpp-browser-core|stable-diffusion-cpp-browser-core)(?:\/|$)/u.test(target)
+    || /^(?:@huggingface\/transformers|onnxruntime-web|browser-inference-core|llama-cpp-browser-core|stable-diffusion-cpp-browser-core)(?:\/|$)/u.test(target)
     || /^src\/components\/(?:MainApp|AppAuxiliaryUi|(?:Current)?ChatPane)\.vue$/u.test(target)
     || /\/components\/[^/]*(?:Manager|ModelLibrary)\.vue$/u.test(target)
     || /\/(?:workers?|[^/]+-worker)\//u.test(target)

@@ -1,5 +1,6 @@
 import { previewControlSchema, type PreviewControl, type PreviewSettings } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core } from './core-types';
+import { nativePointer } from './native-pointer';
 
 /** The pinned sampler snapshots mode/callback at entry but reads flags and
  * interval per step. Never null that callback while a run may turn preview ON. */
@@ -22,11 +23,13 @@ export function createNativePreviewControl({ core, callback, runId, initial }: {
   }
   const args = () => [BigInt(callback), mode, settings.interval, Number(enabledFor({ target: settings, step: nextStep })), 0, 0n] as const;
   function writeLive(): void {
-    const set = core.module._sdc_sd_set_preview_callback;
+    const set = core.module._sd_set_preview_callback;
     if (!set) {
       throw new Error('This image runtime does not support live preview control');
     }
-    set(...args());
+    const [callbackPointer, mode, interval, denoised, noisy, data] = args();
+    set(nativePointer({ pointer: callbackPointer, pointerBytes: core.pointerBytes }), mode, interval, denoised, noisy,
+      nativePointer({ pointer: data, pointerBytes: core.pointerBytes }));
   }
   return {
     snapshot() {
@@ -52,7 +55,7 @@ export function createNativePreviewControl({ core, callback, runId, initial }: {
       revision = control.revision;
       if (running) {
         // Deliberately narrow exception to the host helper's general busy guard.
-        // The reviewed generated export updates scalar flags and resets preview info:
+        // The reviewed direct export updates scalar flags and resets preview info:
         // no graph/context access, allocation, callback invocation or suspension.
         // Never use core.api/ccall or any other native export to re-enter a run.
         writeLive();

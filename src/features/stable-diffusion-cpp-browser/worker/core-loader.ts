@@ -3,7 +3,7 @@ import type { CoreFactory, HostHelpers } from './core-types';
 import { assertImageRuntimeContract } from '@/features/stable-diffusion-cpp-browser/runtime-contract';
 
 function checkedCoreHelpers({ value, schemaSha256, bf16WeightRetention }: { value: unknown, schemaSha256: string, bf16WeightRetention?: boolean }): HostHelpers {
-  if (!value || typeof value !== 'object' || !('attachCore' in value) || typeof value.attachCore !== 'function' || !('mountReadOnlyFile' in value) || typeof value.mountReadOnlyFile !== 'function' || !('schema' in value) || !value.schema || typeof value.schema !== 'object' || !('schemaSha256' in value.schema) || value.schema.schemaSha256 !== schemaSha256 || !('abiVersion' in value.schema) || value.schema.abiVersion !== 2) {
+  if (!value || typeof value !== 'object' || !('attachCore' in value) || typeof value.attachCore !== 'function' || !('mountReadOnlyFile' in value) || typeof value.mountReadOnlyFile !== 'function' || !('schema' in value) || !value.schema || typeof value.schema !== 'object' || !('schemaSha256' in value.schema) || value.schema.schemaSha256 !== schemaSha256 || !('abiVersion' in value.schema) || value.schema.abiVersion !== 3) {
     throw new Error('Missing or incompatible thin image core helpers');
   }
   assertImageRuntimeContract({ schema: value.schema, bf16WeightRetention });

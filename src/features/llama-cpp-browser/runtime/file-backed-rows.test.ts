@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Core } from './core';
 import { fileBackedRowsCapability } from './file-backed-rows';
 
 function fixture({ version, query, pointerBytes }: { version: unknown, query: unknown, pointerBytes: 4 | 8 }) {
-  return { module: { _lcb_file_backed_rows_version: version, _lcb_model_file_backed_shard: query }, pointerBytes, assertIdle: vi.fn() } as unknown as Core;
+  return { module: { _bicore_file_backed_rows_version: version, _bicore_model_file_backed_shard: query }, pointerBytes, assertIdle: vi.fn() };
 }
 
 describe('file-backed rows runtime negotiation', () => {

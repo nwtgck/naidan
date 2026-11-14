@@ -10,7 +10,7 @@ export function ggufFile(): File {
 
 export function artifactFixture(): Artifact {
   const prefix = `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/`;
-  return { profile: 'webgpu-wasm32-asyncify', modulePath: prefix + 'webgpu-wasm32-asyncify/core.mjs', wasmPath: prefix + 'webgpu-wasm32-asyncify/core.wasm.gz', helpersPath: prefix + 'examples/runtime/index.mjs', schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) };
+  return { profile: 'webgpu-wasm32-asyncify', modulePath: prefix + 'webgpu-wasm32-asyncify/core.mjs', wasmPath: prefix + 'webgpu-wasm32-asyncify/core.wasm.gz', helpersPath: prefix + 'host/index.mjs', schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) };
 }
 
 export function parametersFixture(): Parameters {

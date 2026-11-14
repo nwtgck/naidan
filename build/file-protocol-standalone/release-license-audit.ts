@@ -45,19 +45,27 @@ export function packageNameFromModuleId(moduleId: string): string | undefined {
   return segments[0] || undefined;
 }
 
-async function findPackageJsonForModule({ moduleId, expectedName }: Readonly<{moduleId: string; expectedName: string}>): Promise<Readonly<{packageJsonPath: string; packageJson: PackageJsonLike}> | undefined> {
+async function findPackageJsonForModule({ moduleId, dependencyName }: { moduleId: string, dependencyName: string }): Promise<Readonly<{packageJsonPath: string; packageJson: PackageJsonLike}> | undefined> {
+  const normalized = moduleId.replaceAll('\\', '/').split('?', 1)[0];
+  const marker = '/node_modules/';
+  const packageRoot = path.normalize(normalized.slice(0, normalized.lastIndexOf(marker) + marker.length) + dependencyName);
   let current = path.dirname(moduleId.split('?', 1)[0]);
   for (;;) {
     const packageJsonPath = path.join(current, 'package.json');
     try {
       const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as PackageJsonLike;
-      if (packageJson?.name === expectedName && typeof packageJson.version === 'string') {
+      if (typeof packageJson?.name === 'string' && typeof packageJson.version === 'string') {
         return { packageJsonPath, packageJson };
       }
     } catch (error) {
       if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
         throw error;
       }
+    }
+    // The install name may be an npm alias. Do not fall through to an ancestor
+    // outside that dependency when its own package identity is missing.
+    if (current === packageRoot) {
+      return undefined;
     }
     const parent = path.dirname(current);
     if (parent === current) {
@@ -120,7 +128,7 @@ export async function collectBundledPackageInstances({ chunks }: Readonly<{chunk
       if (!packageName) {
         continue;
       }
-      const found = await findPackageJsonForModule({ moduleId, expectedName: packageName });
+      const found = await findPackageJsonForModule({ moduleId, dependencyName: packageName });
       if (!found) {
         throw new Error(`Unable to locate package.json for bundled module ${moduleId}`);
       }

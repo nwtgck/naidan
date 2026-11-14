@@ -12,7 +12,7 @@ function fixture({ timeDecode = false, pointerBytes = 4 }: { timeDecode?: boolea
   const remove = vi.fn();
   const core = {
     pointerBytes,
-    createTensorPlacementReader: () => ({ read, capability: 'legacy-synchronous-getters' as const }),
+    createTensorPlacementReader: () => ({ read, capability: 'synchronous_direct_exports_v3' as const }),
     module: {
       addFunction: (fn: typeof callback) => {
         callback = fn;
