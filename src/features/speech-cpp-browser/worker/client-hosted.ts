@@ -35,6 +35,8 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
   let workerState: WorkerState | undefined;
   let disposed = false, stopping = false, pumping: Promise<void> | undefined;
   let inputSampleRate = 0, retainedSamples = 0, generation = 0;
+  let queuedSamples = 0, inputFrameNumerator = 0, inputFrameDenominator = 1, inputFrameIndex = 0;
+  let finishingInput = false;
   const queue: Float32Array<ArrayBuffer>[] = [];
   function notify(): void {
     try {
@@ -56,7 +58,9 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
     if (workerState === target) {
       workerState = undefined;
       queue.length = 0;
+      queuedSamples = 0;
       retainedSamples = 0;
+      finishingInput = false;
       pumping = undefined;
       state = { phase: disposed ? 'disposed' : failure === undefined ? 'unloaded' : 'failed', model: undefined, queuedSamples: 0, completion: undefined, failure: disposed ? undefined : failure, loadProgress: undefined };
       notify();
@@ -89,14 +93,35 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
     }
   }
   function pump(): void {
-    if (pumping !== undefined) {
+    if (pumping !== undefined || queuedSamples === 0 || (!finishingInput && queuedSamples < nextBatchLength())) {
       return;
     }
     const target = requireWorker();
     const pumpTask = Promise.resolve().then(async () => {
       try {
-        while (queue.length !== 0 && !target.controller.signal.aborted) {
-          const samples = queue.shift()!;
+        while (queuedSamples !== 0 && !target.controller.signal.aborted) {
+          const frameLength = nextBatchLength();
+          if (!finishingInput && queuedSamples < frameLength) {
+            break;
+          }
+          const length = Math.min(frameLength, queuedSamples);
+          const samples = new Float32Array(length);
+          let copied = 0;
+          while (copied < length) {
+            const head = queue[0]!;
+            const count = Math.min(head.length, length - copied);
+            samples.set(head.subarray(0, count), copied);
+            copied += count;
+            if (count === head.length) {
+              queue.shift();
+            } else {
+              queue[0] = head.subarray(count);
+            }
+          }
+          queuedSamples -= length;
+          if (length === frameLength) {
+            inputFrameIndex++;
+          }
           await operation({ target, task: target.remote.push({ samples, sampleRate: inputSampleRate }) });
           if (workerState !== target) {
             break;
@@ -120,13 +145,20 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
     });
     pumping = pumpTask;
   }
+  function nextBatchLength(): number {
+    // Cumulative boundaries avoid drift when input/model rates have a
+    // fractional frame ratio (for example 16 kHz into a 24 kHz model).
+    return Math.ceil((inputFrameIndex + 1) * inputFrameNumerator / inputFrameDenominator) - Math.ceil(inputFrameIndex * inputFrameNumerator / inputFrameDenominator);
+  }
   function discardQueued(): void {
-    retainedSamples = Math.max(0, retainedSamples - queue.reduce((total, samples) => total + samples.length, 0));
+    retainedSamples = Math.max(0, retainedSamples - queuedSamples);
+    queuedSamples = 0;
     queue.length = 0;
     notify();
   }
   async function releaseCurrentModel(): Promise<void> {
     stopping = true;
+    finishingInput = false;
     discardQueued();
     const target = workerState;
     try {
@@ -238,8 +270,15 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
         throw new Error(String(exhaustive));
       }
       }
+      if (state.model === undefined || !Number.isSafeInteger(options.inputSampleRate) || options.inputSampleRate < 8000 || options.inputSampleRate > 192000) {
+        throw speechError({ code: 'invalid_audio', message: 'Invalid speech input sample rate or model frame metadata' });
+      }
       stopping = false;
+      finishingInput = false;
       inputSampleRate = options.inputSampleRate;
+      inputFrameNumerator = inputSampleRate * state.model.frameSamples;
+      inputFrameDenominator = state.model.sampleRate;
+      inputFrameIndex = 0;
       try {
         await operation({ target, task: target.remote.start({ options }) });
       } catch (error) {
@@ -258,6 +297,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
         return { kind: 'backpressure' };
       }
       queue.push(new Float32Array(samples));
+      queuedSamples += samples.length;
       retainedSamples += samples.length;
       notify();
       pump();
@@ -271,10 +311,14 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
       }
       switch (mode) {
       case 'cancel':
+        finishingInput = false;
         discardQueued();
         postWorkerNotification({ endpoint: target.worker, schema: speechStopSchema, value: { mode } });
         break;
-      case 'finish': break;
+      case 'finish':
+        finishingInput = true;
+        pump();
+        break;
       default: {
         const exhaustive: never = mode;
         throw new Error(String(exhaustive));

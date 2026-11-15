@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { ArrowDownIcon, AudioLinesIcon, FolderOpenIcon, InfoIcon, Loader2Icon, MessageSquarePlusIcon, SlidersHorizontalIcon, SquareIcon, Trash2Icon, MicIcon, MicOffIcon, Volume2Icon, VolumeXIcon } from 'lucide-vue-next';
+import { ArrowDownIcon, AudioLinesIcon, DownloadIcon, FolderOpenIcon, InfoIcon, Loader2Icon, MessageSquarePlusIcon, SlidersHorizontalIcon, SquareIcon, Trash2Icon, MicIcon, MicOffIcon, Volume2Icon, VolumeXIcon } from 'lucide-vue-next';
 import { currentLocale, ensureStrings, lazyStrings } from '@/strings';
 import { storageService } from '@/00-storage/service';
 import { idToRaw } from '@/01-models/ids';
@@ -108,7 +108,18 @@ const outputSelected = computed(() => voiceOutput.value || textOutput.value);
 const output = computed<LiveTurnSettings['output']>(() => voiceOutput.value ? textOutput.value ? 'mixed' : 'audio' : 'text');
 const speechRunning = computed(() => speech.state.value.capture !== 'closed' || ['starting', 'running', 'stopping'].includes(speech.state.value.runtime.phase));
 const busy = computed(() => filePending.value || (speechMode.value ? speechRunning.value : active.value && (state.value.phase !== 'ready' || state.value.playing)));
-const canStart = computed(() => !active.value && !startingModel.value && selectedAvailable.value && selectedEngine.value !== 'checking' && (speechMode.value ? speech.controller.capability.kind === 'available' : runtimeReady.value && (!tools.value || !!selectedFolder.value)));
+const selectedRuntimeReady = computed(() => {
+  switch (selectedEngine.value) {
+  case 'checking': return false;
+  case 'speech': return speech.controller.capability.kind === 'available';
+  case 'llama': return runtimeReady.value && (!tools.value || !!selectedFolder.value);
+  default: {
+    const exhaustive: never = selectedEngine.value;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
+const canStart = computed(() => !active.value && !startingModel.value && !changingConversation.value && selectedAvailable.value && selectedRuntimeReady.value);
 const canQueue = computed(() => !speechMode.value && active.value && state.value.phase !== 'closing' && !changingConversation.value);
 const canTalk = computed(() => !speechMode.value && active.value && !changingConversation.value && !talkPending.value && !['loading', 'closing', 'stopping', 'preparing-input', 'recording'].includes(state.value.phase) && microphone.value && outputSelected.value);
 const canReset = computed(() => !startingModel.value && !changingConversation.value && !['loading', 'closing', 'stopping'].includes(state.value.phase) && !['loading_model', 'starting', 'stopping'].includes(speech.state.value.runtime.phase));
@@ -123,6 +134,7 @@ const headerModel = computed(() => {
 const draftSupported = computed(() => (!draft.value.images.length || (imageInput.value && vision.value)) && (!draft.value.text.trim() || textInput.value));
 const canSubmit = computed(() => canQueue.value && outputSelected.value && composer.hasDraft.value && draftSupported.value);
 const navigationBusy = computed(() => busy.value || startingModel.value || changingConversation.value);
+const canLoadSelectedModel = computed(() => !navigationBusy.value && selectedAvailable.value && selectedRuntimeReady.value && (!active.value || residentModelId.value !== modelId.value));
 const fileRun = computed(() => sourceFile.value !== undefined && lastRunFile.value === sourceFile.value ? speechState.value.fileRun : undefined);
 const fileText = computed(() => fileRun.value?.text ?? '');
 const fileSelectionFailure = computed(() => invalidSourceFile.value ? lazyStrings.liveConversation__audio_file_limits() : fileOperationFailure.value ?? speechState.value.failure?.message);
@@ -151,12 +163,6 @@ const effectiveTools = computed({
   get: () => !speechMode.value && tools.value,
   set: value => {
     tools.value = value;
-  },
-});
-const effectiveKeepAudio = computed({
-  get: () => !speechMode.value && keepAudio.value,
-  set: value => {
-    keepAudio.value = value;
   },
 });
 const effectiveVoiceOutput = computed({
@@ -277,6 +283,18 @@ const status = computed(() => {
 });
 const audioWarning = computed(() => {
   const warning = state.value.audioWarning;
+  switch (warning) {
+  case 'retention-limit': return lazyStrings.liveConversation__audio_retention_limit();
+  case 'retention-failed': return lazyStrings.liveConversation__audio_retention_failed();
+  case undefined: return undefined;
+  default: {
+    const exhaustive: never = warning;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
+const speechAudioWarning = computed(() => {
+  const warning = speechState.value.audioWarning;
   switch (warning) {
   case 'retention-limit': return lazyStrings.liveConversation__audio_retention_limit();
   case 'retention-failed': return lazyStrings.liveConversation__audio_retention_failed();
@@ -431,6 +449,27 @@ function replayEnded({ element }: { element: HTMLAudioElement }): void {
   }
 }
 
+function replayConversationAudio({ event, action }: { event: Event, action: 'start' | 'end' }): void {
+  if (!(event.target instanceof HTMLAudioElement)) {
+    return;
+  }
+  switch (action) {
+  case 'start':
+    if (speechRunning.value) {
+      event.target.pause();
+      return;
+    }
+    replayStarted({ element: event.target });
+    break;
+  case 'end': replayEnded({ element: event.target });
+    break;
+  default: {
+    const exhaustive: never = action;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
 function pauseReplays(): void {
   manualReplay.value?.pause();
   manualReplay.value = undefined;
@@ -491,6 +530,7 @@ async function start(): Promise<void> {
     return;
   }
   pauseReplays();
+  applyAudioRetention();
   settingsOpen.value = false;
   const selected = modelId.value;
   selectModel({ value: selected });
@@ -540,6 +580,7 @@ async function start(): Promise<void> {
 
 async function deliver({ message }: { message: LivePendingMessage }): Promise<'accepted' | 'rejected'> {
   pauseReplays();
+  applyAudioRetention();
   if (message.draft.images.length && state.value.info?.vision !== 'available') {
     return 'rejected';
   }
@@ -570,6 +611,7 @@ async function talk(): Promise<void> {
   if (composer.hasDraft.value && !composer.reserveSpeechDraft()) {
     return;
   }
+  applyAudioRetention();
   talkPending.value = true;
   held.value = true;
   pauseReplays();
@@ -613,11 +655,6 @@ async function newConversation(): Promise<void> {
   if (!canReset.value) {
     return;
   }
-  const changeModel = active.value && modelId.value !== residentModelId.value;
-  if (changeModel && !selectedAvailable.value) {
-    inventoryFailure.value = true;
-    return;
-  }
   changingConversation.value = true;
   held.value = true;
   try {
@@ -636,12 +673,6 @@ async function newConversation(): Promise<void> {
     if (speechMode.value) {
       await speech.controller.reset();
       await controller.reset();
-      if (changeModel) {
-        await speech.controller.release();
-        residentEngine.value = undefined;
-        residentModelId.value = '';
-        await start();
-      }
       composer.clear();
       await clearAudioFile();
       historyScroll.toLatest();
@@ -651,19 +682,11 @@ async function newConversation(): Promise<void> {
     if (disposed) {
       return;
     }
-    if (changeModel) {
-      await controller.close();
-      residentEngine.value = undefined;
-      residentModelId.value = '';
-    }
     await controller.reset();
     await speech.controller.reset();
     composer.clear();
     await clearAudioFile();
     historyScroll.toLatest();
-    if (changeModel && !disposed) {
-      await start();
-    }
   } finally {
     changingConversation.value = false;
     held.value = false;
@@ -735,13 +758,20 @@ function togglePlayback(): void {
 
 function retentionChanged(): void {
   pauseReplays();
+  applyAudioRetention();
+}
+
+function applyAudioRetention(): void {
   controller.retainAudio({ value: keepAudio.value ? 'on' : 'off' });
+  speech.controller.retainAudio({ value: keepAudio.value ? 'on' : 'off' });
 }
 
 async function startSpeech(): Promise<void> {
   if (!active.value || !speechMode.value || speechRunning.value || changingConversation.value || !Number.isFinite(maxSeconds.value) || maxSeconds.value <= 0 || maxSeconds.value > 3600) {
     return;
   }
+  pauseReplays();
+  applyAudioRetention();
   speech.controller.muteMicrophone({ value: microphone.value ? 'on' : 'off' });
   speech.controller.mutePlayback({ value: muted.value ? 'off' : 'on' });
   await speech.controller.start({ maxSeconds: maxSeconds.value, language: conversationLanguage.value, persona: instructions.value || undefined, name: undefined });
@@ -798,11 +828,8 @@ async function generateFile(): Promise<void> {
   }
 }
 
-async function loadDiagnosticModel(): Promise<void> {
-  if (navigationBusy.value || !selectedAvailable.value || selectedEngine.value === 'checking') {
-    return;
-  }
-  if (active.value && residentModelId.value === modelId.value) {
+async function loadSelectedModel(): Promise<void> {
+  if (!canLoadSelectedModel.value) {
     return;
   }
   changingConversation.value = true;
@@ -813,6 +840,9 @@ async function loadDiagnosticModel(): Promise<void> {
         await speech.controller.release();
       } else {
         await controller.close();
+      }
+      if (active.value) {
+        return;
       }
       residentEngine.value = undefined;
       residentModelId.value = '';
@@ -892,7 +922,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <LiveConversationSettingsSurface :open="settingsOpen" :onboarding="!active && !diagnostics" @close="settingsOpen = false">
           <div tw-class="space-y-5">
             <div tw-class="space-y-2"><label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.liveConversation__model() }}</label><ModelSelector surface="settings" :input-id="`${id}-model`" :model-value="modelId || undefined" :models="models.map(model => model.modelId)" :loading="false" :disabled="changingConversation || startingModel" :placeholder="lazyStrings.liveConversation__choose_model()" @update:model-value="selectModel({ value: $event })" @refresh="refreshInventory" data-testid="live-model" /></div>
-            <p v-if="active && modelId !== residentModelId" tw-class="text-xs leading-5 text-amber-700 dark:text-amber-300" data-testid="live-next-model">{{ lazyStrings.liveConversation__model_changes_next_conversation() }}</p>
+            <p v-if="active" tw-class="break-all text-[11px] text-gray-500 dark:text-gray-400" data-testid="live-loaded-model">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</p>
+            <p v-if="active && modelId !== residentModelId" tw-class="text-xs leading-5 text-amber-700 dark:text-amber-300" data-testid="live-next-model">{{ lazyStrings.liveConversation__load_selected_model_to_switch() }}</p>
             <p v-if="preferenceFailure" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.liveConversation__model_preference_failed() }}</p>
             <p v-if="inventoryFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.liveConversation__model_inventory_failed() }}</p>
             <p v-if="modelFailure" role="alert" tw-class="break-words text-xs text-red-600 dark:text-red-400" data-testid="live-model-failure">{{ modelFailure }}</p>
@@ -901,9 +932,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <LlamaCppBrowserModelSuggestions :suggestions="liveModelCatalog" :models="models" :disabled="false" :default-model="undefined" :default-action-disabled="changingConversation" selection-action="select" memory-filter="hide" @select="catalogSelect({ model: $event })" @changed="refreshInventory" />
             <SettingsDisclosure :title="lazyStrings.liveConversation__manage_models_and_runtime()" test-id="live-model-manager">
               <template #icon><FolderOpenIcon tw-class="h-4 w-4" /></template>
-              <div tw-class="space-y-4"><p tw-class="text-xs leading-6 text-gray-500 dark:text-gray-400">{{ speechMode ? lazyStrings.liveConversation__speech_model_setup() : lazyStrings.liveConversation__model_setup() }}</p><LlamaCppBrowserManager presentation="embedded" suggestions="none" :runtime-settings="speechMode ? 'hide' : 'show'" :suspended="active || startingModel" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ value: $event })" @runtime-ready="runtimeReady = $event" /></div>
+              <div tw-class="space-y-4"><p tw-class="text-xs leading-6 text-gray-500 dark:text-gray-400">{{ selectedEngine === 'speech' ? lazyStrings.liveConversation__speech_model_setup() : lazyStrings.liveConversation__model_setup() }}</p><LlamaCppBrowserManager presentation="embedded" suggestions="none" :runtime-settings="selectedEngine === 'llama' ? 'show' : 'hide'" :suspended="active || startingModel" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ value: $event })" @runtime-ready="runtimeReady = $event" /></div>
             </SettingsDisclosure>
             <button v-if="!active && !startingModel" type="button" :disabled="!canStart || changingConversation" @click="start" tw-class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40" data-testid="live-start">{{ speechMode ? lazyStrings.liveConversation__load_model() : lazyStrings.liveConversation__start_session() }}</button>
+            <button v-if="active && modelId !== residentModelId" type="button" :disabled="!canLoadSelectedModel" @click="loadSelectedModel" tw-class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40" data-testid="live-load-model">{{ lazyStrings.liveConversation__load_model() }}</button>
             <div v-if="startingModel" tw-class="space-y-3" data-testid="live-model-loading"><LiveModelLoadProgress :progress="speechState.runtime.loadProgress" /><button type="button" :disabled="changingConversation" @click="cancelModelLoading" tw-class="rounded-lg px-3 py-2 text-xs text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-cancel-model-loading">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button></div>
             <SettingsDisclosure :title="lazyStrings.liveConversation__channels_and_playback()" test-id="live-channel-settings">
               <template #icon><SlidersHorizontalIcon tw-class="h-4 w-4" /></template>
@@ -912,7 +944,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <fieldset tw-class="space-y-2"><legend tw-class="mb-2 flex items-center gap-2 text-xs font-semibold">{{ lazyStrings.liveConversation__output_channels() }}<InfoIcon tabindex="0" role="img" :aria-label="lazyStrings.liveConversation__channels_help()" :title="lazyStrings.liveConversation__channels_help()" tw-class="h-3.5 w-3.5 text-gray-400" /></legend><div tw-class="flex flex-wrap gap-4 text-xs"><label tw-class="flex min-h-9 items-center gap-2"><SettingsChoiceControl presentation="checkbox"><input v-model="effectiveVoiceOutput" type="checkbox" :disabled="speechMode" data-testid="live-output-voice" /></SettingsChoiceControl>{{ lazyStrings.liveConversation__voice() }}</label><label tw-class="flex min-h-9 items-center gap-2"><SettingsChoiceControl presentation="checkbox"><input v-model="effectiveTextOutput" type="checkbox" :disabled="speechMode" data-testid="live-output-text" /></SettingsChoiceControl>{{ lazyStrings.liveConversation__answer_text() }}</label></div></fieldset>
                 <div tw-class="space-y-3 text-xs">
                   <label tw-class="flex min-h-9 items-center gap-2"><SettingsChoiceControl presentation="checkbox"><input v-model="effectiveTranscription" type="checkbox" :disabled="speechMode" data-testid="live-transcription" /></SettingsChoiceControl><span>{{ lazyStrings.liveConversation__transcribe_my_audio() }}</span><InfoIcon tabindex="0" role="img" :aria-label="lazyStrings.liveConversation__transcription_cost()" :title="lazyStrings.liveConversation__transcription_cost()" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400" /></label>
-                  <label tw-class="flex min-h-9 items-center gap-2"><SettingsChoiceControl presentation="checkbox"><input v-model="effectiveKeepAudio" type="checkbox" :disabled="speechMode" @change="retentionChanged" data-testid="live-keep-audio" /></SettingsChoiceControl><span>{{ lazyStrings.liveConversation__keep_audio_in_memory() }}</span><InfoIcon tabindex="0" role="img" :aria-label="lazyStrings.liveConversation__keep_audio_help()" :title="lazyStrings.liveConversation__keep_audio_help()" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400" /></label>
+                  <label tw-class="flex min-h-9 items-center gap-2"><SettingsChoiceControl presentation="checkbox"><input v-model="keepAudio" type="checkbox" :disabled="speechMode && speechRunning && !filePending && !keepAudio" @change="retentionChanged" data-testid="live-keep-audio" /></SettingsChoiceControl><span>{{ lazyStrings.liveConversation__keep_audio_in_memory() }}</span><InfoIcon tabindex="0" role="img" :aria-label="lazyStrings.liveConversation__keep_audio_help()" :title="lazyStrings.liveConversation__keep_audio_help()" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400" /></label>
                   <label tw-class="flex min-h-9 items-center gap-2"><SettingsChoiceControl presentation="checkbox"><input v-model="muted" type="checkbox" @change="playbackChanged" /></SettingsChoiceControl>{{ lazyStrings.liveConversation__mute_playback() }}</label>
                   <label tw-class="flex min-h-9 items-center gap-2"><SettingsChoiceControl presentation="checkbox"><input v-model="hideText" type="checkbox" /></SettingsChoiceControl>{{ lazyStrings.liveConversation__hide_answer_text() }}</label>
                 </div></div>
@@ -929,16 +961,26 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
         </LiveConversationSettingsSurface>
         <LiveConversationDiagnostics v-if="diagnostics" ref="fileView" :file="sourceFile" :run="fileRun" :text="fileText" :busy="filePending" :blocked="navigationBusy && !filePending" :can-generate="canGenerateFile" :unavailable="fileUnavailable" :selection-failure="fileSelectionFailure" :tail-seconds="tailSeconds" :seed="fileSeed" :model-load-milliseconds="modelLoadMilliseconds" @seed="fileSeed = $event" @select="selectAudioFile({ files: $event })" @generate="generateFile" @cancel="speech.controller.stop({ mode: 'cancel' })" @clear="clearAudioFile" @settings="settingsOpen = true" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })" >
-          <template #model><div tw-class="space-y-3 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/40"><label :for="`${id}-diagnostic-model`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__model() }}</label><ModelSelector surface="settings" :input-id="`${id}-diagnostic-model`" :model-value="modelId || undefined" :models="models.map(model => model.modelId)" :loading="selectedEngine === 'checking'" :disabled="navigationBusy" :placeholder="lazyStrings.liveConversation__choose_model()" @update:model-value="selectModel({ value: $event })" @refresh="refreshInventory" data-testid="live-diagnostics-model" /><div tw-class="flex flex-wrap items-center gap-3"><button type="button" :disabled="navigationBusy || !selectedAvailable || selectedEngine === 'checking' || (active && residentModelId === modelId) || (selectedEngine === 'speech' && speech.controller.capability.kind !== 'available')" @click="loadDiagnosticModel" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-diagnostics-load-model">{{ lazyStrings.liveConversation__load_model() }}</button><span v-if="active" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</span><button v-if="startingModel" type="button" @click="cancelModelLoading" data-testid="live-diagnostics-cancel-model" tw-class="rounded text-xs text-blue-600 underline dark:text-blue-400">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button></div><LiveModelLoadProgress v-if="startingModel" :progress="speechState.runtime.loadProgress" /><p v-if="modelFailure" role="alert" tw-class="break-words text-xs text-red-600 dark:text-red-400">{{ modelFailure }}</p></div></template>
+          <template #model><div tw-class="space-y-3 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/40"><label :for="`${id}-diagnostic-model`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__model() }}</label><ModelSelector surface="settings" :input-id="`${id}-diagnostic-model`" :model-value="modelId || undefined" :models="models.map(model => model.modelId)" :loading="selectedEngine === 'checking'" :disabled="navigationBusy" :placeholder="lazyStrings.liveConversation__choose_model()" @update:model-value="selectModel({ value: $event })" @refresh="refreshInventory" data-testid="live-diagnostics-model" /><div tw-class="flex flex-wrap items-center gap-3"><button type="button" :disabled="!canLoadSelectedModel" @click="loadSelectedModel" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-diagnostics-load-model">{{ lazyStrings.liveConversation__load_model() }}</button><span v-if="active" data-testid="live-diagnostics-resident-model" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</span><button v-if="startingModel" type="button" @click="cancelModelLoading" data-testid="live-diagnostics-cancel-model" tw-class="rounded text-xs text-blue-600 underline dark:text-blue-400">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button></div><LiveModelLoadProgress v-if="startingModel" :progress="speechState.runtime.loadProgress" /><p v-if="modelFailure" role="alert" tw-class="break-words text-xs text-red-600 dark:text-red-400">{{ modelFailure }}</p></div></template>
           <template #settings><div tw-class="space-y-2"><label :for="`${id}-diagnostic-language`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__conversation_language() }}</label><span tw-class="block w-full sm:max-w-xs"><SettingsFormSelect :id="`${id}-diagnostic-language`" v-model="conversationLanguage" :options="conversationLanguageOptions" :label="lazyStrings.liveConversation__conversation_language()" :disabled="navigationBusy" :aria-describedby="`${id}-diagnostic-language-help`" data-testid="live-diagnostics-language" /></span><p :id="`${id}-diagnostic-language-help`" data-testid="live-diagnostics-language-help" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__conversation_language_help() }}</p></div><label tw-class="block space-y-2 text-xs font-medium text-gray-600 dark:text-gray-300"><span>{{ lazyStrings.liveConversation__instructions() }}</span><textarea v-model="instructions" :disabled="navigationBusy" rows="2" maxlength="16384" tw-class="block w-full rounded-lg border border-gray-200 bg-transparent p-3 text-sm disabled:opacity-40 dark:border-gray-700" data-testid="live-diagnostics-instructions" /></label></template>
         </LiveConversationDiagnostics>
         <div v-if="!diagnostics && speechState.failure" role="alert" tw-class="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 dark:border-red-900 dark:bg-red-900/10 dark:text-red-400" data-testid="live-speech-failure"><p>{{ lazyStrings.liveConversation__continuous_conversation() }} · {{ lazyStrings.liveConversation__failed() }}</p><code tw-class="mt-2 block whitespace-pre-wrap break-words">{{ speechState.failure.message }}<template v-if="speechState.failure.nativeStatus !== undefined">{{ '\n' }}{{ speechState.failure.nativeStatus }}</template><template v-if="speechState.failure.nativeInput !== undefined">{{ '\n' }}{{ speechState.failure.nativeInput }}</template></code></div>
+        <p v-if="!diagnostics && speechAudioWarning" role="status" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-speech-audio-warning">{{ speechAudioWarning }}</p>
         <p v-if="!diagnostics && speechWarning" role="alert" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-speech-warning">{{ speechWarning }}</p>
         <section v-if="!diagnostics && (speechMode || speechState.sessions.length)" :aria-label="lazyStrings.liveConversation__conversation()" tw-class="space-y-6" data-testid="live-speech-history">
           <p v-if="!speechState.sessions.length && active" tw-class="py-8 text-center text-sm leading-7 text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__ready_for_continuous_conversation() }}</p>
           <article v-for="session in speechState.sessions" :key="session.id" tw-class="space-y-4 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800/80 dark:bg-gray-900/40" data-testid="live-speech-session">
             <div tw-class="flex flex-wrap items-center gap-x-3 gap-y-1"><h2 tw-class="flex min-w-0 items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-100"><AudioLinesIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500" /><span tw-class="min-w-0 break-all">{{ session.modelName }}</span></h2><span tw-class="text-[11px] text-gray-400 dark:text-gray-500">{{ lazyStrings.liveConversation__continuous_audio_session() }}</span></div>
             <p v-if="!hideText" tw-class="whitespace-pre-wrap break-words text-sm leading-7" data-testid="live-speech-text">{{ session.text }}</p>
+            <details v-if="session.inputAudio || session.outputAudio" tw-class="rounded-xl border border-gray-200/70 p-3 text-xs dark:border-gray-800" data-testid="live-speech-retained-audio">
+              <summary tw-class="cursor-pointer font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__retained_conversation_audio() }}</summary>
+              <div tw-class="mt-4 space-y-4">
+                <p tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400" data-testid="live-speech-retention-help">{{ lazyStrings.liveConversation__retained_conversation_audio_help() }}</p>
+                <div v-if="session.inputAudio" tw-class="space-y-2"><h3 tw-class="font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__input_audio() }}</h3><audio :src="session.inputAudio.url" controls preload="none" :inert="speechRunning" :aria-disabled="speechRunning" @play="replayConversationAudio({ event: $event, action: 'start' })" @pause="replayConversationAudio({ event: $event, action: 'end' })" @ended="replayConversationAudio({ event: $event, action: 'end' })" :aria-label="lazyStrings.liveConversation__input_audio()" :tw-class="speechRunning ? 'h-10 w-full opacity-50' : 'h-10 w-full'" data-testid="live-speech-input-replay" /><a :href="session.inputAudio.url" :download="`naidan-live-${session.id}-input.wav`" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded text-blue-600 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-400" data-testid="live-speech-download-input"><DownloadIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.liveConversation__save_input_audio_wav() }}</a></div>
+                <div v-if="session.outputAudio" tw-class="space-y-2"><h3 tw-class="font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__voice_response() }}</h3><audio :src="session.outputAudio.url" controls preload="none" :inert="speechRunning" :aria-disabled="speechRunning" @play="replayConversationAudio({ event: $event, action: 'start' })" @pause="replayConversationAudio({ event: $event, action: 'end' })" @ended="replayConversationAudio({ event: $event, action: 'end' })" :aria-label="lazyStrings.liveConversation__voice_response()" :tw-class="speechRunning ? 'h-10 w-full opacity-50' : 'h-10 w-full'" data-testid="live-speech-output-replay" /><a :href="session.outputAudio.url" :download="`naidan-live-${session.id}-response.wav`" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded text-blue-600 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-400" data-testid="live-speech-download-output"><DownloadIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.liveConversation__save_response_wav() }}</a></div>
+                <p v-if="session.inputAudio?.status === 'partial' || session.outputAudio?.status === 'partial'" tw-class="text-[11px] leading-5 text-amber-700 dark:text-amber-300" data-testid="live-speech-partial-audio">{{ lazyStrings.liveConversation__partial_conversation_audio() }}</p>
+              </div>
+            </details>
             <p v-if="session.completion === 'max_seconds'" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300">{{ lazyStrings.liveConversation__conversation_time_limit_reached() }}</p><p v-else-if="session.completion" tw-class="text-[11px] text-gray-400 dark:text-gray-500">{{ lazyStrings.liveConversation__session_ended() }}</p>
           </article>
         </section>
@@ -966,7 +1008,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <button type="button" :aria-pressed="muted" @click="togglePlayback" :tw-class="['flex min-h-11 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', muted ? 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-400' : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800']" data-testid="live-speech-mute-playback"><VolumeXIcon v-if="muted" aria-hidden="true" tw-class="h-4 w-4" /><Volume2Icon v-else aria-hidden="true" tw-class="h-4 w-4" />{{ muted ? lazyStrings.liveConversation__unmute_playback() : lazyStrings.liveConversation__mute_playback() }}</button>
           </div>
           <div v-if="speechState.capture === 'open' && speechState.runtime.phase === 'running'" tw-class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400" data-testid="live-speech-audio-status"><span role="status" tw-class="flex items-center gap-1.5"><MicIcon v-if="microphone" aria-hidden="true" tw-class="h-3.5 w-3.5 text-blue-500" /><MicOffIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ microphone ? lazyStrings.liveConversation__listening() : lazyStrings.liveConversation__microphone_muted() }}</span><span role="status" tw-class="flex items-center gap-1.5"><VolumeXIcon v-if="muted" aria-hidden="true" tw-class="h-3.5 w-3.5" /><Volume2Icon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 text-blue-500" />{{ muted ? lazyStrings.liveConversation__playback_muted() : speechState.playing ? lazyStrings.liveConversation__playing() : lazyStrings.liveConversation__waiting_for_audio() }}</span></div>
-          <p tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__microphone_and_response_audio_run_together() }}</p>
+          <p data-testid="live-speech-guidance" tw-class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__microphone_and_response_audio_run_together() }}</p>
           <p v-if="speechUnavailable" role="status" tw-class="text-xs leading-5 text-amber-700 dark:text-amber-300">{{ speechUnavailable }}</p>
           <p v-if="speechState.runtime.queuedSamples > 24000" role="status" tw-class="text-xs leading-5 text-amber-700 dark:text-amber-300" data-testid="live-speech-delay">{{ lazyStrings.liveConversation__microphone_audio_delay({ seconds: (speechState.runtime.queuedSamples / 24000).toFixed(1) }) }}</p>
         </div>

@@ -33,6 +33,7 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     }
     closed = true;
     accepting = false;
+    context.onstatechange = null;
     signal.removeEventListener('abort', abort);
     stream?.getTracks().forEach(track => {
       track.onended = null;
@@ -54,6 +55,25 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     if (!closed) {
       clean();
       onError({ error });
+    }
+  }
+  function contextFailure(): Error | undefined {
+    const state = context.state;
+    switch (state) {
+    case 'running': return undefined;
+    case 'suspended': case 'interrupted': case 'closed': return new Error(`Live microphone audio context is ${state}`);
+    default: {
+      const exhaustive: never = state;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+  function contextStateChanged(): void {
+    if (!closed) {
+      const error = contextFailure();
+      if (error) {
+        fail({ error });
+      }
     }
   }
   signal.addEventListener('abort', abort, { once: true });
@@ -137,6 +157,13 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     source.connect(node);
     node.connect(sink);
     sink.connect(context.destination);
+    const error = contextFailure();
+    if (error) {
+      throw error;
+    }
+    // Initial resume may legitimately be pending. Monitor only after capture
+    // is ready, and detach before our own close so cleanup is never an error.
+    context.onstatechange = contextStateChanged;
     return {
       finish({ action }) {
         if (finishing) {

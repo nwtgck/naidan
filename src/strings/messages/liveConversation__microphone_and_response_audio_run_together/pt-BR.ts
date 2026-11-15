@@ -1,1 +1,1 @@
-export const liveConversation__microphone_and_response_audio_run_together = (): string => 'Speak while listening to the response. You can mute the microphone and playback separately.';
+export const liveConversation__microphone_and_response_audio_run_together = (): string => 'Use fones de ouvido. Quando o microfone estiver pronto, fale brevemente e aguarde a resposta sem parar. Parar encerra toda a conversa.';

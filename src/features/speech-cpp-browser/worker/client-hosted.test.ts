@@ -3,11 +3,14 @@ import type { SpeechWorker } from './protocol';
 import type { SpeechState, SpeechModelInfo } from '@/features/speech-cpp-browser/types';
 import { createSpeechClient } from './client-hosted';
 import type { z } from 'zod';
+import { createSpeechFileRun } from '@/features/live-conversation/logic/speech-file-run';
+import type { SpeechObservers } from './types';
 
 const transport = vi.hoisted(() => ({
   remotes: [] as SpeechWorker[],
   assigned: new Map<SpeechWorker, object>(),
   listeners: new Map<object, Set<({ value }: { value: unknown }) => void>>(),
+  post: vi.fn(),
 }));
 vi.mock('virtual:speech-cpp-browser/config', () => ({ default: { kind: 'available', sourceCommit: 'a'.repeat(40), artifact: { profile: 'webgpu-wasm64-jspi', modulePath: 'fixture', wasmPath: 'fixture', helpersPath: 'fixture', schemaSha256: 'b'.repeat(64), wasmSha256: 'c'.repeat(64), wasmBytes: 8 } } }));
 vi.mock('@/utils/worker-transport', () => ({
@@ -17,7 +20,7 @@ vi.mock('@/utils/worker-transport', () => ({
     return remote;
   },
   releaseWorkerRemote: () => undefined,
-  postWorkerNotification: () => undefined,
+  postWorkerNotification: transport.post,
   subscribeWorkerNotifications: ({ endpoint, schema, listener }: { endpoint: object, schema: z.ZodType, listener: ({ value }: { value: unknown }) => void }) => {
     const listeners = transport.listeners.get(endpoint) ?? new Set();
     const wrapped = ({ value }: { value: unknown }) => {
@@ -66,14 +69,32 @@ function remoteFixture({ load, push }: { load: Promise<void> | undefined, push: 
 
 function clientFixture() {
   const states: SpeechState[] = [];
-  const client = createSpeechClient({ observers: { onFrame() {}, onState: ({ state }) => states.push(state) } });
+  const onFrame = vi.fn<SpeechObservers['onFrame']>(), onState = vi.fn<SpeechObservers['onState']>();
+  const client = createSpeechClient({
+    observers: {
+      onFrame,
+      onState: ({ state }) => {
+        states.push(state);
+        onState({ state });
+      },
+    },
+  });
   return {
     client,
     states,
+    onFrame,
+    onState,
     async [Symbol.asyncDispose]() {
       await client.dispose();
     },
   };
+}
+
+async function startFixture({ fixture, remote, sampleRate }: { fixture: ReturnType<typeof clientFixture>, remote: SpeechWorker, sampleRate: number }): Promise<void> {
+  await fixture.client.loadModel({ file: new File([], 'queue.gguf') });
+  emitState({ remote, phase: 'ready', model: info });
+  await fixture.client.start({ options: { inputSampleRate: sampleRate, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: undefined } });
+  emitState({ remote, phase: 'running', model: info });
 }
 
 beforeEach(() => {
@@ -81,6 +102,7 @@ beforeEach(() => {
   transport.remotes.length = 0;
   transport.assigned.clear();
   transport.listeners.clear();
+  transport.post.mockClear();
   vi.stubGlobal('Worker', WorkerDouble);
   vi.stubGlobal('navigator', { gpu: {} });
   vi.stubGlobal('WebAssembly', { validate: () => true, Suspending: class {}, promising: () => {} });
@@ -166,8 +188,8 @@ it('publishes drained queue ownership after the final worker notification preced
   emitState({ remote, phase: 'ready', model: info });
   await fixture.client.start({ options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: undefined } });
   emitState({ remote, phase: 'running', model: info });
-  expect(fixture.client.push({ samples: new Float32Array(1000), sampleRate: 24000 })).toEqual({ kind: 'accepted' });
-  expect(fixture.states.at(-1)?.queuedSamples).toBe(1000);
+  expect(fixture.client.push({ samples: new Float32Array(3200), sampleRate: 24000 })).toEqual({ kind: 'accepted' });
+  expect(fixture.states.at(-1)?.queuedSamples).toBe(3200);
   await vi.waitFor(() => expect(remote.push).toHaveBeenCalledOnce());
   emitState({ remote, phase: 'running', model: info });
   gate.resolve();
@@ -209,4 +231,216 @@ it('retires failed native ownership and preserves its details while an RPC is pe
   gate.resolve();
   expect(workers[0]!.terminate).toHaveBeenCalledOnce();
   expect(fixture.client.getState()).toMatchObject({ phase: 'failed', model: undefined, failure });
+});
+
+it('combines microphone-sized packets into complete model frames and retains the next partial frame', async () => {
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate: 24000 });
+  for (const size of [1012, 1024, 1024]) {
+    fixture.client.push({ samples: new Float32Array(size).fill(0.25), sampleRate: 24000 });
+  }
+  await Promise.resolve();
+  expect(remote.push).not.toHaveBeenCalled();
+  expect(fixture.client.getState().queuedSamples).toBe(3060);
+  fixture.client.push({ samples: new Float32Array(1024).fill(0.25), sampleRate: 24000 });
+  await vi.waitFor(() => expect(fixture.client.getState().queuedSamples).toBe(884));
+  expect(remote.push).toHaveBeenCalledOnce();
+  expect(remote.push).toHaveBeenLastCalledWith({ samples: new Float32Array(3200).fill(0.25), sampleRate: 24000 });
+  for (const size of [1024, 1024, 268]) {
+    fixture.client.push({ samples: new Float32Array(size).fill(0.5), sampleRate: 24000 });
+  }
+  await vi.waitFor(() => expect(fixture.client.getState().queuedSamples).toBe(0));
+  expect(remote.push).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(remote.push).mock.calls[1]?.[0].samples.slice(0, 884)).toEqual(new Float32Array(884).fill(0.25));
+  expect(fixture.states.at(-1)?.queuedSamples).toBe(0);
+});
+
+it.each([137, 1024, 3199, 6400])('preserves every PCM byte across %s-sample input chunks and flushes the final partial frame', async size => {
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate: 24000 });
+  const pcm = Float32Array.from({ length: 3200 * 5 + 77 }, (_, index) => Math.sin(index / 100) * 0.5);
+  pcm[0] = -0;
+  pcm[1] = 1e-42;
+  for (let offset = 0; offset < pcm.length; offset += size) {
+    const part = pcm.subarray(offset, offset + size);
+    const buffer = new Float32Array(part.length + 4);
+    buffer.set(part, 2);
+    const samples = buffer.subarray(2, 2 + part.length);
+    expect(fixture.client.push({ samples, sampleRate: 24000 })).toEqual({ kind: 'accepted' });
+    samples.fill(0);
+  }
+  await fixture.client.stop({ mode: 'finish' });
+  const actual = new Float32Array(pcm.length);
+  let offset = 0;
+  for (const [{ samples }] of vi.mocked(remote.push).mock.calls) {
+    actual.set(samples, offset);
+    offset += samples.length;
+  }
+  expect(vi.mocked(remote.push).mock.calls.map(([{ samples }]) => samples.length)).toEqual([3200, 3200, 3200, 3200, 3200, 77]);
+  expect(new Uint8Array(actual.buffer)).toEqual(new Uint8Array(pcm.buffer));
+  expect(fixture.client.getState().queuedSamples).toBe(0);
+});
+
+it.each([
+  { sampleRate: 16000, lengths: [2134, 2133, 2133] },
+  { sampleRate: 44100, lengths: [5880, 5880, 5880] },
+  { sampleRate: 48000, lengths: [6400, 6400, 6400] },
+])('uses the model frame duration for $sampleRate Hz input without fractional drift', async ({ sampleRate, lengths }) => {
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate });
+  const total = lengths.reduce((sum, length) => sum + length, 0);
+  for (let offset = 0; offset < total; offset += 317) {
+    fixture.client.push({ samples: new Float32Array(Math.min(317, total - offset)), sampleRate });
+  }
+  await fixture.client.stop({ mode: 'finish' });
+  expect(vi.mocked(remote.push).mock.calls.map(([{ samples }]) => samples.length)).toEqual(lengths);
+  expect(vi.mocked(remote.push).mock.calls.every(([args]) => args.sampleRate === sampleRate)).toBe(true);
+});
+
+it('waits for a partial finish to drain before stopping the native dialogue', async () => {
+  const gate = Promise.withResolvers<void>();
+  const remote = remoteFixture({ load: undefined, push: gate.promise });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate: 24000 });
+  fixture.client.push({ samples: new Float32Array(999).fill(0.25), sampleRate: 24000 });
+  expect(remote.push).not.toHaveBeenCalled();
+  const finishing = fixture.client.stop({ mode: 'finish' });
+  await vi.waitFor(() => expect(remote.push).toHaveBeenCalledOnce());
+  expect(remote.push).toHaveBeenCalledWith({ samples: new Float32Array(999).fill(0.25), sampleRate: 24000 });
+  expect(fixture.client.getState().queuedSamples).toBe(999);
+  expect(remote.stop).not.toHaveBeenCalled();
+  gate.resolve();
+  await finishing;
+  expect(remote.stop).toHaveBeenCalledWith({ mode: 'finish' });
+  expect(fixture.states.at(-1)?.queuedSamples).toBe(0);
+});
+
+it('discards an unsent partial frame immediately on cancel while retaining the in-flight frame until acknowledgement', async () => {
+  const gate = Promise.withResolvers<void>();
+  const remote = remoteFixture({ load: undefined, push: gate.promise });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate: 24000 });
+  fixture.client.push({ samples: new Float32Array(3200), sampleRate: 24000 });
+  await vi.waitFor(() => expect(remote.push).toHaveBeenCalledOnce());
+  fixture.client.push({ samples: new Float32Array(777), sampleRate: 24000 });
+  const cancelled = fixture.client.stop({ mode: 'cancel' });
+  expect(fixture.client.getState().queuedSamples).toBe(3200);
+  expect(transport.post).toHaveBeenCalledWith(expect.objectContaining({ endpoint: workers[0], value: { mode: 'cancel' } }));
+  gate.resolve();
+  await cancelled;
+  expect(remote.push).toHaveBeenCalledOnce();
+  expect(fixture.states.at(-1)?.queuedSamples).toBe(0);
+});
+
+it('keeps the two-second bound inclusive of in-flight and incomplete frames', async () => {
+  const gate = Promise.withResolvers<void>();
+  const remote = remoteFixture({ load: undefined, push: gate.promise });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate: 24000 });
+  fixture.client.push({ samples: new Float32Array(3200), sampleRate: 24000 });
+  await vi.waitFor(() => expect(remote.push).toHaveBeenCalledOnce());
+  expect(fixture.client.push({ samples: new Float32Array(44799), sampleRate: 24000 })).toEqual({ kind: 'accepted' });
+  expect(fixture.client.push({ samples: new Float32Array(2), sampleRate: 24000 })).toEqual({ kind: 'backpressure' });
+  expect(fixture.client.push({ samples: new Float32Array(1), sampleRate: 24000 })).toEqual({ kind: 'accepted' });
+  expect(fixture.client.push({ samples: new Float32Array(1), sampleRate: 24000 })).toEqual({ kind: 'backpressure' });
+  expect(fixture.client.getState().queuedSamples).toBe(48000);
+  const cancelled = fixture.client.stop({ mode: 'cancel' });
+  expect(fixture.client.getState().queuedSamples).toBe(3200);
+  gate.resolve();
+  await cancelled;
+});
+
+it('does not let a retired worker acknowledgement consume the replacement worker partial frame', async () => {
+  const gate = Promise.withResolvers<void>();
+  const first = remoteFixture({ load: undefined, push: gate.promise });
+  const second = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(first, second);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote: first, sampleRate: 24000 });
+  fixture.client.push({ samples: new Float32Array(3200).fill(0.25), sampleRate: 24000 });
+  await vi.waitFor(() => expect(first.push).toHaveBeenCalledOnce());
+  fixture.client.push({ samples: new Float32Array(1111).fill(0.75), sampleRate: 24000 });
+  await startFixture({ fixture, remote: second, sampleRate: 24000 });
+  fixture.client.push({ samples: new Float32Array(1000).fill(-0.5), sampleRate: 24000 });
+  gate.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(fixture.client.getState().queuedSamples).toBe(1000);
+  fixture.client.push({ samples: new Float32Array(2200).fill(-0.5), sampleRate: 24000 });
+  await vi.waitFor(() => expect(fixture.client.getState().queuedSamples).toBe(0));
+  expect(second.push).toHaveBeenCalledOnce();
+  expect(second.push).toHaveBeenCalledWith({ samples: new Float32Array(3200).fill(-0.5), sampleRate: 24000 });
+});
+
+it('disposes an incomplete batch without sending it to a released model', async () => {
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate: 24000 });
+  fixture.client.push({ samples: new Float32Array(1000), sampleRate: 24000 });
+  await fixture.client.dispose();
+  expect(remote.push).not.toHaveBeenCalled();
+  expect(workers[0]?.terminate).toHaveBeenCalledOnce();
+  expect(fixture.client.getState()).toMatchObject({ phase: 'disposed', model: undefined, queuedSamples: 0 });
+});
+
+it('starts a fresh fractional batch boundary when reusing the same model after a partial finish', async () => {
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  await startFixture({ fixture, remote, sampleRate: 16000 });
+  fixture.client.push({ samples: new Float32Array(2257).fill(0.25), sampleRate: 16000 });
+  await fixture.client.stop({ mode: 'finish' });
+  expect(vi.mocked(remote.push).mock.calls.map(([{ samples }]) => samples.length)).toEqual([2134, 123]);
+  emitState({ remote, phase: 'completed', model: info });
+  await fixture.client.start({ options: { inputSampleRate: 16000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: undefined } });
+  emitState({ remote, phase: 'running', model: info });
+  fixture.client.push({ samples: new Float32Array(2133).fill(-0.5), sampleRate: 16000 });
+  await Promise.resolve();
+  expect(remote.push).toHaveBeenCalledTimes(2);
+  fixture.client.push({ samples: new Float32Array(1).fill(-0.5), sampleRate: 16000 });
+  await vi.waitFor(() => expect(fixture.client.getState().queuedSamples).toBe(0));
+  expect(remote.push).toHaveBeenLastCalledWith({ samples: new Float32Array(2134).fill(-0.5), sampleRate: 16000 });
+  expect(remote.loadModel).toHaveBeenCalledOnce();
+});
+
+it('drains each full file-run frame without waiting for a later packet or finish call', async () => {
+  using urls = {
+    create: vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:hosted-file'),
+    revoke: vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {}),
+    [Symbol.dispose]() {
+      this.create.mockRestore();
+      this.revoke.mockRestore();
+    },
+  };
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  remote.start = vi.fn(async () => emitState({ remote, phase: 'running', model: info }));
+  remote.stop = vi.fn(async () => emitState({ remote, phase: 'completed', model: info }));
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  const runner = createSpeechFileRun({ client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, decodeFile: async () => new Float32Array(6401).fill(0.25), onChange() {} });
+  fixture.onState.mockImplementation(() => runner.onState());
+  fixture.onFrame.mockImplementation(({ frame }) => runner.onFrame({ frame }));
+  await using recording = {
+    async [Symbol.asyncDispose]() {
+      runner.clear();
+    },
+  };
+  await fixture.client.loadModel({ file: new File([], 'model.gguf') });
+  emitState({ remote, phase: 'ready', model: info });
+  await runner.run();
+  expect(runner.getState()).toMatchObject({ status: 'complete', sourceSamples: 6401, submittedSamples: 9600 });
+  expect(remote.push).toHaveBeenCalledTimes(3);
+  expect(fixture.states.at(-1)?.queuedSamples).toBe(0);
+  expect(urls.create).toHaveBeenCalledOnce();
+  void recording;
 });

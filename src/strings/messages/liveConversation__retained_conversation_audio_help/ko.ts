@@ -1,0 +1,1 @@
+export const liveConversation__retained_conversation_audio_help = (): string => '다시 들으려면 먼저 대화를 종료하세요. 입력 음성에는 모델로 전송하기 위해 접수된 PCM이 들어 있습니다. 모델이 모든 샘플을 처리했다는 뜻은 아닙니다. 중지하거나 오류가 발생하면 전송 대기 중이거나 완료되지 않은 입력이 포함될 수 있습니다. 응답 음성은 재생 전 모델 출력입니다.';

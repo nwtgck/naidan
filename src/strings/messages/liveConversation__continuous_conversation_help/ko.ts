@@ -1,1 +1,1 @@
-export const liveConversation__continuous_conversation_help = (): string => 'The microphone and response audio run together. Microphone conversation does not support sending text or attachments, transcription, replaying past audio or shell tools.';
+export const liveConversation__continuous_conversation_help = (): string => '헤드폰을 사용하는 것이 좋습니다. 듣기 준비가 되면 짧게 말한 뒤 중지하지 말고 응답을 기다리세요. 중지하면 응답을 포함한 전체 대화가 종료됩니다. 마이크 대화에서는 텍스트 입력, 첨부, 음성 받아쓰기, 셸 도구를 사용할 수 없습니다.';

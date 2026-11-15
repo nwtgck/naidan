@@ -18,9 +18,12 @@ import { File as NativeFile } from 'node:buffer';
 import { createStandaloneFacadeAliases } from '../../../../build/standalone-facades.js';
 import SettingsSelect from '@/components/SettingsSelect.vue';
 import { setLocale } from '@/strings';
+import LlamaCppBrowserManager from '@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue';
 
 const confirm = vi.hoisted(() => vi.fn(async () => true));
 const captureModelFiles = vi.hoisted(() => vi.fn());
+const speechInspection: Awaited<ReturnType<typeof inspectStoredSpeechModel>> = { kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } };
+const residentPanels = [['speech', 'conversation'], ['speech', 'diagnostics'], ['llama', 'conversation'], ['llama', 'diagnostics']] as const;
 let speechCapability: SpeechCapability = { kind: 'available' };
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: confirm }) }));
 vi.mock('@/features/live-conversation/composables/useLiveModelPreference', () => ({ useLiveModelPreference: vi.fn() }));
@@ -34,7 +37,7 @@ vi.mock('@/features/speech-cpp-browser/models', () => ({ inspectStoredSpeechMode
 vi.mock('@/00-storage/service', () => ({ storageService: { listVolumes: async function* () {} } }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({
   default: defineComponent({
-    props: ['suspended'],
+    props: ['suspended', 'runtimeSettings'],
     emits: ['models-changed', 'model-selected', 'runtime-ready'],
     setup(_props, { emit }) {
       onMounted(() => {
@@ -101,6 +104,7 @@ async function fixture() {
     ...f,
     state,
     speech,
+    speechState,
     wrapper,
     page,
     async [Symbol.asyncDispose]() {
@@ -116,6 +120,352 @@ async function fixture() {
 }
 
 describe('independent live conversation workspace', () => {
+  it('leaves live speech audio retention off until explicitly enabled', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    const retainLfm = vi.spyOn(f.controller, 'retainAudio');
+    const retainSpeech = vi.spyOn(f.speech.controller, 'retainAudio');
+    const keep = f.page.get<HTMLInputElement>('[data-testid="live-keep-audio"]');
+    expect(keep.element.checked).toBe(false);
+    expect(keep.element.disabled).toBe(false);
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    expect(retainLfm).toHaveBeenLastCalledWith({ value: 'off' });
+    expect(retainSpeech).toHaveBeenLastCalledWith({ value: 'off' });
+    f.speech.pcm({ samples: new Float32Array([0.5, -0.5]) });
+    f.speech.frame({ text: 'Response', samples: new Float32Array([0.25, -0.25]) });
+    await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.controller.getState().sessions[0]).toMatchObject({ inputAudio: undefined, outputAudio: undefined });
+    expect(f.wrapper.find('[data-testid="live-speech-retained-audio"]').exists()).toBe(false);
+  });
+
+  it.each(['en', 'ja'] as const)('replays and saves both sides of opt-in speech audio with one session ID (%s)', async locale => {
+    await ensureAllStringsForTest({ locale });
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    const retainLfm = vi.spyOn(f.controller, 'retainAudio');
+    const retainSpeech = vi.spyOn(f.speech.controller, 'retainAudio');
+    await f.page.get('[data-testid="live-keep-audio"]').setValue(true);
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    expect(retainLfm).toHaveBeenLastCalledWith({ value: 'on' });
+    expect(retainSpeech).toHaveBeenLastCalledWith({ value: 'on' });
+    f.speech.pcm({ samples: new Float32Array([0.5, -0.5]) });
+    f.speech.frame({ text: 'Response', samples: new Float32Array([0.25, -0.25]) });
+    await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
+    await flushPromises();
+    const session = f.speech.controller.getState().sessions[0];
+    expect(session?.id).toMatch(/^[\w-]{21}$/);
+    expect(f.wrapper.get('[data-testid="live-speech-input-replay"]').attributes('src')).toBe(session?.inputAudio?.url);
+    expect(f.wrapper.get('[data-testid="live-speech-output-replay"]').attributes('src')).toBe(session?.outputAudio?.url);
+    expect(f.wrapper.get('[data-testid="live-speech-download-input"]').attributes('download')).toBe(`naidan-live-${session?.id}-input.wav`);
+    expect(f.wrapper.get('[data-testid="live-speech-download-output"]').attributes('download')).toBe(`naidan-live-${session?.id}-response.wav`);
+    const help = f.wrapper.get('[data-testid="live-speech-retention-help"]').text();
+    expect(help).toContain(locale === 'ja' ? '送信が受け付けられた' : 'accepted for sending');
+    expect(help).toContain(locale === 'ja' ? '処理済みとは限らず' : 'does not prove the model consumed');
+    expect(help).toContain(locale === 'ja' ? '再生前' : 'before playback');
+    expect(f.wrapper.get('[data-testid="live-speech-partial-audio"]').text()).toContain(locale === 'ja' ? '途中まで' : 'part of the conversation');
+    await f.wrapper.get('[data-testid="live-speech-input-replay"]').trigger('play');
+    await f.wrapper.get('[data-testid="live-speech-output-replay"]').trigger('play');
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    const pausesBeforeStart = vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length;
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length).toBeGreaterThan(pausesBeforeStart);
+    const stopCalls = vi.mocked(f.speech.client.stop).mock.calls.length;
+    const muteCalls = f.speech.player.mute.mock.calls.length;
+    const pausesBeforeReplay = vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length;
+    expect(f.wrapper.get('[data-testid="live-speech-input-replay"]').attributes('inert')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-speech-output-replay"]').attributes('aria-disabled')).toBe('true');
+    await f.wrapper.get('[data-testid="live-speech-input-replay"]').trigger('play');
+    await f.wrapper.get('[data-testid="live-speech-output-replay"]').trigger('play');
+    expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length).toBe(pausesBeforeReplay + 2);
+    expect(f.speech.player.mute).toHaveBeenCalledTimes(muteCalls);
+    expect(f.speech.client.stop).toHaveBeenCalledTimes(stopCalls);
+    expect(f.speech.capture).toHaveBeenCalledTimes(2);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+  });
+
+  it('allows turning speech audio retention off immediately and enabling it again before the next session', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.page.get('[data-testid="live-keep-audio"]').setValue(true);
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    f.speech.pcm({ samples: new Float32Array([0.5]) });
+    f.speech.frame({ text: 'First response', samples: new Float32Array([0.25]) });
+    await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-speech-retained-audio"]').exists()).toBe(true);
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    const keep = f.page.get<HTMLInputElement>('[data-testid="live-keep-audio"]');
+    expect(keep.element.disabled).toBe(false);
+    await keep.setValue(false);
+    expect(keep.element.disabled).toBe(true);
+    expect(f.wrapper.find('[data-testid="live-speech-retained-audio"]').exists()).toBe(false);
+    await f.page.get('[data-testid="live-settings-close"]').trigger('click');
+    f.speech.pcm({ samples: new Float32Array([0.5]) });
+    f.speech.frame({ text: 'Second response', samples: new Float32Array([0.25]) });
+    await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    expect(keep.element.disabled).toBe(false);
+    await keep.setValue(true);
+    await f.page.get('[data-testid="live-settings-close"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    f.speech.pcm({ samples: new Float32Array([0.5]) });
+    f.speech.frame({ text: 'Third response', samples: new Float32Array([0.25]) });
+    await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.controller.getState().sessions.map(session => !!session.inputAudio)).toEqual([false, false, true]);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+  });
+
+  it('clears live audio on both controllers without discarding investigation audio', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.page.get('[data-testid="live-keep-audio"]').setValue(true);
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    f.speech.pcm({ samples: new Float32Array([0.5]) });
+    f.speech.frame({ text: 'Live response', samples: new Float32Array([0.25]) });
+    await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const file = new File(['audio'], 'investigation.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    vi.mocked(f.speech.client.push).mockImplementation(() => {
+      f.speech.frame({ text: 'File response', samples: new Float32Array(3200) });
+      return { kind: 'accepted' };
+    });
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    const run = f.speech.controller.getState().fileRun;
+    expect(run?.input).toBeDefined();
+    expect(run?.output).toBeDefined();
+    expect(f.speech.controller.getState().sessions[0]?.inputAudio).toBeDefined();
+    const retainLfm = vi.spyOn(f.controller, 'retainAudio');
+    const retainSpeech = vi.spyOn(f.speech.controller, 'retainAudio');
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    await f.page.get('[data-testid="live-keep-audio"]').setValue(false);
+    expect(retainLfm).toHaveBeenLastCalledWith({ value: 'off' });
+    expect(retainSpeech).toHaveBeenLastCalledWith({ value: 'off' });
+    expect(f.speech.controller.getState().sessions[0]).toMatchObject({ inputAudio: undefined, outputAudio: undefined });
+    expect(f.speech.controller.getState().fileRun).toBe(run);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('href')).toBe(run?.output?.url);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+  });
+
+  it.each(['retention-limit', 'retention-failed'] as const)('explains speech %s independently from real-time input warnings', async warning => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    f.speechState.value = { ...f.speechState.value, audioWarning: warning, warning: 'input-backpressure' };
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-speech-audio-warning"]').text()).toContain(warning === 'retention-limit' ? '64 MiB' : 'Could not keep this audio');
+    expect(f.wrapper.get('[data-testid="live-speech-warning"]').text()).toContain('keep up');
+  });
+
+  it.each(['en', 'ja'] as const)('explains headphone use and waiting without stopping in the existing microphone help (%s)', async locale => {
+    await ensureAllStringsForTest({ locale });
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    const guidance = f.wrapper.get('[data-testid="live-speech-guidance"]').text();
+    expect(guidance).toContain(locale === 'ja' ? 'ヘッドホン' : 'headphones');
+    expect(guidance).toContain(locale === 'ja' ? '停止せずに返答を待ってください' : 'wait for a reply without stopping');
+    expect(guidance).toContain(locale === 'ja' ? '対話全体を終了します' : 'ends the whole conversation');
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    const fullHelp = f.page.get('[data-testid="live-speech-help"]').text();
+    expect(fullHelp).toContain(locale === 'ja' ? '返答を含む対話全体を終了します' : 'ends the entire conversation, including the reply');
+    expect(fullHelp).toContain(locale === 'ja' ? '文字起こし' : 'transcription');
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+    expect(f.speech.capture).not.toHaveBeenCalled();
+  });
+
+  it.each(residentPanels)('keeps the %s resident after new conversations with the same or another selection in %s', async (engine, panel) => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(engine === 'speech' ? speechInspection : { kind: 'other' });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel });
+    const reset = vi.spyOn(engine === 'speech' ? f.speech.controller : f.controller, 'reset');
+    await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
+    await flushPromises();
+    expect(reset).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(engine === 'speech' ? { kind: 'other' } : speechInspection);
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
+    await flushPromises();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.player.close).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
+    await flushPromises();
+    expect(reset).toHaveBeenCalledTimes(2);
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.player.close).not.toHaveBeenCalled();
+    expect(f.page.get('[data-testid="live-loaded-model"]').text()).toContain('user/live');
+    expect(f.speech.client.loadModel).toHaveBeenCalledTimes(engine === 'speech' ? 1 : 0);
+    expect(f.runLiveSession).toHaveBeenCalledTimes(engine === 'llama' ? 1 : 0);
+    if (panel === 'diagnostics') {
+      expect(f.wrapper.get('[data-testid="live-diagnostics-model"]').element).toHaveProperty('value', 'next/model');
+      expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeDefined();
+      expect(f.wrapper.find('[data-testid="live-diagnostics-unavailable"]').exists()).toBe(engine !== 'speech');
+      expect(f.wrapper.get('[data-testid="live-diagnostics-resident-model"]').text()).toContain('user/live');
+      const file = new File(['audio'], 'resident.wav', { type: 'audio/wav' });
+      await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+      if (engine === 'speech') {
+        expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeUndefined();
+        await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+        await flushPromises();
+        expect(f.speech.client.start).toHaveBeenCalledOnce();
+        expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+        expect(f.runLiveSession).not.toHaveBeenCalled();
+      } else {
+        expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeDefined();
+        expect(f.speech.client.start).not.toHaveBeenCalled();
+      }
+    } else if (engine === 'speech') {
+      expect(f.wrapper.get('[data-testid="live-speech-start"]').attributes('disabled')).toBeUndefined();
+      await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+      await flushPromises();
+      expect(f.speech.client.start).toHaveBeenCalledOnce();
+      expect(f.runLiveSession).not.toHaveBeenCalled();
+    } else {
+      await f.wrapper.get('[data-testid="live-text"]').setValue('Use the resident model');
+      await f.wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(f.controller.getState().entries[0]?.modelId).toBe('user/live');
+    }
+  });
+
+  it('checks the selected LM runtime while keeping the speech model resident', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    const manager = f.wrapper.findComponent(LlamaCppBrowserManager);
+    manager.vm.$emit('runtime-ready', false);
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    expect(manager.props('runtimeSettings')).toBe('show');
+    expect(f.page.get('[data-testid="live-load-model"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    manager.vm.$emit('runtime-ready', true);
+    await flushPromises();
+    expect(f.page.get('[data-testid="live-load-model"]').attributes('disabled')).toBeUndefined();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps resident ownership when releasing a model for an explicit switch fails', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    vi.mocked(f.speech.client.releaseModel).mockRejectedValueOnce(new Error('The resident model could not be released'));
+    await f.page.get('[data-testid="live-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    expect(f.speech.controller.getState().runtime.model).toBeDefined();
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+  });
+
+  it.each(residentPanels)('can reset the %s resident with an unavailable selection in %s', async (engine, panel) => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(engine === 'speech' ? speechInspection : { kind: 'other' });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel });
+    const reset = vi.spyOn(engine === 'speech' ? f.speech.controller : f.controller, 'reset');
+    vi.mocked(inspectStoredSpeechModel).mockRejectedValue(new Error('Selected model is missing'));
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'missing/model', size: 1, importedAt: 0 });
+    vi.mocked(listModelInventory).mockResolvedValue([{ modelId: 'user/live', size: 1, importedAt: 0 }]);
+    // A disappeared candidate does not invalidate a model already held by the runtime.
+    const listener = vi.mocked(llamaCppBrowserModelFiles.subscribeModelList).mock.calls[0]![0].listener;
+    listener();
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
+    await flushPromises();
+    expect(reset).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.player.close).not.toHaveBeenCalled();
+  });
+
+  it.each(residentPanels.flatMap(([engine, panel]) => [
+    { engine, panel, target: engine },
+    { engine, panel, target: engine === 'speech' ? 'llama' as const : 'speech' as const },
+  ]))('releases $engine before explicitly loading $target in $panel', async ({ engine, panel, target }) => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(engine === 'speech' ? speechInspection : { kind: 'other' });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel });
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(target === 'speech' ? speechInspection : { kind: 'other' });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
+    await flushPromises();
+    const released = Promise.withResolvers<void>();
+    using releaseGate = {
+      promise: released.promise,
+      [Symbol.dispose]() {
+        released.resolve();
+      },
+    };
+    const order: string[] = [];
+    const release = engine === 'speech' ? f.speech.client.releaseModel : f.player.close;
+    const originalRelease = vi.mocked(release).getMockImplementation()!;
+    vi.mocked(release).mockImplementation(async () => {
+      order.push('release');
+      await releaseGate.promise;
+      await originalRelease();
+      order.push('released');
+    });
+    const load = target === 'speech' ? f.speech.client.loadModel : f.runLiveSession;
+    const loadsBefore = vi.mocked(load).mock.calls.length;
+    if (panel === 'conversation') {
+      await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+      await flushPromises();
+      void f.page.get('[data-testid="live-load-model"]').trigger('click');
+    } else {
+      void f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    }
+    await flushPromises();
+    expect(order).toEqual(['release']);
+    expect(vi.mocked(load).mock.calls).toHaveLength(loadsBefore);
+    released.resolve();
+    await flushPromises();
+    expect(order).toEqual(['release', 'released']);
+    expect(vi.mocked(load).mock.calls).toHaveLength(loadsBefore + 1);
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('next/model');
+  });
+
   it.each(['en', 'ja'] as const)('explains the language instruction requirement in both settings surfaces without adding hidden instructions (%s)', async locale => {
     await ensureAllStringsForTest({ locale });
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
@@ -587,7 +937,7 @@ describe('independent live conversation workspace', () => {
     expect(f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm).toBe(catalog);
   });
 
-  it('shows the resident model in the header when a different next model is selected', async () => {
+  it('shows the resident model until the selected model is explicitly loaded', async () => {
     await using f = await fixture();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
@@ -596,6 +946,12 @@ describe('independent live conversation workspace', () => {
     expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
     expect(f.wrapper.get('[data-testid="live-header-model"]').text()).toBe('live');
     await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    expect(f.runLiveSession).toHaveBeenCalledOnce();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    await f.page.get('[data-testid="live-load-model"]').trigger('click');
     await flushPromises();
     expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('next/model');
   });
@@ -760,7 +1116,7 @@ describe('independent live conversation workspace', () => {
     expect(f.wrapper.find('[data-testid="live-input-replay"]').exists()).toBe(false);
   });
 
-  it('selects a downloaded model for the next conversation without replacing the active one early', async () => {
+  it('keeps a downloaded selection separate from conversation reset until explicit loading', async () => {
     await using f = await fixture();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
@@ -776,10 +1132,16 @@ describe('independent live conversation workspace', () => {
     expect(f.runLiveSession).toHaveBeenCalledOnce();
     await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
     await flushPromises();
-    expect(f.runLiveSession).toHaveBeenCalledTimes(2);
-    expect(f.runLiveSession.mock.calls[1]?.[0].modelId).toBe('user/LFM3-Omni-2B');
+    expect(f.runLiveSession).toHaveBeenCalledOnce();
+    expect(f.player.close).not.toHaveBeenCalled();
     expect(f.state.value.entries).toEqual([]);
     expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="live-text"]').element.value).toBe('');
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    await f.page.get('[data-testid="live-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.runLiveSession).toHaveBeenCalledTimes(2);
+    expect(f.runLiveSession.mock.calls[1]?.[0].modelId).toBe('user/LFM3-Omni-2B');
   });
 
   it('mutes automatic speech for manual replay and releases the preview on send without cancelling inference', async () => {

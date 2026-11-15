@@ -5,8 +5,11 @@ import type { openLiveCapture, LiveCapture } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
 import type { decodeLiveAudioFile } from './audio-file';
 import { createSpeechFileRun, type SpeechFileRunState } from './speech-file-run';
+import { createLiveAudioRetention, type LiveAudioClip } from './audio-retention';
+import { nanoid } from 'nanoid';
 
-export type LiveSpeechSession = { id: string, modelName: string, text: string, completion: SpeechCompletionReason | undefined };
+/** Clips retain accepted input and received output, not proof of native consumption. */
+export type LiveSpeechSession = { id: string, modelName: string, text: string, completion: SpeechCompletionReason | undefined, inputAudio: LiveAudioClip | undefined, outputAudio: LiveAudioClip | undefined };
 export type LiveSpeechState = {
   runtime: SpeechState,
   sessions: LiveSpeechSession[],
@@ -14,6 +17,7 @@ export type LiveSpeechState = {
   capture: 'closed' | 'opening' | 'open',
   playing: boolean,
   warning: 'input-backpressure' | 'output-backpressure' | undefined,
+  audioWarning: 'retention-limit' | 'retention-failed' | undefined,
   failure: SpeechFailure | undefined,
   fileRun: SpeechFileRunState | undefined,
 };
@@ -26,6 +30,7 @@ export function initialLiveSpeechState(): LiveSpeechState {
     capture: 'closed',
     playing: false,
     warning: undefined,
+    audioWarning: undefined,
     failure: undefined,
     fileRun: undefined,
   };
@@ -51,6 +56,9 @@ export function createLiveSpeechController({ createClient, capture, playback, de
   let fileRun: ReturnType<typeof createSpeechFileRun> | undefined;
   let fileTask: Promise<void> | undefined;
   let audible: 'on' | 'off' = 'on';
+  const retained = createLiveAudioRetention({ maximumBytes: 64 * 1024 * 1024 });
+  type Recording = { id: string, partial: boolean, input: 'recording' | 'unavailable', output: 'recording' | 'unavailable' };
+  let recording: Recording | undefined;
   let state = initialLiveSpeechState();
   function publish({ change }: { change: Partial<LiveSpeechState> }): void {
     state = { ...state, ...change };
@@ -68,6 +76,75 @@ export function createLiveSpeechController({ createClient, capture, playback, de
   function endOutput(): void {
     outputEpoch++;
     player?.stop();
+  }
+  function clearLiveAudio(): void {
+    recording = undefined;
+    retained.clear();
+    publish({ change: { audioWarning: undefined, sessions: state.sessions.map(session => ({ ...session, inputAudio: undefined, outputAudio: undefined })) } });
+  }
+  function retentionFailed({ current }: { current: Recording }): void {
+    if (recording === current) {
+      recording = undefined;
+    }
+    retained.drop({ key: `${current.id}/input` });
+    retained.drop({ key: `${current.id}/output` });
+    publish({ change: { audioWarning: 'retention-failed', sessions: state.sessions.map(session => session.id === current.id ? { ...session, inputAudio: undefined, outputAudio: undefined } : session) } });
+  }
+  function retain({ side, pcm, sampleRate }: { side: 'input' | 'output', pcm: Float32Array, sampleRate: number }): void {
+    const current = recording;
+    if (current === undefined) {
+      return;
+    }
+    const retentionState = current[side];
+    switch (retentionState) {
+    case 'recording': break;
+    case 'unavailable': return;
+    default: {
+      const exhaustive: never = retentionState;
+      throw new Error(String(exhaustive));
+    }
+    }
+    try {
+      const result = retained.append({ key: `${current.id}/${side}`, sampleRate, pcm });
+      switch (result) {
+      case 'kept': case 'skipped': break;
+      case 'limit':
+        current[side] = 'unavailable';
+        current.partial = true;
+        publish({ change: { audioWarning: 'retention-limit' } });
+        break;
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
+      }
+    } catch {
+      retentionFailed({ current });
+    }
+  }
+  function finishLiveAudio({ current, status }: { current: Recording | undefined, status: LiveAudioClip['status'] }): void {
+    if (current === undefined || recording !== current) {
+      return;
+    }
+    recording = undefined;
+    try {
+      const retainedStatus = current.partial ? 'partial' : status;
+      const inputAudio = retained.finish({ key: `${current.id}/input`, status: retainedStatus });
+      const outputAudio = retained.finish({ key: `${current.id}/output`, status: retainedStatus });
+      publish({ change: { sessions: state.sessions.map(session => session.id === current.id ? { ...session, inputAudio, outputAudio } : session) } });
+    } catch {
+      retentionFailed({ current });
+    }
+  }
+  function completedAudioStatus({ completion }: { completion: SpeechCompletionReason | undefined }): LiveAudioClip['status'] {
+    switch (completion) {
+    case 'finished': return state.failure === undefined && state.warning === undefined ? 'complete' : 'partial';
+    case 'cancelled': case 'max_seconds': case undefined: return 'partial';
+    default: {
+      const exhaustive: never = completion;
+      throw new Error(String(exhaustive));
+    }
+    }
   }
   function fail({ error }: { error: unknown }): void {
     if (disposed) {
@@ -91,9 +168,11 @@ export function createLiveSpeechController({ createClient, capture, playback, de
           endCapture();
           if (!fileTask) {
             publish({ change: { sessions: state.sessions.map(session => session.id === sessionId ? { ...session, completion: runtime.completion } : session) } });
+            finishLiveAudio({ current: recording, status: completedAudioStatus({ completion: runtime.completion }) });
           }
           break;
         case 'failed': case 'unloaded': case 'disposed':
+          finishLiveAudio({ current: recording, status: 'partial' });
           endCapture();
           endOutput();
           break;
@@ -121,6 +200,9 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         if (!frame.samples.length) {
           return;
         }
+        // Keep generated audio independently of playback mute, cancellation or
+        // backpressure. The retained helper owns its opt-in copy.
+        retain({ side: 'output', pcm: frame.samples, sampleRate: frame.sampleRate });
         // The observer is synchronous. Bound queued work instead of retaining an
         // unbounded chain when playback cannot keep up with generated frames.
         if (queuedOutputSamples + frame.samples.length > speechSampleRate * 4) {
@@ -165,9 +247,14 @@ export function createLiveSpeechController({ createClient, capture, playback, de
   }
 
   async function stop({ mode }: { mode: 'finish' | 'cancel' }): Promise<void> {
+    const current = recording;
     endCapture();
     switch (mode) {
-    case 'cancel': endOutput();
+    case 'cancel':
+      if (current !== undefined) {
+        current.partial = true;
+      }
+      endOutput();
       break;
     case 'finish': break;
     default: {
@@ -184,6 +271,8 @@ export function createLiveSpeechController({ createClient, capture, playback, de
     });
     await observed;
     await stopping;
+    // A stop RPC alone does not confirm a complete accepted recording.
+    finishLiveAudio({ current, status: 'partial' });
   }
 
   return {
@@ -234,7 +323,11 @@ export function createLiveSpeechController({ createClient, capture, playback, de
             })();
             const result = client.push({ samples, sampleRate: speechSampleRate });
             switch (result.kind) {
-            case 'accepted': case 'not_running': break;
+            case 'accepted':
+              // Queue acceptance is not a guarantee of native consumption.
+              retain({ side: 'input', pcm: samples, sampleRate: speechSampleRate });
+              break;
+            case 'not_running': break;
             case 'backpressure':
               publish({ change: { warning: 'input-backpressure' } });
               void stop({ mode: 'cancel' }).catch(() => {});
@@ -252,8 +345,9 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         await activated;
         current.lifetime.signal.throwIfAborted();
         player.begin();
-        sessionId = crypto.randomUUID();
-        publish({ change: { sessions: [...state.sessions, { id: sessionId, modelName, text: '', completion: undefined }] } });
+        sessionId = nanoid();
+        recording = retained.isEnabled() ? { id: sessionId, partial: false, input: 'recording', output: 'recording' } : undefined;
+        publish({ change: { sessions: [...state.sessions, { id: sessionId, modelName, text: '', completion: undefined, inputAudio: undefined, outputAudio: undefined }] } });
         await client.start({ options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name, seed: undefined } });
       } catch (error) {
         if (!current.lifetime.signal.aborted && !disposed) {
@@ -306,12 +400,30 @@ export function createLiveSpeechController({ createClient, capture, playback, de
       audible = value;
       player?.mute({ value });
     },
+    retainAudio({ value }: { value: 'on' | 'off' }): void {
+      if (disposed) {
+        return;
+      }
+      retained.setEnabled({ value });
+      switch (value) {
+      case 'on': break;
+      case 'off': clearLiveAudio();
+        break;
+      default: {
+        const exhaustive: never = value;
+        throw new Error(String(exhaustive));
+      }
+      }
+    },
     async reset(): Promise<void> {
-      await stop({ mode: 'cancel' });
       sessionId = undefined;
+      clearLiveAudio();
+      await stop({ mode: 'cancel' });
       publish({ change: { sessions: [], warning: undefined, failure: undefined } });
     },
     async release(): Promise<void> {
+      sessionId = undefined;
+      clearLiveAudio();
       endCapture();
       endOutput();
       try {
@@ -329,6 +441,8 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         return;
       }
       disposed = true;
+      sessionId = undefined;
+      clearLiveAudio();
       endCapture();
       endOutput();
       try {
