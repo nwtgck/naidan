@@ -1,4 +1,5 @@
 import type { SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
+import type { SpeechInvestigationObserver, SpeechInvestigationEvent } from '@/features/speech-cpp-browser/investigation/types';
 
 /** Track the union of successful reads, not their sum or the largest offset.
  * Adjacent ranges are merged, keeping sequential multi-GiB reads inexpensive. */
@@ -46,7 +47,7 @@ export function createSpeechLoadReporter({ onProgress, now }: {
   return ({ progress }: { progress: SpeechLoadProgress }): void => {
     const ratio = (() => {
       switch (progress.stage) {
-      case 'preparing_runtime': case 'preparing_model': return 0;
+      case 'preparing_runtime': case 'checking_model': case 'preparing_model': case 'checking_loaded_model': return 0;
       case 'loading_runtime': return progress.decompressedBytes / progress.totalDecompressedBytes;
       case 'reading_model': return progress.readBytes / progress.totalBytes;
       default: {
@@ -106,6 +107,59 @@ export async function readSpeechWasm({ response, wasmBytes, onProgress }: {
     throw new Error('Truncated speech Wasm');
   }
   return wasmBinary;
+}
+
+/** Stage intervals are Worker host wall time, not GPU/kernel time. */
+export function createSpeechLoadObservation({ observer, now }: { observer: SpeechInvestigationObserver | undefined, now: () => number }) {
+  if (observer === undefined) {
+    return undefined;
+  }
+  let send: SpeechInvestigationObserver | undefined = observer;
+  let previous: { stage: SpeechLoadProgress['stage'], started: number } | undefined;
+  function emit({ event }: { event: SpeechInvestigationEvent }): void {
+    try {
+      send?.({ event });
+    } catch { /* Observational only. */ }
+  }
+  function finishStage({ state }: { state: 'completed' | 'cancelled' | 'failed' }): void {
+    if (previous !== undefined) {
+      emit({ event: { kind: 'stage', stage: previous.stage, state, durationMilliseconds: Math.max(0, now() - previous.started), heapBytes: undefined, details: undefined } });
+    }
+  }
+  return {
+    progress({ progress }: { progress: SpeechLoadProgress }): void {
+      if (progress.stage !== previous?.stage) {
+        finishStage({ state: 'completed' });
+        previous = { stage: progress.stage, started: now() };
+        emit({ event: { kind: 'stage', stage: progress.stage, state: 'started', durationMilliseconds: undefined, heapBytes: undefined, details: undefined } });
+      }
+      switch (progress.stage) {
+      case 'loading_runtime': emit({ event: { kind: 'progress', stage: progress.stage, value: progress.decompressedBytes, total: progress.totalDecompressedBytes, unit: 'bytes', provenance: 'observed', details: { fetchedBytes: progress.fetchedBytes } } });
+        break;
+      case 'reading_model': emit({ event: { kind: 'progress', stage: progress.stage, value: progress.readBytes, total: progress.totalBytes, unit: 'bytes', provenance: 'observed', details: undefined } });
+        break;
+      case 'preparing_runtime': case 'checking_model': case 'preparing_model': case 'checking_loaded_model': break;
+      default: {
+        const exhaustive: never = progress;
+        throw new Error(String(exhaustive));
+      }
+      }
+    },
+    finish({ state }: { state: 'completed' | 'cancelled' | 'failed' }): void {
+      finishStage({ state });
+      switch (state) {
+      case 'completed': emit({ event: { kind: 'stage', stage: 'load_ready', state: 'completed', durationMilliseconds: undefined, heapBytes: undefined, details: undefined } });
+        break;
+      case 'cancelled': case 'failed': break;
+      default: {
+        const exhaustive: never = state;
+        throw new Error(String(exhaustive));
+      }
+      }
+      previous = undefined;
+      send = undefined;
+    },
+  };
 }
 
 export const TEST_ONLY = {

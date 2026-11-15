@@ -9,6 +9,10 @@ import { useLiveModelPreference } from '@/features/live-conversation/composables
 import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
 import { useLiveSpeechConversation } from '@/features/live-conversation/composables/useLiveSpeechConversation';
+import { useSpeechRecognition } from '@/features/live-conversation/composables/useSpeechRecognition';
+import { useSpeechResponseRecording } from '@/features/live-conversation/composables/useSpeechResponseRecording';
+import { inspectStoredSpeechRecognitionModel, openStoredSpeechRecognitionModel } from '@/features/speech-cpp-browser/recognition/models';
+import { createRecognitionUiFixture } from './recognition-ui.test-support';
 import { createLiveSpeechFixture } from '@/features/live-conversation/logic/speech-controller.test-support';
 import { inspectStoredSpeechModel, openStoredSpeechModel } from '@/features/speech-cpp-browser/models';
 import type { SpeechCapability } from '@/features/speech-cpp-browser/types';
@@ -18,11 +22,15 @@ import { File as NativeFile } from 'node:buffer';
 import { createStandaloneFacadeAliases } from '../../../../build/standalone-facades.js';
 import SettingsSelect from '@/components/SettingsSelect.vue';
 import { setLocale } from '@/strings';
+import { ensureStrings } from '@/strings';
 import LlamaCppBrowserManager from '@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue';
+import { downloadSpeechInvestigation } from '@/features/speech-cpp-browser/investigation/archive';
+import type { SpeechInvestigationSnapshot } from '@/features/speech-cpp-browser/investigation/types';
 
 const confirm = vi.hoisted(() => vi.fn(async () => true));
 const captureModelFiles = vi.hoisted(() => vi.fn());
 const speechInspection: Awaited<ReturnType<typeof inspectStoredSpeechModel>> = { kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } };
+const recognitionInspection: Awaited<ReturnType<typeof inspectStoredSpeechRecognitionModel>> = { kind: 'recognition', info: { name: 'ASR model', bytes: 1, architecture: 'qwen3-asr', task: 'recognition', sampleRate: 16000, requiredVersion: 'test' } };
 const residentPanels = [['speech', 'conversation'], ['speech', 'diagnostics'], ['llama', 'conversation'], ['llama', 'diagnostics']] as const;
 let speechCapability: SpeechCapability = { kind: 'available' };
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: confirm }) }));
@@ -33,6 +41,10 @@ vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions
 
 vi.mock('@/features/live-conversation/composables/useLiveConversation', () => ({ useLiveConversation: vi.fn() }));
 vi.mock('@/features/live-conversation/composables/useLiveSpeechConversation', () => ({ useLiveSpeechConversation: vi.fn() }));
+vi.mock('@/features/live-conversation/composables/useSpeechRecognition', () => ({ useSpeechRecognition: vi.fn() }));
+vi.mock('@/features/live-conversation/composables/useSpeechResponseRecording', () => ({ useSpeechResponseRecording: vi.fn() }));
+vi.mock('@/features/speech-cpp-browser/investigation/archive', () => ({ downloadSpeechInvestigation: vi.fn(async () => {}) }));
+vi.mock('@/features/speech-cpp-browser/recognition/models', () => ({ inspectStoredSpeechRecognitionModel: vi.fn(async () => ({ kind: 'other' })), openStoredSpeechRecognitionModel: vi.fn(async () => new File(['ASR model'], 'recognition.gguf')) }));
 vi.mock('@/features/speech-cpp-browser/models', () => ({ inspectStoredSpeechModel: vi.fn(async () => ({ kind: 'other' })), openStoredSpeechModel: vi.fn(async () => new File(['model'], 'model.gguf')) }));
 vi.mock('@/00-storage/service', () => ({ storageService: { listVolumes: async function* () {} } }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({
@@ -73,6 +85,8 @@ beforeEach(async () => {
   speechCapability = { kind: 'available' };
   vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
   vi.mocked(openStoredSpeechModel).mockResolvedValue(new File(['model'], 'model.gguf'));
+  vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue({ kind: 'other' });
+  vi.mocked(openStoredSpeechRecognitionModel).mockResolvedValue(new File(['ASR model'], 'recognition.gguf'));
   confirm.mockResolvedValue(true);
   vi.mocked(useLiveModelPreference).mockReturnValue({ remembered: computed(() => undefined), remember: vi.fn(async () => {}), TEST_ONLY: {} });
   await ensureAllStringsForTest({ locale: 'en' });
@@ -92,8 +106,25 @@ async function fixture() {
     speechState.value = next;
   });
   vi.mocked(useLiveSpeechConversation).mockReturnValue({ state: speechState, controller: speech.controller, TEST_ONLY: {} });
+  const recognition = createRecognitionUiFixture();
+  const recognitionState = shallowRef(recognition.controller.getState());
+  recognition.onChange.mockImplementation(({ state: next }) => {
+    recognitionState.value = next;
+  });
+  const recordingState = shallowRef(recognition.recorder.getState());
+  recognition.onRecordingChange.mockImplementation(({ state: next }) => {
+    recordingState.value = next;
+  });
+  vi.mocked(useSpeechRecognition).mockReturnValue({ state: recognitionState, controller: recognition.controller, recordingState, recording: recognition.recording, TEST_ONLY: {} });
+  const responseRecording = createRecognitionUiFixture();
+  const responseRecordingState = shallowRef(responseRecording.recorder.getState());
+  responseRecording.onRecordingChange.mockImplementation(({ state: next }) => {
+    responseRecordingState.value = next;
+  });
+  vi.mocked(useSpeechResponseRecording).mockReturnValue({ recordingState: responseRecordingState, recording: { start: () => responseRecording.recorder.start({ language: undefined }), stop: responseRecording.recorder.stop, discard: responseRecording.recorder.discard }, TEST_ONLY: {} });
   const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
-  const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:attachment');
+  let urlSequence = 0;
+  const createUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:attachment-${++urlSequence}`);
   const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   const host = document.createElement('div');
   document.body.append(host);
@@ -105,6 +136,13 @@ async function fixture() {
     state,
     speech,
     speechState,
+    recognition,
+    recognitionState,
+    recordingState,
+    responseRecording,
+    responseRecordingState,
+    createUrl,
+    revokeUrl,
     wrapper,
     page,
     async [Symbol.asyncDispose]() {
@@ -112,6 +150,10 @@ async function fixture() {
       host.remove();
       await f.controller.dispose();
       await speech.controller.dispose();
+      await recognition.controller.dispose();
+      await recognition.recorder.dispose();
+      await responseRecording.recorder.dispose();
+      await responseRecording.controller.dispose();
       pause.mockRestore();
       createUrl.mockRestore();
       revokeUrl.mockRestore();
@@ -119,52 +161,826 @@ async function fixture() {
   };
 }
 
+function downloadedSnapshot(): SpeechInvestigationSnapshot | undefined {
+  const collection = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection;
+  if (!collection) {
+    return undefined;
+  }
+  for (const trial of [...collection.trials].reverse()) {
+    switch (trial.status) {
+    case 'not_run': break;
+    case 'in_progress': case 'completed': case 'partial': case 'cancelled': case 'failed':
+      if (trial.snapshot) {
+        return trial.snapshot;
+      }
+      break;
+    default: {
+      const exhaustive: never = trial;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+  return collection.load;
+}
+
 describe('independent live conversation workspace', () => {
-  it('defaults to fast file input and changes pacing without loading or generating automatically', async () => {
-    await ensureAllStringsForTest({ locale: 'ja' });
+  it.each(['response', 'transcription'] as const)('saves a real failure during %s model preparation without a model file', async task => {
+    if (task === 'response') {
+      vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+      vi.mocked(openStoredSpeechModel).mockRejectedValue(new Error('Model source unavailable'));
+    } else {
+      vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+      vi.mocked(openStoredSpeechRecognitionModel).mockRejectedValue(new Error('Model source unavailable'));
+    }
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics', task });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = downloadedSnapshot();
+    expect(saved?.status).toBe('failed');
+    expect(saved?.operation.source.kind).toBe('unset');
+    expect(saved?.operation.failure).toMatchObject({ status: 'observed', value: { message: 'Model source unavailable' } });
+    expect(saved?.events.map(item => item.event)).toContainEqual(expect.objectContaining({ kind: 'stage', stage: 'app_model_load', state: 'failed', durationMilliseconds: expect.any(Number) }));
+  });
+
+  it('saves a microphone permission failure before a recognition run is accepted', async () => {
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    f.recognition.capture.mockRejectedValueOnce(new Error('Microphone permission denied'));
+    await f.wrapper.get('[data-testid="live-recognition-microphone-source"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-recognition-record"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = downloadedSnapshot();
+    expect(saved?.status).toBe('failed');
+    expect(saved?.operation.failure).toMatchObject({ status: 'observed', value: { message: 'Microphone permission denied' } });
+    expect(saved?.events.map(item => item.event)).toContainEqual(expect.objectContaining({ kind: 'stage', stage: 'input_capture', state: 'failed' }));
+    expect(f.recognition.client.transcribe).not.toHaveBeenCalled();
+  });
+
+  it.each(['stop', 'discard'] as const)('settles the record when microphone opening is cancelled with %s', async action => {
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    const opening = Promise.withResolvers<Awaited<ReturnType<typeof f.recognition.capture>>>();
+    f.recognition.capture.mockReturnValueOnce(opening.promise);
+    await f.wrapper.get('[data-testid="live-recognition-microphone-source"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-recognition-record"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get(`[data-testid="live-recognition-record-${action}"]`).trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = downloadedSnapshot();
+    expect(saved?.status).toBe('cancelled');
+    expect(saved?.operation.failure.status).toBe('unset');
+    expect(f.recognition.client.transcribe).not.toHaveBeenCalled();
+    opening.resolve({ finish: vi.fn(async () => {}) });
+    await flushPromises();
+  });
+
+  it('keeps normal dialogue model loading outside investigation recording', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(vi.mocked(f.speech.client.loadModel).mock.calls.at(-1)?.[0].investigation).toBeUndefined();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-investigation-save"]').attributes('disabled')).toBeDefined();
+  });
+
+  it('records a response source without a model, keeps one microphone, and generates only after an explicit action', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'response' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-response-microphone-source"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-response-record"]').trigger('click');
+    await flushPromises();
+    f.responseRecording.pcm({ samples: new Float32Array([0.25, -0.25]) });
+    expect(f.responseRecording.capture).toHaveBeenCalledOnce();
+    expect(f.speech.client.loadModel).not.toHaveBeenCalled();
+    await f.wrapper.setProps({ task: 'transcription' });
+    expect(f.wrapper.get('[data-testid="live-recognition-microphone-source"]').attributes('disabled')).toBeDefined();
+    expect(f.recognition.capture).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-recording-background-stop"]').trigger('click');
+    await flushPromises();
+    const recorded = f.responseRecording.recorder.getState().clip?.file;
+    expect(recorded).toBeInstanceOf(File);
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-recognition-microphone-source"]').trigger('click');
+    expect(f.wrapper.find('[data-testid="live-recognition-recording-replay"]').exists()).toBe(true);
+    await f.wrapper.setProps({ task: 'response' });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-response-recording-download"]').attributes('download')).toMatch(/^naidan-response-.*-input\.wav$/);
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.decodeFile.mock.calls.at(-1)?.[0].file).toBe(recorded);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.recognition.client.transcribe).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-response-record-discard"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-response-recording-replay"]').exists()).toBe(false);
+    await f.wrapper.get('[data-testid="live-response-file-source"]').trigger('click');
+    expect(f.wrapper.find('[data-testid="live-diagnostics-input-name"]').exists()).toBe(false);
+  });
+
+  it('saves a load checkpoint and an explicit cancellation before the model file is available', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    const opening = Promise.withResolvers<File>();
+    vi.mocked(openStoredSpeechModel).mockReturnValue(opening.promise);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const pending = downloadedSnapshot();
+    expect(pending?.status).toBe('in_progress');
+    expect(pending?.finishedAt).toBeUndefined();
+    expect(pending?.operation.source.kind).toBe('unset');
+    expect(pending?.events.map(item => item.event)).toContainEqual(expect.objectContaining({ kind: 'stage', stage: 'app_load_checking_model' }));
+    await f.wrapper.get('[data-testid="live-diagnostics-cancel-model"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const cancelled = downloadedSnapshot();
+    expect(cancelled?.id).toBe(pending?.id);
+    expect(cancelled?.status).toBe('cancelled');
+    opening.resolve(new File(['late'], 'late.gguf'));
+    await flushPromises();
+    expect(f.speech.client.loadModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps model-load observations and native output audio in the first response ZIP, then creates a new record for a rerun', async () => {
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
     await using f = await fixture();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    const loading = vi.mocked(f.speech.client.loadModel).mock.calls.at(-1)?.[0].investigation;
+    expect(loading).toBeDefined();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    expect(downloadedSnapshot()?.status).toBe('completed');
+    vi.mocked(f.speech.client.start).mockImplementation(async ({ investigation }) => {
+      if (investigation) {
+        f.speech.observe({ context: investigation, event: { kind: 'native_log', level: 'info', message: 'native test log' } });
+      }
+      f.speech.change({ state: { phase: 'running' } });
+      f.speech.frame({ samples: new Float32Array(3200).fill(0.25), text: 'Response text' });
+    });
+    const file = new File(['audio'], 'source.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(vi.mocked(f.speech.client.start).mock.calls.at(-1)?.[0].investigation).not.toEqual(loading);
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const first = downloadedSnapshot();
+    expect(first?.operation.failure.status).toBe('unset');
+    expect(first?.status).toBe('completed');
+    expect(first?.operation.result.text).toBe('Response text');
+    expect(first?.events.map(item => item.event)).toContainEqual(expect.objectContaining({ kind: 'native_log', message: 'native test log' }));
+    const firstCollection = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection;
+    expect(firstCollection?.load?.events.map(item => item.event)).toContainEqual(expect.objectContaining({ kind: 'stage', stage: 'app_model_load', state: 'completed' }));
+    expect(first?.events.map(item => item.event)).not.toContainEqual(expect.objectContaining({ kind: 'stage', stage: 'app_model_load' }));
+    expect(first?.audio.output).toMatchObject({ status: 'retained', format: 'wav' });
+    expect(first?.audio.input).toMatchObject({ status: 'retained', format: 'wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const rerun = downloadedSnapshot();
+    expect(rerun?.id).not.toBe(first?.id);
+    expect(rerun?.events.map(item => item.event)).not.toContainEqual(expect.objectContaining({ kind: 'stage', stage: 'app_model_load', state: 'completed' }));
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+  });
+
+  it('records without a model and keeps a reusable WAV after stopping from another task', async () => {
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-recognition-microphone-source"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-recognition-record"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.capture).toHaveBeenCalledOnce();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    expect(f.page.get('[data-testid="live-start"]').attributes('disabled')).toBeDefined();
+    await f.page.get('[data-testid="live-settings-close"]').trigger('click');
+    f.recognition.pcm({ samples: new Float32Array([0.25, -0.25]) });
+    await f.wrapper.get('[data-testid="live-diagnostics-response-task"]').trigger('click');
+    expect(f.wrapper.emitted('investigationTask')?.at(-1)).toEqual(['response']);
+    await f.wrapper.setProps({ task: 'response' });
+    expect(f.recognition.recorder.getState().phase).toBe('recording');
+    await f.wrapper.get('[data-testid="live-recording-background-stop"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.recorder.getState().phase).toBe('ready');
+    expect(f.recognition.client.transcribe).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toMatch(/^naidan-recording-.*\.wav$/);
+    await f.wrapper.setProps({ task: 'transcription' });
+    expect(f.wrapper.get('[data-testid="live-recognition-recording-download"]').attributes('download')).toMatch(/^naidan-transcription-.*-input\.wav$/);
+    expect(f.wrapper.find('[data-testid="live-recognition-recording-replay"]').exists()).toBe(true);
+    await f.recognition.recorder.discard();
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-recognition-recording-replay"]').exists()).toBe(true);
+    await f.wrapper.get('[data-testid="live-recognition-record-discard"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-recognition-recording-replay"]').exists()).toBe(false);
+    await f.wrapper.setProps({ task: 'response' });
+    expect(f.wrapper.find('[data-testid="live-diagnostics-input-name"]').exists()).toBe(false);
+    expect(f.speech.client.loadModel).not.toHaveBeenCalled();
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+  });
+
+  it('stops microphone capture into the loaded recognizer without decoding and can reuse the same audio file', async () => {
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-speech-controls"]').exists()).toBe(false);
+    expect(f.wrapper.find('[data-testid="live-text"]').exists()).toBe(false);
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-recognition-microphone-source"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-recognition-record"]').trigger('click');
+    await flushPromises();
+    const samples = new Float32Array([0.25, -0.25]);
+    f.recognition.pcm({ samples });
+    await f.wrapper.get('[data-testid="live-recognition-record-stop"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.client.transcribe).toHaveBeenCalledWith({ samples, sampleRate: 16000, language: undefined, investigation: expect.objectContaining({ source: 'investigation' }) });
+    expect(f.recognition.decodeFile).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="live-recognition-text"]').text()).toBe('こんにちは。');
+    const sourceName = f.recognition.recorder.getState().clip?.file.name;
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0];
+    expect(saved?.includeInputAudio).toBe('off');
+    expect(saved?.includeInputText).toBe('off');
+    expect(downloadedSnapshot()?.status).toBe('completed');
+    expect(downloadedSnapshot()?.operation.result.text).toBe('こんにちは。');
+    expect(downloadedSnapshot()?.operation.model.id).toMatchObject({ status: 'observed', value: 'user/live' });
+    expect(downloadedSnapshot()?.operation.source).toMatchObject({ kind: 'recording', name: sourceName });
+    await f.wrapper.get('[data-testid="live-recognition-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.decodeFile.mock.calls.at(-1)?.[0].file).toHaveProperty('name', sourceName);
+    expect(f.recognition.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.recognition.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-investigation-clear"]').trigger('click');
+    expect(f.wrapper.get('[data-testid="live-investigation-save"]').attributes('disabled')).toBeDefined();
+    expect(f.recognition.controller.getState().run?.text).toBe('こんにちは。');
+  });
+
+  it('keeps a recognition run alive across task navigation and cancels the actual owner', async () => {
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    await flushPromises();
+    const file = new File(['audio'], 'same.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
+    const transcribing = Promise.withResolvers<Awaited<ReturnType<typeof f.recognition.client.transcribe>>>();
+    vi.mocked(f.recognition.client.transcribe).mockImplementation(async () => {
+      f.recognition.change({ state: { phase: 'recognizing' } });
+      return transcribing.promise;
+    });
+    vi.mocked(f.recognition.client.cancel).mockImplementation(async () => {
+      transcribing.resolve({ status: 'cancelled', text: '', languages: [] });
+      f.recognition.change({ state: { phase: 'ready' } });
+    });
+    await f.wrapper.get('[data-testid="live-recognition-generate"]').trigger('click');
+    await flushPromises();
+    const cancels = vi.mocked(f.recognition.client.cancel).mock.calls.length;
+    await f.wrapper.get('[data-testid="live-diagnostics-response-task"]').trigger('click');
+    await f.wrapper.setProps({ task: 'response' });
+    await flushPromises();
+    expect(f.recognition.client.cancel).toHaveBeenCalledTimes(cancels);
+    expect(f.recognition.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="live-investigation-background-status"]').text()).toContain(await ensureStrings.liveConversation__transcribing_audio_file());
+    await f.wrapper.get('[data-testid="live-investigation-cancel-running"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.controller.getState().run?.status).toBe('cancelled');
+    expect(f.speech.client.stop).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe(file.name);
+  });
+
+  it('awaits each resident release before switching between dialogue and recognition and keeps the source file', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockImplementation(async ({ modelId }) => modelId === 'asr/model' ? { kind: 'other' } : speechInspection);
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockImplementation(async ({ modelId }) => modelId === 'asr/model' ? recognitionInspection : { kind: 'other' });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'asr/model', size: 1, importedAt: 0 });
+    await flushPromises();
+    const file = new File(['audio'], 'retained.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
+    const speechReleased = Promise.withResolvers<void>();
+    const recognitionReleased = Promise.withResolvers<void>();
+    using _gates = {
+      [Symbol.dispose]() {
+        speechReleased.resolve();
+        recognitionReleased.resolve();
+      },
+    };
+    const releaseSpeech = vi.mocked(f.speech.client.releaseModel).getMockImplementation();
+    if (!releaseSpeech) {
+      throw new Error('Expected a model release implementation');
+    }
+    vi.mocked(f.speech.client.releaseModel).mockImplementation(async () => {
+      await speechReleased.promise;
+      await releaseSpeech();
+    });
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.client.loadModel).not.toHaveBeenCalled();
+    speechReleased.resolve();
+    await flushPromises();
+    expect(f.recognition.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('asr/model');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe(file.name);
+    await f.wrapper.setProps({ task: 'response' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-model"]').setValue('user/live');
+    await flushPromises();
+    const releaseRecognition = vi.mocked(f.recognition.client.releaseModel).getMockImplementation();
+    if (!releaseRecognition) {
+      throw new Error('Expected a recognition release implementation');
+    }
+    vi.mocked(f.recognition.client.releaseModel).mockImplementation(async () => {
+      await recognitionReleased.promise;
+      await releaseRecognition();
+    });
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    recognitionReleased.resolve();
+    await flushPromises();
+    expect(f.speech.client.loadModel).toHaveBeenCalledTimes(2);
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe(file.name);
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+  });
+
+  it.each(['response', 'transcription'] as const)('prepares input files and settings throughout %s model loading without cancelling its record', async task => {
+    const opening = Promise.withResolvers<File>();
+    if (task === 'response') {
+      vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+      vi.mocked(openStoredSpeechModel).mockReturnValueOnce(opening.promise);
+    } else {
+      vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+      vi.mocked(openStoredSpeechRecognitionModel).mockReturnValueOnce(opening.promise);
+    }
+    await using f = await fixture();
+    const loading = Promise.withResolvers<void>();
+    if (task === 'response') {
+      const load = vi.mocked(f.speech.client.loadModel).getMockImplementation();
+      if (!load) {
+        throw new Error('Expected speech load implementation');
+      }
+      vi.mocked(f.speech.client.loadModel).mockImplementation(async args => {
+        f.speech.change({ state: { phase: 'loading_model' } });
+        await loading.promise;
+        await load(args);
+      });
+    } else {
+      const load = vi.mocked(f.recognition.client.loadModel).getMockImplementation();
+      if (!load) {
+        throw new Error('Expected recognition load implementation');
+      }
+      vi.mocked(f.recognition.client.loadModel).mockImplementation(async args => {
+        f.recognition.change({ state: { phase: 'loading_model' } });
+        await loading.promise;
+        await load(args);
+      });
+    }
+    await f.wrapper.setProps({ panel: 'diagnostics', task });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const loadId = downloadedSnapshot()?.id;
+    const first = new File(['first'], 'first-loading.wav', { type: 'audio/wav' });
+    const picker = f.wrapper.get<HTMLInputElement>('[data-testid="live-diagnostics-file"]');
+    expect(picker.attributes('disabled')).toBeUndefined();
+    Object.defineProperty(picker.element, 'files', { configurable: true, value: [first] });
+    await picker.trigger('change');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe(first.name);
+    await f.wrapper.get('[data-testid="live-diagnostics-clear"]').trigger('click');
+    await flushPromises();
+    if (task === 'response') {
+      expect(f.wrapper.get('[data-testid="live-diagnostics-seed"]').attributes('disabled')).toBeUndefined();
+      await f.wrapper.get('[data-testid="live-diagnostics-seed"]').setValue('7');
+      await f.wrapper.get('[data-testid="live-diagnostics-instructions"]').setValue('Prepared during loading');
+      await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-2"]').setValue(true);
+    }
+    opening.resolve(new File(['model'], 'selected.gguf'));
+    await flushPromises();
+    const cancels = vi.mocked(f.recognition.client.cancel).mock.calls.length;
+    const root = f.wrapper.get('[data-testid="live-conversation-page"]');
+    const transfer = { types: ['Files'], dropEffect: 'none' };
+    await root.trigger('dragenter', { dataTransfer: transfer });
+    await root.trigger('dragover', { dataTransfer: transfer });
+    expect(transfer.dropEffect).toBe('copy');
+    expect(f.wrapper.find('[data-testid="live-drop-overlay"]').exists()).toBe(true);
+    const second = new File(['second'], 'second-loading.wav', { type: 'audio/wav' });
+    await root.trigger('drop', { dataTransfer: { types: ['Files'], files: [second] } });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe(second.name);
+    await f.wrapper.get('[data-testid="live-diagnostics-clear"]').trigger('click');
+    await flushPromises();
+    const final = new File(['final'], 'final-loading.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { types: ['Files'], files: [final] } });
+    await flushPromises();
+    expect(f.recognition.client.cancel).toHaveBeenCalledTimes(cancels);
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    expect(downloadedSnapshot()?.id).toBe(loadId);
+    expect(downloadedSnapshot()?.status).toBe('in_progress');
+    loading.resolve();
+    await flushPromises();
+    await f.wrapper.get(task === 'response' ? '[data-testid="live-diagnostics-generate"]' : '[data-testid="live-recognition-generate"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection;
+    expect(saved?.load?.id).toBe(loadId);
+    expect(saved?.load?.status).toBe('completed');
+    expect(saved?.plan.source).toMatchObject({ name: final.name });
+    if (task === 'response') {
+      expect(f.speech.decodeFile.mock.calls.at(-1)?.[0].file).toBe(final);
+      expect(saved?.plan.requested.seed).toMatchObject({ status: 'observed', value: 7 });
+      expect(saved?.plan.trials).toHaveLength(2);
+      expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    } else {
+      expect(f.recognition.decodeFile.mock.calls.at(-1)?.[0].file).toBe(final);
+      expect(f.recognition.client.loadModel).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('keeps microphone preparation made during model File retrieval through load completion', async () => {
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+    const opening = Promise.withResolvers<File>();
+    vi.mocked(openStoredSpeechRecognitionModel).mockReturnValueOnce(opening.promise);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-recognition-microphone-source"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-recognition-record"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.capture).toHaveBeenCalledOnce();
+    f.recognition.pcm({ samples: new Float32Array([0.25, -0.25]) });
+    opening.resolve(new File(['model'], 'selected.gguf'));
+    await flushPromises();
+    expect(f.recognition.recorder.getState().phase).toBe('recording');
+    expect(f.recognition.client.loadModel).toHaveBeenCalledOnce();
+    await f.wrapper.get('[data-testid="live-recognition-record-stop"]').trigger('click');
+    await flushPromises();
+    expect(f.recognition.client.transcribe).toHaveBeenCalledOnce();
+    expect(f.wrapper.find('[data-testid="live-recognition-recording-replay"]').exists()).toBe(true);
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection;
+    expect(saved?.load?.status).toBe('completed');
+    expect(saved?.trials).toHaveLength(1);
+  });
+
+  it.each(['diagnostics', 'conversation'] as const)('attaches only an observed matching ASR load from the %s surface', async surface => {
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+    await using f = await fixture();
+    if (surface === 'diagnostics') {
+      await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+      await flushPromises();
+      await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    } else {
+      await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    }
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
+    await flushPromises();
+    const file = new File(['audio'], 'transcription-load.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-recognition-generate"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection;
+    if (surface === 'diagnostics') {
+      expect(saved?.load?.status).toBe('completed');
+      expect(saved?.load?.operation.model.id).toMatchObject({ status: 'observed', value: 'user/live' });
+    } else {
+      expect(saved?.load).toBeUndefined();
+    }
+    expect(saved?.trials).toHaveLength(1);
+    expect(downloadedSnapshot()?.operation.result.text).toBe('こんにちは。');
+    expect(f.recognition.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.recognition.client.releaseModel).not.toHaveBeenCalled();
+    const replacement = new File(['replacement'], 'replacement.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [replacement], types: ['Files'] } });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-investigation-save"]').attributes('disabled')).toBeDefined();
+    expect(f.recognition.controller.getState().run).toBeUndefined();
+    expect(f.recognition.controller.getState().runtime.model).toBeDefined();
+    expect(f.recognition.client.releaseModel).not.toHaveBeenCalled();
+  });
+
+  it('invalidates old comparison audio and exports on source changes and explicit model loads while retaining selection-only behavior', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    const first = new File(['first'], 'first.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [first], types: ['Files'] } });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    const firstUrl = f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('href');
+    const firstRun = f.speech.controller.getState().fileRun;
+    if (!firstRun) {
+      throw new Error('Expected first file run');
+    }
+    const second = new File(['second'], 'second.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [second], types: ['Files'] } });
+    await flushPromises();
+    expect(f.wrapper.findAll('[data-testid="live-response-result"]')).toHaveLength(0);
+    expect(f.wrapper.get('[data-testid="live-investigation-save"]').attributes('disabled')).toBeDefined();
+    expect(f.speech.controller.getState().fileRun).toBeUndefined();
+    expect(f.speech.controller.getFileRunAudio({ id: firstRun.id, role: 'input' })).toBeUndefined();
+    expect(f.revokeUrl).toHaveBeenCalledWith(firstUrl);
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    const secondUrl = f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('href');
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'speech/next', size: 1, importedAt: 0 });
+    await flushPromises();
+    expect(f.wrapper.findAll('[data-testid="live-response-result"]')).toHaveLength(1);
+    expect(f.revokeUrl).not.toHaveBeenCalledWith(secondUrl);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.findAll('[data-testid="live-response-result"]')).toHaveLength(0);
+    expect(f.speech.controller.getState().fileRun).toBeUndefined();
+    expect(f.revokeUrl).toHaveBeenCalledWith(secondUrl);
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    expect(vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection.load?.operation.model.id).toMatchObject({ status: 'observed', value: 'speech/next' });
+  });
+
+  it('adjusts only normal speech microphone input and measures it only while the panel is open', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.controller.getState().inputLevel).toMatchObject({ gain: 1, observation: 'off', window: undefined });
+    const details = f.wrapper.get<HTMLDetailsElement>('[data-testid="live-speech-input-level"]');
+    details.element.open = true;
+    await details.trigger('toggle');
+    expect(f.speech.controller.getState().inputLevel.observation).toBe('on');
+    expect(f.speech.capture).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-speech-input-gain"]').trigger('click');
+    await f.page.get('[data-testid="settings-select-option-2"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.controller.getState().inputLevel.gain).toBe(2);
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    f.speech.pcm({ samples: new Float32Array(12000).fill(0.25) });
+    await flushPromises();
+    expect(vi.mocked(f.speech.client.push).mock.calls.at(-1)?.[0].samples[0]).toBe(0.5);
+    expect(f.speech.controller.getState().inputLevel.window).toMatchObject({ before: { peak: 0.25 }, after: { peak: 0.5 } });
+    await f.wrapper.get('[data-testid="live-speech-mute-microphone"]').trigger('click');
+    f.speech.pcm({ samples: new Float32Array(12000).fill(0.25) });
+    await flushPromises();
+    expect(f.speech.controller.getState().inputLevel.window).toMatchObject({ before: { peak: 0 }, after: { peak: 0 } });
+    expect(f.wrapper.get('[data-testid="live-speech-input-muted"]').text()).toBe(await ensureStrings.liveConversation__microphone_muted());
+    details.element.open = false;
+    await details.trigger('toggle');
+    expect(f.speech.controller.getState().inputLevel).toMatchObject({ gain: 2, observation: 'off', window: undefined });
+    details.element.open = true;
+    await details.trigger('toggle');
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    expect(f.speech.controller.getState().inputLevel).toMatchObject({ gain: 2, observation: 'off', window: undefined });
+    expect(f.wrapper.find('[data-testid="live-speech-input-level"]').exists()).toBe(false);
+    expect(f.wrapper.get<HTMLInputElement>('[data-testid="live-diagnostics-input-level-gain-1"]').element.checked).toBe(true);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+  });
+
+  it('cancels a comparison during the current condition, retains its partial result, and leaves later conditions unrun', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    const file = new File(['audio'], 'cancel-comparison.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-4"]').setValue(true);
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-8"]').setValue(true);
+    const decoding = Promise.withResolvers<Float32Array<ArrayBuffer>>();
+    f.speech.decodeFile.mockResolvedValueOnce(new Float32Array([0.5])).mockReturnValueOnce(decoding.promise);
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.decodeFile).toHaveBeenCalledTimes(2);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-4"]').attributes('disabled')).toBeDefined();
+    const recognitionCancels = vi.mocked(f.recognition.client.cancel).mock.calls.length;
+    await f.wrapper.setProps({ task: 'transcription' });
+    await f.wrapper.get('[data-testid="live-investigation-cancel-running"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ task: 'response' });
+    expect(f.wrapper.findAll('[data-testid="live-response-result"]')).toHaveLength(2);
+    expect(f.wrapper.get('[data-testid="live-response-comparison-progress"]').text()).toBe(await ensureStrings.liveConversation__response_condition_progress({ completed: 2, total: 3 }));
+    expect(f.wrapper.get('[data-testid="live-response-comparison-not-run"]').text()).toBe(await ensureStrings.liveConversation__remaining_conditions_not_run({ count: 1 }));
+    expect(f.wrapper.find('[data-testid="live-diagnostics-audio-retention-limit"]').exists()).toBe(false);
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection;
+    expect(saved?.status).toBe('cancelled');
+    expect(saved?.trials.map(trial => trial.status)).toEqual(['completed', 'partial', 'not_run']);
+    expect(saved?.plan.trials).toHaveLength(3);
+    expect(f.speech.client.start).toHaveBeenCalledOnce();
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.recognition.client.cancel).toHaveBeenCalledTimes(recognitionCancels);
+    decoding.resolve(new Float32Array([0.25]));
+    await flushPromises();
+    expect(f.speech.client.start).toHaveBeenCalledOnce();
+    expect(f.speech.decodeFile.mock.calls.every(call => call[0].file === file)).toBe(true);
+  });
+
+  it('generates selected multipliers and peak matching in order with one model and independent result audio', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    const file = new File(['original audio'], 'peak.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-4"]').setValue(true);
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-peak-0.8"]').setValue(true);
+    let generated = 0;
+    vi.mocked(f.speech.client.start).mockImplementation(async () => {
+      generated++;
+      f.speech.change({ state: { phase: 'running' } });
+      f.speech.frame({ text: `Response ${generated}`, samples: new Float32Array(3200).fill(0.25) });
+    });
+    const run = vi.spyOn(f.speech.controller, 'runFile');
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(run.mock.calls.map(call => call[0].inputLevel)).toEqual([{ kind: 'gain', gain: 1 }, { kind: 'gain', gain: 4 }, { kind: 'peak', targetPeak: 0.8 }]);
+    expect(run.mock.calls.every(call => call[0].file === file && call[0].seed === 0 && call[0].language === 'en' && call[0].maxSeconds === 120 && call[0].inputPacing === 'fast')).toBe(true);
+    expect(f.speech.controller.getState().fileRun?.inputLevel).toMatchObject({ requested: { kind: 'peak', targetPeak: 0.8 }, appliedGain: 1.6, clippedSamples: 0 });
+    const results = f.wrapper.findAll('[data-testid="live-response-result"]');
+    expect(results).toHaveLength(3);
+    expect(results.map(result => result.get('[data-testid="live-diagnostics-text"]').text())).toEqual(['Response 1', 'Response 2', 'Response 3']);
+    const urls = results.map(result => result.get('[data-testid="live-diagnostics-output-replay"]').attributes('src'));
+    expect(new Set(urls).size).toBe(3);
+    for (const url of urls) {
+      expect(f.revokeUrl).not.toHaveBeenCalledWith(url);
+    }
+    expect(f.wrapper.findAll('[data-testid="live-diagnostics-settings"]')).toHaveLength(1);
+    expect(f.wrapper.get('[data-testid="live-response-comparison-progress"]').text()).toBe(await ensureStrings.liveConversation__response_condition_progress({ completed: 3, total: 3 }));
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-1"]').setValue(false);
+    expect(f.wrapper.findAll('[data-testid="live-response-result"]')).toHaveLength(3);
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0].collection;
+    expect(saved?.plan.trials).toHaveLength(3);
+    expect(saved?.trials).toHaveLength(3);
+    expect(downloadedSnapshot()?.operation.processing).toMatchObject({ status: 'observed', value: { inputLevel: { requested: { kind: 'peak', targetPeak: 0.8 }, appliedGain: 1.6 } } });
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.recognition.client.transcribe).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-investigation-clear"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.findAll('[data-testid="live-response-result"]')).toHaveLength(0);
+    for (const url of urls) {
+      expect(f.revokeUrl).toHaveBeenCalledWith(url);
+    }
+  });
+
+  it('applies an explicit input volume on generation while retaining the model, source file, and previous result snapshot', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
+    expect(f.wrapper.get<HTMLInputElement>('[data-testid="live-diagnostics-input-level-gain-1"]').element.checked).toBe(true);
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    const file = new File(['original audio'], 'volume.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-1"]').setValue(false);
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-4"]').setValue(true);
+    await flushPromises();
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.decodeFile.mock.calls.at(-1)?.[0].file).toBe(file);
+    expect(f.speech.controller.getState().fileRun?.inputLevel).toMatchObject({ requested: { kind: 'gain', gain: 4 }, appliedGain: 4, before: { peak: 0.5 }, after: { peak: 1 }, clippedSamples: 1 });
+    expect(vi.mocked(f.speech.client.push).mock.calls[0]?.[0].samples[0]).toBe(1);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-clipped"]').text()).toBe(await ensureStrings.liveConversation__input_volume_clipped({ count: 1 }));
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-4"]').setValue(false);
+    await f.wrapper.get('[data-testid="live-diagnostics-input-level-gain-2"]').setValue(true);
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-result-gain"]').text()).toContain('4×');
+    await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
+    await flushPromises();
+    const saved = downloadedSnapshot();
+    expect(saved?.operation.processing).toMatchObject({ status: 'observed', value: { inputLevel: { requested: { kind: 'gain', gain: 4 }, appliedGain: 4, clippedSamples: 1 } } });
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.decodeFile.mock.calls.at(-1)?.[0].file).toBe(file);
+    expect(f.speech.controller.getState().fileRun?.inputLevel).toMatchObject({ requested: { kind: 'gain', gain: 2 }, appliedGain: 2, clippedSamples: 0 });
+    expect(f.wrapper.find('[data-testid="live-diagnostics-input-clipped"]').exists()).toBe(false);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.recognition.client.transcribe).not.toHaveBeenCalled();
+  });
+
+  it('defaults to fast file input and changes pacing without loading or generating automatically', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const pacing = f.wrapper.get('[data-testid="live-diagnostics-pacing"]');
-    expect(pacing.text()).toContain('できるだけ速く');
-    expect(f.wrapper.findAll('[role="tab"]')).toHaveLength(2);
+    expect(pacing.text()).toBe(await ensureStrings.liveConversation__as_fast_as_possible());
+    expect(f.wrapper.findAll('[role="tab"]')).toHaveLength(3);
     const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
     await pacing.trigger('click');
     await f.page.get('[data-testid="settings-select-option-real_time"]').trigger('click');
     await flushPromises();
-    expect(pacing.text()).toContain('実時間ペース');
-    expect(f.wrapper.get('[data-testid="live-diagnostics-pacing-help"]').text()).toContain('待ち時間も実行時間に含みます');
+    expect(pacing.text()).toBe(await ensureStrings.liveConversation__real_time_pace());
+    expect(f.wrapper.get('[data-testid="live-diagnostics-pacing-help"]').text()).toBe(await ensureStrings.liveConversation__real_time_input_pacing_help());
     expect(f.speech.client.loadModel).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
     await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
     await flushPromises();
     const file = new File(['audio'], 'paced.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
     expect(run).not.toHaveBeenCalled();
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
-    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'ja', persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'real_time' });
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'real_time', inputLevel: { kind: 'gain', gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024 - file.size, investigation: expect.objectContaining({ context: expect.objectContaining({ source: 'investigation' }), observer: expect.any(Function) }) });
     await pacing.trigger('click');
     await f.page.get('[data-testid="settings-select-option-fast"]').trigger('click');
     await flushPromises();
     expect(run).toHaveBeenCalledOnce();
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
-    expect(run).toHaveBeenLastCalledWith({ file, maxSeconds: 120, language: 'ja', persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'fast' });
+    expect(run).toHaveBeenLastCalledWith({ file, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'fast', inputLevel: { kind: 'gain', gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024 - file.size, investigation: expect.objectContaining({ context: expect.objectContaining({ source: 'investigation' }), observer: expect.any(Function) }) });
     expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
     expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
     expect(f.speech.capture).not.toHaveBeenCalled();
   });
 
   it('cancels a real-time file run while waiting for its first input deadline and keeps the model', async () => {
-    await ensureAllStringsForTest({ locale: 'ja' });
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
     await using f = await fixture();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const file = new File(['audio'], 'waiting.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
     await f.wrapper.get('[data-testid="live-diagnostics-pacing"]').trigger('click');
     await f.page.get('[data-testid="settings-select-option-real_time"]').trigger('click');
     await flushPromises();
@@ -176,14 +992,14 @@ describe('independent live conversation workspace', () => {
     };
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
-    expect(f.wrapper.get('[data-testid="live-diagnostics-status"]').text()).toContain('入力音声を送信中');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-status"]').text()).toBe(await ensureStrings.liveConversation__sending_input_audio());
     expect(f.wrapper.get('[data-testid="live-diagnostics-pacing"]').attributes('disabled')).toBeDefined();
     expect(f.speech.client.push).not.toHaveBeenCalled();
     await f.wrapper.get('[data-testid="live-diagnostics-cancel"]').trigger('click');
     await flushPromises();
     expect(f.speech.controller.getState().fileRun?.status).toBe('partial');
     expect(f.speech.controller.getState().fileRun?.replayTiming?.interruption).toBe('user_cancel');
-    expect(f.wrapper.get('[data-testid="live-diagnostics-interruption"]').text()).toContain('生成を中止しました');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-interruption"]').text()).toBe(await ensureStrings.liveConversation__generation_cancelled());
     expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe('waiting.wav');
     expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeUndefined();
     expect(f.speech.client.stop).toHaveBeenCalledWith({ mode: 'cancel' });
@@ -321,8 +1137,10 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
     await flushPromises();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const file = new File(['audio'], 'investigation.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
     vi.mocked(f.speech.client.push).mockImplementation(() => {
       f.speech.frame({ text: 'File response', samples: new Float32Array(3200) });
       return { kind: 'accepted' };
@@ -332,6 +1150,8 @@ describe('independent live conversation workspace', () => {
     const run = f.speech.controller.getState().fileRun;
     expect(run?.input).toBeDefined();
     expect(run?.output).toBeDefined();
+    const comparisonOutput = f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('href');
+    expect(comparisonOutput).not.toBe(run?.output?.url);
     expect(f.speech.controller.getState().sessions[0]?.inputAudio).toBeDefined();
     const retainLfm = vi.spyOn(f.controller, 'retainAudio');
     const retainSpeech = vi.spyOn(f.speech.controller, 'retainAudio');
@@ -342,7 +1162,7 @@ describe('independent live conversation workspace', () => {
     expect(retainSpeech).toHaveBeenLastCalledWith({ value: 'off' });
     expect(f.speech.controller.getState().sessions[0]).toMatchObject({ inputAudio: undefined, outputAudio: undefined });
     expect(f.speech.controller.getState().fileRun).toBe(run);
-    expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('href')).toBe(run?.output?.url);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('href')).toBe(comparisonOutput);
     expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
   });
 
@@ -406,6 +1226,7 @@ describe('independent live conversation workspace', () => {
       expect(f.wrapper.get('[data-testid="live-diagnostics-resident-model"]').text()).toContain('user/live');
       const file = new File(['audio'], 'resident.wav', { type: 'audio/wav' });
       await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+      await flushPromises();
       if (engine === 'speech') {
         expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeUndefined();
         await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
@@ -504,6 +1325,14 @@ describe('independent live conversation workspace', () => {
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue(target === 'speech' ? speechInspection : { kind: 'other' });
     f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
     await flushPromises();
+    if (panel === 'diagnostics' && target === 'llama') {
+      expect(f.wrapper.get('[data-testid="live-diagnostics-load-model"]').attributes('disabled')).toBeDefined();
+      expect(f.wrapper.find('[data-testid="live-investigation-model-mismatch"]').exists()).toBe(true);
+      expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
+      expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+      expect(f.player.close).not.toHaveBeenCalled();
+      return;
+    }
     const released = Promise.withResolvers<void>();
     using releaseGate = {
       promise: released.promise,
@@ -556,6 +1385,7 @@ describe('independent live conversation workspace', () => {
     expect(f.page.get<HTMLTextAreaElement>('[data-testid="live-instructions"]').element.value).toBe('');
     await f.page.get('[data-testid="live-settings-close"]').trigger('click');
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const diagnosticHelp = f.wrapper.get('[data-testid="live-diagnostics-language-help"]');
     expect(diagnosticHelp.text()).toBe(expected);
     expect(f.wrapper.get('[data-testid="live-diagnostics-language"]').attributes('aria-describedby')).toBe(diagnosticHelp.attributes('id'));
@@ -563,10 +1393,11 @@ describe('independent live conversation workspace', () => {
     expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="live-diagnostics-instructions"]').element.value).toBe('');
     const file = new File(['audio'], 'language.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
     const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
-    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: locale, persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'fast' });
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: locale, persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'fast', inputLevel: { kind: 'gain', gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024 - file.size, investigation: expect.objectContaining({ context: expect.objectContaining({ source: 'investigation' }), observer: expect.any(Function) }) });
   });
 
   it('runs the same audio twice without opening the microphone or reloading the model', async () => {
@@ -575,12 +1406,14 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     expect(f.wrapper.find('[data-testid="live-speech-controls"]').exists()).toBe(false);
     expect(f.wrapper.find('[data-testid="live-composer-footer"]').exists()).toBe(false);
     const file = new File(['audio'], 'same-input.wav', { type: 'audio/wav' });
     const picker = f.wrapper.get<HTMLInputElement>('[data-testid="live-diagnostics-file"]');
     Object.defineProperty(picker.element, 'files', { configurable: true, value: [file] });
     await picker.trigger('change');
+    await flushPromises();
     vi.mocked(f.speech.client.push).mockImplementation(() => {
       const samples = new Float32Array(3200);
       samples.set([0.125, -0.25]);
@@ -641,6 +1474,7 @@ describe('independent live conversation workspace', () => {
     expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
     expect(f.wrapper.find('[data-testid="live-speech-session"]').exists()).toBe(false);
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe('same-input.wav');
     expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('download')).toBe(secondOutputName);
     expect(f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('download')).toBe(secondInputName);
@@ -658,8 +1492,10 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const file = new File(['audio'], 'comparison.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
     f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/audio', size: 1, importedAt: 0 });
     await flushPromises();
     await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
@@ -677,8 +1513,10 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const file = new File(['audio'], 'seed.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await flushPromises();
     await f.wrapper.get('[data-testid="live-diagnostics-seed"]').setValue('-1');
     expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeDefined();
     expect(f.wrapper.get('[data-testid="live-diagnostics-unavailable"]').text()).toContain('seed');
@@ -686,7 +1524,7 @@ describe('independent live conversation workspace', () => {
     const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
-    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, tailSeconds: 5, seed: 7, inputPacing: 'fast' });
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, tailSeconds: 5, seed: 7, inputPacing: 'fast', inputLevel: { kind: 'gain', gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024 - file.size, investigation: expect.objectContaining({ context: expect.objectContaining({ source: 'investigation' }), observer: expect.any(Function) }) });
     expect(f.speech.capture).not.toHaveBeenCalled();
   });
 
@@ -696,9 +1534,11 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const file = new File(['audio'], 'dropped.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
-    const decoding = Promise.withResolvers<Float32Array>();
+    await flushPromises();
+    const decoding = Promise.withResolvers<Float32Array<ArrayBuffer>>();
     f.speech.decodeFile.mockReturnValue(decoding.promise);
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
@@ -852,6 +1692,7 @@ describe('independent live conversation workspace', () => {
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
     await using f = await fixture();
     await f.wrapper.setProps({ panel: 'diagnostics' });
+    await flushPromises();
     const loading = Promise.withResolvers<void>();
     vi.mocked(f.speech.client.loadModel).mockImplementation(async () => {
       f.speech.change({ state: { phase: 'loading_model', loadProgress: { stage: 'loading_runtime', fetchedBytes: 1024 * 1024, decompressedBytes: 4 * 1024 * 1024, totalDecompressedBytes: 16 * 1024 * 1024 } } });

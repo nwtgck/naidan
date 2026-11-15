@@ -1,1 +1,1 @@
-export const liveConversation__unmute_playback = (): string => 'Unmute playback';
+export const liveConversation__unmute_playback = (): string => "Ativar som da reprodução";

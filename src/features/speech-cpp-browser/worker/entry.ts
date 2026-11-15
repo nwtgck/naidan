@@ -5,7 +5,9 @@ import { speechAudioSchema, speechLoadSchema, speechStopSchema, speechStateEnvel
 import { loadSpeechCore } from './core-loader';
 import { openNativeSpeechModel } from './native-model';
 import type { SpeechArtifact } from '@/features/speech-cpp-browser/artifacts';
-import { createSpeechLoadReporter } from './load-progress';
+import { createSpeechLoadReporter, createSpeechLoadObservation } from './load-progress';
+import { createWorkerSpeechInvestigationObserver, speechInvestigationEnvelopeSchema } from './investigation-protocol';
+import { speechInvestigationContextSchema } from './investigation-context';
 
 // FileReaderSync belongs only to this dedicated Worker realm.
 interface SyncBlobReader {
@@ -16,16 +18,36 @@ declare const FileReaderSync: { new(): SyncBlobReader };
 let selected: { artifact: SpeechArtifact, baseUrl: string } | undefined;
 const session = createSpeechSession({
   maxQueuedSeconds: 2,
-  openModel: async ({ file, signal, onProgress }) => {
+  openModel: async ({ file, signal, onProgress, investigation }) => {
     if (selected === undefined) {
       throw new Error('Missing speech artifact selection');
     }
-    const report = createSpeechLoadReporter({ onProgress, now: () => performance.now() });
-    const loaded = await loadSpeechCore({ ...selected, onProgress: report });
-    const reader = new FileReaderSync();
-    return openNativeSpeechModel({ ...loaded, file, signal, readBlob: ({ blob }) => reader.readAsArrayBuffer(blob), onProgress: report });
+    const selectedArtifact = selected;
+    const observer = createWorkerSpeechInvestigationObserver({ context: investigation });
+    const observation = createSpeechLoadObservation({ observer, now: () => performance.now() });
+    const report = createSpeechLoadReporter({
+      onProgress({ progress }) {
+        onProgress({ progress });
+        observation?.progress({ progress });
+      },
+      now: () => performance.now(),
+    });
+    let completed = false;
+    try {
+      const loaded = await loadSpeechCore({ ...selectedArtifact, onProgress: report });
+      observer?.({ event: { kind: 'stage', stage: 'runtime_integrity_verified', state: 'completed', durationMilliseconds: undefined, heapBytes: undefined, details: { wasmSha256: selectedArtifact.artifact.wasmSha256, schemaSha256: selectedArtifact.artifact.schemaSha256 } } });
+      const reader = new FileReaderSync();
+      const model = await openNativeSpeechModel({ ...loaded, file, signal, readBlob: ({ blob }) => reader.readAsArrayBuffer(blob), onProgress: report, investigation: observer });
+      completed = true;
+      return model;
+    } finally {
+      observation?.finish({ state: completed ? 'completed' : signal.aborted ? 'cancelled' : 'failed' });
+    }
   },
   observers: {
+    onInvestigation({ context, event }) {
+      postWorkerNotification({ endpoint: undefined, schema: speechInvestigationEnvelopeSchema, value: { type: 'naidan_speech_investigation_v1', context, event } });
+    },
     onFrame({ frame }) {
       postWorkerNotification({ endpoint: undefined, schema: speechFrameEnvelopeSchema, value: { type: 'naidan_speech_frame_v1', frame } });
     },
@@ -35,13 +57,13 @@ const session = createSpeechSession({
   },
 });
 const api: WorkerServerApi<SpeechWorker> = {
-  async loadModel({ file: inputFile, artifact: inputArtifact, baseUrl: inputBaseUrl }) {
-    const { file, artifact, baseUrl } = speechLoadSchema.parse({ file: inputFile, artifact: inputArtifact, baseUrl: inputBaseUrl });
+  async loadModel({ file: inputFile, artifact: inputArtifact, baseUrl: inputBaseUrl, investigation: inputInvestigation }) {
+    const { file, artifact, baseUrl, investigation } = speechLoadSchema.parse({ file: inputFile, artifact: inputArtifact, baseUrl: inputBaseUrl, investigation: inputInvestigation });
     selected = { artifact, baseUrl };
-    await session.loadModel({ file });
+    await session.loadModel({ file, investigation });
   },
-  async start({ options }) {
-    await session.start({ options: decodeSpeechStart({ value: options }) });
+  async start({ options, investigation }) {
+    await session.start({ options: decodeSpeechStart({ value: options }), investigation: investigation === undefined ? undefined : speechInvestigationContextSchema.parse(investigation) });
   },
   async push({ samples, sampleRate }) {
     const result = session.push(speechAudioSchema.parse({ samples, sampleRate }));

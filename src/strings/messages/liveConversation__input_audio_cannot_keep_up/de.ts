@@ -1,1 +1,1 @@
-export const liveConversation__input_audio_cannot_keep_up = (): string => 'Microphone audio could not keep up. The conversation stopped to avoid losing audio. Start again.';
+export const liveConversation__input_audio_cannot_keep_up = (): string => "Die Verarbeitung des Mikrofonaudios konnte nicht mithalten. Das Gespräch wurde gestoppt, um Audioverluste zu vermeiden. Starte es erneut.";

@@ -1,1 +1,1 @@
-export const liveConversation__run_total = (): string => 'Run total, including input preparation';
+export const liveConversation__run_total = (): string => "含输入准备的总运行时间";

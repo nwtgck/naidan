@@ -1,1 +1,1 @@
-export const liveConversation__diagnostics = (): string => 'Diagnostics';
+export const liveConversation__diagnostics = (): string => "Analysetools";

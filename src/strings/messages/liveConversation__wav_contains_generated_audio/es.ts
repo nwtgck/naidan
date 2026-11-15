@@ -1,1 +1,1 @@
-export const liveConversation__wav_contains_generated_audio = (): string => 'The WAV contains model output before playback. You can compare it in another player or share it for investigation.';
+export const liveConversation__wav_contains_generated_audio = (): string => "El WAV contiene la salida del modelo antes de la reproducción. Puedes compararlo en otro reproductor o compartirlo para su análisis.";

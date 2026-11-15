@@ -125,6 +125,61 @@ it('removes model ownership atomically when its Worker crashes', async () => {
   expect(workers[0]!.terminate).toHaveBeenCalledOnce();
 });
 
+it('sends investigation context as data and drops notifications from a retired Worker', async () => {
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(remote);
+  const received = vi.fn<NonNullable<SpeechObservers['onInvestigation']>>();
+  const client = createSpeechClient({ observers: { onFrame() {}, onState() {}, onInvestigation: received } });
+  await using cleanup = {
+    async [Symbol.asyncDispose]() {
+      await client.dispose();
+    },
+  };
+  const context = { operationId: 'attempt', source: 'investigation' as const };
+  await client.loadModel({ file: new File([], 'model.gguf'), investigation: context });
+  expect(remote.loadModel).toHaveBeenCalledWith(expect.objectContaining({ investigation: context }));
+  emitState({ remote, phase: 'ready', model: info });
+  await client.start({ options: { inputSampleRate: 24000, maxSeconds: 10, language: 'ja', persona: undefined, name: undefined, seed: undefined }, investigation: context });
+  const listeners = [...transport.listeners.get(transport.assigned.get(remote)!)!];
+  const event = { kind: 'wasm_heap', capacityBytes: 65536 };
+  for (const listener of listeners) {
+    listener({ value: { type: 'naidan_speech_investigation_v1', context, event } });
+  }
+  expect(received).toHaveBeenCalledOnce();
+  expect(received).toHaveBeenCalledWith({ context, event });
+  await client.releaseModel();
+  for (const listener of listeners) {
+    listener({ value: { type: 'naidan_speech_investigation_v1', context, event } });
+  }
+  expect(received).toHaveBeenCalledOnce();
+  void cleanup;
+});
+
+it('subscribes to diagnostic notifications only while an explicit operation is active', async () => {
+  const remote = remoteFixture({ load: undefined, push: undefined });
+  transport.remotes.push(remote);
+  const client = createSpeechClient({ observers: { onFrame() {}, onState() {}, onInvestigation() {} } });
+  await using cleanup = {
+    async [Symbol.asyncDispose]() {
+      await client.dispose();
+    },
+  };
+  await client.loadModel({ file: new File([], 'model.gguf') });
+  const listeners = transport.listeners.get(transport.assigned.get(remote)!)!;
+  expect(listeners.size).toBe(2);
+  emitState({ remote, phase: 'ready', model: info });
+  const options = { inputSampleRate: 24000, maxSeconds: 10, language: 'ja', persona: undefined, name: undefined, seed: undefined };
+  await client.start({ options });
+  expect(listeners.size).toBe(2);
+  await client.stop({ mode: 'finish' });
+  emitState({ remote, phase: 'ready', model: info });
+  await client.start({ options, investigation: { operationId: 'diagnostic', source: 'investigation' } });
+  expect(listeners.size).toBe(3);
+  await client.stop({ mode: 'finish' });
+  expect(listeners.size).toBe(2);
+  void cleanup;
+});
+
 it('reserves ownership before awaited teardown when load is called twice in one turn', async () => {
   const remote = remoteFixture({ load: undefined, push: undefined });
   transport.remotes.push(remote);
@@ -427,7 +482,7 @@ it('drains each full file-run frame without waiting for a later packet or finish
   remote.stop = vi.fn(async () => emitState({ remote, phase: 'completed', model: info }));
   transport.remotes.push(remote);
   await using fixture = clientFixture();
-  const runner = createSpeechFileRun({ client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, inputPacing: 'fast', decodeFile: async () => new Float32Array(6401).fill(0.25), onChange() {} });
+  const runner = createSpeechFileRun({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, inputPacing: 'fast', decodeFile: async () => new Float32Array(6401).fill(0.25), onChange() {} });
   fixture.onState.mockImplementation(() => runner.onState());
   fixture.onFrame.mockImplementation(({ frame }) => runner.onFrame({ frame }));
   await using recording = {
@@ -471,7 +526,7 @@ it('applies the hosted shutdown deadline at real-time EOF while a native input c
       gate.resolve();
     },
   };
-  const runner = createSpeechFileRun({ client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, inputPacing: 'real_time', decodeFile: async () => new Float32Array(3200), onChange() {} });
+  const runner = createSpeechFileRun({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, inputPacing: 'real_time', decodeFile: async () => new Float32Array(3200), onChange() {} });
   fixture.onState.mockImplementation(() => runner.onState());
   await using recording = {
     async [Symbol.asyncDispose]() {

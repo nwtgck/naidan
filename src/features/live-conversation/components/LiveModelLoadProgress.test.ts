@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
 import LiveModelLoadProgress from './LiveModelLoadProgress.vue';
+import { ensureStrings } from '@/strings';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -24,23 +25,38 @@ describe('model loading progress identifies what the bar measures', () => {
     expect(f.wrapper.get('[data-testid="live-load-stage"]').text()).toContain('Wasm');
     expect(f.wrapper.get('[data-testid="live-load-percent"]').text()).toBe('25%');
     expect(f.wrapper.get('[data-testid="live-load-bytes"]').text()).toBe('Fetched 1 MiB · Wasm 4 / 16 MiB');
-    expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBe('25');
+    expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBe('5');
   });
 
-  it('uses actual model-file reads for model progress and returns to indeterminate preparation afterward', async () => {
+  it('keeps completed read coverage separate from remaining native preparation', async () => {
     using f = fixture({ progress: { stage: 'reading_model', readBytes: 8 * 1024 * 1024, totalBytes: 8 * 1024 * 1024 } });
     expect(f.wrapper.get('[data-testid="live-load-percent"]').text()).toBe('100%');
     expect(f.wrapper.get('[data-testid="live-load-stage"]').text()).toContain('model file');
     expect(f.wrapper.get('[data-testid="live-load-bytes"]').text()).toBe('Read 8 / 8 MiB');
     await f.wrapper.setProps({ progress: { stage: 'preparing_model' } });
     expect(f.wrapper.get('[data-testid="live-load-stage"]').text()).toBe('Preparing the model…');
+    expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBe('85');
+    expect(f.wrapper.find('[data-testid="live-load-percent"]').exists()).toBe(false);
+  });
+
+  it.each([undefined, { stage: 'preparing_runtime' }, { stage: 'checking_model' }] as const)('keeps unquantified initial work indeterminate for %j', progress => {
+    using f = fixture({ progress });
     expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBeUndefined();
     expect(f.wrapper.find('[data-testid="live-load-percent"]').exists()).toBe(false);
   });
 
-  it.each([undefined, { stage: 'preparing_runtime' }, { stage: 'preparing_model' }] as const)('keeps a bar without inventing a percentage for %j', progress => {
-    using f = fixture({ progress });
-    expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBeUndefined();
+  it('shows low measured read progress without calling it overall completion and resets for another load', async () => {
+    using f = fixture({ progress: { stage: 'reading_model', readBytes: 95, totalBytes: 100000 } });
+    expect(f.wrapper.get('[data-testid="live-load-percent"]').text()).toBe('0.095%');
+    expect(Number(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow'))).toBeGreaterThanOrEqual(40);
+    await f.wrapper.setProps({ progress: { stage: 'checking_loaded_model' } });
+    expect(f.wrapper.get('[data-testid="live-load-stage"]').text()).toBe(await ensureStrings.liveConversation__checking_loaded_model());
+    expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBe('90');
     expect(f.wrapper.find('[data-testid="live-load-percent"]').exists()).toBe(false);
+    await f.wrapper.setProps({ ready: true });
+    expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBe('100');
+    await f.wrapper.setProps({ progress: { stage: 'checking_model' }, ready: false, generation: 2 });
+    expect(f.wrapper.get('[data-testid="live-load-stage"]').text()).toBe(await ensureStrings.liveConversation__checking_model());
+    expect(f.wrapper.get('[data-testid="live-load-bar"]').attributes('aria-valuenow')).toBeUndefined();
   });
 });

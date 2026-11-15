@@ -4,8 +4,9 @@ import { SpeechRuntimeError, speechError, speechFailure, type SpeechState, type 
 import { speechFrameEnvelopeSchema, speechStateEnvelopeSchema, speechStopSchema, decodeSpeechState, type SpeechWorker } from './protocol';
 import { createUnavailableSpeechClient } from './client-unavailable';
 import type { SpeechClient, SpeechObservers } from './types';
+import { speechInvestigationEnvelopeSchema } from './investigation-protocol';
 
-type WorkerState = { worker: Worker, remote: WorkerRemote<SpeechWorker>, controller: AbortController, unsubscribe: (() => void)[] };
+type WorkerState = { worker: Worker, remote: WorkerRemote<SpeechWorker>, controller: AbortController, unsubscribe: (() => void)[], investigationCleanup?: () => void };
 
 /** Lazy hosted Worker; microphone PCM is bounded before it reaches Comlink. */
 export function createSpeechClient({ observers }: { observers: SpeechObservers }): SpeechClient {
@@ -43,11 +44,37 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
       observers.onState({ state: { ...state, queuedSamples: retainedSamples } });
     } catch { /* Observational only. */ }
   }
+  function observeInvestigation({ current }: { current: WorkerState }): (() => void) | undefined {
+    if (observers.onInvestigation === undefined) {
+      return undefined;
+    }
+    current.investigationCleanup?.();
+    const unsubscribe = subscribeWorkerNotifications({
+      endpoint: current.worker,
+      schema: speechInvestigationEnvelopeSchema,
+      listener({ value }) {
+        if (workerState === current && !disposed) {
+          try {
+            observers.onInvestigation?.({ context: value.context, event: value.event });
+          } catch { /* Observational only. */ }
+        }
+      },
+    });
+    const cleanup = () => {
+      unsubscribe();
+      if (current.investigationCleanup === cleanup) {
+        current.investigationCleanup = undefined;
+      }
+    };
+    current.investigationCleanup = cleanup;
+    return cleanup;
+  }
   function retire({ target, failure }: { target: WorkerState | undefined, failure: SpeechFailure | undefined }): void {
     if (target === undefined || target.controller.signal.aborted) {
       return;
     }
     target.controller.abort(failure === undefined ? speechError({ code: 'runtime_failed', message: 'Speech worker was released' }) : new SpeechRuntimeError({ details: failure }));
+    target.investigationCleanup?.();
     for (const unsubscribe of target.unsubscribe) {
       unsubscribe();
     }
@@ -178,7 +205,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
   return {
     capability: { kind: 'available' },
     getState: () => ({ ...state, queuedSamples: retainedSamples }),
-    async loadModel({ file }) {
+    async loadModel({ file, investigation }) {
       const ownGeneration = ++generation;
       if (disposed) {
         throw speechError({ code: 'invalid_state', message: 'Speech client is disposed' });
@@ -211,6 +238,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
       const target: WorkerState = { worker, remote, controller: new AbortController(), unsubscribe: [] };
       workerState = target;
       try {
+
         target.unsubscribe.push(subscribeWorkerNotifications({
           endpoint: worker,
           schema: speechStateEnvelopeSchema,
@@ -222,6 +250,9 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
             if (next.failure !== undefined) {
               retire({ target, failure: next.failure });
               return;
+            }
+            if (next.completion !== undefined) {
+              target.investigationCleanup?.();
             }
             state = next;
             notify();
@@ -250,7 +281,13 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
           worker.removeEventListener('error', crashed);
           worker.removeEventListener('messageerror', crashed);
         });
-        await operation({ target, task: target.remote.loadModel({ file, artifact, baseUrl: new URL(import.meta.env.BASE_URL, location.href).href }) });
+        const unobserve = investigation === undefined ? undefined : observeInvestigation({ current: target });
+        try {
+          await operation({ target, task: target.remote.loadModel({ file, artifact, baseUrl: new URL(import.meta.env.BASE_URL, location.href).href, ...(investigation === undefined ? {} : { investigation }) }) });
+        } finally {
+          unobserve?.();
+        }
+
         if (disposed || ownGeneration !== generation || workerState !== target) {
           retire({ target, failure: undefined });
           throw speechError({ code: 'invalid_state', message: 'Speech model load was superseded' });
@@ -260,7 +297,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
         throw error;
       }
     },
-    async start({ options }) {
+    async start({ options, investigation }) {
       const target = requireWorker();
       switch (state.phase) {
       case 'ready': case 'completed': break;
@@ -273,6 +310,9 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
       if (state.model === undefined || !Number.isSafeInteger(options.inputSampleRate) || options.inputSampleRate < 8000 || options.inputSampleRate > 192000) {
         throw speechError({ code: 'invalid_audio', message: 'Invalid speech input sample rate or model frame metadata' });
       }
+      if (investigation !== undefined) {
+        observeInvestigation({ current: target });
+      }
       stopping = false;
       finishingInput = false;
       inputSampleRate = options.inputSampleRate;
@@ -280,7 +320,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
       inputFrameDenominator = state.model.sampleRate;
       inputFrameIndex = 0;
       try {
-        await operation({ target, task: target.remote.start({ options }) });
+        await operation({ target, task: target.remote.start({ options, ...(investigation === undefined ? {} : { investigation }) }) });
       } catch (error) {
         retire({ target, failure: state.failure ?? speechFailure({ error }) });
         throw error;
@@ -324,13 +364,17 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
         throw new Error(String(exhaustive));
       }
       }
-      await boundedShutdown({
-        target,
-        task: (async () => {
-          await pumping;
-          await target.remote.stop({ mode });
-        })(),
-      });
+      try {
+        await boundedShutdown({
+          target,
+          task: (async () => {
+            await pumping;
+            await target.remote.stop({ mode });
+          })(),
+        });
+      } finally {
+        target.investigationCleanup?.();
+      }
     },
     async releaseModel() {
       generation++;

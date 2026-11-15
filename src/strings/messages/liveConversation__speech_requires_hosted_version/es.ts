@@ -1,1 +1,1 @@
-export const liveConversation__speech_requires_hosted_version = (): string => 'Speech conversation requires the hosted version.';
+export const liveConversation__speech_requires_hosted_version = (): string => "Las conversaciones de voz requieren la versión alojada.";

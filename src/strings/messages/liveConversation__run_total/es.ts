@@ -1,1 +1,1 @@
-export const liveConversation__run_total = (): string => 'Run total, including input preparation';
+export const liveConversation__run_total = (): string => "Tiempo total de ejecución, incluida la preparación de la entrada";

@@ -10,7 +10,7 @@ afterEach(() => vi.useRealTimers());
 
 async function replayWaves({ inputPacing }: { inputPacing: SpeechInputPacing }): Promise<Uint8Array[]> {
   const pcm = Float32Array.from({ length: 3201 }, (_, index) => Math.sin(index / 100) * 0.25);
-  await using f = await speechFileRunFixture({ pcm, tailSeconds: 0.2, maxSeconds: 10, inputPacing });
+  await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm, tailSeconds: 0.2, maxSeconds: 10, inputPacing });
   const running = f.runner.run();
   if (inputPacing === 'real_time') {
     await vi.advanceTimersByTimeAsync(1000);
@@ -23,7 +23,7 @@ describe('fixed audio at real-time deadlines', () => {
   it('starts input after dialogue readiness, keeps sequence zero separate, and works without a DOM', async () => {
     expect(typeof document).toBe('undefined');
     const gate = Promise.withResolvers<void>();
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(6400).fill(0.25), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(6400).fill(0.25), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     using unblock = {
       [Symbol.dispose]() {
         gate.resolve();
@@ -55,7 +55,7 @@ describe('fixed audio at real-time deadlines', () => {
 
   it('offers further frames independently of a pending native call and enters finish before the queue drains', async () => {
     const gate = Promise.withResolvers<{ kind: 'continue' }>();
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(9600), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(9600), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     using unblock = {
       [Symbol.dispose]() {
         gate.resolve({ kind: 'continue' });
@@ -77,7 +77,7 @@ describe('fixed audio at real-time deadlines', () => {
 
   it('finishes while waiting for the next deadline without escalating to cancel or offering tail audio', async () => {
     const gate = Promise.withResolvers<{ kind: 'continue' }>();
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(32000), tailSeconds: 5, maxSeconds: 60, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(32000), tailSeconds: 5, maxSeconds: 60, inputPacing: 'real_time' });
     using unblock = {
       [Symbol.dispose]() {
         gate.resolve({ kind: 'continue' });
@@ -110,7 +110,7 @@ describe('fixed audio at real-time deadlines', () => {
       },
     };
     const pcm = Float32Array.from({ length: 9600 }, (_, index) => Math.sin(index / 10) * 0.25);
-    await using f = await speechFileRunFixture({ pcm, tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm, tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     const running = f.runner.run();
     await vi.advanceTimersByTimeAsync(0);
     wall = 500;
@@ -125,7 +125,7 @@ describe('fixed audio at real-time deadlines', () => {
 
   it('stops at the existing two-second backlog bound and keeps accepted input as partial', async () => {
     const gate = Promise.withResolvers<{ kind: 'continue' }>();
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(64000).fill(0.25), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(64000).fill(0.25), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     using unblock = {
       [Symbol.dispose]() {
         gate.resolve({ kind: 'continue' });
@@ -153,7 +153,7 @@ describe('fixed audio at real-time deadlines', () => {
 
   it('interrupts an initially hidden real-time run without decoding or starting a dialogue', async () => {
     using visibility = speechReplayVisibility({ initial: 'hidden' });
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     await f.runner.run();
     expect(f.decodeFile).not.toHaveBeenCalled();
     expect(f.model.start).not.toHaveBeenCalled();
@@ -163,7 +163,7 @@ describe('fixed audio at real-time deadlines', () => {
 
   it('cancels on page hiding, removes the deadline, and never resumes on visibility restoration', async () => {
     using visibility = speechReplayVisibility({ initial: 'visible' });
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(32000), tailSeconds: 5, maxSeconds: 60, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(32000), tailSeconds: 5, maxSeconds: 60, inputPacing: 'real_time' });
     const running = f.runner.run();
     await vi.advanceTimersByTimeAsync(150);
     visibility.change({ value: 'hidden' });
@@ -178,7 +178,7 @@ describe('fixed audio at real-time deadlines', () => {
 
   it('keeps fast input independent of page visibility and installs no producer timer or visibility listener', async () => {
     using visibility = speechReplayVisibility({ initial: 'hidden' });
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 10, inputPacing: 'fast' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 10, inputPacing: 'fast' });
     const timers = vi.spyOn(globalThis, 'setTimeout');
     await f.runner.run();
     expect(f.runner.getState()).toMatchObject({ status: 'complete', replayTiming: undefined });
@@ -188,7 +188,7 @@ describe('fixed audio at real-time deadlines', () => {
   });
 
   it('clears a waiting producer and retained audio without creating late result URLs', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(32000), tailSeconds: 5, maxSeconds: 60, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(32000), tailSeconds: 5, maxSeconds: 60, inputPacing: 'real_time' });
     const running = f.runner.run();
     await vi.advanceTimersByTimeAsync(0);
     f.runner.clear();
@@ -202,7 +202,7 @@ describe('fixed audio at real-time deadlines', () => {
 
   it('keeps native error details after a real-time cancellation', async () => {
     const gate = Promise.withResolvers<{ kind: 'continue' }>();
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(6400), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(6400), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     const failure = { code: 'runtime_failed' as const, message: 'Device failed', nativeStatus: -42, nativeInput: 'audio' };
     using unblock = {
       [Symbol.dispose]() {
@@ -221,8 +221,8 @@ describe('fixed audio at real-time deadlines', () => {
   });
 
   it('finishes a pending decode without starting or cancelling a native dialogue later', async () => {
-    const gate = Promise.withResolvers<Float32Array>();
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    const gate = Promise.withResolvers<Float32Array<ArrayBuffer>>();
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     using unblock = {
       [Symbol.dispose]() {
         gate.resolve(new Float32Array(3200));
@@ -242,7 +242,7 @@ describe('fixed audio at real-time deadlines', () => {
   });
 
   it('keeps a native end failure after an explicit finish instead of labeling it a clean partial result', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(32000), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
+    await using f = await speechFileRunFixture({ maximumRetainedAudioBytes: 64 * 1024 * 1024, inputLevel: { kind: 'gain' as const, gain: 1 }, pcm: new Float32Array(32000), tailSeconds: 0, maxSeconds: 10, inputPacing: 'real_time' });
     const failure = { code: 'runtime_failed' as const, message: 'Native end failed', nativeStatus: -43, nativeInput: 'end' };
     f.end.mockRejectedValueOnce(new SpeechRuntimeError({ details: failure }));
     const running = f.runner.run();

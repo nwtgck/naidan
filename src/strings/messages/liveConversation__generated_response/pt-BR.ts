@@ -1,1 +1,1 @@
-export const liveConversation__generated_response = (): string => 'Generated response';
+export const liveConversation__generated_response = (): string => "Resposta gerada";

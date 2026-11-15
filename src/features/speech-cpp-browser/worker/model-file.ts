@@ -35,6 +35,15 @@ export function createSpeechFileSource({ file, readBlob, maxReadBytes, onRead }:
   if (!Number.isSafeInteger(file.size) || file.size < 24 || !Number.isSafeInteger(maxReadBytes) || maxReadBytes < 24 || maxReadBytes > 8 * 1024 * 1024) {
     throw speechError({ code: 'invalid_model', message: 'Invalid speech model range-reader limits' });
   }
+  const windowBytes = Math.min(1024 * 1024, maxReadBytes);
+  let window: { offset: number, bytes: Uint8Array } | undefined;
+  function readRange({ offset, length }: { offset: number, length: number }): Uint8Array {
+    const bytes = new Uint8Array(readBlob({ blob: file.slice(offset, offset + length) }));
+    if (bytes.length !== length) {
+      throw speechError({ code: 'invalid_model', message: 'Speech model file could not be read completely' });
+    }
+    return bytes;
+  }
   return {
     size: file.size,
     read({ destination, offset }) {
@@ -45,13 +54,22 @@ export function createSpeechFileSource({ file, readBlob, maxReadBytes, onRead }:
       if (length === 0) {
         return 0;
       }
-      const bytes = new Uint8Array(readBlob({ blob: file.slice(offset, offset + length) }));
-      if (bytes.length !== length) {
-        throw speechError({ code: 'invalid_model', message: 'Speech model file could not be read completely' });
+      let bytes: Uint8Array;
+      if (length >= windowBytes) {
+        // Weight reads retain their existing range limit and avoid cache copies.
+        bytes = readRange({ offset, length });
+      } else {
+        if (window === undefined || offset < window.offset || offset - window.offset + length > window.bytes.length) {
+          // This window belongs to one immutable Blob and stays outside Wasm.
+          const replacement = readRange({ offset, length: Math.min(windowBytes, file.size - offset) });
+          window = { offset, bytes: replacement };
+        }
+        bytes = window.bytes.subarray(offset - window.offset, offset - window.offset + length);
       }
       destination.set(bytes);
-      onRead?.({ offset, length: bytes.length });
-      return bytes.length;
+      // Prefetched bytes do not count as native reads or load progress.
+      onRead?.({ offset, length });
+      return length;
     },
   };
 }

@@ -1,0 +1,1 @@
+export const liveConversation__transcription_processing_time_help = (): string => "Elapsed time from handing audio to the recognizer until it finishes, including transfer and input copying. Model loading and input preparation are measured separately.";

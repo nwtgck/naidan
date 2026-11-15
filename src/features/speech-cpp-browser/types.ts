@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SpeechInvestigationObserver } from '@/features/speech-cpp-browser/investigation/types';
 
 export const speechSampleRate = 24000;
 export const speechFrameSamples = 3200;
@@ -9,7 +10,7 @@ export type SpeechPhase = 'unloaded' | 'loading_model' | 'ready' | 'starting' | 
 export type SpeechCompletionReason = 'finished' | 'cancelled' | 'max_seconds';
 export type SpeechModelInfo = { name: string, bytes: number, architecture: 'haru', task: 'dialogue', sampleRate: 24000, frameSamples: 3200, requiredVersion: string };
 export type SpeechFailure = { code: 'unavailable' | 'invalid_model' | 'invalid_audio' | 'queue_full' | 'invalid_state' | 'runtime_failed', message: string, nativeStatus: number | undefined, nativeInput: string | undefined };
-export type SpeechLoadProgress = { stage: 'preparing_runtime' } | { stage: 'loading_runtime', fetchedBytes: number, decompressedBytes: number, totalDecompressedBytes: number } | { stage: 'preparing_model' } | { stage: 'reading_model', readBytes: number, totalBytes: number };
+export type SpeechLoadProgress = { stage: 'preparing_runtime' } | { stage: 'loading_runtime', fetchedBytes: number, decompressedBytes: number, totalDecompressedBytes: number } | { stage: 'checking_model' } | { stage: 'preparing_model' } | { stage: 'reading_model', readBytes: number, totalBytes: number } | { stage: 'checking_loaded_model' };
 export type SpeechState = { phase: SpeechPhase, model: SpeechModelInfo | undefined, queuedSamples: number, completion: SpeechCompletionReason | undefined, failure: SpeechFailure | undefined, loadProgress: SpeechLoadProgress | undefined };
 export type SpeechFrame = { samples: Float32Array<ArrayBuffer>, sampleRate: 24000, text: string, sequence: number };
 export const speechDialogueLanguages = ['de', 'en', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'zh'] as const;
@@ -46,7 +47,7 @@ export type SpeechDialoguePort = {
 };
 export type SpeechModelPort = {
   info: SpeechModelInfo;
-  start({ options, onFrame }: { options: SpeechStartOptions, onFrame: ({ samples, text }: { samples: Float32Array, text: string }) => 'continue' | 'stop' }): Promise<SpeechDialoguePort>;
+  start({ options, onFrame, investigation }: { options: SpeechStartOptions, onFrame: ({ samples, text }: { samples: Float32Array, text: string }) => 'continue' | 'stop', investigation?: SpeechInvestigationObserver }): Promise<SpeechDialoguePort>;
   /** Synchronous control only. The SDK adapter must bypass its busy async gate
    * for a registered cancellation leaf; dialogue callbacks also observe it. */
   cancel(): void;

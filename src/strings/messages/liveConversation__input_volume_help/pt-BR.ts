@@ -1,0 +1,1 @@
+export const liveConversation__input_volume_help = (): string => "Ajuste o volume de entrada com o multiplicador selecionado. Com 1×, ele permanece inalterado. O volume não é ajustado automaticamente.";

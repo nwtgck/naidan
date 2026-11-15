@@ -2,10 +2,43 @@ import { describe, expect, it } from 'vitest';
 import { createSpeechSession } from './session';
 import { speechSessionFixture, startOptions } from './session.test-support';
 import { speechFrameSamples, SpeechRuntimeError, type SpeechDialoguePort, type SpeechLoadProgress, type SpeechState } from '@/features/speech-cpp-browser/types';
+import type { SpeechInvestigationEvent } from '@/features/speech-cpp-browser/investigation/types';
 
 const file = new File(['model fixture'], 'Haru.gguf');
 
 describe('speech session lane and ownership', () => {
+  it('forwards only the active operation context to a native dialogue observer', async () => {
+    await using fixture = speechSessionFixture({ start: undefined, push: undefined });
+    const events: { operationId: string, event: SpeechInvestigationEvent }[] = [];
+    fixture.model.start = async ({ investigation }) => {
+      investigation?.({ event: { kind: 'wasm_heap', capacityBytes: 65536 } });
+      return fixture.dialogue;
+    };
+    const client = createSpeechSession({
+      openModel: async () => fixture.model,
+      maxQueuedSeconds: 1,
+      observers: {
+        onFrame() {},
+        onState() {},
+        onInvestigation({ context, event }) {
+          events.push({ operationId: context.operationId, event });
+        },
+      },
+    });
+    await using cleanup = {
+      async [Symbol.asyncDispose]() {
+        await client.dispose();
+      },
+    };
+    await client.loadModel({ file });
+    await client.start({ options: startOptions });
+    await client.stop({ mode: 'finish' });
+    expect(events).toEqual([]);
+    await client.start({ options: startOptions, investigation: { operationId: 'new-attempt', source: 'investigation' } });
+    expect(events).toEqual([{ operationId: 'new-attempt', event: { kind: 'wasm_heap', capacityBytes: 65536 } }]);
+    void cleanup;
+  });
+
   it('publishes load progress only while the matching model is loading and clears it at readiness', async () => {
     await using fixture = speechSessionFixture({ start: undefined, push: undefined });
     let emit: (({ progress }: { progress: SpeechLoadProgress }) => void) | undefined;

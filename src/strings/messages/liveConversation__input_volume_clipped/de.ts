@@ -1,0 +1,1 @@
+export const liveConversation__input_volume_clipped = ({ count }: { count: number }): string => `Bei der Lautstärkeanpassung wurden ${count} Samples begrenzt. Verringere den Faktor und versuche es erneut, um Verzerrungen zu vermeiden.`;

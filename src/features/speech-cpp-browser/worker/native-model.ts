@@ -1,19 +1,22 @@
 import type { Core } from 'speech-cpp-browser-core/speech-cpp/host';
 import type { SpeechModelPort, SpeechDialoguePort, SpeechFailure, SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
-import { SpeechRuntimeError, speechError } from '@/features/speech-cpp-browser/types';
+import { SpeechRuntimeError, speechError, speechFailure } from '@/features/speech-cpp-browser/types';
 import { inspectSpeechCandidate, createSpeechFileSource } from './model-file';
 import { createSpeechReadCoverage } from './load-progress';
+import { createNativeSpeechObservation } from './native-observation';
+import type { SpeechInvestigationObserver } from '@/features/speech-cpp-browser/investigation/types';
 
 type Helpers = typeof import('speech-cpp-browser-core/speech-cpp/host');
 
 /** Actual generated C API integration. Native pointers remain bigint, callback
  * views expire on return, and every view is reacquired after an awaited call. */
-export async function openNativeSpeechModel({ file, signal, core, helpers, readBlob, onProgress }: {
+export async function openNativeSpeechModel({ file, signal, core, helpers, readBlob, onProgress, investigation }: {
   file: File, signal: AbortSignal, core: Core, helpers: Helpers,
   readBlob: ({ blob }: { blob: Blob }) => ArrayBuffer,
   onProgress: ({ progress }: { progress: SpeechLoadProgress }) => void,
+  investigation?: SpeechInvestigationObserver,
 }): Promise<SpeechModelPort> {
-  onProgress({ progress: { stage: 'preparing_model' } });
+  onProgress({ progress: { stage: 'checking_model' } });
   const candidate = await inspectSpeechCandidate({ file, name: file.name, signal });
   switch (candidate.kind) {
   case 'speech': break;
@@ -24,12 +27,15 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
   }
   }
   signal.throwIfAborted();
+  onProgress({ progress: { stage: 'preparing_model' } });
+  const loadingObservation = createNativeSpeechObservation({ core, observer: investigation, modelBytes: file.size, now: () => performance.now() });
   let coverage: ReturnType<typeof createSpeechReadCoverage> | undefined = createSpeechReadCoverage({ size: file.size });
   const source = createSpeechFileSource({
     file,
-    readBlob,
+    readBlob: loadingObservation === undefined ? readBlob : ({ blob }) => loadingObservation.readBlob({ blob, readBlob }),
     maxReadBytes: 4 * 1024 * 1024,
     onRead({ offset, length }) {
+      loadingObservation?.read({ offset, length });
       if (coverage === undefined) {
         return;
       }
@@ -65,7 +71,11 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
       throw new SpeechRuntimeError({ details: nativeFailure({ status }) });
     }
   }
+  let finishLoading: ReturnType<NonNullable<typeof loadingObservation>['stage']> | undefined;
   try {
+    if (loadingObservation !== undefined) {
+      await loadingObservation.open();
+    }
     core.bytes(output, 8).fill(0);
     check({ status: await core.api.speech_load_params_new(output) });
     params = readPointer();
@@ -74,11 +84,20 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
     // Warmup is an application decision; begin with the real model load only.
     check({ status: await core.api.speech_load_params_set_warmup(params, 0) });
     core.bytes(output, 8).fill(0);
+    finishLoading = loadingObservation?.stage({ name: 'speech_model_load' });
     const status = await core.api.speech_model_load(path, params, output);
     model = readPointer();
     check({ status });
+    finishLoading?.({ state: 'completed' });
     signal.throwIfAborted();
+    if (loadingObservation !== undefined) {
+      onProgress({ progress: { stage: 'checking_loaded_model' } });
+      await loadingObservation.loadedModel({ model });
+      await loadingObservation.devices();
+    }
   } catch (error) {
+    finishLoading?.({ state: signal.aborted ? 'cancelled' : 'failed' });
+    loadingObservation?.emit({ event: { kind: 'failure', stage: 'model_load', failure: speechFailure({ error }) } });
     if (model !== 0n) {
       await core.api.speech_model_free(model);
     }
@@ -92,6 +111,9 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
     core.free(device);
     core.free(path);
     core.free(output);
+    if (loadingObservation !== undefined) {
+      await loadingObservation.close();
+    }
   }
   return {
     info: candidate.info,
@@ -101,7 +123,7 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
         sync.callSync({ name: 'speech_request_cancel', args: [request] });
       }
     },
-    async start({ options, onFrame }) {
+    async start({ options, onFrame, investigation }) {
       if (released || request !== 0n) {
         throw speechError({ code: 'invalid_state', message: 'Speech model is not ready' });
       }
@@ -111,11 +133,32 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
       let input = 0n, inputCapacity = 0;
       let ended = false, freed = false;
       let callbackFailure: unknown;
+      const observation = createNativeSpeechObservation({ core, observer: investigation, modelBytes: file.size, now: () => performance.now() });
+      let finishDialogue: ReturnType<NonNullable<typeof observation>['stage']> | undefined;
+      let finishFirstFrame: ReturnType<NonNullable<typeof observation>['stage']> | undefined;
+      let outputFrames = 0, inputCalls = 0, inputSamples = 0;
+      let observedCompletion = false;
+      function observeCompletion({ status, stop }: { status: number | undefined, stop: string | undefined }): void {
+        if (observation === undefined || observedCompletion) {
+          return;
+        }
+        observedCompletion = true;
+        finishDialogue?.({ state: status === undefined || status === core.constant('SPEECH_CANCELLED') ? 'cancelled' : status === core.constant('SPEECH_OK') ? continueFrames ? 'completed' : 'cancelled' : 'failed' });
+        finishFirstFrame?.({ state: 'cancelled' });
+        observation.emit({ event: { kind: 'result', nativeStatus: status, stop: stop === undefined ? { status: 'unknown', reason: 'Dialogue exposes return status, not a speech_result stop snapshot' } : { status: 'observed', value: stop, source: 'speech_dialogue return status or native max_seconds error' }, seed: { status: 'unavailable', reason: 'The public dialogue handle does not expose its resolved seed' }, details: { inputCalls, inputSamplesSubmitted: inputSamples, outputFrames, requestedSeed: options.seed } } });
+      }
       function pointer(): bigint {
         const bytes = core.bytes(out, 8);
         return new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(0, true);
       }
       try {
+        if (observation !== undefined) {
+          await observation.open();
+          await observation.loadedModel({ model });
+          await observation.devices();
+          finishDialogue = observation.stage({ name: 'speech_dialogue_lifetime' });
+          finishFirstFrame = observation.stage({ name: 'first_native_dialogue_frame' });
+        }
         core.bytes(out, 8).fill(0);
         check({ status: await core.api.speech_request_new(model, out) });
         request = pointer();
@@ -143,6 +186,10 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
             }
             const bytes = core.bytes(samples, count * 4n);
             const borrowed = new Float32Array(bytes.buffer, bytes.byteOffset, Number(count));
+            if (observation !== undefined) {
+              outputFrames++;
+              finishFirstFrame?.({ state: 'completed' });
+            }
             // The session coordinator copies this borrowed view synchronously.
             const control = onFrame({ samples: borrowed, text: core.readUtf8(text, 16384) ?? '' });
             switch (control) {
@@ -175,11 +222,17 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
           throw new Error('Speech dialogue did not return an owned handle');
         }
       } catch (error) {
+        observation?.emit({ event: { kind: 'failure', stage: 'speech_dialogue_start', failure: speechFailure({ error }) } });
+        finishDialogue?.({ state: 'failed' });
+        finishFirstFrame?.({ state: 'failed' });
         if (dialogue !== 0n) {
           await core.api.speech_dialogue_free(dialogue);
         }
         if (callback !== undefined) {
           core.module.removeFunction(callback);
+        }
+        if (observation !== undefined) {
+          await observation.close();
         }
         throw error;
       } finally {
@@ -205,6 +258,10 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
           // Heap growth during earlier C calls may invalidate previous views.
           core.bytes(input, samples.byteLength).set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength));
           const status = await core.api.speech_dialogue_push(dialogue, input, BigInt(samples.length));
+          if (observation !== undefined) {
+            inputCalls++;
+            inputSamples += samples.length;
+          }
           // Upstream marks any failed/cancelled dialogue closed; end() would
           // reject it and replace the original max_seconds/cancellation reason.
           if (status !== core.constant('SPEECH_OK')) {
@@ -214,13 +271,17 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
             throw callbackFailure;
           }
           if (status === core.constant('SPEECH_CANCELLED')) {
+            observeCompletion({ status, stop: 'cancelled' });
             return { kind: 'completed', reason: 'cancelled' };
           }
           if (status !== core.constant('SPEECH_OK')) {
             const failure = nativeFailure({ status });
+            observation?.emit({ event: { kind: 'failure', stage: 'speech_dialogue_push', failure } });
             if (failure.nativeInput === 'max_seconds') {
+              observeCompletion({ status, stop: 'max_seconds' });
               return { kind: 'completed', reason: 'max_seconds' };
             }
+            observeCompletion({ status, stop: undefined });
             throw new SpeechRuntimeError({ details: failure });
           }
           return { kind: 'continue' };
@@ -229,9 +290,13 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
           if (!ended && !freed) {
             ended = true;
             const status = await core.api.speech_dialogue_end(dialogue);
-            if (status !== core.constant('SPEECH_CANCELLED')) {
-              check({ status });
+            if (status !== core.constant('SPEECH_CANCELLED') && status !== core.constant('SPEECH_OK')) {
+              const failure = nativeFailure({ status });
+              observation?.emit({ event: { kind: 'failure', stage: 'speech_dialogue_end', failure } });
+              observeCompletion({ status, stop: undefined });
+              throw new SpeechRuntimeError({ details: failure });
             }
+            observeCompletion({ status, stop: status === core.constant('SPEECH_CANCELLED') ? 'cancelled' : continueFrames ? 'dialogue_end_ok' : undefined });
           }
         },
         async release() {
@@ -244,6 +309,12 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
                 core.module.removeFunction(callbackPointer);
               }
               core.free(input);
+              if (observation !== undefined) {
+                if (!observedCompletion) {
+                  observeCompletion({ status: undefined, stop: undefined });
+                }
+                await observation.close();
+              }
             }
           }
         },

@@ -3,7 +3,7 @@ import { vi, type Mock } from 'vitest';
 /** Deliberately local Web Audio fakes. Tests assert ownership and packet order,
  * not real hardware, browser permissions or device latency. */
 export function liveAudioBrowserFixture() {
-  const track = { stop: vi.fn<MediaStreamTrack['stop']>(), onended: undefined as (() => void) | undefined };
+  const track = { getSettings: vi.fn<MediaStreamTrack['getSettings']>(() => ({})), stop: vi.fn<MediaStreamTrack['stop']>(), onended: undefined as (() => void) | undefined };
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
   const permission = Promise.withResolvers<typeof stream>();
   const media = { getUserMedia: vi.fn(() => permission.promise) };

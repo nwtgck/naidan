@@ -1,0 +1,1 @@
+export const liveConversation__microphone_recording_help = (): string => "Al detener la grabación, se transcribe con el modelo de reconocimiento de voz cargado. Si no hay un modelo cargado, puedes reproducir y guardar la grabación. Las grabaciones tienen un límite de 3 minutos.";

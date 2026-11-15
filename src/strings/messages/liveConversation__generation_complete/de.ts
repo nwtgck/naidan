@@ -1,1 +1,1 @@
-export const liveConversation__generation_complete = (): string => 'Generation complete';
+export const liveConversation__generation_complete = (): string => "Generierung abgeschlossen";

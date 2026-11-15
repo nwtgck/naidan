@@ -1,1 +1,1 @@
-export const liveConversation__generate_response = (): string => 'Generate response';
+export const liveConversation__generate_response = (): string => "Antwort generieren";

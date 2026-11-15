@@ -1,1 +1,1 @@
-export const liveConversation__model_loading_time = (): string => 'Model loading (last load)';
+export const liveConversation__model_loading_time = (): string => "Laden des Modells (zuletzt)";

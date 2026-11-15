@@ -1,1 +1,1 @@
-export const liveConversation__speech_sdk_not_available = (): string => 'Speech conversation runtime is not installed in this version yet.';
+export const liveConversation__speech_sdk_not_available = (): string => "Diese Version enthält noch keine Laufzeitumgebung für Sprachgespräche.";

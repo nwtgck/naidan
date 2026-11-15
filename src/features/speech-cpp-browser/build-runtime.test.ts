@@ -14,9 +14,9 @@ function artifactFixture() {
   const directory = path.join(root, 'node_modules/speech-cpp-browser-core');
   const runtime = path.join(directory, 'runtimes/speech-cpp-browser-core');
   const commit = 'a'.repeat(40), fingerprint = 'b'.repeat(64), profile = 'webgpu-wasm64-jspi';
-  const functions = ['speech_model_load', 'speech_model_free', 'speech_request_new', 'speech_request_free', 'speech_dialogue_start', 'speech_dialogue_push', 'speech_dialogue_end', 'speech_dialogue_free'];
+  const functions = ['speech_model_load', 'speech_model_free', 'speech_request_new', 'speech_request_free', 'speech_dialogue_start', 'speech_dialogue_push', 'speech_dialogue_end', 'speech_dialogue_free', 'speech_model_info_open', 'speech_request_set_audio', 'speech_request_set_progress', 'speech_request_cancel', 'speech_transcribe', 'speech_request_result', 'speech_result_text', 'speech_result_stop', 'speech_result_language_count', 'speech_result_language'];
   const payloads = new Map<string, Buffer>([
-    ['api/schema.json', Buffer.from(JSON.stringify({ runtime: 'speech-cpp', abiVersion: 3, pointerBytes: 8, schemaSha256: fingerprint, functions: functions.map(name => ({ name, export: '_' + name })), callbacks: [{ name: 'speech_dialogue_callback' }] }))],
+    ['api/schema.json', Buffer.from(JSON.stringify({ runtime: 'speech-cpp', abiVersion: 3, pointerBytes: 8, schemaSha256: fingerprint, functions: functions.map(name => ({ name, export: '_' + name })), callbacks: ['speech_dialogue_callback', 'speech_progress_callback'].map(name => ({ name })) }))],
     ...['api/schema.mjs', 'api/functions.mjs', 'host/abi.mjs', 'host/index.mjs'].map(name => [name, Buffer.from('// Synthetic asset bytes; no inference implementation.')] as const),
     [`profiles/${profile}/browser/core.mjs`, Buffer.from('// Synthetic module bytes, never executed.')],
     [`profiles/${profile}/browser/core.d.ts`, Buffer.from('// Inventory fixture; not a substitute SDK declaration.')],
@@ -64,10 +64,10 @@ it('allows standalone model classification while excluding hosted speech code an
     throw new Error('Expected speech boundary hooks');
   }
   expect(getNativeLicenseSource()).toBeUndefined();
-  for (const file of ['models.ts', 'worker/model-file.ts', 'worker/client-standalone.ts']) {
+  for (const file of ['models.ts', 'worker/model-file.ts', 'worker/client-standalone.ts', 'recognition/models.ts', 'recognition/controller.ts', 'recognition/worker/client-standalone.ts', 'investigation/types.ts', 'investigation/recorder.ts', 'investigation/archive.ts']) {
     expect(load.call({} as never, path.join(rootDir, 'src/features/speech-cpp-browser', file))).toBeUndefined();
   }
-  for (const file of ['worker/client-hosted.ts', 'worker/entry.ts']) {
+  for (const file of ['worker/client-hosted.ts', 'worker/entry.ts', 'worker/native-log-router.ts', 'worker/native-observation.ts', 'recognition/worker/client-hosted.ts', 'recognition/worker/entry.ts', 'recognition/worker/native-model.ts']) {
     expect(() => load.call({} as never, path.join(rootDir, 'src/features/speech-cpp-browser', file))).toThrow('Hosted speech runtime');
   }
   const emitted: unknown[] = [];

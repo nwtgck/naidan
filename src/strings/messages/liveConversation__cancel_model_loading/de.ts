@@ -1,1 +1,1 @@
-export const liveConversation__cancel_model_loading = (): string => 'Cancel loading';
+export const liveConversation__cancel_model_loading = (): string => "Laden abbrechen";

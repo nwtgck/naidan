@@ -1,1 +1,1 @@
-export const liveConversation__investigation_settings = (): string => 'Investigation settings';
+export const liveConversation__investigation_settings = (): string => "Einstellungen für die Analyse";

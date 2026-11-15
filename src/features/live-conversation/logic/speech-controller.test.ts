@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createLiveSpeechFixture } from './speech-controller.test-support';
 import * as audioRetention from './audio-retention';
+import * as audioFile from './audio-file';
+import * as inputLevel from './speech-input-level';
 import type { LiveAudioClip } from './audio-retention';
 
 function retainedAudioFixture({ maximumBytes }: { maximumBytes: number }) {
@@ -59,6 +61,37 @@ const file = new File(['model'], 'model.gguf');
 const options = { maxSeconds: 60, language: 'en', persona: undefined, name: undefined };
 
 describe('continuous live speech session', () => {
+  it('forwards a diagnostic file attempt and exposes its existing WAV Blobs without retaining late events', async () => {
+    using urls = retainedAudioFixture({ maximumBytes: 64 * 1024 * 1024 });
+    await using f = createLiveSpeechFixture();
+    const observer = vi.fn(), context = { operationId: 'attempt', source: 'investigation' as const };
+    const investigation = { context, observer }, event = { kind: 'wasm_heap' as const, capacityBytes: 65536 };
+    await f.controller.load({ file, investigation });
+    expect(f.client.loadModel).toHaveBeenCalledWith({ file, investigation: context });
+    vi.mocked(f.client.start).mockImplementation(async () => {
+      f.observe({ context, event });
+      f.change({ state: { phase: 'starting' } });
+      f.frame({ text: 'response', samples: new Float32Array(3200) });
+      f.change({ state: { phase: 'running' } });
+    });
+    const args = { ...options, inputLevel: { kind: 'gain' as const, gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' as const };
+    await f.controller.runFile({ ...args, investigation });
+    expect(f.client.start).toHaveBeenCalledWith(expect.objectContaining({ investigation: context }));
+    expect(observer).toHaveBeenCalledWith({ event });
+    const run = f.controller.getState().fileRun!;
+    const output = f.controller.getFileRunAudio({ id: run.id, role: 'output' });
+    expect(output).toBe(urls.blobs.get(run.output!.url));
+    expect(f.controller.getFileRunAudio({ id: 'another-run', role: 'output' })).toBeUndefined();
+    f.observe({ context, event });
+    expect(observer).toHaveBeenCalledOnce();
+    await f.controller.clearFileRun();
+    expect(f.controller.getFileRunAudio({ id: run.id, role: 'output' })).toBeUndefined();
+    expect(output!.size).toBe(44 + 3200 * 4);
+    await f.controller.runFile(args);
+    expect(vi.mocked(f.client.start).mock.calls.at(-1)![0]).not.toHaveProperty('investigation');
+    expect(observer).toHaveBeenCalledOnce();
+  });
+
   it('accepts output emitted while the native session is still starting', async () => {
     await using f = createLiveSpeechFixture();
     await f.controller.load({ file });
@@ -183,7 +216,8 @@ describe('continuous live speech session', () => {
       f.frame({ text: 'Initial', samples: new Float32Array(3200).fill(0.001) });
       f.change({ state: { phase: 'running' } });
     });
-    const run = { ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' as const };
+    f.controller.setInputGain({ gain: 8 });
+    const run = { ...options, inputLevel: { kind: 'gain' as const, gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' as const };
     await f.controller.runFile(run);
     expect(f.controller.getState()).toMatchObject({ fileRun: { status: 'complete', text: 'Initial', frames: 1, sourceSamples: 1, submittedSamples: 3200, input: { status: 'complete' }, output: { status: 'complete' } }, sessions: [] });
     expect(f.client.push).toHaveBeenCalledWith({ sampleRate: 24000, samples: new Float32Array([0.5, ...new Float32Array(3199)]) });
@@ -201,12 +235,23 @@ describe('continuous live speech session', () => {
     expect(f.controller.getState().fileRun).toBeUndefined();
   });
 
+  it('forwards an exhausted file audio budget without decoding or treating the limit as a runtime failure', async () => {
+    await using f = createLiveSpeechFixture();
+    await f.controller.load({ file });
+    await f.controller.runFile({ ...options, inputLevel: { kind: 'gain', gain: 1 }, maximumRetainedAudioBytes: 0, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' });
+    expect(f.controller.getState()).toMatchObject({ failure: undefined, fileRun: { status: 'partial', stage: 'finished', failure: undefined, audioRetention: { maximumBytes: 0, retainedBytes: 0, status: 'limit' }, input: undefined, output: undefined } });
+    expect(f.decodeFile).not.toHaveBeenCalled();
+    expect(f.client.start).not.toHaveBeenCalled();
+    expect(f.client.getState().phase).toBe('ready');
+    expect(f.client.releaseModel).not.toHaveBeenCalled();
+  });
+
   it('cancels file decoding on release without starting a late session and retains no URLs after disposal', async () => {
     await using f = createLiveSpeechFixture();
     await f.controller.load({ file });
-    const decode = Promise.withResolvers<Float32Array>();
+    const decode = Promise.withResolvers<Float32Array<ArrayBuffer>>();
     f.decodeFile.mockReturnValue(decode.promise);
-    const running = f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 5, seed: 0, inputPacing: 'fast' });
+    const running = f.controller.runFile({ ...options, inputLevel: { kind: 'gain' as const, gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024, file: new File(['source'], 'greeting.wav'), tailSeconds: 5, seed: 0, inputPacing: 'fast' });
     await vi.waitFor(() => expect(f.decodeFile).toHaveBeenCalledOnce());
     await f.controller.start(options);
     expect(f.capture).not.toHaveBeenCalled();
@@ -239,7 +284,7 @@ describe('continuous live speech session', () => {
       f.frame({ text: 'Diagnostic response', samples: new Float32Array(3200) });
       f.change({ state: { phase: 'running' } });
     });
-    await f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' });
+    await f.controller.runFile({ ...options, inputLevel: { kind: 'gain' as const, gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' });
     expect(f.controller.getState().fileRun?.text).toBe('Diagnostic response');
     expect(f.controller.getState().sessions).toEqual(history);
     const clearing = f.controller.clearFileRun();
@@ -248,6 +293,132 @@ describe('continuous live speech session', () => {
     await clearing;
     expect(f.controller.getState().sessions).toEqual(history);
     expect(f.client.releaseModel).not.toHaveBeenCalled();
+  });
+});
+
+describe('live microphone fixed input gain and opt-in level observation', () => {
+  it('forwards unity PCM by identity without processing, meters, clocks, settings reads or state updates', async () => {
+    const create = inputLevel.createLiveSpeechInputLevel;
+    const process = vi.fn<ReturnType<typeof create>['process']>();
+    using observation = {
+      factory: vi.spyOn(inputLevel, 'createLiveSpeechInputLevel').mockImplementation(args => {
+        const level = create(args);
+        process.mockImplementation(level.process);
+        return { reset: level.reset, process };
+      }),
+      [Symbol.dispose]() {
+        this.factory.mockRestore();
+      },
+    };
+    await using f = createLiveSpeechFixture();
+    await f.controller.load({ file });
+    await f.controller.start(options);
+    using measurement = {
+      meter: vi.spyOn(audioFile, 'createLiveAudioMeter'),
+      clock: vi.spyOn(performance, 'now'),
+      [Symbol.dispose]() {
+        this.meter.mockRestore();
+        this.clock.mockRestore();
+      },
+    };
+    f.onChange.mockClear();
+    const samples = new Float32Array([-0, 1e-42, 0.25]);
+    f.pcm({ samples });
+    expect(vi.mocked(f.client.push).mock.calls[0]![0].samples).toBe(samples);
+    expect(Object.is(samples[0], -0)).toBe(true);
+    expect(process).not.toHaveBeenCalled();
+    expect(measurement.meter).not.toHaveBeenCalled();
+    expect(measurement.clock).not.toHaveBeenCalled();
+    expect(f.captureSettings).not.toHaveBeenCalled();
+    expect(f.onChange).not.toHaveBeenCalled();
+    void observation;
+  });
+
+  it('applies gain once in place while observation is off and applies mute before gain', async () => {
+    await using f = createLiveSpeechFixture();
+    f.controller.setInputGain({ gain: 8 });
+    await f.controller.load({ file });
+    await f.controller.start(options);
+    using measurement = {
+      meter: vi.spyOn(audioFile, 'createLiveAudioMeter'),
+      [Symbol.dispose]() {
+        this.meter.mockRestore();
+      },
+    };
+    f.onChange.mockClear();
+    const samples = new Float32Array([0.25, -0.25, 0.125, -0.125]);
+    f.pcm({ samples });
+    expect(vi.mocked(f.client.push).mock.calls[0]![0].samples).toBe(samples);
+    expect(samples).toEqual(new Float32Array([1, -1, 1, -1]));
+    expect(measurement.meter).not.toHaveBeenCalled();
+    expect(f.captureSettings).not.toHaveBeenCalled();
+    expect(f.onChange).not.toHaveBeenCalled();
+    f.controller.muteMicrophone({ value: 'off' });
+    const muted = new Float32Array([0.75, -0.75]);
+    f.pcm({ samples: muted });
+    expect(muted).toEqual(new Float32Array([0.75, -0.75]));
+    expect(vi.mocked(f.client.push).mock.calls[1]![0].samples).toEqual(new Float32Array(2));
+  });
+
+  it('publishes sample-based half-second windows only while observed and clears them on gain change and completion', async () => {
+    await using f = createLiveSpeechFixture();
+    const settings = { autoGainControl: undefined, echoCancellation: true, noiseSuppression: false, sampleRate: 48000, channelCount: 1, latency: undefined };
+    f.captureSettings.mockReturnValue(settings);
+    f.controller.setInputGain({ gain: 2 });
+    f.controller.observeInputLevel({ value: 'on' });
+    await f.controller.load({ file });
+    await f.controller.start(options);
+    expect(f.captureSettings).toHaveBeenCalledOnce();
+    expect(f.controller.getState().inputLevel.captureSettings).toBe(settings);
+    f.onChange.mockClear();
+    f.pcm({ samples: new Float32Array(11999).fill(0.25) });
+    expect(f.onChange).not.toHaveBeenCalled();
+    expect(f.controller.getState().inputLevel.window).toBeUndefined();
+    f.pcm({ samples: new Float32Array([0.75]) });
+    expect(f.onChange).toHaveBeenCalledOnce();
+    expect(f.controller.getState().inputLevel.window).toMatchObject({ gain: 2, before: { samples: 12000, seconds: 0.5, peak: 0.75 }, after: { samples: 12000, seconds: 0.5, peak: 1, clippedSamples: 1 }, clippedSamples: 1 });
+    f.controller.setInputGain({ gain: 0.5 });
+    expect(f.controller.getState().inputLevel.window).toBeUndefined();
+    f.pcm({ samples: new Float32Array(12000).fill(0.5) });
+    expect(f.controller.getState().inputLevel.window).toMatchObject({ gain: 0.5, before: { rms: 0.5 }, after: { rms: 0.25 }, clippedSamples: 0 });
+    f.controller.observeInputLevel({ value: 'off' });
+    expect(f.controller.getState().inputLevel).toEqual({ gain: 0.5, observation: 'off', window: undefined, captureSettings: undefined });
+    f.onChange.mockClear();
+    f.pcm({ samples: new Float32Array(12000).fill(0.5) });
+    expect(f.onChange).not.toHaveBeenCalled();
+    f.controller.observeInputLevel({ value: 'on' });
+    f.pcm({ samples: new Float32Array(12000).fill(0.5) });
+    f.change({ state: { phase: 'completed', completion: 'max_seconds' } });
+    expect(f.controller.getState().inputLevel).toEqual({ gain: 0.5, observation: 'on', window: undefined, captureSettings: undefined });
+    expect(f.client.releaseModel).not.toHaveBeenCalled();
+    const pushed = vi.mocked(f.client.push).mock.calls.length;
+    f.pcm({ samples: new Float32Array(12000) });
+    expect(vi.mocked(f.client.push).mock.calls).toHaveLength(pushed);
+  });
+
+  it('clears the previous level and unfinished samples when mute changes, then observes a pure silent window', async () => {
+    await using f = createLiveSpeechFixture();
+    f.controller.setInputGain({ gain: 2 });
+    f.controller.observeInputLevel({ value: 'on' });
+    await f.controller.load({ file });
+    await f.controller.start(options);
+    f.pcm({ samples: new Float32Array(12000).fill(0.25) });
+    expect(f.controller.getState().inputLevel.window!.after.peak).toBe(0.5);
+    f.pcm({ samples: new Float32Array(11999).fill(0.25) });
+    f.controller.muteMicrophone({ value: 'off' });
+    expect(f.controller.getState().inputLevel.window).toBeUndefined();
+    f.pcm({ samples: new Float32Array([0.75]) });
+    expect(f.controller.getState().inputLevel.window).toBeUndefined();
+    f.pcm({ samples: new Float32Array(11999).fill(0.75) });
+    expect(f.controller.getState().inputLevel.window).toMatchObject({ gain: 2, before: { samples: 12000, rms: 0, peak: 0 }, after: { samples: 12000, rms: 0, peak: 0 }, clippedSamples: 0 });
+    f.controller.muteMicrophone({ value: 'on' });
+    expect(f.controller.getState().inputLevel.window).toBeUndefined();
+  });
+
+  it.each([NaN, Infinity, -1, 0])('rejects invalid live gain %s without changing the previous setting', async gain => {
+    await using f = createLiveSpeechFixture();
+    expect(() => f.controller.setInputGain({ gain })).toThrow('finite positive');
+    expect(f.controller.getState().inputLevel.gain).toBe(1);
   });
 });
 
@@ -472,7 +643,7 @@ describe('opt-in live speech audio retention', () => {
     using audio = retainedAudioFixture({ maximumBytes: 64 * 1024 * 1024 });
     await using f = createLiveSpeechFixture();
     await f.controller.load({ file });
-    await f.controller.runFile({ ...options, file: new File(['audio'], 'input.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' });
+    await f.controller.runFile({ ...options, inputLevel: { kind: 'gain' as const, gain: 1 }, maximumRetainedAudioBytes: 64 * 1024 * 1024, file: new File(['audio'], 'input.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' });
     const result = f.controller.getState().fileRun;
     expect(result?.input).toBeDefined();
     f.controller.retainAudio({ value: 'off' });

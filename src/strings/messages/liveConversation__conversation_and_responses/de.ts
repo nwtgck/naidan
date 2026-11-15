@@ -1,1 +1,1 @@
-export const liveConversation__conversation_and_responses = (): string => 'Talk with the selected model';
+export const liveConversation__conversation_and_responses = (): string => "Mit dem ausgewählten Modell sprechen";

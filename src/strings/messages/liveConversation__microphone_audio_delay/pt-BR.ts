@@ -1,1 +1,1 @@
-export const liveConversation__microphone_audio_delay = ({ seconds }: { seconds: string }): string => `Microphone audio is delayed by ${seconds} seconds.`;
+export const liveConversation__microphone_audio_delay = ({ seconds }: { seconds: string }): string => `O áudio do microfone está com um atraso de ${seconds} segundos.`;

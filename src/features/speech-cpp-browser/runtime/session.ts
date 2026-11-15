@@ -1,11 +1,13 @@
 import { copySpeechFrame } from './audio-frame';
-import { speechError, speechFailure, type SpeechDialoguePort, type SpeechModelPort, type SpeechPhase, type SpeechCompletionReason, type SpeechFailure, type SpeechStartOptions, type SpeechPushResult, type SpeechState, type SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
+import { speechError, speechFailure, type SpeechDialoguePort, type SpeechModelPort, type SpeechPhase, type SpeechCompletionReason, type SpeechFailure, type SpeechPushResult, type SpeechState, type SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
 import type { SpeechClient, SpeechObservers } from '@/features/speech-cpp-browser/worker/types';
+import type { SpeechInvestigationContext } from '@/features/speech-cpp-browser/worker/investigation-context';
+import type { SpeechInvestigationEvent } from '@/features/speech-cpp-browser/investigation/types';
 
 /** One model lane. Only synchronous cancellation can bypass the lane.
  * The adapter owns C handles; this coordinator owns their ordered lifetime. */
 export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: {
-  openModel: ({ file, signal, onProgress }: { file: File, signal: AbortSignal, onProgress: ({ progress }: { progress: SpeechLoadProgress }) => void }) => Promise<SpeechModelPort>,
+  openModel: ({ file, signal, onProgress, investigation }: { file: File, signal: AbortSignal, onProgress: ({ progress }: { progress: SpeechLoadProgress }) => void, investigation?: SpeechInvestigationContext }) => Promise<SpeechModelPort>,
   observers: SpeechObservers, maxQueuedSeconds: number,
 }): SpeechClient & { waitForInput(): Promise<void> } {
   if (!Number.isFinite(maxQueuedSeconds) || maxQueuedSeconds <= 0 || maxQueuedSeconds > 10) {
@@ -149,7 +151,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
     capability: { kind: 'available' },
     waitForInput: () => lane,
     getState,
-    async loadModel({ file }) {
+    async loadModel({ file, investigation }) {
       requireUsable();
       if (phase !== 'unloaded' && phase !== 'failed') {
         throw speechError({ code: 'invalid_state', message: 'Release the current speech model before loading another' });
@@ -166,6 +168,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
             const opened = await openModel({
               file,
               signal: controller.signal,
+              ...(investigation === undefined ? {} : { investigation }),
               onProgress({ progress }) {
                 if (loadController === controller && !controller.signal.aborted && !disposing && phase === 'loading_model') {
                   loadProgress = progress;
@@ -194,7 +197,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
         },
       });
     },
-    async start({ options }: { options: SpeechStartOptions }) {
+    async start({ options, investigation }) {
       requireUsable();
       if (model === undefined || (phase !== 'ready' && phase !== 'completed')) {
         throw speechError({ code: 'invalid_state', message: 'Load a speech model before starting a session' });
@@ -226,6 +229,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
             }
             dialogue = await current.start({
               options,
+              ...(investigation === undefined || observers.onInvestigation === undefined ? {} : { investigation: ({ event }: { event: SpeechInvestigationEvent }) => observers.onInvestigation?.({ context: investigation, event }) }),
               onFrame({ samples, text }) {
                 if (disposing || stopMode === 'cancel' || id !== sessionId || callbackFailure !== undefined) {
                   return 'stop';

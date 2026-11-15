@@ -58,6 +58,20 @@ describe('opt-in ephemeral audio replays', () => {
     expect(f.create).toHaveBeenCalledOnce();
   });
 
+  it('exposes the existing immutable WAV Blob and releases its reference without invalidating a borrower', async () => {
+    using f = retainedFixture({ maximumBytes: 1024 });
+    f.retained.setEnabled({ value: 'on' });
+    f.retained.append({ key: 'output', sampleRate: 16000, pcm: new Float32Array([0.25]) });
+    expect(f.retained.getBlob({ key: 'output' })).toBeUndefined();
+    f.retained.finish({ key: 'output', status: 'complete' });
+    const blob = f.retained.getBlob({ key: 'output' })!;
+    expect(blob).toBe(f.blobs[0]);
+    f.retained.clear();
+    expect(f.retained.getBlob({ key: 'output' })).toBeUndefined();
+    expect((await bytes({ blob })).byteLength).toBe(48);
+    expect(f.create).toHaveBeenCalledOnce();
+  });
+
   it('drops the entire overflowing clip rather than labeling truncated audio complete', () => {
     using f = retainedFixture({ maximumBytes: 52 });
     f.retained.setEnabled({ value: 'on' });

@@ -1,10 +1,29 @@
 // @vitest-environment node
 import { gzipSync } from 'node:zlib';
-import { describe, expect, it } from 'vitest';
-import { createSpeechLoadReporter, createSpeechReadCoverage, readSpeechWasm } from './load-progress';
+import { describe, expect, it, vi } from 'vitest';
+import { createSpeechLoadReporter, createSpeechReadCoverage, readSpeechWasm, createSpeechLoadObservation } from './load-progress';
 import type { SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
+import type { SpeechInvestigationEvent } from '@/features/speech-cpp-browser/investigation/types';
 
 describe('speech load progress reports measured work', () => {
+  it('records real stage intervals separately from byte counts and never clocks an ordinary load', () => {
+    const now = vi.fn(() => 0);
+    expect(createSpeechLoadObservation({ observer: undefined, now })).toBeUndefined();
+    expect(now).not.toHaveBeenCalled();
+    const events: SpeechInvestigationEvent[] = [];
+    let time = 0;
+    const observation = createSpeechLoadObservation({ observer: ({ event }) => events.push(event), now: () => time })!;
+    observation.progress({ progress: { stage: 'checking_model' } });
+    time = 120;
+    observation.progress({ progress: { stage: 'reading_model', readBytes: 10, totalBytes: 100 } });
+    time = 500;
+    observation.progress({ progress: { stage: 'checking_loaded_model' } });
+    observation.finish({ state: 'completed' });
+    expect(events).toContainEqual({ kind: 'stage', stage: 'checking_model', state: 'completed', durationMilliseconds: 120, heapBytes: undefined, details: undefined });
+    expect(events).toContainEqual({ kind: 'progress', stage: 'reading_model', value: 10, total: 100, unit: 'bytes', provenance: 'observed', details: undefined });
+    expect(events).toContainEqual({ kind: 'stage', stage: 'load_ready', state: 'completed', durationMilliseconds: undefined, heapBytes: undefined, details: undefined });
+  });
+
   it('counts the union of disjoint and overlapping reads, including offsets above 4 GiB', () => {
     const base = 2 ** 32;
     const coverage = createSpeechReadCoverage({ size: base + 100 });

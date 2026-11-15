@@ -1,1 +1,1 @@
-export const liveConversation__timings = (): string => 'Timings';
+export const liveConversation__timings = (): string => "耗时测量";

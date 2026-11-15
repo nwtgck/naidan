@@ -1,1 +1,1 @@
-export const liveConversation__session_ended = (): string => 'Conversation ended';
+export const liveConversation__session_ended = (): string => "Gespräch beendet";

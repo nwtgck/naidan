@@ -1,1 +1,1 @@
-export const liveConversation__output_audio_length = (): string => 'Output audio length';
+export const liveConversation__output_audio_length = (): string => "Duración del audio de salida";

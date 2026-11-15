@@ -1,1 +1,1 @@
-export const liveConversation__start_continuous_conversation = (): string => 'Start conversation';
+export const liveConversation__start_continuous_conversation = (): string => "Gespräch starten";

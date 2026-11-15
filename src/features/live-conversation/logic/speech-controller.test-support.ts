@@ -2,9 +2,11 @@ import { vi } from 'vitest';
 import type { SpeechClient, SpeechObservers } from '@/features/speech-cpp-browser/worker/types';
 import type { SpeechState } from '@/features/speech-cpp-browser/types';
 import { createLiveSpeechController } from './speech-controller';
-import type { openLiveCapture } from './audio-capture';
+import type { openLiveCapture, LiveCapture } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
 import type { decodeLiveAudioFile } from './audio-file';
+import type { SpeechInvestigationContext } from '@/features/speech-cpp-browser/worker/investigation-context';
+import type { SpeechInvestigationEvent } from '@/features/speech-cpp-browser/investigation/types';
 
 export function createLiveSpeechFixture() {
   let observers: SpeechObservers | undefined;
@@ -38,7 +40,8 @@ export function createLiveSpeechFixture() {
     return client;
   });
   const finish = vi.fn(async () => {});
-  const capture = vi.fn<typeof openLiveCapture>(async () => ({ finish }));
+  const captureSettings = vi.fn<NonNullable<LiveCapture['getSettings']>>(() => undefined);
+  const capture = vi.fn<typeof openLiveCapture>(async () => ({ finish, getSettings: captureSettings }));
   const player = { activate: vi.fn(async () => {}), begin: vi.fn(), append: vi.fn(async () => {}), mute: vi.fn(), stop: vi.fn(), close: vi.fn(async () => {}) };
   const playback = vi.fn<typeof createLivePlayback>(() => player);
   const onChange = vi.fn<Parameters<typeof createLiveSpeechController>[0]['onChange']>();
@@ -50,11 +53,15 @@ export function createLiveSpeechFixture() {
     createClient,
     change,
     capture,
+    captureSettings,
     finish,
     playback,
     player,
     onChange,
     decodeFile,
+    observe({ context, event }: { context: SpeechInvestigationContext, event: SpeechInvestigationEvent }): void {
+      observers?.onInvestigation?.({ context, event });
+    },
     frame({ text, samples }: { text: string, samples: Float32Array<ArrayBuffer> }): void {
       observers?.onFrame({ frame: { text, samples, sampleRate: 24000, sequence: 0 } });
     },

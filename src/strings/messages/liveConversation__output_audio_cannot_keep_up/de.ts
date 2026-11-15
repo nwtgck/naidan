@@ -1,1 +1,1 @@
-export const liveConversation__output_audio_cannot_keep_up = (): string => 'Response audio could not keep up. The conversation stopped. Start again.';
+export const liveConversation__output_audio_cannot_keep_up = (): string => "Die Wiedergabe des Antwortaudios konnte nicht mithalten. Das Gespräch wurde gestoppt. Starte es erneut.";

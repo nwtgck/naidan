@@ -3,8 +3,9 @@ import { createSpeechSession } from '@/features/speech-cpp-browser/runtime/sessi
 import type { SpeechDialoguePort, SpeechModelPort } from '@/features/speech-cpp-browser/types';
 import { createSpeechFileRun, type SpeechInputPacing } from './speech-file-run';
 import type { decodeLiveAudioFile } from './audio-file';
+import type { SpeechInputLevelSettings } from './audio-level';
 
-export async function speechFileRunFixture({ pcm, tailSeconds, maxSeconds, inputPacing }: { pcm: Float32Array, tailSeconds: number, maxSeconds: number, inputPacing: SpeechInputPacing }) {
+export async function speechFileRunFixture({ pcm, tailSeconds, maxSeconds, inputPacing, inputLevel, maximumRetainedAudioBytes }: { pcm: Float32Array<ArrayBuffer>, tailSeconds: number, maxSeconds: number, inputPacing: SpeechInputPacing, inputLevel: SpeechInputLevelSettings, maximumRetainedAudioBytes: number }) {
   const blobs: Blob[] = [];
   const createUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
     blobs.push(blob as Blob);
@@ -46,7 +47,7 @@ export async function speechFileRunFixture({ pcm, tailSeconds, maxSeconds, input
   });
   const decodeFile = vi.fn<typeof decodeLiveAudioFile>(async () => pcm);
   const onChange = vi.fn();
-  const runner = createSpeechFileRun({ client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds, inputPacing, decodeFile, onChange });
+  const runner = createSpeechFileRun({ client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds, inputPacing, inputLevel, maximumRetainedAudioBytes, decodeFile, onChange });
   await client.loadModel({ file: new File(['model'], 'haru.gguf') });
   return {
     runner,

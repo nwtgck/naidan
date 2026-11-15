@@ -1,6 +1,7 @@
 import { shallowRef, type Ref } from 'vue';
 
 export type LiveConversationPanel = 'conversation' | 'diagnostics';
+export type LiveInvestigationTask = 'response' | 'transcription';
 export type LiveConversationNavigation = {
   panel: Readonly<Ref<LiveConversationPanel>>,
   modelName: Readonly<Ref<string>>,

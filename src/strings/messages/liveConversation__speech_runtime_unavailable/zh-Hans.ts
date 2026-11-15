@@ -1,1 +1,1 @@
-export const liveConversation__speech_runtime_unavailable = (): string => 'Speech conversation is unavailable in this environment.';
+export const liveConversation__speech_runtime_unavailable = (): string => "此环境无法使用语音对话。";

@@ -1,1 +1,1 @@
-export const liveConversation__ready_for_continuous_conversation = (): string => 'The model is ready. Start the conversation below.';
+export const liveConversation__ready_for_continuous_conversation = (): string => "Das Modell ist bereit. Starte das Gespräch unten.";

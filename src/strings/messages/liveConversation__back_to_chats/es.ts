@@ -1,1 +1,1 @@
-export const liveConversation__back_to_chats = (): string => 'Back to chats';
+export const liveConversation__back_to_chats = (): string => "Volver a los chats";

@@ -1,1 +1,1 @@
-export const liveConversation__keep_audio_in_memory = (): string => 'Keep audio for replay';
+export const liveConversation__keep_audio_in_memory = (): string => "Manter áudio na memória para reprodução";

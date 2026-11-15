@@ -7,7 +7,18 @@ const eventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pcm'), pcm: z.instanceof(Float32Array).refine(value => value.length > 0 && value.length <= 2048 && value.every(Number.isFinite)) }).strict(),
   z.object({ type: z.literal('finished') }).strict(),
 ]);
-export type LiveCapture = { finish({ action }: { action: 'send' | 'discard' }): Promise<void> };
+export type LiveCaptureSettings = {
+  autoGainControl: boolean | undefined,
+  echoCancellation: boolean | undefined,
+  noiseSuppression: boolean | undefined,
+  sampleRate: number | undefined,
+  channelCount: number | undefined,
+  latency: number | undefined,
+};
+export type LiveCapture = {
+  finish({ action }: { action: 'send' | 'discard' }): Promise<void>,
+  getSettings?: () => LiveCaptureSettings | undefined,
+};
 
 /** Permission may resolve after navigation. The lifetime signal also owns the
  * pending permission, module load, tracks and the microphone's AudioContext. */
@@ -165,6 +176,29 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     // is ready, and detach before our own close so cleanup is never an error.
     context.onstatechange = contextStateChanged;
     return {
+      getSettings() {
+        if (closed) {
+          return undefined;
+        }
+        try {
+          const settings = stream?.getAudioTracks()[0]?.getSettings?.();
+          if (settings === undefined) {
+            return undefined;
+          }
+          const latency: unknown = Reflect.get(settings, 'latency');
+          // Copy an explicit safe subset. Never expose IDs, labels or infer defaults.
+          return {
+            autoGainControl: typeof settings.autoGainControl === 'boolean' ? settings.autoGainControl : undefined,
+            echoCancellation: typeof settings.echoCancellation === 'boolean' ? settings.echoCancellation : undefined,
+            noiseSuppression: typeof settings.noiseSuppression === 'boolean' ? settings.noiseSuppression : undefined,
+            sampleRate: typeof settings.sampleRate === 'number' && Number.isFinite(settings.sampleRate) && settings.sampleRate > 0 ? settings.sampleRate : undefined,
+            channelCount: typeof settings.channelCount === 'number' && Number.isSafeInteger(settings.channelCount) && settings.channelCount > 0 ? settings.channelCount : undefined,
+            latency: typeof latency === 'number' && Number.isFinite(latency) && latency >= 0 ? latency : undefined,
+          };
+        } catch {
+          return undefined;
+        }
+      },
       finish({ action }) {
         if (finishing) {
           return finishing;

@@ -1,1 +1,1 @@
-export const liveConversation__microphone_muted = (): string => 'Microphone muted';
+export const liveConversation__microphone_muted = (): string => "Microfone silenciado";

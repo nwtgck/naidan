@@ -1,1 +1,1 @@
-export const liveConversation__random_seed = (): string => 'Random seed';
+export const liveConversation__random_seed = (): string => "Zufalls-Seed";

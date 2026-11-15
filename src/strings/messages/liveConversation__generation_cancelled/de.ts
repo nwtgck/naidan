@@ -1,1 +1,1 @@
-export const liveConversation__generation_cancelled = (): string => 'Generation cancelled';
+export const liveConversation__generation_cancelled = (): string => "Generierung abgebrochen";

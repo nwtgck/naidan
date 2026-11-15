@@ -1,1 +1,1 @@
-export const liveConversation__loading_runtime = (): string => 'Loading the runtime (Wasm)…';
+export const liveConversation__loading_runtime = (): string => "Cargando el entorno de ejecución (Wasm)…";

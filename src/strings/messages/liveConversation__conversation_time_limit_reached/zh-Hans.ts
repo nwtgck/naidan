@@ -1,1 +1,1 @@
-export const liveConversation__conversation_time_limit_reached = (): string => 'The conversation reached its time limit. Start again to continue.';
+export const liveConversation__conversation_time_limit_reached = (): string => "对话已达到时间上限。请重新开始以继续对话。";

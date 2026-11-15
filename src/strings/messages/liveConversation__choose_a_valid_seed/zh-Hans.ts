@@ -1,1 +1,1 @@
-export const liveConversation__choose_a_valid_seed = (): string => 'Choose a whole-number seed of 0 or greater in investigation settings.';
+export const liveConversation__choose_a_valid_seed = (): string => "请在调查设置中将随机种子设为大于或等于 0 的整数。";

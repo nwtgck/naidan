@@ -1,12 +1,19 @@
 import type { SpeechCompletionReason, SpeechFailure, SpeechState } from '@/features/speech-cpp-browser/types';
 import { speechFailure, speechSampleRate } from '@/features/speech-cpp-browser/types';
 import type { SpeechClient, SpeechObservers } from '@/features/speech-cpp-browser/worker/types';
-import type { openLiveCapture, LiveCapture } from './audio-capture';
+import type { openLiveCapture, LiveCapture, LiveCaptureSettings } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
 import type { decodeLiveAudioFile } from './audio-file';
 import { createSpeechFileRun, type SpeechFileRunState, type SpeechInputPacing } from './speech-file-run';
 import { createLiveAudioRetention, type LiveAudioClip } from './audio-retention';
 import { nanoid } from 'nanoid';
+import { createSpeechInvestigationBindings, type SpeechInvestigationLease } from '@/features/speech-cpp-browser/investigation-binding';
+import type { SpeechInvestigationBinding } from '@/features/speech-cpp-browser/worker/investigation-context';
+import { validateConstantInputGain, type SpeechInputLevelSettings } from './audio-level';
+import { createLiveSpeechInputLevel, type LiveSpeechInputLevelWindow } from './speech-input-level';
+
+export type { LiveSpeechInputLevelWindow } from './speech-input-level';
+export type LiveSpeechInputLevel = { gain: number, observation: 'on' | 'off', window: LiveSpeechInputLevelWindow | undefined, captureSettings: LiveCaptureSettings | undefined };
 
 /** Clips retain accepted input and received output, not proof of native consumption. */
 export type LiveSpeechSession = { id: string, modelName: string, text: string, completion: SpeechCompletionReason | undefined, inputAudio: LiveAudioClip | undefined, outputAudio: LiveAudioClip | undefined };
@@ -14,6 +21,7 @@ export type LiveSpeechState = {
   runtime: SpeechState,
   sessions: LiveSpeechSession[],
   microphone: 'on' | 'off',
+  inputLevel: LiveSpeechInputLevel,
   capture: 'closed' | 'opening' | 'open',
   playing: boolean,
   warning: 'input-backpressure' | 'output-backpressure' | undefined,
@@ -27,6 +35,7 @@ export function initialLiveSpeechState(): LiveSpeechState {
     runtime: { phase: 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined, loadProgress: undefined },
     sessions: [],
     microphone: 'on',
+    inputLevel: { gain: 1, observation: 'off', window: undefined, captureSettings: undefined },
     capture: 'closed',
     playing: false,
     warning: undefined,
@@ -56,20 +65,34 @@ export function createLiveSpeechController({ createClient, capture, playback, de
   let fileRun: ReturnType<typeof createSpeechFileRun> | undefined;
   let fileTask: Promise<void> | undefined;
   let audible: 'on' | 'off' = 'on';
+  const investigations = createSpeechInvestigationBindings();
+  let dialogueInvestigation: SpeechInvestigationLease | undefined;
   const retained = createLiveAudioRetention({ maximumBytes: 64 * 1024 * 1024 });
   type Recording = { id: string, partial: boolean, input: 'recording' | 'unavailable', output: 'recording' | 'unavailable' };
   let recording: Recording | undefined;
   let state = initialLiveSpeechState();
+  const inputLevel = createLiveSpeechInputLevel({ sampleRate: speechSampleRate });
   function publish({ change }: { change: Partial<LiveSpeechState> }): void {
     state = { ...state, ...change };
     if (!disposed) {
       onChange({ state });
     }
   }
+  function readCaptureSettings({ observation }: { observation: 'on' | 'off' }): LiveCaptureSettings | undefined {
+    switch (observation) {
+    case 'on': return microphone?.capture?.getSettings?.();
+    case 'off': return undefined;
+    default: {
+      const exhaustive: never = observation;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
   function endCapture(): void {
     const current = microphone;
     microphone = undefined;
-    publish({ change: { capture: 'closed' } });
+    inputLevel.reset();
+    publish({ change: { capture: 'closed', inputLevel: { ...state.inputLevel, window: undefined, captureSettings: undefined } } });
     current?.lifetime.abort();
     void current?.capture?.finish({ action: 'discard' }).catch(() => {});
   }
@@ -155,6 +178,7 @@ export function createLiveSpeechController({ createClient, capture, playback, de
   }
   const client = createClient({
     observers: {
+      onInvestigation: investigations.receive,
       onState({ state: runtime }) {
         if (disposed) {
           return;
@@ -165,6 +189,8 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         }
         switch (runtime.phase) {
         case 'completed':
+          dialogueInvestigation?.release();
+          dialogueInvestigation = undefined;
           endCapture();
           if (!fileTask) {
             publish({ change: { sessions: state.sessions.map(session => session.id === sessionId ? { ...session, completion: runtime.completion } : session) } });
@@ -172,6 +198,8 @@ export function createLiveSpeechController({ createClient, capture, playback, de
           }
           break;
         case 'failed': case 'unloaded': case 'disposed':
+          dialogueInvestigation?.release();
+          dialogueInvestigation = undefined;
           finishLiveAudio({ current: recording, status: 'partial' });
           endCapture();
           endOutput();
@@ -271,6 +299,8 @@ export function createLiveSpeechController({ createClient, capture, playback, de
     });
     await observed;
     await stopping;
+    dialogueInvestigation?.release();
+    dialogueInvestigation = undefined;
     // A stop RPC alone does not confirm a complete accepted recording.
     finishLiveAudio({ current, status: 'partial' });
   }
@@ -278,20 +308,25 @@ export function createLiveSpeechController({ createClient, capture, playback, de
   return {
     capability: client.capability,
     getState: () => state,
-    async load({ file }: { file: File }): Promise<void> {
+    async load({ file, investigation }: { file: File, investigation?: SpeechInvestigationBinding }): Promise<void> {
+      const observed = investigations.bind({ binding: investigation });
       publish({ change: { failure: undefined, warning: undefined } });
       try {
         await clearFileRun();
-        await client.loadModel({ file });
+        await client.loadModel({ file, ...(observed === undefined ? {} : { investigation: observed.context }) });
       } catch (error) {
         publish({ change: { failure: speechFailure({ error }) } });
+      } finally {
+        observed?.release();
       }
     },
-    async start({ maxSeconds, language, persona, name }: { maxSeconds: number, language: string, persona: string | undefined, name: string | undefined }): Promise<void> {
+    async start({ maxSeconds, language, persona, name, investigation }: { maxSeconds: number, language: string, persona: string | undefined, name: string | undefined, investigation?: SpeechInvestigationBinding }): Promise<void> {
       if (disposed || microphone || stopping || fileTask || !state.runtime.model || !['ready', 'completed'].includes(state.runtime.phase)) {
         return;
       }
       const modelName = state.runtime.model.name;
+      dialogueInvestigation?.release();
+      dialogueInvestigation = investigations.bind({ binding: investigation });
       const current: { lifetime: AbortController, capture: LiveCapture | undefined } = { lifetime: new AbortController(), capture: undefined };
       microphone = current;
       endOutput();
@@ -321,6 +356,12 @@ export function createLiveSpeechController({ createClient, capture, playback, de
               }
               }
             })();
+            if (state.inputLevel.gain !== 1 || state.inputLevel.observation === 'on') {
+              const window = inputLevel.process({ pcm: samples, gain: state.inputLevel.gain, observe: state.inputLevel.observation === 'on' });
+              if (window !== undefined) {
+                publish({ change: { inputLevel: { ...state.inputLevel, window } } });
+              }
+            }
             const result = client.push({ samples, sampleRate: speechSampleRate });
             switch (result.kind) {
             case 'accepted':
@@ -341,14 +382,14 @@ export function createLiveSpeechController({ createClient, capture, playback, de
           onError: fail,
         });
         current.lifetime.signal.throwIfAborted();
-        publish({ change: { capture: 'open' } });
+        publish({ change: { capture: 'open', inputLevel: { ...state.inputLevel, captureSettings: readCaptureSettings({ observation: state.inputLevel.observation }) } } });
         await activated;
         current.lifetime.signal.throwIfAborted();
         player.begin();
         sessionId = nanoid();
         recording = retained.isEnabled() ? { id: sessionId, partial: false, input: 'recording', output: 'recording' } : undefined;
         publish({ change: { sessions: [...state.sessions, { id: sessionId, modelName, text: '', completion: undefined, inputAudio: undefined, outputAudio: undefined }] } });
-        await client.start({ options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name, seed: undefined } });
+        await client.start({ options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name, seed: undefined }, ...(dialogueInvestigation === undefined ? {} : { investigation: dialogueInvestigation.context }) });
       } catch (error) {
         if (!current.lifetime.signal.aborted && !disposed) {
           fail({ error });
@@ -360,11 +401,12 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         }
       }
     },
-    async runFile({ file, maxSeconds, language, persona, name, tailSeconds, seed, inputPacing }: { file: File, maxSeconds: number, language: string, persona: string | undefined, name: string | undefined, tailSeconds: number, seed: number, inputPacing: SpeechInputPacing }): Promise<void> {
+    async runFile({ file, maxSeconds, language, persona, name, tailSeconds, seed, inputPacing, inputLevel, maximumRetainedAudioBytes, investigation }: { file: File, maxSeconds: number, language: string, persona: string | undefined, name: string | undefined, tailSeconds: number, seed: number, inputPacing: SpeechInputPacing, inputLevel: SpeechInputLevelSettings, maximumRetainedAudioBytes: number, investigation?: SpeechInvestigationBinding }): Promise<void> {
       if (disposed || microphone || stopping || fileTask || !state.runtime.model || !['ready', 'completed'].includes(state.runtime.phase)) {
         return;
       }
       fileRun?.clear();
+      const observed = investigations.bind({ binding: investigation });
       endOutput();
       publish({ change: { failure: undefined, warning: undefined, fileRun: undefined } });
       const current = createSpeechFileRun({
@@ -373,6 +415,9 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name, seed },
         tailSeconds,
         inputPacing,
+        inputLevel,
+        maximumRetainedAudioBytes,
+        ...(observed === undefined ? {} : { investigation: observed.context }),
         decodeFile,
         onChange({ state: run }) {
           if (fileRun === current) {
@@ -387,15 +432,48 @@ export function createLiveSpeechController({ createClient, capture, playback, de
       try {
         await running;
       } finally {
+        observed?.release();
         if (fileTask === running) {
           fileTask = undefined;
         }
       }
     },
+    getFileRunAudio({ id, role }: { id: string, role: 'input' | 'output' }): Blob | undefined {
+      return fileRun?.getState().id === id ? fileRun.getAudio({ role }) : undefined;
+    },
     clearFileRun,
     stop,
+    setInputGain({ gain }: { gain: number }): void {
+      if (disposed || gain === state.inputLevel.gain) {
+        return;
+      }
+      validateConstantInputGain({ gain });
+      inputLevel.reset();
+      publish({ change: { inputLevel: { ...state.inputLevel, gain, window: undefined } } });
+    },
+    observeInputLevel({ value }: { value: 'on' | 'off' }): void {
+      if (disposed || value === state.inputLevel.observation) {
+        return;
+      }
+      inputLevel.reset();
+      publish({ change: { inputLevel: { ...state.inputLevel, observation: value, window: undefined, captureSettings: readCaptureSettings({ observation: value }) } } });
+    },
     muteMicrophone({ value }: { value: 'on' | 'off' }): void {
-      publish({ change: { microphone: value } });
+      if (value === state.microphone) {
+        return;
+      }
+      switch (state.inputLevel.observation) {
+      case 'on':
+        inputLevel.reset();
+        publish({ change: { microphone: value, inputLevel: { ...state.inputLevel, window: undefined } } });
+        break;
+      case 'off': publish({ change: { microphone: value } });
+        break;
+      default: {
+        const exhaustive: never = state.inputLevel.observation;
+        throw new Error(String(exhaustive));
+      }
+      }
     },
     mutePlayback({ value }: { value: 'on' | 'off' }): void {
       audible = value;
@@ -433,6 +511,9 @@ export function createLiveSpeechController({ createClient, capture, playback, de
       } catch (error) {
         publish({ change: { failure: speechFailure({ error }) } });
       } finally {
+        dialogueInvestigation?.release();
+        dialogueInvestigation = undefined;
+        investigations.clear();
         await player?.close();
         player = undefined;
       }
@@ -450,6 +531,9 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         await clearFileRun();
         await client.dispose();
       } finally {
+        dialogueInvestigation?.release();
+        dialogueInvestigation = undefined;
+        investigations.clear();
         await player?.close();
         player = undefined;
       }

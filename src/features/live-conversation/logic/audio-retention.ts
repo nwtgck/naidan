@@ -4,7 +4,7 @@ export type LiveAudioClip = {
   seconds: number,
   status: 'complete' | 'partial',
 };
-type Slot = { sampleRate: number, chunks: Float32Array[], samples: number, url: string | undefined, bytes: number };
+type Slot = { sampleRate: number, chunks: Float32Array[], samples: number, url: string | undefined, blob: Blob | undefined, bytes: number };
 
 /** Opt-in, page-owned audio only: no storage service, IndexedDB or sessionStorage.
  * Each slot switches from PCM chunks to a WAV Blob URL on completion. Turning
@@ -58,7 +58,7 @@ export function createLiveAudioRetention({ maximumBytes }: { maximumBytes: numbe
         return 'limit';
       }
       if (!slot) {
-        slot = { sampleRate, chunks: [], samples: 0, url: undefined, bytes: 44 };
+        slot = { sampleRate, chunks: [], samples: 0, url: undefined, blob: undefined, bytes: 44 };
         slots.set(key, slot);
         bytes += 44;
       }
@@ -98,10 +98,16 @@ export function createLiveAudioRetention({ maximumBytes }: { maximumBytes: numbe
           }
           parts.push(data);
         }
-        slot.url = URL.createObjectURL(new Blob(parts, { type: 'audio/wav' }));
+        const blob = new Blob(parts, { type: 'audio/wav' });
+        slot.url = URL.createObjectURL(blob);
+        slot.blob = blob;
         slot.chunks = [];
       }
       return { url: slot.url, sampleRate: slot.sampleRate, seconds: slot.samples / slot.sampleRate, status };
+    },
+    /** Borrow the immutable completed WAV; no URL readback or PCM duplication. */
+    getBlob({ key }: { key: string }): Blob | undefined {
+      return slots.get(key)?.blob;
     },
     drop,
     clear,

@@ -3,6 +3,8 @@ import type { SpeechClient } from '@/features/speech-cpp-browser/worker/types';
 import { createLiveAudioMeter, liveAudioSecondsLimit, type decodeLiveAudioFile, type LiveAudioStatistics } from './audio-file';
 import { createLiveAudioRetention, type LiveAudioClip } from './audio-retention';
 import { nanoid } from 'nanoid';
+import type { SpeechInvestigationContext } from '@/features/speech-cpp-browser/worker/investigation-context';
+import { applyInputLevel, validateInputLevel, snapshotInputLevel, type SpeechInputLevel, type SpeechInputLevelSettings } from './audio-level';
 
 export type SpeechInputPacing = 'fast' | 'real_time';
 export type SpeechReplayTiming = {
@@ -28,6 +30,8 @@ export type SpeechFileRunState = {
   output: LiveAudioClip | undefined,
   inputStatistics: LiveAudioStatistics,
   outputStatistics: LiveAudioStatistics,
+  inputLevel: SpeechInputLevel,
+  audioRetention: { maximumBytes: number, retainedBytes: number, status: 'available' | 'limit' },
   sourceSamples: number,
   paddingSamples: number,
   requestedTailSeconds: number,
@@ -51,14 +55,19 @@ export type SpeechFileRunState = {
 /** Explicit file runs retain accepted input PCM and received output PCM.
  * Accepted input may still be queued when cancelled. These runs do not open
  * a microphone or feed a realtime playback queue. */
-export function createSpeechFileRun({ client, file, options, tailSeconds, inputPacing, decodeFile, onChange }: {
+export function createSpeechFileRun({ client, file, options, tailSeconds, inputPacing, inputLevel, maximumRetainedAudioBytes, decodeFile, onChange, investigation }: {
   client: SpeechClient, file: File, options: SpeechStartOptions & { seed: number }, tailSeconds: number,
   inputPacing: SpeechInputPacing,
+  inputLevel: SpeechInputLevelSettings,
+  maximumRetainedAudioBytes: number,
   decodeFile: typeof decodeLiveAudioFile,
   onChange: ({ state }: { state: SpeechFileRunState }) => void,
+  investigation?: SpeechInvestigationContext,
 }) {
   const lifetime = new AbortController();
-  const retained = createLiveAudioRetention({ maximumBytes: 64 * 1024 * 1024 });
+  // Logical input/output PCM plus WAV headers; WAV encoding still uses temporary staging.
+  const retained = createLiveAudioRetention({ maximumBytes: maximumRetainedAudioBytes });
+  const retainedKeys = new Set<string>();
   retained.setEnabled({ value: 'on' });
   const inputMeter = createLiveAudioMeter({ sampleRate: speechSampleRate });
   const outputMeter = createLiveAudioMeter({ sampleRate: speechSampleRate });
@@ -87,6 +96,8 @@ export function createSpeechFileRun({ client, file, options, tailSeconds, inputP
     output: undefined,
     inputStatistics: inputMeter.read(),
     outputStatistics: outputMeter.read(),
+    inputLevel: { requested: snapshotInputLevel({ requested: inputLevel }), appliedGain: undefined, before: undefined, after: undefined, clippedSamples: undefined },
+    audioRetention: { maximumBytes: maximumRetainedAudioBytes, retainedBytes: 0, status: 'available' },
     sourceSamples: 0,
     paddingSamples: 0,
     requestedTailSeconds: tailSeconds,
@@ -197,15 +208,34 @@ export function createSpeechFileRun({ client, file, options, tailSeconds, inputP
       throw new Error('Speech model was released during the file run');
     }
   }
+  function retentionLimit(): void {
+    state = { ...state, audioRetention: { ...state.audioRetention, status: 'limit' } };
+    requestStop({ mode: 'cancel', reason: undefined });
+  }
   function retain({ key, pcm }: { key: string, pcm: Float32Array }): void {
-    const result = retained.append({ key, sampleRate: speechSampleRate, pcm });
-    switch (result) {
-    case 'kept': return;
-    case 'skipped': case 'limit': throw new Error('Speech file audio exceeded its retention limit');
-    default: {
-      const exhaustive: never = result;
-      throw new Error(String(exhaustive));
+    if (!pcm.length) {
+      return;
     }
+    const headerBytes = retainedKeys.has(key) ? 0 : 44;
+    const remainingBytes = maximumRetainedAudioBytes - state.audioRetention.retainedBytes - headerBytes;
+    const samples = Math.min(pcm.length, Math.max(0, Math.floor(remainingBytes / Float32Array.BYTES_PER_ELEMENT)));
+    if (samples > 0) {
+      // A subarray is a view: the retainer alone copies the retained prefix.
+      const result = retained.append({ key, sampleRate: speechSampleRate, pcm: pcm.subarray(0, samples) });
+      switch (result) {
+      case 'kept':
+        retainedKeys.add(key);
+        state = { ...state, audioRetention: { ...state.audioRetention, retainedBytes: state.audioRetention.retainedBytes + headerBytes + samples * Float32Array.BYTES_PER_ELEMENT } };
+        break;
+      case 'skipped': case 'limit': throw new Error('Speech file audio retention accounting failed');
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
+    if (samples < pcm.length) {
+      retentionLimit();
     }
   }
   async function drained(): Promise<void> {
@@ -252,9 +282,18 @@ export function createSpeechFileRun({ client, file, options, tailSeconds, inputP
         state = { ...state, status: 'partial' };
         return;
       }
+      if (!Number.isSafeInteger(maximumRetainedAudioBytes) || maximumRetainedAudioBytes < 0 || maximumRetainedAudioBytes > 64 * 1024 * 1024) {
+        throw new Error('Speech retained audio budget must be a safe integer between 0 and 64 MiB');
+      }
+      if (maximumRetainedAudioBytes < 44 + Float32Array.BYTES_PER_ELEMENT) {
+        retentionLimit();
+        state = { ...state, status: 'partial' };
+        return;
+      }
       if (options.inputSampleRate !== speechSampleRate || !Number.isFinite(tailSeconds) || tailSeconds < 0 || tailSeconds > 30 || !Number.isFinite(options.maxSeconds) || options.maxSeconds <= 0 || options.maxSeconds > 3600) {
         throw new Error('Invalid speech file duration or sample rate');
       }
+      validateInputLevel({ requested: state.inputLevel.requested });
       if (!Number.isSafeInteger(options.seed) || options.seed < 0) {
         throw new Error('Speech seed must be a safe non-negative integer');
       }
@@ -263,6 +302,7 @@ export function createSpeechFileRun({ client, file, options, tailSeconds, inputP
       if (!pcm.length || pcm.length > speechSampleRate * liveAudioSecondsLimit) {
         throw new Error('Audio must be non-empty and at most 180 seconds long');
       }
+      state = { ...state, inputLevel: applyInputLevel({ pcm, sampleRate: speechSampleRate, requested: state.inputLevel.requested }) };
       const sourceFrames = Math.ceil(pcm.length / speechFrameSamples);
       // Haru counts the frame produced by start in max_seconds as well.
       const availableFrames = Math.floor(options.maxSeconds * speechSampleRate / speechFrameSamples + 1e-9) - 1;
@@ -274,7 +314,7 @@ export function createSpeechFileRun({ client, file, options, tailSeconds, inputP
       publish();
       started = true;
       generationBegan = performance.now();
-      await client.start({ options });
+      await client.start({ options, ...(investigation === undefined ? {} : { investigation }) });
       checkRuntime();
       if (state.replayTiming !== undefined && client.getState().phase === 'running') {
         inputEpoch = performance.now();
@@ -410,7 +450,7 @@ export function createSpeechFileRun({ client, file, options, tailSeconds, inputP
           state = { ...state, input: retained.finish({ key: 'input', status }), output: retained.finish({ key: 'output', status }) };
         } catch (error) {
           retained.clear();
-          state = { ...state, status: 'failed', input: undefined, output: undefined, failure: state.failure ?? speechFailure({ error }) };
+          state = { ...state, status: 'failed', input: undefined, output: undefined, audioRetention: { ...state.audioRetention, retainedBytes: 0 }, failure: state.failure ?? speechFailure({ error }) };
         }
         state = { ...state, stage: 'finished' };
         publish();
@@ -419,6 +459,9 @@ export function createSpeechFileRun({ client, file, options, tailSeconds, inputP
   }
   return {
     getState: () => state,
+    getAudio({ role }: { role: 'input' | 'output' }): Blob | undefined {
+      return retained.getBlob({ key: role });
+    },
     onState(): void {
       if (state.replayTiming !== undefined) {
         state = { ...state, replayTiming: { ...state.replayTiming, maxQueuedSamples: Math.max(state.replayTiming.maxQueuedSamples, client.getState().queuedSamples) } };

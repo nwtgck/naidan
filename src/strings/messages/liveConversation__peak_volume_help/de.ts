@@ -1,0 +1,1 @@
+export const liveConversation__peak_volume_help = (): string => "Auf die gesamte Aufnahme wird derselbe Faktor angewendet, sodass ihr Spitzenwert 80% erreicht. Der Faktor bleibt durchgehend konstant. Stille bleibt unverändert.";

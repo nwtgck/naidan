@@ -56,10 +56,10 @@ export function readSpeechArtifacts({ rootDir, mode }: { rootDir: string, mode: 
     throw new Error('Speech runtime source/profile provenance mismatch');
   }
   const schema = bindingSchema.parse(JSON.parse(artifact.readArtifact({ relative: 'api/schema.json' }).data.toString('utf8')));
-  if (schema.schemaSha256 !== manifest.schemaSha256 || !schema.callbacks.some(callback => callback.name === 'speech_dialogue_callback')) {
+  if (schema.schemaSha256 !== manifest.schemaSha256 || !['speech_dialogue_callback', 'speech_progress_callback'].every(name => schema.callbacks.some(callback => callback.name === name))) {
     throw new Error('Speech ABI schema does not provide the dialogue boundary');
   }
-  for (const name of ['speech_model_load', 'speech_model_free', 'speech_request_new', 'speech_request_free', 'speech_dialogue_start', 'speech_dialogue_push', 'speech_dialogue_end', 'speech_dialogue_free']) {
+  for (const name of ['speech_model_load', 'speech_model_free', 'speech_request_new', 'speech_request_free', 'speech_dialogue_start', 'speech_dialogue_push', 'speech_dialogue_end', 'speech_dialogue_free', 'speech_model_info_open', 'speech_request_set_audio', 'speech_request_set_progress', 'speech_request_cancel', 'speech_transcribe', 'speech_request_result', 'speech_result_text', 'speech_result_stop', 'speech_result_language_count', 'speech_result_language']) {
     if (!schema.functions.some(fn => fn.name === name && fn.export === '_' + name)) {
       throw new Error(`Missing speech API: ${name}`);
     }
@@ -101,7 +101,7 @@ export function readSpeechArtifacts({ rootDir, mode }: { rootDir: string, mode: 
   };
 }
 
-const standaloneFiles = new Set(['types.ts', 'artifacts.ts', 'models.ts', 'worker/model-file.ts', 'worker/types.ts', 'worker/client-standalone.ts', 'worker/client-unavailable.ts']);
+const standaloneFiles = new Set(['types.ts', 'artifacts.ts', 'models.ts', 'worker/model-file.ts', 'worker/types.ts', 'worker/client-standalone.ts', 'worker/client-unavailable.ts', 'recognition/types.ts', 'recognition/models.ts', 'recognition/model-file.ts', 'recognition/model-catalog.ts', 'recognition/controller.ts', 'recognition/worker/client-standalone.ts', 'recognition/worker/client-unavailable.ts', 'investigation/types.ts', 'investigation/recorder.ts', 'investigation/archive.ts', 'investigation-binding.ts']);
 
 function assertStandaloneModule({ rootDir, id }: { rootDir: string, id: string }): void {
   const clean = id.split('?')[0]?.replaceAll('\\', '/') ?? '';

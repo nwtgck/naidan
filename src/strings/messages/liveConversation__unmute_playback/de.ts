@@ -1,1 +1,1 @@
-export const liveConversation__unmute_playback = (): string => 'Unmute playback';
+export const liveConversation__unmute_playback = (): string => "Stummschaltung der Wiedergabe aufheben";

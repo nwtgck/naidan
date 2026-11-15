@@ -1,1 +1,1 @@
-export const liveConversation__fixed_seed_help = (): string => 'The default is 0. Keep the same seed when comparing runs. Results can still differ between environments.';
+export const liveConversation__fixed_seed_help = (): string => "El valor predeterminado es 0. Usa la misma semilla al comparar ejecuciones. Aun así, los resultados pueden variar entre entornos.";
