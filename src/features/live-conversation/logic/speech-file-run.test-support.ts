@@ -1,10 +1,10 @@
 import { vi } from 'vitest';
 import { createSpeechSession } from '@/features/speech-cpp-browser/runtime/session';
 import type { SpeechDialoguePort, SpeechModelPort } from '@/features/speech-cpp-browser/types';
-import { createSpeechFileRun } from './speech-file-run';
+import { createSpeechFileRun, type SpeechInputPacing } from './speech-file-run';
 import type { decodeLiveAudioFile } from './audio-file';
 
-export async function speechFileRunFixture({ pcm, tailSeconds, maxSeconds }: { pcm: Float32Array, tailSeconds: number, maxSeconds: number }) {
+export async function speechFileRunFixture({ pcm, tailSeconds, maxSeconds, inputPacing }: { pcm: Float32Array, tailSeconds: number, maxSeconds: number, inputPacing: SpeechInputPacing }) {
   const blobs: Blob[] = [];
   const createUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
     blobs.push(blob as Blob);
@@ -46,7 +46,7 @@ export async function speechFileRunFixture({ pcm, tailSeconds, maxSeconds }: { p
   });
   const decodeFile = vi.fn<typeof decodeLiveAudioFile>(async () => pcm);
   const onChange = vi.fn();
-  const runner = createSpeechFileRun({ client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds, decodeFile, onChange });
+  const runner = createSpeechFileRun({ client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds, inputPacing, decodeFile, onChange });
   await client.loadModel({ file: new File(['model'], 'haru.gguf') });
   return {
     runner,
@@ -77,6 +77,27 @@ export async function readSpeechWave({ blob }: { blob: Blob }): Promise<DataView
     reader.onload = () => reader.result instanceof ArrayBuffer ? resolve(new DataView(reader.result)) : reject(new Error('Not bytes'));
     reader.readAsArrayBuffer(blob);
   });
+}
+
+export function speechReplayVisibility({ initial }: { initial: DocumentVisibilityState }) {
+  let state = initial;
+  const document = new EventTarget();
+  Object.defineProperty(document, 'visibilityState', { get: () => state });
+  const added = vi.spyOn(document, 'addEventListener'), removed = vi.spyOn(document, 'removeEventListener');
+  vi.stubGlobal('document', document);
+  return {
+    added,
+    removed,
+    change({ value }: { value: DocumentVisibilityState }): void {
+      state = value;
+      document.dispatchEvent(new Event('visibilitychange'));
+    },
+    [Symbol.dispose]() {
+      added.mockRestore();
+      removed.mockRestore();
+      vi.unstubAllGlobals();
+    },
+  };
 }
 
 export const TEST_ONLY = {

@@ -120,6 +120,79 @@ async function fixture() {
 }
 
 describe('independent live conversation workspace', () => {
+  it('defaults to fast file input and changes pacing without loading or generating automatically', async () => {
+    await ensureAllStringsForTest({ locale: 'ja' });
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const pacing = f.wrapper.get('[data-testid="live-diagnostics-pacing"]');
+    expect(pacing.text()).toContain('できるだけ速く');
+    expect(f.wrapper.findAll('[role="tab"]')).toHaveLength(2);
+    const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
+    await pacing.trigger('click');
+    await f.page.get('[data-testid="settings-select-option-real_time"]').trigger('click');
+    await flushPromises();
+    expect(pacing.text()).toContain('実時間ペース');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-pacing-help"]').text()).toContain('待ち時間も実行時間に含みます');
+    expect(f.speech.client.loadModel).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    const file = new File(['audio'], 'paced.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    expect(run).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'ja', persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'real_time' });
+    await pacing.trigger('click');
+    await f.page.get('[data-testid="settings-select-option-fast"]').trigger('click');
+    await flushPromises();
+    expect(run).toHaveBeenCalledOnce();
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(run).toHaveBeenLastCalledWith({ file, maxSeconds: 120, language: 'ja', persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'fast' });
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.speech.capture).not.toHaveBeenCalled();
+  });
+
+  it('cancels a real-time file run while waiting for its first input deadline and keeps the model', async () => {
+    await ensureAllStringsForTest({ locale: 'ja' });
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const file = new File(['audio'], 'waiting.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await f.wrapper.get('[data-testid="live-diagnostics-pacing"]').trigger('click');
+    await f.page.get('[data-testid="settings-select-option-real_time"]').trigger('click');
+    await flushPromises();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    using _timers = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-status"]').text()).toContain('入力音声を送信中');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-pacing"]').attributes('disabled')).toBeDefined();
+    expect(f.speech.client.push).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-diagnostics-cancel"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.controller.getState().fileRun?.status).toBe('partial');
+    expect(f.speech.controller.getState().fileRun?.replayTiming?.interruption).toBe('user_cancel');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-interruption"]').text()).toContain('生成を中止しました');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe('waiting.wav');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeUndefined();
+    expect(f.speech.client.stop).toHaveBeenCalledWith({ mode: 'cancel' });
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.speech.client.push).not.toHaveBeenCalled();
+    expect(f.speech.capture).not.toHaveBeenCalled();
+  });
+
   it('leaves live speech audio retention off until explicitly enabled', async () => {
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
     await using f = await fixture();
@@ -493,7 +566,7 @@ describe('independent live conversation workspace', () => {
     const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
-    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: locale, persona: undefined, name: undefined, tailSeconds: 5, seed: 0 });
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: locale, persona: undefined, name: undefined, tailSeconds: 5, seed: 0, inputPacing: 'fast' });
   });
 
   it('runs the same audio twice without opening the microphone or reloading the model', async () => {
@@ -531,6 +604,19 @@ describe('independent live conversation workspace', () => {
     expect(f.wrapper.get('[data-testid="live-diagnostics-first-output"]').text()).not.toBe('—');
     expect(f.wrapper.get('[data-testid="live-diagnostics-generation-time"]').text()).not.toBe('—');
     expect(f.wrapper.get('[data-testid="live-diagnostics-rtf"]').text()).toContain('s/s');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-result-pacing"]').text()).toContain('As fast as possible');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-first-output-help"]').text()).toContain('before any input is sent');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-rtf-help"]').text()).toContain('does not measure inference speed alone');
+    const pacing = f.wrapper.get('[data-testid="live-diagnostics-pacing"]');
+    await pacing.trigger('click');
+    await f.page.get('[data-testid="settings-select-option-real_time"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-result-pacing"]').text()).toContain('As fast as possible');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-timing-pacing"]').text()).toBe('As fast as possible');
+    expect(f.speech.client.start).toHaveBeenCalledOnce();
+    await pacing.trigger('click');
+    await f.page.get('[data-testid="settings-select-option-fast"]').trigger('click');
+    await flushPromises();
     await f.wrapper.get('[data-testid="live-diagnostics-seed"]').setValue('7');
     expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('download')).toBe(firstOutputName);
     expect(f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('download')).toBe(firstInputName);
@@ -600,7 +686,7 @@ describe('independent live conversation workspace', () => {
     const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
-    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, tailSeconds: 5, seed: 7 });
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, tailSeconds: 5, seed: 7, inputPacing: 'fast' });
     expect(f.speech.capture).not.toHaveBeenCalled();
   });
 

@@ -183,7 +183,7 @@ describe('continuous live speech session', () => {
       f.frame({ text: 'Initial', samples: new Float32Array(3200).fill(0.001) });
       f.change({ state: { phase: 'running' } });
     });
-    const run = { ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0 };
+    const run = { ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' as const };
     await f.controller.runFile(run);
     expect(f.controller.getState()).toMatchObject({ fileRun: { status: 'complete', text: 'Initial', frames: 1, sourceSamples: 1, submittedSamples: 3200, input: { status: 'complete' }, output: { status: 'complete' } }, sessions: [] });
     expect(f.client.push).toHaveBeenCalledWith({ sampleRate: 24000, samples: new Float32Array([0.5, ...new Float32Array(3199)]) });
@@ -206,7 +206,7 @@ describe('continuous live speech session', () => {
     await f.controller.load({ file });
     const decode = Promise.withResolvers<Float32Array>();
     f.decodeFile.mockReturnValue(decode.promise);
-    const running = f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 5, seed: 0 });
+    const running = f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 5, seed: 0, inputPacing: 'fast' });
     await vi.waitFor(() => expect(f.decodeFile).toHaveBeenCalledOnce());
     await f.controller.start(options);
     expect(f.capture).not.toHaveBeenCalled();
@@ -239,7 +239,7 @@ describe('continuous live speech session', () => {
       f.frame({ text: 'Diagnostic response', samples: new Float32Array(3200) });
       f.change({ state: { phase: 'running' } });
     });
-    await f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0 });
+    await f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' });
     expect(f.controller.getState().fileRun?.text).toBe('Diagnostic response');
     expect(f.controller.getState().sessions).toEqual(history);
     const clearing = f.controller.clearFileRun();
@@ -472,7 +472,7 @@ describe('opt-in live speech audio retention', () => {
     using audio = retainedAudioFixture({ maximumBytes: 64 * 1024 * 1024 });
     await using f = createLiveSpeechFixture();
     await f.controller.load({ file });
-    await f.controller.runFile({ ...options, file: new File(['audio'], 'input.wav'), tailSeconds: 0, seed: 0 });
+    await f.controller.runFile({ ...options, file: new File(['audio'], 'input.wav'), tailSeconds: 0, seed: 0, inputPacing: 'fast' });
     const result = f.controller.getState().fileRun;
     expect(result?.input).toBeDefined();
     f.controller.retainAudio({ value: 'off' });

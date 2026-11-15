@@ -427,7 +427,7 @@ it('drains each full file-run frame without waiting for a later packet or finish
   remote.stop = vi.fn(async () => emitState({ remote, phase: 'completed', model: info }));
   transport.remotes.push(remote);
   await using fixture = clientFixture();
-  const runner = createSpeechFileRun({ client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, decodeFile: async () => new Float32Array(6401).fill(0.25), onChange() {} });
+  const runner = createSpeechFileRun({ client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, inputPacing: 'fast', decodeFile: async () => new Float32Array(6401).fill(0.25), onChange() {} });
   fixture.onState.mockImplementation(() => runner.onState());
   fixture.onFrame.mockImplementation(({ frame }) => runner.onFrame({ frame }));
   await using recording = {
@@ -442,5 +442,54 @@ it('drains each full file-run frame without waiting for a later packet or finish
   expect(remote.push).toHaveBeenCalledTimes(3);
   expect(fixture.states.at(-1)?.queuedSamples).toBe(0);
   expect(urls.create).toHaveBeenCalledOnce();
+  void recording;
+});
+
+it('applies the hosted shutdown deadline at real-time EOF while a native input call is still pending', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  using visibility = {
+    spy: vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible'),
+    [Symbol.dispose]() {
+      this.spy.mockRestore();
+    },
+  };
+  using urls = {
+    create: vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:realtime-timeout'),
+    revoke: vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {}),
+    [Symbol.dispose]() {
+      this.create.mockRestore();
+      this.revoke.mockRestore();
+    },
+  };
+  const gate = Promise.withResolvers<void>();
+  const remote = remoteFixture({ load: undefined, push: gate.promise });
+  remote.start = vi.fn(async () => emitState({ remote, phase: 'running', model: info }));
+  transport.remotes.push(remote);
+  await using fixture = clientFixture();
+  using unblock = {
+    [Symbol.dispose]() {
+      gate.resolve();
+    },
+  };
+  const runner = createSpeechFileRun({ client: fixture.client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds: 0, inputPacing: 'real_time', decodeFile: async () => new Float32Array(3200), onChange() {} });
+  fixture.onState.mockImplementation(() => runner.onState());
+  await using recording = {
+    async [Symbol.asyncDispose]() {
+      runner.clear();
+    },
+  };
+  await fixture.client.loadModel({ file: new File([], 'model.gguf') });
+  emitState({ remote, phase: 'ready', model: info });
+  const running = runner.run();
+  await vi.advanceTimersByTimeAsync(134);
+  expect(runner.getState()).toMatchObject({ stage: 'draining_input', submittedSamples: 3200 });
+  expect(remote.push).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(workers[0]?.terminate).toHaveBeenCalledOnce();
+  await running;
+  expect(runner.getState()).toMatchObject({ status: 'failed', failure: { message: 'Speech worker shutdown timed out' }, replayTiming: { drainDurationMilliseconds: 3000 } });
+  expect(visibility.spy).toHaveBeenCalled();
+  expect(urls.create).toHaveBeenCalledOnce();
+  void unblock;
   void recording;
 });

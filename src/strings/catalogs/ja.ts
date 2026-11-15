@@ -2943,6 +2943,7 @@ import { liveConversation__answer_text } from '@/strings/messages/liveConversati
 import { liveConversation__approval } from '@/strings/messages/liveConversation__approval/ja';
 import { liveConversation__approval_required } from '@/strings/messages/liveConversation__approval_required/ja';
 import { liveConversation__approve_commands } from '@/strings/messages/liveConversation__approve_commands/ja';
+import { liveConversation__as_fast_as_possible } from '@/strings/messages/liveConversation__as_fast_as_possible/ja';
 import { liveConversation__assistant } from '@/strings/messages/liveConversation__assistant/ja';
 import { liveConversation__attach_images } from '@/strings/messages/liveConversation__attach_images/ja';
 import { liveConversation__attachment_limits } from '@/strings/messages/liveConversation__attachment_limits/ja';
@@ -2960,6 +2961,7 @@ import { liveConversation__back_to_chats } from '@/strings/messages/liveConversa
 import { liveConversation__cancel_generation } from '@/strings/messages/liveConversation__cancel_generation/ja';
 import { liveConversation__cancel_model_loading } from '@/strings/messages/liveConversation__cancel_model_loading/ja';
 import { liveConversation__cancel_pending } from '@/strings/messages/liveConversation__cancel_pending/ja';
+import { liveConversation__catch_up_input_frames } from '@/strings/messages/liveConversation__catch_up_input_frames/ja';
 import { liveConversation__channels_and_playback } from '@/strings/messages/liveConversation__channels_and_playback/ja';
 import { liveConversation__channels_help } from '@/strings/messages/liveConversation__channels_help/ja';
 import { liveConversation__choose_a_valid_seed } from '@/strings/messages/liveConversation__choose_a_valid_seed/ja';
@@ -2985,6 +2987,7 @@ import { liveConversation__conversation_time_limit_reached } from '@/strings/mes
 import { liveConversation__ctrl_or_cmd_enter_to_send } from '@/strings/messages/liveConversation__ctrl_or_cmd_enter_to_send/ja';
 import { liveConversation__deny_commands } from '@/strings/messages/liveConversation__deny_commands/ja';
 import { liveConversation__diagnostics } from '@/strings/messages/liveConversation__diagnostics/ja';
+import { liveConversation__dialogue_start_ready_time } from '@/strings/messages/liveConversation__dialogue_start_ready_time/ja';
 import { liveConversation__discarded } from '@/strings/messages/liveConversation__discarded/ja';
 import { liveConversation__download_then_start } from '@/strings/messages/liveConversation__download_then_start/ja';
 import { liveConversation__draft_channel_disabled } from '@/strings/messages/liveConversation__draft_channel_disabled/ja';
@@ -2995,9 +2998,15 @@ import { liveConversation__empty_conversation } from '@/strings/messages/liveCon
 import { liveConversation__end_session } from '@/strings/messages/liveConversation__end_session/ja';
 import { liveConversation__enter_to_send } from '@/strings/messages/liveConversation__enter_to_send/ja';
 import { liveConversation__ephemeral_session } from '@/strings/messages/liveConversation__ephemeral_session/ja';
+import { liveConversation__execution_interruption } from '@/strings/messages/liveConversation__execution_interruption/ja';
+import { liveConversation__execution_rtf } from '@/strings/messages/liveConversation__execution_rtf/ja';
+import { liveConversation__execution_rtf_includes_waits } from '@/strings/messages/liveConversation__execution_rtf_includes_waits/ja';
+import { liveConversation__execution_time } from '@/strings/messages/liveConversation__execution_time/ja';
 import { liveConversation__failed } from '@/strings/messages/liveConversation__failed/ja';
+import { liveConversation__fast_input_pacing_help } from '@/strings/messages/liveConversation__fast_input_pacing_help/ja';
 import { liveConversation__file_generation_statistics } from '@/strings/messages/liveConversation__file_generation_statistics/ja';
 import { liveConversation__first_output_frame } from '@/strings/messages/liveConversation__first_output_frame/ja';
+import { liveConversation__first_output_may_precede_input } from '@/strings/messages/liveConversation__first_output_may_precede_input/ja';
 import { liveConversation__fixed_seed_help } from '@/strings/messages/liveConversation__fixed_seed_help/ja';
 import { liveConversation__folder } from '@/strings/messages/liveConversation__folder/ja';
 import { liveConversation__generate_again } from '@/strings/messages/liveConversation__generate_again/ja';
@@ -3007,8 +3016,6 @@ import { liveConversation__generated_response } from '@/strings/messages/liveCon
 import { liveConversation__generating_response } from '@/strings/messages/liveConversation__generating_response/ja';
 import { liveConversation__generation_cancelled } from '@/strings/messages/liveConversation__generation_cancelled/ja';
 import { liveConversation__generation_complete } from '@/strings/messages/liveConversation__generation_complete/ja';
-import { liveConversation__generation_seconds_per_audio_second } from '@/strings/messages/liveConversation__generation_seconds_per_audio_second/ja';
-import { liveConversation__generation_time } from '@/strings/messages/liveConversation__generation_time/ja';
 import { liveConversation__hide_answer_text } from '@/strings/messages/liveConversation__hide_answer_text/ja';
 import { liveConversation__idle } from '@/strings/messages/liveConversation__idle/ja';
 import { liveConversation__image_limit } from '@/strings/messages/liveConversation__image_limit/ja';
@@ -3017,11 +3024,17 @@ import { liveConversation__images_require_omni } from '@/strings/messages/liveCo
 import { liveConversation__input_audio } from '@/strings/messages/liveConversation__input_audio/ja';
 import { liveConversation__input_audio_cannot_keep_up } from '@/strings/messages/liveConversation__input_audio_cannot_keep_up/ja';
 import { liveConversation__input_channels } from '@/strings/messages/liveConversation__input_channels/ja';
+import { liveConversation__input_finished_early } from '@/strings/messages/liveConversation__input_finished_early/ja';
+import { liveConversation__input_pacing } from '@/strings/messages/liveConversation__input_pacing/ja';
+import { liveConversation__input_pacing_measurements } from '@/strings/messages/liveConversation__input_pacing_measurements/ja';
 import { liveConversation__input_preparation_time } from '@/strings/messages/liveConversation__input_preparation_time/ja';
+import { liveConversation__input_queue_limit_reached } from '@/strings/messages/liveConversation__input_queue_limit_reached/ja';
+import { liveConversation__input_submission_time } from '@/strings/messages/liveConversation__input_submission_time/ja';
 import { liveConversation__input_text } from '@/strings/messages/liveConversation__input_text/ja';
 import { liveConversation__instructions } from '@/strings/messages/liveConversation__instructions/ja';
 import { liveConversation__interrupt } from '@/strings/messages/liveConversation__interrupt/ja';
 import { liveConversation__interrupt_and_talk } from '@/strings/messages/liveConversation__interrupt_and_talk/ja';
+import { liveConversation__interrupted_when_page_hidden } from '@/strings/messages/liveConversation__interrupted_when_page_hidden/ja';
 import { liveConversation__interruption_help } from '@/strings/messages/liveConversation__interruption_help/ja';
 import { liveConversation__introduction } from '@/strings/messages/liveConversation__introduction/ja';
 import { liveConversation__investigation_settings } from '@/strings/messages/liveConversation__investigation_settings/ja';
@@ -3039,6 +3052,9 @@ import { liveConversation__loaded_model } from '@/strings/messages/liveConversat
 import { liveConversation__loading } from '@/strings/messages/liveConversation__loading/ja';
 import { liveConversation__loading_runtime } from '@/strings/messages/liveConversation__loading_runtime/ja';
 import { liveConversation__manage_models_and_runtime } from '@/strings/messages/liveConversation__manage_models_and_runtime/ja';
+import { liveConversation__maximum_input_schedule_delay } from '@/strings/messages/liveConversation__maximum_input_schedule_delay/ja';
+import { liveConversation__maximum_output_lateness } from '@/strings/messages/liveConversation__maximum_output_lateness/ja';
+import { liveConversation__maximum_pending_input } from '@/strings/messages/liveConversation__maximum_pending_input/ja';
 import { liveConversation__maximum_session_seconds } from '@/strings/messages/liveConversation__maximum_session_seconds/ja';
 import { liveConversation__message_placeholder } from '@/strings/messages/liveConversation__message_placeholder/ja';
 import { liveConversation__microphone } from '@/strings/messages/liveConversation__microphone/ja';
@@ -3046,6 +3062,7 @@ import { liveConversation__microphone_and_response_audio_run_together } from '@/
 import { liveConversation__microphone_audio_delay } from '@/strings/messages/liveConversation__microphone_audio_delay/ja';
 import { liveConversation__microphone_muted } from '@/strings/messages/liveConversation__microphone_muted/ja';
 import { liveConversation__model } from '@/strings/messages/liveConversation__model/ja';
+import { liveConversation__model_finished_before_all_input } from '@/strings/messages/liveConversation__model_finished_before_all_input/ja';
 import { liveConversation__model_inventory_failed } from '@/strings/messages/liveConversation__model_inventory_failed/ja';
 import { liveConversation__model_loaded } from '@/strings/messages/liveConversation__model_loaded/ja';
 import { liveConversation__model_loading_time } from '@/strings/messages/liveConversation__model_loading_time/ja';
@@ -3060,10 +3077,12 @@ import { liveConversation__no_folder } from '@/strings/messages/liveConversation
 import { liveConversation__output_audio_cannot_keep_up } from '@/strings/messages/liveConversation__output_audio_cannot_keep_up/ja';
 import { liveConversation__output_audio_length } from '@/strings/messages/liveConversation__output_audio_length/ja';
 import { liveConversation__output_channels } from '@/strings/messages/liveConversation__output_channels/ja';
+import { liveConversation__output_lateness_includes_input_and_queue } from '@/strings/messages/liveConversation__output_lateness_includes_input_and_queue/ja';
 import { liveConversation__partial_audio } from '@/strings/messages/liveConversation__partial_audio/ja';
 import { liveConversation__partial_conversation_audio } from '@/strings/messages/liveConversation__partial_conversation_audio/ja';
 import { liveConversation__partial_generation_saved } from '@/strings/messages/liveConversation__partial_generation_saved/ja';
 import { liveConversation__pending_failed } from '@/strings/messages/liveConversation__pending_failed/ja';
+import { liveConversation__pending_input_audio } from '@/strings/messages/liveConversation__pending_input_audio/ja';
 import { liveConversation__pending_limit } from '@/strings/messages/liveConversation__pending_limit/ja';
 import { liveConversation__pending_messages } from '@/strings/messages/liveConversation__pending_messages/ja';
 import { liveConversation__playback_muted } from '@/strings/messages/liveConversation__playback_muted/ja';
@@ -3071,13 +3090,18 @@ import { liveConversation__playing } from '@/strings/messages/liveConversation__
 import { liveConversation__prepare_next_message } from '@/strings/messages/liveConversation__prepare_next_message/ja';
 import { liveConversation__preparing_audio } from '@/strings/messages/liveConversation__preparing_audio/ja';
 import { liveConversation__preparing_model } from '@/strings/messages/liveConversation__preparing_model/ja';
+import { liveConversation__preparing_output_audio } from '@/strings/messages/liveConversation__preparing_output_audio/ja';
 import { liveConversation__preparing_runtime } from '@/strings/messages/liveConversation__preparing_runtime/ja';
 import { liveConversation__preview_image } from '@/strings/messages/liveConversation__preview_image/ja';
+import { liveConversation__processing_after_input } from '@/strings/messages/liveConversation__processing_after_input/ja';
+import { liveConversation__processing_remaining_input } from '@/strings/messages/liveConversation__processing_remaining_input/ja';
 import { liveConversation__random_seed } from '@/strings/messages/liveConversation__random_seed/ja';
 import { liveConversation__reading_model_file } from '@/strings/messages/liveConversation__reading_model_file/ja';
 import { liveConversation__ready } from '@/strings/messages/liveConversation__ready/ja';
 import { liveConversation__ready_for_continuous_conversation } from '@/strings/messages/liveConversation__ready_for_continuous_conversation/ja';
 import { liveConversation__ready_to_talk } from '@/strings/messages/liveConversation__ready_to_talk/ja';
+import { liveConversation__real_time_input_pacing_help } from '@/strings/messages/liveConversation__real_time_input_pacing_help/ja';
+import { liveConversation__real_time_pace } from '@/strings/messages/liveConversation__real_time_pace/ja';
 import { liveConversation__recorded_audio } from '@/strings/messages/liveConversation__recorded_audio/ja';
 import { liveConversation__recording } from '@/strings/messages/liveConversation__recording/ja';
 import { liveConversation__refresh_folders } from '@/strings/messages/liveConversation__refresh_folders/ja';
@@ -3091,7 +3115,6 @@ import { liveConversation__responding } from '@/strings/messages/liveConversatio
 import { liveConversation__retained_conversation_audio } from '@/strings/messages/liveConversation__retained_conversation_audio/ja';
 import { liveConversation__retained_conversation_audio_help } from '@/strings/messages/liveConversation__retained_conversation_audio_help/ja';
 import { liveConversation__retry_pending } from '@/strings/messages/liveConversation__retry_pending/ja';
-import { liveConversation__rtf_excludes_preparation } from '@/strings/messages/liveConversation__rtf_excludes_preparation/ja';
 import { liveConversation__run_total } from '@/strings/messages/liveConversation__run_total/ja';
 import { liveConversation__runtime_loading_bytes } from '@/strings/messages/liveConversation__runtime_loading_bytes/ja';
 import { liveConversation__save_input_audio_wav } from '@/strings/messages/liveConversation__save_input_audio_wav/ja';
@@ -3099,6 +3122,7 @@ import { liveConversation__save_response_wav } from '@/strings/messages/liveConv
 import { liveConversation__save_submitted_input_wav } from '@/strings/messages/liveConversation__save_submitted_input_wav/ja';
 import { liveConversation__send } from '@/strings/messages/liveConversation__send/ja';
 import { liveConversation__send_after_response } from '@/strings/messages/liveConversation__send_after_response/ja';
+import { liveConversation__sending_input_audio } from '@/strings/messages/liveConversation__sending_input_audio/ja';
 import { liveConversation__session_ended } from '@/strings/messages/liveConversation__session_ended/ja';
 import { liveConversation__session_setup } from '@/strings/messages/liveConversation__session_setup/ja';
 import { liveConversation__shell_in_browser } from '@/strings/messages/liveConversation__shell_in_browser/ja';
@@ -3109,10 +3133,12 @@ import { liveConversation__speech_sdk_not_available } from '@/strings/messages/l
 import { liveConversation__start_continuous_conversation } from '@/strings/messages/liveConversation__start_continuous_conversation/ja';
 import { liveConversation__start_recording } from '@/strings/messages/liveConversation__start_recording/ja';
 import { liveConversation__start_session } from '@/strings/messages/liveConversation__start_session/ja';
+import { liveConversation__starting_dialogue } from '@/strings/messages/liveConversation__starting_dialogue/ja';
 import { liveConversation__stop_and_send } from '@/strings/messages/liveConversation__stop_and_send/ja';
 import { liveConversation__stop_continuous_conversation } from '@/strings/messages/liveConversation__stop_continuous_conversation/ja';
 import { liveConversation__stop_response } from '@/strings/messages/liveConversation__stop_response/ja';
 import { liveConversation__stopping } from '@/strings/messages/liveConversation__stopping/ja';
+import { liveConversation__submitted_input_audio } from '@/strings/messages/liveConversation__submitted_input_audio/ja';
 import { liveConversation__talk } from '@/strings/messages/liveConversation__talk/ja';
 import { liveConversation__text_input } from '@/strings/messages/liveConversation__text_input/ja';
 import { liveConversation__text_to_speech } from '@/strings/messages/liveConversation__text_to_speech/ja';
@@ -6995,6 +7021,7 @@ export const catalog = {
   liveConversation__approval,
   liveConversation__approval_required,
   liveConversation__approve_commands,
+  liveConversation__as_fast_as_possible,
   liveConversation__assistant,
   liveConversation__attach_images,
   liveConversation__attachment_limits,
@@ -7012,6 +7039,7 @@ export const catalog = {
   liveConversation__cancel_generation,
   liveConversation__cancel_model_loading,
   liveConversation__cancel_pending,
+  liveConversation__catch_up_input_frames,
   liveConversation__channels_and_playback,
   liveConversation__channels_help,
   liveConversation__choose_a_valid_seed,
@@ -7037,6 +7065,7 @@ export const catalog = {
   liveConversation__ctrl_or_cmd_enter_to_send,
   liveConversation__deny_commands,
   liveConversation__diagnostics,
+  liveConversation__dialogue_start_ready_time,
   liveConversation__discarded,
   liveConversation__download_then_start,
   liveConversation__draft_channel_disabled,
@@ -7047,9 +7076,15 @@ export const catalog = {
   liveConversation__end_session,
   liveConversation__enter_to_send,
   liveConversation__ephemeral_session,
+  liveConversation__execution_interruption,
+  liveConversation__execution_rtf,
+  liveConversation__execution_rtf_includes_waits,
+  liveConversation__execution_time,
   liveConversation__failed,
+  liveConversation__fast_input_pacing_help,
   liveConversation__file_generation_statistics,
   liveConversation__first_output_frame,
+  liveConversation__first_output_may_precede_input,
   liveConversation__fixed_seed_help,
   liveConversation__folder,
   liveConversation__generate_again,
@@ -7059,8 +7094,6 @@ export const catalog = {
   liveConversation__generating_response,
   liveConversation__generation_cancelled,
   liveConversation__generation_complete,
-  liveConversation__generation_seconds_per_audio_second,
-  liveConversation__generation_time,
   liveConversation__hide_answer_text,
   liveConversation__idle,
   liveConversation__image_limit,
@@ -7069,11 +7102,17 @@ export const catalog = {
   liveConversation__input_audio,
   liveConversation__input_audio_cannot_keep_up,
   liveConversation__input_channels,
+  liveConversation__input_finished_early,
+  liveConversation__input_pacing,
+  liveConversation__input_pacing_measurements,
   liveConversation__input_preparation_time,
+  liveConversation__input_queue_limit_reached,
+  liveConversation__input_submission_time,
   liveConversation__input_text,
   liveConversation__instructions,
   liveConversation__interrupt,
   liveConversation__interrupt_and_talk,
+  liveConversation__interrupted_when_page_hidden,
   liveConversation__interruption_help,
   liveConversation__introduction,
   liveConversation__investigation_settings,
@@ -7091,6 +7130,9 @@ export const catalog = {
   liveConversation__loading,
   liveConversation__loading_runtime,
   liveConversation__manage_models_and_runtime,
+  liveConversation__maximum_input_schedule_delay,
+  liveConversation__maximum_output_lateness,
+  liveConversation__maximum_pending_input,
   liveConversation__maximum_session_seconds,
   liveConversation__message_placeholder,
   liveConversation__microphone,
@@ -7098,6 +7140,7 @@ export const catalog = {
   liveConversation__microphone_audio_delay,
   liveConversation__microphone_muted,
   liveConversation__model,
+  liveConversation__model_finished_before_all_input,
   liveConversation__model_inventory_failed,
   liveConversation__model_loaded,
   liveConversation__model_loading_time,
@@ -7112,10 +7155,12 @@ export const catalog = {
   liveConversation__output_audio_cannot_keep_up,
   liveConversation__output_audio_length,
   liveConversation__output_channels,
+  liveConversation__output_lateness_includes_input_and_queue,
   liveConversation__partial_audio,
   liveConversation__partial_conversation_audio,
   liveConversation__partial_generation_saved,
   liveConversation__pending_failed,
+  liveConversation__pending_input_audio,
   liveConversation__pending_limit,
   liveConversation__pending_messages,
   liveConversation__playback_muted,
@@ -7123,13 +7168,18 @@ export const catalog = {
   liveConversation__prepare_next_message,
   liveConversation__preparing_audio,
   liveConversation__preparing_model,
+  liveConversation__preparing_output_audio,
   liveConversation__preparing_runtime,
   liveConversation__preview_image,
+  liveConversation__processing_after_input,
+  liveConversation__processing_remaining_input,
   liveConversation__random_seed,
   liveConversation__reading_model_file,
   liveConversation__ready,
   liveConversation__ready_for_continuous_conversation,
   liveConversation__ready_to_talk,
+  liveConversation__real_time_input_pacing_help,
+  liveConversation__real_time_pace,
   liveConversation__recorded_audio,
   liveConversation__recording,
   liveConversation__refresh_folders,
@@ -7143,7 +7193,6 @@ export const catalog = {
   liveConversation__retained_conversation_audio,
   liveConversation__retained_conversation_audio_help,
   liveConversation__retry_pending,
-  liveConversation__rtf_excludes_preparation,
   liveConversation__run_total,
   liveConversation__runtime_loading_bytes,
   liveConversation__save_input_audio_wav,
@@ -7151,6 +7200,7 @@ export const catalog = {
   liveConversation__save_submitted_input_wav,
   liveConversation__send,
   liveConversation__send_after_response,
+  liveConversation__sending_input_audio,
   liveConversation__session_ended,
   liveConversation__session_setup,
   liveConversation__shell_in_browser,
@@ -7161,10 +7211,12 @@ export const catalog = {
   liveConversation__start_continuous_conversation,
   liveConversation__start_recording,
   liveConversation__start_session,
+  liveConversation__starting_dialogue,
   liveConversation__stop_and_send,
   liveConversation__stop_continuous_conversation,
   liveConversation__stop_response,
   liveConversation__stopping,
+  liveConversation__submitted_input_audio,
   liveConversation__talk,
   liveConversation__text_input,
   liveConversation__text_to_speech,

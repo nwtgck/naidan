@@ -1,0 +1,1 @@
+export const liveConversation__output_lateness_includes_input_and_queue = (): string => "El retraso de salida se mide desde el momento previsto de la entrada correspondiente hasta recibir su salida, sin el fotograma inicial. Incluye programación de entrada, colas de procesamiento y entrega; no es el tiempo hasta una respuesta hablada.";

@@ -11,7 +11,7 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
         this.spy.mockRestore();
       },
     };
-    await using f = await speechFileRunFixture({ pcm: new Float32Array([0.5]), tailSeconds: 0, maxSeconds: 60 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array([0.5]), tailSeconds: 0, maxSeconds: 60, inputPacing: 'fast' });
     f.decodeFile.mockImplementation(async () => {
       time = 25;
       return new Float32Array([0.5]);
@@ -41,7 +41,7 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
 
   it('preserves the source, zero-pads the final frame, and sends explicit trailing silence', async () => {
     const pcm = Float32Array.from({ length: 3201 }, (_, index) => Math.sin(index / 100) * 0.25);
-    await using f = await speechFileRunFixture({ pcm, tailSeconds: 0.2, maxSeconds: 10 });
+    await using f = await speechFileRunFixture({ pcm, tailSeconds: 0.2, maxSeconds: 10, inputPacing: 'fast' });
     await f.runner.run();
     expect(f.model.start).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ seed: 0 }) }));
     expect(f.decodeFile).toHaveBeenCalledWith(expect.objectContaining({ sampleRate: 24000 }));
@@ -87,14 +87,14 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
   });
 
   it('reserves the initial response frame and shortens silence to the actual max_seconds budget', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array([0.5]), tailSeconds: 5, maxSeconds: 0.4 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array([0.5]), tailSeconds: 5, maxSeconds: 0.4, inputPacing: 'fast' });
     await f.runner.run();
     expect(f.push).toHaveBeenCalledTimes(2);
     expect(f.runner.getState()).toMatchObject({ status: 'complete', effectiveTailSeconds: 3200 / 24000, frames: 3, submittedSamples: 6400 });
   });
 
   it('rejects a source that cannot fit without silently truncating it or touching the dialogue', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3201), tailSeconds: 5, maxSeconds: 0.4 - 1 / 24000 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array(3201), tailSeconds: 5, maxSeconds: 0.4 - 1 / 24000, inputPacing: 'fast' });
     await f.runner.run();
     expect(f.runner.getState()).toMatchObject({ status: 'failed', failure: { message: expect.stringContaining('exceed the session duration') } });
     expect(f.model.start).not.toHaveBeenCalled();
@@ -103,7 +103,7 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
   });
 
   it('waits for each input frame and cancels without enqueueing the remaining source', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200 * 4), tailSeconds: 5, maxSeconds: 60 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200 * 4), tailSeconds: 5, maxSeconds: 60, inputPacing: 'fast' });
     const gate = Promise.withResolvers<{ kind: 'continue' }>();
     f.push.mockImplementationOnce(() => gate.promise);
     const running = f.runner.run();
@@ -120,7 +120,7 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
   });
 
   it('cancels a pending decoder immediately and ignores its late completion', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array([0.1]), tailSeconds: 5, maxSeconds: 60 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array([0.1]), tailSeconds: 5, maxSeconds: 60, inputPacing: 'fast' });
     const gate = Promise.withResolvers<Float32Array>();
     f.decodeFile.mockReturnValue(gate.promise);
     const running = f.runner.run();
@@ -136,7 +136,7 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
   });
 
   it('keeps the native error details and marks the initial generated audio partial on failure', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 60 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 60, inputPacing: 'fast' });
     const failure = { code: 'runtime_failed' as const, message: 'Device failed', nativeStatus: -42, nativeInput: 'audio' };
     f.push.mockRejectedValueOnce(new SpeechRuntimeError({ details: failure }));
     await f.runner.run();
@@ -145,7 +145,7 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
   });
 
   it('preserves a native failure after cancellation was requested instead of reporting a clean partial run', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200 * 2), tailSeconds: 0, maxSeconds: 60 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200 * 2), tailSeconds: 0, maxSeconds: 60, inputPacing: 'fast' });
     const gate = Promise.withResolvers<{ kind: 'continue' }>();
     f.push.mockReturnValueOnce(gate.promise);
     const running = f.runner.run();
@@ -160,7 +160,7 @@ describe('bounded Haru file input and exact pre-playback WAV output', () => {
   });
 
   it('records sequence discontinuities and refuses malformed output without turning it into a complete WAV', async () => {
-    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 60 });
+    await using f = await speechFileRunFixture({ pcm: new Float32Array(3200), tailSeconds: 0, maxSeconds: 60, inputPacing: 'fast' });
     const gate = Promise.withResolvers<{ kind: 'continue' }>();
     f.push.mockReturnValue(gate.promise);
     const running = f.runner.run();

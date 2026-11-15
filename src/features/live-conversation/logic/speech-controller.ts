@@ -4,7 +4,7 @@ import type { SpeechClient, SpeechObservers } from '@/features/speech-cpp-browse
 import type { openLiveCapture, LiveCapture } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
 import type { decodeLiveAudioFile } from './audio-file';
-import { createSpeechFileRun, type SpeechFileRunState } from './speech-file-run';
+import { createSpeechFileRun, type SpeechFileRunState, type SpeechInputPacing } from './speech-file-run';
 import { createLiveAudioRetention, type LiveAudioClip } from './audio-retention';
 import { nanoid } from 'nanoid';
 
@@ -360,7 +360,7 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         }
       }
     },
-    async runFile({ file, maxSeconds, language, persona, name, tailSeconds, seed }: { file: File, maxSeconds: number, language: string, persona: string | undefined, name: string | undefined, tailSeconds: number, seed: number }): Promise<void> {
+    async runFile({ file, maxSeconds, language, persona, name, tailSeconds, seed, inputPacing }: { file: File, maxSeconds: number, language: string, persona: string | undefined, name: string | undefined, tailSeconds: number, seed: number, inputPacing: SpeechInputPacing }): Promise<void> {
       if (disposed || microphone || stopping || fileTask || !state.runtime.model || !['ready', 'completed'].includes(state.runtime.phase)) {
         return;
       }
@@ -372,6 +372,7 @@ export function createLiveSpeechController({ createClient, capture, playback, de
         file,
         options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name, seed },
         tailSeconds,
+        inputPacing,
         decodeFile,
         onChange({ state: run }) {
           if (fileRun === current) {

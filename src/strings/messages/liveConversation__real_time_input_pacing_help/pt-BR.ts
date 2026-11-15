@@ -1,0 +1,1 @@
+export const liveConversation__real_time_input_pacing_help = (): string => "Envia o arquivo no ritmo do áudio original. As esperas contam no tempo de execução; não grava o microfone nem reproduz áudio ao vivo.";
