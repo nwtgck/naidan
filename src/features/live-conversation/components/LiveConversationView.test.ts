@@ -8,15 +8,29 @@ import LiveConversationView from './LiveConversationView.vue';
 import { useLiveModelPreference } from '@/features/live-conversation/composables/useLiveModelPreference';
 import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
+import { useLiveSpeechConversation } from '@/features/live-conversation/composables/useLiveSpeechConversation';
+import { createLiveSpeechFixture } from '@/features/live-conversation/logic/speech-controller.test-support';
+import { inspectStoredSpeechModel, openStoredSpeechModel } from '@/features/speech-cpp-browser/models';
+import type { SpeechCapability } from '@/features/speech-cpp-browser/types';
+import { createSpeechClient as createStandaloneSpeechClient } from '@/features/speech-cpp-browser/worker/client-standalone';
+import { speechModelHeader } from '@/features/speech-cpp-browser/worker/model-file.test-support';
+import { File as NativeFile } from 'node:buffer';
+import { createStandaloneFacadeAliases } from '../../../../build/standalone-facades.js';
+import SettingsSelect from '@/components/SettingsSelect.vue';
+import { setLocale } from '@/strings';
 
 const confirm = vi.hoisted(() => vi.fn(async () => true));
+const captureModelFiles = vi.hoisted(() => vi.fn());
+let speechCapability: SpeechCapability = { kind: 'available' };
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: confirm }) }));
 vi.mock('@/features/live-conversation/composables/useLiveModelPreference', () => ({ useLiveModelPreference: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/composables/model-inventory', () => ({ listModelInventory: vi.fn(async () => [{ modelId: 'user/live', size: 1, importedAt: 0 }]) }));
-vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { subscribeModelList: vi.fn(() => vi.fn()) } }));
+vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { subscribeModelList: vi.fn(() => vi.fn()), captureModelFiles } }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue', () => ({ default: defineComponent({ name: 'LiveCatalogStub', props: ['suggestions', 'disabled', 'defaultActionDisabled', 'selectionAction'], emits: ['changed', 'select'], setup: () => () => h('div', { 'data-testid': 'mock-catalog' }) }) }));
 
 vi.mock('@/features/live-conversation/composables/useLiveConversation', () => ({ useLiveConversation: vi.fn() }));
+vi.mock('@/features/live-conversation/composables/useLiveSpeechConversation', () => ({ useLiveSpeechConversation: vi.fn() }));
+vi.mock('@/features/speech-cpp-browser/models', () => ({ inspectStoredSpeechModel: vi.fn(async () => ({ kind: 'other' })), openStoredSpeechModel: vi.fn(async () => new File(['model'], 'model.gguf')) }));
 vi.mock('@/00-storage/service', () => ({ storageService: { listVolumes: async function* () {} } }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({
   default: defineComponent({
@@ -52,6 +66,10 @@ vi.mock('@/components/ModelSelector.vue', () => ({
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  captureModelFiles.mockReset();
+  speechCapability = { kind: 'available' };
+  vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
+  vi.mocked(openStoredSpeechModel).mockResolvedValue(new File(['model'], 'model.gguf'));
   confirm.mockResolvedValue(true);
   vi.mocked(useLiveModelPreference).mockReturnValue({ remembered: computed(() => undefined), remember: vi.fn(async () => {}), TEST_ONLY: {} });
   await ensureAllStringsForTest({ locale: 'en' });
@@ -64,6 +82,13 @@ async function fixture() {
     state.value = next;
   });
   vi.mocked(useLiveConversation).mockReturnValue({ state, controller: f.controller, TEST_ONLY: {} });
+  const speech = createLiveSpeechFixture();
+  speech.controller.capability = speechCapability;
+  const speechState = shallowRef(speech.controller.getState());
+  speech.onChange.mockImplementation(({ state: next }) => {
+    speechState.value = next;
+  });
+  vi.mocked(useLiveSpeechConversation).mockReturnValue({ state: speechState, controller: speech.controller, TEST_ONLY: {} });
   const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:attachment');
   const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
@@ -75,12 +100,14 @@ async function fixture() {
   return {
     ...f,
     state,
+    speech,
     wrapper,
     page,
     async [Symbol.asyncDispose]() {
       wrapper.unmount();
       host.remove();
       await f.controller.dispose();
+      await speech.controller.dispose();
       pause.mockRestore();
       createUrl.mockRestore();
       revokeUrl.mockRestore();
@@ -89,6 +116,256 @@ async function fixture() {
 }
 
 describe('independent live conversation workspace', () => {
+  it('passes an explicit conversation language with persona and preserves it across display-language changes', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    const select = f.wrapper.findComponent(SettingsSelect);
+    expect(select.props('options').map(option => option.value)).toEqual(['de', 'en', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'zh']);
+    select.vm.$emit('update:modelValue', 'fr');
+    await setLocale({ locale: 'ja' });
+    await flushPromises();
+    expect(select.props('modelValue')).toBe('fr');
+    expect(select.props('options').find(option => option.value === 'fr')?.label).toBe('フランス語');
+    await f.page.get('[data-testid="live-instructions"]').setValue('Friendly persona');
+    await f.page.get('[data-testid="live-settings-close"]').trigger('click');
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.start).toHaveBeenCalledWith({ options: { inputSampleRate: 24000, maxSeconds: 120, language: 'fr', persona: 'Friendly persona', name: undefined } });
+  });
+
+  it('does not let a cancelled model resolution overwrite a newer model load', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    const first = Promise.withResolvers<File>();
+    vi.mocked(openStoredSpeechModel).mockReturnValueOnce(first.promise);
+    await using f = await fixture();
+    void f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-cancel-model-loading"]').trigger('click');
+    await flushPromises();
+    const second = Promise.withResolvers<void>();
+    vi.mocked(f.speech.client.loadModel).mockImplementation(async () => {
+      f.speech.change({ state: { phase: 'loading_model' } });
+      await second.promise;
+      f.speech.change({ state: { phase: 'ready', model: { name: 'second', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } } });
+    });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'speech/second', size: 1, importedAt: 0 });
+    await flushPromises();
+    void f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    first.resolve(new File(['late'], 'first.gguf'));
+    await flushPromises();
+    second.resolve();
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('speech/second');
+    expect(f.wrapper.get('[data-testid="live-header-model"]').text()).toBe('second');
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+  });
+
+  it.each(['speech', 'llama'] as const)('clears both engines histories when starting a new conversation from %s', async engine => {
+    await using f = await fixture();
+    async function releaseResident() {
+      await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+      await flushPromises();
+      await f.page.get('[data-testid="live-release"]').trigger('click');
+      await flushPromises();
+    }
+    async function addSpeechHistory() {
+      vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'speech', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+      f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'speech/model', size: 1, importedAt: 0 });
+      await flushPromises();
+      await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+      await flushPromises();
+      await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+      await flushPromises();
+      f.speech.frame({ text: 'Speech history', samples: new Float32Array() });
+      await flushPromises();
+    }
+    async function addLfmHistory() {
+      vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
+      f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'user/live', size: 1, importedAt: 0 });
+      await flushPromises();
+      await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+      await flushPromises();
+      await f.wrapper.get('[data-testid="live-text"]').setValue('LFM history');
+      await f.wrapper.get('form').trigger('submit');
+      await flushPromises();
+    }
+    if (engine === 'speech') {
+      await addLfmHistory();
+      await releaseResident();
+      await addSpeechHistory();
+    } else {
+      await addSpeechHistory();
+      await releaseResident();
+      await addLfmHistory();
+    }
+    expect(f.controller.getState().entries).toHaveLength(1);
+    expect(f.speech.controller.getState().sessions).toHaveLength(1);
+    await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
+    await flushPromises();
+    expect(f.controller.getState().entries).toHaveLength(0);
+    expect(f.speech.controller.getState().sessions).toHaveLength(0);
+  });
+
+  it('cancels model resolution and never loads files returned after cancellation', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    const opening = Promise.withResolvers<File>();
+    vi.mocked(openStoredSpeechModel).mockReturnValue(opening.promise);
+    await using f = await fixture();
+    void f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-cancel-model-loading"]').attributes('disabled')).toBeUndefined();
+    await f.wrapper.get('[data-testid="live-cancel-model-loading"]').trigger('click');
+    await flushPromises();
+    expect(vi.mocked(openStoredSpeechModel).mock.calls[0]?.[0].signal?.aborted).toBe(true);
+    expect(f.speech.client.releaseModel).toHaveBeenCalledOnce();
+    opening.resolve(new File(['late'], 'late.gguf'));
+    await flushPromises();
+    expect(f.speech.client.loadModel).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('offers cancellation while the speech runtime loads a model', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    const loading = Promise.withResolvers<void>();
+    vi.mocked(f.speech.client.loadModel).mockImplementation(async () => {
+      f.speech.change({ state: { phase: 'loading_model' } });
+      await loading.promise;
+    });
+    void f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-cancel-model-loading"]').attributes('disabled')).toBeUndefined();
+    await f.wrapper.get('[data-testid="live-cancel-model-loading"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.releaseModel).toHaveBeenCalledOnce();
+    loading.resolve();
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeUndefined();
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+  });
+
+  it('keeps speech errors and response history when a preselected LFM model becomes active after failure', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    f.speech.frame({ text: 'Previous answer', samples: new Float32Array() });
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
+    await flushPromises();
+    f.speech.change({ state: { phase: 'failed', model: undefined, failure: { code: 'runtime_failed', message: 'Worker stopped', nativeStatus: -9, nativeInput: 'speech_step' } } });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-speech-failure"]').text()).toContain('Worker stopped');
+    expect(f.wrapper.get('[data-testid="live-speech-failure"]').text()).toContain('-9');
+    expect(f.wrapper.get('[data-testid="live-speech-history"]').text()).toContain('Previous answer');
+    expect(f.wrapper.find('[data-testid="live-speech-controls"]').exists()).toBe(false);
+    expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('allows choosing LFM after a failed speech session releases its model', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    f.speech.change({ state: { phase: 'failed', model: undefined, failure: { code: 'runtime_failed', message: 'Worker stopped', nativeStatus: undefined, nativeInput: undefined } } });
+    await flushPromises();
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
+    await flushPromises();
+    expect(f.wrapper.find('[data-testid="live-speech-controls"]').exists()).toBe(false);
+    expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeUndefined();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.runLiveSession).toHaveBeenCalledOnce();
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('next/lfm');
+  });
+
+  it('explains an unavailable speech runtime and prevents sending the model to the LFM engine', async () => {
+    speechCapability = { kind: 'unavailable', reason: 'artifact_unavailable' };
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    expect(f.wrapper.get('[data-testid="live-speech-unavailable"]').text()).toContain('not installed');
+    expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-speech-start"]').attributes('disabled')).toBeDefined();
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+  });
+
+  it('classifies an actual Haru header in standalone and keeps it out of the LM engine', async () => {
+    const header = speechModelHeader({ architecture: 'haru', frameSamples: 3200 });
+    const file = new NativeFile([new Uint8Array(await header.arrayBuffer())], 'arbitrary-model.gguf');
+    captureModelFiles.mockResolvedValue({ primaryRelativePath: file.name, files: [{ relativePath: file.name, file }] });
+    const facade = '@/features/speech-cpp-browser/models';
+    const aliases = createStandaloneFacadeAliases({ resolvePath: path => `${process.cwd()}/${path}` });
+    const replacement = aliases.find(({ find }) => find instanceof RegExp && find.test(facade))?.replacement ?? facade;
+    const models = await vi.importActual<typeof import('@/features/speech-cpp-browser/models')>(replacement);
+    vi.mocked(inspectStoredSpeechModel).mockImplementation(models.inspectStoredSpeechModel);
+    const standalone = createStandaloneSpeechClient({ observers: { onFrame() {}, onState() {} } });
+    speechCapability = standalone.capability;
+    await using f = await fixture();
+    expect(captureModelFiles).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'user/live' }));
+    expect(f.wrapper.get('[data-testid="live-speech-unavailable"]').text()).toContain('hosted version');
+    expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-speech-start"]').attributes('disabled')).toBeDefined();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+    expect(openStoredSpeechModel).not.toHaveBeenCalled();
+    expect(f.speech.client.loadModel).not.toHaveBeenCalled();
+    await standalone.dispose();
+  });
+
+  it('selects continuous speech by metadata and keeps unsupported actions visibly disabled', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'arbitrary-name', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    expect(f.wrapper.get('[data-testid="live-speech-help"]').text()).toContain('microphone');
+    expect(f.wrapper.find('[data-testid="live-composer"]').exists()).toBe(false);
+    expect(f.wrapper.get('[data-testid="live-input-text-enabled"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-input-images-enabled"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-transcription"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-wesh-enabled"]').attributes('disabled')).toBeDefined();
+    const transfer = { types: ['Files'], dropEffect: 'copy', files: [new File(['audio'], 'unused.wav')] };
+    await f.wrapper.get('[data-testid="live-conversation-page"]').trigger('dragenter', { dataTransfer: transfer });
+    await f.wrapper.get('[data-testid="live-conversation-page"]').trigger('dragover', { dataTransfer: transfer });
+    expect(transfer.dropEffect).toBe('none');
+    expect(f.wrapper.find('[data-testid="live-drop-overlay"]').exists()).toBe(false);
+    await f.wrapper.get('[data-testid="live-conversation-page"]').trigger('drop', { dataTransfer: transfer });
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(openStoredSpeechModel).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'user/live' }));
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.start).toHaveBeenCalledWith({ options: { inputSampleRate: 24000, maxSeconds: 120, language: 'en', persona: undefined, name: undefined } });
+    f.speech.frame({ text: 'Continuous answer', samples: new Float32Array([0.3]) });
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-speech-text"]').text()).toBe('Continuous answer');
+    expect(f.wrapper.find('[data-testid="live-input-transcript"]').exists()).toBe(false);
+    await f.wrapper.get('[data-testid="live-speech-mute-microphone"]').trigger('click');
+    expect(f.speech.controller.getState().microphone).toBe('off');
+    expect(f.wrapper.get('[data-testid="live-speech-mute-microphone"]').attributes('aria-pressed')).toBe('true');
+    expect(f.wrapper.get('[data-testid="live-speech-audio-status"]').text()).toContain('muted');
+    await f.wrapper.get('[data-testid="live-speech-mute-playback"]').trigger('click');
+    expect(f.speech.player.mute).toHaveBeenLastCalledWith({ value: 'off' });
+    expect(f.speech.controller.getState().microphone).toBe('off');
+    expect(f.speech.client.stop).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-speech-stop"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.stop).toHaveBeenCalledWith({ mode: 'cancel' });
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    await f.page.get('[data-testid="live-release"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.releaseModel).toHaveBeenCalledOnce();
+  });
+
   it('does not announce readiness before model loading completes', async () => {
     await using f = await fixture();
     f.state.value = { ...f.state.value, phase: 'loading' };

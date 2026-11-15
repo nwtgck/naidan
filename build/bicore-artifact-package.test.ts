@@ -9,10 +9,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { readBicoreArtifactPackage } from './bicore-artifact-package';
 
-type Runtime = 'llama-cpp' | 'stable-diffusion-cpp';
+type Runtime = 'llama-cpp' | 'stable-diffusion-cpp' | 'speech-cpp';
 type Entry = { path: string, bytes: number, sha256: string };
 
-function fixture({ runtime }: { runtime: Runtime }) {
+function fixture({ runtime, formatVersion }: { runtime: Runtime, formatVersion: 5 | 6 }) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'naidan-bicore-manifest-'));
   const prefix = `runtimes/${runtime}-browser-core/`;
   const relative = 'profiles/fixture/browser/core.wasm';
@@ -20,11 +20,12 @@ function fixture({ runtime }: { runtime: Runtime }) {
   const entry = ({ relative, data }: { relative: string, data: Buffer }): Entry => ({ path: relative, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') });
   const inner = { formatVersion: 2, runtime: runtime as string, sourceCommit: 'a'.repeat(40), files: [entry({ relative, data: payload })] };
   const root = {
-    formatVersion: 5,
+    formatVersion: formatVersion as number,
     sourceCommit: inner.sourceCommit,
     runtimes: {
       'llama-cpp': { manifest: 'runtimes/llama-cpp-browser-core/manifest.json', manifestFormatVersion: 2 },
       'stable-diffusion-cpp': { manifest: 'runtimes/stable-diffusion-cpp-browser-core/manifest.json', manifestFormatVersion: 2 },
+      ...(formatVersion === 6 ? { 'speech-cpp': { manifest: 'runtimes/speech-cpp-browser-core/manifest.json', manifestFormatVersion: 2 } } : {}),
     },
     files: [] as Entry[],
   };
@@ -60,13 +61,19 @@ function fixture({ runtime }: { runtime: Runtime }) {
   };
 }
 
-describe.each(['llama-cpp', 'stable-diffusion-cpp'] as const)('bicore %s manifest boundary', runtime => {
+describe.each([
+  { runtime: 'llama-cpp', formatVersion: 5 },
+  { runtime: 'stable-diffusion-cpp', formatVersion: 5 },
+  { runtime: 'llama-cpp', formatVersion: 6 },
+  { runtime: 'stable-diffusion-cpp', formatVersion: 6 },
+  { runtime: 'speech-cpp', formatVersion: 6 },
+] as const)('bicore $runtime root $formatVersion manifest boundary', ({ runtime, formatVersion }) => {
   it('validates metadata without touching payloads or the unselected runtime', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     rmSync(test.filePath);
     const artifact = test.read();
     expect(artifact.sourceCommit).toBe(test.root.sourceCommit);
-    expect(artifact.rootMetadata).toEqual({ formatVersion: 5, sourceCommit: test.root.sourceCommit });
+    expect(artifact.rootMetadata).toEqual({ formatVersion, sourceCommit: test.root.sourceCommit });
     expect(artifact.runtimeMetadata).toEqual(test.inner);
     expect(artifact.manifest).toEqual(test.inner);
     expect([...artifact.files.keys()]).toEqual([test.relative]);
@@ -77,21 +84,21 @@ describe.each(['llama-cpp', 'stable-diffusion-cpp'] as const)('bicore %s manifes
   });
 
   it('checks content when a payload is actually requested', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     writeFileSync(test.filePath, Buffer.alloc(test.payload.length));
     const artifact = test.read();
     expect(() => artifact.readArtifact({ relative: test.relative })).toThrow('integrity mismatch');
   });
 
   it('checks actual size before allocating an oversized payload', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     const artifact = test.read();
     truncateSync(test.filePath, 1024 * 1024);
     expect(() => artifact.readArtifact({ relative: test.relative })).toThrow('size mismatch');
   });
 
   it('applies the caller limit even if both inventories agree on size', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     const bytes = 4096;
     test.inner.files[0]!.bytes = bytes;
     test.save();
@@ -101,21 +108,21 @@ describe.each(['llama-cpp', 'stable-diffusion-cpp'] as const)('bicore %s manifes
   });
 
   it('rejects a root inventory that contains unlisted runtime files', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     test.root.files.push({ ...test.root.files[0]!, path: test.prefix + 'unlisted.wasm' });
     test.saveRoot();
     expect(() => test.read()).toThrow('root inventory contains a runtime payload');
   });
 
   it('rejects a selected manifest absent from the root inventory', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     test.root.files.shift();
     test.saveRoot();
     expect(() => test.read()).toThrow('Missing bicore artifact');
   });
 
   it.each(['bytes', 'sha256'] as const)('rejects mismatched parent %s before reading payloads', field => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     if (field === 'bytes') {
 test.root.files[0]!.bytes++;
     } else {
@@ -126,7 +133,7 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
   });
 
   it.each(['root', 'inner'] as const)('rejects duplicate %s entries', scope => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     if (scope === 'root') {
       test.root.files.push(test.root.files[0]!);
       test.saveRoot();
@@ -138,7 +145,7 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
   });
 
   it('rejects different source commits and runtime ownership', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     test.inner.sourceCommit = 'b'.repeat(40);
     test.save();
     expect(() => test.read()).toThrow('Mixed runtime');
@@ -149,22 +156,22 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
   });
 
   it.each(['../escape', '/absolute', 'C:\\absolute', 'a//b', 'a/./b', 'a/../b', 'a\\b'])('rejects an unsafe inventory path %s', unsafe => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     test.inner.files[0]!.path = unsafe;
     test.save();
     expect(() => test.read()).toThrow('Unsafe');
   });
 
   it('rejects unsafe and unlisted caller paths', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     const artifact = test.read();
     expect(() => artifact.readArtifact({ relative: '../manifest.json' })).toThrow('Unsafe');
     expect(() => artifact.readArtifact({ relative: 'missing.wasm' })).toThrow('Missing runtime artifact');
   });
 
   it('rejects symlinks escaping the package even when bytes match', () => {
-    using test = fixture({ runtime });
-    using outside = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
+    using outside = fixture({ runtime, formatVersion });
     rmSync(test.filePath);
     symlinkSync(outside.filePath, test.filePath);
     const artifact = test.read();
@@ -172,18 +179,22 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
   });
 
   it('rejects legacy root versions and redirected runtime manifests', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     test.root.formatVersion = 3;
     test.saveRoot();
     expect(() => test.read()).toThrow();
-    test.root.formatVersion = 5;
-    test.root.runtimes[runtime].manifest = 'manifest.json';
+    test.root.formatVersion = formatVersion;
+    const binding = test.root.runtimes[runtime];
+    if (binding === undefined) {
+      throw new Error('Missing selected fixture runtime');
+    }
+    binding.manifest = 'manifest.json';
     test.saveRoot();
     expect(() => test.read()).toThrow();
   });
 
   it('verifies the selected manifest bytes before parsing', () => {
-    using test = fixture({ runtime });
+    using test = fixture({ runtime, formatVersion });
     const manifestPath = path.join(test.directory, test.prefix, 'manifest.json');
     const bytes = readFileSync(manifestPath);
     writeFileSync(manifestPath, Buffer.alloc(bytes.length, 32));
@@ -191,13 +202,25 @@ test.root.files[0]!.sha256 = '0'.repeat(64);
   });
 });
 
+it('keeps speech unavailable in a two-runtime root and requires its binding in root 6', () => {
+  using test = fixture({ runtime: 'speech-cpp', formatVersion: 6 });
+  test.root.formatVersion = 5;
+  test.saveRoot();
+  expect(() => test.read()).toThrow('does not include runtime: speech-cpp');
+  test.root.formatVersion = 6;
+  delete test.root.runtimes['speech-cpp'];
+  test.saveRoot();
+  expect(() => test.read()).toThrow();
+});
+
 // Vitest's transformed imports can accept an extensionless TypeScript dependency
 // that Node's native config loader rejects. Exercise the real consumer entries
 // in a separate untransformed process, without loading any runtime payload.
-it('loads both build consumers through native TypeScript imports', async () => {
+it('loads all build consumers through native TypeScript imports', async () => {
   const entries = [
     { file: 'src/features/llama-cpp-browser/build-artifact-package.ts', exported: 'readLlamaArtifactPackage' },
     { file: 'src/features/stable-diffusion-cpp-browser/build-runtime.ts', exported: 'readImageArtifacts' },
+    { file: 'src/features/speech-cpp-browser/build-runtime.ts', exported: 'readSpeechArtifacts' },
   ].map(({ file, exported }) => ({ url: pathToFileURL(path.resolve(file)).href, exported }));
   const source = `\
     for (const { url, exported } of ${JSON.stringify(entries)}) {
