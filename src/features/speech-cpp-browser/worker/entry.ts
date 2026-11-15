@@ -5,6 +5,7 @@ import { speechAudioSchema, speechLoadSchema, speechStopSchema, speechStateEnvel
 import { loadSpeechCore } from './core-loader';
 import { openNativeSpeechModel } from './native-model';
 import type { SpeechArtifact } from '@/features/speech-cpp-browser/artifacts';
+import { createSpeechLoadReporter } from './load-progress';
 
 // FileReaderSync belongs only to this dedicated Worker realm.
 interface SyncBlobReader {
@@ -15,13 +16,14 @@ declare const FileReaderSync: { new(): SyncBlobReader };
 let selected: { artifact: SpeechArtifact, baseUrl: string } | undefined;
 const session = createSpeechSession({
   maxQueuedSeconds: 2,
-  openModel: async ({ file, signal }) => {
+  openModel: async ({ file, signal, onProgress }) => {
     if (selected === undefined) {
       throw new Error('Missing speech artifact selection');
     }
-    const loaded = await loadSpeechCore(selected);
+    const report = createSpeechLoadReporter({ onProgress, now: () => performance.now() });
+    const loaded = await loadSpeechCore({ ...selected, onProgress: report });
     const reader = new FileReaderSync();
-    return openNativeSpeechModel({ ...loaded, file, signal, readBlob: ({ blob }) => reader.readAsArrayBuffer(blob) });
+    return openNativeSpeechModel({ ...loaded, file, signal, readBlob: ({ blob }) => reader.readAsArrayBuffer(blob), onProgress: report });
   },
   observers: {
     onFrame({ frame }) {

@@ -12,6 +12,22 @@ function resample({ input, inputRate, chunk }: { input: Float32Array, inputRate:
 }
 
 describe('live microphone resampling', () => {
+  it.each([44100, 48000])('preserves the Haru 24 kHz timeline across irregular %s Hz capture packets', inputRate => {
+    const input = Float32Array.from({ length: inputRate / 10 }, (_, index) => 0.25 * Math.sin(2 * Math.PI * 1000 * index / inputRate));
+    const outputs = [137, 2048].map(chunk => {
+      const resampler = createLiveResampler({ inputRate, outputRate: 24000 });
+      const samples: number[] = [];
+      for (let offset = 0; offset < input.length; offset += chunk) {
+        samples.push(...resampler.push({ pcm: input.subarray(offset, offset + chunk) }));
+      }
+      samples.push(...resampler.finish());
+      return Float32Array.from(samples);
+    });
+    expect(outputs[0]).toHaveLength(2400);
+    expect(outputs[0]).toEqual(outputs[1]);
+    expect(Math.max(...outputs[0]!)).toBeCloseTo(0.25, 2);
+  });
+
   it.each([44100, 48000, 16000, 8000, 96000])('preserves duration and chunk invariance at %s Hz', inputRate => {
     const input = Float32Array.from({ length: inputRate }, (_, i) => 0.3 * Math.sin(2 * Math.PI * 1000 * i / inputRate));
     const a = resample({ input, inputRate, chunk: 1024 });

@@ -3,6 +3,8 @@ import { speechFailure, speechSampleRate } from '@/features/speech-cpp-browser/t
 import type { SpeechClient, SpeechObservers } from '@/features/speech-cpp-browser/worker/types';
 import type { openLiveCapture, LiveCapture } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
+import type { decodeLiveAudioFile } from './audio-file';
+import { createSpeechFileRun, type SpeechFileRunState } from './speech-file-run';
 
 export type LiveSpeechSession = { id: string, modelName: string, text: string, completion: SpeechCompletionReason | undefined };
 export type LiveSpeechState = {
@@ -13,26 +15,29 @@ export type LiveSpeechState = {
   playing: boolean,
   warning: 'input-backpressure' | 'output-backpressure' | undefined,
   failure: SpeechFailure | undefined,
+  fileRun: SpeechFileRunState | undefined,
 };
 
 export function initialLiveSpeechState(): LiveSpeechState {
   return {
-    runtime: { phase: 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined },
+    runtime: { phase: 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined, loadProgress: undefined },
     sessions: [],
     microphone: 'on',
     capture: 'closed',
     playing: false,
     warning: undefined,
     failure: undefined,
+    fileRun: undefined,
   };
 }
 
 /** A session is a continuous, simultaneous input/output stream. It does not
  * emulate the turn IDs, transcription or rollback of the LFM live protocol. */
-export function createLiveSpeechController({ createClient, capture, playback, onChange }: {
+export function createLiveSpeechController({ createClient, capture, playback, decodeFile, onChange }: {
   createClient: ({ observers }: { observers: SpeechObservers }) => SpeechClient,
   capture: typeof openLiveCapture,
   playback: typeof createLivePlayback,
+  decodeFile: typeof decodeLiveAudioFile,
   onChange: ({ state }: { state: LiveSpeechState }) => void,
 }) {
   let disposed = false;
@@ -43,6 +48,8 @@ export function createLiveSpeechController({ createClient, capture, playback, on
   let queuedOutputSamples = 0;
   let outputEpoch = 0;
   let stopping: Promise<void> | undefined;
+  let fileRun: ReturnType<typeof createSpeechFileRun> | undefined;
+  let fileTask: Promise<void> | undefined;
   let audible: 'on' | 'off' = 'on';
   let state = initialLiveSpeechState();
   function publish({ change }: { change: Partial<LiveSpeechState> }): void {
@@ -76,10 +83,15 @@ export function createLiveSpeechController({ createClient, capture, playback, on
           return;
         }
         publish({ change: { runtime, failure: runtime.failure ?? state.failure } });
+        if (fileTask) {
+          fileRun?.onState();
+        }
         switch (runtime.phase) {
         case 'completed':
           endCapture();
-          publish({ change: { sessions: state.sessions.map(session => session.id === sessionId ? { ...session, completion: runtime.completion } : session) } });
+          if (!fileTask) {
+            publish({ change: { sessions: state.sessions.map(session => session.id === sessionId ? { ...session, completion: runtime.completion } : session) } });
+          }
           break;
         case 'failed': case 'unloaded': case 'disposed':
           endCapture();
@@ -93,7 +105,14 @@ export function createLiveSpeechController({ createClient, capture, playback, on
         }
       },
       onFrame({ frame }) {
-        if (disposed || !sessionId || !['starting', 'running', 'stopping'].includes(state.runtime.phase)) {
+        if (disposed) {
+          return;
+        }
+        if (fileTask) {
+          fileRun?.onFrame({ frame });
+          return;
+        }
+        if (!sessionId || !['starting', 'running', 'stopping'].includes(state.runtime.phase)) {
           return;
         }
         if (frame.text) {
@@ -128,6 +147,23 @@ export function createLiveSpeechController({ createClient, capture, playback, on
   });
   state = { ...state, runtime: client.getState() };
 
+  async function clearFileRun(): Promise<void> {
+    const current = fileRun;
+    // Drop retained audio immediately, even while native cancellation is pending.
+    current?.clear();
+    if (fileRun === current) {
+      fileRun = undefined;
+      publish({ change: { fileRun: undefined } });
+    }
+    try {
+      if (fileTask) {
+        await current?.stop({ mode: 'cancel' });
+      }
+    } catch (error) {
+      publish({ change: { failure: speechFailure({ error }) } });
+    }
+  }
+
   async function stop({ mode }: { mode: 'finish' | 'cancel' }): Promise<void> {
     endCapture();
     switch (mode) {
@@ -139,11 +175,14 @@ export function createLiveSpeechController({ createClient, capture, playback, on
       throw new Error(String(exhaustive));
     }
     }
-    stopping ??= client.stop({ mode }).catch(error => {
+    const stopped = fileTask && fileRun ? fileRun.stop({ mode }) : client.stop({ mode });
+    const observed = stopped.catch(error => {
       publish({ change: { failure: speechFailure({ error }) } });
-    }).finally(() => {
+    });
+    stopping ??= observed.finally(() => {
       stopping = undefined;
     });
+    await observed;
     await stopping;
   }
 
@@ -153,13 +192,14 @@ export function createLiveSpeechController({ createClient, capture, playback, on
     async load({ file }: { file: File }): Promise<void> {
       publish({ change: { failure: undefined, warning: undefined } });
       try {
+        await clearFileRun();
         await client.loadModel({ file });
       } catch (error) {
         publish({ change: { failure: speechFailure({ error }) } });
       }
     },
     async start({ maxSeconds, language, persona, name }: { maxSeconds: number, language: string, persona: string | undefined, name: string | undefined }): Promise<void> {
-      if (disposed || microphone || stopping || !state.runtime.model || !['ready', 'completed'].includes(state.runtime.phase)) {
+      if (disposed || microphone || stopping || fileTask || !state.runtime.model || !['ready', 'completed'].includes(state.runtime.phase)) {
         return;
       }
       const modelName = state.runtime.model.name;
@@ -214,7 +254,7 @@ export function createLiveSpeechController({ createClient, capture, playback, on
         player.begin();
         sessionId = crypto.randomUUID();
         publish({ change: { sessions: [...state.sessions, { id: sessionId, modelName, text: '', completion: undefined }] } });
-        await client.start({ options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name } });
+        await client.start({ options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name, seed: undefined } });
       } catch (error) {
         if (!current.lifetime.signal.aborted && !disposed) {
           fail({ error });
@@ -226,6 +266,38 @@ export function createLiveSpeechController({ createClient, capture, playback, on
         }
       }
     },
+    async runFile({ file, maxSeconds, language, persona, name, tailSeconds, seed }: { file: File, maxSeconds: number, language: string, persona: string | undefined, name: string | undefined, tailSeconds: number, seed: number }): Promise<void> {
+      if (disposed || microphone || stopping || fileTask || !state.runtime.model || !['ready', 'completed'].includes(state.runtime.phase)) {
+        return;
+      }
+      fileRun?.clear();
+      endOutput();
+      publish({ change: { failure: undefined, warning: undefined, fileRun: undefined } });
+      const current = createSpeechFileRun({
+        client,
+        file,
+        options: { inputSampleRate: speechSampleRate, maxSeconds, language, persona, name, seed },
+        tailSeconds,
+        decodeFile,
+        onChange({ state: run }) {
+          if (fileRun === current) {
+            publish({ change: { fileRun: run, failure: run.failure ?? state.failure } });
+          }
+        },
+      });
+      fileRun = current;
+      // Reserve the file lane before start can synchronously emit a frame.
+      const running = Promise.resolve().then(() => current.run());
+      fileTask = running;
+      try {
+        await running;
+      } finally {
+        if (fileTask === running) {
+          fileTask = undefined;
+        }
+      }
+    },
+    clearFileRun,
     stop,
     muteMicrophone({ value }: { value: 'on' | 'off' }): void {
       publish({ change: { microphone: value } });
@@ -243,6 +315,7 @@ export function createLiveSpeechController({ createClient, capture, playback, on
       endCapture();
       endOutput();
       try {
+        await clearFileRun();
         await client.releaseModel();
       } catch (error) {
         publish({ change: { failure: speechFailure({ error }) } });
@@ -259,6 +332,7 @@ export function createLiveSpeechController({ createClient, capture, playback, on
       endCapture();
       endOutput();
       try {
+        await clearFileRun();
         await client.dispose();
       } finally {
         await player?.close();

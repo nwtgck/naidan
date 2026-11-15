@@ -31,7 +31,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
     return createUnavailableSpeechClient({ reason: 'jspi_unavailable', observers });
   }
   const artifact = configuration.artifact;
-  let state: SpeechState = { phase: 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined };
+  let state: SpeechState = { phase: 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined, loadProgress: undefined };
   let workerState: WorkerState | undefined;
   let disposed = false, stopping = false, pumping: Promise<void> | undefined;
   let inputSampleRate = 0, retainedSamples = 0, generation = 0;
@@ -58,7 +58,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
       queue.length = 0;
       retainedSamples = 0;
       pumping = undefined;
-      state = { phase: disposed ? 'disposed' : failure === undefined ? 'unloaded' : 'failed', model: undefined, queuedSamples: 0, completion: undefined, failure: disposed ? undefined : failure };
+      state = { phase: disposed ? 'disposed' : failure === undefined ? 'unloaded' : 'failed', model: undefined, queuedSamples: 0, completion: undefined, failure: disposed ? undefined : failure, loadProgress: undefined };
       notify();
     }
   }
@@ -137,7 +137,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
     } finally {
       retire({ target, failure: undefined });
       if (workerState === undefined || workerState === target) {
-        state = { phase: disposed ? 'disposed' : 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined };
+        state = { phase: disposed ? 'disposed' : 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined, loadProgress: undefined };
         notify();
       }
     }
@@ -157,13 +157,13 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
       if (disposed || ownGeneration !== generation) {
         throw speechError({ code: 'invalid_state', message: 'Speech client is disposed' });
       }
-      state = { phase: 'loading_model', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined };
+      state = { phase: 'loading_model', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined, loadProgress: { stage: 'preparing_runtime' } };
       notify();
       let worker: Worker;
       try {
         worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'speech-cpp-browser' });
       } catch (error) {
-        state = { ...state, phase: 'failed', failure: speechFailure({ error }) };
+        state = { ...state, phase: 'failed', failure: speechFailure({ error }), loadProgress: undefined };
         notify();
         throw error;
       }
@@ -172,7 +172,7 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
         remote = wrapWorkerRemote<SpeechWorker>({ endpoint: worker });
       } catch (error) {
         worker.terminate();
-        state = { ...state, phase: 'failed', failure: speechFailure({ error }) };
+        state = { ...state, phase: 'failed', failure: speechFailure({ error }), loadProgress: undefined };
         notify();
         throw error;
       }

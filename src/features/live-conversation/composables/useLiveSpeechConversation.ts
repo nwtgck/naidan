@@ -3,6 +3,7 @@ import { createSpeechClient } from '@/features/speech-cpp-browser/worker/client'
 import { createLiveSpeechController, initialLiveSpeechState } from '@/features/live-conversation/logic/speech-controller';
 import { openLiveCapture } from '@/features/live-conversation/logic/audio-capture';
 import { createLivePlayback } from '@/features/live-conversation/logic/audio-playback';
+import { decodeLiveAudioFile } from '@/features/live-conversation/logic/audio-file';
 
 export function useLiveSpeechConversation() {
   const state = shallowRef(initialLiveSpeechState());
@@ -10,6 +11,7 @@ export function useLiveSpeechConversation() {
     createClient: createSpeechClient,
     capture: openLiveCapture,
     playback: createLivePlayback,
+    decodeFile: decodeLiveAudioFile,
     onChange: ({ state: next }) => {
       state.value = next;
     },

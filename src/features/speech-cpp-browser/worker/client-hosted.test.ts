@@ -164,7 +164,7 @@ it('publishes drained queue ownership after the final worker notification preced
   await using fixture = clientFixture();
   await fixture.client.loadModel({ file: new File([], 'queue.gguf') });
   emitState({ remote, phase: 'ready', model: info });
-  await fixture.client.start({ options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined } });
+  await fixture.client.start({ options: { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: undefined } });
   emitState({ remote, phase: 'running', model: info });
   expect(fixture.client.push({ samples: new Float32Array(1000), sampleRate: 24000 })).toEqual({ kind: 'accepted' });
   expect(fixture.states.at(-1)?.queuedSamples).toBe(1000);

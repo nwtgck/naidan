@@ -1,11 +1,59 @@
 import { describe, expect, it } from 'vitest';
 import { createSpeechSession } from './session';
 import { speechSessionFixture, startOptions } from './session.test-support';
-import { speechFrameSamples, SpeechRuntimeError, type SpeechDialoguePort } from '@/features/speech-cpp-browser/types';
+import { speechFrameSamples, SpeechRuntimeError, type SpeechDialoguePort, type SpeechLoadProgress, type SpeechState } from '@/features/speech-cpp-browser/types';
 
 const file = new File(['model fixture'], 'Haru.gguf');
 
 describe('speech session lane and ownership', () => {
+  it('publishes load progress only while the matching model is loading and clears it at readiness', async () => {
+    await using fixture = speechSessionFixture({ start: undefined, push: undefined });
+    let emit: (({ progress }: { progress: SpeechLoadProgress }) => void) | undefined;
+    const states: SpeechState[] = [];
+    const client = createSpeechSession({
+      openModel: async ({ onProgress }) => {
+        emit = onProgress;
+        onProgress({ progress: { stage: 'reading_model', readBytes: 40, totalBytes: 100 } });
+        return fixture.model;
+      },
+      observers: { onFrame() {}, onState: ({ state }) => states.push(state) },
+      maxQueuedSeconds: 1,
+    });
+    await using resource = {
+      async [Symbol.asyncDispose]() {
+        await client.dispose();
+      },
+    };
+    await client.loadModel({ file });
+    expect(states).toContainEqual(expect.objectContaining({ phase: 'loading_model', loadProgress: { stage: 'reading_model', readBytes: 40, totalBytes: 100 } }));
+    expect(client.getState()).toMatchObject({ phase: 'ready', loadProgress: undefined });
+    emit?.({ progress: { stage: 'reading_model', readBytes: 100, totalBytes: 100 } });
+    expect(client.getState().loadProgress).toBeUndefined();
+    void resource;
+  });
+
+  it.each([0, Number.MAX_SAFE_INTEGER])('passes an explicit seed %s without replacing zero with a random seed', async seed => {
+    let received: number | undefined;
+    await using fixture = speechSessionFixture({
+      push: undefined,
+      start: async ({ options }) => {
+        received = options.seed;
+        return fixture.dialogue;
+      },
+    });
+    await fixture.client.loadModel({ file });
+    await fixture.client.start({ options: { ...startOptions, seed } });
+    expect(received).toBe(seed);
+  });
+
+  it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid seed %s before entering the model', async seed => {
+    await using fixture = speechSessionFixture({ push: undefined, start: undefined });
+    await fixture.client.loadModel({ file });
+    await expect(fixture.client.start({ options: { ...startOptions, seed } })).rejects.toThrow('safe non-negative integer');
+    expect(fixture.events).not.toContain('start');
+    expect(fixture.client.getState().phase).toBe('ready');
+  });
+
   it('copies callback-owned PCM before start returns and tolerates its later reuse', async () => {
     const entered = Promise.withResolvers<void>(), gate = Promise.withResolvers<void>();
     const borrowed = new Float32Array(speechFrameSamples).fill(0.5);

@@ -1,11 +1,11 @@
 import { copySpeechFrame } from './audio-frame';
-import { speechError, speechFailure, type SpeechDialoguePort, type SpeechModelPort, type SpeechPhase, type SpeechCompletionReason, type SpeechFailure, type SpeechStartOptions, type SpeechPushResult, type SpeechState } from '@/features/speech-cpp-browser/types';
+import { speechError, speechFailure, type SpeechDialoguePort, type SpeechModelPort, type SpeechPhase, type SpeechCompletionReason, type SpeechFailure, type SpeechStartOptions, type SpeechPushResult, type SpeechState, type SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
 import type { SpeechClient, SpeechObservers } from '@/features/speech-cpp-browser/worker/types';
 
 /** One model lane. Only synchronous cancellation can bypass the lane.
  * The adapter owns C handles; this coordinator owns their ordered lifetime. */
 export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: {
-  openModel: ({ file, signal }: { file: File, signal: AbortSignal }) => Promise<SpeechModelPort>,
+  openModel: ({ file, signal, onProgress }: { file: File, signal: AbortSignal, onProgress: ({ progress }: { progress: SpeechLoadProgress }) => void }) => Promise<SpeechModelPort>,
   observers: SpeechObservers, maxQueuedSeconds: number,
 }): SpeechClient & { waitForInput(): Promise<void> } {
   if (!Number.isFinite(maxQueuedSeconds) || maxQueuedSeconds <= 0 || maxQueuedSeconds > 10) {
@@ -17,6 +17,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
   let inputSampleRate = 0, queuedSamples = 0, sequence = 0, sessionId = 0;
   let completion: SpeechCompletionReason | undefined;
   let failure: SpeechFailure | undefined;
+  let loadProgress: SpeechLoadProgress | undefined;
   let callbackFailure: unknown;
   let stopMode: 'finish' | 'cancel' | undefined;
   let stopPromise: Promise<void> | undefined;
@@ -25,7 +26,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
   let lane = Promise.resolve();
 
   function getState(): SpeechState {
-    return { phase, model: model === undefined ? undefined : { ...model.info }, queuedSamples, completion, failure };
+    return { phase, model: model === undefined ? undefined : { ...model.info }, queuedSamples, completion, failure, loadProgress };
   }
   function notify(): void {
     try {
@@ -54,6 +55,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
   }
   async function fail({ error }: { error: unknown }): Promise<void> {
     failure = speechFailure({ error });
+    loadProgress = undefined;
     stopMode = 'cancel';
     try {
       model?.cancel();
@@ -136,6 +138,7 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
         } finally {
           failure = undefined;
           completion = undefined;
+          loadProgress = undefined;
           setPhase({ value: disposing ? 'disposed' : 'unloaded' });
         }
       },
@@ -155,17 +158,28 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
       completion = undefined;
       const controller = new AbortController();
       loadController = controller;
+      loadProgress = { stage: 'preparing_runtime' };
       setPhase({ value: 'loading_model' });
       await schedule({
         operation: async () => {
           try {
-            const opened = await openModel({ file, signal: controller.signal });
+            const opened = await openModel({
+              file,
+              signal: controller.signal,
+              onProgress({ progress }) {
+                if (loadController === controller && !controller.signal.aborted && !disposing && phase === 'loading_model') {
+                  loadProgress = progress;
+                  notify();
+                }
+              },
+            });
             if (controller.signal.aborted || disposing) {
               await opened.release();
               controller.signal.throwIfAborted();
               throw speechError({ code: 'invalid_state', message: 'Speech model load was superseded' });
             }
             model = opened;
+            loadProgress = undefined;
             setPhase({ value: 'ready' });
           } catch (error) {
             if (!controller.signal.aborted) {
@@ -187,6 +201,9 @@ export function createSpeechSession({ openModel, observers, maxQueuedSeconds }: 
       }
       if (!Number.isSafeInteger(options.inputSampleRate) || options.inputSampleRate < 8000 || options.inputSampleRate > 192000 || !Number.isFinite(options.maxSeconds) || options.maxSeconds <= 0 || options.maxSeconds > 3600 || !options.language.trim()) {
         throw speechError({ code: 'invalid_audio', message: 'Invalid speech session audio rate or duration' });
+      }
+      if (options.seed !== undefined && (!Number.isSafeInteger(options.seed) || options.seed < 0)) {
+        throw speechError({ code: 'invalid_state', message: 'Speech seed must be a safe non-negative integer' });
       }
       const current = model;
       const id = ++sessionId;

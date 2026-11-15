@@ -28,8 +28,9 @@ export type SpeechFileSource = {
 
 /** Synchronous worker I/O is injected so no whole-model arrayBuffer is needed.
  * Keep offsets as safe JS numbers, including source positions above 4 GiB. */
-export function createSpeechFileSource({ file, readBlob, maxReadBytes }: {
+export function createSpeechFileSource({ file, readBlob, maxReadBytes, onRead }: {
   file: Blob, readBlob: ({ blob }: { blob: Blob }) => ArrayBuffer, maxReadBytes: number,
+  onRead: (({ offset, length }: { offset: number, length: number }) => void) | undefined,
 }): SpeechFileSource {
   if (!Number.isSafeInteger(file.size) || file.size < 24 || !Number.isSafeInteger(maxReadBytes) || maxReadBytes < 24 || maxReadBytes > 8 * 1024 * 1024) {
     throw speechError({ code: 'invalid_model', message: 'Invalid speech model range-reader limits' });
@@ -49,6 +50,7 @@ export function createSpeechFileSource({ file, readBlob, maxReadBytes }: {
         throw speechError({ code: 'invalid_model', message: 'Speech model file could not be read completely' });
       }
       destination.set(bytes);
+      onRead?.({ offset, length: bytes.length });
       return bytes.length;
     },
   };

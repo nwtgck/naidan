@@ -116,6 +116,167 @@ async function fixture() {
 }
 
 describe('independent live conversation workspace', () => {
+  it.each(['en', 'ja'] as const)('explains the language instruction requirement in both settings surfaces without adding hidden instructions (%s)', async locale => {
+    await ensureAllStringsForTest({ locale });
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await flushPromises();
+    const expected = locale === 'ja'
+      ? '会話の言語を指定するには、指示も入力してください。指示が空の場合、別の言語で応答することがあります。'
+      : 'To set the conversation language, also enter instructions. If the instructions are empty, the model may respond in another language.';
+    const normalHelp = f.page.get('[data-testid="live-speech-language-help"]');
+    expect(normalHelp.text()).toBe(expected);
+    expect(f.page.get('[data-testid="live-speech-language"]').attributes('aria-describedby')).toBe(normalHelp.attributes('id'));
+    expect(f.page.get<HTMLTextAreaElement>('[data-testid="live-instructions"]').element.value).toBe('');
+    await f.page.get('[data-testid="live-settings-close"]').trigger('click');
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const diagnosticHelp = f.wrapper.get('[data-testid="live-diagnostics-language-help"]');
+    expect(diagnosticHelp.text()).toBe(expected);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-language"]').attributes('aria-describedby')).toBe(diagnosticHelp.attributes('id'));
+    expect(diagnosticHelp.attributes('id')).not.toBe(normalHelp.attributes('id'));
+    expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="live-diagnostics-instructions"]').element.value).toBe('');
+    const file = new File(['audio'], 'language.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: locale, persona: undefined, name: undefined, tailSeconds: 5, seed: 0 });
+  });
+
+  it('runs the same audio twice without opening the microphone or reloading the model', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    expect(f.wrapper.find('[data-testid="live-speech-controls"]').exists()).toBe(false);
+    expect(f.wrapper.find('[data-testid="live-composer-footer"]').exists()).toBe(false);
+    const file = new File(['audio'], 'same-input.wav', { type: 'audio/wav' });
+    const picker = f.wrapper.get<HTMLInputElement>('[data-testid="live-diagnostics-file"]');
+    Object.defineProperty(picker.element, 'files', { configurable: true, value: [file] });
+    await picker.trigger('change');
+    vi.mocked(f.speech.client.push).mockImplementation(() => {
+      const samples = new Float32Array(3200);
+      samples.set([0.125, -0.25]);
+      f.speech.frame({ text: 'Reply ', samples });
+      return { kind: 'accepted' };
+    });
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.controller.getState().fileRun?.status).toBe('complete');
+    expect(f.speech.controller.getState().sessions).toHaveLength(0);
+    expect(f.speech.controller.getState().fileRun?.text).toContain('Reply');
+    const firstId = f.speech.controller.getState().fileRun?.id;
+    expect(firstId).toMatch(/^[\w-]{21}$/);
+    const firstOutputName = `naidan-same-input-${firstId}-response.wav`;
+    const firstInputName = `naidan-same-input-${firstId}-input.wav`;
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('download')).toBe(firstOutputName);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('download')).toBe(firstInputName);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe('same-input.wav');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-text"]').text()).toContain('Reply');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-prepare-time"]').text()).not.toBe('—');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-first-output"]').text()).not.toBe('—');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-generation-time"]').text()).not.toBe('—');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-rtf"]').text()).toContain('s/s');
+    await f.wrapper.get('[data-testid="live-diagnostics-seed"]').setValue('7');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('download')).toBe(firstOutputName);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('download')).toBe(firstInputName);
+    expect(f.speech.controller.getState().fileRun?.id).toBe(firstId);
+    await f.wrapper.get('[data-testid="live-diagnostics-seed"]').setValue('0');
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    const secondId = f.speech.controller.getState().fileRun?.id;
+    expect(secondId).toMatch(/^[\w-]{21}$/);
+    expect(secondId).not.toBe(firstId);
+    const secondOutputName = `naidan-same-input-${secondId}-response.wav`;
+    const secondInputName = `naidan-same-input-${secondId}-input.wav`;
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('download')).toBe(secondOutputName);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('download')).toBe(secondInputName);
+    expect(f.speech.client.start).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(f.speech.client.start).mock.calls.map(([request]) => request.options.seed)).toEqual([0, 0]);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    expect(f.speech.capture).not.toHaveBeenCalled();
+    expect(f.speech.player.activate).not.toHaveBeenCalled();
+    expect(f.speech.decodeFile.mock.calls.map(([request]) => request.file)).toEqual([file, file]);
+    await f.wrapper.setProps({ panel: 'conversation' });
+    expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
+    expect(f.wrapper.find('[data-testid="live-speech-session"]').exists()).toBe(false);
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe('same-input.wav');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-output"]').attributes('download')).toBe(secondOutputName);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('download')).toBe(secondInputName);
+    expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
+    await f.wrapper.get('[data-testid="live-diagnostics-clear"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.controller.getState().fileRun).toBeUndefined();
+    expect(f.wrapper.find('[data-testid="live-diagnostics-result"]').exists()).toBe(false);
+    expect(f.speech.controller.getState().sessions).toHaveLength(0);
+  });
+
+  it('retains the same selected audio while loading another model from investigation tools', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const file = new File(['audio'], 'comparison.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/audio', size: 1, importedAt: 0 });
+    await flushPromises();
+    await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.loadModel).toHaveBeenCalledTimes(2);
+    expect(f.speech.client.releaseModel).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe('comparison.wav');
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('next/audio');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('validates an explicit investigation seed and passes the edited value to the runner', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const file = new File(['audio'], 'seed.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    await f.wrapper.get('[data-testid="live-diagnostics-seed"]').setValue('-1');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeDefined();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-unavailable"]').text()).toContain('seed');
+    await f.wrapper.get('[data-testid="live-diagnostics-seed"]').setValue('7');
+    const run = vi.spyOn(f.speech.controller, 'runFile').mockResolvedValue(undefined);
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(run).toHaveBeenCalledWith({ file, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, tailSeconds: 5, seed: 7 });
+    expect(f.speech.capture).not.toHaveBeenCalled();
+  });
+
+  it('accepts dropped audio in investigation tools and cancels decoding without microphone permission', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const file = new File(['audio'], 'dropped.wav', { type: 'audio/wav' });
+    await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
+    const decoding = Promise.withResolvers<Float32Array>();
+    f.speech.decodeFile.mockReturnValue(decoding.promise);
+    await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-status"]').text()).toContain('Preparing');
+    await f.wrapper.get('[data-testid="live-diagnostics-cancel"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.decodeFile.mock.calls[0]?.[0].signal.aborted).toBe(true);
+    expect(f.speech.capture).not.toHaveBeenCalled();
+    expect(f.speech.client.start).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe('dropped.wav');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeUndefined();
+    decoding.resolve(new Float32Array([0.5]));
+  });
+
   it('passes an explicit conversation language with persona and preserves it across display-language changes', async () => {
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
     await using f = await fixture();
@@ -134,7 +295,7 @@ describe('independent live conversation workspace', () => {
     await f.page.get('[data-testid="live-settings-close"]').trigger('click');
     await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
     await flushPromises();
-    expect(f.speech.client.start).toHaveBeenCalledWith({ options: { inputSampleRate: 24000, maxSeconds: 120, language: 'fr', persona: 'Friendly persona', name: undefined } });
+    expect(f.speech.client.start).toHaveBeenCalledWith({ options: { inputSampleRate: 24000, maxSeconds: 120, language: 'fr', persona: 'Friendly persona', name: undefined, seed: undefined } });
   });
 
   it('does not let a cancelled model resolution overwrite a newer model load', async () => {
@@ -234,12 +395,14 @@ describe('independent live conversation workspace', () => {
     await using f = await fixture();
     const loading = Promise.withResolvers<void>();
     vi.mocked(f.speech.client.loadModel).mockImplementation(async () => {
-      f.speech.change({ state: { phase: 'loading_model' } });
+      f.speech.change({ state: { phase: 'loading_model', loadProgress: { stage: 'reading_model', readBytes: 1024 * 1024, totalBytes: 2 * 1024 * 1024 } } });
       await loading.promise;
     });
     void f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     expect(f.wrapper.get('[data-testid="live-cancel-model-loading"]').attributes('disabled')).toBeUndefined();
+    expect(f.wrapper.get('[data-testid="live-load-percent"]').text()).toBe('50%');
+    expect(f.wrapper.get('[data-testid="live-load-bytes"]').text()).toBe('Read 1 / 2 MiB');
     await f.wrapper.get('[data-testid="live-cancel-model-loading"]').trigger('click');
     await flushPromises();
     expect(f.speech.client.releaseModel).toHaveBeenCalledOnce();
@@ -247,6 +410,28 @@ describe('independent live conversation workspace', () => {
     await flushPromises();
     expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeUndefined();
     expect(f.speech.client.start).not.toHaveBeenCalled();
+  });
+
+  it('shows separate Wasm progress and allows cancelling a load started from investigation tools', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'model', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics' });
+    const loading = Promise.withResolvers<void>();
+    vi.mocked(f.speech.client.loadModel).mockImplementation(async () => {
+      f.speech.change({ state: { phase: 'loading_model', loadProgress: { stage: 'loading_runtime', fetchedBytes: 1024 * 1024, decompressedBytes: 4 * 1024 * 1024, totalDecompressedBytes: 16 * 1024 * 1024 } } });
+      await loading.promise;
+    });
+    void f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-load-percent"]').text()).toBe('25%');
+    expect(f.wrapper.get('[data-testid="live-load-stage"]').text()).toContain('Wasm');
+    expect(f.wrapper.get('[data-testid="live-diagnostics-cancel-model"]').attributes('disabled')).toBeUndefined();
+    await f.wrapper.get('[data-testid="live-diagnostics-cancel-model"]').trigger('click');
+    await flushPromises();
+    expect(f.speech.client.releaseModel).toHaveBeenCalledOnce();
+    loading.resolve();
+    await flushPromises();
+    expect(f.wrapper.get('[data-testid="live-diagnostics-load-model"]').attributes('disabled')).toBeUndefined();
   });
 
   it('keeps speech errors and response history when a preselected LFM model becomes active after failure', async () => {
@@ -342,7 +527,7 @@ describe('independent live conversation workspace', () => {
     expect(f.runLiveSession).not.toHaveBeenCalled();
     await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
     await flushPromises();
-    expect(f.speech.client.start).toHaveBeenCalledWith({ options: { inputSampleRate: 24000, maxSeconds: 120, language: 'en', persona: undefined, name: undefined } });
+    expect(f.speech.client.start).toHaveBeenCalledWith({ options: { inputSampleRate: 24000, maxSeconds: 120, language: 'en', persona: undefined, name: undefined, seed: undefined } });
     f.speech.frame({ text: 'Continuous answer', samples: new Float32Array([0.3]) });
     await flushPromises();
     expect(f.wrapper.get('[data-testid="live-speech-text"]').text()).toBe('Continuous answer');

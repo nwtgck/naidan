@@ -17,15 +17,18 @@ it('bounds synchronous reads and preserves offsets above 4 GiB', () => {
   const file = new Blob([new Uint8Array(24)]);
   Object.defineProperty(file, 'size', { value: 2 ** 32 + 100 });
   const slices: [number | undefined, number | undefined][] = [];
+  const onRead = vi.fn();
   vi.spyOn(file, 'slice').mockImplementation((start, end) => {
     slices.push([start, end]);
     return new Blob([new Uint8Array(end! - start!)]);
   });
-  const source = createSpeechFileSource({ file, maxReadBytes: 24, readBlob: ({ blob }) => new ArrayBuffer(blob.size) });
+  const source = createSpeechFileSource({ file, maxReadBytes: 24, readBlob: ({ blob }) => new ArrayBuffer(blob.size), onRead });
   expect(source.read({ destination: new Uint8Array(100), offset: 2 ** 32 + 1 })).toBe(24);
   expect(slices).toEqual([[2 ** 32 + 1, 2 ** 32 + 25]]);
+  expect(onRead).toHaveBeenCalledWith({ offset: 2 ** 32 + 1, length: 24 });
   expect(source.read({ destination: new Uint8Array(100), offset: file.size })).toBe(0);
   expect(() => source.read({ destination: new Uint8Array(2), offset: -1 })).toThrow();
-  const truncated = createSpeechFileSource({ file, maxReadBytes: 24, readBlob: () => new ArrayBuffer(1) });
+  const truncated = createSpeechFileSource({ file, maxReadBytes: 24, readBlob: () => new ArrayBuffer(1), onRead });
   expect(() => truncated.read({ destination: new Uint8Array(24), offset: 0 })).toThrow();
+  expect(onRead).toHaveBeenCalledOnce();
 });

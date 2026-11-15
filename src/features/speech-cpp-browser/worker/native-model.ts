@@ -1,16 +1,19 @@
 import type { Core } from 'speech-cpp-browser-core/speech-cpp/host';
-import type { SpeechModelPort, SpeechDialoguePort, SpeechFailure } from '@/features/speech-cpp-browser/types';
+import type { SpeechModelPort, SpeechDialoguePort, SpeechFailure, SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
 import { SpeechRuntimeError, speechError } from '@/features/speech-cpp-browser/types';
 import { inspectSpeechCandidate, createSpeechFileSource } from './model-file';
+import { createSpeechReadCoverage } from './load-progress';
 
 type Helpers = typeof import('speech-cpp-browser-core/speech-cpp/host');
 
 /** Actual generated C API integration. Native pointers remain bigint, callback
  * views expire on return, and every view is reacquired after an awaited call. */
-export async function openNativeSpeechModel({ file, signal, core, helpers, readBlob }: {
+export async function openNativeSpeechModel({ file, signal, core, helpers, readBlob, onProgress }: {
   file: File, signal: AbortSignal, core: Core, helpers: Helpers,
   readBlob: ({ blob }: { blob: Blob }) => ArrayBuffer,
+  onProgress: ({ progress }: { progress: SpeechLoadProgress }) => void,
 }): Promise<SpeechModelPort> {
+  onProgress({ progress: { stage: 'preparing_model' } });
   const candidate = await inspectSpeechCandidate({ file, name: file.name, signal });
   switch (candidate.kind) {
   case 'speech': break;
@@ -21,10 +24,27 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
   }
   }
   signal.throwIfAborted();
-  const source = createSpeechFileSource({ file, readBlob, maxReadBytes: 4 * 1024 * 1024 });
+  let coverage: ReturnType<typeof createSpeechReadCoverage> | undefined = createSpeechReadCoverage({ size: file.size });
+  const source = createSpeechFileSource({
+    file,
+    readBlob,
+    maxReadBytes: 4 * 1024 * 1024,
+    onRead({ offset, length }) {
+      if (coverage === undefined) {
+        return;
+      }
+      const readBytes = coverage.add({ offset, length });
+      onProgress({ progress: { stage: 'reading_model', readBytes, totalBytes: file.size } });
+      if (readBytes === file.size) {
+        coverage = undefined;
+        // File coverage says nothing about pending GPU uploads or preparation.
+        onProgress({ progress: { stage: 'preparing_model' } });
+      }
+    },
+  });
   const mounted = helpers.mountReadOnlyFile(core, '/speech-model.gguf', {
     size: source.size,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Published core range-reader callback.
+
     read: (destination, offset) => source.read({ destination, offset }),
   }, { maxChunkBytes: 4 * 1024 * 1024 });
   const sync = helpers.createAbiCaller({ module: core.module, schema: core.schema, suspension: 'jspi', gate: undefined });
@@ -65,6 +85,7 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
     mounted.remove();
     throw error;
   } finally {
+    coverage = undefined;
     if (params !== 0n) {
       await core.api.speech_load_params_free(params);
     }
@@ -99,6 +120,9 @@ export async function openNativeSpeechModel({ file, signal, core, helpers, readB
         check({ status: await core.api.speech_request_new(model, out) });
         request = pointer();
         check({ status: await core.api.speech_request_set_float(request, core.constant('SPEECH_OPT_MAX_SECONDS'), options.maxSeconds) });
+        if (options.seed !== undefined) {
+          check({ status: await core.api.speech_request_set_int(request, core.constant('SPEECH_OPT_SEED'), BigInt(options.seed)) });
+        }
         for (const [name, value] of [['SPEECH_OPT_LANGUAGE', options.language], ['SPEECH_OPT_PERSONA', options.persona], ['SPEECH_OPT_NAME', options.name]] as const) {
           if (value !== undefined) {
             const text = core.utf8(value);

@@ -1,1 +1,1 @@
-export const liveConversation__conversation_language_help = (): string => 'Choose the language spoken in the conversation. It can differ from the display language.';
+export const liveConversation__conversation_language_help = (): string => 'Para establecer el idioma de la conversación, escribe también instrucciones. Si dejas las instrucciones vacías, el modelo puede responder en otro idioma.';

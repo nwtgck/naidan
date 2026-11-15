@@ -1,11 +1,11 @@
 import { speechError, type SpeechUnavailableReason, type SpeechState } from '@/features/speech-cpp-browser/types';
 import type { SpeechClient, SpeechObservers } from './types';
 
-/** Remain inert until a published SDK can implement the actual native bridge. */
+/** Preserve the client surface when this build or environment cannot run speech. */
 export function createUnavailableSpeechClient({ reason, observers }: { reason: SpeechUnavailableReason, observers: SpeechObservers }): SpeechClient {
   let disposed = false;
   function getState(): SpeechState {
-    return { phase: disposed ? 'disposed' : 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined };
+    return { phase: disposed ? 'disposed' : 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined, loadProgress: undefined };
   }
   function unavailable(): never {
     throw speechError({ code: 'unavailable', message: `Speech runtime unavailable: ${reason}` });

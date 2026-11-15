@@ -12,7 +12,7 @@ import { readLlamaArtifactPackage } from '@/features/llama-cpp-browser/build-art
 import { readSpeechArtifacts } from '@/features/speech-cpp-browser/build-runtime';
 import { readNativeLicenseDependencies } from '../../../build/native-licenses/load';
 
-// Check the three aliases pinned to one artifact. This is package integration,
+// Each runtime alias selects its independently pinned artifact. This is package integration,
 // not trained-model/GPU inference; fixtures remain in build-runtime.test.ts.
 it('connects each runtime consumer to its own installed bicore dependency', async () => {
   const rootDir = process.cwd();
@@ -24,8 +24,7 @@ it('connects each runtime consumer to its own installed bicore dependency', asyn
       integrity: z.string().optional(),
     })),
   }).parse(JSON.parse(readFileSync(path.join(rootDir, 'package-lock.json'), 'utf8')));
-  const rootManifestSchema = z.object({ formatVersion: z.literal(6), sourceCommit: z.string() });
-  const sourceCommits = new Set<string>();
+  const rootManifestSchema = z.object({ formatVersion: z.union([z.literal(5), z.literal(6)]), sourceCommit: z.string() });
   for (const name of ['llama-cpp-browser-core', 'stable-diffusion-cpp-browser-core', 'speech-cpp-browser-core']) {
     const specifier = pkg.dependencies[name];
     expect(specifier).toMatch(/^github:nwtgck\/browser-inference-core#[0-9a-f]{40}$/);
@@ -35,13 +34,8 @@ it('connects each runtime consumer to its own installed bicore dependency', asyn
     const installed = z.object({ name: z.literal('browser-inference-core') })
       .parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules', name, 'package.json'), 'utf8')));
     expect(installed.name).toBe('browser-inference-core');
-    const root = rootManifestSchema.parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules', name, 'manifest.json'), 'utf8')));
-    sourceCommits.add(root.sourceCommit);
   }
-  expect(sourceCommits.size).toBe(1);
-  expect(pkg.dependencies['stable-diffusion-cpp-browser-core']).toBe(pkg.dependencies['llama-cpp-browser-core']);
-  expect(pkg.dependencies['speech-cpp-browser-core']).toBe(pkg.dependencies['llama-cpp-browser-core']);
-  // Preserve npm's optional integrity as received for the shared Git pin.
+  // Preserve npm's optional integrity as received for each Git pin.
   expect(pkg.dependencies['browser-inference-core']).toBeUndefined();
   const llama = readLlamaArtifactPackage({ rootDir });
   const llamaRoot = rootManifestSchema.parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules/llama-cpp-browser-core/manifest.json'), 'utf8')));
@@ -58,7 +52,6 @@ it('connects each runtime consumer to its own installed bicore dependency', asyn
   }
   const imageRoot = rootManifestSchema.parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules', name, 'manifest.json'), 'utf8')));
   expect(result.configuration.sourceCommit).toBe(imageRoot.sourceCommit);
-  expect(result.configuration.sourceCommit).toBe(llama.sourceCommit);
   expect(result.configuration.artifacts.map(artifact => artifact.profile)).toEqual(['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']);
   const prefix = 'stable-diffusion-cpp-runtime/' + result.configuration.sourceCommit + '/';
   for (const artifact of result.configuration.artifacts) {
@@ -100,7 +93,9 @@ it('connects each runtime consumer to its own installed bicore dependency', asyn
   if (speech.configuration.kind !== 'available' || speech.nativeLicenseSource === undefined) {
     throw new Error('Install the pinned bicore speech dependency with npm ci');
   }
-  expect(speech.configuration.sourceCommit).toBe(llama.sourceCommit);
+  const speechRoot = rootManifestSchema.parse(JSON.parse(readFileSync(path.join(rootDir, 'node_modules/speech-cpp-browser-core/manifest.json'), 'utf8')));
+  expect(speech.configuration.sourceCommit).toBe(speechRoot.sourceCommit);
+  const speechPrefix = 'speech-cpp-runtime/' + speech.configuration.sourceCommit + '/';
   const speechArtifact = speech.configuration.artifact;
   expect(speechArtifact.profile).toBe('webgpu-wasm64-jspi');
   const readSpeechWasm = speech.files.get(speechArtifact.wasmPath);
@@ -112,7 +107,7 @@ it('connects each runtime consumer to its own installed bicore dependency', asyn
   expect(createHash('sha256').update(decodedSpeech).digest('hex')).toBe(speechArtifact.wasmSha256);
   expect(speech.files.has(speechArtifact.modulePath)).toBe(true);
   expect(speech.files.has(speechArtifact.helpersPath)).toBe(true);
-  expect([...speech.files.keys()].every(relative => relative.startsWith('speech-cpp-runtime/' + llama.sourceCommit + '/'))).toBe(true);
+  expect([...speech.files.keys()].every(relative => relative.startsWith(speechPrefix))).toBe(true);
   expect([...speech.files.keys()].some(relative => relative.endsWith('/LICENSE') || relative.endsWith('.wasm'))).toBe(false);
   const nativeNotices = [];
   for (const source of [{

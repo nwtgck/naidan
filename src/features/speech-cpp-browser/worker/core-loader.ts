@@ -1,11 +1,13 @@
 import type { Core } from 'speech-cpp-browser-core/speech-cpp/host';
 import type createModule from 'speech-cpp-browser-core/speech-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs';
 import type { SpeechArtifact } from '@/features/speech-cpp-browser/artifacts';
-import { speechError } from '@/features/speech-cpp-browser/types';
+import { speechError, type SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
+import { readSpeechWasm } from './load-progress';
 
 type Helpers = typeof import('speech-cpp-browser-core/speech-cpp/host');
 
-export async function loadSpeechCore({ artifact, baseUrl }: { artifact: SpeechArtifact, baseUrl: string }): Promise<{ core: Core, helpers: Helpers }> {
+export async function loadSpeechCore({ artifact, baseUrl, onProgress }: { artifact: SpeechArtifact, baseUrl: string, onProgress: ({ progress }: { progress: SpeechLoadProgress }) => void }): Promise<{ core: Core, helpers: Helpers }> {
+  onProgress({ progress: { stage: 'preparing_runtime' } });
   const base = new URL(baseUrl);
   if (base.origin !== self.location.origin || !['https:', 'http:'].includes(base.protocol) || base.search || base.hash) {
     throw speechError({ code: 'unavailable', message: 'Speech assets must belong to the hosting application' });
@@ -14,28 +16,8 @@ export async function loadSpeechCore({ artifact, baseUrl }: { artifact: SpeechAr
   if (!response.ok || response.body === null) {
     throw speechError({ code: 'unavailable', message: `Speech Wasm request failed (${response.status})` });
   }
-  const wasmBinary = new Uint8Array(artifact.wasmBytes);
-  const reader = response.body.pipeThrough(new DecompressionStream('gzip')).getReader();
-  let offset = 0;
-  try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        break;
-      }
-      if (offset + chunk.value.length > wasmBinary.length) {
-        throw new Error('Decompressed speech Wasm exceeds manifest size');
-      }
-      wasmBinary.set(chunk.value, offset);
-      offset += chunk.value.length;
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-  if (offset !== wasmBinary.length) {
-    throw new Error('Truncated speech Wasm');
-  }
+  const wasmBinary = await readSpeechWasm({ response, wasmBytes: artifact.wasmBytes, onProgress });
+  onProgress({ progress: { stage: 'preparing_runtime' } });
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', wasmBinary));
   if (Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('') !== artifact.wasmSha256) {
     throw new Error('Speech Wasm integrity mismatch');

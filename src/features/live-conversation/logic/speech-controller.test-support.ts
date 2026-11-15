@@ -4,10 +4,11 @@ import type { SpeechState } from '@/features/speech-cpp-browser/types';
 import { createLiveSpeechController } from './speech-controller';
 import type { openLiveCapture } from './audio-capture';
 import type { createLivePlayback } from './audio-playback';
+import type { decodeLiveAudioFile } from './audio-file';
 
 export function createLiveSpeechFixture() {
   let observers: SpeechObservers | undefined;
-  let runtime: SpeechState = { phase: 'unloaded', model: undefined, completion: undefined, failure: undefined, queuedSamples: 0 };
+  let runtime: SpeechState = { phase: 'unloaded', model: undefined, completion: undefined, failure: undefined, queuedSamples: 0, loadProgress: undefined };
   function change({ state }: { state: Partial<SpeechState> }): void {
     runtime = { ...runtime, ...state };
     observers?.onState({ state: runtime });
@@ -41,7 +42,8 @@ export function createLiveSpeechFixture() {
   const player = { activate: vi.fn(async () => {}), begin: vi.fn(), append: vi.fn(async () => {}), mute: vi.fn(), stop: vi.fn(), close: vi.fn(async () => {}) };
   const playback = vi.fn<typeof createLivePlayback>(() => player);
   const onChange = vi.fn<Parameters<typeof createLiveSpeechController>[0]['onChange']>();
-  const controller = createLiveSpeechController({ createClient, capture, playback, onChange });
+  const decodeFile = vi.fn<typeof decodeLiveAudioFile>(async () => new Float32Array([0.5]));
+  const controller = createLiveSpeechController({ createClient, capture, playback, decodeFile, onChange });
   return {
     controller,
     client,
@@ -52,6 +54,7 @@ export function createLiveSpeechFixture() {
     playback,
     player,
     onChange,
+    decodeFile,
     frame({ text, samples }: { text: string, samples: Float32Array<ArrayBuffer> }): void {
       observers?.onFrame({ frame: { text, samples, sampleRate: 24000, sequence: 0 } });
     },

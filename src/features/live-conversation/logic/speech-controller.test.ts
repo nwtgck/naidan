@@ -14,6 +14,7 @@ describe('continuous live speech session', () => {
       f.change({ state: { phase: 'running' } });
     });
     await f.controller.start(options);
+    expect(f.client.start).toHaveBeenCalledWith({ options: { ...options, inputSampleRate: 24000, seed: undefined } });
     await Promise.resolve();
     expect(f.controller.getState().sessions[0]?.text).toBe('Early response');
     expect(f.player.append).toHaveBeenCalledOnce();
@@ -110,5 +111,88 @@ describe('continuous live speech session', () => {
     await f.controller.release();
     expect(f.client.releaseModel).toHaveBeenCalledOnce();
     expect(f.player.close).toHaveBeenCalledOnce();
+  });
+
+  it('runs the file through the loaded client without opening either audio device and frees WAV URLs on the next run', async () => {
+    using urls = {
+      create: vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:speech-run'),
+      revoke: vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {}),
+      [Symbol.dispose]() {
+        this.create.mockRestore();
+        this.revoke.mockRestore();
+      },
+    };
+    await using f = createLiveSpeechFixture();
+    await f.controller.load({ file });
+    vi.mocked(f.client.start).mockImplementation(async () => {
+      f.change({ state: { phase: 'starting' } });
+      f.frame({ text: 'Initial', samples: new Float32Array(3200).fill(0.001) });
+      f.change({ state: { phase: 'running' } });
+    });
+    const run = { ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0 };
+    await f.controller.runFile(run);
+    expect(f.controller.getState()).toMatchObject({ fileRun: { status: 'complete', text: 'Initial', frames: 1, sourceSamples: 1, submittedSamples: 3200, input: { status: 'complete' }, output: { status: 'complete' } }, sessions: [] });
+    expect(f.client.push).toHaveBeenCalledWith({ sampleRate: 24000, samples: new Float32Array([0.5, ...new Float32Array(3199)]) });
+    expect(f.capture).not.toHaveBeenCalled();
+    expect(f.playback).not.toHaveBeenCalled();
+    expect(f.client.releaseModel).not.toHaveBeenCalled();
+    await f.controller.runFile(run);
+    expect(urls.revoke).toHaveBeenCalledTimes(2);
+    expect(f.client.loadModel).toHaveBeenCalledOnce();
+    await f.controller.reset();
+    expect(f.controller.getState().fileRun?.output).toBeDefined();
+    expect(urls.revoke).toHaveBeenCalledTimes(2);
+    await f.controller.release();
+    expect(urls.revoke).toHaveBeenCalledTimes(4);
+    expect(f.controller.getState().fileRun).toBeUndefined();
+  });
+
+  it('cancels file decoding on release without starting a late session and retains no URLs after disposal', async () => {
+    await using f = createLiveSpeechFixture();
+    await f.controller.load({ file });
+    const decode = Promise.withResolvers<Float32Array>();
+    f.decodeFile.mockReturnValue(decode.promise);
+    const running = f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 5, seed: 0 });
+    await vi.waitFor(() => expect(f.decodeFile).toHaveBeenCalledOnce());
+    await f.controller.start(options);
+    expect(f.capture).not.toHaveBeenCalled();
+    await f.controller.release();
+    await running;
+    decode.resolve(new Float32Array(3200));
+    await Promise.resolve();
+    expect(f.client.start).not.toHaveBeenCalled();
+    expect(f.controller.getState().fileRun).toBeUndefined();
+    expect(f.client.releaseModel).toHaveBeenCalledOnce();
+  });
+
+  it('keeps diagnostic text and result clearing independent of live conversation history', async () => {
+    using urls = {
+      create: vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:diagnostic'),
+      revoke: vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {}),
+      [Symbol.dispose]() {
+        this.create.mockRestore();
+        this.revoke.mockRestore();
+      },
+    };
+    await using f = createLiveSpeechFixture();
+    await f.controller.load({ file });
+    await f.controller.start(options);
+    f.frame({ text: 'Live response', samples: new Float32Array() });
+    await f.controller.stop({ mode: 'finish' });
+    const history = f.controller.getState().sessions.map(session => ({ ...session }));
+    vi.mocked(f.client.start).mockImplementation(async () => {
+      f.change({ state: { phase: 'starting' } });
+      f.frame({ text: 'Diagnostic response', samples: new Float32Array(3200) });
+      f.change({ state: { phase: 'running' } });
+    });
+    await f.controller.runFile({ ...options, file: new File(['source'], 'greeting.wav'), tailSeconds: 0, seed: 0 });
+    expect(f.controller.getState().fileRun?.text).toBe('Diagnostic response');
+    expect(f.controller.getState().sessions).toEqual(history);
+    const clearing = f.controller.clearFileRun();
+    expect(f.controller.getState().fileRun).toBeUndefined();
+    expect(urls.revoke).toHaveBeenCalledTimes(2);
+    await clearing;
+    expect(f.controller.getState().sessions).toEqual(history);
+    expect(f.client.releaseModel).not.toHaveBeenCalled();
   });
 });

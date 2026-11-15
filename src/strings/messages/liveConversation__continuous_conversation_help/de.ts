@@ -1,1 +1,1 @@
-export const liveConversation__continuous_conversation_help = (): string => 'The microphone and response audio run together. Text input, attachments, transcription, replaying past audio and shell tools are unavailable for this model.';
+export const liveConversation__continuous_conversation_help = (): string => 'The microphone and response audio run together. Microphone conversation does not support sending text or attachments, transcription, replaying past audio or shell tools.';

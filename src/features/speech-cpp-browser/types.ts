@@ -9,10 +9,11 @@ export type SpeechPhase = 'unloaded' | 'loading_model' | 'ready' | 'starting' | 
 export type SpeechCompletionReason = 'finished' | 'cancelled' | 'max_seconds';
 export type SpeechModelInfo = { name: string, bytes: number, architecture: 'haru', task: 'dialogue', sampleRate: 24000, frameSamples: 3200, requiredVersion: string };
 export type SpeechFailure = { code: 'unavailable' | 'invalid_model' | 'invalid_audio' | 'queue_full' | 'invalid_state' | 'runtime_failed', message: string, nativeStatus: number | undefined, nativeInput: string | undefined };
-export type SpeechState = { phase: SpeechPhase, model: SpeechModelInfo | undefined, queuedSamples: number, completion: SpeechCompletionReason | undefined, failure: SpeechFailure | undefined };
+export type SpeechLoadProgress = { stage: 'preparing_runtime' } | { stage: 'loading_runtime', fetchedBytes: number, decompressedBytes: number, totalDecompressedBytes: number } | { stage: 'preparing_model' } | { stage: 'reading_model', readBytes: number, totalBytes: number };
+export type SpeechState = { phase: SpeechPhase, model: SpeechModelInfo | undefined, queuedSamples: number, completion: SpeechCompletionReason | undefined, failure: SpeechFailure | undefined, loadProgress: SpeechLoadProgress | undefined };
 export type SpeechFrame = { samples: Float32Array<ArrayBuffer>, sampleRate: 24000, text: string, sequence: number };
 export const speechDialogueLanguages = ['de', 'en', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'zh'] as const;
-export type SpeechStartOptions = { inputSampleRate: number, maxSeconds: number, language: string, persona: string | undefined, name: string | undefined };
+export type SpeechStartOptions = { inputSampleRate: number, maxSeconds: number, language: string, persona: string | undefined, name: string | undefined, seed: number | undefined };
 export type SpeechPushResult = { kind: 'accepted' } | { kind: 'backpressure' } | { kind: 'not_running' };
 
 export class SpeechRuntimeError extends Error {

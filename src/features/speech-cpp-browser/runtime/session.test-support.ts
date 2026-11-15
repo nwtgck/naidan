@@ -45,6 +45,6 @@ export function speechSessionFixture({ push, start }: {
   };
 }
 
-export const startOptions = { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined };
+export const startOptions = { inputSampleRate: 24000, maxSeconds: 30, language: 'ja', persona: undefined, name: undefined, seed: undefined };
 export const TEST_ONLY = {
 };
