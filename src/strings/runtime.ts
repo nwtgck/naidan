@@ -321,7 +321,10 @@ function getActiveMessage({ key, locale }: {
     if (message === renderedMessage) {
       return message;
     }
-    firstLoadedMessage ??= message;
+    // Unlike ??=, this avoids comparing the catalog's function signatures pairwise.
+    if (firstLoadedMessage === undefined) {
+      firstLoadedMessage = message;
+    }
   }
   return firstLoadedMessage;
 }
