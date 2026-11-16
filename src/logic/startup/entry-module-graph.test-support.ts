@@ -254,16 +254,80 @@ export function isHeavyEntryModule({ target }: { target: string }): boolean {
   // Continue traversing their imports so adding runtime I/O here still fails.
   const localInputAdapter = target === 'src/features/llama-cpp-browser/runtime/directory-input.ts'
     || target === 'src/features/llama-cpp-browser/runtime/model-directory-input.ts';
+  // This shared schema/mount mapper does not create a Worker. Traverse its
+  // dependencies so a later runtime import cannot hide behind the adapter.
+  const workerSchemaAdapter = target === 'src/features/wesh/worker/types.ts';
   return target === preservedOnboardingModule || target === '#worker-constructor'
-    || /^(?:@huggingface\/transformers|onnxruntime-web|browser-inference-core|llama-cpp-browser-core|stable-diffusion-cpp-browser-core)(?:\/|$)/u.test(target)
+    || /^(?:@huggingface\/transformers|onnxruntime-web|browser-inference-core|llama-cpp-browser-core|stable-diffusion-cpp-browser-core|speech-cpp-browser-core)(?:\/|$)/u.test(target)
     || /^src\/components\/(?:MainApp|AppAuxiliaryUi|(?:Current)?ChatPane)\.vue$/u.test(target)
     || /\/components\/[^/]*(?:Manager|ModelLibrary)\.vue$/u.test(target)
-    || /\/(?:workers?|[^/]+-worker)\//u.test(target)
+    || (!workerSchemaAdapter && /\/(?:workers?|[^/]+-worker)\//u.test(target))
     || /\.worker\.[cm]?[jt]s$/u.test(target)
     || /\.wasm$/u.test(target)
     || (!localInputAdapter && /^src\/features\/(?:llama-cpp-browser|transformers-js|stable-diffusion-cpp-browser)\/runtime(?:\/|-)/u.test(target))
     || /^src\/logic\/hugging-face-download\//u.test(target)
     || /^src\/features\/llama-cpp-browser\/hugging-face\/(?:metadata-session|session|catalog|download(?:-[^/]+)?|writer(?:-[^/]+)?|storage|sync-access|host-download-marker)\.ts$/u.test(target);
+}
+
+/** Static reachability only; this does not execute modules or measure startup. */
+export function staticModulePaths({ graph, root }: { graph: ModuleGraph, root: string }): ReadonlyMap<string, readonly string[]> {
+  const paths = new Map<string, readonly string[]>([[root, [root]]]);
+  const pending = [root];
+  while (pending.length > 0) {
+    const from = pending.pop();
+    if (from === undefined) {
+      continue;
+    }
+    const route = paths.get(from)!;
+    for (const reference of graph.referencesFrom({ from })) {
+      const kind = reference.kind;
+      switch (kind) {
+      case 'static': break;
+      case 'dynamic':
+      case 'type': continue;
+      default: {
+        const _ex: never = kind;
+        throw new Error(`Unhandled reference kind: ${_ex}`);
+      }
+      }
+      if (paths.has(reference.target)) {
+        continue;
+      }
+      const nextRoute = [...route, reference.target];
+      paths.set(reference.target, nextRoute);
+      if (graph.sources.has(reference.target)) {
+        pending.push(reference.target);
+      } else if (reference.target.startsWith('src/')
+        && (path.posix.extname(reference.target) === '' || /\.(?:[cm]?[jt]sx?|vue)$/u.test(reference.target))) {
+        throw new Error(`Unresolved source module: ${nextRoute.join(' -> ')}`);
+      }
+    }
+  }
+  return paths;
+}
+
+export function addedStaticHeavyPaths({ graph, root, baselineRoot }: { graph: ModuleGraph, root: string, baselineRoot: string }): readonly string[] {
+  const baseline = staticModulePaths({ graph, root: baselineRoot });
+  const current = staticModulePaths({ graph, root });
+  const added: string[] = [];
+  for (const [target, route] of current) {
+    if (baseline.has(target)) {
+      continue;
+    }
+    if (target !== '#worker-constructor' && isHeavyEntryModule({ target })) {
+      added.push(route.join(' -> '));
+    }
+    // Constructor markers describe code inside a module, not an independently
+    // cached ESM module. An existing Worker cannot authorize a new constructor.
+    if (graph.sources.has(target)) {
+      for (const reference of graph.referencesFrom({ from: target })) {
+        if (reference.kind === 'static' && reference.target === '#worker-constructor') {
+          added.push([...route, reference.target].join(' -> '));
+        }
+      }
+    }
+  }
+  return added;
 }
 
 /** The one inherited settings edge predates the browser-first entry presentation. */

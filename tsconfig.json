@@ -1,6 +1,9 @@
 {
   "files": [],
   "references": [
+    // The typecheck script checks catalogs first to release their process memory.
+    // Keep them in the solution so a complete check always includes all locales.
+    { "path": "./tsconfig.strings.json" },
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
   ]

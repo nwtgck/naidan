@@ -12,6 +12,7 @@ import * as persistence from '@/00-storage/service/image-generation';
 import type { storageService } from '@/00-storage/service';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import ImageGenerationSidebarActions from '@/features/image-generation/components/ImageGenerationSidebarActions.vue';
 import { createImageGenerationQueryWorker } from '@/features/image-generation/session/query-worker/impl';
 import { generationQueryResultSchema } from '@/features/image-generation/session/query-worker/types';
 // Compile the actual surfaces during module collection, like other component
@@ -102,7 +103,7 @@ async function open({ path }: { path: string }) {
   wrapper = mount(defineComponent({
     setup() {
       const { active } = useImageGenerationWorkspaceNavigation();
-      return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
+      return () => h('div', [active.value ? [h(ImageGenerationSidebarActions, { navigation: active.value, expanded: true }), h(ImageGenerationSidebar, { navigation: active.value })] : undefined, h(RouterView)]);
     },
   }), { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled();

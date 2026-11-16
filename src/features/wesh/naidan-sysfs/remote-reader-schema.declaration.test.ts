@@ -4,14 +4,15 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 describe('remote reader recursive schema declarations', () => {
-  it('preserves composite checking and emits named recursive types for downstream consumers', () => {
+  it('preserves strict declaration diagnostics and emits named recursive types for downstream consumers', () => {
     const root = process.cwd();
     const configPath = path.join(root, 'tsconfig.app.json');
     const config = ts.readConfigFile(configPath, ts.sys.readFile);
     expect(config.error).toBeUndefined();
     const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root, undefined, configPath);
     expect(parsed.errors).toEqual([]);
-    expect(parsed.options.composite).toBe(true);
+    expect(parsed.options.declaration).toBe(true);
+    expect(parsed.options.strict).toBe(true);
     expect(parsed.options.noEmit).toBe(true);
     const entry = path.join(root, 'src/features/wesh/naidan-sysfs/remote-reader-schema.ts');
     const probe = path.join(root, 'src/features/wesh/naidan-sysfs/declaration-probe.ts');
@@ -30,8 +31,8 @@ export const nested = z.array(branches).optional();
       : getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
     const discovered = ts.createProgram([entry, probe], parsed.options, host);
     const declared = new Set(parsed.fileNames);
-    // Compile only this dependency graph, but retain the app's actual file
-    // membership and composite contract. Disabling composite hid TS4023 before.
+    // Compile only this dependency graph with the app's actual roots and strict
+    // declaration options. noEmit must still report private declaration leaks.
     const roots = discovered.getSourceFiles().map(file => file.fileName).filter(file => declared.has(file) || file === probe);
     expect(roots).toContain(entry);
     expect(roots).toContain(probe);

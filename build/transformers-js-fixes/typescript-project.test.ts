@@ -47,9 +47,11 @@ function importedFixFiles({ options }: { options: ts.CompilerOptions }) {
   return [...found].sort();
 }
 
-it('includes the shared fixes import closure in the composite application project', () => {
+it('includes the shared fixes import closure in the strict declaration-checking application roots', () => {
   const project = readAppProject();
-  expect(project.options.composite).toBe(true);
+  expect(project.options.declaration).toBe(true);
+  expect(project.options.strict).toBe(true);
+  expect(project.options.noEmit).toBe(true);
   const required = importedFixFiles({ options: project.options });
   expect(required.map(file => path.relative(fixesRoot, file))).toEqual(expect.arrayContaining([
     'artifact.ts', 'jinja-template-fixture.ts',
@@ -62,8 +64,8 @@ it('detects the former source-only root list even though module resolution succe
   const project = readAppProject();
   const sourceOnlyRoots = new Set(project.fileNames.filter(file => !file.startsWith(`${fixesRoot}${path.sep}`)));
   const required = importedFixFiles({ options: project.options });
-  // Composite projects require root-file membership, not merely a resolvable
-  // import. Disabling composite in a narrow check would hide this regression.
+  // Keep the fixes explicitly covered by the application's root glob. Imports
+  // remaining resolvable must not conceal a regression to source-only roots.
   expect(required.filter(file => !sourceOnlyRoots.has(file))).toEqual(required);
   expect(required.length).toBeGreaterThan(0);
 });

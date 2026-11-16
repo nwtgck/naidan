@@ -6,6 +6,7 @@ import { downloadDestinationControl } from '@/features/llama-cpp-browser/compone
 import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import ModelSelector from '@/components/ModelSelector.vue';
 import { useSettings } from '@/composables/useSettings';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
@@ -160,6 +161,57 @@ describe('independent audio generation screen', () => {
     const view = await ready();
     expect(view.get('[data-testid="audio-generation-scroll"]').find('[data-testid="audio-generation-page"]').exists()).toBe(true);
     expect(view.get('[data-testid="audio-model-manager"]').find('[data-testid="audio-model-manager-scroll"]').exists()).toBe(true);
+  });
+
+  it('reveals hash sections without replacing the input or cancelling an active generation', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/audio-generation', component: defineComponent({ render: () => undefined }) }] });
+    await router.push('/audio-generation#audio-generation-results');
+    await router.isReady();
+    const host = document.createElement('div');
+    document.body.append(host);
+    using mounted = {
+      view: mount(AudioGenerationView, { attachTo: host, global: { plugins: [router] } }),
+      [Symbol.dispose]() {
+        this.view.unmount();
+        host.remove();
+      },
+    };
+    const view = mounted.view;
+    expect(document.activeElement).toBe(view.get('#audio-generation-results').element);
+    expect(view.find('[data-testid="audio-history"]').exists()).toBe(false);
+    const manager = view.findComponent({ name: 'LlamaCppBrowserManager' });
+    manager.vm.$emit('modelsChanged', [{ modelId: 'user/voice', size: 100, importedAt: 1 }]);
+    manager.vm.$emit('runtimeReady', true);
+    manager.vm.$emit('modelSelected', 'user/voice');
+    await nextTick();
+    const input = view.get('[data-testid="audio-text"]');
+    await input.setValue('Keep this input');
+    using gate = {
+      ...Promise.withResolvers<Awaited<ReturnType<LlamaCppBrowserService['generateAudio']>>>(),
+      [Symbol.dispose]() {
+        this.resolve(audioResult());
+      },
+    };
+    service.generateAudio.mockReturnValue(gate.promise);
+    await submit({ view });
+    const signal = service.generateAudio.mock.calls[0]![0].cancellationSignal;
+    const details = view.get<HTMLDetailsElement>('[data-testid="audio-model-manager"]');
+    details.element.open = false;
+    await router.push('/audio-generation#audio-generation-models');
+    await flushPromises();
+    expect(details.element.open).toBe(true);
+    expect(document.activeElement).toBe(details.get('summary').element);
+    expect(view.get('[data-testid="audio-text"]').element).toBe(input.element);
+    expect(view.get<HTMLTextAreaElement>('[data-testid="audio-text"]').element.value).toBe('Keep this input');
+    expect(signal?.aborted).toBe(false);
+    await router.push('/audio-generation#audio-generation-input');
+    await flushPromises();
+    expect(document.activeElement).toBe(view.get('form').element);
+    expect(service.generateAudio).toHaveBeenCalledOnce();
+    gate.resolve(audioResult());
+    await flushPromises();
+    expect(view.find('[data-testid="audio-history"]').exists()).toBe(true);
+    expect(service.unsubscribe).not.toHaveBeenCalled();
   });
 
   it('reveals invalid fields hidden inside advanced details instead of relying on browser form validation', async () => {

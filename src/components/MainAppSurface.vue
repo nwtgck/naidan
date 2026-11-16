@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue';
-import { useRoute } from 'vue-router';
 import HomeWelcome from '@/components/HomeWelcome.vue';
-import Sidebar from '@/components/Sidebar.vue';
-import { useTranslationNavigation } from '@/features/translation/navigation';
-import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
-import { useLiveConversationNavigation } from '@/features/live-conversation/navigation';
+import AppSidebar from '@/components/AppSidebar.vue';
 import MainLayoutFrame from '@/components/layout/MainLayoutFrame.vue';
 import { useLayout } from '@/composables/useLayout';
 import { useAppEntry } from '@/composables/useAppEntry';
@@ -17,15 +13,7 @@ const props = defineProps<{
   postStartupFeatures: PostStartupFeatureActivation,
 }>();
 
-const { active: generationNavigation } = useImageGenerationWorkspaceNavigation();
-const { active: liveNavigation } = useLiveConversationNavigation();
-const route = useRoute();
-const isWorkflowRoute = computed(() => route.path.replace(/\/+$/, '') === '/workflows' || route.path.startsWith('/workflows/'));
-const { active: translationNavigation } = useTranslationNavigation();
-const WorkflowSidebar = defineAsyncComponent(() => import('@/features/workflow/components/WorkflowSidebar.vue'));
-const TranslationSidebar = defineAsyncComponent(() => import('@/features/translation/components/TranslationSidebar.vue'));
-const ImageGenerationSidebar = defineAsyncComponent(() => import('@/features/image-generation/components/ImageGenerationSidebar.vue'));
-const LiveConversationSidebar = defineAsyncComponent(() => import('@/features/live-conversation/components/LiveConversationSidebar.vue'));
+const emit = defineEmits<{ openModelSupportInvestigation: [opener: HTMLElement | undefined] }>();
 const DebugPanel = defineAsyncComponent(() => import('@/components/DebugPanel.vue'));
 const AppEntrySurface = defineAsyncComponent(() => import('@/components/AppEntrySurface.vue'));
 const entry = useAppEntry();
@@ -77,11 +65,7 @@ defineExpose({
 <template>
   <MainLayoutFrame :sidebar-width="sidebarWidth" :inert="isLauncherOpen || undefined">
     <template #sidebar>
-      <WorkflowSidebar v-if="isWorkflowRoute && !renderEntry" />
-      <ImageGenerationSidebar v-else-if="generationNavigation && !renderEntry" :navigation="generationNavigation" />
-      <LiveConversationSidebar v-else-if="liveNavigation && !renderEntry" :navigation="liveNavigation" />
-      <TranslationSidebar v-else-if="translationNavigation && !renderEntry" :navigation="translationNavigation" />
-      <Sidebar v-else />
+      <AppSidebar :post-startup-features="postStartupFeatures" @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
     </template>
 
     <template #main>

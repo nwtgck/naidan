@@ -5,8 +5,8 @@ import ModelDownloads from './ModelDownloads.vue';
 import { getDownloadManager, TEST_ONLY } from '@/logic/download-manager';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 vi.mock('@/components/csp/CspMessageHint.vue', () => ({ default: { props: ['target', 'presentation'], template: '<aside data-testid="shared-download-csp" :data-presentation="presentation" />' } }));
-vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue', () => ({ default: { props: ['disabled', 'acceptLocalInput'], template: '<section data-testid="shared-download-local-recovery" />' } }));
-vi.mock('@/features/stable-diffusion-cpp-browser/components/ImageModelLocalFileRecovery.vue', () => ({ default: { props: ['view', 'disabled'], template: '<section data-testid="shared-image-download-local-recovery" />' } }));
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['disabled', 'acceptLocalInput'], template: '<section data-testid="shared-download-local-recovery" />' } }));
+vi.mock('@/features/stable-diffusion-cpp-browser/components/ImageModelLocalFileRecovery.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['view', 'disabled'], template: '<section data-testid="shared-image-download-local-recovery" />' } }));
 
 function panel() {
   return document.querySelector<HTMLElement>('[data-testid="model-downloads-panel"]')!;
@@ -170,6 +170,7 @@ it('limits the shared failure supplement to the known llama and image HF owners'
   }
   trigger.click();
   await nextTick();
+  await flushPromises();
   expect(rows.map(row => row.querySelector('[data-testid="shared-download-local-recovery"]') !== null)).toEqual([true, false, false, false]);
   expect(rows.map(row => row.querySelector('[data-testid="shared-download-csp"]') !== null)).toEqual([true, false, false, false]);
   const imageTrigger = rows[1]?.querySelector<HTMLButtonElement>('[data-testid="hf-download-failure-trigger"]');
@@ -178,6 +179,7 @@ it('limits the shared failure supplement to the known llama and image HF owners'
   }
   imageTrigger.click();
   await nextTick();
+  await flushPromises();
   expect(rows.map(row => row.querySelector('[data-testid="shared-download-local-recovery"]') !== null)).toEqual([true, false, false, false]);
   expect(rows.map(row => row.querySelector('[data-testid="shared-image-download-local-recovery"]') !== null)).toEqual([false, true, false, false]);
   expect(rows.map(row => row.querySelector('[data-testid="shared-download-csp"]') !== null)).toEqual([true, true, false, false]);

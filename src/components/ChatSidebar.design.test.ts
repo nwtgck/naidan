@@ -1,0 +1,164 @@
+import { ref, defineComponent, h, nextTick, reactive } from 'vue';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { mount } from '@vue/test-utils';
+import { useRouter, useRoute } from 'vue-router';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useTheme } from '@/features/theme/composables/useTheme';
+import { useConfirm } from '@/composables/useConfirm';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
+vi.mock('@/utils/dom', () => ({
+  scrollIntoViewSafe: vi.fn(),
+}));
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: vi.fn(),
+}));
+vi.mock('../composables/useSettings', () => ({
+  useSettings: vi.fn(),
+}));
+vi.mock('../composables/useLayout', () => ({
+  useLayout: vi.fn(),
+}));
+vi.mock('../features/theme/composables/useTheme', () => ({
+  useTheme: vi.fn(),
+}));
+vi.mock('../composables/useConfirm', () => ({
+  useConfirm: vi.fn(),
+}));
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
+}));
+vi.mock('vue-router', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-router')>(),
+  useRouter: vi.fn(),
+  useRoute: vi.fn(),
+}));
+
+const DraggableStub = defineComponent({
+  name: 'DraggableStub',
+  props: ['modelValue', 'list'],
+  setup(props, { slots }) {
+    return () => {
+      const items = (props.modelValue || props.list || []) as unknown[];
+      return h('div', { class: 'draggable-stub' },
+        items.map((item: unknown, index: number) =>
+          slots.item ? slots.item({ element: item, index }) : null,
+        ),
+      );
+    };
+  },
+});
+
+describe('Sidebar Design Specifications', () => {
+  beforeEach(() => {
+    (useRouter as Mock).mockReturnValue({ push: vi.fn() });
+    (useRoute as Mock).mockReturnValue({ path: '/', query: {}, params: {} });
+    (useSettings as unknown as Mock).mockReturnValue({
+      settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
+      updateGlobalModel: vi.fn(),
+    });
+    (useLayout as unknown as Mock).mockReturnValue({
+      isSidebarOpen: ref(true),
+      activeFocusArea: ref('chat'),
+      setActiveFocusArea: vi.fn(),
+      toggleSidebar: vi.fn(),
+    });
+    (useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction as unknown as Mock).mockReturnValue({
+      currentChat: ref(null),
+      currentChatGroup: ref(null),
+      streaming: ref(false),
+      activeGenerations: reactive(new Map()),
+      chatGroups: ref([]),
+      chats: ref([]),
+      sidebarItems: ref([]),
+      loadChats: vi.fn().mockResolvedValue(undefined),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      abortChat: vi.fn(),
+    });
+    (useTheme as unknown as Mock).mockReturnValue({
+      themeMode: ref('light'),
+      setTheme: vi.fn(),
+    });
+    (useConfirm as unknown as Mock).mockReturnValue({
+      showConfirm: vi.fn(),
+    });
+    (useCurrentChatState as unknown as Mock).mockReturnValue({
+      currentChat: ref(null),
+      currentChatGroup: ref(null),
+      currentChatId: ref(undefined),
+      activeMessages: ref([]),
+      allMessages: ref([]),
+      resolvedSettings: ref(null),
+      inheritedSettings: ref(null),
+      chatGroups: ref([]),
+      sidebarItems: ref([]),
+      TEST_ONLY: {},
+    });
+  });
+
+  it('uses rounded-xl and soft shadows for the primary New Chat button', async () => {
+    const wrapper = mount(Sidebar, {
+      global: {
+        stubs: {
+          'router-link': { template: '<a><slot /></a>' },
+          'Logo': true,
+          'draggable': true,
+        },
+      },
+    });
+    await nextTick();
+    const newChatBtn = wrapper.find('[data-testid="new-chat-button"]');
+    expect(newChatBtn.classes()).toContain('rounded-xl');
+    expect(newChatBtn.classes()).toContain('shadow-lg');
+    expect(newChatBtn.classes()).toContain('shadow-blue-500/20');
+  });
+
+  it('uses blue-600 for active chat highlighting instead of indigo', async () => {
+    const currentChat = ref({ id: 'active-chat-id' });
+    const sidebarItems = ref([{ id: 'item-1', type: 'chat', chat: { id: 'active-chat-id', title: 'Test Active' } }]);
+
+    (useCurrentChatState as unknown as Mock).mockReturnValue({
+      currentChat,
+      currentChatGroup: ref(null),
+      currentChatId: ref('active-chat-id'),
+      activeMessages: ref([]),
+      allMessages: ref([]),
+      resolvedSettings: ref(null),
+      inheritedSettings: ref(null),
+      chatGroups: ref([]),
+      sidebarItems,
+      TEST_ONLY: {},
+    });
+
+    const wrapper = mount(Sidebar, {
+      global: {
+        stubs: {
+          'router-link': { template: '<a><slot /></a>' },
+          'Logo': true,
+          'draggable': DraggableStub,
+        },
+      },
+    });
+
+    // Wait for onMounted and internal syncLocalItems
+    await nextTick();
+    await nextTick(); // Second tick for the nested draggable update
+
+    const activeItem = wrapper.find('.bg-blue-50');
+    expect(activeItem.exists()).toBe(true);
+    expect(activeItem.classes()).toContain('text-blue-600');
+    expect(activeItem.classes()).not.toContain('text-indigo-600');
+  });
+});

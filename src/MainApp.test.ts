@@ -20,7 +20,9 @@ vi.mock('./composables/useAppPresentation', () => ({
 
 vi.mock('./components/MainAppSurface.vue', () => ({
   default: {
+    name: 'MainAppSurface',
     props: ['postStartupFeatures'],
+    emits: ['openModelSupportInvestigation'],
     template: '<div data-testid="main-app-surface" :data-post-startup-features="postStartupFeatures" />',
   },
 }));
@@ -37,7 +39,9 @@ vi.mock('./components/AppAuxiliaryUi.vue', () => ({
   __esModule: true,
   __isTeleport: false,
   default: {
-    props: ['pwaActivation'],
+    name: 'AppAuxiliaryUi',
+    props: ['pwaActivation', 'modelSupportInvestigationRequest'],
+    emits: ['consumeModelSupportInvestigationRequest'],
     template: '<div data-testid="app-auxiliary-ui" :data-pwa-activation="pwaActivation" />',
   },
 }));
@@ -97,5 +101,35 @@ describe('MainApp', () => {
     notFoundRecovery.value = undefined;
     await flushPromises();
     expect(wrapper.get('[data-testid="app-auxiliary-ui"]').attributes('data-pwa-activation')).toBe('active');
+  });
+
+  it('passes each sidebar investigation request to the existing auxiliary host and consumes it without remounting the surface', async () => {
+    using mounted = {
+      wrapper: mountMainApp(),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    const surface = mounted.wrapper.getComponent({ name: 'MainAppSurface' });
+    const host = mounted.wrapper.getComponent({ name: 'AppAuxiliaryUi' });
+    expect(host.props('modelSupportInvestigationRequest')).toBeUndefined();
+    const opener = document.createElement('button');
+    surface.vm.$emit('openModelSupportInvestigation', opener);
+    await flushPromises();
+    const firstRequest: { opener: HTMLElement | undefined } | undefined = host.props('modelSupportInvestigationRequest');
+    expect(firstRequest).toEqual({ opener });
+    expect(firstRequest?.opener).toBe(opener);
+    host.vm.$emit('consumeModelSupportInvestigationRequest');
+    await flushPromises();
+    expect(host.props('modelSupportInvestigationRequest')).toBeUndefined();
+    surface.vm.$emit('openModelSupportInvestigation', opener);
+    await flushPromises();
+    expect(host.props('modelSupportInvestigationRequest')).toEqual({ opener });
+    expect(host.props('modelSupportInvestigationRequest')).not.toBe(firstRequest);
+    surface.vm.$emit('openModelSupportInvestigation', undefined);
+    await flushPromises();
+    expect(host.props('modelSupportInvestigationRequest')).toEqual({ opener: undefined });
+    expect(mounted.wrapper.getComponent({ name: 'MainAppSurface' }).vm).toBe(surface.vm);
   });
 });

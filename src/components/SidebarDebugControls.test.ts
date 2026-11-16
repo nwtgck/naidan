@@ -58,9 +58,9 @@ it('keeps the icon-only download control in the collapsed action stack', () => {
   const trigger = wrapper.get('[data-testid="model-downloads-trigger"]');
   expect(trigger.text()).toBe('');
   const buttons = wrapper.findAll('button');
-  expect(buttons).toHaveLength(2);
+  expect(buttons).toHaveLength(3);
   expect(buttons[0]?.element).toBe(trigger.element);
-  expect(wrapper.find('[data-testid="sidebar-opfs-menu-button"]').exists()).toBe(false);
+  expect(wrapper.get('[data-testid="sidebar-opfs-menu-button"]').attributes('aria-expanded')).toBe('false');
 });
 
 it.each([true, false])('opens and closes downloads when sidebar expanded is %s', async isSidebarOpen => {
@@ -89,6 +89,10 @@ it.each([true, false])('keeps error feedback and the debug action when sidebar e
   expect(debugButton.get('div').classes()).toContain('bg-red-500');
   if (isSidebarOpen) {
     expect(wrapper.get('[data-testid="sidebar-error-badge"]').text()).toBe('3');
+  } else {
+    expect(wrapper.get('[data-testid="sidebar-error-badge"]').text()).toBe('');
+    expect(debugButton.classes()).toContain('w-8');
+    expect(debugButton.classes()).not.toContain('shadow-sm');
   }
   await debugButton.trigger('click');
   expect(mockToggleDebug).toHaveBeenCalledOnce();

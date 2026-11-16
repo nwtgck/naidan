@@ -160,7 +160,7 @@ export async function startApp({ startupState, settingsStore, router, navigation
 
   /**
    * WHY: Mount the real main app before releasing route navigation so the
-   * real Sidebar can paint first. Interaction remains blocked until the router
+   * common sidebar frame can paint first. Interaction remains blocked until the router
    * is ready, preventing START_LOCATION from triggering normal commands.
    */
   await nextTick();

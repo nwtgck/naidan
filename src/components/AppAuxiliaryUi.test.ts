@@ -12,6 +12,7 @@ vi.mock('@/components/csp/DevelopmentMetaCspRecovery.vue', () => ({
 }));
 
 const timingMocks = vi.hoisted(() => ({ snapshot: vi.fn() }));
+const modelSupportCapability = vi.hoisted(() => ({ available: true }));
 vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({ useCurrentChatState: () => ({ resolvedSettings: ref(null) }) }));
 const entryIntent = shallowRef({ kind: 'ordinary' });
 const settingsOverlay = shallowRef<AppEntrySettingsOverlay>();
@@ -114,7 +115,9 @@ vi.mock('@/composables/useRecentChats', () => ({
 }));
 
 vi.mock('@/features/transformers-js/model-support-investigation', () => ({
-  isModelSupportInvestigationAvailable: true,
+  get isModelSupportInvestigationAvailable() {
+    return modelSupportCapability.available;
+  },
   loadModelSupportInvestigationModal: async () => ({
     name: 'ModelSupportInvestigationModal',
     props: ['modelId', 'ordinaryDownloadTiming'],
@@ -190,6 +193,7 @@ describe('AppAuxiliaryUi', () => {
     closeEntrySettings.mockClear();
     discoveryMounts.count = 0;
     timingMocks.snapshot.mockReset().mockReturnValue(undefined);
+    modelSupportCapability.available = true;
     isSearchOpen.value = false;
     isRecentOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
@@ -198,7 +202,7 @@ describe('AppAuxiliaryUi', () => {
 
   it('keeps recovery and the independent export host mounted across settings navigation', async () => {
     using mounted = {
-      wrapper: mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } }),
+      wrapper: mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } }),
       [Symbol.dispose]() {
         this.wrapper.unmount();
       },
@@ -216,7 +220,7 @@ describe('AppAuxiliaryUi', () => {
 
   it('does not retain a diagnostics modal host inside Settings', async () => {
     route.query = { settings: 'llama-cpp-browser' };
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -232,7 +236,7 @@ describe('AppAuxiliaryUi', () => {
     route.path = path;
     route.query = { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', settings: 'llama-cpp-browser', q: 'hello' };
     const original = { ...route.query };
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     await flushPromises();
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     expect(replace).not.toHaveBeenCalled();
@@ -246,7 +250,7 @@ describe('AppAuxiliaryUi', () => {
     route.query = { 'llama-cpp-browser-model': 'owner/repo:Q4_K_M', settings: 'developer', q: 'hello' };
     entryIntent.value = { kind: 'model-preview' };
     const original = { ...route.query };
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     await flushPromises();
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     settingsOverlay.value = { owner: Symbol('entry'), tab: 'connection', opener: undefined };
@@ -265,7 +269,7 @@ describe('AppAuxiliaryUi', () => {
   });
 
   it('does not mount closed auxiliary overlays', async () => {
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
@@ -274,7 +278,7 @@ describe('AppAuxiliaryUi', () => {
   });
 
   it('mounts model discovery only on first open and retains its instance between visits', async () => {
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     await flushPromises();
     expect(discoveryMounts.count).toBe(0);
     const owner = Symbol('entry');
@@ -293,7 +297,7 @@ describe('AppAuxiliaryUi', () => {
 
   it('opens settings after post-startup UI is activated', async () => {
     route.query = { settings: '1' };
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
@@ -302,7 +306,7 @@ describe('AppAuxiliaryUi', () => {
   it('hands model support investigation off to the app-level host without destroying settings state', async () => {
     route.query = { settings: 'developer' };
     route.fullPath = '/?settings=developer';
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' }, attachTo: document.body });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined }, attachTo: document.body });
     await flushPromises();
 
     const settingsHost = wrapper.get('[data-testid="settings-modal-host"]');
@@ -337,7 +341,7 @@ describe('AppAuxiliaryUi', () => {
   it('preserves the complete initial non-settings location for path-based settings close', () => {
     route.path = '/chat/chat-1';
     route.fullPath = '/chat/chat-1?leaf=message-1';
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
 
     (wrapper.vm as unknown as { TEST_ONLY: { closeSettings(): void } }).TEST_ONLY.closeSettings();
 
@@ -348,7 +352,7 @@ describe('AppAuxiliaryUi', () => {
     route.query = { settings: 'developer' };
     const source = timingSnapshot();
     timingMocks.snapshot.mockReturnValue(source);
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     await flushPromises();
     await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');
     await flushPromises();
@@ -360,6 +364,77 @@ describe('AppAuxiliaryUi', () => {
     wrapper.unmount();
   });
 
+  it.each(['initial', 'mounted'] as const)('consumes an %s sidebar request through the existing modal admission and restores its opener', async admission => {
+    using opener = {
+      element: document.createElement('button'),
+      [Symbol.dispose]() {
+        this.element.remove();
+      },
+    };
+    document.body.append(opener.element);
+    const source = timingSnapshot();
+    timingMocks.snapshot.mockReturnValue(source);
+    const request = { opener: opener.element };
+    using mounted = {
+      wrapper: mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: admission === 'initial' ? request : undefined }, attachTo: document.body }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    if (admission === 'mounted') {
+      await mounted.wrapper.setProps({ modelSupportInvestigationRequest: request });
+      await flushPromises();
+    }
+    expect(mounted.wrapper.emitted('consumeModelSupportInvestigationRequest')).toEqual([[]]);
+    const modal = mounted.wrapper.getComponent({ name: 'ModelSupportInvestigationModal' });
+    expect(modal.props('modelId')).toBe('');
+    source.records[0]!.outcome = 'completed';
+    expect(modal.props('ordinaryDownloadTiming')).toEqual(timingSnapshot());
+    expect(timingMocks.snapshot).toHaveBeenCalledOnce();
+    await mounted.wrapper.setProps({ modelSupportInvestigationRequest: undefined });
+    expect(mounted.wrapper.find('[data-testid="model-support-investigation-modal-stub"]').exists()).toBe(true);
+    expect(push).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+    await mounted.wrapper.get('[data-testid="model-support-investigation-close-stub"]').trigger('click');
+    await flushPromises();
+    expect(document.activeElement).toBe(opener.element);
+    await mounted.wrapper.setProps({ modelSupportInvestigationRequest: { opener: opener.element } });
+    await flushPromises();
+    expect(timingMocks.snapshot).toHaveBeenCalledTimes(2);
+    expect(mounted.wrapper.emitted('consumeModelSupportInvestigationRequest')).toEqual([[], []]);
+  });
+
+  it('consumes an unavailable sidebar request without creating a modal or reading timing data', async () => {
+    modelSupportCapability.available = false;
+    using mounted = {
+      wrapper: mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: { opener: undefined } } }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    expect(mounted.wrapper.emitted('consumeModelSupportInvestigationRequest')).toEqual([[]]);
+    expect(mounted.wrapper.find('[data-testid="model-support-investigation-modal-stub"]').exists()).toBe(false);
+    expect(timingMocks.snapshot).not.toHaveBeenCalled();
+  });
+
+  it('does not restore focus to a disconnected sidebar opener', async () => {
+    const opener = document.createElement('button');
+    const focus = vi.spyOn(opener, 'focus');
+    using mounted = {
+      wrapper: mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: { opener } } }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+        focus.mockRestore();
+      },
+    };
+    await flushPromises();
+    await mounted.wrapper.get('[data-testid="model-support-investigation-close-stub"]').trigger('click');
+    await flushPromises();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
   it.each(['throws', 'malformed'] as const)('opens the investigation even when optional timing %s', async mode => {
     route.query = { settings: 'developer' };
     if (mode === 'throws') {
@@ -369,7 +444,7 @@ describe('AppAuxiliaryUi', () => {
     } else {
       timingMocks.snapshot.mockReturnValue({ format: 'invalid' });
     }
-    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active' } });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined } });
     await flushPromises();
     await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');
     await flushPromises();
