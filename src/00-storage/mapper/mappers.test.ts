@@ -792,6 +792,7 @@ describe('Settings Mapping', () => {
       lmParameters,
       experimental: {
         locale: 'ja',
+        unimplementedLauncherEntries: undefined,
         metaCsp: undefined,
         chatBrowserModelPickerTab: undefined,
         modelDiscoveryTab: undefined,
