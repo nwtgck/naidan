@@ -90,7 +90,7 @@ describe('FeatureFlagsSettings.vue', () => {
     const list = wrapper.find('[data-testid="experimental-feature-list"]');
 
     const rows = list.findAll('[data-testid$="-row"]');
-    expect(rows).toHaveLength(7);
+    expect(rows).toHaveLength(8);
     const ids = rows.map(row => row.attributes('data-testid'));
     expect(ids.indexOf('feature-generation-speed-row')).toBe(ids.indexOf('feature-fake-lm-row') + 1);
     expect(ids.indexOf('feature-naidan-rpc-row')).toBe(ids.indexOf('feature-generation-speed-row') + 1);
@@ -116,6 +116,29 @@ describe('FeatureFlagsSettings.vue', () => {
     expect(mockSettings.value.experimental?.generationSpeed).toEqual({ status: 'disabled', inlineStats: 'on_demand' });
     expect(mockSettings.value.experimental?.fakeLm).toBe('enabled');
     expect(mockSaveSettings).not.toHaveBeenCalled();
+    void cleanup;
+  });
+
+  it('changes only Home and launcher entry visibility without enabling features or reloading models', async () => {
+    mockSettings.value.experimental = { locale: 'ja', fakeLm: 'enabled' };
+    useFeatureFlags().setFeatureEnabled({ feature: 'wesh_tool', enabled: false });
+    const wrapper = mount(FeatureFlagsSettings);
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="launcher-unimplemented-entries-toggle"]');
+    expect(toggle.element.checked).toBe(false);
+    await toggle.setValue(true);
+    await flushPromises();
+    expect(mockSettings.value.experimental).toEqual({ locale: 'ja', fakeLm: 'enabled', unimplementedLauncherEntries: 'show' });
+    expect(mockShowConfirm).not.toHaveBeenCalled();
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(useFeatureFlags().isFeatureEnabled({ feature: 'wesh_tool' })).toBe(false);
+    await toggle.setValue(false);
+    await flushPromises();
+    expect(mockSettings.value.experimental?.unimplementedLauncherEntries).toBe('hide');
     void cleanup;
   });
 

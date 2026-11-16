@@ -523,6 +523,8 @@ export interface Settings {
     toolConfigs?: ToolConfig[],
     fakeLm?: 'disabled' | 'enabled',
     naidanRpc?: 'disabled' | 'enabled',
+    /** Home/launcher entry visibility only; missing means hide. */
+    unimplementedLauncherEntries?: 'show' | 'hide',
     /** Display and collection preferences only; generation measurements remain in memory. */
     generationSpeed?: {
       status?: 'enabled' | 'disabled',

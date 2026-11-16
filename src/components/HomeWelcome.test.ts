@@ -17,6 +17,7 @@ const selectingCreate = vi.fn();
 const selectModel = vi.fn();
 const finishIntroduction = vi.fn();
 const setFocus = vi.fn();
+const openLauncher = vi.fn();
 const chats = ref<ChatSummary[]>([]);
 const chatGroups = ref<ChatGroup[]>([]);
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } });
@@ -32,6 +33,7 @@ vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({ useCurrentChatStat
 vi.mock('@/composables/chat/ui/useChatLifecycle', () => ({ useChatLifecycle: () => ({ createChatWithoutSelecting: create, createNewChat: selectingCreate }) }));
 vi.mock('@/composables/useDocumentMetadata', () => ({ useDocumentMetadata: () => ({ finishHomeIntroduction: finishIntroduction }) }));
 vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ setActiveFocusArea: setFocus }) }));
+vi.mock('@/composables/useLauncher', () => ({ useLauncher: () => ({ openLauncher }) }));
 vi.mock('@/composables/useAppEntry', () => ({
   useAppEntry: () => ({
     interaction,
@@ -82,7 +84,7 @@ async function renderHome() {
       return () => h(HomeWelcome);
     },
   });
-  const view = mount(host, { attachTo: document.body, global: { plugins: [router], stubs: { LanguageSelector: true } } });
+  const view = mount(host, { attachTo: document.body, global: { plugins: [router], stubs: { LanguageSelector: true, HomeLauncherEntries: true } } });
   await flushPromises();
   return view;
 }
@@ -113,6 +115,89 @@ describe('home welcome', () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 
+  it('shares the home launcher entries below history and opens the developer launcher with the same interaction guard', async () => {
+    chats.value = [summary({ id: 'recent', title: 'Recent', updatedAt: Date.now(), groupId: undefined })];
+    const view = await renderHome();
+    const entries = view.getComponent({ name: 'HomeLauncherEntries' });
+    expect(entries.props()).toEqual({ query: '', blocked: false });
+    const section = view.get('[data-testid="home-launcher-entries"]');
+    expect(view.get('[data-testid="home-recent-chats"]').element.compareDocumentPosition(section.element) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(section.element.compareDocumentPosition(view.get('[data-testid="portable-html-download"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    const developer = view.get('[data-testid="home-developer-tools"]');
+    await developer.trigger('click');
+    expect(openLauncher).toHaveBeenCalledExactlyOnceWith({ view: 'developer' });
+    expect(create).not.toHaveBeenCalled();
+    expect(selectModel).not.toHaveBeenCalled();
+    interaction.value = 'blocked';
+    await flushPromises();
+    expect(entries.props('blocked')).toBe(true);
+    expect(developer.attributes('disabled')).toBeDefined();
+    await developer.trigger('click');
+    expect(openLauncher).toHaveBeenCalledOnce();
+  });
+
+  it('previews history without extra focus targets and keeps one accessible list through expansion and collapse', async () => {
+    chats.value = [
+      summary({ id: 'recent', title: 'Recent', updatedAt: Date.now(), groupId: undefined }),
+      summary({ id: 'previous', title: 'Previous', updatedAt: 2, groupId: undefined }),
+      summary({ id: 'old', title: 'Older', updatedAt: 1, groupId: undefined }),
+    ];
+    const view = await renderHome();
+    const history = view.get('[data-testid="home-recent-chats"]');
+    const toggle = history.get('[data-testid="home-recent-toggle"]');
+    const content = history.get('#' + toggle.attributes('aria-controls'));
+    expect(toggle.element.tagName).toBe('BUTTON');
+    expect(toggle.attributes('type')).toBe('button');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(content.attributes('aria-hidden')).toBe('true');
+    expect(content.attributes('inert')).toBeDefined();
+    expect(toggle.text()).toContain('Recent chats');
+    const preview = history.get('[data-testid="home-recent-preview"]');
+    expect(preview.attributes('aria-hidden')).toBe('true');
+    expect(preview.text()).toContain('Recent');
+    expect(preview.text()).toContain('Previous');
+    expect(preview.text()).not.toContain('Older');
+    expect(preview.find('a, button, [tabindex]').exists()).toBe(false);
+    expect(history.findAll('[data-testid="home-recent-chat"]')).toHaveLength(3);
+    await toggle.trigger('click');
+    expect(toggle.attributes('aria-expanded')).toBe('true');
+    expect(content.attributes('aria-hidden')).toBe('false');
+    expect(content.attributes('inert')).toBeUndefined();
+    expect(preview.attributes('data-expanded')).toBe('true');
+    chats.value = [summary({ id: 'recent', title: 'Updated', updatedAt: Date.now(), groupId: undefined })];
+    window.dispatchEvent(new Event('resize'));
+    await flushPromises();
+    expect(toggle.attributes('aria-expanded')).toBe('true');
+    expect(history.get('[data-testid="home-recent-chat"]').attributes('href')).toBe('/chat/recent');
+    expect(history.get('[data-testid="home-recent-chat"]').text()).toContain('Updated');
+    const link = history.get<HTMLAnchorElement>('[data-testid="home-recent-chat"]');
+    link.element.focus();
+    await toggle.trigger('click');
+    window.dispatchEvent(new Event('resize'));
+    await flushPromises();
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(content.attributes('inert')).toBeDefined();
+    expect(content.attributes('aria-hidden')).toBe('true');
+    expect(document.activeElement).toBe(toggle.element);
+    expect(preview.attributes('data-expanded')).toBe('false');
+    expect(history.get('[data-testid="home-recent-preview"]').text()).toContain('Updated');
+  });
+
+  it.each([480, 1200])('starts recent history collapsed at viewport height %i without changing a manual choice on resize', async height => {
+    vi.stubGlobal('innerHeight', height);
+    chats.value = [summary({ id: 'recent', title: 'Recent', updatedAt: Date.now(), groupId: undefined })];
+    const view = await renderHome();
+    const history = view.get('[data-testid="home-recent-chats"]');
+    const toggle = history.get('[data-testid="home-recent-toggle"]');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(history.get('[data-testid="home-recent-preview"]').attributes('aria-hidden')).toBe('true');
+    await toggle.trigger('click');
+    vi.stubGlobal('innerHeight', height === 480 ? 1200 : 480);
+    window.dispatchEvent(new Event('resize'));
+    await flushPromises();
+    expect(toggle.attributes('aria-expanded')).toBe('true');
+  });
+
   it('shows the newest three real summaries, including chat-group members, without starting work', async () => {
     using fetch = vi.spyOn(globalThis, 'fetch');
     chatGroups.value = [chatGroup({ id: 'Research', updatedAt: 1 })];
@@ -139,6 +224,12 @@ describe('home welcome', () => {
     chatGroups.value = [1, 4, 2, 3].map(updatedAt => chatGroup({ id: String(updatedAt), updatedAt }));
     const view = await renderHome();
     expect(view.findAll('[data-testid="home-chat-group"]').map(row => row.attributes('href'))).toEqual(['/chat-group/4', '/chat-group/3', '/chat-group/2']);
+    const preview = view.get('[data-testid="home-chat-groups"] [data-testid="home-recent-preview"]');
+    expect(preview.attributes('aria-hidden')).toBe('true');
+    expect(preview.text()).toContain('4');
+    expect(preview.text()).toContain('3');
+    expect(preview.text()).not.toContain('2');
+    expect(preview.find('a, button, [tabindex]').exists()).toBe(false);
     expect(create).not.toHaveBeenCalled();
   });
 

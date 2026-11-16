@@ -53,6 +53,7 @@ export function useGlobalSearch() {
       _closeOverlay();
       break;
     case 'recent':
+    case 'launcher':
     case 'none':
       break;
     default: {
@@ -71,6 +72,7 @@ export function useGlobalSearch() {
       closeSearch();
       break;
     case 'recent':
+    case 'launcher':
     case 'none':
       openSearch({});
       break;

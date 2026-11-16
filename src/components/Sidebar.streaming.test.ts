@@ -14,6 +14,7 @@ beforeEach(async () => {
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveGenerations = reactive(new Map());
 
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),

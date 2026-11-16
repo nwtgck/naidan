@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 
-export type OverlayType = 'none' | 'search' | 'recent';
+export type OverlayType = 'none' | 'search' | 'recent' | 'launcher';
 
 const activeOverlay = ref<OverlayType>('none');
 

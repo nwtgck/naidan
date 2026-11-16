@@ -754,6 +754,24 @@ import { DeveloperTab__reset_data_provider_warning } from '@/strings/messages/De
 import { DeveloperTab__sample_conversations_description } from '@/strings/messages/DeveloperTab__sample_conversations_description/zh-Hans';
 import { DeveloperTab__simulate_pwa_update } from '@/strings/messages/DeveloperTab__simulate_pwa_update/zh-Hans';
 import { DeveloperTab__toggle_update_notification } from '@/strings/messages/DeveloperTab__toggle_update_notification/zh-Hans';
+import { DeveloperToolsPanel__audio_response_investigation } from '@/strings/messages/DeveloperToolsPanel__audio_response_investigation/zh-Hans';
+import { DeveloperToolsPanel__check_the_standalone_runtime } from '@/strings/messages/DeveloperToolsPanel__check_the_standalone_runtime/zh-Hans';
+import { DeveloperToolsPanel__check_transformers_model_compatibility } from '@/strings/messages/DeveloperToolsPanel__check_transformers_model_compatibility/zh-Hans';
+import { DeveloperToolsPanel__compare_audio_responses } from '@/strings/messages/DeveloperToolsPanel__compare_audio_responses/zh-Hans';
+import { DeveloperToolsPanel__developer_settings } from '@/strings/messages/DeveloperToolsPanel__developer_settings/zh-Hans';
+import { DeveloperToolsPanel__hosted_version_only } from '@/strings/messages/DeveloperToolsPanel__hosted_version_only/zh-Hans';
+import { DeveloperToolsPanel__image_generation_investigation } from '@/strings/messages/DeveloperToolsPanel__image_generation_investigation/zh-Hans';
+import { DeveloperToolsPanel__investigations } from '@/strings/messages/DeveloperToolsPanel__investigations/zh-Hans';
+import { DeveloperToolsPanel__llama_cpp_inference_diagnostics } from '@/strings/messages/DeveloperToolsPanel__llama_cpp_inference_diagnostics/zh-Hans';
+import { DeveloperToolsPanel__measure_audio_transcription } from '@/strings/messages/DeveloperToolsPanel__measure_audio_transcription/zh-Hans';
+import { DeveloperToolsPanel__measure_image_generation } from '@/strings/messages/DeveloperToolsPanel__measure_image_generation/zh-Hans';
+import { DeveloperToolsPanel__measure_saved_lm_models } from '@/strings/messages/DeveloperToolsPanel__measure_saved_lm_models/zh-Hans';
+import { DeveloperToolsPanel__open_advanced_settings } from '@/strings/messages/DeveloperToolsPanel__open_advanced_settings/zh-Hans';
+import { DeveloperToolsPanel__settings } from '@/strings/messages/DeveloperToolsPanel__settings/zh-Hans';
+import { DeveloperToolsPanel__standalone_verification } from '@/strings/messages/DeveloperToolsPanel__standalone_verification/zh-Hans';
+import { DeveloperToolsPanel__standalone_version_only } from '@/strings/messages/DeveloperToolsPanel__standalone_version_only/zh-Hans';
+import { DeveloperToolsPanel__transcription_investigation } from '@/strings/messages/DeveloperToolsPanel__transcription_investigation/zh-Hans';
+import { DeveloperToolsPanel__transformers_model_support_investigation } from '@/strings/messages/DeveloperToolsPanel__transformers_model_support_investigation/zh-Hans';
 import { DevelopmentMetaCspRecovery__clear_saved_meta_csp_setting } from '@/strings/messages/DevelopmentMetaCspRecovery__clear_saved_meta_csp_setting/zh-Hans';
 import { DevelopmentMetaCspRecovery__clearing_saved_meta_csp } from '@/strings/messages/DevelopmentMetaCspRecovery__clearing_saved_meta_csp/zh-Hans';
 import { DevelopmentMetaCspRecovery__close_notice } from '@/strings/messages/DevelopmentMetaCspRecovery__close_notice/zh-Hans';
@@ -1294,6 +1312,9 @@ import { ImportExportModal__zip_contains_all_data_by_default } from '@/strings/m
 import { ImportExportService__export_dump_failed } from '@/strings/messages/ImportExportService__export_dump_failed/zh-Hans';
 import { ImportExportService__invalid_zip_file } from '@/strings/messages/ImportExportService__invalid_zip_file/zh-Hans';
 import { LanguageSelector__language } from '@/strings/messages/LanguageSelector__language/zh-Hans';
+import { LauncherSettings__could_not_save_display_settings } from '@/strings/messages/LauncherSettings__could_not_save_display_settings/zh-Hans';
+import { LauncherSettings__only_changes_visibility_on_home_and_in_the_launcher } from '@/strings/messages/LauncherSettings__only_changes_visibility_on_home_and_in_the_launcher/zh-Hans';
+import { LauncherSettings__show_unimplemented_launcher_entries } from '@/strings/messages/LauncherSettings__show_unimplemented_launcher_entries/zh-Hans';
 import { LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files } from '@/strings/messages/LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files/zh-Hans';
 import { LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support } from '@/strings/messages/LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support/zh-Hans';
 import { LlamaCppBrowserDownloadDestination__browser_storage } from '@/strings/messages/LlamaCppBrowserDownloadDestination__browser_storage/zh-Hans';
@@ -2936,6 +2957,40 @@ import { imageGeneration__vae_tile_inspection_failed } from '@/strings/messages/
 import { imageGeneration__view_translation } from '@/strings/messages/imageGeneration__view_translation/zh-Hans';
 import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/zh-Hans';
 import { imageGeneration__visual_progress } from '@/strings/messages/imageGeneration__visual_progress/zh-Hans';
+import { launcher__all } from '@/strings/messages/launcher__all/zh-Hans';
+import { launcher__audio_drama } from '@/strings/messages/launcher__audio_drama/zh-Hans';
+import { launcher__audio_generation } from '@/strings/messages/launcher__audio_generation/zh-Hans';
+import { launcher__audio_transcription } from '@/strings/messages/launcher__audio_transcription/zh-Hans';
+import { launcher__back } from '@/strings/messages/launcher__back/zh-Hans';
+import { launcher__categories } from '@/strings/messages/launcher__categories/zh-Hans';
+import { launcher__chat } from '@/strings/messages/launcher__chat/zh-Hans';
+import { launcher__close } from '@/strings/messages/launcher__close/zh-Hans';
+import { launcher__connect_and_run_multiple_steps } from '@/strings/messages/launcher__connect_and_run_multiple_steps/zh-Hans';
+import { launcher__create } from '@/strings/messages/launcher__create/zh-Hans';
+import { launcher__create_images_from_text } from '@/strings/messages/launcher__create_images_from_text/zh-Hans';
+import { launcher__create_subtitles_and_edit_video } from '@/strings/messages/launcher__create_subtitles_and_edit_video/zh-Hans';
+import { launcher__developer_tools } from '@/strings/messages/launcher__developer_tools/zh-Hans';
+import { launcher__edit } from '@/strings/messages/launcher__edit/zh-Hans';
+import { launcher__features } from '@/strings/messages/launcher__features/zh-Hans';
+import { launcher__find_a_feature } from '@/strings/messages/launcher__find_a_feature/zh-Hans';
+import { launcher__image_generation } from '@/strings/messages/launcher__image_generation/zh-Hans';
+import { launcher__live_conversation } from '@/strings/messages/launcher__live_conversation/zh-Hans';
+import { launcher__long_form_dictation } from '@/strings/messages/launcher__long_form_dictation/zh-Hans';
+import { launcher__more_features } from '@/strings/messages/launcher__more_features/zh-Hans';
+import { launcher__no_matching_features } from '@/strings/messages/launcher__no_matching_features/zh-Hans';
+import { launcher__perform_a_script_with_multiple_voices } from '@/strings/messages/launcher__perform_a_script_with_multiple_voices/zh-Hans';
+import { launcher__read_text_in_a_voice_you_choose } from '@/strings/messages/launcher__read_text_in_a_voice_you_choose/zh-Hans';
+import { launcher__recording_enhancement } from '@/strings/messages/launcher__recording_enhancement/zh-Hans';
+import { launcher__reduce_noise_and_echo_in_recordings } from '@/strings/messages/launcher__reduce_noise_and_echo_in_recordings/zh-Hans';
+import { launcher__return_to_your_conversation } from '@/strings/messages/launcher__return_to_your_conversation/zh-Hans';
+import { launcher__speak_and_write } from '@/strings/messages/launcher__speak_and_write/zh-Hans';
+import { launcher__talk_with_ai_using_your_voice } from '@/strings/messages/launcher__talk_with_ai_using_your_voice/zh-Hans';
+import { launcher__translate_text_into_another_language } from '@/strings/messages/launcher__translate_text_into_another_language/zh-Hans';
+import { launcher__translation } from '@/strings/messages/launcher__translation/zh-Hans';
+import { launcher__turn_recordings_and_videos_into_text } from '@/strings/messages/launcher__turn_recordings_and_videos_into_text/zh-Hans';
+import { launcher__video_and_subtitle_editing } from '@/strings/messages/launcher__video_and_subtitle_editing/zh-Hans';
+import { launcher__workflows } from '@/strings/messages/launcher__workflows/zh-Hans';
+import { launcher__write_by_speaking } from '@/strings/messages/launcher__write_by_speaking/zh-Hans';
 import { liveConversation__add_attachment } from '@/strings/messages/liveConversation__add_attachment/zh-Hans';
 import { liveConversation__allow_shell_tools } from '@/strings/messages/liveConversation__allow_shell_tools/zh-Hans';
 import { liveConversation__allow_writes } from '@/strings/messages/liveConversation__allow_writes/zh-Hans';
@@ -4907,6 +4962,24 @@ export const catalog = {
   DeveloperTab__sample_conversations_description,
   DeveloperTab__simulate_pwa_update,
   DeveloperTab__toggle_update_notification,
+  DeveloperToolsPanel__audio_response_investigation,
+  DeveloperToolsPanel__check_the_standalone_runtime,
+  DeveloperToolsPanel__check_transformers_model_compatibility,
+  DeveloperToolsPanel__compare_audio_responses,
+  DeveloperToolsPanel__developer_settings,
+  DeveloperToolsPanel__hosted_version_only,
+  DeveloperToolsPanel__image_generation_investigation,
+  DeveloperToolsPanel__investigations,
+  DeveloperToolsPanel__llama_cpp_inference_diagnostics,
+  DeveloperToolsPanel__measure_audio_transcription,
+  DeveloperToolsPanel__measure_image_generation,
+  DeveloperToolsPanel__measure_saved_lm_models,
+  DeveloperToolsPanel__open_advanced_settings,
+  DeveloperToolsPanel__settings,
+  DeveloperToolsPanel__standalone_verification,
+  DeveloperToolsPanel__standalone_version_only,
+  DeveloperToolsPanel__transcription_investigation,
+  DeveloperToolsPanel__transformers_model_support_investigation,
   DevelopmentMetaCspRecovery__clear_saved_meta_csp_setting,
   DevelopmentMetaCspRecovery__clearing_saved_meta_csp,
   DevelopmentMetaCspRecovery__close_notice,
@@ -5447,6 +5520,9 @@ export const catalog = {
   ImportExportService__export_dump_failed,
   ImportExportService__invalid_zip_file,
   LanguageSelector__language,
+  LauncherSettings__could_not_save_display_settings,
+  LauncherSettings__only_changes_visibility_on_home_and_in_the_launcher,
+  LauncherSettings__show_unimplemented_launcher_entries,
   LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files,
   LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support,
   LlamaCppBrowserDownloadDestination__browser_storage,
@@ -7089,6 +7165,40 @@ export const catalog = {
   imageGeneration__view_translation,
   imageGeneration__viewing_other,
   imageGeneration__visual_progress,
+  launcher__all,
+  launcher__audio_drama,
+  launcher__audio_generation,
+  launcher__audio_transcription,
+  launcher__back,
+  launcher__categories,
+  launcher__chat,
+  launcher__close,
+  launcher__connect_and_run_multiple_steps,
+  launcher__create,
+  launcher__create_images_from_text,
+  launcher__create_subtitles_and_edit_video,
+  launcher__developer_tools,
+  launcher__edit,
+  launcher__features,
+  launcher__find_a_feature,
+  launcher__image_generation,
+  launcher__live_conversation,
+  launcher__long_form_dictation,
+  launcher__more_features,
+  launcher__no_matching_features,
+  launcher__perform_a_script_with_multiple_voices,
+  launcher__read_text_in_a_voice_you_choose,
+  launcher__recording_enhancement,
+  launcher__reduce_noise_and_echo_in_recordings,
+  launcher__return_to_your_conversation,
+  launcher__speak_and_write,
+  launcher__talk_with_ai_using_your_voice,
+  launcher__translate_text_into_another_language,
+  launcher__translation,
+  launcher__turn_recordings_and_videos_into_text,
+  launcher__video_and_subtitle_editing,
+  launcher__workflows,
+  launcher__write_by_speaking,
   liveConversation__add_attachment,
   liveConversation__allow_shell_tools,
   liveConversation__allow_writes,

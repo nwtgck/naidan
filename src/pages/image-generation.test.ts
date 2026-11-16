@@ -11,6 +11,7 @@ import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures'
 import type { inspectImageInventory } from '@/features/stable-diffusion-cpp-browser/inventory-worker/client';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn<typeof inspectImageInventory>() }));
+vi.mock('@/components/LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: mocks.inspect }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({

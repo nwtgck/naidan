@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LauncherButton from '@/components/LauncherButton.vue';
 import { clonePlainData } from '@/utils/clone-plain-data';
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { ref, watch, nextTick, computed, toRaw } from 'vue';
@@ -983,6 +984,7 @@ defineExpose({
         </button>
       </div>
     </div>
+    <div :tw-class="['mb-2', isSidebarOpen ? 'px-4' : 'px-1']"><LauncherButton :expanded="isSidebarOpen" /></div>
     <!-- Navigation List -->
     <div
       ref="navContainer"

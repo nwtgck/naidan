@@ -16,6 +16,7 @@ export interface RecentChatWithAccess extends ChatSummary {
 export interface UseRecentChatsResult {
   isRecentOpen: ComputedRef<boolean>,
   recentChats: ComputedRef<RecentChatWithAccess[]>,
+  mostRecentChat: ComputedRef<RecentChatWithAccess | undefined>,
   openRecent: () => void,
   closeRecent: () => void,
   toggleRecent: () => void,
@@ -49,6 +50,7 @@ export function useRecentChats(): UseRecentChatsResult {
       _closeOverlay();
       break;
     case 'search':
+    case 'launcher':
     case 'none':
       break;
     default: {
@@ -92,6 +94,7 @@ export function useRecentChats(): UseRecentChatsResult {
   return {
     isRecentOpen,
     recentChats: switcherRecentChats,
+    mostRecentChat: computed(() => recentChats.value[0]),
     openRecent,
     closeRecent,
     toggleRecent,

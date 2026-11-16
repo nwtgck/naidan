@@ -16,6 +16,7 @@ const mockActiveTasks = reactive(new Set<string>());
 const mockCurrentChat = ref(null);
 const mockCurrentChatGroup = ref(null);
 
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),

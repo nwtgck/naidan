@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useChatReturn } from '@/composables/useChatReturn';
+import LauncherButton from '@/components/LauncherButton.vue';
 import { RouterLink, useRouter, useRoute } from 'vue-router';
 import { HistoryIcon, WorkflowIcon, SquarePenIcon, ArrowLeftIcon, SettingsIcon, PackageIcon, RefreshCwIcon, PlusIcon } from 'lucide-vue-next';
 import SidebarHeader from '@/components/SidebarHeader.vue';
@@ -10,6 +12,7 @@ import { workflowDocumentPath, workflowRunPath } from '@/features/workflow/logic
 import { lazyStrings } from '@/strings';
 const workspace = useWorkflowWorkspace();
 const { isSidebarOpen, toggleSidebar } = useLayout();
+const { chatReturnPath } = useChatReturn();
 const router = useRouter(), route = useRoute();
 
 function dragPart({ event, id }: { event: DragEvent, id: WorkflowId }): void {
@@ -45,6 +48,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <button type="button" :disabled="workspace.busy.value" @click="createDocument({ kind: 'workflow' })" :title="lazyStrings.workflow__new_workflow()" tw-class="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-2 py-2.5 text-xs font-medium hover:border-blue-400 disabled:opacity-40"><SquarePenIcon tw-class="h-4 w-4 text-blue-500" /><span v-if="isSidebarOpen">{{ lazyStrings.workflow__new_workflow() }}</span></button>
       <button v-if="isSidebarOpen" type="button" :disabled="workspace.busy.value" @click="createSample" tw-class="w-full text-left text-xs px-3 py-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ lazyStrings.workflow__new_sample() }}</button>
     </div>
+    <div :tw-class="['mb-2', isSidebarOpen ? 'px-4' : 'px-1']"><LauncherButton :expanded="isSidebarOpen" /></div>
     <div v-if="isSidebarOpen" tw-class="min-h-0 flex-1 overflow-y-auto px-2 pb-3 space-y-4">
       <div v-for="documentKind in (['workflow', 'part'] as const)" :key="documentKind">
         <div tw-class="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-gray-500 dark:text-gray-400"><span>{{ documentKind === 'workflow' ? lazyStrings.workflow__workflows() : lazyStrings.workflow__parts() }}</span><button v-if="documentKind === 'part'" type="button" @click="createDocument({ kind: 'part' })" :disabled="workspace.busy.value" :aria-label="lazyStrings.workflow__new_part()" tw-class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"><PlusIcon tw-class="w-3 h-3" /></button></div>
@@ -66,7 +70,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <div :tw-class="['border-t border-gray-100 dark:border-gray-800 space-y-1', isSidebarOpen ? 'p-3' : 'p-1']">
       <button type="button" :disabled="workspace.busy.value" @click="workspace.refresh" :title="lazyStrings.workflow__refresh()" tw-class="flex w-full gap-2 items-center p-2 rounded-xl text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><RefreshCwIcon tw-class="w-4 h-4 shrink-0" /><span v-if="isSidebarOpen">{{ lazyStrings.workflow__refresh() }}</span></button>
-      <RouterLink to="/" :title="lazyStrings.workflow__back_to_chats()" tw-class="flex items-center gap-2 rounded-xl p-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><ArrowLeftIcon tw-class="w-4 h-4 shrink-0" /><span v-if="isSidebarOpen">{{ lazyStrings.workflow__back_to_chats() }}</span></RouterLink>
+      <RouterLink :to="chatReturnPath" :title="lazyStrings.workflow__back_to_chats()" tw-class="flex items-center gap-2 rounded-xl p-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><ArrowLeftIcon tw-class="w-4 h-4 shrink-0" /><span v-if="isSidebarOpen">{{ lazyStrings.workflow__back_to_chats() }}</span></RouterLink>
       <div :tw-class="['flex gap-2', !isSidebarOpen && 'flex-col items-center']"><button type="button" @click="router.push({ query: { ...route.query, settings: 'connection' } })" :title="lazyStrings.Sidebar__settings()" tw-class="flex items-center gap-2 rounded-xl p-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><SettingsIcon tw-class="h-4 w-4" /><span v-if="isSidebarOpen">{{ lazyStrings.Sidebar__settings() }}</span></button><SidebarDebugControls :is-sidebar-open="isSidebarOpen" /></div>
     </div>
   </nav>

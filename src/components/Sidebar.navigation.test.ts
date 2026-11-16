@@ -151,6 +151,7 @@ describe('Sidebar Keyboard Navigation', () => {
     'Logo': true,
     'ThemeToggle': true,
     'ModelSelector': true,
+    'LauncherButton': true,
   };
 
   beforeEach(() => {

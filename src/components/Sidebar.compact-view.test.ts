@@ -168,6 +168,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     'Logo': true,
     'ThemeToggle': true,
     'ModelSelector': true,
+    'LauncherButton': true,
   };
 
   beforeEach(() => {
