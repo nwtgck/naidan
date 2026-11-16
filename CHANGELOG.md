@@ -27,6 +27,36 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.69.0] - 2026-11-16
+
+### Added
+
+- Expand the English and Japanese Docs with guides for local translation, live audio conversation, reusable workflows, generating images from multiple prompts, asking questions about images and extracting their text, and searching past conversations, alongside updated instructions for GGUF setup, browsing ZIPs, attachment copying, backups, and saved tool settings.
+- Add experimental Haru continuous voice conversations to Live Conversation in the hosted version on desktop Chrome with WebGPU, with simultaneous microphone input and response playback, response text, separate mute controls, and conversation language selection. Requires a compatible Haru GGUF model.
+- Add a Live Conversation investigation tool for Haru audio-file responses, with model loading progress, repeatable input at the fastest available or real-time pace, a fixed seed, execution timings, and downloads of the submitted and generated audio as WAV files. Real-time runs also show input delays and pending audio, and stop with a partial result if the page is hidden or processing falls behind. Investigation results stay separate from conversation history.
+- Compare several input volume settings in one audio-response investigation, using fixed multipliers or a peak target of 80%. Each condition runs separately, and its response, applied adjustment, and any clipping remain available in the results and investigation ZIP.
+- Adjust microphone input volume during Haru conversations and optionally inspect the input levels, clipping, and browser-reported audio processing settings.
+- Optionally retain the microphone input and generated audio from Haru conversations in memory, then replay or download them as WAV files after the conversation ends.
+- Add audio transcription to the hosted Live Conversation investigation tools, with Qwen3-ASR, ReazonSpeech v2, and Japanese Parakeet models, audio-file and microphone input, recognized-text copying, and processing progress and timings.
+- Record up to three minutes of microphone audio without loading a model, then replay or save the recording as a WAV file for reuse in transcription or audio-response investigations.
+- Download speech investigation results and timings as a ZIP, with optional original input audio and instructions.
+- Open a searchable launcher from the sidebar, with the same destinations as Home and a developer tools list.
+- Add dedicated sidebars for Audio Generation and developer tools.
+- Keep Quick Access available when the sidebar is collapsed.
+
+### Changed
+
+- Live Conversation keeps its loaded model when starting a new conversation or selecting another model. To switch models, select a model and load it explicitly in either the conversation settings or the investigation tool.
+- Refresh Home with a compact tool directory and expandable previews of recent chats.
+- Return to the last opened chat from the launcher and workspace sidebars, or to Home when no recent chat is available.
+- Move tool destinations from Quick Access to Home and the launcher; keep recent chats, the file explorer, and Wesh in Quick Access.
+
+### Fixed
+
+- Fix local audio generation failing with an input validation error.
+- Live Conversation now reports when microphone capture is interrupted instead of continuing to appear as though it is listening.
+- Show navigation for the requested screen from startup, without briefly displaying chat navigation while another feature loads.
+
 ## [0.68.0] - 2026-11-13
 
 ### Changed
@@ -1153,7 +1183,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.68.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.69.0...develop
+[0.69.0]: https://github.com/nwtgck/naidan/compare/v0.68.0...v0.69.0
 [0.68.0]: https://github.com/nwtgck/naidan/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/nwtgck/naidan/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/nwtgck/naidan/compare/v0.65.0...v0.66.0
