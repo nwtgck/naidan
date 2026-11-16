@@ -1,0 +1,1 @@
+export const liveConversation__input_volume_comparison_help = (): string => "Wähle eine oder mehrere Eingabelautstärken. Die Antworten werden nacheinander mit demselben Audio, Modell und denselben Einstellungen generiert.";

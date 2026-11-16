@@ -1,0 +1,1 @@
+export const liveConversation__input_volume_comparison_help = (): string => "Selecciona uno o varios volúmenes de entrada. Las respuestas se generarán en orden a partir del mismo audio, con el mismo modelo y la misma configuración.";

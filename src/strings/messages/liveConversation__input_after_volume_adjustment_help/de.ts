@@ -1,0 +1,1 @@
+export const liveConversation__input_after_volume_adjustment_help = (): string => "Die Originaldatei bleibt unverändert. Du kannst das nach der Lautstärkeanpassung zur Übertragung angenommene Audio abspielen oder speichern. Bei einem vorzeitigen Stopp kann es Audio enthalten, das das Modell noch nicht verarbeitet hat.";

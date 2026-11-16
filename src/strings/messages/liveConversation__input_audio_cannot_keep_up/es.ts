@@ -1,0 +1,1 @@
+export const liveConversation__input_audio_cannot_keep_up = (): string => "El procesamiento del audio del micrófono no pudo seguir el ritmo. La conversación se detuvo para evitar perder audio. Vuelve a iniciarla.";

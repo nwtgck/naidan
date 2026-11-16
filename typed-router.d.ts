@@ -115,6 +115,21 @@ declare module 'vue-router/auto-routes' {
       '/live-conversation',
       Record<never, never>,
       Record<never, never>,
+      | '/live-conversation/diagnostics'
+      | '/live-conversation/diagnostics/transcription'
+    >,
+    '/live-conversation/diagnostics': RouteRecordInfo<
+      '/live-conversation/diagnostics',
+      '/live-conversation/diagnostics',
+      Record<never, never>,
+      Record<never, never>,
+      | '/live-conversation/diagnostics/transcription'
+    >,
+    '/live-conversation/diagnostics/transcription': RouteRecordInfo<
+      '/live-conversation/diagnostics/transcription',
+      '/live-conversation/diagnostics/transcription',
+      Record<never, never>,
+      Record<never, never>,
       | never
     >,
     '/llama-cpp-browser/diagnostics': RouteRecordInfo<
@@ -289,6 +304,25 @@ declare module 'vue-router/auto-routes' {
     'src/pages/live-conversation.vue': {
       routes:
         | '/live-conversation'
+        | '/live-conversation/diagnostics'
+        | '/live-conversation/diagnostics/transcription'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/live-conversation/diagnostics.vue': {
+      routes:
+        | '/live-conversation/diagnostics'
+        | '/live-conversation/diagnostics/transcription'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/live-conversation/diagnostics/transcription.vue': {
+      routes:
+        | '/live-conversation/diagnostics/transcription'
       views:
         | never
       pathParamNames:

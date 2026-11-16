@@ -1,0 +1,1 @@
+export const liveConversation__file_generation_statistics = ({ submitted, frames, seconds, tail, gaps }: { submitted: number, frames: number, seconds: string, tail: string, gaps: number }): string => `전송 접수: ${submitted}개 샘플 · 출력: ${frames}프레임 · 경과 시간: ${seconds}초 · 끝부분 무음: ${tail}초 · 연속 번호 누락: ${gaps}`;

@@ -1,0 +1,1 @@
+export const liveConversation__response_microphone_recording_help = (): string => "Du kannst bis zu 3 Minuten aufnehmen, auch bevor ein Modell geladen ist. Wähle nach dem Stoppen „Antwort generieren“, um die Aufnahme an das Modell zu übergeben. Dies ist unabhängig von einem Live-Gespräch.";

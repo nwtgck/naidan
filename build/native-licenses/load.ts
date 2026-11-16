@@ -2,6 +2,7 @@ import { realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import { importLlamaLicenseIndex } from './llama-index.ts';
 import { importImageLicenseIndex } from './image-index.ts';
@@ -45,13 +46,22 @@ export async function readNativeLicenseDependencies({ source, watchFile }: {
     if (realpathSync(resolved) !== realpathSync(file.filePath)) {
       throw new Error('Native license import and runtime artifact resolve to different packages');
     }
-    const adapter = { 'llama-cpp': 'llama-index.ts', 'stable-diffusion-cpp': 'image-index.ts' } satisfies Record<NativeLicenseSource['runtime'], string>;
-    assertNativeLicenseTypeContract({ fileName: path.join(source.rootDir, 'build/native-licenses', adapter[source.runtime]) });
+    const adapter = { 'llama-cpp': 'llama-index.ts', 'stable-diffusion-cpp': 'image-index.ts', 'speech-cpp': 'speech-index.ts' } satisfies Record<NativeLicenseSource['runtime'], string>;
+    const adapterPath = path.join(source.rootDir, 'build/native-licenses', adapter[source.runtime]);
+    assertNativeLicenseTypeContract({ fileName: adapterPath });
     switch (source.runtime) {
     case 'llama-cpp': index = await importLlamaLicenseIndex();
       break;
     case 'stable-diffusion-cpp': index = await importImageLicenseIndex();
       break;
+    case 'speech-cpp': {
+      // Resolve the optional adapter only after selecting an installed runtime.
+      // Config bundling must not resolve an absent speech package in advance.
+      const adapterUrl = pathToFileURL(adapterPath).href;
+      const { importSpeechLicenseIndex }: typeof import('./speech-index.ts') = await import(adapterUrl);
+      index = await importSpeechLicenseIndex();
+      break;
+    }
     default: {
       const exhaustive: never = source.runtime;
       throw new Error(`Unknown native runtime: ${exhaustive}`);

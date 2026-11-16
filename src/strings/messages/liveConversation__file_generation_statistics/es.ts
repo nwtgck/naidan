@@ -1,0 +1,1 @@
+export const liveConversation__file_generation_statistics = ({ submitted, frames, seconds, tail, gaps }: { submitted: number, frames: number, seconds: string, tail: string, gaps: number }): string => `Aceptadas: ${submitted} muestras · Salida: ${frames} tramas · Tiempo transcurrido: ${seconds} s · Silencio final: ${tail} s · Huecos en la secuencia: ${gaps}`;

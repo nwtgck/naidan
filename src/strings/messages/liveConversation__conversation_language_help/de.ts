@@ -1,0 +1,1 @@
+export const liveConversation__conversation_language_help = (): string => 'Um die Gesprächssprache festzulegen, gib auch Anweisungen ein. Ohne Anweisungen antwortet das Modell möglicherweise in einer anderen Sprache.';

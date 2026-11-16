@@ -1,0 +1,1 @@
+export const liveConversation__input_volume_help = (): string => "Passe die Eingabelautstärke mit dem gewählten Faktor an. Bei 1× bleibt sie unverändert. Die Lautstärke wird nicht automatisch angepasst.";

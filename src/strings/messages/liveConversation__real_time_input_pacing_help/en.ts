@@ -1,0 +1,1 @@
+export const liveConversation__real_time_input_pacing_help = (): string => "Sends the file at its original audio pace. Pacing waits count toward execution time; this does not capture a microphone or play audio live.";

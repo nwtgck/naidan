@@ -1,0 +1,1 @@
+export const liveConversation__retained_conversation_audio_help = (): string => 'End the conversation before replaying. Input audio contains PCM accepted for sending to the model; it does not prove the model consumed every sample. After a stop or failure, it may include queued or unfinished input. Response audio is the model output before playback.';

@@ -12,6 +12,7 @@ enableAutoUnmount(afterEach);
 const pageSetup = vi.fn();
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'existing-model' });
 const imageNavigation = ref<Record<string, never>>();
+const liveNavigation = ref<Record<string, never>>();
 const settingsStore = {
   initialized: ref(true),
   settings,
@@ -23,9 +24,11 @@ const settingsStore = {
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => settingsStore }));
 vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ isSidebarOpen: ref(true), isDebugOpen: ref(false) }) }));
 vi.mock('@/features/image-generation/session/navigation', () => ({ useImageGenerationWorkspaceNavigation: () => ({ active: imageNavigation }) }));
+vi.mock('@/features/live-conversation/navigation', () => ({ useLiveConversationNavigation: () => ({ active: liveNavigation }) }));
 vi.mock('@/components/HomeWelcome.vue', () => ({ default: { template: '<div data-testid="home-welcome" />' } }));
 vi.mock('@/components/Sidebar.vue', () => ({ default: { template: '<div data-testid="sidebar" />' } }));
 vi.mock('@/features/image-generation/components/ImageGenerationSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div data-testid="image-sidebar" />' } }));
+vi.mock('@/features/live-conversation/components/LiveConversationSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div data-testid="live-sidebar" />' } }));
 vi.mock('@/components/AppEntrySurface.vue', () => ({
   __esModule: true,
   __isTeleport: false,
@@ -78,10 +81,12 @@ describe('MainAppSurface entry routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     imageNavigation.value = undefined;
+    liveNavigation.value = undefined;
   });
 
-  it.each(['/', '/chat/existing', '/settings/connection', '/image-generation', '/audio-generation', '/unexpected'])('intercepts the model intent before setting up the destination page: %s', async path => {
+  it.each(['/', '/chat/existing', '/settings/connection', '/image-generation', '/live-conversation', '/audio-generation', '/unexpected'])('intercepts the model intent before setting up the destination page: %s', async path => {
     imageNavigation.value = path === '/image-generation' ? {} : undefined;
+    liveNavigation.value = path === '/live-conversation' ? {} : undefined;
     const query = { 'llama-cpp-browser-model': 'owner/repository', q: 'ignored', settings: 'storage', 'global-model': 'ignored', 'global-endpoint-type': 'openai', 'global-endpoint-url': 'https://ignored.example' };
     const { router, wrapper } = await mountSurface({ path, query });
     const expectedUrl = router.resolve({ path, query }).fullPath;
@@ -89,8 +94,20 @@ describe('MainAppSurface entry routing', () => {
     expect(wrapper.find('[data-testid="ordinary-page"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="image-sidebar"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="live-sidebar"]').exists()).toBe(false);
     expect(pageSetup).not.toHaveBeenCalled();
     expect(router.currentRoute.value.fullPath).toBe(expectedUrl);
+  });
+
+  it('replaces the chat sidebar only for the mounted Live Conversation owner', async () => {
+    liveNavigation.value = {};
+    const { wrapper } = await mountSurface({ path: '/live-conversation', query: {} });
+    expect(wrapper.find('[data-testid="live-sidebar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(false);
+    liveNavigation.value = undefined;
+    await flushPromises();
+    expect(wrapper.find('[data-testid="live-sidebar"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
   });
 
   it.each(['', null, ['owner/first', 'owner/second']])('preserves invalid or ambiguous model input for explicit preview: %j', async input => {

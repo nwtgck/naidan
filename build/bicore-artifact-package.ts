@@ -6,6 +6,7 @@ import { z } from 'zod';
 const runtimeDirectories = {
   'llama-cpp': 'runtimes/llama-cpp-browser-core/',
   'stable-diffusion-cpp': 'runtimes/stable-diffusion-cpp-browser-core/',
+  'speech-cpp': 'runtimes/speech-cpp-browser-core/',
 } as const;
 type Runtime = keyof typeof runtimeDirectories;
 
@@ -15,15 +16,24 @@ export const bicoreFileSchema = z.object({
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
 });
 const sourceCommit = z.string().regex(/^[0-9a-f]{40}$/);
-const rootManifestSchema = z.object({
+const existingRuntimeBindings = {
+  'llama-cpp': z.object({ manifest: z.literal('runtimes/llama-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(2) }),
+  'stable-diffusion-cpp': z.object({ manifest: z.literal('runtimes/stable-diffusion-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(2) }),
+};
+const rootManifestSchema = z.discriminatedUnion('formatVersion', [z.object({
   formatVersion: z.literal(5),
   sourceCommit,
+  runtimes: z.object(existingRuntimeBindings),
+  files: z.array(bicoreFileSchema),
+}), z.object({
+  formatVersion: z.literal(6),
+  sourceCommit,
   runtimes: z.object({
-    'llama-cpp': z.object({ manifest: z.literal('runtimes/llama-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(2) }),
-    'stable-diffusion-cpp': z.object({ manifest: z.literal('runtimes/stable-diffusion-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(2) }),
+    ...existingRuntimeBindings,
+    'speech-cpp': z.object({ manifest: z.literal('runtimes/speech-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(2) }),
   }),
   files: z.array(bicoreFileSchema),
-});
+})]);
 const runtimeManifestSchema = z.object({
   formatVersion: z.literal(2),
   runtime: z.string().optional(),
@@ -87,7 +97,29 @@ export function readBicoreArtifactPackage({ directory, runtime, maxFileBytes }: 
     }
     return { ...result, bytes: entry.bytes, sha256: entry.sha256 };
   }
-  const manifestRelative = root.runtimes[runtime].manifest;
+  const binding = (() => {
+    switch (runtime) {
+    case 'llama-cpp':
+    case 'stable-diffusion-cpp': return root.runtimes[runtime];
+    case 'speech-cpp':
+      switch (root.formatVersion) {
+      case 5: return undefined;
+      case 6: return root.runtimes['speech-cpp'];
+      default: {
+        const exhaustive: never = root;
+        throw new Error(`Unknown bicore root: ${exhaustive}`);
+      }
+      }
+    default: {
+      const exhaustive: never = runtime;
+      throw new Error(`Unknown bicore runtime: ${exhaustive}`);
+    }
+    }
+  })();
+  if (binding === undefined) {
+    throw new Error(`Bicore artifact does not include runtime: ${runtime}`);
+  }
+  const manifestRelative = binding.manifest;
   const manifest: unknown = JSON.parse(readRootFile({ relative: manifestRelative }).data.toString('utf8'));
   const parsed = runtimeManifestSchema.safeParse(manifest);
   if (!parsed.success) {

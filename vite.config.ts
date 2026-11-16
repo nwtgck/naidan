@@ -3,6 +3,7 @@ import { readNativeLicenseDependencies } from './build/native-licenses/load.ts';
 import { createTestOnlyBoundaryPlugin } from './build/test-only-boundary.ts';
 import { createDocsDevBridge } from './build/docs-dev-bridge.ts';
 import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diffusion-cpp-browser/build-runtime.ts';
+import { createSpeechCppBrowserBuild } from './src/features/speech-cpp-browser/build-runtime.ts';
 import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core.ts';
 import VueRouter from 'vue-router/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
@@ -133,6 +134,7 @@ export default defineConfig(({ mode, command }) => {
   const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
   const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const imageBuild = createStableDiffusionCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
+  const speechBuild = createSpeechCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const isHosted = mode === 'hosted';
   const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: import.meta.dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
@@ -221,6 +223,7 @@ export default defineConfig(({ mode, command }) => {
       (mode !== 'test' || command === 'build') && createTestOnlyBoundaryPlugin(),
       (mode !== 'test' || command === 'build') && createNodeEnvBoundaryPlugin({ rootDir: import.meta.dirname }),
       imageBuild.plugin,
+      speechBuild.plugin,
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
       createDocumentMetadataHtmlPlugin(),
@@ -273,7 +276,9 @@ export default defineConfig(({ mode, command }) => {
           const llama = await readNativeLicenseDependencies({ source: llamaCppBuild.nativeLicenseSource, watchFile });
           const imageSource = imageBuild.getNativeLicenseSource();
           const image = imageSource === undefined ? [] : await readNativeLicenseDependencies({ source: imageSource, watchFile });
-          return [...llama, ...image];
+          const speechSource = speechBuild.getNativeLicenseSource();
+          const speech = speechSource === undefined ? [] : await readNativeLicenseDependencies({ source: speechSource, watchFile });
+          return [...llama, ...image, ...speech];
         },
         onBuildDependenciesCollected({ dependencies }) {
           if (isStandalone) {

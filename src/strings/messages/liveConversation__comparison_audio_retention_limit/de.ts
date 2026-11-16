@@ -1,0 +1,1 @@
+export const liveConversation__comparison_audio_retention_limit = (): string => "Die Generierung wurde wegen des Speicherlimits für Audiodaten gestoppt. Verfügbar sind nur die Audiodaten, die im Speicher behalten werden konnten.";

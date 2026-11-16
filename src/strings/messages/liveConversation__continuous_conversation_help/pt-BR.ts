@@ -1,0 +1,1 @@
+export const liveConversation__continuous_conversation_help = (): string => 'Recomendamos o uso de fones de ouvido. Quando o microfone estiver pronto, fale brevemente e aguarde a resposta sem parar. Parar encerra toda a conversa, incluindo a resposta. Conversas por microfone não oferecem entrada de texto, anexos, transcrição ou ferramentas de shell.';

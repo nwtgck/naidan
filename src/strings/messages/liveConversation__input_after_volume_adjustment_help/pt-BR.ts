@@ -1,0 +1,1 @@
+export const liveConversation__input_after_volume_adjustment_help = (): string => "O arquivo original não é alterado. Você pode reproduzir ou salvar o áudio aceito para envio após aplicar o ajuste de volume de entrada. Se a execução for interrompida antes de terminar, ele pode incluir áudio que o modelo ainda não processou.";

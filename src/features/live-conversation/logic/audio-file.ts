@@ -43,7 +43,7 @@ export function createLiveAudioMeter({ sampleRate }: { sampleRate: number }) {
  * comparison with microphone PCM. The caller sends exactly these samples. */
 export async function decodeLiveAudioFile({ file, sampleRate, signal }: {
   file: Blob, sampleRate: number, signal: AbortSignal,
-}): Promise<Float32Array> {
+}): Promise<Float32Array<ArrayBuffer>> {
   signal.throwIfAborted();
   if (file.size === 0 || file.size > liveAudioFileLimit) {
     throw new Error('Choose an audio file between 1 byte and 16 MiB');

@@ -1,0 +1,1 @@
+export const liveConversation__investigation_zip_contents = (): string => "Save result text, model information, measurements and available logs. Input audio and instruction text are excluded by default.";

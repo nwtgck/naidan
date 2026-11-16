@@ -41,6 +41,12 @@ A native notice`,
     expect(value.watchFile.mock.calls.flat()).toEqual(['/external/manifest.json', '/external/image/manifest.json', '/external/image/native-license-index.json', '/external/image/LICENSE']);
   });
 
+  it('loads speech notices with a distinct runtime identity', async () => {
+    const value = fixture();
+    const result = await readNativeLicenseDependencies({ ...value, source: { ...value.source, runtime: 'speech-cpp' } });
+    expect(result).toEqual([expect.objectContaining({ id: 'native:speech-cpp:one', origin: 'speech.cpp', name: 'One' })]);
+  });
+
   it.each([{}, { components: [null] }, { components: [{ id: 'x', name: 4 }] }])('validates arbitrary external structures: %j', async data => {
     const value = fixture();
     value.bodies.set('native-license-index.json', Buffer.from(JSON.stringify(data)));

@@ -8,6 +8,8 @@ export const STANDALONE_FACADES = [
   { facadePath: '@/features/image-generation/components/ImageGenerationTranslationDefaults.vue', standalonePath: 'src/features/image-generation/components/ImageGenerationTranslationUnavailable.vue' },
   { facadePath: '@/features/stable-diffusion-cpp-browser/use-image-benchmark', standalonePath: 'src/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone.ts' },
   { facadePath: '@/features/stable-diffusion-cpp-browser/worker/client', standalonePath: 'src/features/stable-diffusion-cpp-browser/worker/client-standalone.ts' },
+  { facadePath: '@/features/speech-cpp-browser/worker/client', standalonePath: 'src/features/speech-cpp-browser/worker/client-standalone.ts' },
+  { facadePath: '@/features/speech-cpp-browser/recognition/worker/client', standalonePath: 'src/features/speech-cpp-browser/recognition/worker/client-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/artifacts', standalonePath: 'src/features/llama-cpp-browser/runtime/artifacts-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/profile-policy', standalonePath: 'src/features/llama-cpp-browser/runtime/profile-policy-standalone.ts' },
   { facadePath: '@/features/llama-cpp-browser/runtime/detect-profile', standalonePath: 'src/features/llama-cpp-browser/runtime/detect-profile-standalone.ts' },

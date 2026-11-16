@@ -1,0 +1,1 @@
+export const liveConversation__transcription_processing_time_help = (): string => "Verstrichene Zeit von der Übergabe des Audios an die Spracherkennung bis zum Abschluss, einschließlich Übertragung und Kopieren der Eingabe. Das Laden des Modells und die Vorbereitung der Eingabe werden getrennt gemessen.";

@@ -1,0 +1,1 @@
+export const liveConversation__execution_rtf_includes_waits = (): string => "Der Ausführungs-RTF ist die Ausführungszeit pro Sekunde Ausgabeaudio. Er umfasst Wartezeiten für Eingabetempo, Verarbeitung und Übertragung und misst nicht allein die Inferenzgeschwindigkeit. Modellladen und Eingabevorbereitung werden getrennt gemessen.";

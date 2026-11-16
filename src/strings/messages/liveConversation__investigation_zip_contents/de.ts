@@ -1,0 +1,1 @@
+export const liveConversation__investigation_zip_contents = (): string => "Speichert Ergebnistext, Modellinformationen, Messwerte und verfügbare Protokolle. Eingabeaudio und Anweisungstext sind standardmäßig nicht enthalten.";

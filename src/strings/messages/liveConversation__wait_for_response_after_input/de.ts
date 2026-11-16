@@ -1,0 +1,1 @@
+export const liveConversation__wait_for_response_after_input = ({ seconds }: { seconds: number }): string => `Nach der Eingabe werden ${seconds} Sekunden Stille gesendet, um eine Antwort zu ermöglichen. Dieselbe Eingabe bleibt für einen weiteren Durchlauf bereit.`;

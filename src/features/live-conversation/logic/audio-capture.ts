@@ -7,7 +7,18 @@ const eventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pcm'), pcm: z.instanceof(Float32Array).refine(value => value.length > 0 && value.length <= 2048 && value.every(Number.isFinite)) }).strict(),
   z.object({ type: z.literal('finished') }).strict(),
 ]);
-export type LiveCapture = { finish({ action }: { action: 'send' | 'discard' }): Promise<void> };
+export type LiveCaptureSettings = {
+  autoGainControl: boolean | undefined,
+  echoCancellation: boolean | undefined,
+  noiseSuppression: boolean | undefined,
+  sampleRate: number | undefined,
+  channelCount: number | undefined,
+  latency: number | undefined,
+};
+export type LiveCapture = {
+  finish({ action }: { action: 'send' | 'discard' }): Promise<void>,
+  getSettings?: () => LiveCaptureSettings | undefined,
+};
 
 /** Permission may resolve after navigation. The lifetime signal also owns the
  * pending permission, module load, tracks and the microphone's AudioContext. */
@@ -33,6 +44,7 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     }
     closed = true;
     accepting = false;
+    context.onstatechange = null;
     signal.removeEventListener('abort', abort);
     stream?.getTracks().forEach(track => {
       track.onended = null;
@@ -54,6 +66,25 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     if (!closed) {
       clean();
       onError({ error });
+    }
+  }
+  function contextFailure(): Error | undefined {
+    const state = context.state;
+    switch (state) {
+    case 'running': return undefined;
+    case 'suspended': case 'interrupted': case 'closed': return new Error(`Live microphone audio context is ${state}`);
+    default: {
+      const exhaustive: never = state;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+  function contextStateChanged(): void {
+    if (!closed) {
+      const error = contextFailure();
+      if (error) {
+        fail({ error });
+      }
     }
   }
   signal.addEventListener('abort', abort, { once: true });
@@ -137,7 +168,37 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     source.connect(node);
     node.connect(sink);
     sink.connect(context.destination);
+    const error = contextFailure();
+    if (error) {
+      throw error;
+    }
+    // Initial resume may legitimately be pending. Monitor only after capture
+    // is ready, and detach before our own close so cleanup is never an error.
+    context.onstatechange = contextStateChanged;
     return {
+      getSettings() {
+        if (closed) {
+          return undefined;
+        }
+        try {
+          const settings = stream?.getAudioTracks()[0]?.getSettings?.();
+          if (settings === undefined) {
+            return undefined;
+          }
+          const latency: unknown = Reflect.get(settings, 'latency');
+          // Copy an explicit safe subset. Never expose IDs, labels or infer defaults.
+          return {
+            autoGainControl: typeof settings.autoGainControl === 'boolean' ? settings.autoGainControl : undefined,
+            echoCancellation: typeof settings.echoCancellation === 'boolean' ? settings.echoCancellation : undefined,
+            noiseSuppression: typeof settings.noiseSuppression === 'boolean' ? settings.noiseSuppression : undefined,
+            sampleRate: typeof settings.sampleRate === 'number' && Number.isFinite(settings.sampleRate) && settings.sampleRate > 0 ? settings.sampleRate : undefined,
+            channelCount: typeof settings.channelCount === 'number' && Number.isSafeInteger(settings.channelCount) && settings.channelCount > 0 ? settings.channelCount : undefined,
+            latency: typeof latency === 'number' && Number.isFinite(latency) && latency >= 0 ? latency : undefined,
+          };
+        } catch {
+          return undefined;
+        }
+      },
       finish({ action }) {
         if (finishing) {
           return finishing;

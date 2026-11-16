@@ -1,0 +1,1 @@
+export const liveConversation__output_lateness_includes_input_and_queue = (): string => "Output lateness is measured from the matching input’s scheduled time to receipt of its output, excluding the initial frame. It includes input scheduling, processing queues and delivery; it is not the time to a spoken reply.";

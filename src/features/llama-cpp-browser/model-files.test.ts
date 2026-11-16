@@ -52,6 +52,16 @@ afterEach(() => {
 });
 
 describe('local model publication and saving', () => {
+  it('captures selected File snapshots without exposing storage handles or starting inference', async () => {
+    const file = gguf({ name: 'model.gguf', marker: 1 });
+    const receipt = await llamaCppBrowserModelFiles.importModel({ file, storage: 'temp', signal: undefined });
+    const captured = await llamaCppBrowserModelFiles.captureModelFiles({ modelId: receipt.models[0]!.modelId, signal: undefined });
+    expect(captured).toEqual({ primaryRelativePath: 'model.gguf', files: [{ relativePath: 'model.gguf', file }] });
+    expect(captured.files[0]!.file).toBe(file);
+    captured.files.length = 0;
+    expect((await llamaCppBrowserModelFiles.captureModelFiles({ modelId: receipt.models[0]!.modelId, signal: undefined })).files).toHaveLength(1);
+  });
+
   it('replays exact committed receipts and never revives a removed registration', async () => {
     const first = await llamaCppBrowserModelFiles.importModel({ file: gguf({ name: 'model.gguf', marker: 1 }), storage: 'temp', signal: undefined });
     const modelId = first.models[0]!.modelId;

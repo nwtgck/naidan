@@ -1,0 +1,1 @@
+export const liveConversation__output_lateness_includes_input_and_queue = (): string => "Die Ausgabeverzögerung wird vom geplanten Zeitpunkt der zugehörigen Eingabe bis zum Empfang ihrer Ausgabe gemessen, ohne den Anfangsframe. Sie umfasst Eingabeplanung, Verarbeitung und Übertragung und ist nicht die Wartezeit auf eine gesprochene Antwort.";

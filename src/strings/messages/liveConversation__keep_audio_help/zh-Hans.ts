@@ -1,1 +1,1 @@
-export const liveConversation__keep_audio_help = (): string => 'Off by default. Keep your input and model speech only in memory for replay. Turning this off erases all retained audio. A new conversation or reload also clears it.';
+export const liveConversation__keep_audio_help = (): string => '默认关闭。请在开始对话或消息前开启。音频仅保留在内存中，可重播或保存为 WAV。关闭后会清除保留的对话音频。重新开启后，将从下一次对话或消息开始保留。此设置不会清除调查结果。开始新对话或重新加载页面会清除保留的音频。';

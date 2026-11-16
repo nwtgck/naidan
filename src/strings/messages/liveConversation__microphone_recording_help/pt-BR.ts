@@ -1,0 +1,1 @@
+export const liveConversation__microphone_recording_help = (): string => "Ao parar a gravação, ela é transcrita com o modelo de reconhecimento de fala carregado. Sem um modelo carregado, você pode reproduzir e salvar a gravação. As gravações têm um limite de 3 minutos.";
