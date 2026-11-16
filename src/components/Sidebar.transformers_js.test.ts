@@ -25,6 +25,7 @@ const mockIsFetchingModels = ref(false);
 const mockUpdateGlobalModel = vi.fn();
 
 // --- Vitest Mocks ---
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),

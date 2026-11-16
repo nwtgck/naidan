@@ -24,6 +24,7 @@ const mockRenameChatGroup = vi.fn();
 const mockRenameChat = vi.fn();
 const mockFocusArea = ref<FocusArea>('sidebar');
 
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../composables/chat/useChatGroups', () => ({
   useChatGroups: () => ({
     updateChatGroupMetadata: ({ chatGroupId, updates }: { chatGroupId: string, updates: Partial<ChatGroup> }) => mockRenameChatGroup({ groupId: chatGroupId, newName: updates.name }),

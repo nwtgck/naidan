@@ -30,6 +30,7 @@ const mockOpenChat = vi.fn(() => {
 });
 const mockSetChatGroupCollapsed = vi.fn();
 
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: ref(null),

@@ -17,6 +17,7 @@ const mockEffectiveRoute = ref<RouteLocationResolved>();
 
 // Focus synchronization needs the real pane click handler, not background
 // initialization of dialogs, inspectors, or editor modules unrelated to it.
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../utils/vue', async () => {
   const { defineComponent } = await import('vue');
   return {

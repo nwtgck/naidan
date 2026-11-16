@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref, shallowRef, useId } from 'vue';
 import { loadRouteLocation, RouterLink, useRouter } from 'vue-router';
-import { ChevronRightIcon, DownloadIcon, FolderIcon, GhostIcon, InfoIcon, ListIcon, Loader2Icon, MessageSquareIcon, ShieldCheckIcon, SquarePenIcon } from 'lucide-vue-next';
+import { ChevronDownIcon, ChevronRightIcon, DownloadIcon, FlaskConicalIcon, FolderIcon, GhostIcon, InfoIcon, ListIcon, Loader2Icon, MessageSquareIcon, ShieldCheckIcon, SquarePenIcon } from 'lucide-vue-next';
 import { idToRaw, type ChatId } from '@/01-models/ids';
 import { useAppEntry, type ModelLaunchAppContext } from '@/composables/useAppEntry';
 import { isAppInteractionEnabled, useAppPresentation } from '@/composables/useAppPresentation';
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { useLayout } from '@/composables/useLayout';
+import { useLauncher } from '@/composables/useLauncher';
 import { useSettings } from '@/composables/useSettings';
 import { useChatListData } from '@/composables/chat/ui/useChatListData';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -16,6 +17,7 @@ import { currentLocale, lazyStrings } from '@/strings';
 import LanguageSelector from './LanguageSelector.vue';
 import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import SettingsCollapse from './SettingsCollapse.vue';
+import HomeLauncherEntries from './HomeLauncherEntries.vue';
 
 const entry = useAppEntry();
 const { appInteraction } = useAppPresentation();
@@ -23,6 +25,7 @@ const router = useRouter();
 const documentMetadata = useDocumentMetadata();
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
+const { openLauncher } = useLauncher();
 const { chats } = useChatListData();
 const { chatGroups } = useCurrentChatState();
 const portableAppDownload = usePortableAppDownload({ version: __APP_VERSION__ });
@@ -30,6 +33,9 @@ const isHosted = __BUILD_MODE_IS_HOSTED__;
 const logoGradientId = useId();
 const recentChatsId = useId();
 const chatGroupsId = useId();
+const recentItemsId = useId();
+const recentExpanded = ref(false);
+const recentTrigger = ref<HTMLButtonElement>();
 const portableDetailsId = useId();
 const portableDetails = ref<'closed' | 'open'>('closed');
 const portableDetailsTrigger = ref<HTMLButtonElement>();
@@ -165,6 +171,12 @@ function chooseModel(): void {
   }
 }
 
+function openDeveloperTools(): void {
+  if (!blocked.value) {
+    openLauncher({ view: 'developer' });
+  }
+}
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
@@ -175,7 +187,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <LanguageSelector />
     </div>
 
-    <main class="home-content" tw-class="mx-auto w-full max-w-[44rem] px-5 sm:px-9">
+    <main class="home-content" tw-class="mx-auto w-full max-w-[1020px] px-5 sm:px-9">
       <header tw-class="text-center">
         <h1 class="home-brand">
           <span class="home-brand-mark" aria-hidden="true">
@@ -195,22 +207,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </span>
           <span class="home-brand-name" tw-class="bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">Naidan</span>
         </h1>
-        <p class="home-arrival" style="--home-delay: 140ms" tw-class="mx-auto mt-4 flex max-w-md items-start justify-center gap-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400 sm:text-[13px]">
+        <p class="home-arrival" style="--home-delay: 140ms" tw-class="mx-auto mt-[7px] flex max-w-md items-start justify-center gap-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
           <GhostIcon v-if="settings.storageType === 'memory'" aria-hidden="true" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-400" />
           <ShieldCheckIcon v-else aria-hidden="true" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500/80 dark:text-blue-400/80" />
           <span>{{ settings.storageType === 'memory' ? lazyStrings.HomeWelcome__conversations_in_memory_are_cleared_on_reload() : lazyStrings.HomeWelcome__conversations_are_stored_on_this_device() }}</span>
         </p>
       </header>
 
-      <div class="home-arrival" style="--home-delay: 180ms" tw-class="mt-6 sm:mt-7">
-        <div tw-class="flex flex-wrap items-center justify-center gap-x-2 gap-y-2 sm:gap-x-4">
+      <div class="home-arrival" style="--home-delay: 180ms" tw-class="mt-[11px]">
+        <div tw-class="flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
             data-testid="home-new-chat"
             :disabled="blocked"
             :aria-busy="creation === 'creating'"
             @click="createChat"
-            tw-class="group inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200/90 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors duration-200 hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait disabled:opacity-60 dark:border-gray-700/80 dark:bg-gray-800/50 dark:text-gray-200 dark:hover:border-blue-400/40 dark:hover:bg-gray-800 sm:px-4 sm:text-sm"
+            class="home-primary-action"
+            tw-class="group inline-flex min-h-[38px] items-center justify-center gap-2 rounded-[11px] border border-gray-200/90 bg-white px-[15px] py-2 text-xs font-semibold text-gray-700 transition-colors duration-200 hover:border-blue-300/70 hover:bg-blue-50/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait disabled:opacity-60 dark:border-gray-700/80 dark:bg-gray-800/50 dark:text-gray-200 dark:hover:border-blue-400/40 dark:hover:bg-gray-800"
           >
             <span tw-class="text-gray-400 transition-colors group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400">
               <Loader2Icon v-if="creation === 'creating'" aria-hidden="true" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />
@@ -219,7 +232,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <span tw-class="whitespace-nowrap">{{ lazyStrings.HomeWelcome__start_a_new_chat() }}</span>
           </button>
 
-          <button type="button" data-testid="open-model-welcome" aria-haspopup="dialog" :disabled="blocked" @click="chooseModel" tw-class="group -mr-2 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-500 transition-colors hover:bg-gray-100/70 hover:text-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200">
+          <button type="button" class="home-secondary-action" data-testid="open-model-welcome" aria-haspopup="dialog" :disabled="blocked" @click="chooseModel" tw-class="group inline-flex items-center gap-[7px] rounded-lg px-2.5 py-2 text-xs text-gray-500 transition-colors hover:bg-gray-100/70 hover:text-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-200">
             <ListIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
             <span>{{ lazyStrings.BrowserModelWelcome__choose_a_model() }}</span>
             <ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none dark:text-gray-500" />
@@ -228,44 +241,62 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="creationErrorMessage" data-testid="home-creation-error" role="alert" tw-class="mt-3 text-center text-xs leading-relaxed text-red-600 dark:text-red-400">{{ creationErrorMessage }}</p>
       </div>
 
-      <section v-if="recentChats.length > 0" class="home-arrival" style="--home-delay: 250ms" :aria-labelledby="recentChatsId" tw-class="mx-auto mt-10 w-full max-w-xl sm:mt-12">
-        <div tw-class="mb-3 flex items-center justify-between gap-4 px-1">
-          <h2 :id="recentChatsId" tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.HomeWelcome__recent_chats() }}</h2>
-          <span tw-class="text-[10px] text-gray-400 dark:text-gray-500">{{ lazyStrings.HomeWelcome__most_recently_updated() }}</span>
-        </div>
-        <div tw-class="divide-y divide-gray-100 dark:divide-gray-800/70">
-          <RouterLink
-            v-for="chat in recentChats"
-            :key="idToRaw({ id: chat.id })"
-            :to="`/chat/${idToRaw({ id: chat.id })}`"
-            :title="chat.title || lazyStrings.SHARED__new_chat()"
-            data-testid="home-recent-chat"
-            tw-class="group -mx-2 flex min-h-[68px] items-center gap-3.5 rounded-xl px-3 py-3 text-left transition-colors duration-200 hover:bg-gray-100/70 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-gray-800/50 sm:-mx-3 sm:gap-4 sm:px-4"
-          >
-            <MessageSquareIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-gray-400 transition-colors group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
-            <span tw-class="min-w-0 flex-1 space-y-1">
-              <span tw-class="block truncate text-sm font-medium leading-relaxed text-gray-700 transition-colors group-hover:text-gray-950 dark:text-gray-300 dark:group-hover:text-gray-100">{{ chat.title || lazyStrings.SHARED__new_chat() }}</span>
-              <span v-if="chat.groupId && chatGroupNames.has(chat.groupId)" tw-class="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500"><FolderIcon aria-hidden="true" tw-class="h-3 w-3 shrink-0" /><span tw-class="truncate">{{ chatGroupNames.get(chat.groupId) }}</span></span>
-            </span>
-            <time :datetime="new Date(chat.updatedAt).toISOString()" tw-class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{{ updatedDate({ timestamp: chat.updatedAt }) }}</time>
-            <ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-gray-500 motion-reduce:transition-none dark:text-gray-600 dark:group-hover:text-gray-400" />
-          </RouterLink>
+      <section v-if="recentChats.length > 0" class="home-arrival home-recents" style="--home-delay: 250ms" :aria-labelledby="recentChatsId" data-testid="home-recent-chats" tw-class="mt-6 w-full">
+        <button ref="recentTrigger" type="button" :aria-expanded="recentExpanded" :aria-controls="recentItemsId" @click="recentExpanded = !recentExpanded" class="home-recents-toggle" data-testid="home-recent-toggle" tw-class="block w-full cursor-pointer rounded-lg px-1 text-left focus-visible:outline-2 focus-visible:outline-blue-500">
+          <span tw-class="flex min-h-9 items-center gap-3"><span :id="recentChatsId" tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.HomeWelcome__recent_chats() }}</span><span tw-class="ml-auto text-[10px] text-gray-400 dark:text-gray-500">{{ lazyStrings.HomeWelcome__most_recently_updated() }}</span><ChevronDownIcon aria-hidden="true" class="home-recents-chevron" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" /></span>
+          <span class="home-recents-preview" :data-expanded="recentExpanded" aria-hidden="true" data-testid="home-recent-preview">
+            <span v-for="chat in recentChats.slice(0, 2)" :key="idToRaw({ id: chat.id })" tw-class="flex min-h-8 items-center gap-3 px-1 text-xs text-gray-500 dark:text-gray-400"><MessageSquareIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" /><span tw-class="min-w-0 truncate">{{ chat.title || lazyStrings.SHARED__new_chat() }}</span></span>
+          </span>
+        </button>
+        <SettingsCollapse :id="recentItemsId" :open="recentExpanded" :return-focus="recentTrigger">
+          <div tw-class="divide-y divide-gray-100 dark:divide-gray-800/70">
+            <RouterLink
+              v-for="chat in recentChats"
+              :key="idToRaw({ id: chat.id })"
+              :to="`/chat/${idToRaw({ id: chat.id })}`"
+              :title="chat.title || lazyStrings.SHARED__new_chat()"
+              data-testid="home-recent-chat"
+              tw-class="group flex min-h-12 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors duration-200 hover:bg-gray-100/70 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-gray-800/50 sm:px-3"
+            >
+              <MessageSquareIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-gray-400 transition-colors group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
+              <span tw-class="min-w-0 flex-1 space-y-1">
+                <span tw-class="block truncate text-sm font-medium leading-relaxed text-gray-700 transition-colors group-hover:text-gray-950 dark:text-gray-300 dark:group-hover:text-gray-100">{{ chat.title || lazyStrings.SHARED__new_chat() }}</span>
+                <span v-if="chat.groupId && chatGroupNames.has(chat.groupId)" tw-class="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500"><FolderIcon aria-hidden="true" tw-class="h-3 w-3 shrink-0" /><span tw-class="truncate">{{ chatGroupNames.get(chat.groupId) }}</span></span>
+              </span>
+              <time :datetime="new Date(chat.updatedAt).toISOString()" tw-class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{{ updatedDate({ timestamp: chat.updatedAt }) }}</time>
+              <ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-gray-500 motion-reduce:transition-none dark:text-gray-600 dark:group-hover:text-gray-400" />
+            </RouterLink>
+          </div>
+        </SettingsCollapse>
+      </section>
+
+      <section v-else-if="recentChatGroups.length > 0" class="home-arrival home-recents" style="--home-delay: 250ms" :aria-labelledby="chatGroupsId" data-testid="home-chat-groups" tw-class="mt-6 w-full">
+        <button ref="recentTrigger" type="button" :aria-expanded="recentExpanded" :aria-controls="recentItemsId" @click="recentExpanded = !recentExpanded" class="home-recents-toggle" data-testid="home-recent-toggle" tw-class="block w-full cursor-pointer rounded-lg px-1 text-left focus-visible:outline-2 focus-visible:outline-blue-500">
+          <span tw-class="flex min-h-9 items-center justify-between gap-3"><span :id="chatGroupsId" tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.HomeWelcome__chat_groups() }}</span><ChevronDownIcon aria-hidden="true" class="home-recents-chevron" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" /></span>
+          <span class="home-recents-preview" :data-expanded="recentExpanded" aria-hidden="true" data-testid="home-recent-preview">
+            <span v-for="chatGroup in recentChatGroups.slice(0, 2)" :key="idToRaw({ id: chatGroup.id })" tw-class="flex min-h-8 items-center gap-3 px-1 text-xs text-gray-500 dark:text-gray-400"><FolderIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" /><span tw-class="min-w-0 truncate">{{ chatGroup.name }}</span></span>
+          </span>
+        </button>
+        <SettingsCollapse :id="recentItemsId" :open="recentExpanded" :return-focus="recentTrigger">
+          <div tw-class="divide-y divide-gray-100 dark:divide-gray-800/70">
+            <RouterLink v-for="chatGroup in recentChatGroups" :key="idToRaw({ id: chatGroup.id })" :to="`/chat-group/${idToRaw({ id: chatGroup.id })}`" data-testid="home-chat-group" tw-class="group flex min-h-12 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors duration-200 hover:bg-gray-100/70 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-gray-800/50 sm:px-3">
+              <FolderIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500/70 dark:text-blue-400/70" />
+              <span tw-class="min-w-0 flex-1 truncate text-sm font-medium text-gray-700 dark:text-gray-300">{{ chatGroup.name }}</span>
+              <time :datetime="new Date(chatGroup.updatedAt).toISOString()" tw-class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{{ updatedDate({ timestamp: chatGroup.updatedAt }) }}</time>
+              <ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none dark:text-gray-600" />
+            </RouterLink>
+          </div>
+        </SettingsCollapse>
+      </section>
+
+      <section class="home-arrival" style="--home-delay: 280ms" data-testid="home-launcher-entries" tw-class="mt-5">
+        <HomeLauncherEntries query="" :blocked="blocked" />
+        <div tw-class="mt-2 flex justify-end">
+          <button type="button" :disabled="blocked" aria-haspopup="dialog" @click="openDeveloperTools" data-testid="home-developer-tools" tw-class="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-[11px] text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"><FlaskConicalIcon aria-hidden="true" tw-class="h-3.5 w-3.5" /><span>{{ lazyStrings.launcher__developer_tools() }}</span><ChevronRightIcon aria-hidden="true" tw-class="h-3 w-3 opacity-60" /></button>
         </div>
       </section>
 
-      <section v-else-if="recentChatGroups.length > 0" class="home-arrival" style="--home-delay: 250ms" :aria-labelledby="chatGroupsId" tw-class="mx-auto mt-10 w-full max-w-xl sm:mt-12">
-        <h2 :id="chatGroupsId" tw-class="mb-3 px-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.HomeWelcome__chat_groups() }}</h2>
-        <div tw-class="divide-y divide-gray-100 dark:divide-gray-800/70">
-          <RouterLink v-for="chatGroup in recentChatGroups" :key="idToRaw({ id: chatGroup.id })" :to="`/chat-group/${idToRaw({ id: chatGroup.id })}`" data-testid="home-chat-group" tw-class="group -mx-2 flex min-h-[68px] items-center gap-3.5 rounded-xl px-3 py-3 text-left transition-colors duration-200 hover:bg-gray-100/70 focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-gray-800/50 sm:-mx-3 sm:gap-4 sm:px-4">
-            <FolderIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500/70 dark:text-blue-400/70" />
-            <span tw-class="min-w-0 flex-1 truncate text-sm font-medium text-gray-700 dark:text-gray-300">{{ chatGroup.name }}</span>
-            <time :datetime="new Date(chatGroup.updatedAt).toISOString()" tw-class="shrink-0 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{{ updatedDate({ timestamp: chatGroup.updatedAt }) }}</time>
-            <ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-300 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none dark:text-gray-600" />
-          </RouterLink>
-        </div>
-      </section>
-
-      <footer v-if="isHosted" class="home-arrival" style="--home-delay: 320ms" tw-class="mt-7 text-center sm:mt-9">
+      <footer v-if="isHosted" class="home-arrival" style="--home-delay: 320ms" tw-class="mt-4 text-center">
         <div tw-class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
           <a :href="portableAppDownload.href" :download="portableAppDownload.fileName" data-testid="portable-html-download" tw-class="group inline-flex min-h-8 max-w-full items-center justify-center gap-2 rounded text-[11px] text-gray-500 transition-colors hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:text-blue-400">
             <span>{{ lazyStrings.SHARED__download_portable_html_edition() }}</span>
@@ -289,24 +320,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <style scoped>
 .home-content {
-  padding-top: clamp(5.5rem, 14dvh, 10rem);
-  padding-bottom: clamp(2rem, 6dvh, 5rem);
+  padding-top: 4rem;
+  padding-bottom: 2.25rem;
 }
 
 .home-brand {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.18em;
+  gap: 0.3em;
   margin: 0;
-  font-size: clamp(2.25rem, 10cqw, 3.875rem);
+  font-size: clamp(2rem, 5cqw, 2.625rem);
   line-height: 1;
 }
 
 .home-brand-mark {
   position: relative;
-  width: 1.6em;
-  height: 1.6em;
+  width: 1.05em;
+  height: 1.05em;
   flex: none;
 }
 
@@ -348,6 +379,43 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 .home-arrival:focus-within {
   animation: none;
+}
+
+.home-recents-chevron {
+  transition: transform 160ms ease;
+}
+
+.home-recents-toggle[aria-expanded='true'] .home-recents-chevron {
+  transform: rotate(180deg);
+}
+
+.home-recents-preview {
+  display: block;
+  max-height: 3.5rem;
+  overflow: hidden;
+  opacity: 0.8;
+  mask-image: linear-gradient(to bottom, #000 35%, transparent);
+  transition: max-height 200ms ease, opacity 160ms ease, visibility 0s;
+}
+
+.home-recents-preview[data-expanded='true'] {
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s, 0s, 200ms;
+}
+
+@media (max-width: 720px) {
+  .home-primary-action {
+    min-height: 36px;
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+
+  .home-secondary-action {
+    padding-inline: 5px;
+    font-size: 11px;
+  }
 }
 
 @keyframes home-wordmark {
@@ -414,13 +482,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   }
 }
 
-@media (max-height: 620px) {
-  .home-content {
-    padding-top: 4.5rem;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
+  .home-recents-chevron,
+  .home-recents-preview {
+    transition: none;
+  }
+
   .home-arrival,
   .home-brand-name,
   .home-brand-frame,

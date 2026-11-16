@@ -9,6 +9,7 @@ import { useLiveConversationNavigation } from '@/features/live-conversation/navi
 import MainLayoutFrame from '@/components/layout/MainLayoutFrame.vue';
 import { useLayout } from '@/composables/useLayout';
 import { useAppEntry } from '@/composables/useAppEntry';
+import { useLauncher } from '@/composables/useLauncher';
 
 type PostStartupFeatureActivation = 'inactive' | 'active';
 
@@ -45,6 +46,7 @@ const renderEntry = computed(() => {
 });
 
 const { isSidebarOpen, isDebugOpen } = useLayout();
+const { isLauncherOpen } = useLauncher();
 const sidebarWidth = computed(() => isSidebarOpen.value
   ? 'expanded' as const
   : 'collapsed' as const);
@@ -73,7 +75,7 @@ defineExpose({
 </script>
 
 <template>
-  <MainLayoutFrame :sidebar-width="sidebarWidth">
+  <MainLayoutFrame :sidebar-width="sidebarWidth" :inert="isLauncherOpen || undefined">
     <template #sidebar>
       <WorkflowSidebar v-if="isWorkflowRoute && !renderEntry" />
       <ImageGenerationSidebar v-else-if="generationNavigation && !renderEntry" :navigation="generationNavigation" />

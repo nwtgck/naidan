@@ -16,6 +16,7 @@ const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockDuplicateChatGroup = vi.fn();
 
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),

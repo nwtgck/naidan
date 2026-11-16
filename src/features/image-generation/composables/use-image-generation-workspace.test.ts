@@ -2,6 +2,7 @@ import { imagePendingRuns } from '@/features/image-generation/session/pending-ru
 import { selectImageGenerationAssets } from '@/features/image-generation/session/asset-query';
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@/components/LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/components/SettingsSelect.vue', async () => ({
   default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
 }));

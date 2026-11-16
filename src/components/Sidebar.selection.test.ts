@@ -11,6 +11,7 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
 }));
