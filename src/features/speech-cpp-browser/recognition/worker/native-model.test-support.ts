@@ -141,7 +141,7 @@ export function nativeRecognitionFixture({ pointerBytes }: { pointerBytes: 4 | 8
     },
   }) as unknown as Core;
   const sync = vi.fn<ReturnType<Helpers['createAbiCaller']>['callSync']>(({ name }) => name === 'speech_last_error' ? 300n : name === 'speech_last_error_option' ? 400n : undefined);
-  const remove = vi.fn();
+  const remove = vi.fn<ReturnType<Helpers['mountReadOnlyFile']>['remove']>();
   const helpers = { mountReadOnlyFile: vi.fn(() => ({ path: '/model.gguf', remove })), createAbiCaller: vi.fn(() => ({ callSync: sync })) } as unknown as Helpers;
   return { core, helpers, api, calls, freed, strings, heap, sync, addFunction, removeFunction, remove, writePointer };
 }

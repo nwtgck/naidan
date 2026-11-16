@@ -46,7 +46,7 @@ export async function speechFileRunFixture({ pcm, tailSeconds, maxSeconds, input
     },
   });
   const decodeFile = vi.fn<typeof decodeLiveAudioFile>(async () => pcm);
-  const onChange = vi.fn();
+  const onChange = vi.fn<Parameters<typeof createSpeechFileRun>[0]['onChange']>();
   const runner = createSpeechFileRun({ client, file: new File(['audio'], 'greeting.wav'), options: { inputSampleRate: 24000, maxSeconds, language: 'ja', persona: undefined, name: undefined, seed: 0 }, tailSeconds, inputPacing, inputLevel, maximumRetainedAudioBytes, decodeFile, onChange });
   await client.loadModel({ file: new File(['model'], 'haru.gguf') });
   return {

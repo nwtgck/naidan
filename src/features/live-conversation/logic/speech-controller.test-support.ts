@@ -42,7 +42,7 @@ export function createLiveSpeechFixture() {
   const finish = vi.fn(async () => {});
   const captureSettings = vi.fn<NonNullable<LiveCapture['getSettings']>>(() => undefined);
   const capture = vi.fn<typeof openLiveCapture>(async () => ({ finish, getSettings: captureSettings }));
-  const player = { activate: vi.fn(async () => {}), begin: vi.fn(), append: vi.fn(async () => {}), mute: vi.fn(), stop: vi.fn(), close: vi.fn(async () => {}) };
+  const player = { activate: vi.fn(async () => {}), begin: vi.fn<ReturnType<typeof createLivePlayback>['begin']>(), append: vi.fn(async () => {}), mute: vi.fn<ReturnType<typeof createLivePlayback>['mute']>(), stop: vi.fn<ReturnType<typeof createLivePlayback>['stop']>(), close: vi.fn(async () => {}) };
   const playback = vi.fn<typeof createLivePlayback>(() => player);
   const onChange = vi.fn<Parameters<typeof createLiveSpeechController>[0]['onChange']>();
   const decodeFile = vi.fn<typeof decodeLiveAudioFile>(async () => new Float32Array([0.5]));

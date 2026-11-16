@@ -97,7 +97,7 @@ it('connects each runtime consumer to its own installed bicore dependency', asyn
   expect(speech.configuration.sourceCommit).toBe(speechRoot.sourceCommit);
   const speechPrefix = 'speech-cpp-runtime/' + speech.configuration.sourceCommit + '/';
   const speechArtifact = speech.configuration.artifact;
-  expect(speechArtifact.profile).toBe('webgpu-wasm64-jspi');
+  expect(speechArtifact.profile).toBe('webgpu-wasm32-jspi');
   const readSpeechWasm = speech.files.get(speechArtifact.wasmPath);
   if (readSpeechWasm === undefined) {
     throw new Error('Missing emitted speech Wasm');

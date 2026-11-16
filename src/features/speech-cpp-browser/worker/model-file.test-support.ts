@@ -24,7 +24,7 @@ export function speechFileSourceFixture({ size, maxReadBytes }: { size: number, 
     }
     return Uint8Array.from(speechFileBytes(range)).buffer;
   });
-  const onRead = vi.fn();
+  const onRead = vi.fn<NonNullable<Parameters<typeof createSpeechFileSource>[0]['onRead']>>();
   return { source: createSpeechFileSource({ file, maxReadBytes, readBlob, onRead }), readBlob, slices, onRead };
 }
 
