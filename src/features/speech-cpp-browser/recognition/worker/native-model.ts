@@ -1,4 +1,5 @@
 import type { Core } from 'speech-cpp-browser-core/speech-cpp/host';
+import { readSpeechPointer } from '@/features/speech-cpp-browser/worker/native-memory';
 import { SpeechRuntimeError, speechError, speechFailure, type SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
 import { createSpeechFileSource } from '@/features/speech-cpp-browser/worker/model-file';
 import { createSpeechReadCoverage } from '@/features/speech-cpp-browser/worker/load-progress';
@@ -41,12 +42,11 @@ export async function openNativeSpeechRecognitionModel({ file, signal, core, hel
   });
   const mounted = helpers.mountReadOnlyFile(core, '/recognition-model.gguf', { size: source.size, read: (destination, offset) => source.read({ destination, offset }) }, { maxChunkBytes: 4 * 1024 * 1024 });
   const sync = helpers.createAbiCaller({ module: core.module, schema: core.schema, suspension: 'jspi', gate: undefined });
-  const out = core.alloc(8), path = core.utf8(mounted.path), device = core.utf8('gpu');
+  const out = core.alloc(core.pointerBytes), path = core.utf8(mounted.path), device = core.utf8('gpu');
   let model = 0n, params = 0n, metadata = 0n, request = 0n;
   let released = false, cancelled = false;
   function pointer(): bigint {
-    const bytes = core.bytes(out, 8);
-    return new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(0, true);
+    return readSpeechPointer({ core, address: out });
   }
   function check({ status }: { status: number }): void {
     if (status === core.constant('SPEECH_OK')) {
@@ -64,14 +64,14 @@ export async function openNativeSpeechRecognitionModel({ file, signal, core, hel
     if (loadingObservation !== undefined) {
       await loadingObservation.open();
     }
-    core.bytes(out, 8).fill(0);
+    core.bytes(out, core.pointerBytes).fill(0);
     check({ status: await core.api.speech_load_params_new(out) });
     params = pointer();
     check({ status: await core.api.speech_load_params_set_device(params, device) });
     check({ status: await core.api.speech_load_params_set_threads(params, 1) });
     check({ status: await core.api.speech_load_params_set_warmup(params, 0) });
     signal.throwIfAborted();
-    core.bytes(out, 8).fill(0);
+    core.bytes(out, core.pointerBytes).fill(0);
     finishLoading = loadingObservation?.stage({ name: 'speech_model_load' });
     const status = await core.api.speech_model_load(path, params, out);
     model = pointer();
@@ -80,7 +80,7 @@ export async function openNativeSpeechRecognitionModel({ file, signal, core, hel
     signal.throwIfAborted();
     onProgress({ progress: { stage: 'checking_loaded_model' } });
     // Snapshot the loaded model's metadata instead of reparsing its GGUF first.
-    core.bytes(out, 8).fill(0);
+    core.bytes(out, core.pointerBytes).fill(0);
     const infoStatus = await core.api.speech_model_get_info(model, out);
     metadata = pointer();
     check({ status: infoStatus });
@@ -151,7 +151,7 @@ export async function openNativeSpeechRecognitionModel({ file, signal, core, hel
         throw speechError({ code: 'invalid_state', message: 'The recognition model does not support that language selection' });
       }
       cancelled = false;
-      const output = core.alloc(8);
+      const output = core.alloc(core.pointerBytes);
       const observation = createNativeSpeechObservation({ core, observer: investigation, modelBytes: file.size, now: () => performance.now() });
       let finishTranscribing: ReturnType<NonNullable<typeof observation>['stage']> | undefined;
       let input = 0n, callback: number | bigint | undefined;
@@ -161,10 +161,9 @@ export async function openNativeSpeechRecognitionModel({ file, signal, core, hel
           await observation.loadedModel({ model });
           await observation.devices();
         }
-        core.bytes(output, 8).fill(0);
+        core.bytes(output, core.pointerBytes).fill(0);
         check({ status: await core.api.speech_request_new(model, output) });
-        const bytes = core.bytes(output, 8);
-        request = new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(0, true);
+        request = readSpeechPointer({ core, address: output });
         input = core.alloc(samples.byteLength);
         core.bytes(input, samples.byteLength).set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength));
         // set_audio owns a native copy. Free staging immediately after it
@@ -191,7 +190,7 @@ export async function openNativeSpeechRecognitionModel({ file, signal, core, hel
             onProgress({ progress: done });
           }
           return 0;
-        }, 'idj');
+        }, core.pointerBytes === 4 ? 'idi' : 'idj');
         check({ status: await core.api.speech_request_set_progress(request, BigInt(callback), 0n) });
         if (cancelled) {
           sync.callSync({ name: 'speech_request_cancel', args: [request] });

@@ -3,7 +3,7 @@ export function runtimeBuildEvidence({ manifest, runtimeManifest }: {
   manifest: { formatVersion: number; sourceCommit: string };
   runtimeManifest: { formatVersion: number; runtime: string; sourceCommit: string; files: readonly { path: string; bytes: number; sha256: string }[] };
 }) {
-  if (manifest.formatVersion !== 5 || runtimeManifest.formatVersion !== 2 || runtimeManifest.runtime !== 'llama-cpp' || manifest.sourceCommit !== runtimeManifest.sourceCommit) {
+  if ((manifest.formatVersion !== 5 && manifest.formatVersion !== 6) || runtimeManifest.formatVersion !== 2 || runtimeManifest.runtime !== 'llama-cpp' || manifest.sourceCommit !== runtimeManifest.sourceCommit) {
     return undefined;
   }
   return {

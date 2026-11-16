@@ -1,8 +1,8 @@
 import { vi } from 'vitest';
 import { nativeRecognitionFixture } from '@/features/speech-cpp-browser/recognition/worker/native-model.test-support';
 
-export function observedNativeFixture() {
-  const native = nativeRecognitionFixture();
+export function observedNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
+  const native = nativeRecognitionFixture({ pointerBytes });
   Object.defineProperty(native.core.module, 'HEAPU8', { value: native.heap });
   native.api.speech_log_set = vi.fn(async () => {});
   native.api.speech_model_info_json = vi.fn(async () => 500n);

@@ -6,13 +6,30 @@ import type { z } from 'zod';
 import { createSpeechFileRun } from '@/features/live-conversation/logic/speech-file-run';
 import type { SpeechObservers } from './types';
 
+const selectedProfile = vi.hoisted(() => ({ value: 'webgpu-wasm64-jspi' }));
 const transport = vi.hoisted(() => ({
   remotes: [] as SpeechWorker[],
   assigned: new Map<SpeechWorker, object>(),
   listeners: new Map<object, Set<({ value }: { value: unknown }) => void>>(),
   post: vi.fn(),
 }));
-vi.mock('virtual:speech-cpp-browser/config', () => ({ default: { kind: 'available', sourceCommit: 'a'.repeat(40), artifact: { profile: 'webgpu-wasm64-jspi', modulePath: 'fixture', wasmPath: 'fixture', helpersPath: 'fixture', schemaSha256: 'b'.repeat(64), wasmSha256: 'c'.repeat(64), wasmBytes: 8 } } }));
+vi.mock('virtual:speech-cpp-browser/config', () => ({
+  default: {
+    kind: 'available',
+    sourceCommit: 'a'.repeat(40),
+    artifact: {
+      get profile() {
+        return selectedProfile.value;
+      },
+      modulePath: 'fixture',
+      wasmPath: 'fixture',
+      helpersPath: 'fixture',
+      schemaSha256: 'b'.repeat(64),
+      wasmSha256: 'c'.repeat(64),
+      wasmBytes: 8,
+    },
+  },
+}));
 vi.mock('@/utils/worker-transport', () => ({
   wrapWorkerRemote: ({ endpoint }: { endpoint: object }) => {
     const remote = transport.remotes.shift()!;
@@ -98,6 +115,7 @@ async function startFixture({ fixture, remote, sampleRate }: { fixture: ReturnTy
 }
 
 beforeEach(() => {
+  selectedProfile.value = 'webgpu-wasm64-jspi';
   workers.length = 0;
   transport.remotes.length = 0;
   transport.assigned.clear();
@@ -111,6 +129,21 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+it('requires Memory64 only for the selected wasm64 artifact and retains JSPI checks for wasm32', async () => {
+  const validate = vi.fn(() => false);
+  vi.stubGlobal('WebAssembly', { validate, Suspending: class {}, promising() {} });
+  await using legacy = clientFixture();
+  expect(legacy.client.capability).toEqual({ kind: 'unavailable', reason: 'memory64_unavailable' });
+  expect(validate).toHaveBeenCalledOnce();
+  selectedProfile.value = 'webgpu-wasm32-jspi';
+  await using modern = clientFixture();
+  expect(modern.client.capability).toEqual({ kind: 'available' });
+  expect(validate).toHaveBeenCalledOnce();
+  vi.stubGlobal('WebAssembly', { validate });
+  await using noJspi = clientFixture();
+  expect(noJspi.client.capability).toEqual({ kind: 'unavailable', reason: 'jspi_unavailable' });
 });
 
 it('removes model ownership atomically when its Worker crashes', async () => {

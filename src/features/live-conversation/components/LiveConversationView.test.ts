@@ -15,7 +15,7 @@ import { inspectStoredSpeechRecognitionModel, openStoredSpeechRecognitionModel }
 import { createRecognitionUiFixture } from './recognition-ui.test-support';
 import { createLiveSpeechFixture } from '@/features/live-conversation/logic/speech-controller.test-support';
 import { inspectStoredSpeechModel, openStoredSpeechModel } from '@/features/speech-cpp-browser/models';
-import type { SpeechCapability } from '@/features/speech-cpp-browser/types';
+import { SpeechRuntimeError, type SpeechCapability, type SpeechFailure } from '@/features/speech-cpp-browser/types';
 import { createSpeechClient as createStandaloneSpeechClient } from '@/features/speech-cpp-browser/worker/client-standalone';
 import { speechModelHeader } from '@/features/speech-cpp-browser/worker/model-file.test-support';
 import { File as NativeFile } from 'node:buffer';
@@ -184,6 +184,89 @@ function downloadedSnapshot(): SpeechInvestigationSnapshot | undefined {
 }
 
 describe('independent live conversation workspace', () => {
+  it.each([
+    ['speech', 'conversation'], ['speech', 'diagnostics'], ['recognition', 'conversation'], ['recognition', 'diagnostics'],
+  ] as const)('keeps the %s load failure through inventory refresh and cleanup in %s until a different model is selected', async (engine, panel) => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(engine === 'speech' ? speechInspection : { kind: 'other' });
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue(recognitionInspection);
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel, task: engine === 'speech' ? 'response' : 'transcription' });
+    await flushPromises();
+    const failureSelector = `[data-testid="${panel === 'diagnostics' ? 'live-diagnostics-model-failure' : 'live-model-failure'}"]`;
+    const target = engine === 'speech' ? f.speech : f.recognition;
+    const failure: SpeechFailure = { code: 'runtime_failed', message: 'GGUF tensor size overflow', nativeStatus: -5, nativeInput: 'model_source' };
+    vi.mocked(target.client.loadModel).mockRejectedValueOnce(new SpeechRuntimeError({ details: failure }));
+    await f.page.get(`[data-testid="${panel === 'diagnostics' ? 'live-diagnostics-load-model' : 'live-start'}"]`).trigger('click');
+    await flushPromises();
+    expect(f.page.get(failureSelector).text()).toContain(failure.message);
+    // Physical cleanup and a refreshed selector list are not a new load attempt.
+    await target.controller.release();
+    target.change({ state: { phase: 'unloaded', model: undefined, failure: undefined } });
+    await f.recognition.controller.clearRun();
+    const manager = f.wrapper.findComponent(LlamaCppBrowserManager);
+    manager.vm.$emit('models-changed', [{ modelId: 'user/live', size: 1, importedAt: 0 }]);
+    await flushPromises();
+    const alert = f.page.get(failureSelector);
+    expect(alert.text()).toContain(failure.message);
+    expect(alert.text()).toContain(String(failure.nativeStatus));
+    expect(alert.text()).toContain(failure.nativeInput);
+    vi.mocked(inspectStoredSpeechModel).mockRejectedValueOnce(new Error('Inventory refresh could not read the candidate'));
+    manager.vm.$emit('models-changed', [{ modelId: 'user/live', size: 1, importedAt: 0 }]);
+    await flushPromises();
+    expect(f.page.get(failureSelector).text()).toContain(failure.message);
+    expect(f.page.get(failureSelector).text()).not.toContain('Inventory refresh could not read the candidate');
+    manager.vm.$emit('model-selected', 'next/model');
+    await flushPromises();
+    expect(f.page.find(failureSelector).exists()).toBe(false);
+  });
+
+  it('clears the previous model load error on an explicit retry and replaces it with the new native failure', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    await using f = await fixture();
+    vi.mocked(f.speech.client.loadModel).mockRejectedValueOnce(new Error('First load failed'));
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.page.get('[data-testid="live-model-failure"]').text()).toContain('First load failed');
+    const retry = Promise.withResolvers<void>();
+    using gate = {
+      [Symbol.dispose]() {
+        retry.resolve();
+      },
+    };
+    vi.mocked(f.speech.client.loadModel).mockReturnValueOnce(retry.promise);
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.page.find('[data-testid="live-model-failure"]').exists()).toBe(false);
+    retry.reject(new SpeechRuntimeError({ details: { code: 'runtime_failed', message: 'Second load failed', nativeStatus: -7, nativeInput: 'device' } }));
+    await flushPromises();
+    const alert = f.page.get('[data-testid="live-model-failure"]');
+    expect(alert.text()).toContain('Second load failed');
+    expect(alert.text()).toContain('-7');
+    expect(alert.text()).toContain('device');
+    expect(alert.text()).not.toContain('First load failed');
+    await f.wrapper.get('[data-testid="live-start"]').trigger('click');
+    await flushPromises();
+    expect(f.page.find('[data-testid="live-model-failure"]').exists()).toBe(false);
+    expect(f.speech.controller.getState().runtime.phase).toBe('ready');
+    void gate;
+  });
+
+  it('clears an inspection error after the same candidate is successfully inspected again', async () => {
+    vi.mocked(inspectStoredSpeechModel).mockRejectedValue(new Error('Candidate could not be read'));
+    await using f = await fixture();
+    expect(f.page.get('[data-testid="live-model-failure"]').text()).toContain('Candidate could not be read');
+    const manager = f.wrapper.findComponent(LlamaCppBrowserManager);
+    vi.mocked(inspectStoredSpeechModel).mockRejectedValue(new Error('Candidate metadata is incomplete'));
+    manager.vm.$emit('models-changed', [{ modelId: 'user/live', size: 1, importedAt: 0 }]);
+    await flushPromises();
+    expect(f.page.get('[data-testid="live-model-failure"]').text()).toContain('Candidate metadata is incomplete');
+    expect(f.page.get('[data-testid="live-model-failure"]').text()).not.toContain('Candidate could not be read');
+    vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);
+    manager.vm.$emit('models-changed', [{ modelId: 'user/live', size: 1, importedAt: 0 }]);
+    await flushPromises();
+    expect(f.page.find('[data-testid="live-model-failure"]').exists()).toBe(false);
+  });
+
   it.each(['response', 'transcription'] as const)('saves a real failure during %s model preparation without a model file', async task => {
     if (task === 'response') {
       vi.mocked(inspectStoredSpeechModel).mockResolvedValue(speechInspection);

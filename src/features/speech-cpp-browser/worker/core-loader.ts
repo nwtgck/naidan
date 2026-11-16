@@ -1,6 +1,5 @@
-import type { Core } from 'speech-cpp-browser-core/speech-cpp/host';
-import type createModule from 'speech-cpp-browser-core/speech-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs';
-import type { SpeechArtifact } from '@/features/speech-cpp-browser/artifacts';
+import type { Core, CoreFactory } from 'speech-cpp-browser-core/speech-cpp/host';
+import { speechPointerBytes, type SpeechArtifact } from '@/features/speech-cpp-browser/artifacts';
 import { speechError, type SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
 import { readSpeechWasm } from './load-progress';
 
@@ -29,11 +28,11 @@ export async function loadSpeechCore({ artifact, baseUrl, onProgress }: { artifa
   }
   // The immutable artifact's inventory/fingerprint is verified by the build
   // reader; these callable types come from that artifact's generated declarations.
-  const create = factoryModule.default as typeof createModule;
+  const create = factoryModule.default as CoreFactory;
   const helpers = helperModule as Helpers;
   const module = await create({ wasmBinary });
   const core = helpers.attachCore(module, helpers.schema, { suspension: 'jspi' });
-  if (core.pointerBytes !== 8 || core.schema.runtime !== 'speech-cpp' || core.schema.abiVersion !== 3 || await core.api.speech_api_version_major() !== 4 || await core.api.speech_api_version_minor() < 2) {
+  if (core.pointerBytes !== speechPointerBytes({ profile: artifact.profile }) || core.schema.runtime !== 'speech-cpp' || core.schema.abiVersion !== 3 || await core.api.speech_api_version_major() !== 4 || await core.api.speech_api_version_minor() < 2) {
     throw new Error('Speech dialogue ABI 3 / upstream API 4.2 is required');
   }
   return { core, helpers };

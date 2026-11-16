@@ -4,8 +4,30 @@ import { openNativeSpeechRecognitionModel } from './native-model';
 import { nativeRecognitionFixture } from './native-model.test-support';
 import { recognitionFile } from '@/features/speech-cpp-browser/recognition/recognition.test-support';
 
+it.each([4, 8] as const)('uses %s-byte C pointer slots and the matching progress callback signature', async pointerBytes => {
+  const native = nativeRecognitionFixture({ pointerBytes });
+  const file = await recognitionFile({ architecture: 'qwen3-asr', task: 'recognition', sampleRate: 16000 });
+  const model = await openNativeSpeechRecognitionModel({ ...native, file, signal: new AbortController().signal, readBlob: () => new ArrayBuffer(0), onProgress() {} });
+  await using cleanup = {
+    async [Symbol.asyncDispose]() {
+      await model.release();
+    },
+  };
+  const onProgress = vi.fn();
+  native.api.speech_transcribe = vi.fn(async request => {
+    expect(request).toBe(40n);
+    expect(native.addFunction.mock.calls[0]![1]).toBe(pointerBytes === 4 ? 'idi' : 'idj');
+    native.addFunction.mock.calls[0]![0](0.5, pointerBytes === 4 ? 0 : 0n);
+    return 0;
+  });
+  expect(await model.transcribe({ samples: new Float32Array(4), sampleRate: 16000, language: undefined, onProgress })).toMatchObject({ text: 'こんにちは', status: 'complete' });
+  expect(onProgress).toHaveBeenCalledWith({ progress: 0.5 });
+  expect(native.api.speech_request_free).toHaveBeenCalledWith(40n);
+  void cleanup;
+});
+
 async function fixture() {
-  const native = nativeRecognitionFixture();
+  const native = nativeRecognitionFixture({ pointerBytes: 8 });
   const file = await recognitionFile({ architecture: 'qwen3-asr', task: 'recognition', sampleRate: 16000 });
   const model = await openNativeSpeechRecognitionModel({ ...native, file, signal: new AbortController().signal, readBlob: () => new ArrayBuffer(0), onProgress() {} });
   return {
@@ -70,7 +92,7 @@ it('rejects unsupported language and invalid PCM before allocating a native requ
 });
 
 it.each(['task', 'sample_rate'] as const)('releases the loaded model, metadata snapshot and mount when native %s disagrees', async field => {
-  const native = nativeRecognitionFixture();
+  const native = nativeRecognitionFixture({ pointerBytes: 8 });
   if (field === 'task') {
     native.api.speech_model_info_task = vi.fn(async () => 2);
   } else {
@@ -85,7 +107,7 @@ it.each(['task', 'sample_rate'] as const)('releases the loaded model, metadata s
 });
 
 it.each(['load', 'metadata'] as const)('preserves a native %s error before releasing owned handles', async phase => {
-  const native = nativeRecognitionFixture();
+  const native = nativeRecognitionFixture({ pointerBytes: 8 });
   if (phase === 'load') {
     native.api.speech_model_load = vi.fn(async (_path, _params, output) => {
       native.writePointer({ output, value: 30n });
@@ -115,7 +137,7 @@ it.each(['load', 'metadata'] as const)('preserves a native %s error before relea
 });
 
 it.each(['load', 'metadata', 'options'] as const)('releases owned load resources when cancellation occurs during %s', async phase => {
-  const native = nativeRecognitionFixture(), controller = new AbortController();
+  const native = nativeRecognitionFixture({ pointerBytes: 8 }), controller = new AbortController();
   const reason = new Error('cancelled model load');
   if (phase === 'load') {
     native.api.speech_model_load = vi.fn(async (_path, _params, output) => {

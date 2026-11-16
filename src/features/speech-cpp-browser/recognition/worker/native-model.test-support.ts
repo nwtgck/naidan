@@ -5,7 +5,7 @@ type Helpers = typeof import('speech-cpp-browser-core/speech-cpp/host');
 
 /** A small in-memory native boundary double, typed against the installed SDK.
  * Unexpected calls fail instead of simulating unrelated SDK behavior. */
-export function nativeRecognitionFixture() {
+export function nativeRecognitionFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   const heap = new Uint8Array(128 * 1024), strings = new Map<bigint, string>();
   const freed: bigint[] = [], calls: string[] = [];
   let next = 1024n;
@@ -15,7 +15,20 @@ export function nativeRecognitionFixture() {
     return result;
   }
   function writePointer({ output, value }: { output: bigint, value: bigint }): void {
-    new DataView(heap.buffer).setBigUint64(Number(output), value, true);
+    const view = new DataView(heap.buffer);
+    switch (pointerBytes) {
+    case 4:
+      view.setUint32(Number(output), Number(value), true);
+      // Poison alignment padding so an incorrect uint64 pointer read fails.
+      view.setUint32(Number(output) + 4, 0xa5a5a5a5, true);
+      break;
+    case 8: view.setBigUint64(Number(output), value, true);
+      break;
+    default: {
+      const exhaustive: never = pointerBytes;
+      throw new Error(String(exhaustive));
+    }
+    }
   }
   const api: Partial<Core['api']> = {
     speech_model_get_info: vi.fn(async (_model, output) => {
@@ -84,6 +97,7 @@ export function nativeRecognitionFixture() {
   // declarations. Proxy guards make an accidental extra call a test failure.
   const core = new Proxy({
     schema,
+    pointerBytes,
     module: { addFunction, removeFunction },
     api: new Proxy(api, {
       get(target, key) {

@@ -43,7 +43,7 @@
     "marked-katex-extension": "^5.1.13",
     "mermaid": "11.17.2",
     "nanoid": "^6.0.2",
-    "speech-cpp-browser-core": "github:nwtgck/browser-inference-core#0534b29db629c4d234af53061def119a7804ac96",
+    "speech-cpp-browser-core": "github:nwtgck/browser-inference-core#2ed139bcb906e91291b89dae732e0d2bca1f2aba",
     "stable-diffusion-cpp-browser-core": "github:nwtgck/browser-inference-core#51de01e36eb319bbb11a046691228102b605e455",
     "vue": "^3.5.44",
     "vue-router": "^5.4.0",

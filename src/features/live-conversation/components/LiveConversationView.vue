@@ -31,7 +31,7 @@ import { readLiveShellCall } from '@/features/live-conversation/logic/wesh-polic
 import { liveModelCatalog } from '@/features/live-conversation/model-catalog';
 import { defaultLiveSpeechLanguage, liveSpeechLanguageOptions } from '@/features/live-conversation/logic/speech-language';
 import type { SpeechInputPacing } from '@/features/live-conversation/logic/speech-file-run';
-import { speechFailure, type SpeechLoadProgress, type SpeechModelInfo } from '@/features/speech-cpp-browser/types';
+import { speechFailure, type SpeechFailure, type SpeechLoadProgress, type SpeechModelInfo } from '@/features/speech-cpp-browser/types';
 import type { SpeechRecognitionCandidateInfo } from '@/features/speech-cpp-browser/recognition/types';
 import type { SpeechInvestigationBinding } from '@/features/speech-cpp-browser/worker/investigation-context';
 import { registerLiveConversationNavigation, type LiveConversationPanel, type LiveInvestigationTask } from '@/features/live-conversation/navigation';
@@ -173,7 +173,7 @@ const writable = ref(false);
 const folderFailure = ref<string>();
 const preferenceFailure = ref(false);
 const inventoryFailure = ref(false);
-const modelFailure = ref<string>();
+const modelFailure = shallowRef<{ kind: 'inspection' | 'load', details: SpeechFailure }>();
 const startingModel = ref(false);
 const changingConversation = ref(false);
 const talkPending = ref(false);
@@ -553,7 +553,25 @@ watch(preference.remembered, value => {
   }
 });
 
-watch([modelId, models], async ([value]) => {
+function updateModelInspectionFailure({ failure }: { failure: SpeechFailure | undefined }): void {
+  const kind = modelFailure.value?.kind;
+  switch (kind) {
+  // Refreshing the selector does not replace the last explicit load result.
+  case 'load': return;
+  case 'inspection': case undefined:
+    modelFailure.value = failure === undefined ? undefined : { kind: 'inspection', details: failure };
+    return;
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+watch([modelId, models], async ([value], [previousValue]) => {
+  if (value !== previousValue) {
+    modelFailure.value = undefined;
+  }
   inspect?.abort();
   const current = new AbortController();
   inspect = current;
@@ -566,7 +584,7 @@ watch([modelId, models], async ([value]) => {
   try {
     const result = await inspectStoredSpeechModel({ modelId: value, signal: current.signal });
     if (!disposed && inspect === current) {
-      modelFailure.value = undefined;
+      updateModelInspectionFailure({ failure: undefined });
       switch (result.kind) {
       case 'speech': selectedModelInfo.value = result.info;
         selectedEngine.value = 'speech';
@@ -598,7 +616,7 @@ watch([modelId, models], async ([value]) => {
   } catch (error) {
     if (!disposed && !current.signal.aborted) {
       inventoryFailure.value = true;
-      modelFailure.value = error instanceof Error ? error.message : String(error);
+      updateModelInspectionFailure({ failure: speechFailure({ error }) });
     }
   }
 }, { immediate: true });
@@ -933,7 +951,7 @@ async function start(): Promise<void> {
       } else if (investigation && failure) {
         investigationCapture.loadFailed({ context: investigation.context, failure });
       }
-      modelFailure.value = target.getState().failure?.message;
+      modelFailure.value = failure === undefined ? undefined : { kind: 'load', details: failure };
       if (!recognizing) {
         speech.controller.mutePlayback({ value: muted.value ? 'off' : 'on' });
       }
@@ -942,7 +960,7 @@ async function start(): Promise<void> {
         investigationCapture.loadFailed({ context: investigation.context, failure: speechFailure({ error }) });
       }
       if (!current.signal.aborted && !disposed) {
-        modelFailure.value = error instanceof Error ? error.message : String(error);
+        modelFailure.value = { kind: 'load', details: speechFailure({ error }) };
       }
     } finally {
       if (modelLoadInvestigation?.lifetime === current) {
@@ -1822,7 +1840,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p v-if="active && modelId !== residentModelId" tw-class="text-xs leading-5 text-amber-700 dark:text-amber-300" data-testid="live-next-model">{{ lazyStrings.liveConversation__load_selected_model_to_switch() }}</p>
             <p v-if="preferenceFailure" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.liveConversation__model_preference_failed() }}</p>
             <p v-if="inventoryFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.liveConversation__model_inventory_failed() }}</p>
-            <p v-if="modelFailure" role="alert" tw-class="break-words text-xs text-red-600 dark:text-red-400" data-testid="live-model-failure">{{ modelFailure }}</p>
+            <p v-if="modelFailure" role="alert" tw-class="whitespace-pre-wrap break-words text-xs text-red-600 dark:text-red-400" data-testid="live-model-failure">{{ modelFailure.details.message }}<template v-if="modelFailure.details.nativeStatus !== undefined">{{ '\n' }}{{ modelFailure.details.nativeStatus }}</template><template v-if="modelFailure.details.nativeInput !== undefined">{{ '\n' }}{{ modelFailure.details.nativeInput }}</template></p>
             <p v-if="speechMode" tw-class="text-xs leading-6 text-gray-500 dark:text-gray-400" data-testid="live-speech-help">{{ lazyStrings.liveConversation__continuous_conversation_help() }}</p>
             <p v-if="(speechMode || selectedEngine === 'speech') && speechUnavailable" role="status" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-speech-unavailable">{{ speechUnavailable }}</p>
             <LlamaCppBrowserModelSuggestions :suggestions="modelSuggestions" :models="models" :disabled="false" :default-model="undefined" :default-action-disabled="changingConversation" selection-action="select" memory-filter="hide" @select="catalogSelect({ model: $event })" @changed="refreshInventory" />
@@ -1860,7 +1878,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="(filePending || recognitionRunning) && (!diagnostics || activeFileTask !== investigationTask)" role="status" tw-class="flex flex-wrap items-center gap-3 text-xs leading-6 text-gray-500 dark:text-gray-400" data-testid="live-investigation-background-status"><span>{{ activeFileTask === 'transcription' ? lazyStrings.liveConversation__transcribing_audio_file() : lazyStrings.liveConversation__generating_response() }}</span><button type="button" @click="activeFileTask && setInvestigationTask({ task: activeFileTask })" tw-class="rounded text-blue-600 underline dark:text-blue-400" data-testid="live-investigation-open-running">{{ activeFileTask === 'transcription' ? lazyStrings.liveConversation__audio_to_transcription() : lazyStrings.liveConversation__audio_to_response() }}</button><button type="button" @click="cancelFile" tw-class="rounded text-gray-600 underline dark:text-gray-300" data-testid="live-investigation-cancel-running">{{ lazyStrings.SHARED__cancel() }}</button></p>
         <LiveConversationDiagnostics v-if="diagnostics" ref="fileView" :file="sourceFile" :task="investigationTask" :busy="filePending || recognitionRunning || recordingActive" :blocked="sourceBlocked && !(filePending || recognitionRunning || recordingActive)" :file-input="currentInputSource === 'file' ? 'shown' : 'hidden'" :playback-blocked="recordingActive" @task="setInvestigationTask({ task: $event })" @select="selectAudioFile({ files: $event })" @clear="clearAudioFile" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })">
           <template #input-controls><LiveSpeechRecordingInput purpose="transcription" v-if="investigationTask === 'transcription'" :source="recognitionInputSource" :state="recordingState" :clip="currentRecordingSnapshot" :blocked="sourceBlocked && !recognitionRecordingActive" @source="recognitionInputSource = $event" @start="startRecognitionRecording" @stop="stopRecognitionRecording" @discard="discardRecognitionRecording" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })" /><LiveSpeechRecordingInput v-else purpose="response" :source="responseInputSource" :state="responseRecordingState" :clip="currentRecordingSnapshot" :blocked="sourceBlocked && !responseRecordingActive" @source="responseInputSource = $event" @start="startResponseRecording" @stop="responseRecording.recording.stop()" @discard="discardResponseRecording" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })" /></template>
-          <template #model><div tw-class="space-y-3 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/40"><label :for="`${id}-diagnostic-model`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__model() }}</label><ModelSelector surface="settings" :input-id="`${id}-diagnostic-model`" :model-value="modelId || undefined" :models="diagnosticModelIds" :loading="diagnosticModelsScanning || selectedEngine === 'checking'" :disabled="navigationBusy" :placeholder="lazyStrings.liveConversation__choose_model()" @update:model-value="selectModel({ value: $event })" @refresh="refreshInventory" data-testid="live-diagnostics-model" /><div tw-class="flex flex-wrap items-center gap-3"><button type="button" :disabled="!canLoadSelectedModel" @click="loadSelectedModel" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-diagnostics-load-model">{{ lazyStrings.liveConversation__load_model() }}</button><span v-if="active" data-testid="live-diagnostics-resident-model" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</span><button v-if="startingModel" type="button" @click="cancelModelLoading" data-testid="live-diagnostics-cancel-model" tw-class="rounded text-xs text-blue-600 underline dark:text-blue-400">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button></div><LiveModelLoadProgress v-if="startingModel" :progress="modelLoadProgress" :ready="modelLoadReady" :generation="modelLoadGeneration" /><p v-if="modelId && !diagnosticModelsScanning && !diagnosticSelectionSupported" role="status" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-investigation-model-mismatch">{{ investigationTask === 'transcription' ? lazyStrings.liveConversation__transcription_model_required() : lazyStrings.liveConversation__audio_file_generation_unavailable() }}</p><p v-if="modelFailure" role="alert" tw-class="break-words text-xs text-red-600 dark:text-red-400">{{ modelFailure }}</p></div></template>
+          <template #model><div tw-class="space-y-3 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/40"><label :for="`${id}-diagnostic-model`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__model() }}</label><ModelSelector surface="settings" :input-id="`${id}-diagnostic-model`" :model-value="modelId || undefined" :models="diagnosticModelIds" :loading="diagnosticModelsScanning || selectedEngine === 'checking'" :disabled="navigationBusy" :placeholder="lazyStrings.liveConversation__choose_model()" @update:model-value="selectModel({ value: $event })" @refresh="refreshInventory" data-testid="live-diagnostics-model" /><div tw-class="flex flex-wrap items-center gap-3"><button type="button" :disabled="!canLoadSelectedModel" @click="loadSelectedModel" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-diagnostics-load-model">{{ lazyStrings.liveConversation__load_model() }}</button><span v-if="active" data-testid="live-diagnostics-resident-model" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</span><button v-if="startingModel" type="button" @click="cancelModelLoading" data-testid="live-diagnostics-cancel-model" tw-class="rounded text-xs text-blue-600 underline dark:text-blue-400">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button></div><LiveModelLoadProgress v-if="startingModel" :progress="modelLoadProgress" :ready="modelLoadReady" :generation="modelLoadGeneration" /><p v-if="modelId && !diagnosticModelsScanning && !diagnosticSelectionSupported" role="status" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-investigation-model-mismatch">{{ investigationTask === 'transcription' ? lazyStrings.liveConversation__transcription_model_required() : lazyStrings.liveConversation__audio_file_generation_unavailable() }}</p><p v-if="modelFailure" role="alert" tw-class="whitespace-pre-wrap break-words text-xs text-red-600 dark:text-red-400" data-testid="live-diagnostics-model-failure">{{ modelFailure.details.message }}<template v-if="modelFailure.details.nativeStatus !== undefined">{{ '\n' }}{{ modelFailure.details.nativeStatus }}</template><template v-if="modelFailure.details.nativeInput !== undefined">{{ '\n' }}{{ modelFailure.details.nativeInput }}</template></p></div></template>
           <LiveSpeechResponseInvestigation v-if="investigationTask === 'response'" :file="sourceFile" :run="responseRun" :text="fileText" :results="visibleResponseResults" :comparison="visibleResponseComparison" :busy="filePending && fileTask === 'response'" :blocked="sourceBlocked && !(filePending && fileTask === 'response')" :can-generate="canGenerateFile" :unavailable="fileUnavailable" :selection-failure="fileSelectionFailure" :tail-seconds="tailSeconds" :seed="fileSeed" :input-pacing="fileInputPacing" :input-levels="fileInputLevels" :queued-samples="speechState.runtime.queuedSamples" :model-load-milliseconds="modelLoadMilliseconds" @seed="fileSeed = $event" @input-pacing="fileInputPacing = $event" @input-levels="fileInputLevels = $event" @generate="generateFile" @cancel="cancelFile" @settings="settingsOpen = true" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })">
             <template #settings><div tw-class="space-y-2"><label :for="`${id}-diagnostic-language`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__conversation_language() }}</label><span tw-class="block w-full sm:max-w-xs"><SettingsFormSelect :id="`${id}-diagnostic-language`" v-model="conversationLanguage" :options="conversationLanguageOptions" :label="lazyStrings.liveConversation__conversation_language()" :disabled="sourceBlocked" :aria-describedby="`${id}-diagnostic-language-help`" data-testid="live-diagnostics-language" /></span><p :id="`${id}-diagnostic-language-help`" data-testid="live-diagnostics-language-help" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__conversation_language_help() }}</p></div><label tw-class="block space-y-2 text-xs font-medium text-gray-600 dark:text-gray-300"><span>{{ lazyStrings.liveConversation__instructions() }}</span><textarea v-model="instructions" :disabled="sourceBlocked" rows="2" maxlength="16384" tw-class="block w-full rounded-lg border border-gray-200 bg-transparent p-3 text-sm disabled:opacity-40 dark:border-gray-700" data-testid="live-diagnostics-instructions" /></label></template>
           </LiveSpeechResponseInvestigation>

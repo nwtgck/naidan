@@ -6,16 +6,15 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import type { Plugin } from 'vite';
-import type { SpeechConfiguration } from './artifacts.ts';
+import { speechProfileSchema, speechPointerBytes, type SpeechConfiguration } from './artifacts.ts';
 
 const virtualId = 'virtual:speech-cpp-browser/config';
-const profile = 'webgpu-wasm64-jspi';
 const provenanceSchema = z.object({
   sourceCommit: z.string(),
   sourceDirty: z.literal(false),
-  profile: z.literal(profile),
+  profile: speechProfileSchema,
   variant: z.literal('browser'),
-  configuration: z.object({ memory64: z.literal(true), jspi: z.literal(true), webgpu: z.literal(true), pthreads: z.literal(false) }),
+  configuration: z.object({ memory64: z.boolean(), jspi: z.literal(true), webgpu: z.literal(true), pthreads: z.literal(false) }),
   validation: z.object({ compiled: z.literal(true) }),
 });
 const manifestSchema = z.object({
@@ -29,7 +28,7 @@ const manifestSchema = z.object({
   capabilities: z.object({ ggufFileOffsetBits: z.literal(64), callerOwnedRandomAccess: z.literal(true), upstreamApi: z.literal(true) }),
   profiles: z.record(z.string(), z.object({ variants: z.object({ browser: provenanceSchema }) })),
 });
-const bindingSchema = z.object({ runtime: z.literal('speech-cpp'), abiVersion: z.literal(3), schemaSha256: z.string(), pointerBytes: z.literal(8), functions: z.array(z.object({ name: z.string(), export: z.string() })), callbacks: z.array(z.object({ name: z.string() })) });
+const bindingSchema = z.object({ runtime: z.literal('speech-cpp'), abiVersion: z.literal(3), schemaSha256: z.string(), pointerBytes: z.union([z.literal(4), z.literal(8)]), functions: z.array(z.object({ name: z.string(), export: z.string() })), callbacks: z.array(z.object({ name: z.string() })) });
 
 /** Optional acquisition-free reader. An installed artifact supplies actual
  * declarations; application session ports never fabricate an SDK ABI. */
@@ -51,12 +50,17 @@ export function readSpeechArtifacts({ rootDir, mode }: { rootDir: string, mode: 
   }
   const artifact = readBicoreArtifactPackage({ directory, runtime: 'speech-cpp', maxFileBytes: 100 * 1024 * 1024 });
   const manifest = manifestSchema.parse(artifact.manifest);
+  // Prefer wasm32; an older installed package can still supply wasm64.
+  const profile = speechProfileSchema.options.find(candidate => manifest.profiles[candidate] !== undefined);
+  if (profile === undefined) {
+    throw new Error('Missing speech WebGPU JSPI profile');
+  }
   const provenance = manifest.profiles[profile]?.variants.browser;
-  if (provenance?.sourceCommit !== artifact.sourceCommit || manifest.sourceCommit !== artifact.sourceCommit) {
+  if (provenance?.sourceCommit !== artifact.sourceCommit || manifest.sourceCommit !== artifact.sourceCommit || provenance.profile !== profile || provenance.configuration.memory64 !== (speechPointerBytes({ profile }) === 8)) {
     throw new Error('Speech runtime source/profile provenance mismatch');
   }
   const schema = bindingSchema.parse(JSON.parse(artifact.readArtifact({ relative: 'api/schema.json' }).data.toString('utf8')));
-  if (schema.schemaSha256 !== manifest.schemaSha256 || !['speech_dialogue_callback', 'speech_progress_callback'].every(name => schema.callbacks.some(callback => callback.name === name))) {
+  if (schema.pointerBytes !== speechPointerBytes({ profile }) || schema.schemaSha256 !== manifest.schemaSha256 || !['speech_dialogue_callback', 'speech_progress_callback'].every(name => schema.callbacks.some(callback => callback.name === name))) {
     throw new Error('Speech ABI schema does not provide the dialogue boundary');
   }
   for (const name of ['speech_model_load', 'speech_model_free', 'speech_request_new', 'speech_request_free', 'speech_dialogue_start', 'speech_dialogue_push', 'speech_dialogue_end', 'speech_dialogue_free', 'speech_model_info_open', 'speech_request_set_audio', 'speech_request_set_progress', 'speech_request_cancel', 'speech_transcribe', 'speech_request_result', 'speech_result_text', 'speech_result_stop', 'speech_result_language_count', 'speech_result_language']) {
@@ -101,7 +105,7 @@ export function readSpeechArtifacts({ rootDir, mode }: { rootDir: string, mode: 
   };
 }
 
-const standaloneFiles = new Set(['types.ts', 'artifacts.ts', 'models.ts', 'worker/model-file.ts', 'worker/types.ts', 'worker/client-standalone.ts', 'worker/client-unavailable.ts', 'recognition/types.ts', 'recognition/models.ts', 'recognition/model-file.ts', 'recognition/model-catalog.ts', 'recognition/controller.ts', 'recognition/worker/client-standalone.ts', 'recognition/worker/client-unavailable.ts', 'investigation/types.ts', 'investigation/recorder.ts', 'investigation/archive.ts', 'investigation-binding.ts']);
+const standaloneFiles = new Set(['types.ts', 'artifacts.ts', 'models.ts', 'worker/model-file.ts', 'worker/types.ts', 'worker/client-standalone.ts', 'worker/client-unavailable.ts', 'recognition/types.ts', 'recognition/models.ts', 'recognition/model-file.ts', 'recognition/model-catalog.ts', 'recognition/controller.ts', 'recognition/worker/client-standalone.ts', 'recognition/worker/client-unavailable.ts', 'investigation/types.ts', 'investigation/recorder.ts', 'investigation/collection.ts', 'investigation/archive.ts', 'investigation-binding.ts']);
 
 function assertStandaloneModule({ rootDir, id }: { rootDir: string, id: string }): void {
   const clean = id.split('?')[0]?.replaceAll('\\', '/') ?? '';

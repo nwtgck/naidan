@@ -1,4 +1,5 @@
 import type { Core } from 'speech-cpp-browser-core/speech-cpp/host';
+import { readSpeechPointer } from './native-memory';
 import type { SpeechInvestigationEvent, SpeechInvestigationObserver, SpeechObservation } from '@/features/speech-cpp-browser/investigation/types';
 import { createSpeechReadCoverage } from './load-progress';
 import { subscribeNativeSpeechLogs } from './native-log-router';
@@ -154,11 +155,10 @@ export function createNativeSpeechObservation({ core, observer, modelBytes, now 
     async loadedModel({ model }: { model: bigint }): Promise<void> {
       let output = 0n, metadata = 0n;
       try {
-        output = core.alloc(8);
-        core.bytes(output, 8).fill(0);
+        output = core.alloc(core.pointerBytes);
+        core.bytes(output, core.pointerBytes).fill(0);
         const status = await core.api.speech_model_get_info(model, output);
-        const bytes = core.bytes(output, 8);
-        metadata = new DataView(bytes.buffer, bytes.byteOffset, 8).getBigUint64(0, true);
+        metadata = readSpeechPointer({ core, address: output });
         if (status === core.constant('SPEECH_OK') && metadata !== 0n) {
           await this.modelInfo({ metadata });
         }

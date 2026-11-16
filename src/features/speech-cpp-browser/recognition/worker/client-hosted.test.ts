@@ -4,8 +4,18 @@ import { createSpeechRecognitionClient } from './client-hosted';
 import { recognitionInfo } from '@/features/speech-cpp-browser/recognition/recognition.test-support';
 import { createSpeechRecognitionController } from '@/features/speech-cpp-browser/recognition/controller';
 
+const selectedProfile = vi.hoisted(() => ({ value: 'webgpu-wasm64-jspi' }));
 const transport = vi.hoisted(() => ({ remotes: [] as SpeechRecognitionWorker[], post: vi.fn(), transfers: vi.fn() }));
-vi.mock('virtual:speech-cpp-browser/config', () => ({ default: { kind: 'available', artifact: {} } }));
+vi.mock('virtual:speech-cpp-browser/config', () => ({
+  default: {
+    kind: 'available',
+    artifact: {
+      get profile() {
+        return selectedProfile.value;
+      },
+    },
+  },
+}));
 vi.mock('@/utils/worker-transport', () => ({
   wrapWorkerRemote: () => transport.remotes.shift()!,
   releaseWorkerRemote: () => undefined,
@@ -41,6 +51,7 @@ function clientFixture() {
 }
 
 beforeEach(() => {
+  selectedProfile.value = 'webgpu-wasm64-jspi';
   workers.length = 0;
   transport.remotes.length = 0;
   transport.post.mockClear();
@@ -53,6 +64,20 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+it('accepts wasm32 without Memory64 while preserving the selected wasm64 and JSPI requirements', async () => {
+  const validate = vi.fn(() => false);
+  vi.stubGlobal('WebAssembly', { validate, Suspending: class {}, promising() {} });
+  await using legacy = clientFixture();
+  expect(legacy.client.capability).toEqual({ kind: 'unavailable', reason: 'memory64_unavailable' });
+  selectedProfile.value = 'webgpu-wasm32-jspi';
+  await using modern = clientFixture();
+  expect(modern.client.capability).toEqual({ kind: 'available' });
+  expect(validate).toHaveBeenCalledOnce();
+  vi.stubGlobal('WebAssembly', { validate });
+  await using noJspi = clientFixture();
+  expect(noJspi.client.capability).toEqual({ kind: 'unavailable', reason: 'jspi_unavailable' });
 });
 
 it('transfers PCM ownership once and physically retires the previous heap before loading another model', async () => {

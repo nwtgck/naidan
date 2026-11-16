@@ -23,11 +23,11 @@ export function createSpeechRecognitionClient({ observers }: { observers: Speech
   if (typeof navigator === 'undefined' || !('gpu' in navigator) || navigator.gpu === undefined) {
     return createUnavailableSpeechRecognitionClient({ reason: 'webgpu_unavailable', observers });
   }
-  if (typeof WebAssembly === 'undefined' || !WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1]))) {
+  if (configuration.artifact.profile === 'webgpu-wasm64-jspi' && (typeof WebAssembly === 'undefined' || !WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1])))) {
     return createUnavailableSpeechRecognitionClient({ reason: 'memory64_unavailable', observers });
   }
-  const wasm = WebAssembly;
-  if (!('Suspending' in wasm) || typeof wasm.Suspending !== 'function' || !('promising' in wasm) || typeof wasm.promising !== 'function') {
+  const wasm = typeof WebAssembly === 'undefined' ? undefined : WebAssembly;
+  if (wasm === undefined || !('Suspending' in wasm) || typeof wasm.Suspending !== 'function' || !('promising' in wasm) || typeof wasm.promising !== 'function') {
     return createUnavailableSpeechRecognitionClient({ reason: 'jspi_unavailable', observers });
   }
   const artifact = configuration.artifact;

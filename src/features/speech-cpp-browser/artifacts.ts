@@ -1,8 +1,21 @@
 import { z } from 'zod';
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
+export const speechProfileSchema = z.enum(['webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']);
+
+export function speechPointerBytes({ profile }: { profile: z.infer<typeof speechProfileSchema> }): 4 | 8 {
+  switch (profile) {
+  case 'webgpu-wasm32-jspi': return 4;
+  case 'webgpu-wasm64-jspi': return 8;
+  default: {
+    const exhaustive: never = profile;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
 export const speechArtifactSchema = z.object({
-  profile: z.literal('webgpu-wasm64-jspi'),
+  profile: speechProfileSchema,
   modulePath: z.string(),
   wasmPath: z.string(),
   helpersPath: z.string(),

@@ -50,7 +50,7 @@ describe('live audio file transport and replay lifetimes', () => {
     await using f = createLiveControllerFixture();
     await f.controller.open(open);
     await f.controller.send(turn);
-    const gate = Promise.withResolvers<Float32Array>();
+    const gate = Promise.withResolvers<Awaited<ReturnType<typeof f.decodeFile>>>();
     f.decodeFile.mockReturnValue(gate.promise);
     const sending = f.controller.sendAudioFile({ ...turn, file });
     await vi.waitFor(() => expect(f.decodeFile).toHaveBeenCalled());

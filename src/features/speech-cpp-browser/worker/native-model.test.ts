@@ -5,8 +5,42 @@ import { observedNativeFixture } from './native-observation.test-support';
 import { speechModelFile } from './model-file.test-support';
 import type { SpeechInvestigationEvent } from '@/features/speech-cpp-browser/investigation/types';
 
+it.each([4, 8] as const)('uses %s-byte owned handles and native callback scalars while keeping the public API bigint', async pointerBytes => {
+  const native = observedNativeFixture({ pointerBytes });
+  native.api.speech_request_set_float = vi.fn(async () => 0);
+  native.api.speech_dialogue_start = vi.fn(async (request, _rate, callback, userdata, output) => {
+    expect(request).toBe(40n);
+    expect(callback).toBe(123n);
+    expect(userdata).toBe(0n);
+    native.writePointer({ output, value: 60n });
+    new Float32Array(native.heap.buffer, 16000, 3200).fill(0.25);
+    native.strings.set(600n, 'frame text');
+    const frame = native.addFunction.mock.calls[0]![0];
+    expect(frame(...(pointerBytes === 4 ? [16000, 3200, 600, 0] : [16000n, 3200n, 600n, 0n]))).toBe(0);
+    return 0;
+  });
+  native.api.speech_dialogue_push = vi.fn(async () => 0);
+  native.api.speech_dialogue_free = vi.fn(async () => {});
+  const file = await speechModelFile({ architecture: 'haru', name: 'dialogue.gguf', frameSamples: 3200 });
+  const model = await openNativeSpeechModel({ ...native, file, signal: new AbortController().signal, readBlob: () => new ArrayBuffer(0), onProgress() {} });
+  await using cleanup = {
+    async [Symbol.asyncDispose]() {
+      await model.release();
+    },
+  };
+  const onFrame = vi.fn(() => 'continue' as const);
+  const dialogue = await model.start({ options: { inputSampleRate: 24000, maxSeconds: 10, language: 'ja', persona: undefined, name: undefined, seed: undefined }, onFrame });
+  expect(native.addFunction.mock.calls[0]![1]).toBe(pointerBytes === 4 ? 'iiiii' : 'ijjjj');
+  expect(onFrame).toHaveBeenCalledWith({ samples: new Float32Array(3200).fill(0.25), text: 'frame text' });
+  await dialogue.push({ samples: new Float32Array(3200) });
+  expect(native.api.speech_dialogue_push).toHaveBeenCalledWith(60n, expect.any(BigInt), 3200n);
+  await dialogue.release();
+  expect(native.api.speech_dialogue_free).toHaveBeenCalledWith(60n);
+  void cleanup;
+});
+
 it('starts diagnostic observation on an already resident ordinary dialogue model and releases it with the dialogue', async () => {
-  const native = observedNativeFixture();
+  const native = observedNativeFixture({ pointerBytes: 8 });
   native.api.speech_request_set_float = vi.fn(async () => 0);
   native.api.speech_dialogue_start = vi.fn(async (_request, _rate, _callback, _user, output) => {
     native.writePointer({ output, value: 60n });
@@ -36,7 +70,7 @@ it('starts diagnostic observation on an already resident ordinary dialogue model
 });
 
 it('preserves a native end failure as failed with its original status through dialogue teardown', async () => {
-  const native = observedNativeFixture();
+  const native = observedNativeFixture({ pointerBytes: 8 });
   native.api.speech_request_set_float = vi.fn(async () => 0);
   native.api.speech_dialogue_start = vi.fn(async (_request, _rate, _callback, _user, output) => {
     native.writePointer({ output, value: 60n });

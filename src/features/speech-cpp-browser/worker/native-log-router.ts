@@ -1,4 +1,5 @@
 import type { Core } from 'speech-cpp-browser-core/speech-cpp/host';
+import { speechCallbackPointer } from './native-memory';
 
 type LogReceiver = ({ level, text }: { level: number, text: string }) => void;
 type Router = { active: { owner: object, receive: LogReceiver } | undefined, ready: Promise<void> };
@@ -16,15 +17,16 @@ export async function subscribeNativeSpeechLogs({ core, receive }: { core: Core,
     const decoder = new TextDecoder(), warning = core.constant('SPEECH_LOG_WARN');
     try {
       const callback = core.module.addFunction((level, pointer) => {
-        if (typeof level !== 'number' || typeof pointer !== 'bigint' || (created.active === undefined && level < warning)) {
+        if (typeof level !== 'number' || (created.active === undefined && level < warning)) {
           return;
         }
         try {
+          const address = speechCallbackPointer({ core, value: pointer });
           const capacity = core.module.HEAPU8.byteLength;
-          if (pointer <= 0n || pointer >= BigInt(capacity)) {
+          if (address <= 0n || address >= BigInt(capacity)) {
             return;
           }
-          const bytes = core.bytes(pointer, Math.min(64 * 1024, capacity - Number(pointer)));
+          const bytes = core.bytes(address, Math.min(64 * 1024, capacity - Number(address)));
           const end = bytes.indexOf(0);
           // The string is borrowed only during this callback. Copy it now.
           const text = decoder.decode(end < 0 ? bytes : bytes.subarray(0, end));
@@ -35,7 +37,7 @@ export async function subscribeNativeSpeechLogs({ core, receive }: { core: Core,
           }
           created.active?.receive({ level, text });
         } catch { /* Logging must not unwind a native operation. */ }
-      }, 'vijj');
+      }, core.pointerBytes === 4 ? 'viii' : 'vijj');
       // This slot remains registered until physical Worker termination. It is
       // never freed while native could still call it, even if setup rejects.
       created.ready = core.api.speech_log_set(BigInt(callback), 0n).catch(() => {});

@@ -6,8 +6,29 @@ import { openNativeSpeechRecognitionModel } from '@/features/speech-cpp-browser/
 import { recognitionFile } from '@/features/speech-cpp-browser/recognition/recognition.test-support';
 import type { SpeechInvestigationEvent } from '@/features/speech-cpp-browser/investigation/types';
 
+it.each([4, 8] as const)('reads %s-byte metadata handles and log pointers without narrowing uint64 device capacities', async pointerBytes => {
+  const native = observedNativeFixture({ pointerBytes }), events: SpeechInvestigationEvent[] = [];
+  native.api.speech_device_memory = vi.fn(async (_index, total, free) => {
+    const view = new DataView(native.heap.buffer);
+    view.setBigUint64(Number(free), 8589934592n, true);
+    view.setBigUint64(Number(total), 17179869184n, true);
+    return 0;
+  });
+  const observation = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => events.push(event), modelBytes: 100, now: () => 0 })!;
+  await observation.open();
+  expect(native.addFunction.mock.calls[0]![1]).toBe(pointerBytes === 4 ? 'viii' : 'vijj');
+  native.heap.set(new TextEncoder().encode('native message\0'), 60000);
+  native.addFunction.mock.calls[0]![0](1, pointerBytes === 4 ? 60000 : 60000n, pointerBytes === 4 ? 0 : 0n);
+  await observation.loadedModel({ model: 30n });
+  await observation.devices();
+  await observation.close();
+  expect(events).toContainEqual({ kind: 'native_log_batch', lines: [{ level: 'info', text: 'native message' }], dropped: 0 });
+  expect(events).toContainEqual(expect.objectContaining({ kind: 'model_info' }));
+  expect(events).toContainEqual({ kind: 'devices', devices: [expect.objectContaining({ totalBytes: { status: 'observed', value: '17179869184', source: 'speech_device_memory' }, freeBytes: { status: 'observed', value: '8589934592', source: 'speech_device_memory' } })] });
+});
+
 it('does no native calls, callback registration, clock or read accounting when observation is off', () => {
-  const native = observedNativeFixture(), now = vi.fn(() => 0);
+  const native = observedNativeFixture({ pointerBytes: 8 }), now = vi.fn(() => 0);
   expect(createNativeSpeechObservation({ core: native.core, observer: undefined, modelBytes: 100, now })).toBeUndefined();
   expect(now).not.toHaveBeenCalled();
   expect(native.addFunction).not.toHaveBeenCalled();
@@ -22,7 +43,7 @@ it('copies borrowed native UTF immediately and bounds logs without freeing a liv
       this.spy.mockRestore();
     },
   };
-  const native = observedNativeFixture(), events: SpeechInvestigationEvent[] = [];
+  const native = observedNativeFixture({ pointerBytes: 8 }), events: SpeechInvestigationEvent[] = [];
   const observation = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => events.push(event), modelBytes: 100, now: () => 0 })!;
   await observation.open();
   const callback = native.addFunction.mock.calls[0]![0];
@@ -44,7 +65,7 @@ it('copies borrowed native UTF immediately and bounds logs without freeing a liv
 });
 
 it('keeps per-operation sinks separate and ignores callbacks and reads after close', async () => {
-  const native = observedNativeFixture(), first: SpeechInvestigationEvent[] = [], second: SpeechInvestigationEvent[] = [], now = vi.fn(() => 0);
+  const native = observedNativeFixture({ pointerBytes: 8 }), first: SpeechInvestigationEvent[] = [], second: SpeechInvestigationEvent[] = [], now = vi.fn(() => 0);
   const old = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => first.push(event), modelBytes: 100, now })!;
   await old.open();
   const oldCallback = native.addFunction.mock.calls[0]![0];
@@ -71,7 +92,7 @@ it.each([16, 8192])('reserves warning and error detail after verbose %s-characte
       this.spy.mockRestore();
     },
   };
-  const native = observedNativeFixture(), events: SpeechInvestigationEvent[] = [];
+  const native = observedNativeFixture({ pointerBytes: 8 }), events: SpeechInvestigationEvent[] = [];
   const observation = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => events.push(event), modelBytes: 100, now: () => 0 })!;
   await observation.open();
   const callback = native.addFunction.mock.calls[0]![0];
@@ -104,7 +125,7 @@ it('preserves native and ggml warnings/errors after diagnostics while ordinary l
       this.spy.mockRestore();
     },
   };
-  const native = observedNativeFixture(), events: SpeechInvestigationEvent[] = [], now = vi.fn(() => 0);
+  const native = observedNativeFixture({ pointerBytes: 8 }), events: SpeechInvestigationEvent[] = [], now = vi.fn(() => 0);
   const observation = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => events.push(event), modelBytes: 100, now })!;
   await observation.open();
   const callback = native.addFunction.mock.calls[0]![0];
@@ -125,7 +146,7 @@ it('preserves native and ggml warnings/errors after diagnostics while ordinary l
 });
 
 it('preserves model-info JSON and uint64 values while marking unreported device memory and ASR seed honestly', async () => {
-  const native = observedNativeFixture(), events: SpeechInvestigationEvent[] = [];
+  const native = observedNativeFixture({ pointerBytes: 8 }), events: SpeechInvestigationEvent[] = [];
   const observation = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => events.push(event), modelBytes: 100, now: () => 10 })!;
   await observation.loadedModel({ model: 30n });
   await observation.devices();
@@ -138,7 +159,7 @@ it('preserves model-info JSON and uint64 values while marking unreported device 
 });
 
 it('counts actual native requests and unique ranges without treating overlapping reads as new bytes', async () => {
-  const native = observedNativeFixture(), events: SpeechInvestigationEvent[] = [];
+  const native = observedNativeFixture({ pointerBytes: 8 }), events: SpeechInvestigationEvent[] = [];
   let time = 0;
   const observation = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => events.push(event), modelBytes: 65536, now: () => time })!;
   observation.read({ offset: 0, length: 32 });
@@ -150,7 +171,7 @@ it('counts actual native requests and unique ranges without treating overlapping
 });
 
 it('distinguishes cached native requests from actual Blob reads without copying their buffers', async () => {
-  const native = observedNativeFixture(), events: SpeechInvestigationEvent[] = [];
+  const native = observedNativeFixture({ pointerBytes: 8 }), events: SpeechInvestigationEvent[] = [];
   let time = 0;
   const observation = createNativeSpeechObservation({ core: native.core, observer: ({ event }) => events.push(event), modelBytes: 65536, now: () => time })!;
   const bytes = new ArrayBuffer(16384);
@@ -169,7 +190,7 @@ it('distinguishes cached native requests from actual Blob reads without copying 
 });
 
 it('preserves a native failure before diagnostic teardown can change the native error buffer', async () => {
-  const native = observedNativeFixture(), events: SpeechInvestigationEvent[] = [];
+  const native = observedNativeFixture({ pointerBytes: 8 }), events: SpeechInvestigationEvent[] = [];
   const file = await recognitionFile({ architecture: 'qwen3-asr', task: 'recognition', sampleRate: 16000 });
   const model = await openNativeSpeechRecognitionModel({ ...native, file, signal: new AbortController().signal, readBlob: () => new ArrayBuffer(0), onProgress() {} });
   await using cleanup = {

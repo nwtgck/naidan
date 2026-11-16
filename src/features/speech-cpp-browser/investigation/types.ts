@@ -10,7 +10,7 @@ export type SpeechInvestigationAudio = { status: 'retained', blob: Blob, format:
 export type SpeechInvestigationEnvironment = {
   app: { version: string, sourceCommit: SpeechObservation<string>, workingTree: SpeechObservation<'clean' | 'dirty'>, mode: 'hosted' | 'standalone' },
   runtime: SpeechObservation<{
-    sourceCommit: string, profile: 'webgpu-wasm64-jspi', variant: 'browser' | 'test',
+    sourceCommit: string, profile: 'webgpu-wasm32-jspi' | 'webgpu-wasm64-jspi', variant: 'browser' | 'test',
     wasmSha256: string, wasmBytes: number, schemaSha256: string,
     wasmVerification: 'verified' | 'manifest_only', assetOrigin: SpeechObservation<string>,
   }>,

@@ -211,12 +211,12 @@ expect(trialRates({ trial }).generationTokensPerSecond).toBeUndefined();
     expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toHaveLength(4);
   });
 
-  it('records llama inner payload identities from a format-5 package and treats incompatible pairs as unknown', async () => {
+  it.each([5, 6])('records llama inner payload identities from a format-%i package and treats incompatible pairs as unknown', async formatVersion => {
     const sha256 = 'a'.repeat(64), sourceCommit = 'b'.repeat(40);
     const llama = { path: 'profiles/cpu-wasm32/browser/core.wasm', bytes: 123, sha256 };
     const api = { path: 'api/schema.json', bytes: 45, sha256 };
     const manifest = {
-      formatVersion: 5,
+      formatVersion,
       sourceCommit,
       files: ['LICENSE', 'README.md', 'package.json', 'runtimes/llama-cpp-browser-core/manifest.json', 'runtimes/stable-diffusion-cpp-browser-core/manifest.json'].map(path => ({ path, bytes: 1, sha256 })),
     };
@@ -229,6 +229,7 @@ expect(trialRates({ trial }).generationTokensPerSecond).toBeUndefined();
     expect(JSON.parse(await zip.file('environment.json')!.async('string')).runtimeBuild).toEqual(expected);
     for (const pair of [
       { manifest: { ...manifest, formatVersion: 4 }, runtimeManifest },
+      { manifest: { ...manifest, formatVersion: 7 }, runtimeManifest },
       { manifest, runtimeManifest: { ...runtimeManifest, formatVersion: 1 } },
       { manifest, runtimeManifest: { ...runtimeManifest, runtime: 'stable-diffusion-cpp' } },
       { manifest, runtimeManifest: { ...runtimeManifest, sourceCommit: 'c'.repeat(40) } },
