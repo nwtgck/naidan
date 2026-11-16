@@ -3,7 +3,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, ref, computed, reactive, nextTick } from 'vue';
 import { createRouter, createWebHistory, type RouteLocationResolved } from 'vue-router';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
 import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
 import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/01-models/types';

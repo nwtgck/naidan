@@ -58,7 +58,7 @@ const PreparingChatActions = defineComponent({
     return () => h(ChatSidebarActionsView, { expanded: isSidebarOpen.value, contentReady: false, interaction: 'preparing', groupContext: undefined });
   },
 });
-const ChatSidebar = sidebarComponent({ loader: () => import('@/components/Sidebar.vue'), owner: 'chat' });
+const ChatSidebar = sidebarComponent({ loader: () => import('@/components/ChatSidebar.vue'), owner: 'chat' });
 const ChatSidebarActions = defineAsyncComponent({
   loader: () => import('@/components/ChatSidebarActions.vue'),
   loadingComponent: PreparingChatActions,

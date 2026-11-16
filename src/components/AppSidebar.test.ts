@@ -56,7 +56,7 @@ vi.mock('@/composables/useRecentChats', () => ({ useRecentChats: () => ({ mostRe
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({ useFileExplorerModal: () => ({ openFileExplorer: openFiles }) }));
 vi.mock('@/components/PWAUpdateNotification.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div />' } }));
 vi.mock('@/components/ModelDownloads.vue', () => ({ __esModule: true, __isTeleport: false, default: { data: () => ({ open: false }), template: '<div><button data-testid="model-downloads-trigger" @click="open = !open">downloads</button><div v-if="open" data-testid="model-downloads-panel" /></div>' } }));
-vi.mock('@/components/Sidebar.vue', async () => {
+vi.mock('@/components/ChatSidebar.vue', async () => {
   loads.chat += 1;
   await chatGate.promise;
   return { __esModule: true, __isTeleport: false, default: { props: ['chatGroupCreation'], emits: ['update:chatGroupCreation'], template: '<section data-testid="chat-sidebar"><input v-if="chatGroupCreation === \'open\'" data-testid="group-draft" /><button @click="$emit(\'update:chatGroupCreation\', \'closed\')" data-testid="close-group">close</button></section>' } };

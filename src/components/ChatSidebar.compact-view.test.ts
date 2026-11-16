@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
-import SidebarContent from './Sidebar.vue';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
+import ChatSidebarContent from './ChatSidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '@/01-models/types';
@@ -261,7 +261,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     });
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
     await nextTick();
 
     const chatItems = wrapper.findAll('.sidebar-chat-item');
@@ -294,7 +294,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     });
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
     await nextTick();
 
     await wrapper.find('[data-testid="show-more-button"]').trigger('click');
@@ -327,7 +327,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     });
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
     await nextTick();
 
     expect(wrapper.findAll('.sidebar-chat-item')).toHaveLength(5);
@@ -361,7 +361,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     });
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
     await nextTick();
 
     // In compact view, we see chats 0-4.
@@ -378,7 +378,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Verify the full list in sidebarItemsLocal
     // @ts-expect-error - accessing reactive state
-    const localItems = wrapper.getComponent(SidebarContent).vm.sidebarItemsLocal;
+    const localItems = wrapper.getComponent(ChatSidebarContent).vm.sidebarItemsLocal;
     const group = localItems.find((i: any) => i.id === 'g1').chatGroup;
 
     // The first 5 should be reversed, the remaining 5 (5-9) should remain intact
@@ -408,7 +408,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     });
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
     await nextTick();
 
     // Expand
@@ -417,12 +417,12 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Collapse group
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.handleToggleChatGroupCollapse({ chatGroup: group });
+    wrapper.getComponent(ChatSidebarContent).vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Open group again
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.handleToggleChatGroupCollapse({ chatGroup: group });
+    wrapper.getComponent(ChatSidebarContent).vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Should be back to compact view
@@ -449,16 +449,16 @@ describe('Sidebar Compact View & DND Integrity', () => {
     });
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
     await nextTick();
 
     // Set focus area to sidebar
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.setActiveFocusArea({ area: 'sidebar' });
+    wrapper.getComponent(ChatSidebarContent).vm.setActiveFocusArea({ area: 'sidebar' });
 
     // Simulate selecting the expand button via lastNavigatedId
     // @ts-expect-error - internal state
-    wrapper.getComponent(SidebarContent).vm.lastNavigatedId = 'expand-g1';
+    wrapper.getComponent(ChatSidebarContent).vm.lastNavigatedId = 'expand-g1';
     await nextTick();
 
     // Trigger ArrowRight
@@ -498,11 +498,11 @@ describe('Sidebar Compact View & DND Integrity', () => {
     });
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
     await nextTick();
 
     // @ts-expect-error - internal method
-    wrapper.getComponent(SidebarContent).vm.setActiveFocusArea({ area: 'sidebar' });
+    wrapper.getComponent(ChatSidebarContent).vm.setActiveFocusArea({ area: 'sidebar' });
 
     // Trigger ArrowLeft
     const event = new KeyboardEvent('keydown', { key: 'ArrowLeft' });

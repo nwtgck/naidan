@@ -287,7 +287,7 @@ describe('production entry module boundaries', () => {
     const root = 'src/components/AppSidebar.vue';
     const paths = staticModulePaths({ graph, root });
     const deferredBodies = [
-      'src/components/Sidebar.vue',
+      'src/components/ChatSidebar.vue',
       'src/components/ChatSidebarActions.vue',
       'src/components/ChatSidebarModelControls.vue',
       'src/features/image-generation/components/ImageGenerationSidebar.vue',
@@ -331,7 +331,7 @@ describe('production entry module boundaries', () => {
       'src/features/live-conversation/components/LiveConversationView.vue',
       'src/features/translation/components/TranslationWorkspace.vue',
       'src/features/workflow/WorkflowWorkspace.vue',
-      'src/components/Sidebar.vue',
+      'src/components/ChatSidebar.vue',
       'src/components/ChatSidebarActions.vue',
       'src/components/ChatSidebarModelControls.vue',
     ]) {

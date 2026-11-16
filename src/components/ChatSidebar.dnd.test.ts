@@ -3,8 +3,8 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
-import SidebarContent from './Sidebar.vue';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
+import ChatSidebarContent from './ChatSidebar.vue';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
@@ -138,7 +138,7 @@ describe('Sidebar DND Improvements', () => {
     const nestedTarget = document.createElement('div');
     nestedTarget.classList.add('nested-draggable');
 
-    const result = (wrapper.getComponent(SidebarContent).vm as any).checkMove({
+    const result = (wrapper.getComponent(ChatSidebarContent).vm as any).checkMove({
       evt: {
         draggedContext: {
           element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
@@ -156,7 +156,7 @@ describe('Sidebar DND Improvements', () => {
     const nestedTarget = document.createElement('div');
     nestedTarget.classList.add('nested-draggable');
 
-    const result = (wrapper.getComponent(SidebarContent).vm as any).checkMove({
+    const result = (wrapper.getComponent(ChatSidebarContent).vm as any).checkMove({
       evt: {
         draggedContext: {
           element: { type: 'chat_group', id: 'g2', chatGroup: { id: 'g2', name: 'Group 2', items: [], isCollapsed: false, updatedAt: 0 } },
@@ -217,7 +217,7 @@ describe('Sidebar DND Improvements', () => {
     // Simulate "Show more" expansion (internal state expandedGroupIds)
     // We can't easily trigger the function from outside without export or component access,
     // but we can verify the binding.
-    (wrapper.getComponent(SidebarContent).vm as any).toggleGroupCompactExpansion({ groupId: 'g1' });
+    (wrapper.getComponent(ChatSidebarContent).vm as any).toggleGroupCompactExpansion({ groupId: 'g1' });
     await nextTick();
     expect(showMoreWrapper.attributes('style')).toContain('max-height: var(--sidebar-chat-list-height)');
   });
@@ -273,7 +273,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     const mainDraggable = wrapper.find('.draggable-stub');
     expect(mainDraggable.attributes('class')).toContain('pb-4');
-    (wrapper.getComponent(SidebarContent).vm as any).isDragging = true;
+    (wrapper.getComponent(ChatSidebarContent).vm as any).isDragging = true;
     await nextTick();
     expect(mainDraggable.attributes('class')).toContain('pb-32');
   });
@@ -281,7 +281,7 @@ describe('Sidebar DND Improvements', () => {
   it('should apply highlight class when dragging over a group', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
-    (wrapper.getComponent(SidebarContent).vm as any).isDragging = true;
+    (wrapper.getComponent(ChatSidebarContent).vm as any).isDragging = true;
     await nextTick();
     const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     await groupItem.trigger('dragover');
@@ -295,7 +295,7 @@ describe('Sidebar DND Improvements', () => {
     vi.useFakeTimers();
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
-    (wrapper.getComponent(SidebarContent).vm as any).isDragging = true;
+    (wrapper.getComponent(ChatSidebarContent).vm as any).isDragging = true;
     await nextTick();
     const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     await groupItem.trigger('dragover');

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
-import SidebarContent from './Sidebar.vue';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
+import ChatSidebarContent from './ChatSidebar.vue';
 import ChatSidebarModelControls from './ChatSidebarModelControls.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -511,7 +511,7 @@ describe('Sidebar Logic Stability', () => {
       },
     });
 
-    const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+    const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
 
     // 1. Initial state
     await nextTick();
@@ -557,7 +557,7 @@ describe('Sidebar Logic Stability', () => {
       },
     });
 
-    const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+    const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
     vm.syncLocalItems();
     await nextTick();
 
@@ -722,7 +722,7 @@ describe('Sidebar Logic Stability', () => {
       },
     });
 
-    const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+    const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
     vm.syncLocalItems();
     await nextTick();
 
@@ -746,7 +746,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -773,7 +773,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -799,7 +799,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -825,7 +825,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -851,7 +851,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -873,7 +873,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(ChatSidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 

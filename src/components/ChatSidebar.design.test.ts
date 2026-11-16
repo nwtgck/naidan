@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useTheme } from '@/features/theme/composables/useTheme';

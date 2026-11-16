@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
-import SidebarContent from './Sidebar.vue';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
+import ChatSidebarContent from './ChatSidebar.vue';
 import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
@@ -144,7 +144,7 @@ describe('Sidebar Duplicate Group Feature', () => {
       },
     });
 
-    const vm = wrapper.getComponent(SidebarContent).vm as any;
+    const vm = wrapper.getComponent(ChatSidebarContent).vm as any;
     vm.syncLocalItems();
     await nextTick();
 

@@ -1,12 +1,12 @@
 import { defineComponent, h, ref } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import ChatSidebarActions from './ChatSidebarActions.vue';
-import SidebarContent from './Sidebar.vue';
+import ChatSidebarContent from './ChatSidebar.vue';
 import ChatSidebarModelControls from './ChatSidebarModelControls.vue';
 
 // Exercise the Chat-specific connection without duplicating the global sidebar shell.
-export const SidebarTestHost = defineComponent({
-  name: 'SidebarTestHost',
+export const ChatSidebarTestHost = defineComponent({
+  name: 'ChatSidebarTestHost',
   setup() {
     const { isSidebarOpen } = useLayout();
     const chatGroupCreation = ref<'open' | 'closed'>('closed');
@@ -18,7 +18,7 @@ export const SidebarTestHost = defineComponent({
           chatGroupCreation.value = 'open';
         },
       }),
-      h(SidebarContent, {
+      h(ChatSidebarContent, {
         chatGroupCreation: chatGroupCreation.value,
         // Vue v-model listeners receive the emitted scalar value.
         // eslint-disable-next-line local-rules-named-args/require-named-args

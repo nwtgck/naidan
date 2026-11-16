@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/01-models/types';

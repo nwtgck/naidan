@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
-import SidebarContent from './Sidebar.vue';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
+import ChatSidebarContent from './ChatSidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/01-models/types';
@@ -176,8 +176,8 @@ describe('Sidebar IME handling', () => {
     });
 
     // @ts-expect-error - access internal sync
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
-    await wrapper.getComponent(SidebarContent).vm.$nextTick();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
+    await wrapper.getComponent(ChatSidebarContent).vm.$nextTick();
 
     // Start editing
     await wrapper.get('[data-testid="rename-chat-group-button"]').trigger('click');
@@ -206,8 +206,8 @@ describe('Sidebar IME handling', () => {
     });
 
     // @ts-expect-error - access internal sync
-    wrapper.getComponent(SidebarContent).vm.syncLocalItems();
-    await wrapper.getComponent(SidebarContent).vm.$nextTick();
+    wrapper.getComponent(ChatSidebarContent).vm.syncLocalItems();
+    await wrapper.getComponent(ChatSidebarContent).vm.$nextTick();
 
     // Start editing
     await wrapper.get('[data-testid="sidebar-chat-rename-button"]').trigger('click');
