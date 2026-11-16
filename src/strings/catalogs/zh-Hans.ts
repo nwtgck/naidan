@@ -62,6 +62,11 @@ import { AppCommandRuntime__could_not_create_chat } from '@/strings/messages/App
 import { AppCommandRuntime__retry } from '@/strings/messages/AppCommandRuntime__retry/zh-Hans';
 import { AppEntrySurface__could_not_open_local_model } from '@/strings/messages/AppEntrySurface__could_not_open_local_model/zh-Hans';
 import { AppEntrySurface__drop_gguf_files_or_model_folders } from '@/strings/messages/AppEntrySurface__drop_gguf_files_or_model_folders/zh-Hans';
+import { AppSidebar__back_to_chats } from '@/strings/messages/AppSidebar__back_to_chats/zh-Hans';
+import { AppSidebar__could_not_load_sidebar } from '@/strings/messages/AppSidebar__could_not_load_sidebar/zh-Hans';
+import { AppSidebar__model_preview } from '@/strings/messages/AppSidebar__model_preview/zh-Hans';
+import { AppSidebar__preparing_sidebar } from '@/strings/messages/AppSidebar__preparing_sidebar/zh-Hans';
+import { AppSidebar__retry } from '@/strings/messages/AppSidebar__retry/zh-Hans';
 import { AssistantProcessSequence__and_more } from '@/strings/messages/AssistantProcessSequence__and_more/zh-Hans';
 import { AssistantProcessSequence__less } from '@/strings/messages/AssistantProcessSequence__less/zh-Hans';
 import { AssistantProcessSequence__process_details } from '@/strings/messages/AssistantProcessSequence__process_details/zh-Hans';
@@ -4270,6 +4275,11 @@ export const catalog = {
   AppCommandRuntime__retry,
   AppEntrySurface__could_not_open_local_model,
   AppEntrySurface__drop_gguf_files_or_model_folders,
+  AppSidebar__back_to_chats,
+  AppSidebar__could_not_load_sidebar,
+  AppSidebar__model_preview,
+  AppSidebar__preparing_sidebar,
+  AppSidebar__retry,
   AssistantProcessSequence__and_more,
   AssistantProcessSequence__less,
   AssistantProcessSequence__process_details,

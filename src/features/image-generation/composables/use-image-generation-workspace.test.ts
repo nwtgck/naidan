@@ -16,6 +16,7 @@ import ImageGenerationProgress from '@/features/image-generation/components/Imag
 import type { ImageGenerationSubmission } from '@/features/image-generation/generation-submission';
 import { DOMWrapper } from '@vue/test-utils';
 import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import ImageGenerationSidebarActions from '@/features/image-generation/components/ImageGenerationSidebarActions.vue';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import * as generationComposition from './use-image-generation-workspace';
 import { chatDataStore } from '@/composables/chat/global/chat-core-singletons';
@@ -535,7 +536,7 @@ describe('Image Generation component connections', () => {
     expect(useImageGenerationWorkspaceNavigation().active.value).toBeUndefined();
   });
 
-  it('places New Session above session entries and delegates model and diagnostic navigation', async () => {
+  it('shares session creation between separate sidebar actions and session content', async () => {
     const fixture = await ready();
     await fixture.view.newSession({ preserveDraft: false });
     await flushPromises();
@@ -543,14 +544,17 @@ describe('Image Generation component connections', () => {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { render: () => h('div') } }] });
     await router.push('/');
     await router.isReady();
-    const surface = mount(ImageGenerationSidebar, { props: { navigation: { view: fixture.view, openModels, openDiagnostics, openGeneration } }, global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
+    const navigation = { view: fixture.view, openModels, openDiagnostics, openGeneration };
+    const surface = mount(defineComponent({
+      setup() {
+        return () => h('div', [h(ImageGenerationSidebarActions, { navigation, expanded: true }), h(ImageGenerationSidebar, { navigation })]);
+      },
+    }), { global: { plugins: [router] } });
     using _cleanupResource = {
       [Symbol.dispose]() {
         surface.unmount();
       },
     };
-    const buttons = surface.findAll('button');
-    expect(buttons[1]?.attributes('data-testid')).toBe('workspace-new-session');
     await surface.get('button[title="Models"]').trigger('click');
     await surface.get('button[title="Diagnostics"]').trigger('click');
     expect(openModels).toHaveBeenCalledOnce();
@@ -559,6 +563,9 @@ describe('Image Generation component connections', () => {
     await flushPromises();
     expect(fixture.view.sessions.value).toHaveLength(2);
     expect(openGeneration).toHaveBeenCalledOnce();
+    fixture.view.switching.value = true;
+    await flushPromises();
+    expect(surface.get('[data-testid="workspace-new-session"]').attributes('disabled')).toBeDefined();
   });
 });
 

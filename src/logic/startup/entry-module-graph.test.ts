@@ -9,6 +9,8 @@ import {
   isProductionModule,
   preservedOnboardingModule,
   preservedOnboardingReferences,
+  addedStaticHeavyPaths,
+  staticModulePaths,
   staticEntryViolations,
   type ModuleGraph,
 } from './entry-module-graph.test-support';
@@ -140,6 +142,44 @@ const modules = import.meta.glob(['@/components/*.vue', '!@/components/Onboardin
       .toEqual([`src/App.vue -> src/features/llama-cpp-browser/runtime/directory-input.ts -> ${heavyModule}`]);
   });
 
+  it('traverses the shared worker schema adapter and still rejects a runtime behind it', () => {
+    const graph = fixtureGraph({
+      entry: '<script setup lang="ts">import "@/features/wesh/worker/types";</script>',
+      modules: { 'src/features/wesh/worker/types.ts': `import '/${heavyModule}';` },
+    });
+    expect(staticEntryViolations({ graph, root: 'src/App.vue', boundaryEdges: [] }))
+      .toEqual([`src/App.vue -> src/features/wesh/worker/types.ts -> ${heavyModule}`]);
+  });
+
+  it('collects transitive static module paths without adding lazy or type-only modules to the baseline', () => {
+    const graph = fixtureGraph({
+      entry: '<script setup lang="ts">import "@/shared"; const load = () => import("@/deferred"); import type { Value } from "@/typed";</script>',
+      modules: {
+        'src/shared.ts': 'export * from "./leaf";',
+        'src/leaf.ts': 'import "./shared";',
+        'src/deferred.ts': `import '/${heavyModule}';`,
+        'src/typed.ts': `import '/${heavyModule}';`,
+      },
+    });
+    expect([...staticModulePaths({ graph, root: 'src/App.vue' })]).toEqual([
+      ['src/App.vue', ['src/App.vue']],
+      ['src/shared.ts', ['src/App.vue', 'src/shared.ts']],
+      ['src/leaf.ts', ['src/App.vue', 'src/shared.ts', 'src/leaf.ts']],
+    ]);
+  });
+
+  it('does not let an inherited Worker constructor authorize another constructor in the sidebar', () => {
+    const graph = fixtureGraph({
+      entry: '<script setup lang="ts">import "./inherited-worker";</script>',
+      modules: {
+        'src/inherited-worker.ts': 'export function create() { return new Worker("existing-worker.js"); }',
+        'src/components/AppSidebar.vue': '<script setup lang="ts">import "../inherited-worker"; const worker = new Worker("new-worker.js");</script>',
+      },
+    });
+    expect(addedStaticHeavyPaths({ graph, root: 'src/components/AppSidebar.vue', baselineRoot: 'src/App.vue' }))
+      .toEqual(['src/components/AppSidebar.vue -> #worker-constructor']);
+  });
+
   it.each([
     'import "@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue";',
     'import "@/features/llama-cpp-browser/components/LlamaCppBrowserModelLibrary.vue";',
@@ -147,6 +187,7 @@ const modules = import.meta.glob(['@/components/*.vue', '!@/components/Onboardin
     'import "llama-cpp-browser-core";',
     'import "llama-cpp-browser-core/llama-cpp/host";',
     'import "stable-diffusion-cpp-browser-core/stable-diffusion-cpp/host";',
+    'import "speech-cpp-browser-core/speech-cpp/host";',
     'import "llama-cpp-browser-core/llama-cpp/profiles/webgpu-wasm64-jspi/browser/core.mjs";',
     'import "@huggingface/transformers";',
     'import nativeRuntime from "/inference/engine.wasm?url";',
@@ -240,6 +281,73 @@ describe('production entry module boundaries', () => {
     expect(graph.referencesFrom({ from: inheritedLanguageSettingsEdge.from }))
       .toContainEqual({ ...inheritedLanguageSettingsEdge, kind: 'static' });
     expect(staticEntryViolations({ graph, root: 'src/App.vue', boundaryEdges: [inheritedAppSettingsEdge, inheritedLanguageSettingsEdge] })).toEqual([]);
+  });
+
+  it('keeps sidebar bodies, workspaces and model managers outside the synchronous frame graph', () => {
+    const root = 'src/components/AppSidebar.vue';
+    const paths = staticModulePaths({ graph, root });
+    const deferredBodies = [
+      'src/components/Sidebar.vue',
+      'src/components/ChatSidebarActions.vue',
+      'src/components/ChatSidebarModelControls.vue',
+      'src/features/image-generation/components/ImageGenerationSidebar.vue',
+      'src/features/image-generation/components/ImageGenerationSidebarActions.vue',
+      'src/features/live-conversation/components/LiveConversationSidebar.vue',
+      'src/features/live-conversation/components/LiveConversationSidebarActions.vue',
+      'src/features/translation/components/TranslationSidebar.vue',
+      'src/features/workflow/components/WorkflowSidebar.vue',
+      'src/features/workflow/components/WorkflowSidebarActions.vue',
+      'src/features/audio-generation/components/AudioGenerationSidebar.vue',
+      'src/components/DeveloperToolsSidebar.vue',
+    ];
+    for (const target of deferredBodies) {
+      expect(graph.sources.has(target), `Required sidebar body is missing: ${target}`).toBe(true);
+      expect(graph.referencesFrom({ from: root })).toContainEqual({ from: root, target, kind: 'dynamic' });
+      expect(paths.has(target), paths.get(target)?.join(' -> ')).toBe(false);
+    }
+    for (const target of [
+      'src/features/image-generation/components/ImageGenerationWorkspace.vue',
+      'src/features/live-conversation/components/LiveConversationView.vue',
+      'src/features/translation/components/TranslationWorkspace.vue',
+      'src/features/workflow/WorkflowWorkspace.vue',
+    ]) {
+      expect(graph.sources.has(target), `Required workspace is missing: ${target}`).toBe(true);
+      expect(paths.has(target), paths.get(target)?.join(' -> ')).toBe(false);
+    }
+    const eagerPresentation = [...paths].filter(([target]) => /^src\/components\/(?:Current)?ChatPane\.vue$/u.test(target)
+      || /\/components\/[^/]*(?:Manager|ModelLibrary)\.vue$/u.test(target));
+    expect(eagerPresentation.map(([, route]) => route.join(' -> '))).toEqual([]);
+  });
+
+  it('allows the synchronous Chat action view only as a lightweight presentation without the settings boundary', () => {
+    const root = 'src/components/ChatSidebarActionsView.vue';
+    expect(graph.referencesFrom({ from: 'src/components/AppSidebar.vue' })).toContainEqual({ from: 'src/components/AppSidebar.vue', target: root, kind: 'static' });
+    const paths = staticModulePaths({ graph, root });
+    expect(staticEntryViolations({ graph, root, boundaryEdges: [] })).toEqual([]);
+    expect(paths.has('src/composables/useSettings.ts')).toBe(false);
+    expect(paths.has('src/composables/chat/ui/useChatLifecycle.ts')).toBe(false);
+    for (const target of [
+      'src/features/image-generation/components/ImageGenerationWorkspace.vue',
+      'src/features/live-conversation/components/LiveConversationView.vue',
+      'src/features/translation/components/TranslationWorkspace.vue',
+      'src/features/workflow/WorkflowWorkspace.vue',
+      'src/components/Sidebar.vue',
+      'src/components/ChatSidebarActions.vue',
+      'src/components/ChatSidebarModelControls.vue',
+    ]) {
+      expect(paths.has(target), paths.get(target)?.join(' -> ')).toBe(false);
+    }
+  });
+
+  it('adds no synchronous heavy module beyond the current App entry graph already evaluated before the sidebar', () => {
+    // This is the current source graph, not a revision/hash snapshot. App's
+    // inherited settings owner already references service facades and workers;
+    // removing that existing startup prerequisite is outside the sidebar change.
+    // The separate test above forbids bodies/workspaces/managers even if App
+    // starts importing one. Existing App boundary tests remain in force too;
+    // this comparison does not audit new dependencies inside their settings
+    // exception. Constructor markers are checked by originating module.
+    expect(addedStaticHeavyPaths({ graph, root: 'src/components/AppSidebar.vue', baselineRoot: 'src/App.vue' })).toEqual([]);
   });
 
   it.each([

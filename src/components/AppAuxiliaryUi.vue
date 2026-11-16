@@ -19,7 +19,8 @@ import { transformersJsService } from '@/features/transformers-js';
 import { downloadTimingSnapshotSchema, parseDownloadTiming, type DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
-defineProps<{ pwaActivation: 'active' | 'deferred' }>();
+const props = defineProps<{ pwaActivation: 'active' | 'deferred', modelSupportInvestigationRequest?: { opener: HTMLElement | undefined } }>();
+const emit = defineEmits<{ consumeModelSupportInvestigationRequest: [] }>();
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'));
 const ModelDiscoveryPanel = defineAsyncComponent(loadModelDiscoveryPanel);
@@ -131,6 +132,13 @@ function openModelSupportInvestigation({ modelId, restoreFocusTo }: { modelId: s
     // Optional observations must not prevent opening an investigation.
   }
 }
+
+watch(() => props.modelSupportInvestigationRequest, request => {
+  if (request !== undefined) {
+    openModelSupportInvestigation({ modelId: '', restoreFocusTo: request.opener });
+    emit('consumeModelSupportInvestigationRequest');
+  }
+}, { immediate: true });
 
 function closeModelSupportInvestigation(): void {
   modelSupportInvestigationModelId.value = undefined;

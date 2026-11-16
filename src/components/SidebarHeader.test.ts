@@ -35,5 +35,6 @@ it('shares the logo, Naidan name, build version and collapse action between side
   expect(wrapper.emitted('toggle')).toHaveLength(1);
   await wrapper.setProps({ expanded: false });
   expect(wrapper.find('a').exists()).toBe(false);
+  expect(wrapper.text()).not.toContain(`v${__APP_VERSION__}`);
   expect(wrapper.find('[data-testid="sidebar-toggle"]').exists()).toBe(true);
 });

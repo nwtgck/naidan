@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, useId, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, shallowRef, useId, watch } from 'vue';
 import { BoxIcon, CheckIcon, ChevronDownIcon, DownloadIcon, ImageIcon, PauseIcon, PlayIcon, RotateCcwIcon, XIcon } from 'lucide-vue-next';
 import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
@@ -10,8 +10,9 @@ import ModelDownloadFileDetails from './ModelDownloadFileDetails.vue';
 import { lazyStrings } from '@/strings';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
-import LlamaCppBrowserLocalFileRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue';
-import ImageModelLocalFileRecovery from '@/features/stable-diffusion-cpp-browser/components/ImageModelLocalFileRecovery.vue';
+// Recovery dialogs are only needed when a failed download is inspected.
+const LlamaCppBrowserLocalFileRecovery = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue'));
+const ImageModelLocalFileRecovery = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageModelLocalFileRecovery.vue'));
 
 const { jobs, manager } = useDownloads();
 const open = ref(false);

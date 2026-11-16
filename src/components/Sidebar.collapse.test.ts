@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import Sidebar from './Sidebar.vue';
+import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, nextTick, reactive, computed } from 'vue';
 import { useLayout } from '@/composables/useLayout';
@@ -150,25 +150,27 @@ describe('Sidebar Collapse Functionality', () => {
     });
   });
 
-  it('toggles isSidebarOpen when the toggle button is clicked', async () => {
-    const toggleSidebar = vi.fn(() => {
-      isSidebarOpen.value = !isSidebarOpen.value;
-    });
-    (useLayout as any).mockReturnValue({
-      isSidebarOpen,
-      activeFocusArea: ref('chat'),
-      setActiveFocusArea: vi.fn(),
-      toggleSidebar,
-    });
-
+  it('retains its rename draft when the shared sidebar is collapsed and expanded', async () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },
     });
 
-    const toggleBtn = wrapper.find('[data-testid="sidebar-toggle"]');
-    await toggleBtn.trigger('click');
-    expect(toggleSidebar).toHaveBeenCalled();
-    expect(isSidebarOpen.value).toBe(false);
+    using cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const body = wrapper.get('[data-testid="chat-sidebar-content"]').element;
+    await wrapper.get('[data-testid="sidebar-chat-rename-button"]').trigger('click');
+    await wrapper.get('[data-testid="chat-rename-input"]').setValue('Retained draft');
+    isSidebarOpen.value = false;
+    await nextTick();
+    expect(wrapper.get('[data-testid="sidebar-nav"]').text()).toBe('');
+    isSidebarOpen.value = true;
+    await nextTick();
+    expect(wrapper.get('[data-testid="chat-sidebar-content"]').element).toBe(body);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="chat-rename-input"]').element.value).toBe('Retained draft');
+    void cleanup;
   });
 
   it('hides elements when collapsed', async () => {
@@ -178,18 +180,9 @@ describe('Sidebar Collapse Functionality', () => {
     });
     await nextTick();
 
-    // Logo should be hidden
-    expect(wrapper.find('logo-stub').exists()).toBe(false);
-
-    // Title should be hidden
-    expect(wrapper.find('h1').exists()).toBe(false);
-
     // Chat list (nav) content should be hidden (using template v-if)
     const nav = wrapper.find('[data-testid="sidebar-nav"]');
     expect(nav.text()).toBe('');
-
-    // Version text in footer should be hidden
-    expect(wrapper.text()).not.toContain('v0.1.0');
 
     // New Chat button should NOT have text
     const newChatBtn = wrapper.find('[data-testid="new-chat-button"]');
@@ -203,8 +196,6 @@ describe('Sidebar Collapse Functionality', () => {
     });
     await nextTick();
 
-    expect(wrapper.find('logo-stub').exists()).toBe(true);
-    expect(wrapper.find('h1').exists()).toBe(true);
     const nav = wrapper.find('[data-testid="sidebar-nav"]');
     expect(nav.text()).not.toBe('');
     expect(wrapper.text()).toContain('New Chat');
@@ -221,9 +212,9 @@ describe('Sidebar Collapse Functionality', () => {
     expect(newChatBtn.classes()).toContain('w-8');
     expect(newChatBtn.classes()).toContain('h-8');
 
-    const settingsBtn = wrapper.find('button[title="Settings"]');
-    expect(settingsBtn.classes()).toContain('w-8');
-    expect(settingsBtn.classes()).toContain('h-8');
+    const search = wrapper.get('[data-testid="search-button"]');
+    expect(search.classes()).toContain('w-8');
+    expect(search.classes()).toContain('h-8');
   });
 
   it('shows "New Chat in Group" button when collapsed and a group is active', async () => {

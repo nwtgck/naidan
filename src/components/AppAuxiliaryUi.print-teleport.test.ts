@@ -103,7 +103,7 @@ describe('AppAuxiliaryUi print teleport integration', () => {
     const appHost = document.createElement('div');
     appHost.id = 'app';
     document.body.append(appHost);
-    const wrapper = mount(AppAuxiliaryUi, { attachTo: appHost });
+    const wrapper = mount(AppAuxiliaryUi, { props: { pwaActivation: 'active', modelSupportInvestigationRequest: undefined }, attachTo: appHost });
     await flushPromises();
     return { appHost, wrapper };
   }

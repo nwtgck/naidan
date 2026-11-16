@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import Sidebar from './Sidebar.vue';
+import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
+import SidebarContent from './Sidebar.vue';
+import ChatSidebarModelControls from './ChatSidebarModelControls.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
@@ -315,20 +317,6 @@ describe('Sidebar Logic Stability', () => {
   });
 
   describe('Default Model Selector', () => {
-    it('opens model discovery and settings explicitly without changing the default model', async () => {
-      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
-      const discovery = wrapper.get('[data-testid="sidebar-model-catalog-button"]');
-      expect(discovery.attributes('aria-label')).toBe('Find models');
-      expect(discovery.text()).toBe('');
-      await discovery.trigger('click');
-      expect(entryCommands.openDiscovery).toHaveBeenCalledExactlyOnceWith({ tab: undefined });
-      await wrapper.get('[data-testid="sidebar-settings-button"]').trigger('click');
-      expect(entryCommands.openSettings).toHaveBeenCalledExactlyOnceWith({ tab: 'connection', opener: expect.any(HTMLElement) });
-      expect(mockSettings.value.defaultModelId).toBe('llama3');
-      expect(mockUpdateGlobalModel).not.toHaveBeenCalled();
-      wrapper.unmount();
-    });
-
     it('renders the model selector when endpoint is configured', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
@@ -450,6 +438,36 @@ describe('Sidebar Logic Stability', () => {
       expect(mockUpdateGlobalModel).not.toHaveBeenCalled();
     });
 
+    it('retains the reasoning save owner while collapsing closes the model selector', async () => {
+      const pending = Promise.withResolvers<void>();
+      mockUpdateGlobalReasoningEffort.mockReturnValueOnce(pending.promise);
+      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+      await using cleanup = {
+        async [Symbol.asyncDispose]() {
+          pending.resolve();
+          await pending.promise;
+          wrapper.unmount();
+        },
+      };
+      const owner = wrapper.getComponent(ChatSidebarModelControls).vm.$;
+      await wrapper.getComponent(ReasoningSettings).vm.$emit('update:effort', 'high');
+      mockIsSidebarOpen.value = false;
+      await nextTick();
+      expect(wrapper.findComponent({ name: 'ModelSelector' }).exists()).toBe(false);
+      expect(wrapper.getComponent(ChatSidebarModelControls).vm.$).toBe(owner);
+      mockIsSidebarOpen.value = true;
+      await nextTick();
+      const reasoning = wrapper.getComponent(ReasoningSettings);
+      expect(reasoning.props('disabled')).toBe(true);
+      await reasoning.vm.$emit('update:effort', 'low');
+      expect(mockUpdateGlobalReasoningEffort).toHaveBeenCalledTimes(1);
+      pending.resolve();
+      await vi.waitFor(() => expect(reasoning.props('disabled')).toBe(false));
+      await reasoning.vm.$emit('update:effort', 'low');
+      expect(mockUpdateGlobalReasoningEffort).toHaveBeenCalledTimes(2);
+      void cleanup;
+    });
+
     it('keeps global reasoning reachable when the provider manages its own model', async () => {
       mockSettings.value.endpoint = { type: 'browser_provided_lm' };
       const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
@@ -493,7 +511,7 @@ describe('Sidebar Logic Stability', () => {
       },
     });
 
-    const vm = wrapper.vm as unknown as SidebarComponent;
+    const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
 
     // 1. Initial state
     await nextTick();
@@ -539,7 +557,7 @@ describe('Sidebar Logic Stability', () => {
       },
     });
 
-    const vm = wrapper.vm as unknown as SidebarComponent;
+    const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
     vm.syncLocalItems();
     await nextTick();
 
@@ -704,7 +722,7 @@ describe('Sidebar Logic Stability', () => {
       },
     });
 
-    const vm = wrapper.vm as unknown as SidebarComponent;
+    const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
     vm.syncLocalItems();
     await nextTick();
 
@@ -728,7 +746,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -755,7 +773,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -781,7 +799,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -807,7 +825,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -833,7 +851,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -847,53 +865,6 @@ describe('Sidebar Logic Stability', () => {
     });
   });
 
-  describe('Debug and Footer Actions', () => {
-    it('shows error badge in the sidebar when errors exist', async () => {
-      mockErrorCount.value = 5;
-
-      const wrapper = mount(Sidebar, {
-        global: { plugins: [router], stubs: globalStubs },
-      });
-      await nextTick();
-
-      const badge = wrapper.find('[data-testid="sidebar-error-badge"]');
-      expect(badge.exists()).toBe(true);
-      expect(badge.text()).toBe('5');
-    });
-
-    it('toggles debug panel when the debug button is clicked', async () => {
-      const wrapper = mount(Sidebar, {
-        global: { plugins: [router], stubs: globalStubs },
-      });
-      await nextTick();
-
-      const debugBtn = wrapper.find('[data-testid="sidebar-debug-button"]');
-      await debugBtn.trigger('click');
-
-      expect(mockToggleDebug).toHaveBeenCalled();
-    });
-
-    it('opens the file explorer when the file explorer button is clicked', async () => {
-      const wrapper = mount(Sidebar, {
-        global: { plugins: [router], stubs: globalStubs },
-        attachTo: document.body,
-      });
-      await nextTick();
-
-      // Open the menu first
-      const menuBtn = wrapper.find('[data-testid="sidebar-opfs-menu-button"]');
-      await menuBtn.trigger('click');
-      await nextTick();
-
-      // The button is now teleported to body
-      const fileExplorerBtn = document.body.querySelector('[data-testid="sidebar-file-explorer-button"]') as HTMLElement;
-      expect(fileExplorerBtn).toBeTruthy();
-      fileExplorerBtn.click();
-
-      expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: { kind: 'opfs-root' } });
-    });
-  });
-
   describe('Touch Support', () => {
     it('applies touch-visible class to action containers for non-hover environments', async () => {
       mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
@@ -902,7 +873,7 @@ describe('Sidebar Logic Stability', () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
-      const vm = wrapper.vm as unknown as SidebarComponent;
+      const vm = wrapper.getComponent(SidebarContent).vm as unknown as SidebarComponent;
       vm.syncLocalItems();
       await nextTick();
 
@@ -911,28 +882,6 @@ describe('Sidebar Logic Stability', () => {
 
       // Check top-level chat actions
       expect(wrapper.find('.sidebar-chat-item .touch-visible').exists()).toBe(true);
-    });
-  });
-
-  describe('Storage Info', () => {
-    it('shows the ghost icon when storageType is memory', async () => {
-      mockSettings.value.storageType = 'memory';
-      const wrapper = mount(Sidebar, {
-        global: { plugins: [router], stubs: globalStubs },
-      });
-      await nextTick();
-
-      expect(wrapper.find('[data-testid="sidebar-ghost-icon"]').exists()).toBe(true);
-    });
-
-    it('hides the ghost icon when storageType is not memory', async () => {
-      mockSettings.value.storageType = 'local';
-      const wrapper = mount(Sidebar, {
-        global: { plugins: [router], stubs: globalStubs },
-      });
-      await nextTick();
-
-      expect(wrapper.find('[data-testid="sidebar-ghost-icon"]').exists()).toBe(false);
     });
   });
 });

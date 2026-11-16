@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import LauncherButton from '@/components/LauncherButton.vue';
 import { clonePlainData } from '@/utils/clone-plain-data';
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { ref, watch, nextTick, computed, toRaw } from 'vue';
@@ -7,25 +6,16 @@ import type { ObjectDirective } from 'vue';
 import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
-import { useSettings } from '@/composables/useSettings';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-// IMPORTANT: Branding is part of the initial sidebar layout and must not flicker.
-import SidebarHeader from './SidebarHeader.vue';
-// IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
-import ModelSelector from './ModelSelector.vue';
-import ReasoningSettings from './ReasoningSettings.vue';
 import ChatGroupNameDialog from './ChatGroupNameDialog.vue';
-import { useToast } from '@/composables/useToast';
-import PWAUpdateNotification from './PWAUpdateNotification.vue';
-const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
-import type { ChatGroup, SidebarItem, ChatSidebarItem, Reasoning } from '@/01-models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/01-models/types';
 import {
-  Trash2Icon, SettingsIcon,
-  PencilIcon, FolderIcon, FolderPlusIcon,
+  Trash2Icon,
+  PencilIcon, FolderIcon,
   ChevronDownIcon, ChevronUpIcon, ChevronRightIcon, CheckIcon, XIcon,
-  SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
-  SearchIcon, GhostIcon, MessageSquarePlusIcon, LibraryBigIcon,
+  Loader2Icon, MoreHorizontalIcon,
+  MessageSquarePlusIcon,
 } from 'lucide-vue-next';
 import { idToRaw, toChatId, toChatGroupId } from '@/01-models/ids';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
@@ -35,7 +25,6 @@ import { useLayout } from '@/composables/useLayout';
 import { useConfirm } from '@/composables/useConfirm';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
-import { naturalSort } from '@/utils/string';
 import { useSidebarItemReveal, type SidebarRevealTarget } from '@/composables/useSidebarItemReveal';
 import { isChatProcessing } from '@/composables/chat/chat-activity-queries';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
@@ -44,14 +33,12 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
+import { useSidebarNewChat } from '@/composables/useSidebarNewChat';
 import { ensureStrings, lazyStrings } from '@/strings';
 
 const currentChatState = useCurrentChatState();
 const appEntry = useAppEntry();
-
-function openSettings({ event }: { event: MouseEvent }): void {
-  appEntry.openSettings({ tab: 'connection', opener: event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined });
-}
+const chatGroupCreation = defineModel<'open' | 'closed'>('chatGroupCreation', { required: true });
 
 const documentMetadata = useDocumentMetadata();
 const chatLifecycle = useChatLifecycle();
@@ -60,6 +47,7 @@ const chatOrganization = useChatOrganization();
 const chatMetadata = useChatMetadata();
 const sidebarStructure = useSidebarStructure();
 const currentChat = currentChatState.currentChat;
+const { handleNewChat } = useSidebarNewChat({ currentChat, createNewChat: chatLifecycle.createNewChat });
 const currentChatGroup = currentChatState.currentChatGroup;
 const sidebarItems = currentChatState.sidebarItems;
 const chatGroups = currentChatState.chatGroups;
@@ -105,22 +93,6 @@ function deleteChatGroup({
 }) {
   return chatOrganization.deleteChatGroup({
     id,
-  });
-}
-
-function createNewChat({
-  groupId,
-  modelId,
-  systemPrompt,
-}: {
-  groupId: ChatGroupId | undefined,
-  modelId: string | undefined,
-  systemPrompt: ChatGroup['systemPrompt'],
-}) {
-  return chatLifecycle.createNewChat({
-    groupId,
-    modelId,
-    systemPrompt,
   });
 }
 
@@ -171,62 +143,12 @@ function renameChat({
 
 const duplicateChatGroup = chatOrganization.duplicateChatGroup;
 
-const { settings, isFetchingModels, availableModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
-const { addToast } = useToast();
-const reasoningSaveState = ref<'idle' | 'saving'>('idle');
-const globalReasoningLabel = computed(() => {
-  const effort = settings.value.lmParameters?.reasoning.effort;
-  switch (effort) {
-  case undefined: return undefined;
-  case 'none': return lazyStrings.ReasoningSettings__off();
-  case 'low': return lazyStrings.ReasoningSettings__low();
-  case 'medium': return lazyStrings.ReasoningSettings__med();
-  case 'high': return lazyStrings.ReasoningSettings__high();
-  default: {
-    const _ex: never = effort;
-    throw new Error(`Unhandled reasoning effort: ${_ex}`);
-  }
-  }
-});
-const globalReasoningDescription = computed(() => {
-  const heading = lazyStrings.ReasoningSettings__think();
-  const label = globalReasoningLabel.value;
-  return heading === undefined || label === undefined ? undefined : `${heading} ${label}`;
-});
-
-async function handleGlobalReasoningChange({ effort }: { effort: Reasoning['effort'] }) {
-  const saveState = reasoningSaveState.value;
-  switch (saveState) {
-  case 'saving':
-    return;
-  case 'idle':
-    break;
-  default: {
-    const _ex: never = saveState;
-    throw new Error(`Unhandled reasoning save state: ${_ex}`);
-  }
-  }
-  reasoningSaveState.value = 'saving';
-  try {
-    await updateGlobalReasoningEffort({ effort });
-  } catch {
-    addToast({ message: await ensureStrings.Sidebar__failed_to_save_reasoning() });
-  } finally {
-    reasoningSaveState.value = 'idle';
-  }
-}
-
-const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
 const layout = useLayout();
-const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = layout;
+const { isSidebarOpen, activeFocusArea, setActiveFocusArea } = layout;
 const activeFocusAreaVersion = 'activeFocusAreaVersion' in layout ? layout.activeFocusAreaVersion : ref(0);
 const { showConfirm } = useConfirm();
 
 const router = useRouter();
-
-defineEmits<{
-  (e: 'open-settings'): void,
-}>();
 
 const sidebarItemsLocal = ref<SidebarItem[]>(clonePlainData({ value: sidebarItems.value }));
 const isDragging = ref(false);
@@ -236,7 +158,12 @@ let isInternalUpdate = false;
 
 const editingId = ref<ChatId | null>(null);
 const editingTitle = ref('');
-const isCreatingChatGroup = ref(false);
+const isCreatingChatGroup = computed({
+  get: () => chatGroupCreation.value === 'open',
+  set: (open: boolean) => {
+    chatGroupCreation.value = open ? 'open' : 'closed';
+  },
+});
 const newChatGroupName = ref('');
 const renamingChatGroup = ref<Pick<ChatGroup, 'id' | 'name'>>();
 const renameRestoreFocusTo = ref<HTMLElement>();
@@ -380,13 +307,6 @@ function toggleGroupCompactExpansion({ groupId }: { groupId: ChatGroupId }) {
 const vFocus: ObjectDirective<HTMLElement> = {
   mounted: (el) => el.focus(),
 };
-
-const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-const newChatShortcutText = isMac ? '⌘⇧O' : 'Ctrl+Shift+O';
-const newChatTitle = computed(() => {
-  const label = lazyStrings.SHARED__new_chat();
-  return label === undefined ? undefined : `${label} (${newChatShortcutText})`;
-});
 
 function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as HTMLElement;
@@ -626,19 +546,6 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
   await deleteChatGroup({ id: group.id });
 }
 
-async function handleNewChat({ groupId }: { groupId: ChatGroupId | undefined }) {
-  documentMetadata?.finishHomeIntroduction();
-  setActiveFocusArea({ area: 'chat' });
-  await createNewChat({
-    groupId,
-    modelId: undefined,
-    systemPrompt: undefined,
-  });
-  if (currentChat.value) {
-    router.push(`/chat/${idToRaw({ id: currentChat.value.id })}`);
-  }
-}
-
 async function handleOpenChat({ id }: { id: ChatId }) {
   documentMetadata?.finishHomeIntroduction();
   await openChat({ id });
@@ -685,13 +592,6 @@ function startEditingChatGroup({ chatGroup, trigger }: { chatGroup: ChatGroup, t
   renameRestoreFocusTo.value = trigger;
   renamingChatGroup.value = { id: chatGroup.id, name: chatGroup.name };
   activeActionGroupId.value = null;
-}
-
-async function handleGlobalModelChange({ newModelId }: { newModelId: string | undefined }) {
-  if (!newModelId) {
-    return;
-  }
-  await updateGlobalModel({ modelId: newModelId });
 }
 
 function getGroupItems({ groupId }: { groupId: ChatGroupId }) {
@@ -914,14 +814,6 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   }
 });
 
-function newChatInGroupTitle(): string | undefined {
-  const groupName = currentChatGroup.value?.name || lazyStrings.Sidebar__current_group();
-  if (groupName === undefined) {
-    return undefined;
-  }
-  return lazyStrings.Sidebar__new_chat_in_group({ groupName });
-}
-
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
@@ -934,57 +826,9 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
-    <SidebarHeader :expanded="isSidebarOpen" @toggle="toggleSidebar">
-      <template #status><GhostIcon v-if="settings.storageType === 'memory'" tw-class="w-3.5 h-3.5 text-indigo-500/80 dark:text-indigo-400/80 animate-pulse" :title="lazyStrings.Sidebar__ephemeral_session()" data-testid="sidebar-ghost-icon" /></template>
-    </SidebarHeader>
-
-    <PWAUpdateNotification />
+  <div tw-class="flex h-full min-h-0 flex-1 flex-col select-none" data-testid="chat-sidebar-content">
     <ChatGroupNameDialog v-if="renamingChatGroup" :chat-group="renamingChatGroup" :restore-focus-to="renameRestoreFocusTo" @close="renamingChatGroup = undefined" />
 
-    <!-- Actions -->
-    <div :tw-class="['py-2 space-y-2', isSidebarOpen ? 'px-4' : 'px-1']">
-      <div :tw-class="['flex gap-2', { 'flex-col items-center': !isSidebarOpen }]">
-        <button
-          @click="handleNewChat({ groupId: undefined })"
-          :tw-class="['flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50', isSidebarOpen ? 'flex-1 min-w-0 px-3 py-2 text-xs' : 'w-8 h-8']"
-          data-testid="new-chat-button"
-          :title="newChatTitle"
-        >
-          <SquarePenIcon tw-class="w-4 h-4 shrink-0" />
-          <template v-if="isSidebarOpen">
-            <span tw-class="truncate">{{ lazyStrings.SHARED__new_chat() }}</span>
-          </template>
-        </button>
-        <button
-          v-if="!isSidebarOpen && (currentChatGroup?.id || currentChat?.groupId)"
-          @click="handleNewChat({ groupId: (currentChatGroup?.id || currentChat?.groupId) ?? undefined })"
-          tw-class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
-          data-testid="new-chat-in-group-button"
-          :title="newChatInGroupTitle()"
-        >
-          <MessageSquarePlusIcon tw-class="w-4 h-4 shrink-0" />
-        </button>
-        <button
-          @click="useGlobalSearch().openSearch({})"
-          :tw-class="['shrink-0 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm', isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0']"
-          :title="lazyStrings.Sidebar__search_cmd_k()"
-          data-testid="search-button"
-        >
-          <SearchIcon tw-class="w-4 h-4" />
-        </button>
-        <button
-          v-if="isSidebarOpen"
-          @click="isCreatingChatGroup = true"
-          tw-class="shrink-0 p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
-          :title="lazyStrings.Sidebar__create_chat_group()"
-          data-testid="create-chat-group-button"
-        >
-          <FolderPlusIcon tw-class="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-    <div :tw-class="['mb-2', isSidebarOpen ? 'px-4' : 'px-1']"><LauncherButton :expanded="isSidebarOpen" /></div>
     <!-- Navigation List -->
     <div
       ref="navContainer"
@@ -1224,63 +1068,6 @@ defineExpose({
       </template>
     </div>
 
-    <!-- Footer -->
-    <div :tw-class="['border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20', isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]']">
-      <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="px-1 duration-300">
-        <ModelSelector
-          surface="sidebar"
-          :model-value="settings.defaultModelId || ''"
-          :models="sortedModels"
-          :loading="isFetchingModels"
-          :model-selection="settings.endpoint.type === 'browser_provided_lm' ? 'unavailable' : 'available'"
-          @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
-          :placeholder="lazyStrings.Sidebar__none()"
-        >
-          <template #trigger-label>{{ lazyStrings.Sidebar__default_model() }}</template>
-          <template v-if="globalReasoningLabel !== undefined" #trigger-summary>
-            <span data-testid="sidebar-reasoning-summary" :title="globalReasoningDescription"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }} </span><span data-testid="sidebar-reasoning-value">{{ globalReasoningLabel }}</span></span>
-          </template>
-          <template #unavailable>{{ lazyStrings.Sidebar__model_selection_is_unavailable_for_this_connection() }}</template>
-          <template #settings>
-            <ReasoningSettings
-              :selected-effort="settings.lmParameters?.reasoning.effort"
-              :disabled="reasoningSaveState === 'saving'"
-              surface="plain"
-              notice="inline-help"
-              @update:effort="handleGlobalReasoningChange({ effort: $event })"
-            />
-          </template>
-        </ModelSelector>
-      </div>
-
-      <div :tw-class="['flex items-center gap-1', { 'flex-col items-center': !isSidebarOpen }]">
-        <button
-          type="button"
-          @click="openSettings({ event: $event })"
-          :tw-class="['flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-transparent text-xs font-bold text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none', isSidebarOpen ? 'flex-1 px-2 py-2' : 'h-8 w-8']"
-          :aria-label="lazyStrings.Sidebar__settings()"
-          :title="lazyStrings.Sidebar__settings()"
-          data-testid="sidebar-settings-button"
-        >
-          <SettingsIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />
-          <span v-if="isSidebarOpen" tw-class="truncate">{{ lazyStrings.Sidebar__settings() }}</span>
-        </button>
-
-        <button
-          type="button"
-          data-testid="sidebar-model-catalog-button"
-          :aria-label="lazyStrings.Sidebar__find_models()"
-          :title="lazyStrings.Sidebar__find_models()"
-          tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none"
-          @click="appEntry.openDiscovery({ tab: undefined })"
-        >
-          <LibraryBigIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />
-        </button>
-
-        <SidebarDebugControls :is-sidebar-open="isSidebarOpen" />
-      </div>
-    </div>
   </div>
 </template>
 

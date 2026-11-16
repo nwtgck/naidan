@@ -338,7 +338,7 @@ describe('app startup', () => {
     dispose();
   });
 
-  it('preserves the initial deep link while delaying its component load until the real Sidebar can paint', async () => {
+  it('preserves the initial deep link while delaying its component load until the common sidebar frame can paint', async () => {
     const settings = createSettingsStore({ onboardingDismissed: true });
     const harness = createStartupHarness({
       path: '/chat/chat-1?leaf=message-2',

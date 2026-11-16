@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import Sidebar from './Sidebar.vue';
+import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
+import SidebarHeader from './SidebarHeader.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref } from 'vue';
 
@@ -65,7 +66,8 @@ describe('Sidebar GitHub and Version', () => {
   });
 
   it('should display the app version next to the title', () => {
-    const wrapper = mount(Sidebar, {
+    const wrapper = mount(SidebarHeader, {
+      props: { expanded: true },
       global: {
         plugins: [router],
         stubs: {

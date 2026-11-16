@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import Sidebar from './Sidebar.vue';
+import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
+import SidebarContent from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatSummary, SidebarItem } from '@/01-models/types';
@@ -161,7 +162,7 @@ describe('Sidebar Streaming Indicators', () => {
     });
 
     // Manually trigger sync because watch/onMounted might be tricky in this test setup
-    const vm = wrapper.vm as any;
+    const vm = wrapper.getComponent(SidebarContent).vm as any;
     vm.sidebarItemsLocal = [
       { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'Chat 1', updatedAt: 0 } },
       { id: 'chat:chat-2', type: 'chat', chat: { id: 'chat-2', title: 'Chat 2', updatedAt: 0 } },
@@ -181,7 +182,7 @@ describe('Sidebar Streaming Indicators', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    const vm = wrapper.vm as any;
+    const vm = wrapper.getComponent(SidebarContent).vm as any;
     vm.sidebarItemsLocal = [
       { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'Chat 1', updatedAt: 0 } },
       { id: 'chat:chat-2', type: 'chat', chat: { id: 'chat-2', title: 'Chat 2', updatedAt: 0 } },

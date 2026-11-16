@@ -1,64 +1,64 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ref } from 'vue';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { defineComponent, h, ref } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { toChatId } from '@/01-models/ids';
-import type { RecentChatWithAccess } from '@/composables/useRecentChats';
 import type { LiveConversationNavigation, LiveConversationPanel } from '@/features/live-conversation/navigation';
 import LiveConversationSidebar from './LiveConversationSidebar.vue';
+import LiveConversationSidebarActions from './LiveConversationSidebarActions.vue';
 
 const expanded = ref(true);
-const mostRecentChat = ref<RecentChatWithAccess>();
-vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ isSidebarOpen: expanded, toggleSidebar: vi.fn() }) }));
-vi.mock('@/composables/useRecentChats', () => ({ useRecentChats: () => ({ mostRecentChat }) }));
+vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ isSidebarOpen: expanded }) }));
 
 beforeEach(async () => {
   expanded.value = true;
-  mostRecentChat.value = undefined;
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-async function fixture() {
+function fixture() {
   const busy = ref(false), panel = ref<LiveConversationPanel>('conversation');
+  const canReset = ref(true), fileName = ref<string>();
   const navigation: LiveConversationNavigation = {
     panel,
     modelName: ref('Haru'),
-    fileName: ref(undefined),
+    fileName,
     busy,
-    canReset: ref(true),
+    canReset,
     openConversation: vi.fn(),
     openDiagnostics: vi.fn(),
     newConversation: vi.fn(async () => {}),
     openSettings: vi.fn(),
   };
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }] });
-  await router.push('/live-conversation');
-  const wrapper = mount(LiveConversationSidebar, { props: { navigation }, global: { plugins: [router], stubs: { SidebarHeader: true, SidebarDebugControls: true, LauncherButton: true } } });
+  const wrapper = mount(defineComponent({
+    setup() {
+      return () => h('div', [h(LiveConversationSidebarActions, { navigation, expanded: expanded.value }), h(LiveConversationSidebar, { navigation })]);
+    },
+  }));
   return {
     wrapper,
     navigation,
     busy,
     panel,
-    router,
+    canReset,
+    fileName,
     [Symbol.dispose]() {
       wrapper.unmount();
     },
   };
 }
 
-describe('Live Conversation owns its sidebar', () => {
-  it('offers conversation, investigation tools, settings and a return to chats', async () => {
-    using f = await fixture();
+describe('Live Conversation sidebar content and actions', () => {
+  it('delegates conversation, investigation tools and conversation settings', async () => {
+    using f = fixture();
+    await f.wrapper.get('[data-testid="live-sidebar-microphone"]').trigger('click');
+    expect(f.navigation.openConversation).toHaveBeenCalledOnce();
     await f.wrapper.get('[data-testid="live-sidebar-diagnostics"]').trigger('click');
     expect(f.navigation.openDiagnostics).toHaveBeenCalledOnce();
     await f.wrapper.get('[data-testid="live-sidebar-settings"]').trigger('click');
     expect(f.navigation.openSettings).toHaveBeenCalledOnce();
-    expect(f.wrapper.get('[data-testid="live-sidebar-back"]').attributes('href')).toBe('/');
   });
 
-  it('places investigation tools below conversation settings', async () => {
-    using f = await fixture();
+  it('places investigation tools below conversation settings', () => {
+    using f = fixture();
     const settings = f.wrapper.get('[data-testid="live-sidebar-settings"]').element;
     const tools = f.wrapper.get('[data-testid="live-sidebar-diagnostics"]').element;
     expect(settings.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -66,41 +66,41 @@ describe('Live Conversation owns its sidebar', () => {
   });
 
   it('prevents changing input sources during inference and remains usable when collapsed', async () => {
-    using f = await fixture();
+    using f = fixture();
     expanded.value = false;
     f.busy.value = true;
     await flushPromises();
     expect(f.wrapper.get('[data-testid="live-sidebar-diagnostics"]').attributes('disabled')).toBeDefined();
     expect(f.wrapper.get('[data-testid="live-sidebar-microphone"]').attributes('disabled')).toBeDefined();
-    expect(f.wrapper.get('[data-testid="live-sidebar-diagnostics"]').attributes('title')).toBe('Diagnostics');
+    expect(f.wrapper.get('[data-testid="live-sidebar-diagnostics"]').attributes('aria-label')).toBe('Diagnostics');
     expect(f.wrapper.find('[data-testid="live-sidebar-settings"]').exists()).toBe(true);
   });
 
-  it.each([true, false])('returns to the latest chat through the actual router when expanded is %s', async isExpanded => {
+  it.each([true, false])('keeps new conversation governed by canReset when expanded is %s', async isExpanded => {
     expanded.value = isExpanded;
-    mostRecentChat.value = { id: toChatId({ raw: 'previous-chat' }), title: 'Previous chat', updatedAt: 10, accessedAt: 20 };
-    using f = await fixture();
-    const back = f.wrapper.get('[data-testid="live-sidebar-back"]');
-    expect(back.attributes('href')).toBe('/chat/previous-chat');
-    mostRecentChat.value = { id: toChatId({ raw: 'next-chat' }), title: 'Next chat', updatedAt: 30, accessedAt: 40 };
+    using f = fixture();
+    f.canReset.value = false;
     await flushPromises();
-    expect(back.attributes('href')).toBe('/chat/next-chat');
-    await back.trigger('click');
-    await flushPromises();
-    expect(f.router.currentRoute.value.path).toBe('/chat/next-chat');
+    const action = f.wrapper.get('[data-testid="live-sidebar-new"]');
+    expect(action.attributes('disabled')).toBeDefined();
+    expect(action.attributes('aria-label')).toBe('New conversation');
+    await action.trigger('click');
     expect(f.navigation.newConversation).not.toHaveBeenCalled();
+    f.canReset.value = true;
+    await flushPromises();
+    await action.trigger('click');
+    expect(f.navigation.newConversation).toHaveBeenCalledOnce();
   });
 
-  it('returns Home when the last recent chat is removed', async () => {
-    mostRecentChat.value = { id: toChatId({ raw: 'deleted-chat' }), title: 'Deleted chat', updatedAt: 10, accessedAt: 20 };
-    using f = await fixture();
-    mostRecentChat.value = undefined;
+  it('updates selection and investigation file context without recreating the owner', async () => {
+    using f = fixture();
+    const owner = f.wrapper.get('[data-testid="live-conversation-sidebar"]').element;
+    f.panel.value = 'diagnostics';
+    f.fileName.value = 'recording.wav';
     await flushPromises();
-    const back = f.wrapper.get('[data-testid="live-sidebar-back"]');
-    expect(back.attributes('href')).toBe('/');
-    await back.trigger('click');
-    await flushPromises();
-    expect(f.router.currentRoute.value.path).toBe('/');
-    expect(f.navigation.newConversation).not.toHaveBeenCalled();
+    expect(f.wrapper.get('[data-testid="live-conversation-sidebar"]').element).toBe(owner);
+    expect(f.wrapper.get('[data-testid="live-sidebar-diagnostics"]').attributes('aria-current')).toBe('page');
+    expect(f.wrapper.get('[data-testid="live-sidebar-microphone"]').attributes('aria-current')).toBeUndefined();
+    expect(f.wrapper.text()).toContain('recording.wav');
   });
 });

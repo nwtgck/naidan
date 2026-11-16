@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
-import Sidebar from './Sidebar.vue';
+import { SidebarTestHost as Sidebar } from './Sidebar.test-support';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useTheme } from '@/features/theme/composables/useTheme';
@@ -108,20 +108,6 @@ describe('Sidebar Design Specifications', () => {
     });
   });
 
-  it('is explicitly white in light mode to match the modern aesthetic', async () => {
-    const wrapper = mount(Sidebar, {
-      global: {
-        stubs: {
-          'router-link': { template: '<a><slot /></a>' },
-          'Logo': true,
-          'draggable': DraggableStub,
-        },
-      },
-    });
-    await nextTick();
-    expect(wrapper.classes()).toContain('bg-white');
-  });
-
   it('uses rounded-xl and soft shadows for the primary New Chat button', async () => {
     const wrapper = mount(Sidebar, {
       global: {
@@ -137,22 +123,6 @@ describe('Sidebar Design Specifications', () => {
     expect(newChatBtn.classes()).toContain('rounded-xl');
     expect(newChatBtn.classes()).toContain('shadow-lg');
     expect(newChatBtn.classes()).toContain('shadow-blue-500/20');
-  });
-
-  it('uses gray-800 for the header title to avoid harsh black', async () => {
-    const wrapper = mount(Sidebar, {
-      global: {
-        stubs: {
-          'router-link': { template: '<a><slot /></a>' },
-          'Logo': true,
-          'draggable': true,
-        },
-      },
-    });
-    await nextTick();
-    const title = wrapper.find('h1');
-    expect(title.exists()).toBe(true);
-    expect(title.classes()).toContain('from-gray-800');
   });
 
   it('uses blue-600 for active chat highlighting instead of indigo', async () => {
