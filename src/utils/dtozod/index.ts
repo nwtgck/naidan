@@ -65,7 +65,9 @@ export type DtoShape = Readonly<Record<string, SchemaToken>>;
 type NativeShape<T extends DtoShape> = { -readonly [K in keyof T]: Native<T[K]> };
 type NativeOptions<T extends readonly SchemaToken[]> = { -readonly [K in keyof T]: Native<T[K]> };
 
-export interface DtoLeaf<T extends z.ZodType> extends DtoSchema {
+// Only core metadata is read here. A classic ZodType constraint also compares
+// recursive fluent methods, allocating checker types without strengthening the DTO contract.
+export interface DtoLeaf<T extends z.core.$ZodType> extends DtoSchema {
   readonly _zod: Readonly<Pick<T['_zod'], Slots>>;
 }
 export interface DtoOptional<T extends SchemaToken> extends DtoSchema {

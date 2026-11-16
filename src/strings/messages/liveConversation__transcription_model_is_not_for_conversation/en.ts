@@ -1,0 +1,1 @@
+export const liveConversation__transcription_model_is_not_for_conversation = (): string => "This is a recognition model. Open the investigation tools to transcribe an audio file or microphone recording.";

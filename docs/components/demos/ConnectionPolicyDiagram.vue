@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { ArrowRightIcon, Globe2Icon, PanelTopIcon, ServerIcon, ShieldXIcon } from 'lucide-vue-next';
-import type { messages as englishMessages } from '../../pages/csp-editions/messages/en';
+import type { messages as englishMessages } from '../../pages/csp-edition/messages/en';
 
 const props = defineProps<{ messages: typeof englishMessages }>();
 

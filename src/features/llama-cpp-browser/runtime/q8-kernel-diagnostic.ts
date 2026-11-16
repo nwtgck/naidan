@@ -15,13 +15,6 @@ interface DiagnosticOwner {
 /** Internal setup leaves; never exposed on Core or the returned adapter. */
 export interface Q8DiagnosticAccess {
   assertIdle(): void;
-  schemaHash(): Scalar;
-  recordSize({ recordId }: { recordId: number }): Scalar;
-  recordAlignment({ recordId }: { recordId: number }): Scalar;
-  fieldOffset({ recordId, fieldId }: { recordId: number, fieldId: number }): Scalar;
-  fieldSize({ recordId, fieldId }: { recordId: number, fieldId: number }): Scalar;
-  constant({ id }: { id: number }): Scalar;
-  bytes({ pointer, length }: { pointer: bigint, length: number }): Uint8Array;
   withAccess<T>({ operation }: { operation: ({ owner }: { owner: DiagnosticOwner }) => Promise<T> }): Promise<T>;
 }
 
@@ -55,26 +48,26 @@ const requestName = 'ggml_webgpu_q8_diagnostic_request_v1';
 const reportName = 'ggml_webgpu_q8_diagnostic_report_v1';
 const requestFields = ['abi_version', 'struct_size', 'variant', 'phase', 'repetitions', 'reserved'] as const;
 const reportFields = ['abi_version', 'struct_size', 'status', 'requested_variant', 'phase', 'actual_algorithm', 'workgroup_size', 'logical_subgroup_size', 'real_min_subgroup_size', 'real_max_subgroup_size', 'rows_per_tile', 'outputs_per_workgroup', 'cooperative_subgroup_reduction', 'grid_x', 'grid_y', 'grid_z', 'dispatches', 'codegen_revision', 'shader_identity_id', 'reserved', 'shader_sha256'] as const;
-const fieldSchema = z.strictObject({ id: u32, name: identifier, cType: z.enum(['uint32_t', 'uint8_t[32]']), kind: z.enum(['unsigned', 'array']) });
-const extensionSchema = z.strictObject({
+const fieldSchema = z.object({ id: u32, name: identifier, cType: z.string(), kind: z.string(), offset: u32, size: u32 });
+const extensionSchema = z.object({
+  version: z.literal(1),
   abiVersion: z.literal(1),
   extensionId: z.literal('webgpu-q8-diagnostic-v1'),
-  baseAbiVersion: z.literal(1),
-  pointerRepresentation: z.literal('bigint-u64'),
+  baseAbiVersion: z.literal(3),
+  pointerRepresentation: z.literal('bigint_u64'),
   versionExport: z.literal(prefix + 'version'),
   schemaHashExport: z.literal(prefix + 'schema_hash'),
-  recordQueryNamespace: z.literal(prefix),
-  functions: z.array(z.strictObject({
+  suspension: z.literal('jspi'),
+  functions: z.array(z.object({
     name: identifier,
     export: identifier,
-    returnType: z.enum(['int32_t', 'uint32_t']),
-    returnKind: z.enum(['signed', 'unsigned']),
-    suspension: z.enum(['jspi', 'none']),
-    parameters: z.array(z.strictObject({ name: identifier, cType: z.enum(['uint64_t', 'uint32_t']), kind: z.enum(['u64', 'unsigned']) })),
-  })).length(2),
-  records: z.array(z.strictObject({ name: identifier, cType: z.string(), fields: z.array(fieldSchema), id: u32 })).length(2),
+    returnType: z.string(),
+    returnKind: z.string(),
+    parameters: z.array(z.object({ name: identifier, cType: z.string(), kind: z.string() })),
+  })),
+  records: z.array(z.object({ name: identifier, cType: z.string(), fields: z.array(fieldSchema), id: u32, size: u32, alignment: u32 })),
   constants: z.array(identifier),
-  schemaSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  constantValues: z.record(z.string(), z.string().regex(/^-?[0-9]+$/u)),
 });
 type ExtensionSchema = z.infer<typeof extensionSchema>;
 type RecordLayout = Readonly<{ size: number, alignment: number, fields: ReadonlyMap<string, Readonly<{ offset: number, size: number }>> }>;
@@ -131,19 +124,26 @@ function hex({ bytes }: { bytes: Uint8Array }): string {
 }
 
 function validateFunctions({ schema }: { schema: ExtensionSchema }): void {
-  exactNames({ actual: schema.functions.map(fn => fn.name), expected: ['lcb_webgpu_q8_diagnostic_run_v1', 'lcb_webgpu_q8_diagnostic_version'] });
-  for (const fn of schema.functions) {
+  const functions = new Map(schema.functions.map(fn => [fn.name, fn]));
+  if (functions.size !== schema.functions.length) {
+    throw new Error('Duplicate Q8 diagnostic function');
+  }
+  for (const name of ['lcb_webgpu_q8_diagnostic_run_v1', 'lcb_webgpu_q8_diagnostic_version']) {
+    const fn = functions.get(name);
+    if (!fn) {
+      throw new Error('Missing Q8 diagnostic function: ' + name);
+    }
     const run = fn.name.endsWith('run_v1');
     const parameters = run ? ['backend', 'dst', 'request', 'report', 'report_capacity'] : ['backend'];
     if (fn.export !== '_' + fn.name || fn.returnType !== (run ? 'int32_t' : 'uint32_t') || fn.returnKind !== (run ? 'signed' : 'unsigned')
-      || fn.suspension !== (run ? 'jspi' : 'none') || fn.parameters.length !== parameters.length
+      || fn.parameters.length !== parameters.length
       || fn.parameters.some((p, i) => p.name !== parameters[i] || p.cType !== (i === 4 ? 'uint32_t' : 'uint64_t') || p.kind !== (i === 4 ? 'unsigned' : 'u64'))) {
       throw new Error('Unsupported Q8 diagnostic signature');
     }
   }
 }
 
-function readLayout({ schema, name, names, access }: { schema: ExtensionSchema, name: string, names: readonly string[], access: Q8DiagnosticAccess }): RecordLayout {
+function readLayout({ schema, name, names }: { schema: ExtensionSchema, name: string, names: readonly string[] }): RecordLayout {
   const record = schema.records.find(record => record.name === name);
   if (!record || record.cType !== 'struct ' + name) {
     throw new Error('Unsupported Q8 diagnostic record');
@@ -152,16 +152,16 @@ function readLayout({ schema, name, names, access }: { schema: ExtensionSchema, 
   if (new Set(record.fields.map(field => field.id)).size !== record.fields.length) {
     throw new Error('Duplicate Q8 diagnostic field ID');
   }
-  const size = safeNumber({ value: access.recordSize({ recordId: record.id }) });
-  const alignment = safeNumber({ value: access.recordAlignment({ recordId: record.id }) });
+  const size = record.size;
+  const alignment = record.alignment;
   if (!size || size > 4096 || alignment < 4 || alignment > 16 || (alignment & (alignment - 1)) || size % alignment) {
     throw new Error('Unsupported Q8 diagnostic record layout');
   }
   const fields = new Map<string, Readonly<{ offset: number, size: number }>>();
   for (const field of record.fields) {
     const array = field.name === 'shader_sha256';
-    const offset = safeNumber({ value: access.fieldOffset({ recordId: record.id, fieldId: field.id }) });
-    const fieldSize = safeNumber({ value: access.fieldSize({ recordId: record.id, fieldId: field.id }) });
+    const offset = field.offset;
+    const fieldSize = field.size;
     if (field.cType !== (array ? 'uint8_t[32]' : 'uint32_t') || field.kind !== (array ? 'array' : 'unsigned')
       || fieldSize !== (array ? 32 : 4) || (!array && offset % 4) || offset > size || fieldSize > size - offset
       || [...fields.values()].some(other => offset < other.offset + other.size && other.offset < offset + fieldSize)) {
@@ -172,35 +172,27 @@ function readLayout({ schema, name, names, access }: { schema: ExtensionSchema, 
   return Object.freeze({ size, alignment, fields });
 }
 
-export async function createQ8KernelDiagnosticAdapter({ schemaBytes, access }: { schemaBytes: Uint8Array, access: Q8DiagnosticAccess }): Promise<Q8KernelDiagnosticAdapter> {
+export async function createQ8KernelDiagnosticAdapter({ schema: metadata, access }: { schema: unknown, access: Q8DiagnosticAccess }): Promise<Q8KernelDiagnosticAdapter> {
   access.assertIdle();
-  // Copy before the hash await: callers cannot mutate a validated schema while
-  // digest() is pending. ASCII matches the generator's ensure_ascii contract.
-  const snapshot = new Uint8Array(schemaBytes);
-  if (!snapshot.length || snapshot.length > 256 * 1024 || snapshot.some(byte => byte > 0x7f)) {
-    throw new Error('Invalid Q8 diagnostic schema bytes');
-  }
-  const raw = z.record(z.string(), z.unknown()).parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(snapshot)));
-  const schema = extensionSchema.parse(raw);
+  // The compiled target fingerprint already binds this descriptor. Parse the
+  // protocol's semantic contract rather than fetching a second metadata copy.
+  const schema = extensionSchema.parse(metadata);
   validateFunctions({ schema });
-  exactNames({ actual: schema.records.map(record => record.name), expected: [requestName, reportName] });
-  if (new Set(schema.records.map(record => record.id)).size !== schema.records.length) {
+  if (new Set(schema.records.map(record => record.id)).size !== schema.records.length || new Set(schema.records.map(record => record.name)).size !== schema.records.length) {
     throw new Error('Duplicate Q8 diagnostic record ID');
-  }
-  delete raw.schemaSha256;
-  const digest = hex({ bytes: new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(raw, undefined, 2) + '\n'))) });
-  access.assertIdle();
-  if (digest !== schema.schemaSha256) {
-    throw new Error('Q8 diagnostic canonical schema mismatch');
-  }
-  const compiled = new TextDecoder('utf-8', { fatal: true }).decode(access.bytes({ pointer: BigInt(access.schemaHash()), length: 64 }));
-  if (compiled !== digest) {
-    throw new Error('Q8 diagnostic compiled schema mismatch');
   }
   const constantNames = [...Object.values(variantConstants), ...Object.values(phaseConstants), ...Object.values(statusConstants), ...Object.values(algorithmConstants),
     'VERSION', 'K_MIN', 'K_MAX', 'M_MIN', 'M_MAX', 'WEIGHT_BYTES_MAX', 'REPETITIONS_MAX'].map(name => `GGML_WEBGPU_Q8_DIAGNOSTIC_${name}_V1`);
-  exactNames({ actual: schema.constants, expected: constantNames });
-  const constants = new Map(schema.constants.map((name, id) => [name, safeNumber({ value: access.constant({ id }) })]));
+  if (new Set(schema.constants).size !== schema.constants.length || constantNames.some(name => !schema.constants.includes(name))) {
+    throw new Error('Missing or duplicate Q8 diagnostic constant');
+  }
+  const constants = new Map(constantNames.map(name => {
+    const value = schema.constantValues[name];
+    if (value === undefined) {
+      throw new Error('Missing Q8 diagnostic constant');
+    }
+    return [name, safeNumber({ value: BigInt(value) })] as const;
+  }));
   const constant = ({ name }: { name: string }): number => {
     const value = constants.get(`GGML_WEBGPU_Q8_DIAGNOSTIC_${name}_V1`);
     if (value === undefined) {
@@ -217,8 +209,8 @@ export async function createQ8KernelDiagnosticAdapter({ schemaBytes, access }: {
   if (constant({ name: 'VERSION' }) !== 1 || !constant({ name: 'REPETITIONS_MAX' }) || constant({ name: 'REPETITIONS_MAX' }) > 128) {
     throw new Error('Unsupported Q8 diagnostic bounds');
   }
-  const request = readLayout({ schema, name: requestName, names: requestFields, access });
-  const report = readLayout({ schema, name: reportName, names: reportFields, access });
+  const request = readLayout({ schema, name: requestName, names: requestFields });
+  const report = readLayout({ schema, name: reportName, names: reportFields });
   const getU32 = ({ owner, pointer, layout, name }: { owner: DiagnosticOwner, pointer: bigint, layout: RecordLayout, name: string }): number => {
     const field = layout.fields.get(name)!;
     const bytes = owner.bytes({ pointer: pointer + BigInt(field.offset), length: field.size });

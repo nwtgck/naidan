@@ -6,15 +6,35 @@ Docs has a separate, static-site-style build. The shared Vue server renderer pro
 
 | Reader needs | Start with | Example from the current guides |
 | --- | --- | --- |
-| Explanation, links, figures, or a demonstration that plays without input | `pages/<id>/index.vue` and a static component; use CSS for explanatory motion | `<BrowserBoundaryDiagram :messages="s" />` in `pages/browser-boundaries/index.vue` |
+| Explanation, links, figures, or a demonstration that plays without input | `pages/<id>/index.vue` and a static component; use CSS for explanatory motion | `<BrowserBoundaryDiagram :messages="s" />` in `pages/browser-boundary/index.vue` |
 | Interaction or browser-only state, such as reader input or API availability | An island with `contracts.ts` and `definition.ts`, embedded through `components/DocsIsland.vue` | `<DocsIsland :entry="branchingIsland({ locale })" />` in `pages/chat-branching/index.vue` |
 
 A static component renders on the server in development and production. Browser lifecycle hooks such as `onMounted`, DOM access, event handlers, and Vue watchers do not make it interactive. Keep the explanation and initial demonstration readable in its HTML. Use a registered island for new page-specific browser behavior; use CSS animation and the shared pause/reduced-motion behavior for motion that merely illustrates a step. Shared site controls such as theme and motion already have their own client entry. An island entry owns its typed JSON payload and parser in `contracts.ts`, component and locale preparation in `definition.ts`, and one `:entry` prop at the page. Do not handwrite its serialized HTML attributes or pass the article catalog as island props.
 
 ## Work on a guide
 
+The **Docs follow-up** (Docs追従) workflow means reading the current app and Docs,
+independently reviewing the source research, agreeing on the article proposal
+below with the requester, implementing in an isolated worktree, then running
+focused checks and an independent review. Keep this canonical proposal format
+updated when the workflow changes. For a new guide, use these four fields and
+include the proposed motion beside each outline section:
+
+- **Article title**
+  - **Path**: `/docs/ja/<id>/`
+  - **Reader takeaway**
+    - What the reader should understand or be able to do.
+  - **Outline**
+    - Section purpose; motion that explains it, or why no motion is needed.
+
+For changes to existing guides, use this table:
+
+| Article | Path | Changes |
+| --- | --- | --- |
+| Existing article title | `/docs/ja/<id>/` | Changed facts, instructions, and demonstrations. |
+
 1. Start with the reader's task. Check current app source and behavior tests for factual claims and illustrated UI. Docs owns independent presentation replicas, not app UI, stores, or model runtime imports; `components/demos/README.md` identifies their current counterparts and motion rules.
-2. Register a stable ID in `navigation/routes.ts`. Add `pages/<id>/index.vue`, `messages/en.tsx` and `ja.tsx` under that page, and local assets nearby. Put `title` and `description` metadata in the same flat catalog. Use one page structure with flat, natural English `snake_case` message keys. English defines the message type; Japanese checks it with `satisfies typeof import('./en').messages`. Follow a nearby guide for rich JSX. Ordinary text renders with `{{ s.key }}`; rich text from a message function renders through `components/RenderText.ts`, using `components/UiLabel.vue` for visible control names in prose.
+2. Register a stable ID in [`navigation/routes.ts`](navigation/routes.ts), following the naming comment beside the article ID list. Add `pages/<id>/index.vue`, `messages/en.tsx` and `ja.tsx` under that page, and local assets nearby. Put `title` and `description` metadata in the same flat catalog. Use one page structure with flat, natural English `snake_case` message keys. English defines the message type; Japanese checks it with `satisfies typeof import('./en').messages`. Follow a nearby guide for rich JSX. Ordinary text renders with `{{ s.key }}`; rich text from a message function renders through `components/RenderText.ts`, using `components/UiLabel.vue` for visible control names in prose.
 3. Static demonstrations read the selected article messages through one typed prop, as the `BrowserBoundaryDiagram` example does. Article messages stay server-only. Islands load only their own small messages for the selected locale on the server and in the browser, and receive only plain data they cannot derive themselves. Keep prose, labels, examples, captions, diagrams, and accessible text in the page language.
 4. Use typed links: `DocsLink` for guides, `AppEntryLink` for app screens or model launch, `SkipToContentLink` for the page's skip target, and `ExternalLink` for external HTTP(S) destinations. The static `AppEntryLink` fallback points to the public site origin; when scripts run, Docs rebases that link to the current Docs origin. Keep external destinations visibly identified. Compare rendered English and Japanese pages after prose changes to catch missing facts, altered instructions, and broken links; natural wording can differ.
 

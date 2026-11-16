@@ -60,11 +60,11 @@ describe('settings inheritance guide', () => {
       expect(section?.querySelector('figcaption')?.textContent).toBe(typeof step.caption === 'string' ? step.caption : await renderedText({ node: step.caption() }));
     }
     const groupPreparation = sections[1]?.querySelector('.group-preparation');
-    expect(groupPreparation?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-groups/`);
+    expect(groupPreparation?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-group/`);
     expect(groupPreparation?.textContent).toBe(await renderedText({ node: s.prepare_a_chat_group({ locale }) }));
     expect(sections[0]?.querySelector('.group-preparation')).toBeNull();
     expect([...(article?.querySelectorAll('[data-docs-related-guide] a') ?? [])].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/chat-groups/`, `/docs/${locale}/endpoint-type-ollama/`,
+      `/docs/${locale}/chat-group/`, `/docs/${locale}/endpoint-type-ollama/`,
     ]);
     expect(article?.querySelectorAll('script, [data-docs-island]')).toHaveLength(0);
   });
@@ -205,6 +205,45 @@ describe('settings inheritance guide', () => {
     const header = page.document.querySelector('[data-testid="inheritance-step-chatModel"] .chat-page-header .model-trigger');
     expect(header?.querySelector('.phase-start')?.textContent).toBe(en.group_example_model_id);
     expect(header?.querySelector('.phase-end')?.textContent).toBe(en.chat_example_model_id);
+  });
+
+  it('opens endpoint choices with connection details and closes only the choices after selection', async () => {
+    for (const stage of ['group', 'inheritedChat', 'reset'] as const) {
+      const html = await renderToString(createSSRApp({ render: () => h(SettingsInheritanceStep, { stage, messages: en }) }));
+      using page = parsePage({ html });
+      const details = page.document.querySelector('[data-testid="inheritance-connection-details"]');
+      expect(details?.querySelector('[data-testid="inheritance-endpoint-candidates"]')).not.toBeNull();
+      expect(details?.querySelector('.endpoint-pointer')).not.toBeNull();
+    }
+    const filename = new URL('../components/demos/SettingsInheritanceStep.vue', import.meta.url);
+    const { descriptor } = parse(readFileSync(filename, 'utf8'), { filename: filename.pathname });
+    const css = postcss.parse(descriptor.styles[0]?.content ?? '');
+    const opacityAt = ({ name, percent }: { name: string; percent: number }) => {
+      const frames: { percent: number; opacity: number }[] = [];
+      css.walkAtRules('keyframes', rule => {
+        if (rule.params !== name) {
+          return;
+        }
+        rule.walkRules(frame => frame.walkDecls('opacity', declaration => {
+          for (const point of frame.selector.split(',')) {
+            frames.push({ percent: Number.parseFloat(point), opacity: Number(declaration.value) });
+          }
+        }));
+      });
+      frames.sort((a, b) => a.percent - b.percent);
+      const before = frames.findLast(frame => frame.percent <= percent);
+      const after = frames.find(frame => frame.percent >= percent);
+      if (!before || !after) {
+        throw new Error(`Missing ${name} opacity frames`);
+      }
+      return before.percent === after.percent ? before.opacity : before.opacity + (after.opacity - before.opacity) * (percent - before.percent) / (after.percent - before.percent);
+    };
+    // Both begin opening from the summary click; selecting a row preserves the details.
+    expect(opacityAt({ name: 'details-open', percent: 35 })).toBeGreaterThan(0);
+    expect(opacityAt({ name: 'endpoint-choices', percent: 35 })).toBe(opacityAt({ name: 'details-open', percent: 35 }));
+    expect(opacityAt({ name: 'endpoint-choices', percent: 41 })).toBe(1);
+    expect(opacityAt({ name: 'endpoint-choices', percent: 50 })).toBe(0);
+    expect(opacityAt({ name: 'details-open', percent: 50 })).toBe(1);
   });
 
   it.each([274, 314, 329, 554])('keeps active fields, chevrons, and pointers inside a %ipx camera without a browser', async cameraWidth => {

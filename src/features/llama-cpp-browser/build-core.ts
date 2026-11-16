@@ -6,6 +6,7 @@ import { normalizePath, type Plugin } from 'vite';
 import { gpuProfilingProfile, profileSchema, type LlamaCppProfile } from './types.ts';
 import { hostedArtifactProfiles, readLlamaArtifactPackage, readQ8DiagnosticArtifact } from './build-artifact-package.ts';
 import { createLlamaCppRuntimeAssetsPlugin } from './build-runtime-assets.ts';
+import { runtimeBuildEvidence } from './performance/runtime-evidence.ts';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types.ts';
 
@@ -25,6 +26,12 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
 } {
   const artifact = readLlamaArtifactPackage({ rootDir });
   const { packageRoot, profileRoot: artifactProfiles, manifestPaths, files, readArtifact } = artifact;
+  let runtimeBuild = runtimeBuildEvidence({
+    manifest: artifact.rootMetadata,
+    runtimeManifest: { ...artifact.runtimeMetadata, runtime: artifact.runtimeMetadata.runtime ?? '' },
+  });
+  let runtimeBuildDirty = false;
+  const manifestIds = new Set(manifestPaths.map(normalizePath));
   const isStandalone = (() => {
     switch (mode) {
     case 'standalone': return true;
@@ -45,6 +52,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     sha256: q8Diagnostic.sha256,
   };
   const availabilityId = '\0' + virtualPrefix + 'availability';
+  const runtimeBuildId = '\0' + virtualPrefix + 'runtime-build';
   const unavailableProfileId = '\0' + virtualPrefix + 'unavailable-gpu-profile';
   const cores = profiles.map(profile => {
     // Verify at plugin creation too: an optimizer cache must not hide corrupt input.
@@ -74,9 +82,17 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         // Keep the source behind this loader in dev as well as production.
         return { optimizeDeps: { exclude: ['llama-cpp-browser-core', ...profileSchema.options.map(profile => virtualPrefix + profile)] } };
       },
+      watchChange(id) {
+        if (manifestIds.has(normalizePath(id))) {
+          runtimeBuildDirty = true;
+        }
+      },
       resolveId(id) {
         if (id === virtualPrefix + 'availability') {
           return availabilityId;
+        }
+        if (id === virtualPrefix + 'runtime-build') {
+          return runtimeBuildId;
         }
         if (!isStandalone && !gpuProfilingAvailable && id === virtualPrefix + gpuProfilingProfile) {
           return unavailableProfileId;
@@ -92,6 +108,21 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         return resolved;
       },
       load(id) {
+        if (id === runtimeBuildId) {
+          if (runtimeBuildDirty) {
+            const current = readLlamaArtifactPackage({ rootDir });
+            runtimeBuild = runtimeBuildEvidence({
+              manifest: current.rootMetadata,
+              runtimeManifest: { ...current.runtimeMetadata, runtime: current.runtimeMetadata.runtime ?? '' },
+            });
+            runtimeBuildDirty = false;
+          }
+          for (const manifestPath of manifestPaths) {
+            this.addWatchFile(manifestPath);
+          }
+          // Diagnostics identity must stay out of the capability module loaded at startup.
+          return `export const runtimeBuild = ${JSON.stringify(runtimeBuild)};`;
+        }
         if (id === availabilityId) {
           for (const manifestPath of manifestPaths) {
             this.addWatchFile(manifestPath);
@@ -120,9 +151,9 @@ export const q8KernelDiagnosticSchemaAsset = ${JSON.stringify(q8KernelDiagnostic
           this.addWatchFile(manifestPath);
         }
         this.addWatchFile(entry.core.filePath);
-        this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core/native-license-index.json'));
+        this.addWatchFile(path.join(packageRoot, 'runtimes/llama-cpp-browser-core/native-license-index.json'));
         for (const relative of licenseFiles) {
-          this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core', relative));
+          this.addWatchFile(path.join(packageRoot, 'runtimes/llama-cpp-browser-core', relative));
         }
         return readArtifact({ relative: `profiles/${entry.profile}/browser/core.mjs` }).data.toString('utf8');
       },

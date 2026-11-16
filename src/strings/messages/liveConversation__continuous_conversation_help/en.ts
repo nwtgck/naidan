@@ -1,0 +1,1 @@
+export const liveConversation__continuous_conversation_help = (): string => 'Headphones are recommended. When the microphone is ready, speak briefly, then wait for a reply without stopping. Stop conversation ends the entire conversation, including the reply. Text input, attachments, transcription and shell tools are unavailable in microphone conversations.';

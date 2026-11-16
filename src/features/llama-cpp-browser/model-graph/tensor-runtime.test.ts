@@ -14,7 +14,7 @@ describe('generic graph operators and state on real CPU Wasm', () => {
   let core: Core;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({
       profile: 'cpu-wasm32',
       baseURL,

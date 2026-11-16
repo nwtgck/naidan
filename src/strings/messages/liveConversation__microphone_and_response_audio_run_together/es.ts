@@ -1,0 +1,1 @@
+export const liveConversation__microphone_and_response_audio_run_together = (): string => 'Usa auriculares. Cuando el micrófono esté listo, habla brevemente y espera la respuesta sin detener la conversación. Detenerla finaliza toda la conversación.';

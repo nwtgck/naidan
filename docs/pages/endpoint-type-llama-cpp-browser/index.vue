@@ -59,9 +59,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="llama-guide-import">{{ s.import_gguf_heading }}</h2>
       <p><RenderText :node="s.import_gguf_instructions()" /></p>
       <ul class="storage-choices">
+        <li><RenderText :node="s.use_temporarily_description()" /></li>
         <li><RenderText :node="s.save_in_browser_description()" /></li>
         <li><RenderText :node="s.link_folder_description()" /></li>
-        <li><RenderText :node="s.use_temporarily_description()" /></li>
       </ul>
       <figure class="guide-figure">
         <InBrowserModelSettingsStep mode="llama" stage="import" :messages="s" />
@@ -73,6 +73,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="walkthrough-step" aria-labelledby="llama-guide-download">
       <h2 id="llama-guide-download">{{ s.download_gguf_heading }}</h2>
       <p><RenderText :node="s.download_gguf_instructions()" /></p>
+      <p><RenderText :node="s.download_configuration_instructions()" /></p>
       <figure class="guide-figure">
         <InBrowserModelSettingsStep mode="llama" stage="download" :messages="s" />
         <figcaption class="caption">{{ s.download_gguf_figure_caption }}</figcaption>
@@ -101,7 +102,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p><RenderText :node="s.model_troubleshooting()" /></p>
     <p><RenderText :node="s.model_selection_recovery()" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
-      { page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description },
+      { page: 'in-browser-model', title: s.browser_model_guide_title, description: s.browser_model_guide_description },
+      { page: 'image-understanding', title: s.image_understanding_guide_title, description: s.image_understanding_guide_description },
       { page: 'image-generation', title: s.image_generation_guide_title, description: s.image_generation_guide_description },
       { page: 'audio-generation', title: s.speech_generation_guide_title, description: s.speech_generation_guide_description },
     ]" />

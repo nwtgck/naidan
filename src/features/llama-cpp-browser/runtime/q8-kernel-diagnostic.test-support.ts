@@ -1,86 +1,29 @@
 import { createHash } from 'node:crypto';
 import { attachCore, type Core } from './core';
+import rawCatalog from 'llama-cpp-browser-core/llama-cpp/api/schema.mjs';
+import { selectAbiSchema } from 'llama-cpp-browser-core/llama-cpp/host/abi';
 
-export const diagnosticPrefix = '_lcb_webgpu_q8_diagnostic_';
-const constantPrefix = 'GGML_WEBGPU_Q8_DIAGNOSTIC_';
-export const diagnosticConstants = {
-  AUTO: 0,
-  COOPERATIVE_WG256_R4: 1,
-  INDEPENDENT_WG128_R4: 2,
-  INDEPENDENT_WG128_R1: 3,
-  INDEPENDENT_WG128_R2: 4,
-  COOPERATIVE_WG128_R2: 5,
-  PREPARE: 1,
-  EXECUTE: 2,
-  OK: 0,
-  UNAVAILABLE: 1,
-  BAD_REQUEST: 2,
-  UNSUPPORTED: 3,
-  NOT_PREPARED: 4,
-  BUSY: 5,
-  ALGORITHM_NONE: 0,
-  ALGORITHM_COOPERATIVE: 1,
-  ALGORITHM_INDEPENDENT: 2,
-  VERSION: 1,
-  K_MIN: 32,
-  K_MAX: 16384,
-  M_MIN: 1,
-  M_MAX: 65536,
-  WEIGHT_BYTES_MAX: 67108864,
-  REPETITIONS_MAX: 128,
-} as const;
-const reportNames = ['abi_version', 'struct_size', 'status', 'requested_variant', 'phase', 'actual_algorithm', 'workgroup_size', 'logical_subgroup_size', 'real_min_subgroup_size', 'real_max_subgroup_size', 'rows_per_tile', 'outputs_per_workgroup', 'cooperative_subgroup_reduction', 'grid_x', 'grid_y', 'grid_z', 'dispatches', 'codegen_revision', 'shader_identity_id', 'reserved', 'shader_sha256'];
-const requestNames = ['abi_version', 'struct_size', 'variant', 'phase', 'repetitions', 'reserved'];
-
-export function diagnosticSchemaFixture() {
-  const record = ({ name, id, names }: { name: string, id: number, names: string[] }) => ({
-    name,
-    cType: 'struct ' + name,
-    fields: names.map((name, id) => ({ id, name, cType: name === 'shader_sha256' ? 'uint8_t[32]' : 'uint32_t', kind: name === 'shader_sha256' ? 'array' : 'unsigned' })),
-    id,
-  });
-  const schema = {
-    abiVersion: 1,
-    extensionId: 'webgpu-q8-diagnostic-v1',
-    baseAbiVersion: 1,
-    pointerRepresentation: 'bigint-u64',
-    versionExport: diagnosticPrefix + 'version',
-    schemaHashExport: diagnosticPrefix + 'schema_hash',
-    recordQueryNamespace: diagnosticPrefix,
-    functions: [
-      {
-        name: 'lcb_webgpu_q8_diagnostic_run_v1',
-        export: diagnosticPrefix + 'run_v1',
-        returnType: 'int32_t',
-        returnKind: 'signed',
-        suspension: 'jspi',
-        parameters: ['backend', 'dst', 'request', 'report', 'report_capacity'].map((name, i) => ({ name, cType: i === 4 ? 'uint32_t' : 'uint64_t', kind: i === 4 ? 'unsigned' : 'u64' })),
-      },
-      {
-        name: 'lcb_webgpu_q8_diagnostic_version',
-        export: diagnosticPrefix + 'version',
-        returnType: 'uint32_t',
-        returnKind: 'unsigned',
-        suspension: 'none',
-        parameters: [{ name: 'backend', cType: 'uint64_t', kind: 'u64' }],
-      },
-    ],
-    records: [record({ name: 'ggml_webgpu_q8_diagnostic_report_v1', id: 0, names: reportNames }), record({ name: 'ggml_webgpu_q8_diagnostic_request_v1', id: 1, names: requestNames })],
-    constants: Object.keys(diagnosticConstants).map(name => constantPrefix + name + '_V1').sort(),
-  };
-  return { ...schema, schemaSha256: createHash('sha256').update(JSON.stringify(schema, undefined, 2) + '\n').digest('hex') };
-}
-
-export function schemaBytes({ schema }: { schema: ReturnType<typeof diagnosticSchemaFixture> }): Uint8Array {
-  return new TextEncoder().encode(JSON.stringify(schema, undefined, 2) + '\n');
-}
+import { diagnosticPrefix, diagnosticSchemaFixture, diagnosticReportFields as reportNames, diagnosticRequestFields as requestNames } from "./q8-kernel-diagnostic-schema.test-support";
+export { diagnosticPrefix, diagnosticSchemaFixture, diagnosticConstants } from "./q8-kernel-diagnostic-schema.test-support";
 
 /** The base allocator and ordinary ABI are real supplied CPU Wasm. Only the
  * optional extension is simulated; no WebGPU or diagnostic native code runs. */
 export function createDiagnosticNativeFixture({ base }: { base: Core }) {
   const schema = diagnosticSchemaFixture();
-  const hashPointer = base.alloc({ bytes: 64 });
-  base.bytes({ pointer: hashPointer, length: 64 }).set(new TextEncoder().encode(schema.schemaSha256));
+  const target = {
+    ...structuredClone(selectAbiSchema({ module: base.module, schema: rawCatalog })),
+    extensions: { 'webgpu-q8-diagnostic-v1': schema },
+  };
+  // Explicitly simulate the native metadata boundary along with the extension.
+  // This fingerprint belongs to a fixture, never to a claimed compiled target.
+  target.schemaSha256 = createHash('sha256').update(JSON.stringify(target)).digest('hex');
+  if (!rawCatalog || typeof rawCatalog !== 'object' || !('targets' in rawCatalog) || !rawCatalog.targets || typeof rawCatalog.targets !== 'object') {
+    throw new Error('Missing fixture ABI catalog');
+  }
+  const targets = rawCatalog.targets;
+  Object.assign(targets, { [target.schemaSha256]: target });
+  const hashPointer = base.alloc({ bytes: 65 });
+  base.bytes({ pointer: hashPointer, length: 65 }).set(new TextEncoder().encode(target.schemaSha256 + '\0'));
   let heap = base.module.HEAPU8;
   const allocations = new Set<bigint>();
   const freed: bigint[] = [];
@@ -91,7 +34,7 @@ export function createDiagnosticNativeFixture({ base }: { base: Core }) {
     status: number, result: unknown, report: Record<string, number>, omitted: Set<string>, overrides: Record<string, unknown>,
     delay: Promise<void> | undefined, grow: boolean, oomAt: number | undefined, freeTrap: boolean, allocationCount: number,
     invokeCount: number, onRequest: (({ request }: { request: Readonly<Record<string, number>> }) => void) | undefined,
-    padding: number, idShift: number, onFree: (() => void) | undefined, zeroDigest: boolean,
+    padding: number, onFree: (() => void) | undefined, zeroDigest: boolean,
   } = {
     status: 0,
     result: undefined,
@@ -106,7 +49,6 @@ export function createDiagnosticNativeFixture({ base }: { base: Core }) {
     invokeCount: 0,
     onRequest: undefined,
     padding: 0,
-    idShift: 0,
     onFree: undefined,
     zeroDigest: false,
   };
@@ -115,16 +57,6 @@ export function createDiagnosticNativeFixture({ base }: { base: Core }) {
   const write = ({ pointer, offset, value }: { pointer: bigint, offset: number, value: number }) => new DataView(heap.buffer, Number(pointer) + offset, 4).setUint32(0, value, true);
   const native: Record<string, unknown> = {
     version: () => 1,
-    schema_hash: () => hashPointer,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Simulate the generated C export's positional ABI.
-    sizeof_record: (id: number) => (id - state.idShift === 0 ? 112 : 24) + state.padding,
-    alignof_record: () => 4,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Simulate the generated C export's positional ABI.
-    offsetof_field: (_id: number, field: number) => (field - state.idShift) * 4 + state.padding,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Simulate the generated C export's positional ABI.
-    sizeof_field: (id: number, field: number) => id - state.idShift === 0 && field - state.idShift === 20 ? 32 : 4,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Simulate the generated C export's positional ABI.
-    constant: (id: number) => diagnosticConstants[schema.constants[id]!.slice(constantPrefix.length, -3) as keyof typeof diagnosticConstants],
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Simulate the generated diagnostic C ABI.
     async run_v1(_backend: bigint, _dst: bigint, request: bigint, report: bigint, capacity: number) {
       state.invokeCount++;
@@ -181,6 +113,9 @@ export function createDiagnosticNativeFixture({ base }: { base: Core }) {
   };
   const module = new Proxy(base.module, {
     get(target, property) {
+      if (property === '_bicore_schema_hash') {
+        return () => base.pointerBytes === 4 ? Number(hashPointer) : hashPointer;
+      }
       if (typeof property === 'string' && property.startsWith(diagnosticPrefix)) {
         const suffix = property.slice(diagnosticPrefix.length);
         probes.push(suffix);
@@ -203,21 +138,22 @@ export function createDiagnosticNativeFixture({ base }: { base: Core }) {
       if (property === 'HEAPU8') {
         return heap;
       }
-      if (property === '_lcb_malloc') {
+      if (property === '_malloc') {
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Preserve the allocator's C ABI.
-        return (length: bigint) => {
+        return (length: number) => {
           state.allocationCount++;
           if (state.oomAt === state.allocationCount) {
-            return 0n;
+            return 0;
           }
           const pointer = base.alloc({ bytes: length });
           allocations.add(pointer);
-          return pointer;
+          return Number(pointer);
         };
       }
-      if (property === '_lcb_free') {
+      if (property === '_free') {
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Preserve the allocator's C ABI.
-        return (pointer: bigint) => {
+        return (nativePointer: number) => {
+          const pointer = BigInt(nativePointer);
           state.onFree?.();
           if (state.freeTrap) {
             throw new WebAssembly.RuntimeError('fixture cleanup trap');
@@ -244,6 +180,9 @@ export function createDiagnosticNativeFixture({ base }: { base: Core }) {
     replaceCompiledHash({ hash }: { hash: string }) {
       span({ pointer: hashPointer, length: 64 }).set(new TextEncoder().encode(hash));
     },
+    omitDescriptor() {
+      Reflect.deleteProperty(target.extensions, 'webgpu-q8-diagnostic-v1');
+    },
     [Symbol.dispose]() {
       // These are CPU-only fixture allocations after the simulated call has
       // settled. Production never frees through a poisoned runtime.
@@ -251,6 +190,7 @@ export function createDiagnosticNativeFixture({ base }: { base: Core }) {
         base.free({ pointer });
       }
       base.free({ pointer: hashPointer });
+      Reflect.deleteProperty(targets, target.schemaSha256);
     },
   };
 }

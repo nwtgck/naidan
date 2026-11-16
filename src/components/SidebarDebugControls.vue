@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
 import { ref } from 'vue';
-import { RouterLink } from 'vue-router';
 import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { WorkflowIcon, TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, AudioLinesIcon, ImageIcon, MicIcon, LanguagesIcon } from 'lucide-vue-next';
+import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 import ModelDownloads from './ModelDownloads.vue';
 
@@ -37,21 +36,23 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="flex shrink-0 items-center gap-1 duration-300">
+  <div :tw-class="['flex shrink-0 items-center gap-1', { 'flex-col': !isSidebarOpen }]">
     <ModelDownloads />
     <button
       @click="toggleDebug"
-      :tw-class="['p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm relative group', { 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner': isDebugOpen }]"
+      :tw-class="[isSidebarOpen ? 'p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm relative group' : 'flex items-center justify-center w-8 h-8 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 transition-all relative', isDebugOpen ? isSidebarOpen ? 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner' : 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800' : '']"
       :title="lazyStrings.SidebarDebugControls__debug_events()"
+      :aria-label="lazyStrings.SidebarDebugControls__debug_events()"
+      :aria-pressed="isDebugOpen"
       data-testid="sidebar-debug-button"
     >
       <TerminalIcon tw-class="w-4 h-4" />
       <div
         v-if="errorCount > 0"
-        tw-class="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold shadow-sm animate-pulse"
+        :tw-class="isSidebarOpen ? 'absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold shadow-sm animate-pulse' : 'absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm animate-pulse border-2 border-white dark:border-gray-900'"
         data-testid="sidebar-error-badge"
       >
-        {{ errorCount }}
+        <template v-if="isSidebarOpen">{{ errorCount }}</template>
       </div>
     </button>
 
@@ -59,8 +60,11 @@ defineExpose({
       <button
         ref="opfsTriggerRef"
         @click="showOpfsMenu = !showOpfsMenu"
-        :tw-class="['p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm', { 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner': showOpfsMenu }]"
+        :tw-class="[isSidebarOpen ? 'p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm' : 'flex h-8 w-8 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-white hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white', showOpfsMenu ? isSidebarOpen ? 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner' : 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800' : '']"
         :title="lazyStrings.SidebarDebugControls__more_actions()"
+        :aria-label="lazyStrings.SidebarDebugControls__more_actions()"
+        aria-haspopup="menu"
+        :aria-expanded="showOpfsMenu"
         data-testid="sidebar-opfs-menu-button"
       >
         <MoreVerticalIcon tw-class="w-4 h-4" />
@@ -96,51 +100,6 @@ defineExpose({
             <FolderSearchIcon tw-class="w-4 h-4 shrink-0" />
             <span tw-class="min-w-0 [overflow-wrap:anywhere]">{{ lazyStrings.SidebarDebugControls__file_explorer() }}</span>
           </button>
-          <RouterLink
-            to="/workflows"
-            @click="showOpfsMenu = false"
-            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
-            data-testid="sidebar-workflow-link"
-          >
-            <WorkflowIcon tw-class="w-4 h-4 shrink-0" />
-            <span>{{ lazyStrings.workflow__workflows() }}</span>
-          </RouterLink>
-          <RouterLink
-            to="/audio-generation"
-            @click="showOpfsMenu = false"
-            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
-            data-testid="sidebar-audio-generation-link"
-          >
-            <AudioLinesIcon tw-class="w-4 h-4 shrink-0" />
-            <span>{{ lazyStrings.audioGeneration__audio_generation() }}</span>
-          </RouterLink>
-          <RouterLink
-            to="/live-conversation"
-            @click="showOpfsMenu = false"
-            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
-            data-testid="sidebar-live-conversation-link"
-          >
-            <MicIcon tw-class="w-4 h-4 shrink-0" />
-            <span>{{ lazyStrings.liveConversation__live_conversation() }}</span>
-          </RouterLink>
-          <RouterLink
-            to="/translation"
-            @click="showOpfsMenu = false"
-            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
-            data-testid="sidebar-translation-link"
-          >
-            <LanguagesIcon tw-class="w-4 h-4 shrink-0" />
-            <span>{{ lazyStrings.translation__translation() }}</span>
-          </RouterLink>
-          <RouterLink
-            to="/image-generation"
-            @click="showOpfsMenu = false"
-            tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
-            data-testid="sidebar-image-generation-link"
-          >
-            <ImageIcon tw-class="w-4 h-4 shrink-0" />
-            <span>{{ lazyStrings.stableDiffusionCppBrowser__image_generation_lab() }}</span>
-          </RouterLink>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"
             tw-class="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
@@ -151,19 +110,5 @@ defineExpose({
         </div>
       </MessageActionsMenu>
     </div>
-  </div>
-  <div v-else tw-class="flex flex-col items-center gap-1">
-    <ModelDownloads />
-    <button
-      @click="toggleDebug"
-      :tw-class="['flex items-center justify-center w-8 h-8 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 transition-all relative', { 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800': isDebugOpen }]"
-      :title="lazyStrings.SidebarDebugControls__debug_events()"
-    >
-      <TerminalIcon tw-class="w-4 h-4" />
-      <div
-        v-if="errorCount > 0"
-        tw-class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm animate-pulse border-2 border-white dark:border-gray-900"
-      ></div>
-    </button>
   </div>
 </template>

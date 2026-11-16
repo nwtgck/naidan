@@ -2312,6 +2312,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigs,
       fakeLm,
       naidanRpc,
+      unimplementedLauncherEntries,
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
@@ -2359,6 +2360,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
       fakeLm: fakeLm ?? 'disabled',
       naidanRpc: naidanRpc ?? 'disabled',
+      unimplementedLauncherEntries,
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
@@ -2464,6 +2466,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       toolConfigs,
       fakeLm,
       naidanRpc,
+      unimplementedLauncherEntries,
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
@@ -2531,6 +2534,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       fakeLm: fakeLmToExperimentalDto({
         status: fakeLm,
       }),
+      unimplementedLauncherEntries,
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;

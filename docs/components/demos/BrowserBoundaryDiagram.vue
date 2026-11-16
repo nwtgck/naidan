@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ClipboardIcon, FolderIcon, GlobeIcon, LaptopIcon, RotateCwIcon, ServerIcon, ShieldCheckIcon, WaypointsIcon, XIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
-type BrowserBoundaryDiagramMessages = typeof import('../../pages/browser-boundaries/messages/en').messages | typeof import('../../pages/index/messages/en').messages;
+type BrowserBoundaryDiagramMessages = typeof import('../../pages/browser-boundary/messages/en').messages | typeof import('../../pages/index/messages/en').messages;
 
 defineProps<{ messages: BrowserBoundaryDiagramMessages }>();
 

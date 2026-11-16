@@ -1,0 +1,1 @@
+export const liveConversation__output_lateness_includes_input_and_queue = (): string => "O atraso da saída é medido do horário previsto da entrada correspondente até o recebimento da saída, excluindo o quadro inicial. Inclui agendamento da entrada, filas de processamento e entrega; não é o tempo até uma resposta falada.";

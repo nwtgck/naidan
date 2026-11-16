@@ -1,0 +1,1 @@
+export const liveConversation__execution_rtf_includes_waits = (): string => "O RTF de execução é o tempo de execução por segundo de áudio de saída. Inclui esperas de ritmo de entrada, processamento e transporte; não mede apenas a velocidade de inferência. A carga do modelo e a preparação da entrada são separadas.";

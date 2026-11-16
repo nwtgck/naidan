@@ -1,0 +1,1 @@
+export const liveConversation__peak_volume_help = (): string => "Um único multiplicador é aplicado à gravação inteira para que o pico atinja 80%. O multiplicador permanece constante do início ao fim. O silêncio não é alterado.";

@@ -11,6 +11,7 @@ import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures'
 import type { inspectImageInventory } from '@/features/stable-diffusion-cpp-browser/inventory-worker/client';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn<typeof inspectImageInventory>() }));
+vi.mock('@/components/LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: mocks.inspect }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({
@@ -23,7 +24,7 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
   default: {
     kind: 'available',
     sourceCommit: 'a'.repeat(40),
-    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
+    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/host/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
   },
 }));
 let wrapper: VueWrapper | undefined;

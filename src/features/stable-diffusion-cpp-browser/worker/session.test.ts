@@ -26,13 +26,13 @@ function harness({ pointerBytes, outcome, channels }: {
     return pointer;
   };
   const module: CoreModule = {
-    _sdc_sd_cancel_generation: vi.fn(),
-    _sdc_sd_set_preview_callback: vi.fn((...args) => {
+    _sd_cancel_generation: vi.fn(),
+    _sd_set_preview_callback: vi.fn((...args) => {
       previewWrites.push(args);
     }),
     HEAPU8: new Uint8Array(2 * 1024 * 1024),
     FS: { mkdir: vi.fn() },
-    _sdc_abi_version: () => 2,
+    _bicore_abi_version: () => 3,
     addFunction: vi.fn((callback, signature) => {
       events.push('callback:' + signature);
       const pointer = callbacks.size + 10;
@@ -416,7 +416,7 @@ it.each([new TypeError('Missing native export'), new WebAssembly.RuntimeError('N
   expect(h.api.new_sd_ctx).not.toHaveBeenCalled();
   expect(h.api.sd_set_graph_diagnostics).toHaveBeenCalledExactlyOnceWith(1);
   expect(h.api.sd_set_preview_callback).not.toHaveBeenCalled();
-  expect(h.core.module._sdc_sd_set_preview_callback).not.toHaveBeenCalled();
+  expect(h.core.module._sd_set_preview_callback).not.toHaveBeenCalled();
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
   expect(h.core.free).not.toHaveBeenCalled();
   expect(h.events).not.toContain('unmount');
@@ -1042,7 +1042,7 @@ it.each([4, 8] as const)('turns previews ON/OFF during native generation using o
     h.callbacks.get(previewPointer)?.(-3, 1, 300000n, 0, 0n); // intermediate multistep evaluation is not a new logical step
     expect(onPreview).toHaveBeenCalledTimes(2);
     expect(h.api.sd_set_preview_callback).toHaveBeenCalledTimes(1); // startup only, not generic busy API
-    expect(h.core.module._sdc_sd_set_preview_callback).toHaveBeenCalledTimes(3);
+    expect(h.core.module._sd_set_preview_callback).toHaveBeenCalledTimes(3);
     return result;
   });
   await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn(), onPreview } });
@@ -1156,7 +1156,7 @@ it.each([4, 8] as const)('cooperatively cancels native sampling, cleans run memo
   expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 9 } })).toBe(false);
   expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 8 } })).toBe(true);
   session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 8 } });
-  expect(h.core.module._sdc_sd_cancel_generation).toHaveBeenCalledExactlyOnceWith(200000n, 0);
+  expect(h.core.module._sd_cancel_generation).toHaveBeenCalledExactlyOnceWith(pointerBytes === 4 ? 200000 : 200000n, 0);
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
   expect(h.api.sd_cancel_generation).not.toHaveBeenCalled();
   expect(h.api.sd_set_graph_diagnostics).toHaveBeenCalledExactlyOnceWith(1);
@@ -1185,7 +1185,7 @@ it('waits for initialization to return and keeps the context when cancelled whil
   const task = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
   await entered.promise;
   session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } });
-  expect(h.core.module._sdc_sd_cancel_generation).not.toHaveBeenCalled();
+  expect(h.core.module._sd_cancel_generation).not.toHaveBeenCalled();
   expect(h.api.sd_set_graph_diagnostics).toHaveBeenCalledExactlyOnceWith(1);
   load.resolve(200000n);
   expect(await task).toEqual({ cancelled: true, modelResident: true });
@@ -1635,7 +1635,7 @@ it.each([
   expect(h.api.generate_image).not.toHaveBeenCalled();
   expect(h.api.sd_set_graph_diagnostics).toHaveBeenCalledExactlyOnceWith(1);
   expect(h.api.sd_set_preview_callback).not.toHaveBeenCalled();
-  expect(h.core.module._sdc_sd_set_preview_callback).not.toHaveBeenCalled();
+  expect(h.core.module._sd_set_preview_callback).not.toHaveBeenCalled();
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
   expect(h.core.free).not.toHaveBeenCalled();
   expect(h.events).not.toContain('unmount');

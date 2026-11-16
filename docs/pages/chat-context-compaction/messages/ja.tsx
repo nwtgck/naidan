@@ -10,7 +10,7 @@ export const messages = {
   shorten_a_long_conversation: () => <>チャットが長くなったら、<UiLabel text="コンテキストを圧縮" />で古いメッセージを選択中のモデルに要約させられます。要約と残した直近のメッセージが、同じチャットの新しい経路になります。</>,
   open_chat_to_compact: ({ locale, destination }: { locale: DocsLocale; destination: AppDestination }) => <>まず <AppEntryLink locale={locale} destination={destination} display="path" /> を開き、続きを作りたい長いチャットを選びます。モデル選択のダイアログが表示されたら、利用できるモデルやサーバー接続を選んでから圧縮します。</>,
   check_model_and_summary: "先に利用可能なモデルと接続先を設定してください。モデルの要約では詳細が抜けたり、内容を取り違えたりすることがあるため、続ける前に確認します。",
-  model_setup_guides: ({ locale }: { locale: DocsLocale }) => <>モデルの設定がまだなら、<DocsLink locale={locale} page="local-ai-servers">ローカルモデルの接続方法</DocsLink>または<DocsLink locale={locale} page="in-browser-models">ブラウザ内でAIモデルを動かす手順</DocsLink>をご覧ください。</>,
+  model_setup_guides: ({ locale }: { locale: DocsLocale }) => <>モデルの設定がまだなら、<DocsLink locale={locale} page="local-ai-server">ローカルモデルの接続方法</DocsLink>または<DocsLink locale={locale} page="in-browser-model">ブラウザ内でAIモデルを動かす手順</DocsLink>をご覧ください。</>,
   open_compact_context_heading: "1. チャットのヘッダーから圧縮を開く",
   open_compact_context_instructions: () => <>チャットのヘッダーにある<UiLabel text="その他の操作" />（三点ボタン）を開き、<UiLabel text="コンテキストを圧縮" />を選びます。隣の<UiLabel text="スーパー編集" />は、履歴を自分で変更する別の操作です。</>,
   compact_context_menu_caption: () => <>ヘッダーの<UiLabel text="その他の操作" />から<UiLabel text="コンテキストを圧縮" />を選びます。</>,

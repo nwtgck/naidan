@@ -1,0 +1,1 @@
+export const liveConversation__response_microphone_recording_help = (): string => "Puedes grabar hasta 3 minutos, incluso antes de cargar un modelo. Después de detener la grabación, elige Generar respuesta para enviarla al modelo. Esto es independiente de una conversación en tiempo real.";

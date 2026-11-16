@@ -1,0 +1,147 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { mount } from '@vue/test-utils';
+import { ChatSidebarTestHost as Sidebar } from './ChatSidebar.test-support';
+import { createRouter, createWebHistory } from 'vue-router';
+import { ref, computed, nextTick, reactive } from 'vue';
+import type { ChatGroup, ChatSummary, Endpoint, SidebarItem } from '@/01-models/types';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
+// --- Mocks Data ---
+const mockChatGroups = ref<ChatGroup[]>([]);
+const mockChats = ref<ChatSummary[]>([]);
+const mockSettings = reactive<{
+  endpoint: Endpoint,
+  defaultModelId: string,
+}>({
+  endpoint: { type: 'openai', url: '' },
+  defaultModelId: 'llama3',
+});
+const mockAvailableModels = ref(['model-1', 'model-2']);
+const mockIsFetchingModels = ref(false);
+const mockUpdateGlobalModel = vi.fn();
+
+// --- Vitest Mocks ---
+vi.mock('./LauncherButton.vue', () => ({ default: { template: '<div />' } }));
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    isSidebarOpen: ref(true),
+    activeFocusArea: ref('chat'),
+    setActiveFocusArea: vi.fn(),
+    toggleSidebar: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
+  useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
+    currentChat: ref(null),
+    currentChatGroup: ref(null),
+    streaming: ref(false),
+    chatGroups: mockChatGroups,
+    chats: mockChats,
+    sidebarItems: computed<SidebarItem[]>(() => []),
+    loadChats: vi.fn(),
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
+  }),
+}));
+
+vi.mock('../composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: ref(mockSettings),
+    availableModels: mockAvailableModels,
+    isFetchingModels: mockIsFetchingModels,
+    updateGlobalModel: mockUpdateGlobalModel,
+  }),
+}));
+
+vi.mock('../composables/useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: vi.fn(),
+  }),
+}));
+
+vi.mock('../features/theme/composables/useTheme', () => ({
+  useTheme: () => ({
+    themeMode: ref('dark'),
+    setTheme: vi.fn(),
+  }),
+}));
+
+// Mock draggable component
+vi.mock('vuedraggable', () => ({
+  default: {
+    name: 'draggable',
+    template: '<div class="draggable-mock"><slot name="item" v-for="element in modelValue" :element="element"></slot></div>',
+    props: ['modelValue'],
+  },
+}));
+
+describe('Sidebar Transformers.js Support', () => {
+  const router = createRouter({
+    history: createWebHistory(),
+    routes: [{ path: '/', component: { template: 'div' } }],
+  });
+
+  const globalStubs = {
+    'lucide-vue-next': true,
+    'Logo': true,
+    'ThemeToggle': true,
+    'ModelSelector': {
+      name: 'ModelSelector',
+      template: '<div data-testid="model-selector-mock" :model-value="modelValue"><slot name="trigger-label" />{{ modelValue }}</div>',
+      props: ['modelValue', 'models', 'loading'],
+    },
+  };
+
+  beforeEach(() => {
+    mockSettings.endpoint = { type: 'openai', url: '' };
+    mockSettings.defaultModelId = 'model-1';
+    mockAvailableModels.value = ['model-1', 'model-2'];
+    vi.clearAllMocks();
+  });
+
+  it('renders the model selector when the endpoint is transformers_js without a URL', async () => {
+    mockSettings.endpoint = { type: 'transformers_js' };
+
+    const wrapper = mount(Sidebar, {
+      global: { plugins: [router], stubs: globalStubs },
+    });
+    await nextTick();
+
+    const selector = wrapper.find('[data-testid="model-selector-mock"]');
+    expect(selector.exists()).toBe(true);
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Default model');
+    });
+  });
+
+  it('renders the selector if an HTTP endpoint URL is empty', async () => {
+    mockSettings.endpoint = { type: 'openai', url: '' };
+
+    const wrapper = mount(Sidebar, {
+      global: { plugins: [router], stubs: globalStubs },
+    });
+    await nextTick();
+
+    const selector = wrapper.find('[data-testid="model-selector-mock"]');
+    expect(selector.exists()).toBe(true);
+  });
+
+  it('calls updateGlobalModel when model is changed in transformers_js mode', async () => {
+    mockSettings.endpoint = { type: 'transformers_js' };
+
+    const wrapper = mount(Sidebar, {
+      global: { plugins: [router], stubs: globalStubs },
+    });
+    await nextTick();
+
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    await selector.vm.$emit('update:modelValue', 'model-2');
+
+    expect(mockUpdateGlobalModel).toHaveBeenCalledWith({ modelId: 'model-2' });
+  });
+});

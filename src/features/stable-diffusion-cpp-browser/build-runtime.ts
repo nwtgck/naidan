@@ -1,8 +1,8 @@
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build entry is also checked without the app alias.
 import type { NativeLicenseSource } from '../../01-models/native-license-build-source.ts';
 import { READ_ENV_NAIDAN_STABLE_DIFFUSION_CORE_DIR } from '../../../build/node-env.ts';
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { bicoreFileSchema, readBicoreArtifactPackage } from '../../../build/bicore-artifact-package.ts';
 import path from 'node:path';
 import { createGzipAsset } from '../../../build/gzip-asset.ts';
 import { z } from 'zod';
@@ -11,20 +11,28 @@ import { profileSchema, configurationSchema, type Configuration, type Artifact }
 import { assertImageRuntimeContract } from './runtime-contract.ts';
 
 const virtualId = 'virtual:stable-diffusion-cpp-browser/config';
-const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegative().refine(Number.isSafeInteger), sha256: z.string().regex(/^[0-9a-f]{64}$/) });
-const rootManifestSchema = z.object({ formatVersion: z.literal(3), sourceCommit: z.string().regex(/^[0-9a-f]{40}$/), files: z.array(fileSchema) });
 const provenanceSchema = z.object({ sourceCommit: z.string(), sourceDirty: z.literal(false), profile: profileSchema, variant: z.literal('browser'), configuration: z.object({ memory64: z.boolean(), jspi: z.boolean(), asyncify: z.boolean(), webgpu: z.literal(true), pthreads: z.literal(false) }), validation: z.object({ compiled: z.literal(true), browserSmoke: z.literal(true) }) });
 const imageManifestSchema = z.object({
   formatVersion: z.literal(2),
   runtime: z.literal('stable-diffusion-cpp'),
-  abiVersion: z.literal(2),
+  abiVersion: z.literal(3),
   schemaSha256: z.string().regex(/^[0-9a-f]{64}$/),
   capabilities: z.object({ ggufFileOffsetBits: z.literal(64), callerOwnedRandomAccess: z.literal(true), upstreamApi: z.literal(true), ggufOriginalShapes: z.boolean().default(false), bf16WeightRetention: z.boolean().default(false) }),
   sourceCommit: z.string(),
   experimental: z.literal(true),
-  files: z.array(fileSchema),
+  files: z.array(bicoreFileSchema),
   profiles: z.record(z.string(), z.object({ variants: z.object({ browser: provenanceSchema }) })),
 });
+
+function imageHostModulePaths({ paths }: { paths: Iterable<string> }): string[] {
+  const modules = [...paths].filter(name => (name.startsWith('host/') || name.startsWith('api/')) && name.endsWith('.mjs'));
+  for (const name of ['api/schema.mjs', 'host/index.mjs']) {
+    if (!modules.includes(name)) {
+      throw new Error(`Missing image host entry: ${name}`);
+    }
+  }
+  return modules;
+}
 
 /** Optional, build-time-only integration. No compiler, model download, or install hook. */
 export function readImageArtifacts({ rootDir, mode, artifactDir }: {
@@ -46,75 +54,31 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     }
     return { configuration: { kind: 'unavailable', reason: 'not-installed' }, files, nativeLicenseSource: undefined };
   }
-  const realRoot = realpathSync(directory);
-  const read = ({ relative, expectedBytes }: { relative: string, expectedBytes: number | undefined }): Buffer => {
-    if (!relative || relative.startsWith('/') || relative.split('/').some(part => part === '..' || part === '.' || part === '') || relative.includes('\\')) {
-      throw new Error('Unsafe image artifact path');
-    }
-    const absolute = realpathSync(path.join(realRoot, relative));
-    if (!absolute.startsWith(realRoot + path.sep)) {
-      throw new Error('Image artifact escapes package');
-    }
-    const status = statSync(absolute);
-    if (!status.isFile() || (expectedBytes !== undefined && status.size !== expectedBytes)) {
-      throw new Error('Image artifact size mismatch: ' + relative);
-    }
-    return readFileSync(absolute);
-  };
-  const root = rootManifestSchema.parse(JSON.parse(read({ relative: 'manifest.json', expectedBytes: undefined }).toString('utf8')));
-  const rootEntries = new Map(root.files.map(file => [file.path, file]));
-  if (rootEntries.size !== root.files.length) {
-    throw new Error('Duplicate root manifest entry');
-  }
-  const checked = ({ relative }: { relative: string }): Buffer => {
-    const file = rootEntries.get(relative);
-    if (!file || file.bytes >= 100 * 1024 * 1024) {
-      throw new Error('Missing or oversized image artifact entry');
-    }
-    const bytes = read({ relative, expectedBytes: file.bytes });
-    if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) {
-      throw new Error('Image artifact integrity mismatch: ' + relative);
-    }
-    return bytes;
-  };
-  const parsedImage = imageManifestSchema.safeParse(JSON.parse(checked({ relative: 'stable-diffusion-cpp-browser-core/manifest.json' }).toString('utf8')));
+  const artifact = readBicoreArtifactPackage({ directory, runtime: 'stable-diffusion-cpp', maxFileBytes: 100 * 1024 * 1024 });
+  const checked = ({ relative }: { relative: string }) => artifact.readArtifact({ relative }).data;
+  const parsedImage = imageManifestSchema.safeParse(artifact.manifest);
   if (!parsedImage.success) {
-    throw new Error('Image runtime ABI 2 with caller-owned large-GGUF access is required; install a compatible bicore artifact with successful browser smoke validation');
+    throw new Error('Image runtime ABI 3 with caller-owned large-GGUF access is required; install a compatible bicore artifact with successful browser smoke validation');
   }
   const image = parsedImage.data;
-  if (image.sourceCommit !== root.sourceCommit) {
-    throw new Error('Mixed runtime source commits');
-  }
-  const entries = new Map(image.files.map(file => [file.path, file]));
-  if (entries.size !== image.files.length) {
-    throw new Error('Duplicate image manifest entry');
-  }
-  // The inner tree and parent inventory must agree, including licensing notices.
-  for (const entry of image.files) {
-    const parent = rootEntries.get('stable-diffusion-cpp-browser-core/' + entry.path);
-    if (!parent || parent.bytes !== entry.bytes || parent.sha256 !== entry.sha256) {
-      throw new Error('Image inventory differs from parent');
-    }
-  }
-  const prefix = `stable-diffusion-cpp-runtime/${root.sourceCommit}/`;
+  const entries = artifact.files;
+  const prefix = `stable-diffusion-cpp-runtime/${artifact.sourceCommit}/`;
   const artifacts: Artifact[] = [];
-  const schemaBytes = checked({ relative: 'stable-diffusion-cpp-browser-core/api/schema.json' });
-  if (createHash('sha256').update(schemaBytes).digest('hex') !== image.schemaSha256) {
+  const schemaBytes = checked({ relative: 'api/schema.json' });
+  const schema: unknown = JSON.parse(schemaBytes.toString('utf8'));
+  if (z.object({ schemaSha256: z.string() }).parse(schema).schemaSha256 !== image.schemaSha256) {
     throw new Error('Image binding schema fingerprint mismatch');
   }
-  assertImageRuntimeContract({ schema: JSON.parse(schemaBytes.toString('utf8')), bf16WeightRetention: image.capabilities.bf16WeightRetention });
-  for (const name of ['api/schema.mjs', 'examples/runtime/index.mjs', 'examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs']) {
-    if (!entries.has(name)) {
-      throw new Error('Missing image host helper');
-    }
-    const bytes = checked({ relative: 'stable-diffusion-cpp-browser-core/' + name });
+  assertImageRuntimeContract({ schema, bf16WeightRetention: image.capabilities.bf16WeightRetention });
+  for (const name of imageHostModulePaths({ paths: entries.keys() })) {
+    const bytes = checked({ relative: name });
     files.set(prefix + name, async () => bytes);
   }
-  const helpersPath = prefix + 'examples/runtime/index.mjs';
+  const helpersPath = prefix + 'host/index.mjs';
 
   for (const profile of profileSchema.options) {
     const provenance = image.profiles[profile]?.variants.browser;
-    if (!provenance || provenance.sourceCommit !== root.sourceCommit) {
+    if (!provenance || provenance.sourceCommit !== artifact.sourceCommit) {
       throw new Error('Missing validated image profile');
     }
     if (provenance.profile !== profile || provenance.configuration.memory64 !== (profile === 'webgpu-wasm64-jspi') || provenance.configuration.jspi !== profile.endsWith('jspi') || provenance.configuration.asyncify !== profile.endsWith('asyncify')) {
@@ -132,13 +96,13 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     }
     const modulePath = prefix + profile + '/core.mjs';
     const wasmPath = prefix + profile + '/core.wasm.gz';
-    const moduleBytes = checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.mjs' });
+    const moduleBytes = checked({ relative: relative + 'core.mjs' });
     files.set(modulePath, async () => moduleBytes);
     // Configuration and license reads need metadata, not every Wasm payload.
     // Both the dev endpoint and hosted emission use this verified lazy loader.
     files.set(wasmPath, createGzipAsset({
       read() {
-        const wasm = checked({ relative: 'stable-diffusion-cpp-browser-core/' + relative + 'core.wasm' });
+        const wasm = checked({ relative: relative + 'core.wasm' });
         if (!wasm.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))) {
           throw new Error('Image binary is not WebAssembly');
         }
@@ -151,20 +115,19 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
     throw new Error('Missing runtime notices');
   }
   return {
-    configuration: configurationSchema.parse({ kind: 'available', sourceCommit: root.sourceCommit, artifacts, runtimeFeatures: { ggufOriginalShapes: image.capabilities.ggufOriginalShapes, bf16WeightRetention: image.capabilities.bf16WeightRetention } }),
+    configuration: configurationSchema.parse({ kind: 'available', sourceCommit: artifact.sourceCommit, artifacts, runtimeFeatures: { ggufOriginalShapes: image.capabilities.ggufOriginalShapes, bf16WeightRetention: image.capabilities.bf16WeightRetention } }),
     files,
     nativeLicenseSource: {
       runtime: 'stable-diffusion-cpp',
       kind: artifactDir === undefined ? 'installed' : 'external',
       rootDir,
-      manifestPaths: [path.join(realRoot, 'manifest.json'), path.join(realRoot, 'stable-diffusion-cpp-browser-core/manifest.json')],
+      manifestPaths: artifact.manifestPaths,
       files: new Set(entries.keys()),
       readArtifact({ relative }) {
         if (!entries.has(relative)) {
           throw new Error(`Missing image native notice: ${relative}`);
         }
-        const name = 'stable-diffusion-cpp-browser-core/' + relative;
-        return { data: checked({ relative: name }), filePath: path.join(realRoot, name) };
+        return artifact.readArtifact({ relative });
       },
     },
   };
@@ -197,6 +160,9 @@ const standaloneUiFiles = new Set([
 export function assertStandaloneImageModule({ rootDir, id }: { rootDir: string, id: string }): void {
   const clean = id.split('?')[0]?.replaceAll('\\', '/') ?? '';
   const prefix = path.resolve(rootDir, 'src/features/stable-diffusion-cpp-browser').replaceAll('\\', '/') + '/';
+  if (clean.includes('/node_modules/stable-diffusion-cpp-browser-core/runtimes/stable-diffusion-cpp-browser-core/')) {
+    throw new Error(`Hosted image artifact reached the standalone bundle: ${id}`);
+  }
   if (clean.startsWith(prefix) && !standaloneUiFiles.has(clean.slice(prefix.length))) {
     throw new Error(`Hosted image implementation reached the standalone bundle: ${id}`);
   }
@@ -281,4 +247,5 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
 }
 
 export const TEST_ONLY = {
+  imageHostModulePaths,
 };

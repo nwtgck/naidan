@@ -11,19 +11,42 @@ import { useLayout } from '@/composables/useLayout';
 import { useSettings } from '@/composables/useSettings';
 import { provideModelDiscoveryTab } from '@/composables/useModelDiscoveryTab';
 import { usePrint } from '@/composables/usePrint';
+import { useLauncher } from '@/composables/useLauncher';
+import { useToast } from '@/composables/useToast';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { isModelSupportInvestigationAvailable, loadModelSupportInvestigationModal } from '@/features/transformers-js/model-support-investigation';
 import { transformersJsService } from '@/features/transformers-js';
 import { downloadTimingSnapshotSchema, parseDownloadTiming, type DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
-defineProps<{ pwaActivation: 'active' | 'deferred' }>();
+const props = defineProps<{ pwaActivation: 'active' | 'deferred', modelSupportInvestigationRequest?: { opener: HTMLElement | undefined } }>();
+const emit = defineEmits<{ consumeModelSupportInvestigationRequest: [] }>();
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'));
 const ModelDiscoveryPanel = defineAsyncComponent(loadModelDiscoveryPanel);
 const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue'));
 const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
+const { addToast } = useToast();
+const LauncherModal = defineAsyncComponent({
+  loader: () => import('@/components/LauncherModal.vue'),
+  onError(error, _retry, fail) {
+    // A failed chunk must release the inert background and allow another open.
+    launcherMounted.value = false;
+    const opener = launcherOpener.value;
+    const wasOpen = isLauncherOpen.value;
+    closeLauncher();
+    if (wasOpen) {
+      addToast({ message: error.message });
+      void nextTick(() => {
+        if (opener?.isConnected) {
+          opener.focus({ preventScroll: true });
+        }
+      });
+    }
+    fail();
+  },
+});
 const FileExplorerModal = defineAsyncComponent(() => import('@/features/file-explorer/components/FileExplorerModal.vue'));
 const ModelSupportInvestigationModal = isModelSupportInvestigationAvailable
   ? defineAsyncComponent(loadModelSupportInvestigationModal)
@@ -53,11 +76,23 @@ const { isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
 const { isFileExplorerOpen } = useFileExplorerModal();
 const { isSearchOpen } = useGlobalSearch();
 const { isRecentOpen } = useRecentChats();
+const { isLauncherOpen, closeLauncher, opener: launcherOpener } = useLauncher();
+const launcherMounted = ref(isLauncherOpen.value);
+watch(isLauncherOpen, open => {
+  if (open) {
+    launcherMounted.value = true;
+  }
+});
 const { activePrintMode } = usePrint();
 const isModelPreview = computed(() => appEntry.intent.value.kind === 'model-preview'
   || route.query['llama-cpp-browser-model'] !== undefined);
 const isSettingsOpen = computed(() => appEntry.settingsOverlay.value !== undefined
   || (!isModelPreview.value && (route.path.startsWith('/settings') || !!route.query.settings)));
+watch([isSettingsOpen, appEntry.discovery, appEntry.modelSelection], ([settingsOpen, discovery, selection]) => {
+  if (settingsOpen || discovery !== undefined || selection !== undefined) {
+    closeLauncher();
+  }
+});
 const discoveryMounted = ref(false);
 const discoveryTab = ref<'candidates' | 'hugging-face' | 'local-files'>();
 watch(appEntry.discovery, discovery => {
@@ -75,18 +110,19 @@ const lastNonSettingsLocation = ref(route.path.startsWith('/settings')
   : route.fullPath);
 
 watch(() => route.fullPath, (fullPath) => {
+  closeLauncher();
   if (!route.path.startsWith('/settings')) {
     lastNonSettingsLocation.value = fullPath;
   }
 });
 
-function openModelSupportInvestigation({ modelId }: { modelId: string }): void {
+function openModelSupportInvestigation({ modelId, restoreFocusTo }: { modelId: string, restoreFocusTo?: HTMLElement }): void {
   if (ModelSupportInvestigationModal === undefined) {
     return;
   }
-  modelSupportInvestigationOpener = document.activeElement instanceof HTMLElement
+  modelSupportInvestigationOpener = restoreFocusTo ?? (document.activeElement instanceof HTMLElement
     ? document.activeElement
-    : undefined;
+    : undefined);
   modelSupportInvestigationModelId.value = modelId;
   // Explicitly capture the ordinary service, not MSI's independent service.
   ordinaryDownloadTiming.value = undefined;
@@ -97,12 +133,23 @@ function openModelSupportInvestigation({ modelId }: { modelId: string }): void {
   }
 }
 
+watch(() => props.modelSupportInvestigationRequest, request => {
+  if (request !== undefined) {
+    openModelSupportInvestigation({ modelId: '', restoreFocusTo: request.opener });
+    emit('consumeModelSupportInvestigationRequest');
+  }
+}, { immediate: true });
+
 function closeModelSupportInvestigation(): void {
   modelSupportInvestigationModelId.value = undefined;
   ordinaryDownloadTiming.value = undefined;
   const opener = modelSupportInvestigationOpener;
   modelSupportInvestigationOpener = undefined;
-  void nextTick(() => opener?.focus());
+  void nextTick(() => {
+    if (opener?.isConnected) {
+      opener.focus();
+    }
+  });
 }
 
 function closeSettings(): void {
@@ -174,6 +221,7 @@ defineExpose({
 
   <GlobalSearchModal v-if="isSearchOpen" />
   <RecentChatsModal v-if="isRecentOpen" />
+  <LauncherModal v-if="launcherMounted" @open-model-support-investigation="openModelSupportInvestigation({ modelId: '', restoreFocusTo: launcherOpener })" />
   <PWAManager v-if="PWAManager && pwaActivation === 'active'" />
   <FileExplorerModal v-if="isFileExplorerOpen" />
   <ImportExportModalHost />

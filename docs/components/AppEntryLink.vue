@@ -19,7 +19,10 @@ const pathText = computed(() => {
     case 'files-settings':
     case 'folders-settings':
     case 'image-generation':
-    case 'audio-generation': return path.value;
+    case 'audio-generation':
+    case 'translation':
+    case 'live-conversation':
+    case 'workflow': return path.value;
     default: {
       const unreachable: never = destination.screen;
       throw new Error(`Unknown app screen: ${String(unreachable)}`);

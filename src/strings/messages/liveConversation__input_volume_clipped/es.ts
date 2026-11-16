@@ -1,0 +1,1 @@
+export const liveConversation__input_volume_clipped = ({ count }: { count: number }): string => `El ajuste de volumen provocó recorte en ${count} muestras. Reduce el multiplicador y vuelve a intentarlo para evitar distorsión.`;

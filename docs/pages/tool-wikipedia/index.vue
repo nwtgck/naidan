@@ -15,7 +15,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
     <p class="app-entry-intro"><RenderText :node="s.open_wikipedia_chat({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
-    <p class="prerequisite"><RenderText :node="s.choose_tool_capable_model({ locale, browserPage: 'in-browser-models', enginePage: 'local-ai-servers', modelDestination: { kind: 'model', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' } })" /></p>
+    <p class="prerequisite"><RenderText :node="s.choose_tool_capable_model({ locale, browserPage: 'in-browser-model', enginePage: 'local-ai-server', modelDestination: { kind: 'model', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' } })" /></p>
 
     <section class="walkthrough-step">
       <h2>{{ s.open_tool_settings_title }}</h2>
@@ -32,7 +32,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <section class="walkthrough-step">
       <h2>{{ s.approve_search_title }}</h2>
-      <p><RenderText :node="s.wikipedia_editions_note({ locale, page: 'csp-editions' })" /></p>
+      <p><RenderText :node="s.wikipedia_editions_note({ locale, page: 'csp-edition' })" /></p>
       <p><RenderText :node="s.approve_search_body()" /></p>
       <figure class="guide-figure"><WikipediaChatStep stage="search" :messages="s" :common="common" /><figcaption class="caption">{{ s.approve_search_caption }}</figcaption></figure>
     </section>
@@ -70,7 +70,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
       { page: 'tool-browser-shell', title: s.shell_guide_title, description: s.shell_guide_description },
-      { page: 'csp-editions', title: s.local_only_guide_title, description: s.local_only_guide_description },
+      { page: 'csp-edition', title: s.local_only_guide_title, description: s.local_only_guide_description },
     ]" />
   </article>
 </template>

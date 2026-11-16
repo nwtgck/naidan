@@ -1,0 +1,1 @@
+export const liveConversation__microphone_recording_help = (): string => "Beim Stoppen wird die Aufnahme mit dem geladenen Spracherkennungsmodell transkribiert. Ohne geladenes Modell kannst du die Aufnahme abspielen und speichern. Aufnahmen sind auf 3 Minuten begrenzt.";

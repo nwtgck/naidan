@@ -2,8 +2,7 @@ import { isDiagnosticsEditValid, type DiagnosticsQueryConfig } from '@/features/
 import { diagnosticsModelSelection, resolveDiagnosticsModels, type DiagnosticsModelSelection } from '@/features/llama-cpp-browser/diagnostics/model-selection';
 import { buildAllowsGpuProfiling, gpuProfilingUnavailableReason } from '@/features/llama-cpp-browser/performance/profiling-mode';
 import { resolvePerformanceModelInput } from '@/features/llama-cpp-browser/performance/model-input';
-import rawRuntimeManifest from 'llama-cpp-browser-core/manifest.json';
-import { runtimeBuildEvidence } from '@/features/llama-cpp-browser/performance/runtime-evidence';
+import { runtimeBuild } from 'virtual:llama-cpp-browser-core/runtime-build';
 import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import { nanoid } from 'nanoid';
 import { llamaCppBrowserService as service } from '@/features/llama-cpp-browser';
@@ -353,7 +352,7 @@ export function useLlamaCppDiagnostics() {
       hardwareConcurrency: navigator.hardwareConcurrency,
       crossOriginIsolated: globalThis.crossOriginIsolated === true,
       timeOrigin: performance.timeOrigin,
-      runtimeBuild: runtimeBuildEvidence({ manifest: rawRuntimeManifest }),
+      runtimeBuild,
     };
     running.value = true;
     stopping.value = false;

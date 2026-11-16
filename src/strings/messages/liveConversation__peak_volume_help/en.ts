@@ -1,0 +1,1 @@
+export const liveConversation__peak_volume_help = (): string => "Apply one multiplier to the entire recording so its peak reaches 80%. The multiplier stays constant throughout. Silence is left unchanged.";

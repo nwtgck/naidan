@@ -96,7 +96,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
       { page: 'tool-browser-shell', title: s.shell_guide_title, description: s.shell_guide_description },
       { page: 'tool-wikipedia', title: s.wikipedia_guide_title, description: s.wikipedia_guide_description },
-      { page: 'files-and-folders-settings', title: s.file_settings_guide_title, description: s.file_settings_guide_description },
+      { page: 'file-and-folder-settings', title: s.file_settings_guide_title, description: s.file_settings_guide_description },
       { page: 'file-explorer', title: s.file_explorer_guide_title, description: s.file_explorer_guide_description },
     ]" />
   </article>

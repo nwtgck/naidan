@@ -22,7 +22,7 @@ describe('typed Docs links', () => {
     const html = await renderToString(createSSRApp({ render: () => h(RenderText, { node: strings.in_browser_model_setup_guide({ locale }) }) }));
     using parsed = parsePage({ html });
     const anchor = parsed.document.querySelector<HTMLAnchorElement>('a');
-    expect(anchor?.getAttribute('href')).toBe(docsHref({ locale, page: 'in-browser-models' }));
+    expect(anchor?.getAttribute('href')).toBe(docsHref({ locale, page: 'in-browser-model' }));
     expect(anchor?.textContent).toBe(label);
   });
 
@@ -30,7 +30,7 @@ describe('typed Docs links', () => {
     const html = await renderToString(createSSRApp({
       render: () => h(DocsLink, {
         locale,
-        page: 'in-browser-models',
+        page: 'in-browser-model',
         class: 'guide-link',
         'aria-label': 'Read the guide',
         'data-testid': 'registered-guide',
@@ -39,7 +39,7 @@ describe('typed Docs links', () => {
     using parsed = parsePage({ html });
     const anchor = parsed.document.querySelector<HTMLAnchorElement>('[data-testid="registered-guide"]');
     expect(anchor?.tagName).toBe('A');
-    expect(anchor?.getAttribute('href')).toBe(docsHref({ locale, page: 'in-browser-models' }));
+    expect(anchor?.getAttribute('href')).toBe(docsHref({ locale, page: 'in-browser-model' }));
     expect(anchor?.classList.contains('guide-link')).toBe(true);
     expect(anchor?.getAttribute('aria-label')).toBe('Read the guide');
     expect(anchor?.textContent).toBe('Models');

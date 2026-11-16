@@ -27,7 +27,7 @@ beforeEach(async () => {
   fixture.configuration = {
     kind: 'available',
     sourceCommit: revision,
-    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `${prefix}webgpu-wasm32-asyncify/core.mjs`, wasmPath: `${prefix}webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `${prefix}examples/runtime/index.mjs`, schemaSha256: 'b'.repeat(64), wasmBytes: 1, wasmSha256: 'c'.repeat(64) }],
+    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `${prefix}webgpu-wasm32-asyncify/core.mjs`, wasmPath: `${prefix}webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `${prefix}host/index.mjs`, schemaSha256: 'b'.repeat(64), wasmBytes: 1, wasmSha256: 'c'.repeat(64) }],
   };
   fixture.create.mockReturnValue(createDisabledImageLibrary());
   await ensureAllStringsForTest({ locale: 'en' });

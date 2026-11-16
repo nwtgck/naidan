@@ -19,7 +19,7 @@ const assetPath = `profiles/${schemaRelativePath}`;
 const inventorySchema = z.object({ files: z.array(z.object({ path: z.string(), bytes: z.number(), sha256: z.string() })) }).passthrough();
 
 function installSidecars({ fixture, parts }: { fixture: ReturnType<typeof createProfilingArtifactFixture>, parts: readonly ('schema.json' | 'functions.d.ts')[] }) {
-  const innerPath = path.join(fixture.packageRoot, 'llama-cpp-browser-core/manifest.json');
+  const innerPath = path.join(fixture.packageRoot, 'runtimes/llama-cpp-browser-core/manifest.json');
   const rootPath = path.join(fixture.packageRoot, 'manifest.json');
   const inner = inventorySchema.parse(JSON.parse(readFileSync(innerPath, 'utf8')));
   const root = inventorySchema.parse(JSON.parse(readFileSync(rootPath, 'utf8')));
@@ -27,13 +27,12 @@ function installSidecars({ fixture, parts }: { fixture: ReturnType<typeof create
     const bytes = part === 'schema.json' ? schemaBytes : typeBytes;
     const relative = `profiles/${diagnosticProfile}/browser/q8-diagnostic-v1.${part}`;
     const entry = { path: relative, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
-    writeFileSync(path.join(fixture.packageRoot, 'llama-cpp-browser-core', relative), bytes);
+    writeFileSync(path.join(fixture.packageRoot, 'runtimes/llama-cpp-browser-core', relative), bytes);
     inner.files.push(entry);
-    root.files.push({ ...entry, path: 'llama-cpp-browser-core/' + relative });
   }
   const innerBytes = Buffer.from(JSON.stringify(inner));
   writeFileSync(innerPath, innerBytes);
-  const innerEntry = root.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
+  const innerEntry = root.files.find(file => file.path === 'runtimes/llama-cpp-browser-core/manifest.json');
   if (!innerEntry) {
     throw new Error('Missing fixture manifest entry');
   }

@@ -1,23 +1,29 @@
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
-import type { ModelGraphNativeExports } from './native-exports';
-
-// Generated from bicore bridge/model-graph.h and its exact scalar ABI schema.
-// This extension deliberately does not change the base core ABI or schema hash.
-export const modelGraphNativeSchemaHash = '4046d30fdeaf4c5d2c4f33e2f8c2d245fe9cdb4f210722104723573f77119ec8';
-export const modelGraphNativeExports = [
-  '_lcb_model_graph_architecture_known', '_lcb_model_graph_last_error', '_lcb_model_graph_sample',
-  '_lcb_model_graph_sampler_workspace_free', '_lcb_model_graph_sampler_workspace_new', '_lcb_model_graph_schema_hash',
-  '_lcb_model_graph_version', '_lcb_model_graph_vocab_free', '_lcb_model_graph_vocab_get', '_lcb_model_graph_vocab_new',
-] as const satisfies readonly (keyof ModelGraphNativeExports)[];
 
 export function bindModelGraphBoundary({ core }: { core: Core }) {
   core.assertIdle();
-  for (const name of modelGraphNativeExports) {
-    if (typeof Reflect.get(core.module, name) !== 'function') {
-      throw new Error('This bicore build does not include the model-graph-v1 native extension. Install a matching rebuilt runtime; the selected graph will not fall back to a native architecture.');
-    }
+  const {
+    _lcb_model_graph_architecture_known, _lcb_model_graph_last_error, _lcb_model_graph_sample,
+    _lcb_model_graph_sampler_workspace_free, _lcb_model_graph_sampler_workspace_new, _lcb_model_graph_schema_hash,
+    _lcb_model_graph_version, _lcb_model_graph_vocab_free, _lcb_model_graph_vocab_get, _lcb_model_graph_vocab_new,
+  } = core.module;
+  if (typeof _lcb_model_graph_architecture_known !== 'function' || typeof _lcb_model_graph_last_error !== 'function' || typeof _lcb_model_graph_sample !== 'function'
+    || typeof _lcb_model_graph_sampler_workspace_free !== 'function' || typeof _lcb_model_graph_sampler_workspace_new !== 'function' || typeof _lcb_model_graph_schema_hash !== 'function'
+    || typeof _lcb_model_graph_version !== 'function' || typeof _lcb_model_graph_vocab_free !== 'function' || typeof _lcb_model_graph_vocab_get !== 'function' || typeof _lcb_model_graph_vocab_new !== 'function') {
+    throw new Error('This bicore build does not include the model-graph-v1 native extension. Install a matching rebuilt runtime; the selected graph will not fall back to a native architecture.');
   }
-  const native = core.module as typeof core.module & ModelGraphNativeExports;
+  const native = {
+    _lcb_model_graph_architecture_known,
+    _lcb_model_graph_last_error,
+    _lcb_model_graph_sample,
+    _lcb_model_graph_sampler_workspace_free,
+    _lcb_model_graph_sampler_workspace_new,
+    _lcb_model_graph_schema_hash,
+    _lcb_model_graph_version,
+    _lcb_model_graph_vocab_free,
+    _lcb_model_graph_vocab_get,
+    _lcb_model_graph_vocab_new,
+  };
   const cString = ({ pointer, limit }: { pointer: bigint, limit: number }): string => {
     if (typeof pointer !== 'bigint' || pointer <= 0n || pointer > BigInt(core.module.HEAPU8.length)) {
       throw new Error('Invalid model graph native string');
@@ -29,7 +35,7 @@ export function bindModelGraphBoundary({ core }: { core: Core }) {
     }
     return new TextDecoder().decode(bytes.subarray(0, end));
   };
-  if (native._lcb_model_graph_version() !== 1 || cString({ pointer: native._lcb_model_graph_schema_hash(), limit: 65 }) !== modelGraphNativeSchemaHash) {
+  if (native._lcb_model_graph_version() !== 1 || cString({ pointer: native._lcb_model_graph_schema_hash(), limit: 65 }) !== core.abiFingerprint) {
     throw new Error('Model graph native extension schema mismatch');
   }
   const error = (): Error => new Error(cString({ pointer: native._lcb_model_graph_last_error(), limit: 4096 }) || 'Model graph native operation failed');
@@ -40,6 +46,7 @@ export function bindModelGraphBoundary({ core }: { core: Core }) {
     return pointer;
   };
   return {
+    schemaSha256: core.abiFingerprint,
     architectureKnown({ name }: { name: string }): boolean {
       core.assertIdle();
       if (!/^[A-Za-z0-9_.-]{1,128}$/.test(name)) {

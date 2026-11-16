@@ -1,0 +1,1 @@
+export const liveConversation__transcription_model_is_not_for_conversation = (): string => "Dies ist ein Spracherkennungsmodell. Öffne die Analysetools, um eine Audiodatei oder Mikrofonaufnahme zu transkribieren.";

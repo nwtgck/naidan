@@ -1,0 +1,1 @@
+export const liveConversation__file_generation_statistics = ({ submitted, frames, seconds, tail, gaps }: { submitted: number, frames: number, seconds: string, tail: string, gaps: number }): string => `已提交：${submitted} 个采样 · 输出：${frames} 帧 · 耗时：${seconds} 秒 · 末尾静音：${tail} 秒 · 序号缺失：${gaps}`;

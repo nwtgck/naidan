@@ -12,6 +12,7 @@ import * as persistence from '@/00-storage/service/image-generation';
 import type { storageService } from '@/00-storage/service';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import ImageGenerationSidebarActions from '@/features/image-generation/components/ImageGenerationSidebarActions.vue';
 import { createImageGenerationQueryWorker } from '@/features/image-generation/session/query-worker/impl';
 import { generationQueryResultSchema } from '@/features/image-generation/session/query-worker/types';
 // Compile the actual surfaces during module collection, like other component
@@ -21,6 +22,7 @@ import { generationQueryResultSchema } from '@/features/image-generation/session
 import ImageGenerationPage from './image-generation.vue';
 import ImageGenerationWorkspace from '@/features/image-generation/components/ImageGenerationWorkspace.vue';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), publish: vi.fn(), restore: vi.fn(), confirm: vi.fn(), owners: 0, disposed: 0 }));
+vi.mock('@/components/LauncherButton.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/00-storage/service', () => ({ storageService: { subscribeLocalModelPromotions: vi.fn(() => () => {}), getCurrentType: () => 'opfs', subscribeToChanges: () => () => {}, publishImageGeneration: mocks.publish } }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
 vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
@@ -101,7 +103,7 @@ async function open({ path }: { path: string }) {
   wrapper = mount(defineComponent({
     setup() {
       const { active } = useImageGenerationWorkspaceNavigation();
-      return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
+      return () => h('div', [active.value ? [h(ImageGenerationSidebarActions, { navigation: active.value, expanded: true }), h(ImageGenerationSidebar, { navigation: active.value })] : undefined, h(RouterView)]);
     },
   }), { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled();

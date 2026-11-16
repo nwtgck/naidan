@@ -53,7 +53,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p>{{ s.server_troubleshooting }}</p>
     <h2>{{ s.alternate_entry_heading }}</h2>
     <p><RenderText :node="s.alternate_entry_instructions()" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'local-ai-servers', title: s.local_server_guide_title, description: s.local_server_guide_description }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'local-ai-server', title: s.local_server_guide_title, description: s.local_server_guide_description }]" />
   </article>
 </template>
 

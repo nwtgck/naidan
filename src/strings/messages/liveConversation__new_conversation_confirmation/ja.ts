@@ -1,1 +1,1 @@
-export const liveConversation__new_conversation_confirmation = (): string => '新しい会話を始めますか？現在の会話、下書き、送信待ちのメッセージ、一時保持した音声は消えます。同じモデルなら再読み込みは不要です。ブラウザ内シェルで作成したファイルは削除しません。';
+export const liveConversation__new_conversation_confirmation = (): string => '新しい会話を始めますか？現在の会話、下書き、送信待ちのメッセージ、一時保持した音声、調査ツールの入力音声と結果はクリアされます。モデルは読み込んだまま保持します。モデルを切り替えるには、選んだモデルを別途読み込んでください。ブラウザ内シェルで作成したファイルは削除しません。';

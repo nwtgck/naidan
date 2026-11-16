@@ -58,8 +58,8 @@ describe('app permissions comparison guide', () => {
       expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
     }
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/browser-boundaries/`,
-      `/docs/${locale}/csp-editions/`,
+      `/docs/${locale}/browser-boundary/`,
+      `/docs/${locale}/csp-edition/`,
       `/docs/${locale}/standalone/`,
     ]);
   });

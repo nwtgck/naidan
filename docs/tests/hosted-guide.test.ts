@@ -32,7 +32,7 @@ describe('self-hosted ZIP guide', () => {
       `/docs/${locale}/standalone/`,
       `/docs/${locale}/data-backup/`,
     ]);
-    for (const guide of ['in-browser-models', 'endpoint-type-llama-cpp-browser', 'local-ai-servers']) {
+    for (const guide of ['in-browser-model', 'endpoint-type-llama-cpp-browser', 'local-ai-server']) {
       expect(article?.querySelector(`a[href="/docs/${locale}/${guide}/"]`)?.textContent?.trim()).toBeTruthy();
     }
   });

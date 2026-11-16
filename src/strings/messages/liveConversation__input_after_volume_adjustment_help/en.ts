@@ -1,0 +1,1 @@
+export const liveConversation__input_after_volume_adjustment_help = (): string => "The original file is unchanged. Play or save the audio accepted for sending after applying the input volume setting. If stopped early, it may include audio the model has not processed.";

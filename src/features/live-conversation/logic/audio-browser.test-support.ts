@@ -3,10 +3,11 @@ import { vi, type Mock } from 'vitest';
 /** Deliberately local Web Audio fakes. Tests assert ownership and packet order,
  * not real hardware, browser permissions or device latency. */
 export function liveAudioBrowserFixture() {
-  const track = { stop: vi.fn<MediaStreamTrack['stop']>(), onended: undefined as (() => void) | undefined };
+  const track = { getSettings: vi.fn<MediaStreamTrack['getSettings']>(() => ({})), stop: vi.fn<MediaStreamTrack['stop']>(), onended: undefined as (() => void) | undefined };
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] };
   const permission = Promise.withResolvers<typeof stream>();
   const media = { getUserMedia: vi.fn(() => permission.promise) };
+  const resume = vi.fn(async () => {});
   const contexts: FakeAudioContext[] = [];
   const nodes: FakeWorklet[] = [];
   const buffers: Float32Array[] = [];
@@ -14,14 +15,16 @@ export function liveAudioBrowserFixture() {
   class FakeAudioContext {
     sampleRate = 48000;
     currentTime = 0;
-    state: 'running' | 'suspended' | 'closed' = 'running';
+    state: AudioContextState = 'suspended';
+    onstatechange: (() => void) | null = null;
     destination = {};
     audioWorklet = { addModule: vi.fn(async () => {}) };
     resume = vi.fn(async () => {
-      this.state = 'running';
+      await resume();
+      this.changeState({ state: 'running' });
     });
     close = vi.fn(async () => {
-      this.state = 'closed';
+      this.changeState({ state: 'closed' });
     });
     createGain = vi.fn(() => ({ gain: { value: 1 }, connect: vi.fn<AudioNode['connect']>(), disconnect: vi.fn<AudioNode['disconnect']>() }));
     createMediaStreamSource = vi.fn(() => ({ connect: vi.fn<AudioNode['connect']>(), disconnect: vi.fn<AudioNode['disconnect']>() }));
@@ -39,6 +42,11 @@ export function liveAudioBrowserFixture() {
 
     constructor() {
       contexts.push(this);
+    }
+
+    changeState({ state }: { state: AudioContextState }): void {
+      this.state = state;
+      this.onstatechange?.();
     }
   }
   class FakeWorklet {
@@ -74,6 +82,7 @@ export function liveAudioBrowserFixture() {
     nodes,
     permission,
     media,
+    resume,
     stream,
     track,
     buffers,

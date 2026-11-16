@@ -1,0 +1,1 @@
+export const liveConversation__microphone_and_response_audio_run_together = (): string => 'Verwende Kopfhörer. Sprich kurz, sobald das Mikrofon bereit ist, und warte auf die Antwort, ohne zu stoppen. Die Stopp-Taste beendet das gesamte Gespräch.';

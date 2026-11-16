@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { CheckCircle2Icon, CheckIcon, CopyPlusIcon, DatabaseIcon, DownloadIcon, FileArchiveIcon, FolderInputIcon, HardDriveIcon, MousePointer2Icon, RefreshCwIcon, Settings2Icon, SettingsIcon, ShieldCheckIcon, UploadIcon, XIcon } from 'lucide-vue-next';
+import { CheckCircle2Icon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, CopyPlusIcon, DatabaseIcon, DownloadIcon, EyeIcon, FileArchiveIcon, FileTextIcon, FolderIcon, FolderOpenIcon, FolderInputIcon, HardDriveIcon, LockIcon, MousePointer2Icon, RefreshCwIcon, Settings2Icon, SettingsIcon, ShieldCheckIcon, UploadIcon, XIcon } from 'lucide-vue-next';
 
-defineProps<{ stage: 'export' | 'preview' | 'mode'; messages: typeof import('../../pages/data-backup/messages/en').messages }>();
+defineProps<{ stage: 'export' | 'archive' | 'base64' | 'preview' | 'mode'; messages: typeof import('../../pages/data-backup/messages/en').messages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -31,17 +31,29 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div class="import-window">
           <header class="import-heading"><span class="import-icon"><FolderInputIcon :size="25" /></span><span><strong>{{ messages.export_import }}</strong><em>{{ messages.experimental }}</em></span><XIcon :size="20" /></header>
           <div class="import-content">
-            <div v-if="stage !== 'mode'" class="menu-pane"><div class="menu-card export-menu"><UploadIcon :size="28" /><strong>{{ messages.export }}</strong><MousePointer2Icon v-if="stage === 'export'" class="pointer menu-pointer" :size="23" /></div><div class="menu-card import-menu"><DownloadIcon :size="28" /><strong>{{ messages.import }}</strong><MousePointer2Icon v-if="stage === 'preview'" class="pointer menu-pointer" :size="23" /></div></div>
+            <div v-if="stage === 'export' || stage === 'preview'" class="menu-pane"><div class="menu-card export-menu"><UploadIcon :size="28" /><strong>{{ messages.export }}</strong><MousePointer2Icon v-if="stage === 'export'" class="pointer menu-pointer" :size="23" /></div><div class="menu-card import-menu"><DownloadIcon :size="28" /><strong>{{ messages.import }}</strong><MousePointer2Icon v-if="stage === 'preview'" class="pointer menu-pointer" :size="23" /></div></div>
 
-            <div v-if="stage === 'export'" class="export-flow">
+            <div v-if="stage === 'export' || stage === 'archive'" class="export-flow">
               <div class="export-pane">
                 <div class="pane-heading"><UploadIcon :size="21" /><strong>{{ messages.ready_to_export }}</strong></div>
                 <label class="filename-tag">{{ messages.filename_tag_optional }}<span class="input-look" /></label>
                 <div class="exclusions"><div class="check-item"><span class="fake-check" />{{ messages.exclude_chats }}</div><div class="check-item history-choice"><span class="fake-check"><CheckIcon :size="13" /></span>{{ messages.exclude_chat_history }}<MousePointer2Icon class="pointer history-pointer" :size="23" /></div><div class="check-item"><span class="fake-check" />{{ messages.exclude_attachments }}</div></div>
                 <div class="filename-preview"><small>{{ messages.output_filename }}</small><strong>{{ messages.example_backup_zip_filename }}</strong></div>
-                <div class="action-row"><span class="primary-action"><UploadIcon :size="17" />{{ messages.export_now }}<MousePointer2Icon class="pointer export-pointer" :size="23" /></span></div>
+                <div class="action-row export-action-row"><span class="export-split"><span class="export-main"><span class="download-label"><UploadIcon :size="17" />{{ messages.download_zip }}</span><span v-if="stage === 'archive'" class="explorer-label"><FolderOpenIcon :size="17" />{{ messages.view_in_file_explorer }}</span><MousePointer2Icon class="pointer export-pointer" :size="23" /></span><span class="export-arrow" :title="messages.export_options"><ChevronDownIcon :size="16" /><MousePointer2Icon v-if="stage === 'archive'" class="pointer output-menu-pointer" :size="21" /></span></span><div v-if="stage === 'archive'" class="export-action-menu" data-testid="backup-export-options"><span><UploadIcon :size="16" />{{ messages.download_zip }}<CheckIcon :size="14" /></span><strong><FolderOpenIcon :size="16" />{{ messages.view_in_file_explorer }}<MousePointer2Icon class="pointer archive-option-pointer" :size="21" /></strong></div></div>
               </div>
-              <div class="export-result"><CheckIcon :size="18" />{{ messages.zip_downloaded }}</div>
+              <div v-if="stage === 'export'" class="export-result"><CheckIcon :size="18" />{{ messages.zip_downloaded }}</div>
+            </div>
+
+            <div v-if="stage === 'base64'" class="base64-flow">
+              <div class="base64-export" data-testid="backup-base64-export">
+                <div class="pane-heading"><UploadIcon :size="21" /><strong>{{ messages.export }}</strong></div>
+                <div class="base64-card"><strong>{{ messages.copy_zip_as_base64 }}</strong><p>{{ messages.base64_data_description }}</p><div class="base64-actions"><span><FileArchiveIcon :size="16" />{{ messages.prepare_base64 }}<MousePointer2Icon class="pointer prepare-pointer" :size="21" /></span><span class="base64-copy-action" data-testid="backup-base64-copy"><CopyIcon :size="16" />{{ messages.copy_base64 }}<MousePointer2Icon class="pointer copy-pointer" :size="21" /></span></div></div>
+              </div>
+              <div class="base64-import" data-testid="backup-base64-import">
+                <div class="pane-heading"><CopyIcon :size="21" /><strong>{{ messages.paste_base64_to_import }}</strong></div>
+                <div class="base64-paste-field"><strong>{{ messages.base64_string }}</strong><pre>{{ messages.example_base64 }}</pre></div>
+                <div class="action-row"><span class="base64-read"><DownloadIcon :size="16" />{{ messages.read_base64 }}<MousePointer2Icon class="pointer read-pointer" :size="21" /></span></div>
+              </div>
             </div>
 
             <div v-if="stage === 'preview' || stage === 'mode'" class="preview-pane">
@@ -60,6 +72,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <div class="action-row"><span class="import-progress"><span class="verify">{{ messages.verify_archive }}</span><span class="import-done"><CheckIcon :size="17" />{{ messages.import_successful }}</span></span><span class="primary-action"><CheckCircle2Icon :size="17" />{{ messages.import }}<MousePointer2Icon class="pointer import-pointer" :size="23" /></span></div>
             </div>
           </div>
+        </div>
+        <div v-if="stage === 'archive'" class="generated-archive" data-testid="backup-generated-archive">
+          <header><strong><FileArchiveIcon :size="18" />{{ messages.example_backup_zip_filename }}</strong><XIcon :size="18" /></header>
+          <div class="generated-breadcrumb"><FileArchiveIcon :size="14" /><span>{{ messages.example_backup_zip_filename }}</span><ChevronRightIcon :size="12" /><strong>naidan-data-2026-10-13</strong><span class="generated-tools"><EyeIcon :size="14" /><LockIcon :size="14" /></span></div>
+          <div class="generated-read-only"><FileArchiveIcon :size="14" />{{ messages.zip_archive }} · {{ messages.read_only }}</div>
+          <div class="generated-files"><div class="generated-file"><FileTextIcon :size="16" /><span>export-manifest.json</span><DownloadIcon :size="15" /></div><div class="generated-file"><FileTextIcon :size="16" /><span>settings.json</span><DownloadIcon :size="15" /></div><div class="generated-file"><FolderIcon :size="16" /><span>chat-contents</span></div></div>
         </div>
       </div>
     </div>
@@ -1218,6 +1236,437 @@ html:has(#docs-pause-motion:checked) .pointer {
   }
   .pointer {
     display: none;
+  }
+}
+
+.export-action-row {
+  position: relative;
+}
+.export-split {
+  display: flex;
+  max-width: 100%;
+  border: 1px solid var(--demo-line);
+  border-radius: 11px;
+  background: var(--demo-panel);
+  color: var(--text);
+}
+.export-main {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  padding: 10px 15px;
+}
+.export-main > span {
+  grid-area: 1/1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.export-main svg,.base64-actions svg,.base64-read > svg:first-child {
+  flex: none;
+  color: var(--demo-blue);
+}
+.export-arrow {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  flex: none;
+  border-left: 1px solid var(--demo-line);
+  color: var(--muted);
+}
+.explorer-label {
+  opacity: 0;
+}
+.stage-archive .camera,.stage-base64 .camera {
+  transform: translate(-310px,-215px);
+}
+.stage-archive .download-label {
+  animation: export-download-label 12s linear infinite;
+}
+.stage-archive .explorer-label {
+  animation: export-explorer-label 12s linear infinite;
+}
+.export-action-menu {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  gap: 5px;
+  width: min(340px,100%);
+  padding: 7px;
+  border: 1px solid var(--demo-line);
+  border-radius: 11px;
+  background: var(--demo-panel);
+  box-shadow: 0 12px 28px #0004;
+  animation: export-output-menu 12s linear infinite;
+}
+.export-action-menu > * {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.export-action-menu > span > svg:last-child {
+  margin-left: auto;
+}
+.export-action-menu strong {
+  color: var(--demo-blue);
+  background: color-mix(in srgb,var(--demo-blue) 9%,var(--demo-panel));
+  border-radius: 7px;
+}
+.stage-archive .export-pointer {
+  animation: archive-run-pointer 12s linear infinite;
+}
+.archive-option-pointer {
+  animation: archive-option-pointer 12s linear infinite;
+}
+.stage-archive .import-window {
+  animation: export-before-archive 12s linear infinite;
+}
+.generated-archive {
+  position: absolute;
+  left: 321px;
+  top: 222px;
+  width: 644px;
+  min-height: 290px;
+  border: 1px solid var(--demo-line);
+  border-radius: 13px;
+  background: var(--demo-panel);
+  box-shadow: 0 20px 60px #0005;
+  overflow: hidden;
+  opacity: 0;
+  animation: generated-archive 12s linear infinite;
+}
+.generated-archive header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--demo-line);
+}
+.generated-archive header strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.generated-archive svg {
+  flex: none;
+  color: var(--muted);
+}
+.generated-breadcrumb,.generated-read-only {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--demo-line);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.generated-read-only {
+  color: var(--muted);
+  background: var(--demo-field);
+}
+.generated-read-only svg {
+  color: var(--demo-blue);
+}
+.generated-files {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+.generated-files > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.generated-files .generated-file {
+  padding-left: 28px;
+}
+.generated-breadcrumb {
+  flex-wrap: wrap;
+}
+.generated-tools {
+  display: flex;
+  gap: 9px;
+  margin-left: auto;
+}
+.generated-tools > svg:last-child {
+  opacity: .45;
+}
+.output-menu-pointer {
+  animation: output-menu-pointer 12s linear infinite;
+}
+@keyframes output-menu-pointer {
+  0%,2%,16%,100% {
+    opacity: 0;
+  }
+  6%,12% {
+    opacity: 1;
+  }
+}
+.generated-file span {
+  flex: 1;
+  min-width: 0;
+}
+.base64-flow {
+  position: absolute;
+  inset: 23px;
+}
+.base64-export,.base64-import {
+  position: absolute;
+  inset: 0;
+}
+.base64-export {
+  animation: base64-export 14s linear infinite;
+}
+.base64-import {
+  opacity: 0;
+  animation: base64-import 14s linear infinite;
+}
+.base64-card {
+  padding: 17px;
+  border: 1px solid var(--demo-line);
+  border-radius: 12px;
+  background: var(--demo-panel);
+}
+.base64-card > strong {
+  display: block;
+  font-size: 14px;
+}
+.base64-card > p {
+  margin: 9px 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.base64-actions {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.base64-actions > span,.base64-read {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--demo-line);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.base64-copy-action {
+  opacity: 0;
+  animation: base64-prepared 14s linear infinite;
+}
+.base64-paste-field {
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+.base64-paste-field pre {
+  min-width: 0;
+  min-height: 120px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--demo-line);
+  border-radius: 8px;
+  font: 12px/1.6 ui-monospace,monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.prepare-pointer {
+  animation: base64-prepare-pointer 14s linear infinite;
+}
+.copy-pointer {
+  animation: base64-copy-pointer 14s linear infinite;
+}
+.read-pointer {
+  animation: base64-read-pointer 14s linear infinite;
+}
+@keyframes export-download-label {
+  0%,29% {
+    opacity: 1;
+  }
+  35%,100% {
+    opacity: 0;
+  }
+}
+@keyframes export-explorer-label {
+  0%,29% {
+    opacity: 0;
+  }
+  35%,100% {
+    opacity: 1;
+  }
+}
+@keyframes export-output-menu {
+  0%,9%,35%,100% {
+    opacity: 0;
+  }
+  15%,28% {
+    opacity: 1;
+  }
+}
+@keyframes archive-option-pointer {
+  0%,16%,31%,100% {
+    opacity: 0;
+  }
+  21%,27% {
+    opacity: 1;
+  }
+}
+@keyframes archive-run-pointer {
+  0%,38%,53%,100% {
+    opacity: 0;
+  }
+  43%,49% {
+    opacity: 1;
+  }
+}
+@keyframes export-before-archive {
+  0%,53% {
+    opacity: 1;
+  }
+  63%,100% {
+    opacity: 0;
+  }
+}
+@keyframes generated-archive {
+  0%,56% {
+    opacity: 0;
+  }
+  66%,100% {
+    opacity: 1;
+  }
+}
+@keyframes base64-export {
+  0%,47% {
+    opacity: 1;
+  }
+  55%,100% {
+    opacity: 0;
+  }
+}
+@keyframes base64-import {
+  0%,50% {
+    opacity: 0;
+  }
+  59%,100% {
+    opacity: 1;
+  }
+}
+@keyframes base64-prepared {
+  0%,20% {
+    opacity: 0;
+  }
+  28%,100% {
+    opacity: 1;
+  }
+}
+@keyframes base64-prepare-pointer {
+  0%,8%,23%,100% {
+    opacity: 0;
+  }
+  13%,19% {
+    opacity: 1;
+  }
+}
+@keyframes base64-copy-pointer {
+  0%,30%,45%,100% {
+    opacity: 0;
+  }
+  35%,41% {
+    opacity: 1;
+  }
+}
+@keyframes base64-read-pointer {
+  0%,73%,89%,100% {
+    opacity: 0;
+  }
+  79%,85% {
+    opacity: 1;
+  }
+}
+html:has(#docs-pause-motion:checked) .stage-archive .import-window,
+html:has(#docs-pause-motion:checked) .stage-archive .download-label,
+html:has(#docs-pause-motion:checked) .base64-export {
+  opacity: 0;
+}
+html:has(#docs-pause-motion:checked) .generated-archive,
+html:has(#docs-pause-motion:checked) .stage-archive .explorer-label,
+html:has(#docs-pause-motion:checked) .base64-import {
+  opacity: 1;
+}
+@media(prefers-reduced-motion:reduce) {
+  .stage-archive .import-window,.stage-archive .download-label,.base64-export {
+    opacity: 0;
+  }
+  .generated-archive,.stage-archive .explorer-label,.base64-import {
+    opacity: 1;
+  }
+}
+@container (max-width:650px) {
+  .stage-archive .camera,.stage-base64 .camera {
+    transform: translate(-321px,-215px);
+  }
+  .stage-archive .export-flow,.base64-flow {
+    right: auto;
+    width: calc(100cqw - 24px);
+  }
+  .stage-archive .export-pane {
+    padding-inline: 0;
+    gap: 10px;
+  }
+  .stage-archive .pane-heading {
+    margin-bottom: 0;
+  }
+  .generated-archive {
+    left: 333px;
+    width: calc(100cqw - 24px);
+  }
+  .base64-import .pane-heading {
+    align-items: start;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .base64-card {
+    padding: 13px;
+  }
+  .base64-actions {
+    display: grid;
+    justify-items: start;
+  }
+  .stage-archive .export-split {
+    width: 100%;
+  }
+  .stage-archive .export-main {
+    flex: 1;
   }
 }
 </style>

@@ -31,7 +31,7 @@ defineExpose({
       class="lead"
     >{{ paragraph }}</p>
     <p class="app-entry-intro"><RenderText :node="s.open_shell_chat({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
-    <p class="prerequisite"><RenderText :node="s.choose_tool_capable_model({ locale, browserPage: 'in-browser-models', enginePage: 'local-ai-servers', modelDestination: { kind: 'model', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' } })" /></p>
+    <p class="prerequisite"><RenderText :node="s.choose_tool_capable_model({ locale, browserPage: 'in-browser-model', enginePage: 'local-ai-server', modelDestination: { kind: 'model', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' } })" /></p>
     <figure class="guide-figure"><ShellWorkspaceDemo :messages="s" :common="common" /><figcaption class="caption">{{ s.shell_task_example_caption }}</figcaption></figure>
     <section class="shell-walkthrough" data-testid="docs-shell-walkthrough">
       <h2>{{ s.enable_shell_title }}</h2>
@@ -46,8 +46,10 @@ defineExpose({
         <figure class="guide-figure"><ShellEnableStep stage="enable" :messages="s" :common="common" /><figcaption class="caption"><RenderText :node="s.turn_on_shell_caption()" /></figcaption></figure>
         <p><RenderText :node="s.shell_mount_guide({ locale, page: 'wesh-sysfs' })" /></p>
       </section>
+      <p class="tool-settings-persistence"><RenderText :node="s.tool_settings_persistence()" /></p>
       <p><RenderText :node="s.choose_working_folder_guide({ locale, page: 'file-access' })" /></p>
     </section>
+    <p class="live-shell-boundary"><RenderText :node="s.live_shell_boundary({ locale })" /></p>
     <section
       v-for="section in [{ title: s.browser_filesystem_section_title, body: s.browser_filesystem_section_body }, { title: s.shell_folder_access_title, body: s.shell_folder_access_body }]"
       :key="section.title"

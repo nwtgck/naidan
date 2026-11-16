@@ -63,7 +63,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p>{{ s.chrome_model_unavailable_help }}</p>
     <h2>{{ s.alternate_entry_heading }}</h2>
     <p><RenderText :node="s.alternate_entry_instructions()" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-model', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
   </article>
 </template>
 

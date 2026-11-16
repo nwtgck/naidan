@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FolderOpenIcon, ImageIcon, MoreVerticalIcon, MousePointer2Icon, SearchIcon, SettingsIcon, SlidersHorizontalIcon, SquarePenIcon } from 'lucide-vue-next';
+import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FolderOpenIcon, ImageIcon, ListIcon, MoreVerticalIcon, MousePointer2Icon, SearchIcon, SettingsIcon, SlidersHorizontalIcon, SquareIcon, SquarePenIcon } from 'lucide-vue-next';
 import catArtwork from '../../assets/flying-kitten.webp';
 import type { ImageCreateMessages } from '../../messages/types';
 
@@ -16,7 +16,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div class="tabs"><span class="tab active"><ImageIcon :size="15" />{{ messages.generate }}</span><span class="tab" :class="{ 'temporary-active': stage === 'model' }"><FolderOpenIcon :size="15" />{{ messages.models }}</span><span class="tab"><SlidersHorizontalIcon :size="15" />{{ messages.diagnostics }}</span></div>
         <div class="workspace" data-testid="image-workspace-canvas"><div class="session-head"><div><strong>{{ messages.new_session }}</strong><small>{{ messages.draft_saved }}</small></div><span><DownloadIcon :size="14" />{{ messages.export_session }}</span></div>
           <div class="columns">
-            <div class="settings-col"><div class="count card"><strong>{{ messages.images_per_run }}</strong><span>1</span></div><div class="model card"><div class="label">{{ messages.image_model }}</div><div class="model-row"><div class="field">{{ stage === 'open' ? messages.choose_a_model : messages.z_image_turbo }}<ChevronDownIcon :size="14" /></div><span class="primary"><FolderOpenIcon :size="15" />{{ messages.prepare_a_model }}</span></div><div v-if="stage === 'model'" class="model-picker-popup" data-testid="image-model-options"><div class="picker-search"><SearchIcon :size="14" /><span>{{ messages.search_choices }}</span></div><div class="picker-empty">{{ messages.choose_a_model }}</div><div class="picker-choice"><span><strong>{{ messages.z_image_turbo }}</strong><small>{{ messages.model_components }}</small></span><CheckIcon :size="15" /></div></div></div><div class="prompt card"><div class="label">{{ messages.prompt }}</div><div class="prompt-field">{{ stage === 'open' || stage === 'model' ? messages.prompt : messages.kitten_flying_through_blue_sky }}</div><div class="label secondary-label">{{ messages.negative_prompt }}</div><div class="negative-field" /><span class="primary generate"><ImageIcon :size="16" />{{ messages.generate }}</span></div><div class="extra card"><SlidersHorizontalIcon :size="14" />{{ messages.image_size }}</div></div>
+            <div class="settings-col"><div class="count card"><strong>{{ messages.images_per_run }}</strong><span>1</span></div><div class="model card"><div class="label">{{ messages.image_model }}</div><div class="model-row"><div class="field">{{ stage === 'open' ? messages.choose_a_model : messages.z_image_turbo }}<ChevronDownIcon :size="14" /></div><span class="primary"><FolderOpenIcon :size="15" />{{ messages.prepare_a_model }}</span></div><div v-if="stage === 'model'" class="model-picker-popup" data-testid="image-model-options"><div class="picker-search"><SearchIcon :size="14" /><span>{{ messages.search_choices }}</span></div><div class="picker-empty">{{ messages.choose_a_model }}</div><div class="picker-choice"><span><strong>{{ messages.z_image_turbo }}</strong><small>{{ messages.model_components }}</small></span><CheckIcon :size="15" /></div></div><div class="component-summary"><span><ChevronDownIcon :size="12" />{{ messages.components }}</span><small>{{ messages.this_device }}</small></div></div><div class="prompt card"><div class="prompt-heading"><div class="label">{{ messages.prompt }}</div><span class="multiple-input"><ListIcon :size="12" />{{ messages.multiple_prompts }}</span></div><div class="prompt-field">{{ stage === 'open' || stage === 'model' ? messages.prompt : messages.kitten_flying_through_blue_sky }}</div><div class="label secondary-label">{{ messages.negative_prompt }}</div><div class="negative-field" /><div class="generation-actions"><div class="generate"><span class="primary generate-ready"><ImageIcon :size="16" />{{ messages.generate }}</span><span v-if="stage === 'generate'" class="primary generate-running" aria-disabled="true" data-testid="image-generate-busy"><ImageIcon :size="16" />{{ messages.generate }}</span></div><span class="cancel"><SquareIcon :size="14" />{{ messages.cancel }}</span></div></div><div class="extra card"><SlidersHorizontalIcon :size="14" />{{ messages.image_size }}</div></div>
             <div class="results-col"><div class="monitor card"><div class="panel-head"><strong>{{ messages.execution_previews_and_temporary_results }}</strong><span>{{ messages.visual_progress }}</span></div><div class="monitor-stack"><div class="empty">{{ messages.next_generation_appears_here }}</div><div class="progress"><div class="progress-track"><span /></div>{{ messages.generating_image }}</div><div class="complete"><div class="art"><img :src="catArtwork" alt="" /></div><div class="success"><CheckIcon :size="14" />{{ messages.completed }}</div></div></div></div><div class="gallery card"><div class="gallery-tabs"><strong>{{ messages.runs }}</strong><span>{{ messages.gallery }}</span></div><div class="asset"><div class="thumb"><img :src="catArtwork" alt="" /></div><div><strong>{{ messages.kitten_flying_through_blue_sky }}</strong><small>{{ messages.z_image_turbo }} · {{ messages.completed }} · 1</small></div><span>{{ messages.inspect }}</span></div></div></div>
           </div>
         </div>
@@ -46,6 +46,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   box-shadow: var(--panel-shadow);
   color: var(--t);
   font: 12px/1.45 ui-sans-serif,system-ui,sans-serif;
+  container-type: inline-size;
 }
 .camera * {
   box-sizing: border-box;
@@ -299,11 +300,73 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   background: var(--f);
 }
 .generate {
-  min-width: 160px;
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.generate > span {
+  grid-area: 1/1;
+}
+.generation-actions {
+  display: flex;
+  gap: 8px;
   margin-top: 13px;
 }
-.stage-generate .generate {
-  animation: action-tap 10s linear infinite;
+.generate-running {
+  visibility: hidden;
+  opacity: .45;
+}
+.cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--l);
+  border-radius: 8px;
+  opacity: .4;
+}
+.cancel svg {
+  fill: currentColor;
+}
+.stage-generate .generate-ready {
+  animation: generate-ready 10s linear infinite;
+}
+.stage-generate .generate-running {
+  animation: generate-running 10s linear infinite;
+}
+.stage-generate .cancel {
+  animation: cancel-availability 10s linear infinite;
+}
+.component-summary,.component-summary > span,.prompt-heading,.multiple-input {
+  display: flex;
+  align-items: center;
+}
+.component-summary {
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--l);
+  font-size: 11px;
+}
+.component-summary > span,.multiple-input {
+  gap: 5px;
+}
+.component-summary > span svg {
+  transform: rotate(-90deg);
+}
+.component-summary small,.multiple-input {
+  color: var(--m);
+}
+.prompt-heading {
+  gap: 10px;
+  margin-bottom: 7px;
+}
+.prompt-heading .label {
+  margin: 0;
+}
+.multiple-input {
+  font-size: 10px;
 }
 .extra {
   display: flex;
@@ -656,7 +719,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .stage-generate {
   --x0:-125px;
-  --y0:-70px;
+  --y0:-307px;
   --z0:.9;
   --x1:-445px;
   --y1:-115px;
@@ -670,7 +733,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --yf:-115px;
   --zf:.9;
   --x1:-125px;
-  --y1:-128px;
+  --y1:-307px;
   --z1:.91;
 }
 @keyframes camera-pan {
@@ -762,6 +825,30 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     opacity: 1;
   }
 }
+@keyframes generate-ready {
+  0%,25%,70%,100% {
+    visibility: visible;
+  }
+  26%,69% {
+    visibility: hidden;
+  }
+}
+@keyframes generate-running {
+  0%,25%,70%,100% {
+    visibility: hidden;
+  }
+  26%,69% {
+    visibility: visible;
+  }
+}
+@keyframes cancel-availability {
+  0%,25%,70%,100% {
+    opacity: .4;
+  }
+  26%,69% {
+    opacity: 1;
+  }
+}
 @keyframes progress-show {
   0%,24%,69%,100% {
     opacity: 0;
@@ -816,6 +903,14 @@ html:has(#docs-pause-motion:checked) .camera .complete,html:has(#docs-pause-moti
   .camera {
     height: 316px;
   }
+  .settings-col {
+    width: calc((100cqw - 24px)/.84);
+    max-width: 385px;
+  }
+  .results-col {
+    width: calc((100cqw - 24px)/.83);
+    max-width: 470px;
+  }
   .stage-open {
     --x0:0px;
     --x1:-125px;
@@ -832,7 +927,7 @@ html:has(#docs-pause-motion:checked) .camera .complete,html:has(#docs-pause-moti
   }
   .stage-generate {
     --x0:-125px;
-    --y0:-77px;
+    --y0:-282px;
     --z0:.84;
     --x1:-478px;
     --y1:-135px;
@@ -846,7 +941,7 @@ html:has(#docs-pause-motion:checked) .camera .complete,html:has(#docs-pause-moti
     --yf:-135px;
     --zf:.83;
     --x1:-170px;
-    --y1:-140px;
+    --y1:-282px;
     --z1:.83;
   }
 }
@@ -1034,7 +1129,7 @@ html:has(#docs-pause-motion:checked) .camera.stage-model .asset {
 .model-picker-popup {
   position: absolute;
   z-index: 6;
-  top: calc(100% - 9px);
+  top: 74px;
   left: 13px;
   width: 340px;
   padding: 5px;

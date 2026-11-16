@@ -6,13 +6,17 @@ import path from 'node:path';
 import { createContext, SourceTextModule } from 'node:vm';
 import { gunzipSync } from 'node:zlib';
 import { createServer } from 'vite';
+import { rolldown } from 'rolldown';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
+import catalog from 'llama-cpp-browser-core/llama-cpp/api/schema.mjs';
+import * as artifactPackage from '../src/features/llama-cpp-browser/build-artifact-package';
+import { createProfilingArtifactFixture } from './llama-gpu-profile.test-support';
 
 const repo = process.cwd();
-const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
-const q8SchemaPath = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
+const profiles = ['cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi', ...(existsSync(path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/core.wasm')) ? ['webgpu-wasm64-jspi-gpu-profile'] : [])];
+const q8SchemaPath = path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi-gpu-profile/browser/q8-diagnostic-v1.schema.json');
 const q8SchemaAssetName = 'llama-cpp-browser-runtime/profiles/webgpu-wasm64-jspi-gpu-profile/q8-diagnostic-v1.schema.json';
 
 const callbackGetters = [
@@ -20,7 +24,159 @@ const callbackGetters = [
   'ggml_backend_dev_count', 'ggml_backend_dev_get', 'ggml_backend_dev_name', 'ggml_backend_dev_supports_op',
 ] as const;
 
+async function moduleNamespace({ source }: { source: unknown }) {
+  if (typeof source !== 'string') {
+    throw new Error('Expected virtual module source');
+  }
+  const module = new SourceTextModule(source);
+  await module.link(() => {
+    throw new Error('Runtime identity must not import a manifest');
+  });
+  await module.evaluate();
+  return module.namespace;
+}
+
 describe('shared browser core package integration', () => {
+  it('keeps runtime identity separate from startup capabilities and watches both manifests', async () => {
+    const artifact = artifactPackage.readLlamaArtifactPackage({ rootDir: repo });
+    const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function') {
+      throw new Error('Expected availability hooks');
+    }
+    const availabilityId = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/availability', undefined, {} as never);
+    const availability = await moduleNamespace({ source: await load.call({ addWatchFile() {} } as never, String(availabilityId)) });
+    expect(Object.keys(availability).sort()).toEqual(['gpuProfilingAvailable', 'q8KernelDiagnosticSchemaAsset']);
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
+    const watched: string[] = [];
+    const source = await load.call({ addWatchFile: (file: string) => watched.push(file) } as never, String(id));
+    const exports = await moduleNamespace({ source });
+    expect(Object.keys(exports)).toEqual(['runtimeBuild']);
+    expect(Reflect.get(exports, 'runtimeBuild')).toEqual({
+      sourceCommit: artifact.sourceCommit,
+      files: [...artifact.files.values()].filter(file => file.path.startsWith('profiles/') || file.path.startsWith('api/'))
+        .map(file => ({ ...file, path: `runtimes/llama-cpp-browser-core/${file.path}` })),
+    });
+    expect(watched).toEqual(expect.arrayContaining(artifact.manifestPaths));
+  });
+
+  it.each(['hosted', 'standalone'] as const)('keeps diagnostics evidence outside the initial module closure in %s', async mode => {
+    const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: repo, mode }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function') {
+      throw new Error('Expected virtual module hooks');
+    }
+    const runtimeBuildId = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
+    const bundle = await rolldown({
+      input: 'fixture:initial',
+      plugins: [{
+        name: 'lazy-diagnostics-fixture',
+        resolveId(source, importer, options) {
+          if (source.startsWith('fixture:')) {
+            return source;
+          }
+          return resolveId.call(this as never, source, importer, options as never);
+        },
+        load(id) {
+          if (id === 'fixture:initial') {
+            return `\
+import * as availability from 'virtual:llama-cpp-browser-core/availability';
+export { availability };
+export const openDiagnostics = () => import('fixture:diagnostics');
+`;
+          }
+          if (id === 'fixture:diagnostics') {
+            return "export { runtimeBuild } from 'virtual:llama-cpp-browser-core/runtime-build';";
+          }
+          return load.call(this as never, id);
+        },
+      }],
+    });
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        await bundle.close();
+      },
+    };
+    const { output } = await bundle.generate({ format: 'es' });
+    const chunks = output.filter(item => item.type === 'chunk');
+    const entry = chunks.find(chunk => chunk.isEntry);
+    if (!entry) {
+      throw new Error('Expected initial fixture chunk');
+    }
+    const byFile = new Map(chunks.map(chunk => [chunk.fileName, chunk]));
+    const initialFiles = new Set<string>();
+    const pending = [entry.fileName];
+    for (const fileName of pending) {
+      if (initialFiles.has(fileName)) {
+        continue;
+      }
+      initialFiles.add(fileName);
+      pending.push(...byFile.get(fileName)!.imports);
+    }
+    const moduleIds = chunks.filter(chunk => initialFiles.has(chunk.fileName)).flatMap(chunk => Object.keys(chunk.modules));
+    expect(moduleIds).not.toContain(runtimeBuildId);
+    expect(chunks.filter(chunk => !initialFiles.has(chunk.fileName)).flatMap(chunk => Object.keys(chunk.modules))).toContain(runtimeBuildId);
+  });
+
+  it('leaves runtime identity unavailable when an older current-format manifest omits its runtime name', async () => {
+    using fixture = createProfilingArtifactFixture();
+    const { resolveId, load } = createLlamaCppBrowserBuild({ rootDir: fixture.root, mode: 'hosted' }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function') {
+      throw new Error('Expected availability hooks');
+    }
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
+    const source = await load.call({ addWatchFile() {} } as never, String(id));
+    const exports = await moduleNamespace({ source });
+    expect(Object.hasOwn(exports, 'runtimeBuild')).toBe(true);
+    expect(Reflect.get(exports, 'runtimeBuild')).toBeUndefined();
+  });
+
+  it('refreshes identity after either manifest changes and retries a failed refresh without another event', async () => {
+    using fixture = createProfilingArtifactFixture();
+    const artifact = artifactPackage.readLlamaArtifactPackage({ rootDir: fixture.root });
+    using read = vi.spyOn(artifactPackage, 'readLlamaArtifactPackage');
+    const { resolveId, load, watchChange } = createLlamaCppBrowserBuild({ rootDir: fixture.root, mode: 'hosted' }).corePlugin;
+    if (typeof resolveId !== 'function' || typeof load !== 'function' || typeof watchChange !== 'function') {
+      throw new Error('Expected availability hooks');
+    }
+    const id = await resolveId.call({} as never, 'virtual:llama-cpp-browser-core/runtime-build', undefined, {} as never);
+    const initial = await moduleNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
+    expect(Reflect.get(initial, 'runtimeBuild')).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
+    await watchChange.call({} as never, fixture.file({ profile: 'cpu-wasm32', name: 'core.mjs' }), { event: 'update' });
+    await load.call({ addWatchFile() {} } as never, String(id));
+    expect(read).toHaveBeenCalledTimes(1);
+
+    let reads = 1;
+    for (const [index, manifestPath] of artifact.manifestPaths.entries()) {
+      await watchChange.call({} as never, manifestPath, { event: 'update' });
+      // A partially written package must fail without clearing the pending refresh.
+      writeFileSync(artifact.manifestPaths[0]!, '{');
+      expect(() => load.call({ addWatchFile() {} } as never, String(id))).toThrow();
+      const sourceCommit = String(index + 2).repeat(40);
+      const relative = 'runtimes/llama-cpp-browser-core/manifest.json';
+      const data = Buffer.from(JSON.stringify({ ...artifact.runtimeMetadata, runtime: 'llama-cpp', sourceCommit }));
+      writeFileSync(artifact.manifestPaths[1]!, data);
+      writeFileSync(artifact.manifestPaths[0]!, JSON.stringify({
+        formatVersion: 5,
+        sourceCommit,
+        runtimes: {
+          'llama-cpp': { manifest: relative, manifestFormatVersion: 2 },
+          'stable-diffusion-cpp': { manifest: 'runtimes/stable-diffusion-cpp-browser-core/manifest.json', manifestFormatVersion: 2 },
+        },
+        files: [{ path: relative, bytes: data.length, sha256: createHash('sha256').update(data).digest('hex') }],
+      }));
+      const exports = await moduleNamespace({ source: await load.call({ addWatchFile() {} } as never, String(id)) });
+      expect(Reflect.get(exports, 'runtimeBuild')).toEqual({
+        sourceCommit,
+        files: artifact.runtimeMetadata.files.filter(file => file.path.startsWith('profiles/') || file.path.startsWith('api/'))
+          .map(file => ({ ...file, path: `runtimes/llama-cpp-browser-core/${file.path}` })),
+      });
+      reads += 2;
+      expect(read).toHaveBeenCalledTimes(reads);
+      await load.call({ addWatchFile() {} } as never, String(id));
+      expect(read).toHaveBeenCalledTimes(reads);
+    }
+  });
+
   it('keeps the committed dependency and lock entry on the same immutable artifact', () => {
     const dependencyName = 'llama-cpp-browser-core';
     const packageFile = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8')));
@@ -39,16 +195,16 @@ describe('shared browser core package integration', () => {
   });
 
   it('ships the versioned callback metadata exports declared by the pinned package', () => {
-    const base = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/api');
+    const base = path.join(repo, 'node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/api');
     const schema = z.object({
-      callbackMetadata: z.object({ version: z.literal(1), getters: z.array(z.object({ name: z.string(), export: z.string() })) }),
+      abiVersion: z.literal(3),
+      callbackMetadata: z.object({ version: z.literal(2), getters: z.array(z.object({ name: z.string(), export: z.string() })) }),
     }).parse(JSON.parse(readFileSync(path.join(base, 'schema.json'), 'utf8')));
     const exports = z.array(z.string()).parse(JSON.parse(readFileSync(path.join(base, 'exports.json'), 'utf8')));
-    expect(schema.callbackMetadata.getters).toEqual([...callbackGetters].sort().map(name => ({ name, export: `_lcb_callback_${name}` })));
-    expect(exports).toContain('_lcb_callback_metadata_version');
+    expect(schema.callbackMetadata.getters).toEqual(expect.arrayContaining(callbackGetters.map(name => ({ name, export: `_${name}` }))));
+    expect(exports).toContain('_bicore_abi_version');
     for (const name of callbackGetters) {
-      expect(exports).toContain(`_lcb_callback_${name}`);
-      expect(exports).toContain(`_lcb_${name}`); // The ordinary Promise surface is not replaced.
+      expect(exports).toContain(`_${name}`);
     }
   });
 
@@ -78,7 +234,7 @@ describe('shared browser core package integration', () => {
       if (!bytes) {
         throw new Error(`Missing hosted runtime asset: ${profile}`);
       }
-      expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
+      expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
     }
     if (existsSync(q8SchemaPath)) {
       const schema = files.get(q8SchemaAssetName);
@@ -105,7 +261,7 @@ describe('shared browser core package integration', () => {
       },
     };
     const id = `virtual:llama-cpp-browser-core/${profile}`;
-    const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const resolved = await server.environments.client.pluginContainer.resolveId(id);
     expect(resolved?.id).toBe(realPath);
     expect(server.config.optimizeDeps.exclude).toContain(id);
@@ -138,7 +294,7 @@ describe('shared browser core package integration', () => {
     };
     const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
     cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
-    const relative = `llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`;
+    const relative = `runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`;
     const data = Buffer.from(readFileSync(path.join(artifact, relative), 'utf8') + '\n');
     const updates = [{ relative, data }];
     const mode = profile === 'cpu-wasm32' ? 'hosted' : 'standalone';
@@ -148,25 +304,24 @@ describe('shared browser core package integration', () => {
       updates.push({ relative: wasmRelative, data: Buffer.concat([readFileSync(path.join(artifact, wasmRelative)), Buffer.from([0, 1, 0])]) });
     }
     const inventory = z.object({ files: z.array(z.object({ path: z.string(), bytes: z.number(), sha256: z.string() })) }).passthrough();
-    const innerPath = path.join(artifact, 'llama-cpp-browser-core/manifest.json');
+    const innerPath = path.join(artifact, 'runtimes/llama-cpp-browser-core/manifest.json');
     const inner = inventory.parse(JSON.parse(readFileSync(innerPath, 'utf8')));
     const rootPath = path.join(artifact, 'manifest.json');
     const rootManifest = inventory.parse(JSON.parse(readFileSync(rootPath, 'utf8')));
     for (const update of updates) {
       writeFileSync(path.join(artifact, update.relative), update.data);
-      const innerFile = inner.files.find(file => file.path === update.relative.slice('llama-cpp-browser-core/'.length));
-      const coreFile = rootManifest.files.find(file => file.path === update.relative);
-      if (!innerFile || !coreFile) {
+      const innerFile = inner.files.find(file => file.path === update.relative.slice('runtimes/llama-cpp-browser-core/'.length));
+      if (!innerFile) {
         throw new Error('Missing test inventory entries');
       }
-      for (const file of [innerFile, coreFile]) {
+      for (const file of [innerFile]) {
         file.bytes = update.data.length;
         file.sha256 = createHash('sha256').update(update.data).digest('hex');
       }
     }
     const innerData = JSON.stringify(inner);
     writeFileSync(innerPath, innerData);
-    const innerManifest = rootManifest.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
+    const innerManifest = rootManifest.files.find(file => file.path === 'runtimes/llama-cpp-browser-core/manifest.json');
     if (!innerManifest) {
       throw new Error('Missing test runtime manifest');
     }
@@ -185,13 +340,13 @@ describe('shared browser core package integration', () => {
       expect(binary.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
     }
     writeFileSync(path.join(artifact, relative), Buffer.concat([data, Buffer.from(' ')]));
-    expect(() => load.call({ addWatchFile() {} } as never, path.join(artifact, relative))).toThrow('Core artifact integrity mismatch');
-    expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode })).toThrow('Core artifact integrity mismatch');
+    expect(() => load.call({ addWatchFile() {} } as never, path.join(artifact, relative))).toThrow('Bicore artifact integrity mismatch');
+    expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode })).toThrow('Bicore artifact integrity mismatch');
   });
 
   it.each(['complete-buffer', 'partial-view'] as const)('initializes real CPU Wasm from a supplied %s with no fetch or Node imports', async input => {
     const profile = 'cpu-wasm32';
-    const id = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const id = path.join(repo, `node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const source = readFileSync(id, 'utf8');
     const binary = readFileSync(id.replace('core.mjs', 'core.wasm'));
     const storage = new Uint8Array(binary.length + 32);
@@ -236,21 +391,28 @@ describe('shared browser core package integration', () => {
     if (typeof native !== 'object' || native === null) {
       throw new Error('Missing native module');
     }
-    const version: unknown = Reflect.get(native, '_lcb_callback_metadata_version');
+    const version: unknown = Reflect.get(native, '_bicore_abi_version');
     if (typeof version !== 'function') {
-      throw new Error('Missing synchronous callback metadata version');
+      throw new Error('Missing native ABI version');
     }
-    expect(Reflect.apply(version, native, [])).toBe(1);
+    expect(Reflect.apply(version, native, [])).toBe(3);
+    expect(catalog.callbackMetadata.version).toBe(2);
     for (const name of callbackGetters) {
-      expect(typeof Reflect.get(native, `_lcb_callback_${name}`)).toBe('function');
+      const getter = catalog.callbackMetadata.getters.find(getter => getter.name === name);
+      expect(getter).toEqual({ name, export: `_${name}` });
+      if (getter === undefined) {
+        throw new Error(`Missing synchronous callback getter: ${name}`);
+      }
+      expect(catalog.suspendingExports).not.toContain(getter.export.slice(1));
+      expect(typeof Reflect.get(native, getter.export)).toBe('function');
     }
-    const count: unknown = Reflect.get(native, '_lcb_callback_ggml_backend_dev_count');
+    const count: unknown = Reflect.get(native, '_ggml_backend_dev_count');
     if (typeof count !== 'function') {
       throw new Error('Missing synchronous callback device count');
     }
     const deviceCount: unknown = Reflect.apply(count, native, []);
-    expect(typeof deviceCount).toBe('bigint'); // Not a Promise, even though the ordinary API may be asynchronous.
-    expect(deviceCount).toBeGreaterThanOrEqual(0n);
+    expect(typeof deviceCount).toBe('number'); // Native Wasm32 size_t; synchronous, unlike a suspending call.
+    expect(deviceCount).toBeGreaterThanOrEqual(0);
     expect(instantiate).toHaveBeenCalledOnce();
     const compiledBytes = instantiate.mock.calls[0]?.[0];
     if (!ArrayBuffer.isView(compiledBytes)) {

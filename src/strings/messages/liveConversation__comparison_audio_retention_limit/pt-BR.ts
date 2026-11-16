@@ -1,0 +1,1 @@
+export const liveConversation__comparison_audio_retention_limit = (): string => "A geração foi interrompida ao atingir o limite de memória para manter áudio. Apenas o áudio que pôde ser mantido está disponível.";

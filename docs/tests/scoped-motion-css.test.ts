@@ -7,8 +7,23 @@ import { describe, expect, it } from 'vitest';
 
 const docsRoot = fileURLToPath(new URL('../', import.meta.url));
 const scopeId = 'data-v-docs-motion-test';
-const rootGuard = /^html:has\(#docs-(?:pause-motion|light-theme):checked\)$/;
-const sourceRootOnly = /^:global\(html:has\(#docs-(?:pause-motion|light-theme):checked\)\)$/;
+const preferenceRoot = /html(?::has\(#docs-(?:pause-motion|light-theme):checked\)|\[data-theme=(?:"light"|'light')\])/;
+const rootStart = new RegExp(`^${preferenceRoot.source}(?=\\s|$)`);
+const rootGuard = new RegExp(`^${preferenceRoot.source}$`);
+const sourceRootOnly = new RegExp(`^:global\\(${preferenceRoot.source}\\)$`);
+const sourceWholeGlobal = new RegExp(`^:global\\(${preferenceRoot.source}(?:\\s+.+)?\\)$`);
+
+function assertPreferenceSelector({ sourceSelector, compiledSelector, context }: { sourceSelector: string; compiledSelector: string; context: string }): void {
+  expect(compiledSelector, context).toMatch(rootStart);
+  if (sourceRootOnly.test(sourceSelector)) {
+    expect(compiledSelector, context).toMatch(rootGuard);
+    return;
+  }
+  expect(compiledSelector, context).not.toMatch(rootGuard);
+  if (!sourceWholeGlobal.test(sourceSelector)) {
+    expect(compiledSelector, context).toContain(`[${scopeId}]`);
+  }
+}
 
 function scopedStyles({ file }: { file: string }) {
   const filename = join(docsRoot, file);
@@ -58,21 +73,15 @@ describe('Docs scoped motion CSS', () => {
             const compiledSelectors = postcss.list.comma(compiledRule.selector);
             expect(compiledSelectors.length, `${file}:${sourceRule.source?.start?.line}`).toBe(sourceSelectors.length);
             for (const [selectorIndex, sourceSelector] of sourceSelectors.entries()) {
-              if (!sourceSelector.includes('#docs-pause-motion:checked') && !sourceSelector.includes('#docs-light-theme:checked')) {
+              if (!sourceSelector.includes('#docs-pause-motion:checked') && !sourceSelector.includes('#docs-light-theme:checked')
+                && !sourceSelector.match(/html\[data-theme=(?:"light"|'light')\]/)) {
                 continue;
               }
               const selector = compiledSelectors[selectorIndex];
               if (!selector) {
                 throw new Error(`Missing compiled selector in ${file}`);
               }
-              expect(selector, `${file}:${sourceRule.source?.start?.line}`).toMatch(/^html:has\(#docs-(?:pause-motion|light-theme):checked\)/);
-              if (sourceRootOnly.test(sourceSelector)) {
-                continue;
-              }
-              expect(selector, `${file}:${sourceRule.source?.start?.line}`).not.toMatch(rootGuard);
-              if (!sourceSelector.includes(':global(')) {
-                expect(selector, `${file}:${sourceRule.source?.start?.line}`).toContain(`[${scopeId}]`);
-              }
+              assertPreferenceSelector({ sourceSelector, compiledSelector: selector, context: `${file}:${sourceRule.source?.start?.line}` });
               checked++;
             }
           }
@@ -80,6 +89,35 @@ describe('Docs scoped motion CSS', () => {
       }
     }
     expect(checked).toBeGreaterThan(0);
+  });
+
+  it.each(["'light'", '"light"'])('rejects a lost descendant while allowing local targets and intentional global roots with %s', theme => {
+    const root = `html[data-theme=${theme}]`;
+    const compileSelector = ({ selector }: { selector: string }): string => {
+      const output = compileStyle({ source: `${selector} { color: blue; }`, filename: 'Preference.vue', id: scopeId, scoped: true });
+      expect(output.errors).toHaveLength(0);
+      const rules: Rule[] = [];
+      postcss.parse(output.code).walkRules(rule => {
+        rules.push(rule);
+      });
+      const compiled = rules[0]?.selector;
+      if (!compiled) {
+        throw new Error('Missing compiled preference selector');
+      }
+      return compiled;
+    };
+    const brokenSource = `:global(${root}) .camera`;
+    const broken = compileSelector({ selector: brokenSource });
+    expect(broken).toBe(root);
+    expect(() => assertPreferenceSelector({ sourceSelector: brokenSource, compiledSelector: broken, context: 'lost camera' })).toThrow();
+
+    const localSource = `${root} .camera`;
+    const local = compileSelector({ selector: localSource });
+    expect(local).toBe(`${root} .camera[${scopeId}]`);
+    expect(() => assertPreferenceSelector({ sourceSelector: localSource, compiledSelector: local, context: 'local camera' })).not.toThrow();
+
+    const globalSource = `:global(${root})`;
+    expect(() => assertPreferenceSelector({ sourceSelector: globalSource, compiledSelector: compileSelector({ selector: globalSource }), context: 'intentional global root' })).not.toThrow();
   });
 
   it.each([

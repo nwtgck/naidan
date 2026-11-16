@@ -6,6 +6,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
 import { useGenerationSpeedSettings } from '@/composables/useGenerationSpeedSettings';
+import { useLauncherSettings } from '@/composables/useLauncherSettings';
 import {
   FAKE_LM_ENDPOINT_URL,
   useFakeLmDebugMode,
@@ -20,6 +21,7 @@ const { isFeatureEnabled, setFeatureEnabled } = useFeatureFlags();
 const { showConfirm } = useConfirm();
 const { settings, save, setFakeLmDebugModeStatus } = useSettings();
 const { status: generationSpeedStatus, inlineStats: generationSpeedInlineStats, saving: generationSpeedSaving, update: updateGenerationSpeedSettings } = useGenerationSpeedSettings();
+const { unimplementedLauncherEntries, saving: launcherSettingsSaving, update: updateLauncherSettings } = useLauncherSettings();
 const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 
 const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
@@ -428,6 +430,13 @@ defineExpose({
         </div>
       </div>
       <NaidanRpcFeatureRow />
+      <label data-testid="launcher-unimplemented-entries-row" tw-class="flex cursor-pointer items-center justify-between gap-4 px-4 py-3.5 sm:px-5">
+        <span tw-class="space-y-1">
+          <span tw-class="block text-sm font-semibold text-gray-900 dark:text-gray-300">{{ lazyStrings.LauncherSettings__show_unimplemented_launcher_entries() }}</span>
+          <span tw-class="block text-xs leading-relaxed text-gray-600 dark:text-gray-400">{{ lazyStrings.LauncherSettings__only_changes_visibility_on_home_and_in_the_launcher() }}</span>
+        </span>
+        <SettingsChoiceControl presentation="switch" tone="amber"><input type="checkbox" :checked="unimplementedLauncherEntries === 'show'" :disabled="launcherSettingsSaving" data-testid="launcher-unimplemented-entries-toggle" @change="updateLauncherSettings({ visibility: ($event.target as HTMLInputElement).checked ? 'show' : 'hide' })" /></SettingsChoiceControl>
+      </label>
     </div>
 
     <div

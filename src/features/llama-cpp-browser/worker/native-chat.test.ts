@@ -50,7 +50,7 @@ describe.each(profiles)('native chat on %s', profile => {
   let model = 0n;
 
   beforeAll(async () => {
-    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     core = await createCore({ profile, baseURL, moduleOptions: { wasmBinary: await readFile(new URL(`${profile}/browser/core.wasm`, baseURL)), print() {}, printErr() {} } });
     await core.api.llama_backend_init();
     core.module.FS.writeFile('/fixture.gguf', createSyntheticGguf({ chatTemplate: template }));

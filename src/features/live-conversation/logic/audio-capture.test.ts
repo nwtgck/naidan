@@ -3,6 +3,105 @@ import { openLiveCapture } from './audio-capture';
 import { liveAudioBrowserFixture } from './audio-browser.test-support';
 
 describe('live microphone lifecycle', () => {
+  it('reads actual track settings only on request and exposes a safe subset without device identities', async () => {
+    using f = liveAudioBrowserFixture();
+    const settings = { autoGainControl: false, echoCancellation: true, noiseSuppression: true, sampleRate: 48000, channelCount: 1, latency: 0.01, deviceId: 'private-device', groupId: 'private-group', label: 'private-label' };
+    f.track.getSettings.mockReturnValue(settings);
+    f.permission.resolve(f.stream);
+    const capture = await openLiveCapture({ sampleRate: 24000, signal: new AbortController().signal, onPcm: vi.fn(), onError: vi.fn() });
+    await using resource = {
+      async [Symbol.asyncDispose]() {
+        await capture.finish({ action: 'discard' });
+      },
+    };
+    expect(f.track.getSettings).not.toHaveBeenCalled();
+    expect(capture.getSettings?.()).toEqual({ autoGainControl: false, echoCancellation: true, noiseSuppression: true, sampleRate: 48000, channelCount: 1, latency: 0.01 });
+    expect(f.media.getUserMedia).toHaveBeenCalledWith({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+    await capture.finish({ action: 'discard' });
+    expect(capture.getSettings?.()).toBeUndefined();
+    expect(f.track.getSettings).toHaveBeenCalledOnce();
+    void resource;
+  });
+
+  it('keeps missing or unavailable track settings unknown without failing capture', async () => {
+    using f = liveAudioBrowserFixture();
+    f.track.getSettings.mockReturnValue({ sampleRate: NaN, channelCount: 0 });
+    f.permission.resolve(f.stream);
+    const onError = vi.fn();
+    const capture = await openLiveCapture({ sampleRate: 24000, signal: new AbortController().signal, onPcm: vi.fn(), onError });
+    await using resource = {
+      async [Symbol.asyncDispose]() {
+        await capture.finish({ action: 'discard' });
+      },
+    };
+    expect(capture.getSettings?.()).toEqual({ autoGainControl: undefined, echoCancellation: undefined, noiseSuppression: undefined, sampleRate: undefined, channelCount: undefined, latency: undefined });
+    f.track.getSettings.mockImplementation(() => {
+      throw new Error('Unavailable');
+    });
+    expect(capture.getSettings?.()).toBeUndefined();
+    expect(onError).not.toHaveBeenCalled();
+    expect(f.track.stop).not.toHaveBeenCalled();
+    void resource;
+  });
+
+  it.each(['suspended', 'interrupted', 'closed'] as const)('reports a ready capture context becoming %s and stops forwarding PCM', async state => {
+    using f = liveAudioBrowserFixture();
+    f.permission.resolve(f.stream);
+    const onError = vi.fn(), onPcm = vi.fn();
+    const capture = await openLiveCapture({ sampleRate: 24000, signal: new AbortController().signal, onPcm, onError });
+    f.contexts[0]!.changeState({ state });
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledWith({ error: expect.objectContaining({ message: `Live microphone audio context is ${state}` }) });
+    expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(f.contexts[0]?.close).toHaveBeenCalledOnce();
+    expect(f.nodes[0]?.port.close).toHaveBeenCalledOnce();
+    f.nodes[0]!.deliver({ data: { type: 'pcm', pcm: new Float32Array(2048) } });
+    f.contexts[0]!.changeState({ state: 'running' });
+    await capture.finish({ action: 'discard' });
+    expect(onPcm).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledOnce();
+    expect(f.contexts[0]?.onstatechange).toBeNull();
+  });
+
+  it('waits for initial resume without treating its suspended state as a capture interruption', async () => {
+    using f = liveAudioBrowserFixture();
+    const resumed = Promise.withResolvers<void>();
+    f.resume.mockReturnValue(resumed.promise);
+    const onError = vi.fn();
+    const opening = openLiveCapture({ sampleRate: 24000, signal: new AbortController().signal, onPcm: vi.fn(), onError });
+    f.contexts[0]!.changeState({ state: 'suspended' });
+    f.permission.resolve(f.stream);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(f.contexts[0]?.audioWorklet.addModule).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(f.track.stop).not.toHaveBeenCalled();
+    resumed.resolve();
+    const capture = await opening;
+    await capture.finish({ action: 'discard' });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it.each(['abort', 'discard', 'send'] as const)('does not report its intentional close during %s as an interruption', async action => {
+    using f = liveAudioBrowserFixture();
+    f.permission.resolve(f.stream);
+    const controller = new AbortController(), onError = vi.fn();
+    const capture = await openLiveCapture({ sampleRate: 24000, signal: controller.signal, onPcm: vi.fn(), onError });
+    switch (action) {
+    case 'abort': controller.abort();
+      break;
+    case 'discard': case 'send': await capture.finish({ action });
+      break;
+    default: {
+      const exhaustive: never = action;
+      throw new Error(String(exhaustive));
+    }
+    }
+    expect(f.contexts[0]?.close).toHaveBeenCalledOnce();
+    expect(f.contexts[0]?.onstatechange).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('closes the AudioContext when resampler configuration fails', async () => {
     using f = liveAudioBrowserFixture();
     await expect(openLiveCapture({ sampleRate: 0, signal: new AbortController().signal, onPcm: vi.fn(), onError: vi.fn() })).rejects.toThrow();

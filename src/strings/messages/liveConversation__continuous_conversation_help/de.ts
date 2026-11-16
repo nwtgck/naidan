@@ -1,0 +1,1 @@
+export const liveConversation__continuous_conversation_help = (): string => 'Kopfhörer werden empfohlen. Sprich kurz, sobald das Mikrofon bereit ist, und warte dann auf die Antwort, ohne zu stoppen. Die Stopp-Taste beendet das gesamte Gespräch einschließlich der Antwort. Texteingabe, Anhänge, Transkription und Shell-Werkzeuge sind bei Mikrofongesprächen nicht verfügbar.';

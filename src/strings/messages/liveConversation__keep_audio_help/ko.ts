@@ -1,1 +1,1 @@
-export const liveConversation__keep_audio_help = (): string => 'Off by default. Keep your input and model speech only in memory for replay. Turning this off erases all retained audio. A new conversation or reload also clears it.';
+export const liveConversation__keep_audio_help = (): string => '기본값은 꺼짐입니다. 대화나 메시지를 시작하기 전에 켜세요. 음성은 다시 듣거나 WAV로 저장할 수 있도록 메모리에만 보관됩니다. 끄면 보관된 대화 음성이 삭제됩니다. 다시 켜면 다음 대화나 메시지부터 보관됩니다. 이 설정은 조사 결과를 삭제하지 않습니다. 새 대화를 시작하거나 페이지를 새로고침하면 보관된 음성이 삭제됩니다.';

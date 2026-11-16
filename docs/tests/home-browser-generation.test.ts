@@ -65,7 +65,7 @@ describe('home browser generation examples', () => {
     expect(chatExample?.querySelector('[data-testid="docs-local-chat-model"]')?.textContent).toContain(messages.gguf_model);
     expect(chatExample?.querySelector('[data-testid="docs-local-chat-question"]')?.textContent).toContain(messages.chat_question);
     expect(chatExample?.querySelector('[data-testid="docs-remote-chat-server"] .received-prompt')?.textContent).toBe(messages.chat_question);
-    expect(chatExample?.querySelector('.generation-alt-route a')?.getAttribute('href')).toBe(docsHref({ locale, page: 'local-ai-servers' }));
+    expect(chatExample?.querySelector('.generation-alt-route a')?.getAttribute('href')).toBe(docsHref({ locale, page: 'local-ai-server' }));
     expect(chatExample?.querySelector('.generation-alt-route')?.textContent).toContain('Ollama');
     const imageExample = examples[1];
     const imageHeading = imageExample?.querySelector('#browser-generation-image-title');

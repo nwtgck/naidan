@@ -267,6 +267,11 @@ export default [
     languageOptions: { parser: vueParser, parserOptions: { parser: tseslint.parser, project: false } },
   },
   {
+    name: 'naidan/string-catalog-typechecking',
+    files: ['src/strings/catalogs/**/*.{ts,tsx,vue}', 'src/strings/messages/**/*.{ts,tsx,vue}'],
+    languageOptions: { parserOptions: { project: ['./tsconfig.strings.json'] } },
+  },
+  {
     name: 'naidan/docs-typechecking',
     files: ['docs/**/*.{ts,tsx,vue}', 'build/docs-dev-bridge.ts'],
     languageOptions: { parserOptions: { project: ['./docs/tsconfig.json'] } },

@@ -29,7 +29,7 @@ defineExpose({
       :key="paragraph"
       class="lead"
     >{{ paragraph }}</p>
-    <p class="app-entry-intro"><RenderText :node="s.launch_app_and_model_guide({ locale, destination: { kind: 'screen', screen: 'home' }, page: 'in-browser-models' })" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.launch_app_and_model_guide({ locale, destination: { kind: 'screen', screen: 'home' }, page: 'in-browser-model' })" /></p>
     <figure class="guide-figure"><FolderAccessDemo :messages="s" /><figcaption class="caption"><RenderText :node="s.folder_copy_caption()" /></figcaption></figure>
     <div class="pair-grid methods">
       <section
@@ -41,6 +41,9 @@ defineExpose({
         <p>{{ method.body }}</p>
       </section>
     </div>
+    <h2>{{ s.copying_heading }}</h2>
+    <p><RenderText :node="s.copying_body()" /></p>
+    <p>{{ s.copying_lifetime }}</p>
     <h2>{{ s.read_and_write_permissions_title }}</h2>
     <p>{{ s.read_and_write_permissions_body }}</p>
     <p><RenderText :node="s.read_saved_files_with_shell({ locale, page: 'wesh-sysfs' })" /></p>
@@ -54,8 +57,8 @@ defineExpose({
     </ol>
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
       { page: 'file-explorer', title: s.file_explorer_guide_title, description: s.file_explorer_guide_description },
-      { page: 'files-and-folders-settings', title: s.file_settings_guide_title, description: s.file_settings_guide_description },
-      { page: 'browser-boundaries', title: s.browser_permissions_guide_title, description: s.browser_permissions_guide_description },
+      { page: 'file-and-folder-settings', title: s.file_settings_guide_title, description: s.file_settings_guide_description },
+      { page: 'browser-boundary', title: s.browser_permissions_guide_title, description: s.browser_permissions_guide_description },
     ]" />
   </article>
 </template>

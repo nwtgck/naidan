@@ -56,7 +56,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <h2>{{ s.model_troubleshooting_heading }}</h2>
     <p><RenderText :node="s.model_troubleshooting()" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-model', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
   </article>
 </template>
 

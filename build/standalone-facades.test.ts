@@ -4,6 +4,18 @@ import { describe, expect, it } from 'vitest';
 import { createStandaloneFacadeAliases, STANDALONE_FACADES } from './standalone-facades.js';
 
 describe('standalone facades', () => {
+  it('keeps speech on its Worker-free standalone client', () => {
+    const facadePath = '@/features/speech-cpp-browser/worker/client';
+    const standalonePath = 'src/features/speech-cpp-browser/worker/client-standalone.ts';
+    const aliases = createStandaloneFacadeAliases({ resolvePath: path => `/repo/${path}` });
+    const alias = aliases.find(({ find }) => find instanceof RegExp && find.test(facadePath));
+    expect(alias?.replacement).toBe(`/repo/${standalonePath}`);
+    const source = readFileSync(resolve(process.cwd(), standalonePath), 'utf8');
+    expect(source).not.toContain('new Worker');
+    expect(source).not.toContain('speech-cpp-browser-core');
+    expect(source).not.toContain('client-hosted');
+  });
+
   it('replaces the lazy kernel diagnostic client with its Worker-free standalone facade', () => {
     const facadePath = '@/features/llama-cpp-browser/performance/q8-diagnostic-client';
     const owner = readFileSync(resolve(process.cwd(), 'src/features/llama-cpp-browser/performance/run-q8-diagnostic.ts'), 'utf8');

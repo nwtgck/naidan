@@ -32,7 +32,8 @@ describe('Wikipedia chat guide', () => {
     ]);
     const tools = steps[0]?.querySelector('[data-testid="docs-chat-input-tools"]');
     expect(tools?.querySelector('[data-testid="docs-wikipedia-open-pointer"]')).not.toBeNull();
-    expect(steps[0]?.textContent).toContain(s.tool_session_notice);
+    expect(steps[0]?.querySelector('.tool-session-note')).toBeNull();
+    expect(steps[1]?.querySelector('.tool-session-note')).toBeNull();
     expect(steps[1]?.textContent).toContain('/sys/fs/naidan');
     expect(steps[1]?.textContent).toContain(s.current_chat_scope);
     expect(steps[1]?.textContent).toContain(s.shell_tool);
@@ -44,7 +45,7 @@ describe('Wikipedia chat guide', () => {
     expect(steps[2]?.textContent).toContain(s.allow_for_chat);
     expect(steps[2]?.textContent).toContain(s.allow_globally);
     expect(steps[2]?.querySelector('p')?.textContent).toContain(locale === 'en' ? 'The Curated hosted version' : 'Curated版のCSP');
-    expect(steps[2]?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/csp-editions/`);
+    expect(steps[2]?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/csp-edition/`);
     expect(steps[3]?.querySelector('.approval-panel')?.textContent).toContain(s.allow_once);
     expect(article?.querySelector('[data-testid="wikipedia-chat-result"] .assistant-message')?.textContent).toBe(s.aurora_answer);
     expect(steps[2]?.querySelector('[data-testid="docs-chat-input"]')?.getAttribute('data-status')).toBe('generating');

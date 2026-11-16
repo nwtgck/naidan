@@ -28,6 +28,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <figure class="guide-figure"><FileExplorerStep stage="browse" :messages="s" /><figcaption class="caption">{{ s.browse_files_caption }}</figcaption></figure>
     </section>
 
+    <section class="explorer-step" aria-labelledby="explorer-archive">
+      <h2 id="explorer-archive">{{ s.browse_zip_title }}</h2>
+      <p><RenderText :node="s.browse_zip_body()" /></p>
+      <figure class="guide-figure"><FileExplorerStep stage="archive" :messages="s" /><figcaption class="caption">{{ s.browse_zip_caption }}</figcaption></figure>
+      <p><RenderText :node="s.browse_zip_copy_out()" /></p>
+    </section>
+
     <section class="explorer-step" aria-labelledby="explorer-upload">
       <h2 id="explorer-upload">{{ s.upload_files_title }}</h2>
       <p><RenderText :node="s.upload_files_body()" /></p>

@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe('prebuilt runtime loading', () => {
   it('decompresses the served core asset and initializes the actual supplied CPU Wasm', async () => {
-    const base = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
+    const base = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/runtimes/llama-cpp-browser-core/profiles') + '/');
     const wasm = await readFile(new URL('cpu-wasm32/browser/core.wasm', base));
     const fetcher = vi.fn().mockResolvedValue(new Response(Uint8Array.from(gzipSync(wasm))));
     vi.stubGlobal('fetch', fetcher);
@@ -27,7 +27,8 @@ describe('prebuilt runtime loading', () => {
     expect(fetcher).toHaveBeenCalledOnce();
     expect(String(fetcher.mock.calls[0]?.[0])).toBe(new URL('cpu-wasm32/core.wasm.gz', base).href);
     expect(core.pointerBytes).toBe(4);
-    expect(Object.getPrototypeOf(core.api)).toBeNull();
+    expect(Object.hasOwn(core.api, 'ggml_backend_dev_count')).toBe(true);
+    expect(core.hasFunction({ name: 'toString' })).toBe(false);
     expect(await core.api.ggml_backend_dev_count()).toBeGreaterThan(0n);
     expect(JSON.stringify(debug.mock.calls)).toContain('runtime-ready');
     expect(JSON.stringify(debug.mock.calls)).not.toContain(base.href);

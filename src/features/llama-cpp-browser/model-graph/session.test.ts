@@ -12,7 +12,7 @@ const calls = vi.hoisted(() => ({ open: vi.fn(), runtime: vi.fn(), releaseNative
 vi.mock('@/features/llama-cpp-browser/worker/model-file-access', () => ({ openModelFileAccess: calls.open }));
 vi.mock('@/features/llama-cpp-browser/worker/session', () => ({ prepareRuntime: calls.runtime, releaseSession: calls.releaseNative }));
 vi.mock('@/features/llama-cpp-browser/worker/model-file-identity', () => ({ sameModelFile: async () => true }));
-vi.mock('./native-boundary', () => ({ bindModelGraphBoundary: calls.bind, modelGraphNativeSchemaHash: 'b'.repeat(64) }));
+vi.mock('./native-boundary', () => ({ bindModelGraphBoundary: calls.bind }));
 vi.mock('./engine', () => ({ createModelGraphEngine: calls.engine }));
 
 const bytes = createPositionSensitiveGguf({ chatTemplate: 'chatml' });
@@ -32,7 +32,7 @@ beforeEach(() => {
   calls.engine.mockResolvedValue(engine);
   createVocabulary.mockResolvedValue(vocabulary);
   calls.runtime.mockResolvedValue({ core: { api: { llama_vocab_n_tokens: vocabSize } } as unknown as Core, profile: 'cpu-wasm32' });
-  calls.bind.mockReturnValue({ architectureKnown: known, createVocabulary });
+  calls.bind.mockReturnValue({ architectureKnown: known, createVocabulary, schemaSha256: 'b'.repeat(64) });
   calls.open.mockImplementation(async () => ({
     getSize: () => bytes.length,
     read: (destination: Uint8Array, options: { at: number }) => {

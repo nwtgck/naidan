@@ -16,7 +16,13 @@ const featurePages = [
 ] as const;
 
 const guidePages = [
-  'chat-groups',
+  'translation',
+  'live-conversation',
+  'workflow',
+  'image-generation-multi-prompt',
+  'image-understanding',
+  'chat-search',
+  'chat-group',
   'tool-wikipedia',
   'pwa',
 ] as const;
@@ -55,11 +61,23 @@ const generationDescriptions = {
 
 const guideTitles = {
   en: [
+    'Translate text locally',
+    'Talk with local AI using your voice',
+    'Connect AI requests and reuse the steps',
+    'Generate multiple images from multiple prompts',
+    'Ask local AI about images',
+    'Search past AI conversations',
     'Keep chats organized by purpose',
     'Use Wikipedia to inform local AI answers',
     'Use Naidan offline as a PWA',
   ],
   ja: [
+    'ローカルで文章を翻訳する',
+    'ローカルAIと音声で会話する',
+    'AIへの依頼をつなぎ、繰り返し使う',
+    '複数のプロンプトで、複数の画像を生成する',
+    '画像についてローカルAIに質問する',
+    'AIとの過去の会話を検索する',
     '用途別にチャットをまとめる',
     'Wikipediaの情報でローカルAIの回答を補う',
     'NaidanをPWAとしてオフラインで使う',
@@ -137,12 +155,12 @@ describe('Docs home brand', () => {
     expect(standaloneGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'standalone' }));
     expect(standaloneGuide?.textContent).toContain(standaloneDescription);
     const localOnlyGuide = home.document.querySelector('[data-testid="docs-local-only-guide"]');
-    expect(localOnlyGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'csp-editions' }));
+    expect(localOnlyGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'csp-edition' }));
     expect(localOnlyGuide?.textContent).toBe(localOnlyLink);
     expect(home.document.querySelector('script[src="/docs/client/home-brand.ts"]')).not.toBeNull();
     expect(home.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
 
-    using guide = parsePage({ html: await (await dev.request({ url: docsHref({ locale, page: 'browser-boundaries' }) })).text() });
+    using guide = parsePage({ html: await (await dev.request({ url: docsHref({ locale, page: 'browser-boundary' }) })).text() });
     expect(guide.document.querySelector('[data-docs-hero-brand]')).toBeNull();
     expect(guide.document.querySelector('script[src="/docs/client/home-brand.ts"]')).toBeNull();
     expect(guide.document.querySelector('[data-testid="docs-header"] [data-testid="docs-guide-menu"]')).not.toBeNull();
@@ -206,7 +224,7 @@ describe('Docs home brand', () => {
 </style></head><body>
 <header class="topbar" data-testid="docs-header"><div class="topbar-inner">
 <div data-docs-brand-slot><a data-docs-brand-link href="/docs/en/" aria-label="Home"><img><span class="brand-wordmark">Naidan</span></a><span data-docs-brand-spacer aria-hidden="true"></span></div>
-<details class="docs-guide-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/in-browser-models/">Models</a></div></details>
+<details class="docs-guide-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/in-browser-model/">Models</a></div></details>
 <div class="docs-search"><button class="docs-search-trigger" type="button">Search</button></div>
 </div></header>
 <input id="docs-pause-motion" type="checkbox">
@@ -569,7 +587,7 @@ describe('Docs home brand', () => {
 <!doctype html><html><head><style>${css}</style></head><body>
 <header class="topbar"><div class="topbar-inner">
 <div class="brand-group"><a data-docs-brand-link href="/docs/en/">Naidan</a></div>
-<details class="docs-guide-menu" name="docs-header-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/in-browser-models/">Models</a></div></details>
+<details class="docs-guide-menu" name="docs-header-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/in-browser-model/">Models</a></div></details>
 <button class="docs-search-trigger" type="button">Search</button>
 <div class="nav-controls"><details class="locale-menu" name="docs-header-menu"><summary class="locale-trigger">EN</summary><nav class="locale-panel"><a href="/docs/en/">English</a><a href="/docs/ja/">日本語</a></nav></details></div>
 </div></header></body></html>`);
@@ -601,7 +619,7 @@ describe('Docs home brand', () => {
     expect(Number(openZ)).toBeGreaterThan(Number(dom.window.getComputedStyle(brand).zIndex));
     expect(openZ).not.toBe(closedZ);
     expect(menu.querySelector('summary')).toBe(guideTrigger);
-    expect(menu.querySelector('a')?.getAttribute('href')).toBe('/docs/en/in-browser-models/');
+    expect(menu.querySelector('a')?.getAttribute('href')).toBe('/docs/en/in-browser-model/');
     menu.open = false;
     localeMenu.open = true;
     expect(Number(dom.window.getComputedStyle(controls).zIndex)).toBeGreaterThan(Number(dom.window.getComputedStyle(brand).zIndex));

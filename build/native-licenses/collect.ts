@@ -14,6 +14,7 @@ function runtimeLabel({ runtime }: { runtime: NativeLicenseRuntime }): string {
   switch (runtime) {
   case 'llama-cpp': return 'llama.cpp';
   case 'stable-diffusion-cpp': return 'stable-diffusion.cpp';
+  case 'speech-cpp': return 'speech.cpp';
   default: {
     const exhaustive: never = runtime;
     throw new Error(`Unknown native runtime: ${exhaustive}`);

@@ -61,10 +61,10 @@ describe('data guides', () => {
     const article = page.document.querySelector('[data-testid="docs-data-backup"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
     expect(article?.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
-    expect(article?.querySelectorAll('.walkthrough-step')).toHaveLength(3);
+    expect(article?.querySelectorAll('.walkthrough-step')).toHaveLength(4);
 
-    const body = { export: s.download_backup_zip_instructions, preview: s.inspect_archive_instructions };
-    for (const stage of ['export', 'preview'] as const) {
+    const body = { export: s.download_backup_zip_instructions, base64: s.base64_instructions, preview: s.inspect_archive_instructions };
+    for (const stage of ['export', 'base64', 'preview'] as const) {
       const step = article?.querySelector(`#backup-${stage}`)?.closest('section');
       expect(step?.textContent).toContain(await renderedText({ node: body[stage]() }));
       expect(step?.querySelector(`[data-docs-animation="backup-${stage}"]`)).not.toBeNull();
@@ -79,6 +79,18 @@ describe('data guides', () => {
     expect(modeSection?.querySelector('[data-docs-animation="backup-mode"]')).not.toBeNull();
 
     expect(article?.querySelector('[data-testid="backup-step-export"]')?.textContent).toContain(s.exclude_chat_history);
+    expect(article?.querySelector('[data-testid="backup-step-export"] .export-split')?.textContent).toContain(s.download_zip);
+    const generated = article?.querySelector('[data-testid="backup-generated-archive"]');
+    expect(generated?.querySelector('.generated-read-only')?.textContent).toContain(s.read_only);
+    expect(generated?.querySelector('.generated-breadcrumb')?.textContent).toContain(s.example_backup_zip_filename);
+    expect(generated?.querySelector('.generated-breadcrumb')?.textContent).not.toContain('OPFS');
+    expect(generated?.textContent).not.toContain(locale === 'en' ? 'Paste' : '貼り付け');
+    const base64 = article?.querySelector('[data-testid="backup-step-base64"]');
+    expect(base64?.querySelector('[data-testid="backup-base64-export"]')?.textContent).toContain(s.prepare_base64);
+    expect(base64?.querySelector('[data-testid="backup-base64-copy"]')?.textContent).toContain(s.copy_base64);
+    expect(base64?.querySelector('[data-testid="backup-base64-import"]')?.textContent).toContain(s.read_base64);
+    expect(article?.textContent).toContain(s.base64_explanation);
+    expect(article?.querySelectorAll('figure button, figure input, figure textarea, figure a')).toHaveLength(0);
     expect(article?.querySelector('[data-testid="backup-step-preview"]')?.textContent).toContain(s.content_preview);
     const mode = article?.querySelector('[data-testid="backup-step-mode"]');
     expect(mode?.querySelector('.app-canvas .settings-window .backup-card')).not.toBeNull();

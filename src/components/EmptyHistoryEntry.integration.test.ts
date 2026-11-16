@@ -41,7 +41,7 @@ vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchCoordinator', ()
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ addToast: vi.fn(() => 'toast') }) }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn(), addInfoEvent: vi.fn() }) }));
 vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ isSidebarOpen: ref(false), isDebugOpen: ref(false), setActiveFocusArea: vi.fn() }) }));
-vi.mock('@/components/Sidebar.vue', () => ({ default: { template: '<aside />' } }));
+vi.mock('@/components/AppSidebar.vue', () => ({ default: { template: '<aside />' } }));
 vi.mock('@/components/HomeWelcome.vue', () => ({ default: { template: '<div data-testid="root-home" />' } }));
 vi.mock('@/components/AppEntrySurface.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div data-testid="model-preview" />' } }));
 vi.mock('@/components/ChatPane.vue', () => ({ default: { props: ['chatId'], template: '<div data-testid="selected-chat" :data-chat-id="chatId" />' } }));

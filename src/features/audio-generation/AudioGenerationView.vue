@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import SettingsSelectScope from '@/components/SettingsSelectScope.vue';
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useId } from 'vue';
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
+import { routeLocationKey } from 'vue-router';
 import { AudioLinesIcon, ChevronRightIcon, FolderOpenIcon, Loader2Icon, RefreshCcwIcon, SlidersHorizontalIcon } from 'lucide-vue-next';
 import { currentLocale, lazyStrings } from '@/strings';
 import { audioLanguageOptions, defaultAudioLanguage } from './languages';
@@ -21,8 +22,11 @@ import ModelSelector from '@/components/ModelSelector.vue';
 import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
 import { audioModelCatalog } from './model-catalog';
 import AudioReferenceInput from './components/AudioReferenceInput.vue';
+import { revealAudioGenerationSection } from './navigation';
 
 const id = useId();
+const route = inject(routeLocationKey, undefined);
+const page = ref<HTMLElement>();
 const manager = ref<InstanceType<typeof LlamaCppBrowserManager>>();
 const recovery = shallowRef<AbortController>();
 const { models, modelId, scope: modelScope, scanState, visibleModels, detectedCount, detections,
@@ -63,6 +67,14 @@ const canGenerate = computed(() => !blocked.value && !referenceBusy.value && run
 let disposed = false;
 let generation = 0;
 let unsubscribe: (() => void) | undefined;
+
+function revealSection(): void {
+  if (page.value !== undefined && route !== undefined) {
+    revealAudioGenerationSection({ hash: route.hash, root: page.value });
+  }
+}
+
+watch(() => route?.hash, revealSection, { flush: 'post' });
 
 const selectableModelIds = computed(() => visibleModels.value.map(entry => entry.modelId));
 const selectedDetection = computed(() => detections.value.get(modelId.value));
@@ -287,6 +299,7 @@ function stop(): void {
 }
 
 onMounted(() => {
+  revealSection();
   unsubscribe = llamaCppBrowserService.subscribe({
     listener: ({ state: next }) => {
       state.value = next;
@@ -305,13 +318,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div tw-class="absolute inset-0 overflow-y-auto overscroll-y-contain bg-[#fcfcfd] dark:bg-gray-900" data-testid="audio-generation-scroll">
-    <main tw-class="mx-auto w-full max-w-4xl space-y-5 px-4 py-6 text-gray-900 sm:px-8 sm:py-8 dark:text-gray-100" data-testid="audio-generation-page">
+    <main ref="page" tw-class="mx-auto w-full max-w-4xl space-y-5 px-4 py-6 text-gray-900 sm:px-8 sm:py-8 dark:text-gray-100" data-testid="audio-generation-page">
       <header tw-class="space-y-3 pb-2">
         <h1 tw-class="flex items-center gap-3 text-xl font-semibold tracking-tight"><span tw-class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50/80 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><AudioLinesIcon aria-hidden="true" tw-class="h-5 w-5" /></span>{{ lazyStrings.audioGeneration__audio_generation() }}</h1>
         <p tw-class="max-w-2xl text-xs leading-6 text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__introduction() }}</p>
       </header>
       <LlamaCppBrowserModelSuggestions :suggestions="audioModelCatalog" :models="models" :disabled="blocked" :default-model="undefined" :default-action-disabled="blocked" selection-action="select" memory-filter="hide" @select="selectModel({ modelId: $event.modelId })" />
-      <details :open="models.length === 0" tw-class="group/audio-manager overflow-hidden rounded-xl border border-gray-200/70 bg-white/60 dark:border-gray-800/80 dark:bg-gray-900/20" data-testid="audio-model-manager">
+      <details id="audio-generation-models" :open="models.length === 0" tw-class="group/audio-manager overflow-hidden rounded-xl border border-gray-200/70 bg-white/60 dark:border-gray-800/80 dark:bg-gray-900/20" data-testid="audio-model-manager">
         <summary tw-class="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/40 dark:text-gray-200 dark:hover:bg-gray-800/40 [&::-webkit-details-marker]:hidden"><FolderOpenIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" /><span tw-class="min-w-0 flex-1">{{ lazyStrings.audioGeneration__manage_models_and_runtime() }}</span><ChevronRightIcon aria-hidden="true" tw-class="h-6 w-6 shrink-0 rounded-lg bg-gray-100/70 p-1.5 text-gray-400 transition-transform duration-200 group-open/audio-manager:rotate-90 group-open/audio-manager:bg-blue-50 group-open/audio-manager:text-blue-500 motion-reduce:transition-none dark:bg-gray-800 dark:group-open/audio-manager:bg-blue-500/10" /></summary>
         <div tw-class="max-h-[65dvh] min-h-0 space-y-4 overflow-y-auto overscroll-y-contain border-t border-gray-100 p-4 dark:border-gray-800" data-testid="audio-model-manager-scroll">
           <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_setup_help() }}</p>
@@ -319,7 +332,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <LlamaCppBrowserManager ref="manager" presentation="embedded" suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ modelId: $event })" @runtime-ready="runtimeReady = $event" />
         </div>
       </details>
-      <form ref="form" novalidate @submit.prevent="generate" tw-class="space-y-5">
+      <form id="audio-generation-input" ref="form" tabindex="-1" novalidate @submit.prevent="generate" tw-class="space-y-5">
         <div v-if="invalid || failure" role="alert" data-testid="audio-error" tw-class="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/10 p-4 text-sm text-red-700 dark:text-red-400">
           <p>{{ errorMessage }}</p>
           <ul v-if="invalid" tw-class="mt-2 space-y-2">
@@ -396,14 +409,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="stopped" role="status" data-testid="audio-stopped" tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__generation_stopped() }}</p>
 
       </form>
-      <section v-if="history.length" tw-class="space-y-3 border-t border-gray-100 pt-6 dark:border-gray-800" data-testid="audio-history">
-        <div tw-class="flex flex-wrap items-center justify-between gap-3">
+      <section id="audio-generation-results" tabindex="-1" :aria-label="lazyStrings.audioGeneration__generated_audio()">
+        <section v-if="history.length" tw-class="space-y-3 border-t border-gray-100 pt-6 dark:border-gray-800" data-testid="audio-history">
+          <div tw-class="flex flex-wrap items-center justify-between gap-3">
+            <h2 tw-class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.audioGeneration__generated_audio() }}</h2>
+            <button type="button" @click="clearHistory" data-testid="audio-delete-all" tw-class="min-h-9 rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 dark:text-gray-400 dark:hover:bg-red-500/10 dark:hover:text-red-400">{{ lazyStrings.audioGeneration__delete_all_audio() }}</button>
+          </div>
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400" data-testid="audio-history-usage">{{ lazyStrings.audioGeneration__history_memory_usage({ count: history.length, mebibytes: (totalBytes / (1024 * 1024)).toFixed(2) }) }}</p>
+          <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__output_lifetime() }}</p>
+          <AudioHistoryResult v-for="entry in history" :key="entry.id" :entry="entry" @remove="removeHistory({ id: $event })" />
+        </section>
+        <div v-else tw-class="space-y-3 border-t border-gray-100 pt-6 dark:border-gray-800">
           <h2 tw-class="text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ lazyStrings.audioGeneration__generated_audio() }}</h2>
-          <button type="button" @click="clearHistory" data-testid="audio-delete-all" tw-class="min-h-9 rounded-lg px-3 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 dark:text-gray-400 dark:hover:bg-red-500/10 dark:hover:text-red-400">{{ lazyStrings.audioGeneration__delete_all_audio() }}</button>
+          <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__output_lifetime() }}</p>
         </div>
-        <p tw-class="text-xs text-gray-500 dark:text-gray-400" data-testid="audio-history-usage">{{ lazyStrings.audioGeneration__history_memory_usage({ count: history.length, mebibytes: (totalBytes / (1024 * 1024)).toFixed(2) }) }}</p>
-        <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__output_lifetime() }}</p>
-        <AudioHistoryResult v-for="entry in history" :key="entry.id" :entry="entry" @remove="removeHistory({ id: $event })" />
       </section>
     </main>
   </div>

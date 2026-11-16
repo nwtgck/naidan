@@ -1,0 +1,1 @@
+export const liveConversation__microphone_recording_help = (): string => "Stopping the recording transcribes it with the loaded recognition model. Without a loaded model, you can replay and save the recording. Recordings are limited to 3 minutes.";

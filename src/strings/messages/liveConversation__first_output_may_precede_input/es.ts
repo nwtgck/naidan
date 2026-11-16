@@ -1,0 +1,1 @@
+export const liveConversation__first_output_may_precede_input = (): string => "La primera salida puede ser un fotograma inicial anterior al envío de la entrada. No es el tiempo de respuesta al audio.";

@@ -20,7 +20,7 @@ it('requires the optional retention version signature only when the verified fea
   expect(() => assertImageRuntimeContract({ schema, bf16WeightRetention: true })).toThrow('incompatible upstream function: sd_browser_bf16_retention_version');
 });
 
-it('rejects the old four-argument result API even though it uses ABI 2', () => {
+it('rejects the old four-argument result API even with the current ABI version', () => {
   const schema = imageRuntimeSchemaFixture();
   const generate = schema.functions.find(entry => entry.name === 'generate_image')!;
   generate.parameters[2]!.cType = 'sd_image_t **';
@@ -67,7 +67,7 @@ it('rejects duplicate declarations instead of using an ambiguous record or signa
   expect(() => assertImageRuntimeContract({ schema })).toThrow('duplicate generated field names');
 });
 
-it.each([undefined, {}, { abiVersion: 1 }, { ...imageRuntimeSchemaFixture(), pointerRepresentation: 'number' }])('rejects malformed or incompatible schema values', schema => {
+it.each([undefined, {}, { abiVersion: 1 }, { ...imageRuntimeSchemaFixture(), abiVersion: 2 }, { ...imageRuntimeSchemaFixture(), pointerRepresentation: 'number' }])('rejects malformed or incompatible schema values', schema => {
   expect(() => assertImageRuntimeContract({ schema })).toThrow('incompatible generated API schema');
 });
 

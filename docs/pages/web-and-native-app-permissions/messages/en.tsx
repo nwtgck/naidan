@@ -100,5 +100,5 @@ export const messages = {
   standalone_guide_title: 'Start AI in your browser',
   standalone_guide_description: 'Open Naidan Standalone without an installer or app server.',
   desktop_sandbox_comparison: ({ locale }: { locale: DocsLocale }) => <>An app’s packaging and operating-system protections matter. A sandboxed desktop app can have a narrower boundary than an ordinary desktop process. <ExternalLink href="https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox" locale={locale}>Apple: macOS App Sandbox</ExternalLink></>,
-  local_only_connection_guide: ({ locale }: { locale: DocsLocale }) => <DocsLink locale={locale} page="csp-editions">See how Naidan’s Local-only edition restricts connections <span aria-hidden="true">→</span></DocsLink>,
+  local_only_connection_guide: ({ locale }: { locale: DocsLocale }) => <DocsLink locale={locale} page="csp-edition">See how Naidan’s Local-only edition restricts connections <span aria-hidden="true">→</span></DocsLink>,
 };

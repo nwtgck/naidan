@@ -1,0 +1,1 @@
+export const liveConversation__input_queue_limit_reached = (): string => "Unterbrochen, weil ausstehende Eingaben das Limit erreicht haben. Die Verarbeitung konnte mit diesem Eingabetempo nicht mithalten.";

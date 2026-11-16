@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.strings.tsbuildinfo"
+  },
+  "include": ["src/strings/catalogs/**/*", "src/strings/messages/**/*"],
+  "exclude": []
+}

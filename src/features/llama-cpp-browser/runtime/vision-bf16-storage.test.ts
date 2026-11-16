@@ -1,10 +1,9 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Core } from './core';
 import { visionBf16Metadata } from './vision-bf16-storage.test-support';
 
 const host = vi.hoisted(() => ({ schema: undefined as unknown }));
-vi.mock('llama-cpp-browser-core/api/schema.mjs', () => ({
+vi.mock('llama-cpp-browser-core/llama-cpp/api/schema.mjs', () => ({
   get default() {
     return host.schema;
   },
@@ -18,17 +17,29 @@ beforeEach(() => {
 function fixture({ requested }: { requested: number }) {
   const version = vi.fn(async () => 1), initialize = vi.fn(async () => 700n), query = vi.fn(async () => requested), legacy = vi.fn(async () => 900n);
   const constants: Record<string, number> = { MTMD_VISION_BF16_STORAGE_INVALID: -1, MTMD_VISION_BF16_STORAGE_LEGACY_EXPAND: 0, MTMD_VISION_BF16_STORAGE_RETAIN_CHECKED: 1 };
-  const constant = vi.fn(({ name }: { name: string }) => constants[name]);
+  const constant = vi.fn(({ name }: { name: string }) => {
+    const value = constants[name];
+    if (value === undefined) {
+      throw new Error('Unknown fixture constant');
+    }
+    return value;
+  });
+  const module: Record<string, unknown> = { _mtmd_vision_bf16_storage_version() {}, _bicore_mtmd_init_from_file_with_vision_bf16_storage() {}, _mtmd_context_vision_bf16_storage() {} };
+  const hasFunction = ({ name }: { name: string }) => {
+    const declared = visionBf16Metadata.functions.find(fn => fn.name === name);
+    return declared !== undefined && typeof module[declared.export] === 'function';
+  };
   const core = {
     api: { mtmd_vision_bf16_storage_version: version, mtmd_init_from_file_with_vision_bf16_storage: initialize, mtmd_context_vision_bf16_storage: query, mtmd_init_from_file: legacy },
-    module: { _lcb_mtmd_vision_bf16_storage_version() {}, _lcb_mtmd_init_from_file_with_vision_bf16_storage() {}, _lcb_mtmd_context_vision_bf16_storage() {} },
+    module,
+    hasFunction,
     constant,
-  } as unknown as Core;
+  };
   return { core, version, initialize, query, legacy, constant, constants };
 }
 
 describe('optional public BF16 vision storage ABI', () => {
-  it('accepts actual public generated signatures without simplifying the pointer returnType', async () => {
+  it('accepts the direct exports and explicit record bridge with ordinary pointer return metadata', async () => {
     const module = await import('./vision-bf16-storage');
     expect(module.inspectVisionBf16Capability({ schema: visionBf16Metadata })).toEqual({ status: 'available' });
     const f = fixture({ requested: 1 });
@@ -50,7 +61,10 @@ describe('optional public BF16 vision storage ABI', () => {
     const module = await import('./vision-bf16-storage'), f = fixture({ requested: 0 });
     for (const name of ['mtmd_vision_bf16_storage_version', 'mtmd_init_from_file_with_vision_bf16_storage', 'mtmd_context_vision_bf16_storage']) {
       Reflect.deleteProperty(f.core.api, name);
-      Reflect.deleteProperty(f.core.module, `_lcb_${name}`);
+      const exported = visionBf16Metadata.functions.find(fn => fn.name === name)?.export;
+      if (exported) {
+        Reflect.deleteProperty(f.core.module, exported);
+      }
     }
     for (const preference of [undefined, 'legacy-expand'] as const) {
       const loader = await module.prepareVisionBf16Loader({ core: f.core, preference });
@@ -112,7 +126,7 @@ describe('optional public BF16 vision storage ABI', () => {
 
   it('rejects missing native exports and preserves a rejected new initializer without a legacy retry', async () => {
     const module = await import('./vision-bf16-storage'), f = fixture({ requested: 1 });
-    Reflect.deleteProperty(f.core.module, '_lcb_mtmd_context_vision_bf16_storage');
+    Reflect.deleteProperty(f.core.module, '_mtmd_context_vision_bf16_storage');
     const missing = await module.prepareVisionBf16Loader({ core: f.core, preference: undefined });
     expect(missing.observed).toMatchObject({ status: 'unavailable', reason: 'native-export-missing' });
     expect(f.version).not.toHaveBeenCalled();

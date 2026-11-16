@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, inject } from 'vue';
+import { computed, defineAsyncComponent, inject, shallowRef } from 'vue';
 import { routerKey } from 'vue-router';
 import MainAppSurface from '@/components/MainAppSurface.vue';
 import { useAppPresentation } from '@/composables/useAppPresentation';
@@ -15,6 +15,12 @@ const AppAuxiliaryUi = defineAsyncComponent(
 
 const { homeIntroduction, finishHomeIntroduction } = useAppPresentation();
 const entry = useAppEntry();
+const modelSupportInvestigationRequest = shallowRef<{ opener: HTMLElement | undefined }>();
+
+function requestModelSupportInvestigation({ opener }: { opener: HTMLElement | undefined }): void {
+  modelSupportInvestigationRequest.value = { opener };
+}
+
 // Head management belongs to the lazy main app; startup uses the generated HTML.
 provideDocumentMetadata({ router: inject(routerKey, undefined), document, homeIntroduction, finishHomeIntroduction });
 const postStartupFeatures = computed(() => {
@@ -42,7 +48,7 @@ defineExpose({
 </script>
 
 <template>
-  <MainAppSurface :post-startup-features="postStartupFeatures" />
+  <MainAppSurface :post-startup-features="postStartupFeatures" @open-model-support-investigation="requestModelSupportInvestigation({ opener: $event })" />
   <AppCommandRuntime v-if="postStartupFeatures === 'active'" />
-  <AppAuxiliaryUi v-if="postStartupFeatures === 'active'" :pwa-activation="entry.modelSelection.value === undefined && entry.notFoundRecovery.value === undefined ? 'active' : 'deferred'" />
+  <AppAuxiliaryUi v-if="postStartupFeatures === 'active'" :pwa-activation="entry.modelSelection.value === undefined && entry.notFoundRecovery.value === undefined ? 'active' : 'deferred'" :model-support-investigation-request="modelSupportInvestigationRequest" @consume-model-support-investigation-request="modelSupportInvestigationRequest = undefined" />
 </template>

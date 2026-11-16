@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpenIcon, CalculatorIcon, InfoIcon, ListIcon, MousePointer2Icon, PanelLeftIcon, Settings2Icon, TerminalIcon } from 'lucide-vue-next';
+import { BookOpenIcon, CalculatorIcon, ListIcon, MousePointer2Icon, PanelLeftIcon, Settings2Icon, TerminalIcon } from 'lucide-vue-next';
 import NaidanChatInput from './NaidanChatInput.vue';
 import type { CommonMessages } from '../../messages/types';
 
@@ -31,7 +31,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div class="tools-sheet" data-testid="docs-shell-tools-sheet">
         <div class="sheet-handle"><i /></div>
         <div class="sheet-title">{{ messages.options_tools_sheet }}</div>
-        <div class="tool-session-note"><InfoIcon :size="12" /><span>{{ messages.tool_session_notice }}</span></div>
         <div class="tools-grid">
           <div class="tool-preview"><CalculatorIcon :size="16" /><strong>{{ messages.calculator_tool }}</strong><span class="preview-switch">{{ messages.off_status }}<i /></span></div>
           <div class="tool-preview"><ListIcon :size="16" /><strong>{{ messages.choices_tool }}</strong><span class="preview-switch">{{ messages.off_status }}<i /></span></div>
@@ -164,23 +163,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   letter-spacing: .12em;
   text-transform: uppercase;
 }
-.tool-session-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 8px 12px;
-  color: var(--muted);
-  font-size: 9px;
-  line-height: 1.4;
-}
-.tool-session-note svg {
-  flex: none;
-}
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(2,minmax(0,1fr));
   gap: 7px;
-  padding: 0 12px 12px;
+  padding: 12px;
 }
 .tool-preview {
   display: flex;
@@ -608,6 +595,15 @@ html:has(#docs-pause-motion:checked) .stage-enable .shell-settings-panel {
   }
   .shell-tool-card {
     margin-top: 20px;
+    gap: 4px;
+    padding-inline: 8px;
+  }
+  .shell-tool-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .shell-tool-name strong {
+    font-size: 12px;
   }
 }
 </style>

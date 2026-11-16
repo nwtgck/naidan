@@ -1,0 +1,1 @@
+export const liveConversation__conversation_language_help = (): string => 'To set the conversation language, also enter instructions. If the instructions are empty, the model may respond in another language.';

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { Core } from './core';
+import type { LowLevelFunctions } from 'llama-cpp-browser-core/llama-cpp/api/functions';
 import type { VisionBf16Storage, VisionBf16StorageObservation } from './vision-bf16-storage-schema';
 
 // The public mtmd-vision-bf16.h contract. Parameter records remain pointer-lowered
-// by the ordinary generated API; no raw calls or hard-coded record offsets here.
+// by the record bridge; no raw calls or hard-coded record offsets here.
 const names = {
   version: 'mtmd_vision_bf16_storage_version',
   initialize: 'mtmd_init_from_file_with_vision_bf16_storage',
@@ -38,10 +39,10 @@ export function inspectVisionBf16Capability({ schema }: { schema: unknown }): Vi
   }
   const [version, initialize, requested] = functions.map(entries => entries[0]!);
   const signature = ({ fn, name, returns, resultType, kinds, types }: { fn: z.infer<typeof metadataSchema>['functions'][number], name: string, returns: string, resultType: string, kinds: string[], types: string[] }): boolean =>
-    fn.export === `_lcb_${name}` && fn.returnKind === returns && canonicalType({ value: fn.returnType }) === resultType && fn.parameters.length === kinds.length
+    fn.name === name && fn.returnKind === returns && canonicalType({ value: fn.returnType }) === resultType && fn.parameters.length === kinds.length
     && fn.parameters.every((parameter, index) => parameter.kind === kinds[index] && canonicalType({ value: parameter.cType }) === types[index]);
   if (!signature({ fn: version!, name: names.version, returns: 'unsigned', resultType: 'uint32_t', kinds: [], types: [] })
-    || !signature({ fn: initialize!, name: names.initialize, returns: 'pointer', resultType: 'mtmd_context*(char*,llama_model*,mtmd_context_params,int32_t)', kinds: ['pointer', 'pointer', 'record', 'signed'], types: ['char*', 'llama_model*', 'mtmd_context_params', 'int32_t'] })
+    || !signature({ fn: initialize!, name: names.initialize, returns: 'pointer', resultType: 'mtmd_context*', kinds: ['pointer', 'pointer', 'record', 'signed'], types: ['char*', 'llama_model*', 'mtmd_context_params', 'int32_t'] })
     || !signature({ fn: requested!, name: names.requested, returns: 'signed', resultType: 'mtmd_vision_bf16_storage', kinds: ['pointer'], types: ['mtmd_context*'] })) {
     return { status: 'incompatible', reason: 'api-incompatible' };
   }
@@ -52,7 +53,7 @@ let capability: Promise<VisionBf16Capability> | undefined;
 
 /** Metadata only. Never instantiate Wasm or load a model to render Settings. */
 export function loadVisionBf16Capability(): Promise<VisionBf16Capability> {
-  capability ??= import('llama-cpp-browser-core/api/schema.mjs').then(module => inspectVisionBf16Capability({ schema: module.default }));
+  capability ??= import('llama-cpp-browser-core/llama-cpp/api/schema.mjs').then(module => inspectVisionBf16Capability({ schema: module.default }));
   return capability;
 }
 
@@ -86,16 +87,16 @@ export function selectVisionBf16Storage({ preference, capability }: { preference
   }
 }
 
-// These function types are the existing generated C ABI, not application APIs.
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Fixed native C ABI signatures.
-type Initialize = (path: bigint, model: bigint, params: bigint, mode: number) => Promise<bigint>;
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Fixed native C ABI signature.
-type Requested = (context: bigint) => Promise<number>;
+type Initialize = LowLevelFunctions['mtmd_init_from_file_with_vision_bf16_storage'];
+type Requested = LowLevelFunctions['mtmd_context_vision_bf16_storage'];
 
 /** Fixed optional API only, using Core.api's existing native suspension guard. */
-export async function prepareVisionBf16Loader({ core, preference }: { core: Core, preference: VisionBf16Storage | undefined }) {
+export async function prepareVisionBf16Loader({ core, preference }: { core: {
+  api: Pick<LowLevelFunctions, 'mtmd_init_from_file' | 'mtmd_vision_bf16_storage_version' | 'mtmd_init_from_file_with_vision_bf16_storage' | 'mtmd_context_vision_bf16_storage'>,
+  constant: Core['constant'], hasFunction: Core['hasFunction'],
+}, preference: VisionBf16Storage | undefined }) {
   let capability = await loadVisionBf16Capability();
-  if (capability.status === 'absent' && Object.values(names).some(name => Reflect.get(core.module, `_lcb_${name}`) !== undefined || Reflect.get(core.api, name) !== undefined)) {
+  if (capability.status === 'absent' && Object.values(names).some(name => core.hasFunction({ name }))) {
     capability = { status: 'incompatible', reason: 'api-incompatible' };
   }
   const observed = selectVisionBf16Storage({ preference, capability });
@@ -107,12 +108,11 @@ export async function prepareVisionBf16Loader({ core, preference }: { core: Core
   let requested: Requested | undefined;
   let mode: number | undefined;
   if (observed.status !== 'unavailable' && observed.capability === 'available') {
-    const exportsPresent = Object.values(names).every(name => typeof Reflect.get(core.module, `_lcb_${name}`) === 'function' && typeof Reflect.get(core.api, name) === 'function');
+    const exportsPresent = Object.values(names).every(name => core.hasFunction({ name }));
     if (!exportsPresent) {
       unavailable({ reason: 'native-export-missing' });
     } else {
-      const version = Reflect.get(core.api, names.version) as () => Promise<number>;
-      const actualVersion = await version();
+      const actualVersion = await core.api.mtmd_vision_bf16_storage_version();
       if (typeof actualVersion === 'number' && Number.isInteger(actualVersion) && actualVersion >= 0 && actualVersion <= 4294967295) {
         observed.apiVersion = actualVersion;
       }
@@ -134,8 +134,8 @@ export async function prepareVisionBf16Loader({ core, preference }: { core: Core
             throw new Error(String(exhaustive));
           }
           }
-          initialize = Reflect.get(core.api, names.initialize) as Initialize;
-          requested = Reflect.get(core.api, names.requested) as Requested;
+          initialize = core.api.mtmd_init_from_file_with_vision_bf16_storage;
+          requested = core.api.mtmd_context_vision_bf16_storage;
         }
       }
     }

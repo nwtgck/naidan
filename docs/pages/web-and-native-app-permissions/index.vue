@@ -90,8 +90,8 @@ defineExpose({
     </section>
 
     <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
-      { page: 'browser-boundaries', title: s.browser_boundary_guide_title, description: s.browser_boundary_guide_description },
-      { page: 'csp-editions', title: s.local_only_guide_title, description: s.local_only_guide_description },
+      { page: 'browser-boundary', title: s.browser_boundary_guide_title, description: s.browser_boundary_guide_description },
+      { page: 'csp-edition', title: s.local_only_guide_title, description: s.local_only_guide_description },
       { page: 'standalone', title: s.standalone_guide_title, description: s.standalone_guide_description },
     ]" />
   </article>

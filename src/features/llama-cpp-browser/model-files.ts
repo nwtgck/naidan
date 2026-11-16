@@ -361,6 +361,14 @@ export function cancelLocalRepositorySave({ source }: { source: LocalRepositoryS
 
 export const llamaCppBrowserModelFiles = {
   listModelEntries,
+  /** Capture the selected files without starting an inference engine. File
+   * snapshots retain their identity independently of later inventory edits. */
+  async captureModelFiles({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<{ primaryRelativePath: string, files: { relativePath: string, file: File }[] }> {
+    await validateStoredPublications({ signal, modelId });
+    const resolved = await resolveModel({ modelId, signal });
+    signal?.throwIfAborted();
+    return { primaryRelativePath: resolved.directory.primaryFile.relativePath, files: resolved.directory.files.map(({ relativePath, file }) => ({ relativePath, file })) };
+  },
   async importLocalDirectory({ directory, save, signal }: {
     directory: ModelDirectoryInput, save: 'browser' | 'later', signal: AbortSignal | undefined,
   }): Promise<ModelImportReceipt> {

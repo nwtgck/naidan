@@ -1,7 +1,11 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
   "compilerOptions": {
-    "composite": true,
+    // Follow imported catalog types without composite's root-membership rule.
+    // Keep declaration diagnostics and incremental caching explicit.
+    "composite": false,
+    "declaration": true,
+    "incremental": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "ESNext",
     "module": "ESNext",
@@ -38,6 +42,8 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "build/transformers-js-fixes/**/*.ts", "build/node-env.ts", "build/gzip-asset.ts", "build/runtime-asset-middleware.test-support.ts", "./typed-router.d.ts"],
-  "exclude": ["src/test-tmp"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "build/transformers-js-fixes/**/*.ts", "build/bicore-artifact-package.ts", "build/native-licenses/index-types.ts", "build/native-licenses/llama-index.ts", "build/native-licenses/image-index.ts", "build/native-licenses/speech-index.ts", "build/native-licenses/typecheck.ts", "build/native-licenses/collect.ts", "build/native-licenses/load.ts", "build/llama-gpu-profile.test-support.ts", "build/node-env.ts", "build/gzip-asset.ts", "build/runtime-asset-middleware.test-support.ts", "./typed-router.d.ts"],
+  // Check all catalog implementations in tsconfig.strings.json. English types
+  // remain checked here through imports; other locales need not stay in Vue's heap.
+  "exclude": ["src/test-tmp", "src/strings/catalogs", "src/strings/messages"]
 }

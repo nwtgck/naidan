@@ -3,6 +3,28 @@ import { createLivePlayback } from './audio-playback';
 import { liveAudioBrowserFixture } from './audio-browser.test-support';
 
 describe('live playback bounded independent lifecycle', () => {
+  it('keeps consecutive Haru frames contiguous at 24 kHz on a 48 kHz output device', async () => {
+    using f = liveAudioBrowserFixture();
+    const player = createLivePlayback({ onPlaying: vi.fn() });
+    await using resource = {
+      async [Symbol.asyncDispose]() {
+        await player.close();
+      },
+    };
+    await player.activate();
+    player.begin();
+    for (let index = 0; index < 3; index++) {
+      await player.append({ pcm: new Float32Array(3200).fill(index / 10), sampleRate: 24000 });
+    }
+    expect(f.contexts[0]?.sampleRate).toBe(48000);
+    expect(f.contexts[0]?.createBuffer.mock.calls).toEqual([[1, 3200, 24000], [1, 3200, 24000], [1, 3200, 24000]]);
+    const starts = f.sourceNodes.map(source => source.start.mock.calls[0]?.[0]);
+    expect(starts[0]).toBeCloseTo(0.015, 10);
+    expect(starts[1]).toBeCloseTo(0.015 + 3200 / 24000, 10);
+    expect(starts[2]).toBeCloseTo(0.015 + 6400 / 24000, 10);
+    void resource;
+  });
+
   it('copies samples, schedules them in order, and releases sources on end', async () => {
     using f = liveAudioBrowserFixture();
     const onPlaying = vi.fn();

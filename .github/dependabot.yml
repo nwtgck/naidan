@@ -32,8 +32,7 @@ updates:
         update-types:
           - minor
           - patch
-    # These two packages intentionally share a pinned browser-inference-core
-    # commit. Update both hashes together after compatibility testing.
+    # Each runtime dependency is pinned independently to a reviewed artifact.
     # Ignore also suppresses security update PRs for these dependencies.
     ignore:
       - dependency-name: llama-cpp-browser-core

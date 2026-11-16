@@ -1,0 +1,1 @@
+export const liveConversation__first_output_may_precede_input = (): string => "Die erste Ausgabe kann ein Anfangsframe vor dem Senden der Eingabe sein. Dies ist nicht die Wartezeit auf eine Antwort auf das Audio.";

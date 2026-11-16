@@ -1,0 +1,1 @@
+export const liveConversation__microphone_and_response_audio_run_together = (): string => 'Use headphones to speak and listen. When the microphone is ready, speak briefly and wait for a reply without stopping. Stop conversation ends the whole conversation.';

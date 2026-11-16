@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { BrainIcon, ChevronDownIcon, FolderIcon, MoreHorizontalIcon, MousePointer2Icon, PencilIcon, SearchIcon } from 'lucide-vue-next';
 
-defineProps<{ stage: 'model' | 'prompt'; messages: typeof import('../../pages/chat-groups/messages/en').messages }>();
+defineProps<{ stage: 'model' | 'prompt'; messages: typeof import('../../pages/chat-group/messages/en').messages }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

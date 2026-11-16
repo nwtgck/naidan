@@ -24,7 +24,7 @@ export const artifactSchema = z.object({
   profile: profileSchema,
   modulePath: z.string().regex(/^stable-diffusion-cpp-runtime\/[0-9a-f]{40}\/[a-z0-9-]+\/core\.mjs$/),
   wasmPath: z.string().regex(/^stable-diffusion-cpp-runtime\/[0-9a-f]{40}\/[a-z0-9-]+\/core\.wasm\.gz$/),
-  helpersPath: z.string().regex(/^stable-diffusion-cpp-runtime\/[0-9a-f]{40}\/examples\/runtime\/index\.mjs$/),
+  helpersPath: z.string().regex(/^stable-diffusion-cpp-runtime\/[0-9a-f]{40}\/host\/index\.mjs$/),
   schemaSha256: hashSchema,
   wasmBytes: z.number().int().positive().max(100 * 1024 * 1024),
   wasmSha256: hashSchema,
@@ -34,7 +34,7 @@ export const artifactSchema = z.object({
 }).superRefine((value, context) => {
   const prefix = value.modulePath.slice(0, value.modulePath.lastIndexOf('/') + 1);
   const sourcePrefix = prefix.slice(0, prefix.slice(0, -1).lastIndexOf('/') + 1);
-  if (!value.modulePath.endsWith('/' + value.profile + '/core.mjs') || value.wasmPath !== prefix + 'core.wasm.gz' || value.helpersPath !== sourcePrefix + 'examples/runtime/index.mjs') {
+  if (!value.modulePath.endsWith('/' + value.profile + '/core.mjs') || value.wasmPath !== prefix + 'core.wasm.gz' || value.helpersPath !== sourcePrefix + 'host/index.mjs') {
     context.addIssue({ code: 'custom', message: 'Image runtime members must share a source and profile' });
   }
 });

@@ -1,0 +1,1 @@
+export const liveConversation__transcribe_audio_file_help = (): string => "Transcribe un archivo de audio o una grabación del micrófono con el modelo cargado y revisa la transcripción y el tiempo de procesamiento.";

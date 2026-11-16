@@ -1,0 +1,1 @@
+export const liveConversation__execution_rtf_includes_waits = (): string => "Execution RTF is execution time per second of output audio. It includes input pacing, processing and transport waits, so it does not measure inference speed alone. Model loading and input preparation are separate.";

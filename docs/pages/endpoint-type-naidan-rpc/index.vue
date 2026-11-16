@@ -35,7 +35,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <figure class="guide-figure"><NaidanRpcStep :stage="key" :messages="s" /><figcaption class="caption"><RenderText :node="step.caption()" /></figcaption></figure>
     </section>
 
-    <section class="rpc-note"><h2>{{ s.peer_image_generation_heading }}</h2><p><RenderText :node="s.peer_image_generation_instructions()" /></p></section>
+    <section class="rpc-note" data-testid="rpc-image-option"><h2>{{ s.peer_image_generation_heading }}</h2><p><RenderText :node="s.peer_image_generation_instructions()" /></p><p><RenderText :node="s.check_the_peer_image_model_configuration()" /></p><p><RenderText :node="s.peer_resolves_automatic_image_settings()" /></p></section>
     <section class="rpc-note"><h2>{{ s.peer_data_boundary_heading }}</h2><p>{{ s.peer_data_boundary }}</p></section>
     <section class="rpc-note"><h2>{{ s.peer_inference_availability_heading }}</h2><p><RenderText :node="s.peer_inference_availability()" /></p></section>
 

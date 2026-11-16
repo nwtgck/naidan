@@ -46,7 +46,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <div class="field"><span class="field-label">{{ stage === 'group' ? messages.model_id_override : messages.model_override }}</span><div class="field-value model-control"><span><span v-if="stage === 'group' || stage === 'chatModel'" class="value-stack"><span class="phase-start">{{ stage === 'group' ? messages.global_example_model_id : messages.group_example_model_id }}</span><span class="phase-end">{{ stage === 'group' ? messages.group_example_model_id : messages.chat_example_model_id }}</span></span><span v-else-if="stage === 'reset'" class="value-stack"><span class="reset-initial">{{ messages.chat_example_model_id }}</span><span class="reset-cleared">{{ messages.group_example_model_id }}</span><span class="reset-local-model">{{ messages.local_model }}</span><span class="reset-final">{{ messages.group_example_model_id }}</span></span><span v-else>{{ messages.group_example_model_id }}</span><span v-if="stage !== 'reset'" class="source-badge model-source">{{ stage === 'group' ? messages.source_global : messages.source_chat_group }}</span><span v-else class="source-badge reset-model-source">{{ messages.source_chat_group }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage !== 'inheritedChat'" class="pointer model-pointer" :size="23" /><span v-if="stage === 'group' || stage === 'chatModel'" class="select-menu model-menu"><span>{{ stage === 'group' ? messages.global_gemma3n_e2b : messages.chat_group_qwen3_4b }}</span><strong>{{ stage === 'group' ? messages.group_example_model_id : messages.chat_example_model_id }}</strong></span><span v-if="stage === 'reset'" class="select-menu reset-model-menu"><span>{{ messages.chat_group_qwen3_4b }}</span><strong>{{ messages.local_model }}</strong></span></div></div>
             <div class="reasoning"><span><BrainIcon :size="14" />{{ messages.reasoning }}<span class="source-badge">{{ stage === 'group' ? messages.source_global : messages.source_chat_group }}</span></span><div class="segments"><strong>{{ messages.reasoning_inherited }}</strong><span>{{ messages.reasoning_off }}</span><span>{{ messages.reasoning_low }}</span><span>{{ messages.reasoning_medium }}</span><span>{{ messages.reasoning_high }}</span></div></div>
             <div v-if="stage !== 'chatModel'" class="connection-details scoped-details" data-testid="inheritance-connection-details">
-              <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="field-value endpoint-control"><span v-if="stage === 'group'" class="value-stack"><span class="phase-start">{{ messages.global_ollama }}</span><span class="phase-end">{{ messages.ollama }}</span></span><span v-else-if="stage === 'reset'" class="value-stack"><span class="reset-initial">{{ messages.chat_group_ollama }}</span><span class="reset-local-endpoint">{{ messages.openai_compatible }}</span><span class="reset-final">{{ messages.chat_group_ollama }}</span></span><span v-else>{{ messages.chat_group_ollama }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'group' || stage === 'reset'" class="pointer endpoint-pointer" :size="23" /><span v-if="stage === 'group'" class="select-menu endpoint-menu"><span>{{ messages.global_ollama }}</span><strong>{{ messages.ollama }}</strong></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-out-menu"><span>{{ messages.chat_group_ollama }}</span><strong>{{ messages.openai_compatible }}</strong></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-back-menu"><span>{{ messages.openai_compatible }}</span><strong>{{ messages.chat_group_ollama }}</strong></span></div></div>
+              <div class="field"><span class="field-label">{{ messages.endpoint_type }}</span><div class="field-value endpoint-control"><span v-if="stage === 'group'" class="value-stack"><span class="phase-start">{{ messages.global_ollama }}</span><span class="phase-end">{{ messages.ollama }}</span></span><span v-else-if="stage === 'reset'" class="value-stack"><span class="reset-initial">{{ messages.chat_group_ollama }}</span><span class="reset-local-endpoint">{{ messages.openai_compatible }}</span><span class="reset-final">{{ messages.chat_group_ollama }}</span></span><span v-else>{{ messages.chat_group_ollama }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer endpoint-pointer" :class="{ 'inherited-choice-pointer': stage === 'inheritedChat' }" :size="23" /><span v-if="stage === 'group'" class="select-menu endpoint-menu" data-testid="inheritance-endpoint-candidates"><span>{{ messages.global_ollama }}</span><strong>{{ messages.ollama }}</strong></span><span v-if="stage === 'inheritedChat'" class="select-menu endpoint-menu" data-testid="inheritance-endpoint-candidates"><strong>{{ messages.chat_group_ollama }}</strong><span>{{ messages.ollama }}</span></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-out-menu" data-testid="inheritance-endpoint-candidates"><span>{{ messages.chat_group_ollama }}</span><strong>{{ messages.openai_compatible }}</strong></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-back-menu"><span>{{ messages.openai_compatible }}</span><strong>{{ messages.chat_group_ollama }}</strong></span></div></div>
               <div class="field"><span class="field-label">{{ messages.endpoint_url }}</span><div class="field-value mono url-control" data-testid="inheritance-effective-url"><span v-if="stage === 'reset'" class="value-stack"><span class="reset-url-initial">http://localhost:11434</span><span class="reset-local-url">http://localhost:1234/v1</span><span class="reset-final">http://localhost:11434</span></span><span v-else>http://localhost:11434</span><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-url-pointer" :size="23" /></div></div>
               <div class="header-editor"><span class="field-label">{{ messages.http_headers }}</span><span>{{ messages.add_header }}</span></div>
             </div>
@@ -64,6 +64,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   --focus-x:-125px;
   --focus-y:-230px;
   --summary-y:-110px;
+  --details-y:-395px;
+  --model-y:-65px;
   --focus-scale:1;
   --entry-x:0px;
   --entry-y:-100px;
@@ -94,6 +96,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .stage-global .scene-canvas {
   animation-name: global-camera;
 }
+.stage-group .scene-canvas {
+  animation-name: group-camera;
+}
+.stage-inheritedChat .scene-canvas {
+  animation-name: inherited-camera;
+}
+.stage-reset .scene-canvas {
+  animation-name: reset-camera;
+}
 .stage-global {
   --focus-x:-250px;
   --focus-y:-220px;
@@ -102,13 +113,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .stage-group {
   --focus-x:-125px;
-  --focus-y:-220px;
+  --focus-y:-155px;
   --summary-y:-90px;
   --entry-y:-20px;
 }
 .stage-inheritedChat {
   --focus-x:-125px;
-  --focus-y:-230px;
+  --focus-y:-395px;
   --summary-y:-115px;
   --entry-x:-120px;
   --entry-y:-10px;
@@ -122,7 +133,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 .stage-reset {
   --focus-x:-125px;
-  --focus-y:-230px;
+  --focus-y:-395px;
   --summary-y:-115px;
   --entry-x:-120px;
   --entry-y:-10px;
@@ -611,8 +622,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .save-pointer {
   animation-name: tap-save;
 }
+/* The summary opens both the details and menu; this pointer selects a row. */
 .endpoint-pointer {
+  bottom: -81px;
   animation-name: tap-provider;
+}
+.inherited-choice-pointer {
+  bottom: -43px;
 }
 .reset-url-pointer {
   animation-name: tap-url;
@@ -655,7 +671,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   opacity: 0;
   animation: model-before 16s linear infinite;
 }
-.provider-menu,.stage-group .endpoint-menu {
+.provider-menu {
   animation: provider-menu var(--duration) linear infinite;
 }
 .model-menu {
@@ -696,8 +712,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .stage-reset .endpoint-pointer {
   animation: tap-reset-endpoint 22s linear infinite;
 }
-.stage-reset .reset-endpoint-out-menu {
-  animation: provider-menu 22s linear infinite;
+.stage-group .endpoint-menu,.stage-inheritedChat .endpoint-menu,.stage-reset .reset-endpoint-out-menu {
+  animation: endpoint-choices var(--duration) linear infinite;
 }
 .stage-reset .reset-model-menu {
   animation: model-menu 22s linear infinite;
@@ -714,6 +730,54 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   }
   45%,94% {
     transform: translate(var(--focus-x),var(--focus-y)) scale(var(--focus-scale));
+  }
+}
+/* Keep the connection menu and the later model choice in the same readable camera. */
+@keyframes group-camera {
+  0%,10%,100% {
+    transform: translate(var(--entry-x),var(--entry-y)) scale(.85);
+  }
+  25%,36% {
+    transform: translate(var(--focus-x),var(--summary-y)) scale(var(--focus-scale));
+  }
+  39%,58% {
+    transform: translate(var(--focus-x),var(--details-y)) scale(var(--focus-scale));
+  }
+  65%,94% {
+    transform: translate(var(--focus-x),var(--focus-y)) scale(var(--focus-scale));
+  }
+}
+@keyframes inherited-camera {
+  0%,10%,100% {
+    transform: translate(var(--entry-x),var(--entry-y)) scale(.85);
+  }
+  25%,36% {
+    transform: translate(var(--focus-x),var(--summary-y)) scale(var(--focus-scale));
+  }
+  39%,94% {
+    transform: translate(var(--focus-x),var(--details-y)) scale(var(--focus-scale));
+  }
+}
+@keyframes reset-camera {
+  0%,10%,100% {
+    transform: translate(var(--entry-x),var(--entry-y)) scale(.85);
+  }
+  25%,36% {
+    transform: translate(var(--focus-x),var(--summary-y)) scale(var(--focus-scale));
+  }
+  39%,60%,78%,94% {
+    transform: translate(var(--focus-x),var(--details-y)) scale(var(--focus-scale));
+  }
+  65%,73% {
+    transform: translate(var(--focus-x),var(--model-y)) scale(var(--focus-scale));
+  }
+}
+@keyframes endpoint-choices {
+  0%,32%,46%,100% {
+    opacity: 0;
+  }
+  39%,43% {
+    opacity: 1;
   }
 }
 @keyframes global-camera {
@@ -1009,19 +1073,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 }
 @container (max-width:560px) {
   .scene-canvas {
-    --focus-scale:.9;
-    --focus-x:-232px;
-    --focus-y:-185px;
+    --focus-scale:1;
+    --focus-x:-282px;
+    --focus-y:-365px;
+    --details-y:-365px;
     --summary-y:-108px;
   }
   .stage-global .scene-canvas {
-    --focus-x:-402px;
+    --focus-x:-444px;
     --focus-y:-200px;
     --summary-y:-75px;
   }
   .stage-group .scene-canvas {
-    --focus-x:-165px;
-    --focus-y:-185px;
+    --focus-x:-204px;
+    --focus-y:-155px;
     --summary-y:-95px;
   }
   .stage-chatModel .scene-canvas {
@@ -1040,7 +1105,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     width: min(360px,calc(100cqw + 4px));
   }
   .global-modal {
-    width: min(550px,calc(100cqw + 240px));
+    width: min(530px,calc(100cqw + 216px));
   }
   .scoped-body {
     padding: 18px;

@@ -4,7 +4,7 @@ import NaidanChatInput from './NaidanChatInput.vue';
 
 // These grouping and renaming scenes omit composer source badges; the settings
 // scenes explain inheritance. Model names still follow each chat's membership.
-defineProps<{ stage: 'create' | 'move' | 'add' | 'tidy'; messages: typeof import('../../pages/chat-groups/messages/en').messages; chrome: Readonly<typeof import('../../messages/replica-chrome/en').messages> }>();
+defineProps<{ stage: 'create' | 'move' | 'add' | 'tidy'; messages: typeof import('../../pages/chat-group/messages/en').messages; chrome: Readonly<typeof import('../../messages/replica-chrome/en').messages> }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

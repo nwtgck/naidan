@@ -1,4 +1,4 @@
-export type NativeLicenseRuntime = 'llama-cpp' | 'stable-diffusion-cpp';
+export type NativeLicenseRuntime = 'llama-cpp' | 'stable-diffusion-cpp' | 'speech-cpp';
 export type NativeLicenseSource = Readonly<{
   runtime: NativeLicenseRuntime;
   rootDir: string;

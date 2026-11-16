@@ -1,1 +1,1 @@
-export const liveConversation__new_conversation_confirmation = (): string => 'Start a new conversation? The current conversation, draft, queued messages and retained audio will be cleared. The loaded model stays in memory unless you selected a different model. Files written by the browser shell are not deleted.';
+export const liveConversation__new_conversation_confirmation = (): string => "새 대화를 시작할까요? 현재 대화, 초안, 전송 대기 메시지, 보관된 오디오, 조사 도구의 입력과 결과가 지워집니다. 불러온 모델은 메모리에 유지됩니다. 모델을 바꾸려면 선택한 모델을 별도로 불러오세요. 브라우저 셸에서 작성한 파일은 삭제되지 않습니다.";

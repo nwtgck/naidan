@@ -23,7 +23,7 @@ describe('related guide links', () => {
         eyebrow: common.related_guides,
         guides: [
           { page: 'endpoint-type-ollama', title: titles[0] ?? '', description: descriptions[0] ?? '' },
-          { page: 'in-browser-models', title: titles[1] ?? '', description: descriptions[1] ?? '' },
+          { page: 'in-browser-model', title: titles[1] ?? '', description: descriptions[1] ?? '' },
         ],
       }),
     }));
@@ -32,7 +32,7 @@ describe('related guide links', () => {
     expect(nav?.tagName).toBe('NAV');
     expect(nav?.getAttribute('aria-label')).toBe(common.related_guides);
     const links = [...(nav?.querySelectorAll('a') ?? [])];
-    expect(links.map(link => link.getAttribute('href'))).toEqual([`/docs/${locale}/endpoint-type-ollama/`, `/docs/${locale}/in-browser-models/`]);
+    expect(links.map(link => link.getAttribute('href'))).toEqual([`/docs/${locale}/endpoint-type-ollama/`, `/docs/${locale}/in-browser-model/`]);
     for (const [index, link] of links.entries()) {
       expect(link.textContent).toContain(titles[index]);
       expect(link.textContent).toContain(descriptions[index]);
@@ -65,7 +65,7 @@ describe('related guide links', () => {
       `/docs/${locale}/pwa/`,
       `/docs/${locale}/hosted/`,
       `/docs/${locale}/web-and-native-app-permissions/`,
-      `/docs/${locale}/browser-boundaries/`,
+      `/docs/${locale}/browser-boundary/`,
     ]);
     expect(links[0]?.textContent).toContain(copy.offline_pwa_guide_title);
     expect(links[0]?.textContent).toContain(copy.offline_pwa_guide_description);
