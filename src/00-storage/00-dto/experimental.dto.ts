@@ -282,6 +282,9 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
   fakeLm: missingAsUndefined(dtozod.literal('enabled')),
   naidanRpc: missingAsUndefined(dtozod.literal('enabled')),
   unimplementedLauncherEntries: missingAsUndefined(dtozod.enum(['show', 'hide'])),
+  audioTranscription: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+    microphoneAutoCopy: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+  }))),
   generationSpeed: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     status: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
     inlineStats: missingAsUndefined(dtozod.enum(['on_demand', 'always'])),

@@ -76,6 +76,7 @@ const TranslationSidebar = sidebarComponent({ loader: () => import('@/features/t
 const WorkflowSidebar = sidebarComponent({ loader: () => import('@/features/workflow/components/WorkflowSidebar.vue'), owner: 'workflow' });
 const WorkflowSidebarActions = sidebarComponent({ loader: () => import('@/features/workflow/components/WorkflowSidebarActions.vue'), owner: 'workflow' });
 const AudioSidebar = sidebarComponent({ loader: () => import('@/features/audio-generation/components/AudioGenerationSidebar.vue'), owner: 'audio_generation' });
+const AudioTranscriptionSidebar = sidebarComponent({ loader: () => import('@/features/audio-transcription/components/AudioTranscriptionSidebar.vue'), owner: 'audio_transcription' });
 const DeveloperSidebar = sidebarComponent({ loader: () => import('@/components/DeveloperToolsSidebar.vue'), owner: 'developer_tools' });
 
 const label = computed(() => {
@@ -87,6 +88,7 @@ const label = computed(() => {
   case 'translation': return lazyStrings.launcher__translation();
   case 'workflow': return lazyStrings.launcher__workflows();
   case 'audio_generation': return lazyStrings.launcher__audio_generation();
+  case 'audio_transcription': return lazyStrings.launcher__audio_transcription();
   case 'developer_tools': return lazyStrings.launcher__developer_tools();
   case 'settings': return lazyStrings.Sidebar__settings();
   case 'model_preview': return lazyStrings.AppSidebar__model_preview();
@@ -104,7 +106,7 @@ const contentAvailable = computed(() => {
   }
   const value = target.value;
   switch (value) {
-  case 'chat': case 'workflow': case 'audio_generation': case 'developer_tools': return true;
+  case 'chat': case 'workflow': case 'audio_generation': case 'audio_transcription': case 'developer_tools': return true;
   case 'image_generation': return generationNavigation.value !== undefined;
   case 'live_conversation': return liveNavigation.value !== undefined;
   case 'translation': return translationNavigation.value !== undefined;
@@ -119,7 +121,7 @@ const waitingForContent = computed(() => {
   const value = target.value;
   switch (value) {
   case 'settings': case 'model_preview': case 'recovery': return false;
-  case 'chat': case 'image_generation': case 'live_conversation': case 'translation': case 'workflow': case 'audio_generation': case 'developer_tools': case 'pending': return !contentAvailable.value || !contentReady.value;
+  case 'chat': case 'image_generation': case 'live_conversation': case 'translation': case 'workflow': case 'audio_generation': case 'audio_transcription': case 'developer_tools': case 'pending': return !contentAvailable.value || !contentReady.value;
   default: {
     const exhaustive: never = value;
     return exhaustive;
@@ -177,6 +179,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <TranslationSidebar v-else-if="target === 'translation' && translationNavigation" :navigation="translationNavigation" @vue:mounted="contentReady = true" />
         <WorkflowSidebar v-else-if="target === 'workflow'" @vue:mounted="contentReady = true" />
         <AudioSidebar v-else-if="target === 'audio_generation'" :expanded="isSidebarOpen" @vue:mounted="contentReady = true" />
+        <AudioTranscriptionSidebar v-else-if="target === 'audio_transcription'" :expanded="isSidebarOpen" @vue:mounted="contentReady = true" />
         <DeveloperSidebar v-else-if="target === 'developer_tools'" :expanded="isSidebarOpen" @vue:mounted="contentReady = true" @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
       </template>
       <div v-if="failure" role="alert" :tw-class="['space-y-2 py-4 text-xs text-red-600 dark:text-red-400', isSidebarOpen ? 'px-4' : 'px-1']" data-testid="sidebar-load-error">

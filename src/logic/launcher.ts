@@ -1,5 +1,5 @@
 import type { Component } from 'vue';
-import { AudioLinesIcon, ClapperboardIcon, FileTextIcon, HeadphonesIcon, LanguagesIcon, MessageSquareIcon, MicIcon, SlidersHorizontalIcon, SparklesIcon, WorkflowIcon } from 'lucide-vue-next';
+import { AudioLinesIcon, ClapperboardIcon, FileTextIcon, HeadphonesIcon, LanguagesIcon, MessageSquareIcon, SlidersHorizontalIcon, SparklesIcon, WorkflowIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 
 export type LauncherCategory = 'all' | 'create' | 'write' | 'edit';
@@ -25,8 +25,7 @@ export const launcherEntries: readonly LauncherEntry[] = [
   { forKey: Symbol(), icon: AudioLinesIcon, category: 'create', searchAliases: ['audio', 'speech', 'tts'], title: () => lazyStrings.launcher__audio_generation(), description: () => lazyStrings.launcher__read_text_in_a_voice_you_choose(), destination: { kind: 'route', path: '/audio-generation' } },
   { forKey: Symbol(), icon: HeadphonesIcon, category: 'write', searchAliases: ['live', 'conversation', 'voice', 'dialogue'], title: () => lazyStrings.launcher__live_conversation(), description: () => lazyStrings.launcher__talk_with_ai_using_your_voice(), destination: { kind: 'route', path: '/live-conversation' } },
   { forKey: Symbol(), icon: WorkflowIcon, category: 'create', searchAliases: ['workflow', 'automation'], title: () => lazyStrings.launcher__workflows(), description: () => lazyStrings.launcher__connect_and_run_multiple_steps(), destination: { kind: 'route', path: '/workflows' } },
-  { forKey: Symbol(), icon: FileTextIcon, category: 'write', searchAliases: ['transcription', 'transcribe', 'asr', 'speech to text'], title: () => lazyStrings.launcher__audio_transcription(), description: () => lazyStrings.launcher__turn_recordings_and_videos_into_text(), destination: { kind: 'unimplemented' } },
-  { forKey: Symbol(), icon: MicIcon, category: 'write', searchAliases: ['dictation'], title: () => lazyStrings.launcher__long_form_dictation(), description: () => lazyStrings.launcher__write_by_speaking(), destination: { kind: 'unimplemented' } },
+  { forKey: Symbol(), icon: FileTextIcon, category: 'write', searchAliases: ['transcription', 'transcribe', 'asr', 'speech to text', 'dictation'], title: () => lazyStrings.launcher__audio_transcription(), description: () => lazyStrings.launcher__turn_recordings_and_videos_into_text(), destination: { kind: 'route', path: '/audio-transcription' } },
   { forKey: Symbol(), icon: SlidersHorizontalIcon, category: 'edit', searchAliases: ['repair', 'enhance', 'denoise'], title: () => lazyStrings.launcher__recording_enhancement(), description: () => lazyStrings.launcher__reduce_noise_and_echo_in_recordings(), destination: { kind: 'unimplemented' } },
   { forKey: Symbol(), icon: ClapperboardIcon, category: 'edit', searchAliases: ['video', 'subtitle', 'caption'], title: () => lazyStrings.launcher__video_and_subtitle_editing(), description: () => lazyStrings.launcher__create_subtitles_and_edit_video(), destination: { kind: 'unimplemented' } },
   { forKey: Symbol(), icon: HeadphonesIcon, category: 'create', searchAliases: ['drama'], title: () => lazyStrings.launcher__audio_drama(), description: () => lazyStrings.launcher__perform_a_script_with_multiple_voices(), destination: { kind: 'unimplemented' } },

@@ -793,6 +793,7 @@ describe('Settings Mapping', () => {
       experimental: {
         locale: 'ja',
         unimplementedLauncherEntries: undefined,
+        audioTranscription: undefined,
         metaCsp: undefined,
         chatBrowserModelPickerTab: undefined,
         modelDiscoveryTab: undefined,

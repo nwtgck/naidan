@@ -525,6 +525,10 @@ export interface Settings {
     naidanRpc?: 'disabled' | 'enabled',
     /** Home/launcher entry visibility only; missing means hide. */
     unimplementedLauncherEntries?: 'show' | 'hide',
+    audioTranscription?: {
+      /** Automatically copies microphone transcription text; missing means disabled. */
+      microphoneAutoCopy?: 'enabled' | 'disabled',
+    },
     /** Display and collection preferences only; generation measurements remain in memory. */
     generationSpeed?: {
       status?: 'enabled' | 'disabled',

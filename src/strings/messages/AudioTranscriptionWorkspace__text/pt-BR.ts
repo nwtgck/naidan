@@ -1,0 +1,2 @@
+// TODO: Translate this message into Brazilian Portuguese.
+export const AudioTranscriptionWorkspace__text = (): string => 'Text';

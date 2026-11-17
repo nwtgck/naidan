@@ -90,6 +90,7 @@ vi.mock('@/features/workflow/components/WorkflowSidebar.vue', () => {
 });
 vi.mock('@/features/workflow/components/WorkflowSidebarActions.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], template: '<button data-testid="workflow-action">new workflow</button>' } }));
 vi.mock('@/features/audio-generation/components/AudioGenerationSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], template: '<section data-testid="audio-sidebar" />' } }));
+vi.mock('@/features/audio-transcription/components/AudioTranscriptionSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], template: '<section data-testid="transcription-sidebar" />' } }));
 vi.mock('@/components/DeveloperToolsSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], emits: ['openModelSupportInvestigation'], template: '<section data-testid="developer-sidebar"><button data-testid="investigate" @click="$emit(\'openModelSupportInvestigation\', $event.currentTarget)">investigate</button></section>' } }));
 
 const imageNavigation = useImageGenerationWorkspaceNavigation().active;
@@ -123,6 +124,8 @@ async function mountSidebar({ path, activation }: { path: string, activation: 'i
       { path: '/translation/:rest(.*)*', component: page },
       { path: '/workflows/:rest(.*)*', component: page },
       { path: '/audio-generation', component: page },
+      { path: '/audio-transcription', component: page },
+      { path: '/audio-transcription/files', component: page },
       { path: '/debug/:rest(.*)*', component: page },
       { path: '/settings/:tab', component: page },
       { path: '/:path(.*)*', component: page },
@@ -306,11 +309,18 @@ it.each([true, false])('returns to the most recent remaining chat with expanded=
   expect(wrapper.get('[data-testid="sidebar-opfs-menu-button"]').attributes('aria-label')).toBeTruthy();
 });
 
-it.each(['/audio-generation', '/debug/standalone', '/workflows/runs'])('provides the existing feature with its own sidebar at %s', async path => {
+it.each([
+  ['/audio-generation', 'audio-sidebar'],
+  ['/debug/standalone', 'developer-sidebar'],
+  ['/workflows/runs', 'workflow-sidebar'],
+  ['/audio-transcription', 'transcription-sidebar'],
+  ['/audio-transcription/files', 'transcription-sidebar'],
+])('provides the feature with its own sidebar at %s', async (path, testId) => {
   const { wrapper } = await mountSidebar({ path, activation: 'active' });
   await flushPromises();
   expect(wrapper.find('[data-testid="chat-sidebar"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="sidebar-preparing"]').exists()).toBe(false);
+  expect(wrapper.find(`[data-testid="${testId}"]`).exists()).toBe(true);
   expect(wrapper.find('[data-testid="sidebar-footer"]').exists()).toBe(true);
 });
 

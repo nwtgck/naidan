@@ -2313,6 +2313,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       fakeLm,
       naidanRpc,
       unimplementedLauncherEntries,
+      audioTranscription,
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
@@ -2361,6 +2362,11 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       fakeLm: fakeLm ?? 'disabled',
       naidanRpc: naidanRpc ?? 'disabled',
       unimplementedLauncherEntries,
+      audioTranscription: audioTranscription === undefined ? undefined : (() => {
+        const { microphoneAutoCopy, ...unhandledAudioTranscription } = audioTranscription;
+        unhandledAudioTranscription satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['audioTranscription']>>()({ microphoneAutoCopy });
+      })(),
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
@@ -2467,6 +2473,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       fakeLm,
       naidanRpc,
       unimplementedLauncherEntries,
+      audioTranscription,
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
@@ -2535,6 +2542,11 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         status: fakeLm,
       }),
       unimplementedLauncherEntries,
+      audioTranscription: audioTranscription === undefined ? undefined : (() => {
+        const { microphoneAutoCopy, ...unhandledAudioTranscription } = audioTranscription;
+        unhandledAudioTranscription satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['audioTranscription']>>()({ microphoneAutoCopy });
+      })(),
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;

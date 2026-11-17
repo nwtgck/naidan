@@ -75,6 +75,63 @@ import { AssistantProcessSequence__thinking_steps } from '@/strings/messages/Ass
 import { AssistantProcessSequence__tool_executions } from '@/strings/messages/AssistantProcessSequence__tool_executions/es';
 import { AssistantProcessSequence__used_tools } from '@/strings/messages/AssistantProcessSequence__used_tools/es';
 import { AssistantWaitingIndicator__waiting_for_response } from '@/strings/messages/AssistantWaitingIndicator__waiting_for_response/es';
+import { AudioTranscriptionModelDetails__check_on_hugging_face } from '@/strings/messages/AudioTranscriptionModelDetails__check_on_hugging_face/es';
+import { AudioTranscriptionModelDetails__could_not_check } from '@/strings/messages/AudioTranscriptionModelDetails__could_not_check/es';
+import { AudioTranscriptionModelDetails__details } from '@/strings/messages/AudioTranscriptionModelDetails__details/es';
+import { AudioTranscriptionModelDetails__download_files } from '@/strings/messages/AudioTranscriptionModelDetails__download_files/es';
+import { AudioTranscriptionModelDetails__download_targets_not_checked } from '@/strings/messages/AudioTranscriptionModelDetails__download_targets_not_checked/es';
+import { AudioTranscriptionModelDetails__local_file } from '@/strings/messages/AudioTranscriptionModelDetails__local_file/es';
+import { AudioTranscriptionModelDetails__quantization } from '@/strings/messages/AudioTranscriptionModelDetails__quantization/es';
+import { AudioTranscriptionModelDetails__repository } from '@/strings/messages/AudioTranscriptionModelDetails__repository/es';
+import { AudioTranscriptionModelDetails__revision } from '@/strings/messages/AudioTranscriptionModelDetails__revision/es';
+import { AudioTranscriptionModelSources__choose_a_file } from '@/strings/messages/AudioTranscriptionModelSources__choose_a_file/es';
+import { AudioTranscriptionModelSources__could_not_check_repository } from '@/strings/messages/AudioTranscriptionModelSources__could_not_check_repository/es';
+import { AudioTranscriptionModelSources__could_not_prepare_model } from '@/strings/messages/AudioTranscriptionModelSources__could_not_prepare_model/es';
+import { AudioTranscriptionModelSources__model_file } from '@/strings/messages/AudioTranscriptionModelSources__model_file/es';
+import { AudioTranscriptionModelSources__no_single_file_models } from '@/strings/messages/AudioTranscriptionModelSources__no_single_file_models/es';
+import { AudioTranscriptionModelSources__preparing_model } from '@/strings/messages/AudioTranscriptionModelSources__preparing_model/es';
+import { AudioTranscriptionModelSources__select_model } from '@/strings/messages/AudioTranscriptionModelSources__select_model/es';
+import { AudioTranscriptionSidebar__transcribe_a_file } from '@/strings/messages/AudioTranscriptionSidebar__transcribe_a_file/es';
+import { AudioTranscriptionSidebar__voice_input } from '@/strings/messages/AudioTranscriptionSidebar__voice_input/es';
+import { AudioTranscriptionWorkspace__about_automatic_copy } from '@/strings/messages/AudioTranscriptionWorkspace__about_automatic_copy/es';
+import { AudioTranscriptionWorkspace__audio_language } from '@/strings/messages/AudioTranscriptionWorkspace__audio_language/es';
+import { AudioTranscriptionWorkspace__audio_source } from '@/strings/messages/AudioTranscriptionWorkspace__audio_source/es';
+import { AudioTranscriptionWorkspace__automatic_copy } from '@/strings/messages/AudioTranscriptionWorkspace__automatic_copy/es';
+import { AudioTranscriptionWorkspace__automatic_detection } from '@/strings/messages/AudioTranscriptionWorkspace__automatic_detection/es';
+import { AudioTranscriptionWorkspace__automatically_copy_recognized_text } from '@/strings/messages/AudioTranscriptionWorkspace__automatically_copy_recognized_text/es';
+import { AudioTranscriptionWorkspace__cancel } from '@/strings/messages/AudioTranscriptionWorkspace__cancel/es';
+import { AudioTranscriptionWorkspace__change_file } from '@/strings/messages/AudioTranscriptionWorkspace__change_file/es';
+import { AudioTranscriptionWorkspace__characters } from '@/strings/messages/AudioTranscriptionWorkspace__characters/es';
+import { AudioTranscriptionWorkspace__choose_audio_or_video_file } from '@/strings/messages/AudioTranscriptionWorkspace__choose_audio_or_video_file/es';
+import { AudioTranscriptionWorkspace__choose_file } from '@/strings/messages/AudioTranscriptionWorkspace__choose_file/es';
+import { AudioTranscriptionWorkspace__copied } from '@/strings/messages/AudioTranscriptionWorkspace__copied/es';
+import { AudioTranscriptionWorkspace__copy } from '@/strings/messages/AudioTranscriptionWorkspace__copy/es';
+import { AudioTranscriptionWorkspace__could_not_auto_copy } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_auto_copy/es';
+import { AudioTranscriptionWorkspace__could_not_copy_select_the_text } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_copy_select_the_text/es';
+import { AudioTranscriptionWorkspace__drop_audio_or_video_file } from '@/strings/messages/AudioTranscriptionWorkspace__drop_audio_or_video_file/es';
+import { AudioTranscriptionWorkspace__edit_transcribed_text } from '@/strings/messages/AudioTranscriptionWorkspace__edit_transcribed_text/es';
+import { AudioTranscriptionWorkspace__end_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__end_voice_input/es';
+import { AudioTranscriptionWorkspace__english } from '@/strings/messages/AudioTranscriptionWorkspace__english/es';
+import { AudioTranscriptionWorkspace__file } from '@/strings/messages/AudioTranscriptionWorkspace__file/es';
+import { AudioTranscriptionWorkspace__finishing_input } from '@/strings/messages/AudioTranscriptionWorkspace__finishing_input/es';
+import { AudioTranscriptionWorkspace__input_stopped_backpressure } from '@/strings/messages/AudioTranscriptionWorkspace__input_stopped_backpressure/es';
+import { AudioTranscriptionWorkspace__input_stopped_text_limit } from '@/strings/messages/AudioTranscriptionWorkspace__input_stopped_text_limit/es';
+import { AudioTranscriptionWorkspace__japanese } from '@/strings/messages/AudioTranscriptionWorkspace__japanese/es';
+import { AudioTranscriptionWorkspace__microphone } from '@/strings/messages/AudioTranscriptionWorkspace__microphone/es';
+import { AudioTranscriptionWorkspace__or } from '@/strings/messages/AudioTranscriptionWorkspace__or/es';
+import { AudioTranscriptionWorkspace__partial_transcription } from '@/strings/messages/AudioTranscriptionWorkspace__partial_transcription/es';
+import { AudioTranscriptionWorkspace__pause } from '@/strings/messages/AudioTranscriptionWorkspace__pause/es';
+import { AudioTranscriptionWorkspace__pause_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__pause_voice_input/es';
+import { AudioTranscriptionWorkspace__preparing_model } from '@/strings/messages/AudioTranscriptionWorkspace__preparing_model/es';
+import { AudioTranscriptionWorkspace__remove_file } from '@/strings/messages/AudioTranscriptionWorkspace__remove_file/es';
+import { AudioTranscriptionWorkspace__resume } from '@/strings/messages/AudioTranscriptionWorkspace__resume/es';
+import { AudioTranscriptionWorkspace__resume_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__resume_voice_input/es';
+import { AudioTranscriptionWorkspace__start_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__start_voice_input/es';
+import { AudioTranscriptionWorkspace__text } from '@/strings/messages/AudioTranscriptionWorkspace__text/es';
+import { AudioTranscriptionWorkspace__transcribe } from '@/strings/messages/AudioTranscriptionWorkspace__transcribe/es';
+import { AudioTranscriptionWorkspace__transcribed_text } from '@/strings/messages/AudioTranscriptionWorkspace__transcribed_text/es';
+import { AudioTranscriptionWorkspace__transcription_result } from '@/strings/messages/AudioTranscriptionWorkspace__transcription_result/es';
+import { AudioTranscriptionWorkspace__use_audio_from_video } from '@/strings/messages/AudioTranscriptionWorkspace__use_audio_from_video/es';
 import { BrowserConnectionSelection__api_key } from '@/strings/messages/BrowserConnectionSelection__api_key/es';
 import { BrowserConnectionSelection__api_url } from '@/strings/messages/BrowserConnectionSelection__api_url/es';
 import { BrowserConnectionSelection__available_in_this_browser } from '@/strings/messages/BrowserConnectionSelection__available_in_this_browser/es';
@@ -1650,12 +1707,29 @@ import { ModelDownloads__waiting } from '@/strings/messages/ModelDownloads__wait
 import { ModelExecutionBadge__execution_not_observed } from '@/strings/messages/ModelExecutionBadge__execution_not_observed/es';
 import { ModelExecutionBadge__native_architecture } from '@/strings/messages/ModelExecutionBadge__native_architecture/es';
 import { ModelExecutionBadge__registered_model_graph } from '@/strings/messages/ModelExecutionBadge__registered_model_graph/es';
+import { ModelSelectorHuggingFaceSearch__could_not_search_hugging_face } from '@/strings/messages/ModelSelectorHuggingFaceSearch__could_not_search_hugging_face/es';
+import { ModelSelectorHuggingFaceSearch__enter_a_valid_repository_url } from '@/strings/messages/ModelSelectorHuggingFaceSearch__enter_a_valid_repository_url/es';
+import { ModelSelectorHuggingFaceSearch__model_name_or_repository_url } from '@/strings/messages/ModelSelectorHuggingFaceSearch__model_name_or_repository_url/es';
+import { ModelSelectorHuggingFaceSearch__more } from '@/strings/messages/ModelSelectorHuggingFaceSearch__more/es';
+import { ModelSelectorHuggingFaceSearch__no_models_found } from '@/strings/messages/ModelSelectorHuggingFaceSearch__no_models_found/es';
+import { ModelSelectorHuggingFaceSearch__results_for } from '@/strings/messages/ModelSelectorHuggingFaceSearch__results_for/es';
+import { ModelSelectorHuggingFaceSearch__search_hugging_face } from '@/strings/messages/ModelSelectorHuggingFaceSearch__search_hugging_face/es';
+import { ModelSelectorHuggingFaceSearch__search_sends_your_query_to_hugging_face } from '@/strings/messages/ModelSelectorHuggingFaceSearch__search_sends_your_query_to_hugging_face/es';
+import { ModelSelectorHuggingFaceSearch__searching } from '@/strings/messages/ModelSelectorHuggingFaceSearch__searching/es';
+import { ModelSelector__add_model_files } from '@/strings/messages/ModelSelector__add_model_files/es';
+import { ModelSelector__back_to_models } from '@/strings/messages/ModelSelector__back_to_models/es';
 import { ModelSelector__clear_filter } from '@/strings/messages/ModelSelector__clear_filter/es';
+import { ModelSelector__close } from '@/strings/messages/ModelSelector__close/es';
+import { ModelSelector__download_before_first_use } from '@/strings/messages/ModelSelector__download_before_first_use/es';
+import { ModelSelector__download_from_hugging_face } from '@/strings/messages/ModelSelector__download_from_hugging_face/es';
+import { ModelSelector__downloads_automatically } from '@/strings/messages/ModelSelector__downloads_automatically/es';
 import { ModelSelector__filter_models } from '@/strings/messages/ModelSelector__filter_models/es';
 import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inherit/es';
 import { ModelSelector__loading_models } from '@/strings/messages/ModelSelector__loading_models/es';
+import { ModelSelector__models } from '@/strings/messages/ModelSelector__models/es';
 import { ModelSelector__no_models_available } from '@/strings/messages/ModelSelector__no_models_available/es';
 import { ModelSelector__no_models_found } from '@/strings/messages/ModelSelector__no_models_found/es';
+import { ModelSelector__on_this_device } from '@/strings/messages/ModelSelector__on_this_device/es';
 import { ModelSelector__refresh_model_list } from '@/strings/messages/ModelSelector__refresh_model_list/es';
 import { ModelSelector__select_a_model } from '@/strings/messages/ModelSelector__select_a_model/es';
 import { ModelSupportInvestigationModal__add_models_placeholder } from '@/strings/messages/ModelSupportInvestigationModal__add_models_placeholder/es';
@@ -3795,6 +3869,7 @@ import { translation__unsupported_model } from '@/strings/messages/translation__
 import { translation__use_for_translation } from '@/strings/messages/translation__use_for_translation/es';
 import { translation__waiting_for_translation } from '@/strings/messages/translation__waiting_for_translation/es';
 import { useAppEntry__could_not_open_model_browser } from '@/strings/messages/useAppEntry__could_not_open_model_browser/es';
+import { useAudioTranscriptionPreferences__could_not_save_auto_copy } from '@/strings/messages/useAudioTranscriptionPreferences__could_not_save_auto_copy/es';
 import { useBinaryActions__delete_binary_object } from '@/strings/messages/useBinaryActions__delete_binary_object/es';
 import { useBinaryActions__delete_binary_object_warning } from '@/strings/messages/useBinaryActions__delete_binary_object_warning/es';
 import { useBinaryActions__delete_permanently } from '@/strings/messages/useBinaryActions__delete_permanently/es';
@@ -4288,6 +4363,63 @@ export const catalog = {
   AssistantProcessSequence__tool_executions,
   AssistantProcessSequence__used_tools,
   AssistantWaitingIndicator__waiting_for_response,
+  AudioTranscriptionModelDetails__check_on_hugging_face,
+  AudioTranscriptionModelDetails__could_not_check,
+  AudioTranscriptionModelDetails__details,
+  AudioTranscriptionModelDetails__download_files,
+  AudioTranscriptionModelDetails__download_targets_not_checked,
+  AudioTranscriptionModelDetails__local_file,
+  AudioTranscriptionModelDetails__quantization,
+  AudioTranscriptionModelDetails__repository,
+  AudioTranscriptionModelDetails__revision,
+  AudioTranscriptionModelSources__choose_a_file,
+  AudioTranscriptionModelSources__could_not_check_repository,
+  AudioTranscriptionModelSources__could_not_prepare_model,
+  AudioTranscriptionModelSources__model_file,
+  AudioTranscriptionModelSources__no_single_file_models,
+  AudioTranscriptionModelSources__preparing_model,
+  AudioTranscriptionModelSources__select_model,
+  AudioTranscriptionSidebar__transcribe_a_file,
+  AudioTranscriptionSidebar__voice_input,
+  AudioTranscriptionWorkspace__about_automatic_copy,
+  AudioTranscriptionWorkspace__audio_language,
+  AudioTranscriptionWorkspace__audio_source,
+  AudioTranscriptionWorkspace__automatic_copy,
+  AudioTranscriptionWorkspace__automatic_detection,
+  AudioTranscriptionWorkspace__automatically_copy_recognized_text,
+  AudioTranscriptionWorkspace__cancel,
+  AudioTranscriptionWorkspace__change_file,
+  AudioTranscriptionWorkspace__characters,
+  AudioTranscriptionWorkspace__choose_audio_or_video_file,
+  AudioTranscriptionWorkspace__choose_file,
+  AudioTranscriptionWorkspace__copied,
+  AudioTranscriptionWorkspace__copy,
+  AudioTranscriptionWorkspace__could_not_auto_copy,
+  AudioTranscriptionWorkspace__could_not_copy_select_the_text,
+  AudioTranscriptionWorkspace__drop_audio_or_video_file,
+  AudioTranscriptionWorkspace__edit_transcribed_text,
+  AudioTranscriptionWorkspace__end_voice_input,
+  AudioTranscriptionWorkspace__english,
+  AudioTranscriptionWorkspace__file,
+  AudioTranscriptionWorkspace__finishing_input,
+  AudioTranscriptionWorkspace__input_stopped_backpressure,
+  AudioTranscriptionWorkspace__input_stopped_text_limit,
+  AudioTranscriptionWorkspace__japanese,
+  AudioTranscriptionWorkspace__microphone,
+  AudioTranscriptionWorkspace__or,
+  AudioTranscriptionWorkspace__partial_transcription,
+  AudioTranscriptionWorkspace__pause,
+  AudioTranscriptionWorkspace__pause_voice_input,
+  AudioTranscriptionWorkspace__preparing_model,
+  AudioTranscriptionWorkspace__remove_file,
+  AudioTranscriptionWorkspace__resume,
+  AudioTranscriptionWorkspace__resume_voice_input,
+  AudioTranscriptionWorkspace__start_voice_input,
+  AudioTranscriptionWorkspace__text,
+  AudioTranscriptionWorkspace__transcribe,
+  AudioTranscriptionWorkspace__transcribed_text,
+  AudioTranscriptionWorkspace__transcription_result,
+  AudioTranscriptionWorkspace__use_audio_from_video,
   BrowserConnectionSelection__api_key,
   BrowserConnectionSelection__api_url,
   BrowserConnectionSelection__available_in_this_browser,
@@ -5863,12 +5995,29 @@ export const catalog = {
   ModelExecutionBadge__execution_not_observed,
   ModelExecutionBadge__native_architecture,
   ModelExecutionBadge__registered_model_graph,
+  ModelSelectorHuggingFaceSearch__could_not_search_hugging_face,
+  ModelSelectorHuggingFaceSearch__enter_a_valid_repository_url,
+  ModelSelectorHuggingFaceSearch__model_name_or_repository_url,
+  ModelSelectorHuggingFaceSearch__more,
+  ModelSelectorHuggingFaceSearch__no_models_found,
+  ModelSelectorHuggingFaceSearch__results_for,
+  ModelSelectorHuggingFaceSearch__search_hugging_face,
+  ModelSelectorHuggingFaceSearch__search_sends_your_query_to_hugging_face,
+  ModelSelectorHuggingFaceSearch__searching,
+  ModelSelector__add_model_files,
+  ModelSelector__back_to_models,
   ModelSelector__clear_filter,
+  ModelSelector__close,
+  ModelSelector__download_before_first_use,
+  ModelSelector__download_from_hugging_face,
+  ModelSelector__downloads_automatically,
   ModelSelector__filter_models,
   ModelSelector__inherit,
   ModelSelector__loading_models,
+  ModelSelector__models,
   ModelSelector__no_models_available,
   ModelSelector__no_models_found,
+  ModelSelector__on_this_device,
   ModelSelector__refresh_model_list,
   ModelSelector__select_a_model,
   ModelSupportInvestigationModal__add_models_placeholder,
@@ -8008,6 +8157,7 @@ export const catalog = {
   translation__use_for_translation,
   translation__waiting_for_translation,
   useAppEntry__could_not_open_model_browser,
+  useAudioTranscriptionPreferences__could_not_save_auto_copy,
   useBinaryActions__delete_binary_object,
   useBinaryActions__delete_binary_object_warning,
   useBinaryActions__delete_permanently,

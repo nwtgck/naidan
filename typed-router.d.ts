@@ -52,6 +52,20 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/audio-transcription': RouteRecordInfo<
+      '/audio-transcription',
+      '/audio-transcription',
+      Record<never, never>,
+      Record<never, never>,
+      | '/audio-transcription/files'
+    >,
+    '/audio-transcription/files': RouteRecordInfo<
+      '/audio-transcription/files',
+      '/audio-transcription/files',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/chat/[id]': RouteRecordInfo<
       '/chat/[id]',
       '/chat/:id',
@@ -229,6 +243,23 @@ declare module 'vue-router/auto-routes' {
     'src/pages/audio-generation.vue': {
       routes:
         | '/audio-generation'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/audio-transcription.vue': {
+      routes:
+        | '/audio-transcription'
+        | '/audio-transcription/files'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/audio-transcription/files.vue': {
+      routes:
+        | '/audio-transcription/files'
       views:
         | never
       pathParamNames:

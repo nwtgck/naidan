@@ -13,7 +13,7 @@ export type AuthorizedModelDestination = { destination: ModelDestination, expect
 
 const registrationChangeEvent = 'naidan-host-model-directories-changed';
 
-// One accepted intent is shared by the LM download entry points. It overlays
+// One accepted intent is shared by the GGUF download entry points. It overlays
 // stored settings only until its guarded write completes, without changing jobs
 // that already captured a destination or the image-generation selector.
 type DestinationIntent = {
@@ -26,7 +26,7 @@ const destinationIntent = shallowRef<DestinationIntent>();
 let destinationRevision = 0;
 
 
-/** LM download entry points share one persisted choice; image generation remains independent. */
+/** GGUF download entry points share one persisted choice; image generation remains independent. */
 export function useModelDownloadDestination({ blocked, changed }: {
   blocked: () => boolean,
   changed: () => void,

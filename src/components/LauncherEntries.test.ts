@@ -42,14 +42,14 @@ it('keeps Home and dialog content, order and routes synchronized through visibil
   using home = await fixture({ component: HomeLauncherEntries });
   using dialog = await fixture({ component: LauncherEntryList });
   expect(entries(home)).toEqual(entries(dialog));
-  expect(home.wrapper.findAll('[data-testid="launcher-entry"]')).toHaveLength(6);
+  expect(home.wrapper.findAll('[data-testid="launcher-entry"]')).toHaveLength(7);
   settings.value = { experimental: { unimplementedLauncherEntries: 'show' } };
   await nextTick();
   expect(entries(home)).toEqual(entries(dialog));
-  expect(home.wrapper.findAll('[data-testid="launcher-entry"]')).toHaveLength(11);
+  expect(home.wrapper.findAll('[data-testid="launcher-entry"]')).toHaveLength(10);
   for (const surface of [home, dialog]) {
     const unavailable = surface.wrapper.findAll('[data-testid="launcher-entry"][aria-disabled="true"]');
-    expect(unavailable).toHaveLength(5);
+    expect(unavailable).toHaveLength(3);
     expect(unavailable.every(entry => entry.element.tagName !== 'A' && entry.attributes('href') === undefined && entry.find('a').exists() === false)).toBe(true);
     await surface.wrapper.get('[data-testid="launcher-category-write"]').trigger('click');
     expect(surface.wrapper.get('[data-testid="launcher-category-write"]').attributes('aria-pressed')).toBe('true');
