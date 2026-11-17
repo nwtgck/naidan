@@ -104,20 +104,29 @@ import { AudioTranscriptionWorkspace__change_file } from '@/strings/messages/Aud
 import { AudioTranscriptionWorkspace__characters } from '@/strings/messages/AudioTranscriptionWorkspace__characters/es';
 import { AudioTranscriptionWorkspace__choose_audio_or_video_file } from '@/strings/messages/AudioTranscriptionWorkspace__choose_audio_or_video_file/es';
 import { AudioTranscriptionWorkspace__choose_file } from '@/strings/messages/AudioTranscriptionWorkspace__choose_file/es';
+import { AudioTranscriptionWorkspace__clear_text } from '@/strings/messages/AudioTranscriptionWorkspace__clear_text/es';
 import { AudioTranscriptionWorkspace__copied } from '@/strings/messages/AudioTranscriptionWorkspace__copied/es';
 import { AudioTranscriptionWorkspace__copy } from '@/strings/messages/AudioTranscriptionWorkspace__copy/es';
 import { AudioTranscriptionWorkspace__could_not_auto_copy } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_auto_copy/es';
 import { AudioTranscriptionWorkspace__could_not_copy_select_the_text } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_copy_select_the_text/es';
+import { AudioTranscriptionWorkspace__could_not_open_floating_window } from '@/strings/messages/AudioTranscriptionWorkspace__could_not_open_floating_window/es';
 import { AudioTranscriptionWorkspace__drop_audio_or_video_file } from '@/strings/messages/AudioTranscriptionWorkspace__drop_audio_or_video_file/es';
 import { AudioTranscriptionWorkspace__edit_transcribed_text } from '@/strings/messages/AudioTranscriptionWorkspace__edit_transcribed_text/es';
 import { AudioTranscriptionWorkspace__end_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__end_voice_input/es';
 import { AudioTranscriptionWorkspace__english } from '@/strings/messages/AudioTranscriptionWorkspace__english/es';
 import { AudioTranscriptionWorkspace__file } from '@/strings/messages/AudioTranscriptionWorkspace__file/es';
 import { AudioTranscriptionWorkspace__finishing_input } from '@/strings/messages/AudioTranscriptionWorkspace__finishing_input/es';
+import { AudioTranscriptionWorkspace__floating_window_unavailable } from '@/strings/messages/AudioTranscriptionWorkspace__floating_window_unavailable/es';
+import { AudioTranscriptionWorkspace__full_transcription_copied } from '@/strings/messages/AudioTranscriptionWorkspace__full_transcription_copied/es';
+import { AudioTranscriptionWorkspace__full_transcription_not_copied } from '@/strings/messages/AudioTranscriptionWorkspace__full_transcription_not_copied/es';
 import { AudioTranscriptionWorkspace__input_stopped_backpressure } from '@/strings/messages/AudioTranscriptionWorkspace__input_stopped_backpressure/es';
 import { AudioTranscriptionWorkspace__input_stopped_text_limit } from '@/strings/messages/AudioTranscriptionWorkspace__input_stopped_text_limit/es';
 import { AudioTranscriptionWorkspace__japanese } from '@/strings/messages/AudioTranscriptionWorkspace__japanese/es';
+import { AudioTranscriptionWorkspace__load_local_model_automatically } from '@/strings/messages/AudioTranscriptionWorkspace__load_local_model_automatically/es';
 import { AudioTranscriptionWorkspace__microphone } from '@/strings/messages/AudioTranscriptionWorkspace__microphone/es';
+import { AudioTranscriptionWorkspace__microphone_input_active } from '@/strings/messages/AudioTranscriptionWorkspace__microphone_input_active/es';
+import { AudioTranscriptionWorkspace__microphone_segment_max_seconds } from '@/strings/messages/AudioTranscriptionWorkspace__microphone_segment_max_seconds/es';
+import { AudioTranscriptionWorkspace__open_floating_window } from '@/strings/messages/AudioTranscriptionWorkspace__open_floating_window/es';
 import { AudioTranscriptionWorkspace__or } from '@/strings/messages/AudioTranscriptionWorkspace__or/es';
 import { AudioTranscriptionWorkspace__partial_transcription } from '@/strings/messages/AudioTranscriptionWorkspace__partial_transcription/es';
 import { AudioTranscriptionWorkspace__pause } from '@/strings/messages/AudioTranscriptionWorkspace__pause/es';
@@ -127,6 +136,7 @@ import { AudioTranscriptionWorkspace__remove_file } from '@/strings/messages/Aud
 import { AudioTranscriptionWorkspace__resume } from '@/strings/messages/AudioTranscriptionWorkspace__resume/es';
 import { AudioTranscriptionWorkspace__resume_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__resume_voice_input/es';
 import { AudioTranscriptionWorkspace__start_voice_input } from '@/strings/messages/AudioTranscriptionWorkspace__start_voice_input/es';
+import { AudioTranscriptionWorkspace__tap_to_resume_auto_copy } from '@/strings/messages/AudioTranscriptionWorkspace__tap_to_resume_auto_copy/es';
 import { AudioTranscriptionWorkspace__text } from '@/strings/messages/AudioTranscriptionWorkspace__text/es';
 import { AudioTranscriptionWorkspace__transcribe } from '@/strings/messages/AudioTranscriptionWorkspace__transcribe/es';
 import { AudioTranscriptionWorkspace__transcribed_text } from '@/strings/messages/AudioTranscriptionWorkspace__transcribed_text/es';
@@ -3870,6 +3880,10 @@ import { translation__use_for_translation } from '@/strings/messages/translation
 import { translation__waiting_for_translation } from '@/strings/messages/translation__waiting_for_translation/es';
 import { useAppEntry__could_not_open_model_browser } from '@/strings/messages/useAppEntry__could_not_open_model_browser/es';
 import { useAudioTranscriptionPreferences__could_not_save_auto_copy } from '@/strings/messages/useAudioTranscriptionPreferences__could_not_save_auto_copy/es';
+import { useAudioTranscriptionPreferences__could_not_save_microphone_segment_length } from '@/strings/messages/useAudioTranscriptionPreferences__could_not_save_microphone_segment_length/es';
+import { useAudioTranscriptionPreferences__could_not_save_model_auto_load } from '@/strings/messages/useAudioTranscriptionPreferences__could_not_save_model_auto_load/es';
+import { useAudioTranscriptionPreferences__could_not_save_model_selection } from '@/strings/messages/useAudioTranscriptionPreferences__could_not_save_model_selection/es';
+import { useAudioTranscriptionPreferences__could_not_save_recognition_language } from '@/strings/messages/useAudioTranscriptionPreferences__could_not_save_recognition_language/es';
 import { useBinaryActions__delete_binary_object } from '@/strings/messages/useBinaryActions__delete_binary_object/es';
 import { useBinaryActions__delete_binary_object_warning } from '@/strings/messages/useBinaryActions__delete_binary_object_warning/es';
 import { useBinaryActions__delete_permanently } from '@/strings/messages/useBinaryActions__delete_permanently/es';
@@ -4392,20 +4406,29 @@ export const catalog = {
   AudioTranscriptionWorkspace__characters,
   AudioTranscriptionWorkspace__choose_audio_or_video_file,
   AudioTranscriptionWorkspace__choose_file,
+  AudioTranscriptionWorkspace__clear_text,
   AudioTranscriptionWorkspace__copied,
   AudioTranscriptionWorkspace__copy,
   AudioTranscriptionWorkspace__could_not_auto_copy,
   AudioTranscriptionWorkspace__could_not_copy_select_the_text,
+  AudioTranscriptionWorkspace__could_not_open_floating_window,
   AudioTranscriptionWorkspace__drop_audio_or_video_file,
   AudioTranscriptionWorkspace__edit_transcribed_text,
   AudioTranscriptionWorkspace__end_voice_input,
   AudioTranscriptionWorkspace__english,
   AudioTranscriptionWorkspace__file,
   AudioTranscriptionWorkspace__finishing_input,
+  AudioTranscriptionWorkspace__floating_window_unavailable,
+  AudioTranscriptionWorkspace__full_transcription_copied,
+  AudioTranscriptionWorkspace__full_transcription_not_copied,
   AudioTranscriptionWorkspace__input_stopped_backpressure,
   AudioTranscriptionWorkspace__input_stopped_text_limit,
   AudioTranscriptionWorkspace__japanese,
+  AudioTranscriptionWorkspace__load_local_model_automatically,
   AudioTranscriptionWorkspace__microphone,
+  AudioTranscriptionWorkspace__microphone_input_active,
+  AudioTranscriptionWorkspace__microphone_segment_max_seconds,
+  AudioTranscriptionWorkspace__open_floating_window,
   AudioTranscriptionWorkspace__or,
   AudioTranscriptionWorkspace__partial_transcription,
   AudioTranscriptionWorkspace__pause,
@@ -4415,6 +4438,7 @@ export const catalog = {
   AudioTranscriptionWorkspace__resume,
   AudioTranscriptionWorkspace__resume_voice_input,
   AudioTranscriptionWorkspace__start_voice_input,
+  AudioTranscriptionWorkspace__tap_to_resume_auto_copy,
   AudioTranscriptionWorkspace__text,
   AudioTranscriptionWorkspace__transcribe,
   AudioTranscriptionWorkspace__transcribed_text,
@@ -8158,6 +8182,10 @@ export const catalog = {
   translation__waiting_for_translation,
   useAppEntry__could_not_open_model_browser,
   useAudioTranscriptionPreferences__could_not_save_auto_copy,
+  useAudioTranscriptionPreferences__could_not_save_microphone_segment_length,
+  useAudioTranscriptionPreferences__could_not_save_model_auto_load,
+  useAudioTranscriptionPreferences__could_not_save_model_selection,
+  useAudioTranscriptionPreferences__could_not_save_recognition_language,
   useBinaryActions__delete_binary_object,
   useBinaryActions__delete_binary_object_warning,
   useBinaryActions__delete_permanently,

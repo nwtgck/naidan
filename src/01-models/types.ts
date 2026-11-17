@@ -528,6 +528,10 @@ export interface Settings {
     audioTranscription?: {
       /** Automatically copies microphone transcription text; missing means disabled. */
       microphoneAutoCopy?: 'enabled' | 'disabled',
+      modelId?: string,
+      modelAutoLoad?: 'enabled' | 'disabled',
+      microphoneSegmentMaxSeconds?: number,
+      recognitionLanguage?: 'auto' | 'ja' | 'en',
     },
     /** Display and collection preferences only; generation measurements remain in memory. */
     generationSpeed?: {

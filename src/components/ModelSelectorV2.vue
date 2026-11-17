@@ -3,7 +3,7 @@ export type ModelSelectorV2Model = {
   id: string,
   label: string,
   description: string | undefined,
-  availability: 'local' | 'download_required' | 'remote',
+  availability: 'local' | 'download_required' | 'remote' | 'checking',
 };
 export type ModelSelectorV2Panel = { id: string, label: string | undefined };
 </script>

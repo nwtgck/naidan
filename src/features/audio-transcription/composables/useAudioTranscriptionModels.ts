@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, readonly, ref, shallowRef } from 'vue';
+import { computed, onScopeDispose, readonly, ref, shallowRef, watch, type Ref } from 'vue';
 import type { ModelSelectorV2Model } from '@/components/ModelSelectorV2.vue';
 import { cloneDownloadDestination } from '@/01-models/download';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
@@ -23,10 +23,12 @@ import { inspectStoredSpeechRecognitionModel, openStoredSpeechRecognitionModel }
 import { awaitInspection } from '@/logic/model-file-inspection/abort';
 import { downloadFilesForDisplay } from '@/logic/hugging-face-download/presentation';
 import { exactObject } from '@/utils/exact-object';
+import type { useAudioTranscriptionPreferences } from './useAudioTranscriptionPreferences';
 
 type Selection =
   | { kind: 'suggestion', suggestion: ModelSuggestion, quantization: SuggestedQuantization }
   | { kind: 'stored', model: LocalModel }
+  | { kind: 'repository_reference', modelId: string, repository: string, variant: string }
   | { kind: 'repository', selection: DownloadSelection, intentKey: string | undefined };
 type Entry = { id: string, label: string, description: string | undefined, selection: Selection };
 type SuggestedEntry = Omit<Entry, 'selection'> & { selection: Extract<Selection, { kind: 'suggestion' }> };
@@ -54,7 +56,7 @@ export type AudioTranscriptionModelImport = {
 };
 
 /** Selection remains local until an explicit import, repository check or Run. */
-export function useAudioTranscriptionModels() {
+export function useAudioTranscriptionModels({ preference }: { preference: { modelId: Readonly<Ref<string | undefined>>, rememberModel: ReturnType<typeof useAudioTranscriptionPreferences>['rememberModel'] } }) {
   const suggestions: SuggestedEntry[] = speechRecognitionModelCatalog.map(suggestion => ({
     id: `suggestion:${suggestion.id}`,
     label: suggestion.name,
@@ -77,6 +79,7 @@ export function useAudioTranscriptionModels() {
   const importing = ref(false);
   const opening = ref(false);
   const refreshing = ref(false);
+  const inventoryKnown = ref(false);
   const jobId = ref<number>();
   const queue = getDownloadQueue();
   const controllers = new Set<AbortController>();
@@ -85,6 +88,7 @@ export function useAudioTranscriptionModels() {
   let scanCompletion: Promise<void> | undefined;
   let disposed = false;
   let repositorySequence = 0;
+  let pendingSelectionSaves = 0;
   const downloadDestination = useModelDownloadDestination({
     blocked: () => importing.value || opening.value,
     changed: () => {
@@ -118,6 +122,7 @@ export function useAudioTranscriptionModels() {
   function repositorySource({ selection }: { selection: Selection }): { repository: string } | undefined {
     switch (selection.kind) {
     case 'repository': return { repository: selection.selection.repository };
+    case 'repository_reference': return { repository: selection.repository };
     case 'suggestion': return { repository: selection.quantization.hfRepository };
     case 'stored': {
       const model = selection.model;
@@ -156,7 +161,7 @@ export function useAudioTranscriptionModels() {
         const original = sourceEntry.selection;
         switch (original.kind) {
         case 'stored': return pinned?.selection.repository ?? sourceEntry.label;
-        case 'suggestion': case 'repository': return sourceEntry.label;
+        case 'suggestion': case 'repository': case 'repository_reference': return sourceEntry.label;
         default: {
           const exhaustive: never = original;
           throw new Error(String(exhaustive));
@@ -173,6 +178,7 @@ export function useAudioTranscriptionModels() {
       const installed = (() => {
         switch (selection.kind) {
         case 'stored': return selection.model;
+        case 'repository_reference': return stored.value.find(model => model.modelId === selection.modelId);
         case 'suggestion': return storedSuggestion({ quantization: selection.quantization });
         case 'repository': {
           const modelId = installedBindings.value.get(bindingKey({ pinned: selection }));
@@ -200,7 +206,14 @@ export function useAudioTranscriptionModels() {
     return { entries, aliases };
   });
   const entries = computed(() => entryView.value.entries);
-  const selectedId = computed(() => requestedId.value === undefined ? undefined : entryView.value.aliases.get(requestedId.value) ?? requestedId.value);
+  const selectedId = computed(() => {
+    const requested = requestedId.value;
+    if (requested === undefined) {
+      return undefined;
+    }
+    const id = entryView.value.aliases.get(requested) ?? requested;
+    return entries.value.some(entry => entry.id === id) ? id : undefined;
+  });
   const selectedEntry = computed(() => entries.value.find(entry => entry.id === selectedId.value));
   const selectedSourceEntry = computed(() => sourceEntries.value.find(entry => entry.id === selectedId.value));
   const models = computed<readonly ModelSelectorV2Model[]>(() => entries.value.map(entry => {
@@ -209,7 +222,7 @@ export function useAudioTranscriptionModels() {
     const availability = (() => {
       switch (selection.kind) {
       case 'stored': return 'local';
-      case 'suggestion': case 'repository': return 'download_required';
+      case 'suggestion': case 'repository': case 'repository_reference': return inventoryKnown.value ? 'download_required' : 'checking';
       default: {
         const exhaustive: never = selection;
         throw new Error(String(exhaustive));
@@ -255,7 +268,7 @@ export function useAudioTranscriptionModels() {
     const selection = entry.selection;
     switch (selection.kind) {
     case 'repository': return selection;
-    case 'stored': case 'suggestion': return undefined;
+    case 'stored': case 'suggestion': case 'repository_reference': return undefined;
     default: {
       const exhaustive: never = selection;
       throw new Error(String(exhaustive));
@@ -285,6 +298,7 @@ export function useAudioTranscriptionModels() {
     const selection = entry.selection;
     switch (selection.kind) {
     case 'suggestion': return pinned === undefined || pinned.intentKey === suggestionDownloadKey({ suggestionId: selection.suggestion.id, quantization: selection.quantization, multimodal: 'off' }) ? selection.quantization.preferredQuantization : undefined;
+    case 'repository_reference': return selection.variant;
     case 'repository': case 'stored': return undefined;
     default: {
       const exhaustive: never = selection;
@@ -317,7 +331,7 @@ export function useAudioTranscriptionModels() {
     const selection = selectedEntry.value?.selection;
     switch (selection?.kind) {
     case 'stored': return { kind: 'local', name: entry.label, fileName: localNames.value.get(selection.model.modelId), bytes: selection.model.size };
-    case 'suggestion': case 'repository': case undefined: return undefined;
+    case 'suggestion': case 'repository': case 'repository_reference': case undefined: return undefined;
     default: {
       const exhaustive: never = selection;
       throw new Error(String(exhaustive));
@@ -325,12 +339,42 @@ export function useAudioTranscriptionModels() {
     }
   });
 
+  function modelIdForSelection({ selection }: { selection: Selection | undefined }): string | undefined {
+    switch (selection?.kind) {
+    case 'suggestion': return `hf.co/${selection.quantization.hfRepository}:${selection.quantization.preferredQuantization}`;
+    case 'stored': return selection.model.modelId;
+    case 'repository_reference': return selection.modelId;
+    case 'repository': {
+      const file = selection.selection.files[0];
+      return file === undefined ? undefined : formatHuggingFaceModelId({ repository: selection.selection.repository, mainFilePath: file.path });
+    }
+    case undefined: return undefined;
+    default: {
+      const exhaustive: never = selection;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+  const selectedModelId = computed(() => modelIdForSelection({ selection: selectedEntry.value?.selection }));
+
+  function saveSelection(): void {
+    const modelId = selectedModelId.value;
+    if (pendingSelectionSaves === 0 && modelId === preference.modelId.value) {
+      return;
+    }
+    pendingSelectionSaves++;
+    void preference.rememberModel({ modelId }).catch(() => {}).finally(() => {
+      pendingSelectionSaves--;
+    });
+  }
+
   function select({ id }: { id: string | undefined }): void {
     if (!busy.value && (id === undefined || sourceEntries.value.some(entry => entry.id === id))) {
       quantizationsActive.value?.controller.abort();
       requestedId.value = id;
       failure.value = undefined;
       quantizationsFailure.value = undefined;
+      saveSelection();
     }
   }
 
@@ -368,7 +412,7 @@ export function useAudioTranscriptionModels() {
             return undefined;
           }
         }
-        case 'stored': case 'repository': return undefined;
+        case 'stored': case 'repository': case 'repository_reference': return undefined;
         default: {
           const exhaustive: never = selection;
           throw new Error(String(exhaustive));
@@ -413,6 +457,7 @@ export function useAudioTranscriptionModels() {
         switch (selection.kind) {
         case 'suggestion': return suggested?.selection.files[0]?.path;
         case 'repository': return selection.selection.files[0]?.path;
+        case 'repository_reference': return choices.find(choice => modelIdForSelection({ selection: choice.pinned }) === selection.modelId)?.filePath;
         case 'stored': {
           const matching = choices.filter(choice => choice.installed?.modelId === selection.model.modelId);
           return matching.length === 1 ? matching[0]?.id : undefined;
@@ -452,6 +497,7 @@ export function useAudioTranscriptionModels() {
     }
     quantizationsFailure.value = undefined;
     failure.value = undefined;
+    saveSelection();
   }
 
   async function locallyInstalled({ selection, signal }: { selection: DownloadSelection, signal: AbortSignal }): Promise<LocalModel | undefined> {
@@ -496,6 +542,7 @@ export function useAudioTranscriptionModels() {
     signal.throwIfAborted();
     switch (selection.kind) {
     case 'stored': return selection.model;
+    case 'repository_reference': return stored.value.find(model => model.modelId === selection.modelId);
     case 'suggestion': return storedSuggestion({ quantization: selection.quantization });
     case 'repository': {
       const model = await locallyInstalled({ selection: selection.selection, signal });
@@ -522,6 +569,23 @@ export function useAudioTranscriptionModels() {
       source: 'repository',
       destination,
       prepare: async () => selection.selection,
+    };
+    case 'repository_reference': return {
+      prepared: undefined,
+      intentKey: selection.modelId,
+      key: selection.modelId,
+      repository: selection.repository,
+      source: 'repository',
+      destination,
+      prepare: async ({ signal }) => {
+        const catalog = await getMetadataSession().inspect({ input: selection.repository, signal, freshness: 'reuse' });
+        const matches = catalog.models.filter(model => model.files.length === 1 && formatHuggingFaceModelId({ repository: catalog.repository, mainFilePath: model.files[0]!.path }) === selection.modelId);
+        const match = matches.length === 1 ? matches[0]?.files[0] : undefined;
+        if (match === undefined) {
+          throw new Error('The saved speech recognition variant is no longer available');
+        }
+        return confirmModelLaunchConfiguration({ catalog, mainFilePath: match.path, companionFilePath: undefined, multimodal: 'off' }).selection;
+      },
     };
     case 'suggestion': {
       const key = suggestionDownloadKey({ suggestionId: selection.suggestion.id, quantization: selection.quantization, multimodal: 'off' });
@@ -553,7 +617,7 @@ export function useAudioTranscriptionModels() {
     const entry = sourceEntries.value.find(entry => entry.id === id);
     const selection = configurations.value.get(id) ?? entry?.selection;
     switch (selection?.kind) {
-    case 'suggestion': case 'repository': return downloadRequest({ selection, destination: downloadDestination.destination.value });
+    case 'suggestion': case 'repository': case 'repository_reference': return downloadRequest({ selection, destination: downloadDestination.destination.value });
     case 'stored': case undefined: return undefined;
     default: {
       const exhaustive: never = selection;
@@ -570,7 +634,7 @@ export function useAudioTranscriptionModels() {
     }
     switch (entry.selection.kind) {
     case 'stored': return;
-    case 'suggestion': case 'repository': break;
+    case 'suggestion': case 'repository': case 'repository_reference': break;
     default: {
       const exhaustive: never = entry.selection;
       throw new Error(String(exhaustive));
@@ -679,6 +743,7 @@ export function useAudioTranscriptionModels() {
       controller.signal.throwIfAborted();
       if (!disposed && scan === controller) {
         stored.value = recognized;
+        inventoryKnown.value = true;
         localNames.value = names;
         const previousFailure = failure.value;
         switch (previousFailure) {
@@ -750,6 +815,7 @@ export function useAudioTranscriptionModels() {
       localNames.value = names;
       quantizationsActive.value?.controller.abort();
       requestedId.value = `stored:${first.modelId}`;
+      saveSelection();
     } catch {
       if (!controller.signal.aborted && !disposed) {
         failure.value = 'import';
@@ -760,20 +826,20 @@ export function useAudioTranscriptionModels() {
     }
   }
 
-  function addRepositoryModel({ selection }: { selection: DownloadSelection }): void {
-    if (busy.value || disposed || selection.files.length !== 1) {
-      return;
-    }
+  function repositoryEntryId({ selection }: { selection: DownloadSelection }): string {
     const existing = repositories.value.find(entry => entry.selection.kind === 'repository' && selectionKey({ selection: entry.selection.selection }) === selectionKey({ selection }));
     if (existing !== undefined) {
-      select({ id: existing.id });
-      return;
+      return existing.id;
     }
     const id = `repository:${++repositorySequence}`;
     repositories.value = [...repositories.value, { id, label: selection.repository, description: selection.files[0]?.path, selection: { kind: 'repository', selection, intentKey: undefined } }];
-    quantizationsActive.value?.controller.abort();
-    requestedId.value = id;
-    failure.value = undefined;
+    return id;
+  }
+
+  function addRepositoryModel({ selection }: { selection: DownloadSelection }): void {
+    if (!busy.value && !disposed && selection.files.length === 1) {
+      select({ id: repositoryEntryId({ selection }) });
+    }
   }
 
   async function openSelected({ signal: requestedSignal }: { signal: AbortSignal }): Promise<{ modelId: string, file: File }> {
@@ -797,6 +863,7 @@ export function useAudioTranscriptionModels() {
       case 'stored': modelId = selection.model.modelId;
         break;
       case 'suggestion':
+      case 'repository_reference':
       case 'repository': {
         const request = downloadRequest({ selection, destination });
         const { prepared, intentKey, ...download } = request;
@@ -860,6 +927,52 @@ export function useAudioTranscriptionModels() {
     }
   }
 
+  async function openSelectedLocal({ signal: requestedSignal }: { signal: AbortSignal }): Promise<{ modelId: string, file: File } | undefined> {
+    const selection = selectedEntry.value?.selection;
+    if (busy.value || disposed || selection === undefined) {
+      return undefined;
+    }
+    const signal = AbortSignal.any([requestedSignal, lifetime.signal]);
+    const local = await capturedLocalModel({ selection, signal });
+    if (local === undefined) {
+      return undefined;
+    }
+    const file = await openStoredSpeechRecognitionModel({ modelId: local.modelId, signal });
+    signal.throwIfAborted();
+    return { modelId: local.modelId, file };
+  }
+
+  watch(preference.modelId, modelId => {
+    if (pendingSelectionSaves > 0) {
+      return;
+    }
+    if (modelId === undefined) {
+      requestedId.value = suggestions[0]?.id;
+      return;
+    }
+    const catalog = suggestions.find(entry => modelIdForSelection({ selection: entry.selection }) === modelId);
+    if (catalog !== undefined) {
+      requestedId.value = catalog.id;
+      return;
+    }
+    requestedId.value = `stored:${modelId}`;
+    if (modelId.startsWith('hf.co/')) {
+      try {
+        const { repository, variant } = parseModelReference({ modelId });
+        if (variant === undefined || variant === '') {
+          return;
+        }
+        const id = `reference:${modelId}`;
+        if (!repositories.value.some(entry => entry.id === id)) {
+          repositories.value = [...repositories.value, { id, label: repository, description: variant, selection: { kind: 'repository_reference', modelId, repository, variant } }];
+        }
+        requestedId.value = id;
+      } catch {
+        // The chooser remains unselected if a saved reference is unreadable.
+      }
+    }
+  }, { immediate: true, flush: 'sync' });
+
   const unsubscribe = llamaCppBrowserModelFiles.subscribeModelList({
     listener: () => {
       void refresh();
@@ -879,10 +992,12 @@ export function useAudioTranscriptionModels() {
   return {
     models,
     selectedId: readonly(selectedId),
+    selectedModelId,
     select,
     refresh,
     refreshing: readonly(refreshing),
     openSelected,
+    openSelectedLocal,
     importModels,
     addRepositoryModel,
     backgroundDownload,

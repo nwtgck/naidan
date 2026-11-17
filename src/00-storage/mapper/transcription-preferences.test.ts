@@ -5,7 +5,16 @@ import { settingsToDomain, settingsToDto } from './mappers';
 
 const base: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: 'https://example.invalid' } };
 
-describe('Audio transcription automatic copy preference persistence', () => {
+describe('Audio transcription preference persistence', () => {
+  it('round-trips the model ID, audio language, and model preload preference', () => {
+    const audioTranscription = { modelId: 'hf.co/test/recognition:Q4_K_M', recognitionLanguage: 'ja', modelAutoLoad: 'disabled', microphoneSegmentMaxSeconds: 20 } as const;
+    const saved = settingsToDto({ domain: { ...base, experimental: { audioTranscription } } });
+    const persisted = JSON.parse(JSON.stringify(saved));
+    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(persisted) });
+    expect(persisted.experimental.audioTranscription).toEqual(audioTranscription);
+    expect(restored.experimental?.audioTranscription).toEqual(audioTranscription);
+  });
+
   it.each(['enabled', 'disabled'] as const)('round-trips explicit %s while keeping unrelated preferences', autoCopy => {
     const saved = settingsToDto({ domain: { ...base, experimental: { locale: 'ja', fakeLm: 'enabled', unimplementedLauncherEntries: 'show', audioTranscription: { microphoneAutoCopy: autoCopy } } } });
     const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved))) });

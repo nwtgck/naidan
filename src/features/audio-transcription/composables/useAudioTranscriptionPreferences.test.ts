@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import type { useSettings } from '@/composables/useSettings';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useAudioTranscriptionPreferences } from './useAudioTranscriptionPreferences';
+import { transcriptionRegionSeconds } from '@/features/audio-transcription/logic/continuous-transcription';
 
 const mocks = vi.hoisted(() => ({ capture: vi.fn(), update: vi.fn(), addToast: vi.fn() }));
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } });
@@ -29,6 +30,24 @@ beforeEach(async () => {
 });
 
 describe('Audio transcription automatic copy preference', () => {
+  it('defaults to automatic language and local model loading, then persists explicit overrides by field', async () => {
+    const api = useAudioTranscriptionPreferences();
+    expect(api.recognitionLanguage.value).toBe('auto');
+    expect(api.modelAutoLoad.value).toBe('enabled');
+    expect(api.microphoneSegmentMaxSeconds.value).toBe(transcriptionRegionSeconds);
+    expect(mocks.update).not.toHaveBeenCalled();
+    const languageSave = api.updateRecognitionLanguage({ value: 'ja' });
+    expect(api.recognitionLanguage.value).toBe('ja');
+    expect(settings.value.experimental?.audioTranscription).toBeUndefined();
+    await languageSave;
+    await api.updateModelAutoLoad({ value: 'disabled' });
+    const segmentSave = api.updateMicrophoneSegmentMaxSeconds({ seconds: 20 });
+    expect(api.microphoneSegmentMaxSeconds.value).toBe(20);
+    await segmentSave;
+    await api.rememberModel({ modelId: 'hf.co/test/model:Q8_0' });
+    expect(settings.value.experimental?.audioTranscription).toEqual({ recognitionLanguage: 'ja', modelAutoLoad: 'disabled', modelId: 'hf.co/test/model:Q8_0', microphoneSegmentMaxSeconds: 20 });
+  });
+
   it.each([undefined, {}, { locale: 'ja' }, { audioTranscription: {} }] satisfies Settings['experimental'][])('defaults to disabled without writing or materializing settings: %j', experimental => {
     settings.value.experimental = experimental;
     const api = useAudioTranscriptionPreferences();

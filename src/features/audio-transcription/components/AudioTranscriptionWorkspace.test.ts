@@ -6,13 +6,14 @@ import type { useAudioTranscriptionModels } from '@/features/audio-transcription
 import type { useAudioTranscriptionWorkflow } from '@/features/audio-transcription/composables/useAudioTranscriptionWorkflow';
 import type { useAudioTranscriptionPreferences } from '@/features/audio-transcription/composables/useAudioTranscriptionPreferences';
 import { initialAudioTranscriptionState } from '@/features/audio-transcription/logic/transcription-controller';
+import { transcriptionRegionSeconds } from '@/features/audio-transcription/logic/continuous-transcription';
 import AudioTranscriptionWorkspace from './AudioTranscriptionWorkspace.vue';
 
 type Workflow = ReturnType<typeof useAudioTranscriptionWorkflow>;
 type Phase = Workflow['phase']['value'];
 type Preferences = ReturnType<typeof useAudioTranscriptionPreferences>;
 // The selector's own tests exercise its slots and model-management dependencies.
-type WorkspaceModels = Pick<ReturnType<typeof useAudioTranscriptionModels>, 'models' | 'selectedId' | 'selectedQuantizationId' | 'openSelected' | 'refreshing' | 'progress'>;
+type WorkspaceModels = Pick<ReturnType<typeof useAudioTranscriptionModels>, 'models' | 'selectedId' | 'selectedModelId' | 'selectedQuantizationId' | 'openSelected' | 'refreshing' | 'progress'>;
 
 const mocks = vi.hoisted(() => ({
   models: vi.fn<() => WorkspaceModels>(),
@@ -32,16 +33,33 @@ vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress
 function fixture({ source, phase: initialPhase }: { source: 'microphone' | 'file', phase: Phase }) {
   const phase = ref<Phase>(initialPhase);
   const provisional = ref('');
+  const clipboardError = ref<Workflow['clipboardError']['value']>();
+  const copiedText = ref('');
   const state = shallowRef(initialAudioTranscriptionState());
   const workflow: Workflow = {
     phase: computed(() => phase.value),
     pending: computed(() => phase.value === 'preparing' || phase.value === 'finishing'),
+    preloading: computed(() => false),
     state,
     runtimeState: computed(() => state.value.runtime),
     provisionalText: computed(() => provisional.value),
     failureDetails: computed(() => undefined),
-    clipboardError: computed(() => undefined),
-    clearClipboardError: vi.fn<Workflow['clearClipboardError']>(),
+    clipboardError,
+    visibleText: computed(() => [mocks.workflow.mock.calls[0]?.[0].text.value, provisional.value].filter(Boolean).join('\n')),
+    autoCopyCurrent: computed(() => copiedText.value !== '' && copiedText.value === workflow.visibleText.value),
+    clearText: vi.fn<Workflow['clearText']>(() => {
+      const input = mocks.workflow.mock.calls[0]?.[0];
+      if (input !== undefined) {
+        input.text.value = '';
+      }
+      provisional.value = '';
+    }),
+    copyOnEnable: vi.fn<Workflow['copyOnEnable']>(),
+    retryClipboardAfterInteraction: vi.fn<Workflow['retryClipboardAfterInteraction']>(),
+    recordClipboardWrite: vi.fn<Workflow['recordClipboardWrite']>(({ value }) => {
+      copiedText.value = value;
+    }),
+    preload: vi.fn<Workflow['preload']>(async () => {}),
     start: vi.fn<Workflow['start']>(async () => {}),
     stop: vi.fn<Workflow['stop']>(async () => {}),
     pauseOrResume: vi.fn<Workflow['pauseOrResume']>(async () => {}),
@@ -50,10 +68,21 @@ function fixture({ source, phase: initialPhase }: { source: 'microphone' | 'file
     TEST_ONLY: {},
   };
   const autoCopy = ref<'enabled' | 'disabled'>('disabled');
+  const recognitionLanguage = ref<Preferences['recognitionLanguage']['value']>('auto');
   const saving = ref(false);
   const preferences: Preferences = {
     autoCopy: computed(() => autoCopy.value),
     saving,
+    modelId: computed(() => undefined),
+    modelAutoLoad: computed(() => 'enabled'),
+    microphoneSegmentMaxSeconds: computed(() => transcriptionRegionSeconds),
+    recognitionLanguage: computed(() => recognitionLanguage.value),
+    rememberModel: vi.fn<Preferences['rememberModel']>(async () => {}),
+    updateRecognitionLanguage: vi.fn<Preferences['updateRecognitionLanguage']>(async ({ value }) => {
+      recognitionLanguage.value = value;
+    }),
+    updateModelAutoLoad: vi.fn<Preferences['updateModelAutoLoad']>(async () => {}),
+    updateMicrophoneSegmentMaxSeconds: vi.fn<Preferences['updateMicrophoneSegmentMaxSeconds']>(async () => {}),
     updateAutoCopy: vi.fn<Preferences['updateAutoCopy']>(async ({ value }) => {
       autoCopy.value = value;
     }),
@@ -62,6 +91,7 @@ function fixture({ source, phase: initialPhase }: { source: 'microphone' | 'file
   mocks.models.mockReturnValue({
     models: computed(() => []),
     selectedId: computed(() => undefined),
+    selectedModelId: computed(() => undefined),
     selectedQuantizationId: computed(() => undefined),
     openSelected: vi.fn<ReturnType<typeof useAudioTranscriptionModels>['openSelected']>(async () => ({ modelId: 'fixture-asr', file: new File(['model fixture'], 'recognizer.gguf') })),
     refreshing: ref(false),
@@ -81,8 +111,10 @@ function fixture({ source, phase: initialPhase }: { source: 'microphone' | 'file
     wrapper,
     input,
     phase,
+    state,
     provisional,
     workflow,
+    clipboardError,
     preferences,
     saving,
     writeText,
@@ -108,6 +140,103 @@ describe('Audio transcription workspace workflow bindings', () => {
     expect(value.input.language.value).toBeUndefined();
     await value.wrapper.get('select').setValue('en');
     expect(value.input.language.value).toBe('en');
+  });
+
+  it('shows a disabled floating-window button when the browser has no Document PiP API', () => {
+    using value = fixture({ source: 'microphone', phase: 'idle' });
+    const button = value.wrapper.get('[data-testid="audio-transcription-open-floating"]');
+    expect(button.attributes('disabled')).toBeDefined();
+    expect(button.attributes('title')).toBe('The floating window is unavailable in this browser.');
+  });
+
+  it('shows a waveform on the action button and expands it for a received signal', async () => {
+    using value = fixture({ source: 'microphone', phase: 'recording' });
+    const button = value.wrapper.get('[data-testid="audio-transcription-input-toggle"]');
+    const activity = button.get<SVGElement>('[data-testid="audio-transcription-microphone-activity"]');
+    const restingScale = Number(activity.element.style.getPropertyValue('--mic-waveform-scale'));
+    expect(restingScale).toBeGreaterThan(0);
+    expect(restingScale).toBeLessThan(1);
+    expect(button.attributes('aria-description')).toBe('Microphone active');
+    value.state.value = { ...value.state.value, microphoneLevel: 0.002 };
+    await nextTick();
+    expect(Number(activity.element.style.getPropertyValue('--mic-waveform-scale'))).toBe(restingScale);
+    value.state.value = { ...value.state.value, microphoneLevel: 0.1 };
+    await nextTick();
+    expect(Number(activity.element.style.getPropertyValue('--mic-waveform-scale'))).toBeGreaterThan(restingScale);
+    value.phase.value = 'paused';
+    await nextTick();
+    expect(button.find('[data-testid="audio-transcription-microphone-activity"]').exists()).toBe(false);
+  });
+
+  it('saves a valid microphone segment length and restores the field after an invalid entry', async () => {
+    using value = fixture({ source: 'microphone', phase: 'idle' });
+    const input = value.wrapper.get<HTMLInputElement>('[data-testid="audio-transcription-segment-length"]');
+    expect(input.element.valueAsNumber).toBe(transcriptionRegionSeconds);
+    await input.setValue(90);
+    expect(input.element.valueAsNumber).toBe(transcriptionRegionSeconds);
+    expect(value.preferences.updateMicrophoneSegmentMaxSeconds).not.toHaveBeenCalled();
+    await input.setValue(20);
+    expect(value.preferences.updateMicrophoneSegmentMaxSeconds).toHaveBeenCalledExactlyOnceWith({ seconds: 20 });
+  });
+
+  it('keeps progress and clipboard warnings in the existing editor status row', async () => {
+    using value = fixture({ source: 'microphone', phase: 'idle' });
+    const status = value.wrapper.get('[data-testid="audio-transcription-editor-status"]');
+    const editor = value.wrapper.get('[data-testid="audio-transcription-editor"]').element;
+    expect(status.find('[data-testid="audio-transcription-preparation"]').exists()).toBe(false);
+    value.phase.value = 'preparing';
+    value.clipboardError.value = 'interaction';
+    await nextTick();
+    expect(status.find('[data-testid="audio-transcription-preparation"]').exists()).toBe(true);
+    expect(status.get('[data-testid="audio-transcription-copy-status"]').text()).toContain('Click or tap');
+    expect(value.wrapper.get('[data-testid="audio-transcription-editor"]').element).toBe(editor);
+  });
+
+  it('shares editing and clearing the transcript with a floating document', async () => {
+    const frame = document.createElement('iframe');
+    document.body.append(frame);
+    const pip = frame.contentWindow;
+    if (pip === null) {
+      throw new Error('Missing test document');
+    }
+    const api = { requestWindow: vi.fn(async () => pip) };
+    vi.stubGlobal('documentPictureInPicture', api);
+    using cleanup = {
+      [Symbol.dispose]() {
+        vi.unstubAllGlobals();
+        frame.remove();
+      },
+    };
+    using value = fixture({ source: 'microphone', phase: 'recording' });
+    const editor = value.wrapper.get<HTMLTextAreaElement>('[data-testid="audio-transcription-editor"]');
+    await editor.setValue('Shared transcript');
+    await value.wrapper.get('[data-testid="audio-transcription-open-floating"]').trigger('click');
+    await flushPromises();
+    expect(api.requestWindow).toHaveBeenCalledOnce();
+    const pane = pip.document.querySelector('[data-testid="audio-transcription-floating"]');
+    expect(pane?.textContent).toContain('Naidan');
+    expect(pane?.querySelector('[data-testid="audio-transcription-floating-input-toggle"] [data-testid="audio-transcription-microphone-activity"]')).not.toBeNull();
+    const floatingEditor = pane?.querySelector<HTMLTextAreaElement>('[data-testid="audio-transcription-floating-editor"]');
+    expect(floatingEditor?.value).toBe('Shared transcript');
+    if (floatingEditor === undefined || floatingEditor === null) {
+      throw new Error('Missing floating editor');
+    }
+    floatingEditor.value = 'Edited in the floating window';
+    floatingEditor.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    expect(editor.element.value).toBe('Edited in the floating window');
+    const clear = pane?.querySelector<HTMLButtonElement>('[data-testid="audio-transcription-floating-clear"]');
+    clear?.click();
+    await nextTick();
+    expect(value.workflow.clearText).toHaveBeenCalledOnce();
+    expect(value.workflow.stop).not.toHaveBeenCalled();
+    expect(editor.element.value).toBe('');
+    expect(floatingEditor.value).toBe('');
+    pip.dispatchEvent(new Event('pagehide'));
+    await nextTick();
+    expect(pip.document.querySelector('[data-testid="audio-transcription-floating"]')).toBeNull();
+    expect(value.workflow.stop).not.toHaveBeenCalled();
+    void cleanup;
   });
 
   it.each([
@@ -198,6 +327,7 @@ describe('Audio transcription workspace workflow bindings', () => {
     const toggle = value.wrapper.get('button[role="switch"]');
     await toggle.trigger('click');
     expect(value.preferences.updateAutoCopy).toHaveBeenCalledExactlyOnceWith({ value: 'enabled' });
+    expect(value.workflow.copyOnEnable).toHaveBeenCalledOnce();
     expect(value.input.autoCopy.value).toBe('enabled');
     expect(toggle.attributes('aria-checked')).toBe('true');
     await value.wrapper.get('[data-testid="audio-transcription-editor"]').setValue('Manually edited text');
@@ -228,5 +358,22 @@ describe('Audio transcription workspace workflow bindings', () => {
     await button.trigger('click');
     await flushPromises();
     expect(value.writeText).toHaveBeenCalledExactlyOnceWith('Edited document');
+  });
+
+  it('reports when the current text has been copied in full and clears it from the separate action', async () => {
+    using value = fixture({ source: 'microphone', phase: 'recording' });
+    const editor = value.wrapper.get<HTMLTextAreaElement>('[data-testid="audio-transcription-editor"]');
+    const status = value.wrapper.get('[data-testid="audio-transcription-full-copy-status"]');
+    await editor.setValue('Hello');
+    expect(status.text()).toContain('full text not copied');
+    const copy = value.wrapper.get('[data-testid="audio-transcription-copy"]');
+    await copy.trigger('click');
+    await flushPromises();
+    expect(status.text()).toBe('5 characters copied in full');
+    await value.wrapper.get('[data-testid="audio-transcription-clear"]').trigger('click');
+    expect(editor.element.value).toBe('');
+    expect(status.text()).toBe('');
+    expect(value.workflow.stop).not.toHaveBeenCalled();
+    expect(value.writeText).toHaveBeenCalledOnce();
   });
 });

@@ -2363,9 +2363,9 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       naidanRpc: naidanRpc ?? 'disabled',
       unimplementedLauncherEntries,
       audioTranscription: audioTranscription === undefined ? undefined : (() => {
-        const { microphoneAutoCopy, ...unhandledAudioTranscription } = audioTranscription;
+        const { microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage, ...unhandledAudioTranscription } = audioTranscription;
         unhandledAudioTranscription satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<Settings['experimental']>['audioTranscription']>>()({ microphoneAutoCopy });
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['audioTranscription']>>()({ microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage });
       })(),
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
@@ -2543,9 +2543,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       }),
       unimplementedLauncherEntries,
       audioTranscription: audioTranscription === undefined ? undefined : (() => {
-        const { microphoneAutoCopy, ...unhandledAudioTranscription } = audioTranscription;
+        const { microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage, ...unhandledAudioTranscription } = audioTranscription;
         unhandledAudioTranscription satisfies Record<PropertyKey, never>;
-        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['audioTranscription']>>()({ microphoneAutoCopy });
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['audioTranscription']>>()({ microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage });
       })(),
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;

@@ -4,7 +4,7 @@ import { currentLocale, lazyStrings } from '@/strings';
 import type { SpeechLoadProgress } from '@/features/speech-cpp-browser/types';
 import { createModelLoadEstimate } from '@/features/live-conversation/logic/model-load-progress';
 
-const props = defineProps<{ progress: SpeechLoadProgress | undefined, ready?: boolean, generation?: number }>();
+const props = defineProps<{ progress: SpeechLoadProgress | undefined, ready?: boolean, generation?: number, compact?: boolean }>();
 const estimator = createModelLoadEstimate();
 const overall = ref<number>();
 watch([() => props.progress, () => props.ready, () => props.generation], ([progress, ready, generation], previous) => {
@@ -82,10 +82,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div tw-class="w-full space-y-2" data-testid="live-model-load-progress">
-    <div tw-class="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-600 dark:text-gray-300"><span role="status" data-testid="live-load-stage">{{ label }}</span><span v-if="overallText !== undefined" tw-class="tabular-nums" data-testid="live-overall-load-percent">{{ lazyStrings.liveConversation__overall_model_load_estimate() }} {{ overallText }}%</span></div>
+  <div :tw-class="['w-full', compact ? 'space-y-0.5' : 'space-y-2']" data-testid="live-model-load-progress">
+    <div :title="compact ? detail : undefined" :tw-class="['flex items-center justify-between text-xs text-gray-600 dark:text-gray-300', compact ? 'gap-1.5 leading-4' : 'flex-wrap gap-3']"><span role="status" data-testid="live-load-stage" :tw-class="{ truncate: compact }">{{ label }}</span><span v-if="overallText !== undefined" tw-class="shrink-0 tabular-nums" data-testid="live-overall-load-percent">{{ compact ? '' : lazyStrings.liveConversation__overall_model_load_estimate() }} {{ overallText }}%</span></div>
     <div role="progressbar" :aria-label="lazyStrings.liveConversation__overall_model_load_estimate()" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="overall" tw-class="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" data-testid="live-load-bar"><div v-if="overall !== undefined" :style="{ width: `${overall}%` }" tw-class="h-full rounded-full bg-blue-500 transition-[width] motion-reduce:transition-none" /><div v-else tw-class="h-full w-1/3 animate-pulse rounded-full bg-blue-500/70 motion-reduce:animate-none" /></div>
-    <div v-if="detail" tw-class="flex flex-wrap justify-between gap-2 text-[11px] tabular-nums text-gray-400 dark:text-gray-500"><span data-testid="live-load-bytes">{{ detail }}</span><span v-if="percentageText !== undefined" data-testid="live-load-percent">{{ percentageText }}%</span></div>
-    <p tw-class="text-[11px] leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.liveConversation__model_load_estimate_uses_stage_weights() }}</p>
+    <div v-if="detail && !compact" tw-class="flex flex-wrap justify-between gap-2 text-[11px] tabular-nums text-gray-400 dark:text-gray-500"><span data-testid="live-load-bytes">{{ detail }}</span><span v-if="percentageText !== undefined" data-testid="live-load-percent">{{ percentageText }}%</span></div>
+    <p v-if="!compact" tw-class="text-[11px] leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.liveConversation__model_load_estimate_uses_stage_weights() }}</p>
   </div>
 </template>

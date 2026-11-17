@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, readonly, ref, shallowRef, watch, type Ref } from 'vue';
+import { computed, onScopeDispose, readonly, ref, shallowRef, triggerRef, watch, type Ref } from 'vue';
 import { awaitInspection } from '@/logic/model-file-inspection/abort';
 import { SpeechRuntimeError, speechError, speechFailure, type SpeechFailure } from '@/features/speech-cpp-browser/types';
 import { useAudioTranscription } from './useAudioTranscription';
@@ -7,34 +7,38 @@ import type { useAudioTranscriptionModels } from './useAudioTranscriptionModels'
 type InputSource = 'microphone' | 'file';
 type ModelSelection = {
   openSelected: ReturnType<typeof useAudioTranscriptionModels>['openSelected'],
+  openSelectedLocal: ReturnType<typeof useAudioTranscriptionModels>['openSelectedLocal'],
   selectedId: Readonly<Ref<string | undefined>>,
   selectedQuantizationId: Readonly<Ref<string | undefined>>,
 };
 
 /** Connect recognition to the editable document without making that document
  * a mirror of the backend's replaceable and resettable recognition state. */
-export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, language }: {
+export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, language, microphoneSegmentMaxSeconds, getClipboardWindow }: {
   source: Readonly<Ref<InputSource>>,
   text: Ref<string>,
   autoCopy: Readonly<Ref<'enabled' | 'disabled'>>,
   models: ModelSelection,
   language: Readonly<Ref<string | undefined>>,
+  microphoneSegmentMaxSeconds: Readonly<Ref<number>>,
+  getClipboardWindow: () => Window,
 }) {
   const { state, controller } = useAudioTranscription();
-  type Preparation = { generation: number, controller: AbortController, source: InputSource, stage: 'opening_model' | 'loading_model' };
+  type Preparation = { generation: number, controller: AbortController, source: InputSource, stage: 'opening_model' | 'loading_model', intent: 'run' | 'preload', language: string | undefined, maxRegionSeconds: number, file: File | undefined };
   const preparing = shallowRef<Preparation>();
   const activeSource = ref<InputSource>();
   const cleaning = ref(false);
   const localFailure = shallowRef<SpeechFailure>();
-  const clipboardError = ref<string>();
+  const clipboardError = ref<'interaction' | 'write'>();
   let disposed = false, generation = 0, clipboardGeneration = 0;
   let cleanup: Promise<void> | undefined;
+  let preloadTask: Promise<void> | undefined;
   let resident: { modelId: string, quantizationId: string | undefined, name: string, bytes: number, modified: number } | undefined;
   let lastConfirmed = state.value.confirmedText;
   let lastRevision = state.value.confirmedRevision;
   let clipboardWriting = false;
-  let clipboardQueued: { generation: number, text: string } | undefined;
-  let copiedText: string | undefined;
+  let clipboardQueued: { generation: number, text: string, gesture: boolean } | undefined;
+  const copiedText = ref<string>();
 
   const phase = computed<'idle' | 'preparing' | 'recording' | 'paused' | 'finishing'>(() => {
     if (preparing.value !== undefined) {
@@ -60,8 +64,11 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
     }
   });
   const pending = computed(() => phase.value === 'preparing' || phase.value === 'finishing');
+  const preloading = computed(() => preparing.value?.intent === 'preload');
   const runtimeState = computed(() => state.value.runtime);
   const provisionalText = computed(() => state.value.provisionalText);
+  const visibleText = computed(() => combineText({ confirmed: text.value, provisional: provisionalText.value }));
+  const autoCopyCurrent = computed(() => visibleText.value !== '' && copiedText.value === visibleText.value);
   const failureDetails = computed(() => {
     const failure = localFailure.value ?? state.value.failure ?? state.value.runtime.failure;
     if (failure === undefined) {
@@ -73,7 +80,7 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
   function invalidateClipboard(): void {
     clipboardGeneration++;
     clipboardQueued = undefined;
-    copiedText = undefined;
+    clipboardError.value = undefined;
   }
   function canAutoCopy(): boolean {
     return !disposed && source.value === 'microphone' && activeSource.value === 'microphone' && autoCopy.value === 'enabled';
@@ -90,25 +97,36 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
       while (clipboardQueued !== undefined) {
         const next = clipboardQueued;
         clipboardQueued = undefined;
-        if (!canAutoCopy() || next.generation !== clipboardGeneration || next.text === copiedText) {
+        // A normal stop still authorizes the final snapshot queued while the
+        // microphone was active. Disabling copy, clearing or switching sources
+        // invalidates the generation before another write can start.
+        if (next.generation !== clipboardGeneration || !next.gesture && next.text === copiedText.value) {
           continue;
         }
+        const target = getClipboardWindow();
         try {
           // Keep one native clipboard promise and one latest pending value.
           // No focus wait, permission prompt, timer or promise chain accumulates.
-          await navigator.clipboard.writeText(next.text);
+          await target.navigator.clipboard.writeText(next.text);
           if (!disposed && next.generation === clipboardGeneration) {
-            copiedText = next.text;
+            copiedText.value = next.text;
             clipboardError.value = undefined;
           }
         } catch (error) {
           if (!disposed && next.generation === clipboardGeneration) {
-            clipboardError.value = error instanceof Error || error instanceof DOMException ? error.message : String(error);
+            const permissionError = typeof error === 'object' && error !== null && 'name' in error && error.name === 'NotAllowedError';
+            clipboardError.value = target.navigator.clipboard !== undefined && (!target.document.hasFocus() || permissionError) ? 'interaction' : 'write';
           }
         }
       }
     } finally {
       clipboardWriting = false;
+    }
+  }
+  function queueClipboard({ gesture }: { gesture: boolean }): void {
+    if (!disposed && source.value === 'microphone' && visibleText.value !== '') {
+      clipboardQueued = { generation: clipboardGeneration, text: visibleText.value, gesture };
+      void drainClipboard();
     }
   }
   watch(() => [state.value.confirmedText, state.value.confirmedRevision, state.value.provisionalText] as const, ([confirmed, revision, provisional], previous) => {
@@ -118,15 +136,29 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
     if (delta !== '') {
       text.value = combineText({ confirmed: text.value, provisional: delta });
     }
-    if (canAutoCopy() && (delta !== '' || provisional !== '' && provisional !== previous[2])) {
-      const value = combineText({ confirmed: text.value, provisional });
-      if (value !== '') {
-        clipboardQueued = { generation: clipboardGeneration, text: value };
-        void drainClipboard();
-      }
+    if (canAutoCopy() && (delta !== '' || provisional !== previous[2])) {
+      queueClipboard({ gesture: false });
     }
   }, { flush: 'sync' });
-  watch(autoCopy, invalidateClipboard, { flush: 'sync' });
+  watch(autoCopy, value => {
+    switch (value) {
+    case 'disabled': invalidateClipboard();
+      break;
+    case 'enabled': break;
+    default: {
+      const exhaustive: never = value;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }, { flush: 'sync' });
+
+  function retryClipboardAfterInteraction(): void {
+    if (clipboardError.value === 'interaction' && autoCopy.value === 'enabled') {
+      queueClipboard({ gesture: true });
+    }
+  }
+  window.addEventListener('click', retryClipboardAfterInteraction);
+  window.addEventListener('keyup', retryClipboardAfterInteraction);
 
   function isCurrent({ preparation }: { preparation: Preparation }): boolean {
     return !disposed && preparing.value === preparation && generation === preparation.generation && !preparation.controller.signal.aborted && source.value === preparation.source;
@@ -188,7 +220,7 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
     }
     }
   }
-  async function run({ inputSource, file, resume }: { inputSource: InputSource, file: File | undefined, resume: 'resume' | 'start' }): Promise<void> {
+  async function run({ inputSource, file, resume, intent }: { inputSource: InputSource, file: File | undefined, resume: 'resume' | 'start', intent: Preparation['intent'] }): Promise<void> {
     if (disposed || pending.value || phase.value === 'recording' || source.value !== inputSource) {
       return;
     }
@@ -203,15 +235,31 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
       throw new Error(String(exhaustive));
     }
     }
-    const preparation: Preparation = { generation: ++generation, controller: new AbortController(), source: inputSource, stage: 'opening_model' };
-    const selectedId = models.selectedId.value, quantizationId = models.selectedQuantizationId.value, requestedLanguage = language.value;
+    const preparation: Preparation = { generation: ++generation, controller: new AbortController(), source: inputSource, stage: 'opening_model', intent, language: language.value, maxRegionSeconds: microphoneSegmentMaxSeconds.value, file };
+    const selectedId = models.selectedId.value, quantizationId = models.selectedQuantizationId.value;
     preparing.value = preparation;
     localFailure.value = undefined;
-    clipboardError.value = undefined;
-    invalidateClipboard();
     try {
-      const opened = await awaitInspection({ task: models.openSelected({ signal: preparation.controller.signal }), signal: preparation.controller.signal });
-      if (!isCurrent({ preparation })) {
+      const signal = preparation.controller.signal;
+      const openTask = (() => {
+        switch (intent) {
+        case 'preload': return models.openSelectedLocal({ signal });
+        case 'run':
+          invalidateClipboard();
+          return models.openSelected({ signal });
+        default: {
+          const exhaustive: never = intent;
+          throw new Error(String(exhaustive));
+        }
+        }
+      })();
+      let opened = await awaitInspection({ task: openTask, signal });
+      if (opened === undefined && preparation.intent === 'run' && isCurrent({ preparation })) {
+        // A Start click during preload can authorize downloading if the
+        // previously selected local file has disappeared in the meantime.
+        opened = await awaitInspection({ task: models.openSelected({ signal }), signal });
+      }
+      if (opened === undefined || !isCurrent({ preparation })) {
         return;
       }
       if (models.selectedId.value !== selectedId || quantizationId !== undefined && models.selectedQuantizationId.value !== quantizationId) {
@@ -231,14 +279,25 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
         }
         resident = { modelId: opened.modelId, quantizationId: selectedQuantizationId, name: opened.file.name, bytes: opened.file.size, modified: opened.file.lastModified };
       }
+      switch (preparation.intent) {
+      case 'preload': return;
+      case 'run': break;
+      default: {
+        const exhaustive: never = preparation.intent;
+        throw new Error(String(exhaustive));
+      }
+      }
+      if (models.selectedId.value !== selectedId || models.selectedQuantizationId.value !== selectedQuantizationId) {
+        throw new Error('The selected recognition model changed while it was loading');
+      }
       preparing.value = undefined;
       activeSource.value = inputSource;
       switch (inputSource) {
       case 'microphone':
         switch (resume) {
-        case 'resume': await controller.resume({ language: requestedLanguage });
+        case 'resume': await controller.resume({ language: preparation.language, maxRegionSeconds: preparation.maxRegionSeconds });
           break;
-        case 'start': await controller.start({ language: requestedLanguage });
+        case 'start': await controller.start({ language: preparation.language, maxRegionSeconds: preparation.maxRegionSeconds });
           break;
         default: {
           const exhaustive: never = resume;
@@ -247,10 +306,10 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
         }
         break;
       case 'file':
-        if (file === undefined) {
+        if (preparation.file === undefined) {
           throw new Error('Choose an audio or video file');
         }
-        await controller.runFile({ file, language: requestedLanguage });
+        await controller.runFile({ file: preparation.file, language: preparation.language });
         break;
       default: {
         const exhaustive: never = inputSource;
@@ -302,6 +361,8 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
     void stop();
   }, { flush: 'sync' });
   onScopeDispose(() => {
+    window.removeEventListener('click', retryClipboardAfterInteraction);
+    window.removeEventListener('keyup', retryClipboardAfterInteraction);
     disposed = true;
     generation++;
     preparing.value?.controller.abort();
@@ -310,24 +371,72 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
     // useAudioTranscription owns physical worker/capture disposal in this scope.
   });
 
+  function beginInput({ inputSource, file }: { inputSource: InputSource, file: File | undefined }): Promise<void> {
+    const preparation = preparing.value;
+    if (preparation?.intent === 'preload' && preparation.source === inputSource && preloadTask !== undefined) {
+      preparation.intent = 'run';
+      preparation.language = language.value;
+      preparation.maxRegionSeconds = microphoneSegmentMaxSeconds.value;
+      preparation.file = file;
+      triggerRef(preparing);
+      invalidateClipboard();
+      return preloadTask;
+    }
+    return run({ inputSource, file, resume: 'start', intent: 'run' });
+  }
+
   return {
     phase,
     pending,
+    preloading,
     state,
     runtimeState,
     provisionalText,
+    visibleText,
+    autoCopyCurrent,
     failureDetails,
     clipboardError: readonly(clipboardError),
-    clearClipboardError() {
-      clipboardError.value = undefined;
+    copyOnEnable: () => queueClipboard({ gesture: true }),
+    recordClipboardWrite({ value }: { value: string }): void {
+      copiedText.value = value;
+      if (autoCopyCurrent.value) {
+        clipboardError.value = undefined;
+      }
     },
-    start: () => run({ inputSource: 'microphone', file: undefined, resume: 'start' }),
+    retryClipboardAfterInteraction,
+    clearText(): void {
+      invalidateClipboard();
+      copiedText.value = undefined;
+      text.value = '';
+      controller.clearText();
+    },
+    async preload(): Promise<void> {
+      const current = phase.value;
+      switch (current) {
+      case 'idle': break;
+      case 'recording': case 'preparing': case 'finishing': case 'paused': return;
+      default: {
+        const exhaustive: never = current;
+        throw new Error(String(exhaustive));
+      }
+      }
+      const task = run({ inputSource: source.value, file: undefined, resume: 'start', intent: 'preload' });
+      preloadTask = task;
+      try {
+        await task;
+      } finally {
+        if (preloadTask === task) {
+          preloadTask = undefined;
+        }
+      }
+    },
+    start: () => beginInput({ inputSource: 'microphone', file: undefined }),
     stop,
     async pauseOrResume(): Promise<void> {
       switch (phase.value) {
       case 'recording': await controller.pause();
         break;
-      case 'paused': await run({ inputSource: 'microphone', file: undefined, resume: 'resume' });
+      case 'paused': await run({ inputSource: 'microphone', file: undefined, resume: 'resume', intent: 'run' });
         break;
       case 'idle': case 'preparing': case 'finishing': break;
       default: {
@@ -336,7 +445,7 @@ export function useAudioTranscriptionWorkflow({ source, text, autoCopy, models, 
       }
       }
     },
-    transcribeFile: ({ file }: { file: File }) => run({ inputSource: 'file', file, resume: 'start' }),
+    transcribeFile: ({ file }: { file: File }) => beginInput({ inputSource: 'file', file }),
     cancelPreparation,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };

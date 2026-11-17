@@ -45,14 +45,19 @@ const repositoryCatalog = {
   projectors: [],
 };
 
-function mountModels() {
+function mountModels({ remembered }: { remembered: string | undefined }) {
   const scope = effectScope();
-  const models = scope.run(useAudioTranscriptionModels);
+  const modelId = shallowRef(remembered);
+  const rememberModel = vi.fn<Parameters<typeof useAudioTranscriptionModels>[0]['preference']['rememberModel']>(async saved => {
+    modelId.value = saved.modelId;
+  });
+  const models = scope.run(() => useAudioTranscriptionModels({ preference: { modelId, rememberModel } }));
   if (models === undefined) {
     throw new Error('Missing models scope');
   }
   return {
     models,
+    rememberModel,
     [Symbol.dispose]() {
       scope.stop();
     },
@@ -73,8 +78,21 @@ beforeEach(() => {
 });
 
 describe('Transcription model selection', () => {
+  it('restores an uninstalled repository variant by model ID without contacting Hugging Face', async () => {
+    const modelId = `hf.co/${defaultRepository}:Q4_K_M`;
+    using mounted = mountModels({ remembered: modelId });
+    expect(mounted.models.models.value.find(model => model.id === mounted.models.selectedId.value)?.availability).toBe('checking');
+    await mounted.models.refresh();
+    expect(mounted.models.selectedModelId.value).toBe(modelId);
+    expect(mounted.models.selectedQuantizationLabel.value).toBe('Q4_K_M');
+    expect(mounted.models.models.value.find(model => model.id === mounted.models.selectedId.value)?.availability).toBe('download_required');
+    expect(mocks.inspectRepository).not.toHaveBeenCalled();
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(mounted.rememberModel).not.toHaveBeenCalled();
+  });
+
   it('preselects the small bundled model without metadata or downloads', async () => {
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     expect(mounted.models.models.value).toHaveLength(4);
     expect(mounted.models.models.value[0]).toMatchObject({ label: 'Qwen3-ASR 0.6B', availability: 'download_required' });
@@ -87,7 +105,7 @@ describe('Transcription model selection', () => {
   it('uses the installed equivalent of a suggestion and excludes other model formats', async () => {
     mocks.inventory.mockResolvedValue([local, { ...local, modelId: 'user/chat' }]);
     mocks.inspectStored.mockImplementation(async ({ modelId }: { modelId: string }) => modelId === local.modelId ? recognized : { kind: 'other' });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     expect(mounted.models.models.value[0]?.availability).toBe('local');
     expect(mounted.models.models.value).toHaveLength(4);
@@ -110,7 +128,7 @@ describe('Transcription model selection', () => {
     };
     mocks.inventory.mockResolvedValue([local]);
     mocks.inspectStored.mockReturnValue(header.promise);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const pending = mounted.models.openSelected({ signal: new AbortController().signal });
     await vi.waitFor(() => expect(mocks.inspectStored).toHaveBeenCalledOnce());
     expect(mocks.authorize).not.toHaveBeenCalled();
@@ -132,7 +150,7 @@ describe('Transcription model selection', () => {
     };
     mocks.inventory.mockResolvedValue([local]);
     mocks.inspectStored.mockReturnValue(header.promise);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const id = mounted.models.models.value[0]?.id;
     if (id === undefined) {
       throw new Error('Missing default model');
@@ -166,7 +184,7 @@ describe('Transcription model selection', () => {
     };
     mocks.inventory.mockResolvedValue([local]);
     mocks.inspectStored.mockReturnValue(header.promise);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const controller = new AbortController();
     const pending = mounted.models.openSelected({ signal: controller.signal });
     const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
@@ -189,7 +207,7 @@ describe('Transcription model selection', () => {
     };
     mocks.inventory.mockResolvedValue([local]);
     mocks.inspectStored.mockReturnValue(header.promise);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const id = mounted.models.models.value[0]?.id;
     if (id === undefined) {
       throw new Error('Missing default model');
@@ -206,7 +224,7 @@ describe('Transcription model selection', () => {
 
   it('does not infer repository identity from an imported filename', async () => {
     mocks.inventory.mockResolvedValue([{ ...local, modelId: 'user/Qwen3-ASR-0.6B-Q8_0' }]);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     expect(mounted.models.models.value[0]?.availability).toBe('download_required');
     expect(mounted.models.models.value.some(model => model.label === 'user/Qwen3-ASR-0.6B-Q8_0')).toBe(true);
@@ -220,7 +238,7 @@ describe('Transcription model selection', () => {
       id: 42,
       done: prepare({ signal: new AbortController().signal }).then(resolved => ({ id: 42, status: 'complete', selection: resolved, destination: { kind: 'opfs' } })),
     }));
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     expect(mocks.inspectRepository).not.toHaveBeenCalled();
     await expect(mounted.models.openSelected({ signal: new AbortController().signal })).resolves.toEqual({ modelId: local.modelId, file });
@@ -230,7 +248,7 @@ describe('Transcription model selection', () => {
   });
 
   it('pins an explicitly chosen repository file without downloading on selection', async () => {
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     mounted.models.addRepositoryModel({ selection: pinned });
     const selected = mounted.models.selectedId.value;
     mounted.models.addRepositoryModel({ selection: { ...pinned } });
@@ -246,7 +264,7 @@ describe('Transcription model selection', () => {
 
   it.each(['failed', 'paused', 'cancelled'] as const)('does not load a model after a %s download', async status => {
     mocks.enqueue.mockReturnValue({ id: 42, done: Promise.resolve({ status, selection: pinned }) });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await expect(mounted.models.openSelected({ signal: new AbortController().signal })).rejects.toThrow('did not complete');
     expect(mocks.openStored).not.toHaveBeenCalled();
     expect(mounted.models.failure.value).toBe('model');
@@ -256,7 +274,7 @@ describe('Transcription model selection', () => {
   it('stops the waiting run on abort while leaving its shared download available', async () => {
     const gate = Promise.withResolvers<DownloadJob>();
     mocks.enqueue.mockReturnValue({ id: 42, done: gate.promise });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const controller = new AbortController();
     const pending = mounted.models.openSelected({ signal: controller.signal });
     const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
@@ -270,7 +288,7 @@ describe('Transcription model selection', () => {
 
   it('imports and selects a local recognition model without network access', async () => {
     mocks.importDirectories.mockResolvedValue([local]);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     await mounted.models.importModels({ directories: Promise.resolve([{ rootName: 'recognition', files: [{ relativePath: file.name, file }] }]), controller: new AbortController(), save: 'later', repositoryLayout: 'confirmed' });
     expect(mocks.importDirectories).toHaveBeenCalledWith(expect.objectContaining({ save: 'later' }));
@@ -280,14 +298,14 @@ describe('Transcription model selection', () => {
   });
 
   it('rejects a model with companions before importing it', async () => {
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.importModels({ directories: Promise.resolve([{ rootName: 'recognition', files: [{ relativePath: file.name, file }, { relativePath: 'companion.gguf', file }] }]), controller: new AbortController(), save: 'browser', repositoryLayout: 'confirmed' });
     expect(mocks.importDirectories).not.toHaveBeenCalled();
     expect(mounted.models.failure.value).toBe('import');
   });
 
   it('shows only the known repository before an explicit metadata request', async () => {
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     expect(mounted.models.canInspectQuantizations.value).toBe(true);
     expect(mounted.models.quantizations.value).toEqual([]);
     expect(mounted.models.selectedQuantizationLabel.value).toBe('Q8_0');
@@ -298,7 +316,7 @@ describe('Transcription model selection', () => {
 
   it('lists real single-file quantizations and keeps the existing default after explicit inspection', async () => {
     mocks.inspectRepository.mockResolvedValue({ ...repositoryCatalog, models: [...repositoryCatalog.models, { label: 'F16', size: 2048, files: [{ path: 'model-F16-00001-of-00002.gguf', size: 1024 }, { path: 'model-F16-00002-of-00002.gguf', size: 1024 }] }] });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const initialId = mounted.models.selectedId.value;
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
     expect(mocks.inspectRepository).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ input: defaultRepository }));
@@ -311,7 +329,7 @@ describe('Transcription model selection', () => {
 
   it('runs an explicitly selected quantization with its pinned files and no second metadata request', async () => {
     mocks.inspectRepository.mockResolvedValue(repositoryCatalog);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
     const initialId = mounted.models.selectedId.value;
     mounted.models.selectQuantization({ id: q4.path });
@@ -330,7 +348,7 @@ describe('Transcription model selection', () => {
   it('reuses the verified installed quantization and retains its canonical catalog selection', async () => {
     mocks.inventory.mockResolvedValue([local]);
     mocks.inspectRepository.mockResolvedValue(repositoryCatalog);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
     expect(mounted.models.models.value).toHaveLength(4);
@@ -343,7 +361,7 @@ describe('Transcription model selection', () => {
   it('keeps local imports distinct from Hugging Face provenance in details', async () => {
     const imported = { ...local, modelId: 'user/recognition' };
     mocks.inventory.mockResolvedValue([imported]);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     mounted.models.select({ id: `stored:${imported.modelId}` });
     expect(mounted.models.canInspectQuantizations.value).toBe(false);
@@ -356,7 +374,7 @@ describe('Transcription model selection', () => {
   it('does not apply late quantization metadata after the selected model changes', async () => {
     const gate = Promise.withResolvers<typeof repositoryCatalog>();
     mocks.inspectRepository.mockReturnValue(gate.promise);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const pending = mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
     mounted.models.select({ id: mounted.models.models.value[1]?.id });
     await pending;
@@ -368,7 +386,7 @@ describe('Transcription model selection', () => {
 
   it('does not follow a changed repository while inspecting quantizations', async () => {
     mocks.inspectRepository.mockResolvedValue({ ...repositoryCatalog, repository: 'other/model' });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
     expect(mounted.models.quantizations.value).toEqual([]);
     expect(mounted.models.quantizationsFailure.value).toBe('metadata');
@@ -378,7 +396,7 @@ describe('Transcription model selection', () => {
   it('downloads in the background without locking selection or opening the model', async () => {
     const gate = Promise.withResolvers<DownloadJob>();
     mocks.enqueue.mockReturnValue({ id: 42, done: gate.promise });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const id = mounted.models.models.value[0]?.id;
     if (id === undefined) {
       throw new Error('Missing default model');
@@ -406,7 +424,7 @@ describe('Transcription model selection', () => {
 
   it('reports a downloaded model with an unsupported recognition format as failed', async () => {
     mocks.inspectStored.mockResolvedValue({ kind: 'other' });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const id = mounted.models.models.value[0]?.id;
     if (id === undefined) {
       throw new Error('Missing default model');
@@ -429,7 +447,7 @@ describe('Transcription model selection', () => {
     const authorization = Promise.withResolvers<{ destination: ModelDestination, expectedRoot: typeof root }>();
     mocks.authorize.mockReturnValue(authorization.promise);
     mocks.enqueue.mockReturnValue({ id: 42, done: Promise.resolve({ status: 'failed' }) });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const id = mounted.models.models.value[0]?.id;
     if (id === undefined) {
       throw new Error('Missing default model');
@@ -452,7 +470,7 @@ describe('Transcription model selection', () => {
   it('never falls back to OPFS when background host authorization fails', async () => {
     destination.value = { kind: 'host', directoryId: 'denied-folder' };
     mocks.authorize.mockRejectedValue(new Error('Permission denied'));
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const id = mounted.models.models.value[0]?.id;
     if (id === undefined) {
       throw new Error('Missing default model');
@@ -471,7 +489,7 @@ describe('Transcription model selection', () => {
     const authorization = Promise.withResolvers<{ destination: ModelDestination, expectedRoot: typeof root }>();
     mocks.authorize.mockReturnValue(authorization.promise);
     mocks.enqueue.mockReturnValue({ id: 42, done: Promise.resolve({ status: 'failed' }) });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const pending = mounted.models.openSelected({ signal: new AbortController().signal });
     const rejected = expect(pending).rejects.toThrow('did not complete');
     destination.value = { kind: 'opfs' };
@@ -484,7 +502,7 @@ describe('Transcription model selection', () => {
     const host: LocalModel = { ...local, modelId: `host/Models/${defaultRepository}:Q8_0`, source: { kind: 'host', directoryId: 'saved-folder', directoryName: 'Models', repository: defaultRepository, primaryRelativePath: q8.path } };
     mocks.inventory.mockResolvedValue([host]);
     destination.value = { kind: 'host', directoryId: 'new-download-folder' };
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
     await expect(mounted.models.openSelected({ signal: new AbortController().signal })).resolves.toEqual({ modelId: host.modelId, file });
     expect(mocks.authorize).not.toHaveBeenCalled();
@@ -496,7 +514,7 @@ describe('Transcription model selection', () => {
     mocks.inspectRepository.mockResolvedValue(repositoryCatalog);
     const gate = Promise.withResolvers<DownloadJob>();
     mocks.enqueue.mockReturnValue({ id: 42, done: gate.promise });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
     const id = mounted.models.selectedId.value;
     if (id === undefined) {
@@ -515,7 +533,7 @@ describe('Transcription model selection', () => {
 
   it('allows a pinned arbitrary repository to change quantization in the same entry', async () => {
     mocks.inspectRepository.mockResolvedValue({ ...repositoryCatalog, repository: pinned.repository });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     mounted.models.addRepositoryModel({ selection: pinned });
     const id = mounted.models.selectedId.value;
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
@@ -528,7 +546,7 @@ describe('Transcription model selection', () => {
 
   it('does not invent the bundled Q8 variant or select another quantization when it is absent', async () => {
     mocks.inspectRepository.mockResolvedValue({ ...repositoryCatalog, models: [repositoryCatalog.models[1]] });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
     expect(mounted.models.quantizations.value.map(choice => choice.id)).toEqual([q4.path]);
     expect(mounted.models.selectedQuantizationId.value).toBeUndefined();
@@ -540,7 +558,7 @@ describe('Transcription model selection', () => {
     const gate = Promise.withResolvers<DownloadJob>();
     mocks.enqueue.mockReturnValue({ id: 42, done: gate.promise });
     mocks.inspectRepository.mockResolvedValue(repositoryCatalog);
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     const id = mounted.models.selectedId.value;
     if (id === undefined) {
       throw new Error('Missing selected model');
@@ -561,7 +579,7 @@ describe('Transcription model selection', () => {
   it('refuses to open a shared download whose files differ from the explicit pinned choice', async () => {
     mocks.installed.mockResolvedValue(undefined);
     mocks.enqueue.mockReturnValue({ id: 42, done: Promise.resolve({ status: 'complete', selection: { ...pinned, revision: 'f'.repeat(40) }, destination: { kind: 'opfs' } }) });
-    using mounted = mountModels();
+    using mounted = mountModels({ remembered: undefined });
     mounted.models.addRepositoryModel({ selection: pinned });
     await expect(mounted.models.openSelected({ signal: new AbortController().signal })).rejects.toThrow('differs from the pinned');
     expect(mocks.openStored).not.toHaveBeenCalled();

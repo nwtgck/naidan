@@ -14,10 +14,12 @@ function createModels(): ReturnType<typeof useAudioTranscriptionModels> {
   return {
     models: computed(() => []),
     selectedId: computed(() => undefined),
+    selectedModelId: computed(() => undefined),
     select: vi.fn(),
     refresh: vi.fn(async () => {}),
     refreshing: ref(false),
     openSelected: vi.fn(),
+    openSelectedLocal: vi.fn(),
     importModels: vi.fn(async () => {}),
     addRepositoryModel: vi.fn(),
     backgroundDownload: vi.fn(async () => {}),

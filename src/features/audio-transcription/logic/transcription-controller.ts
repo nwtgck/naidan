@@ -117,7 +117,7 @@ export function createAudioTranscriptionController({ createClient, decodeFile, c
       pendingCommands--;
     }
   }
-  async function start({ language }: { language: string | undefined }): Promise<void> {
+  async function start({ language, maxRegionSeconds }: { language: string | undefined, maxRegionSeconds: number }): Promise<void> {
     if (disposed || pendingCommands > 0 || recording !== undefined || state.phase === 'finishing') {
       return;
     }
@@ -134,6 +134,7 @@ export function createAudioTranscriptionController({ createClient, decodeFile, c
       scheduler: createContinuousAudioTranscription({
         sampleRate: model.sampleRate,
         language,
+        maxRegionSeconds,
         initial: { confirmedText: state.confirmedText, confirmedRevision: state.confirmedRevision, recordedSeconds: state.recordedSeconds },
         recognize: ({ samples, sampleRate, language }) => engine.runAudio({ samples, sampleRate, language, inputName: 'microphone' }),
         onChange({ state: next }) {
@@ -153,7 +154,7 @@ export function createAudioTranscriptionController({ createClient, decodeFile, c
       }),
     };
     recording = target;
-    publish({ change: { phase: 'opening', failure: undefined, stopReason: undefined, provisionalText: '', pendingRegionCount: 0, bufferedSeconds: 0 } });
+    publish({ change: { phase: 'opening', failure: undefined, stopReason: undefined, provisionalText: '', pendingRegionCount: 0, bufferedSeconds: 0, microphoneLevel: 0 } });
     try {
       const opening = capture({
         sampleRate: model.sampleRate,
@@ -199,6 +200,13 @@ export function createAudioTranscriptionController({ createClient, decodeFile, c
     resume: start,
     stop: () => finish({ phase: 'complete' }),
     pause: () => finish({ phase: 'paused' }),
+    clearText(): void {
+      if (recording !== undefined) {
+        recording.scheduler.clearText();
+      } else {
+        publish({ change: { confirmedText: '', confirmedRevision: 0, provisionalText: '' } });
+      }
+    },
     async discard(): Promise<void> {
       await discard();
     },

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
+import { transcriptionRegionSeconds } from './continuous-transcription';
 import { createAudioTranscriptionController } from './transcription-controller';
 import { recognitionClientFixture } from '@/features/speech-cpp-browser/recognition/recognition.test-support';
 import type { SpeechRecognitionResult } from '@/features/speech-cpp-browser/recognition/types';
@@ -41,7 +42,7 @@ function fixture() {
 
 it('requires a loaded model before opening a microphone', async () => {
   await using value = fixture();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   expect(value.capture).not.toHaveBeenCalled();
   expect(value.controller.getState()).toMatchObject({ phase: 'failed', failure: { code: 'invalid_state' } });
 });
@@ -51,7 +52,7 @@ it('recognizes during capture, replaces provisional text, and keeps the resident
   await value.load();
   const load = vi.spyOn(value.engine.client, 'loadModel');
   value.engine.transcribe.mockResolvedValueOnce({ text: 'first draft', languages: ['ja'], status: 'complete' }).mockResolvedValueOnce({ text: 'first sentence', languages: ['ja'], status: 'complete' }).mockResolvedValueOnce({ text: 'second sentence', languages: ['en'], status: 'complete' });
-  await value.controller.start({ language: 'ja' });
+  await value.controller.start({ language: 'ja', maxRegionSeconds: transcriptionRegionSeconds });
   value.pcm({ seconds: 1 });
   await vi.waitFor(() => expect(value.controller.getState().provisionalText).toBe('first draft'));
   expect(value.controller.getState()).toMatchObject({ phase: 'recording', confirmedText: '' });
@@ -59,7 +60,7 @@ it('recognizes during capture, replaces provisional text, and keeps the resident
   await value.controller.pause();
   expect(value.finish).toHaveBeenCalledWith({ action: 'send' });
   expect(value.controller.getState()).toMatchObject({ phase: 'paused', confirmedText: 'first sentence', provisionalText: '', confirmedRevision: 1 });
-  await value.controller.resume({ language: 'en' });
+  await value.controller.resume({ language: 'en', maxRegionSeconds: transcriptionRegionSeconds });
   value.pcm({ seconds: 1 });
   await value.controller.stop();
   expect(value.controller.getState()).toMatchObject({
@@ -80,7 +81,7 @@ second sentence`,
 it('includes capture flush PCM before final recognition and stop waits without cancelling the recognizer', async () => {
   await using value = fixture();
   await value.load();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   const result = Promise.withResolvers<SpeechRecognitionResult>();
   value.engine.transcribe.mockReturnValueOnce(result.promise);
   value.pcm({ seconds: 1 });
@@ -103,7 +104,7 @@ it('includes capture flush PCM before final recognition and stop waits without c
 it('automatically stops and flushes when recognition cannot keep up', async () => {
   await using value = fixture();
   await value.load();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   const first = Promise.withResolvers<SpeechRecognitionResult>();
   value.engine.transcribe.mockReturnValueOnce(first.promise);
   value.pcm({ seconds: 8 });
@@ -113,13 +114,13 @@ it('automatically stops and flushes when recognition cannot keep up', async () =
   expect(value.controller.getState()).toMatchObject({ phase: 'finishing', stopReason: 'backpressure' });
   first.resolve({ text: 'first', languages: [], status: 'complete' });
   await vi.waitFor(() => expect(value.controller.getState().phase).toBe('complete'));
-  expect(value.controller.getState()).toMatchObject({ bufferedSeconds: 0, confirmedRevision: 6, recordedSeconds: 45 });
+  expect(value.controller.getState()).toMatchObject({ bufferedSeconds: 0, confirmedRevision: Math.ceil(45 / transcriptionRegionSeconds), recordedSeconds: 45 });
 });
 
 it('stops capture and preserves native failure details without confirming its partial text', async () => {
   await using value = fixture();
   await value.load();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   const failure = { code: 'runtime_failed' as const, message: 'native failure', nativeStatus: -7, nativeInput: 'audio' };
   value.engine.transcribe.mockRejectedValueOnce(new SpeechRuntimeError({ details: failure }));
   value.pcm({ seconds: 1 });
@@ -132,7 +133,7 @@ it('stops capture and preserves native failure details without confirming its pa
 it('stops an invalid microphone source before it can be recognized', async () => {
   await using value = fixture();
   await value.load();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   value.capture.mock.calls[0]![0].onPcm({ pcm: new Float32Array([Number.POSITIVE_INFINITY]) });
   expect(value.controller.getState()).toMatchObject({ phase: 'failed', failure: { code: 'invalid_audio' } });
   expect(value.finish).toHaveBeenCalledWith({ action: 'discard' });
@@ -143,7 +144,7 @@ it('discards pending microphone permission promptly and closes a late handle', a
   await value.load();
   const opened = Promise.withResolvers<LiveCapture>();
   value.capture.mockReturnValueOnce(opened.promise);
-  const starting = value.controller.start({ language: undefined });
+  const starting = value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   await vi.waitFor(() => expect(value.controller.getState().phase).toBe('opening'));
   await value.controller.discard();
   await starting;
@@ -155,7 +156,7 @@ it('discards pending microphone permission promptly and closes a late handle', a
 it('ignores old recognition results and PCM callbacks after discard and a new session', async () => {
   await using value = fixture();
   await value.load();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   const oldPcm = value.capture.mock.calls[0]![0].onPcm;
   const result = Promise.withResolvers<SpeechRecognitionResult>();
   value.engine.transcribe.mockReturnValueOnce(result.promise);
@@ -164,7 +165,7 @@ it('ignores old recognition results and PCM callbacks after discard and a new se
   const discarded = value.controller.discard();
   result.resolve({ text: 'old session', languages: [], status: 'complete' });
   await discarded;
-  await value.controller.start({ language: 'en' });
+  await value.controller.start({ language: 'en', maxRegionSeconds: transcriptionRegionSeconds });
   oldPcm({ pcm: new Float32Array(16000) });
   value.pcm({ seconds: 1 });
   await value.controller.stop();
@@ -174,22 +175,22 @@ it('ignores old recognition results and PCM callbacks after discard and a new se
 it('keeps new microphone starts disabled until old capture cleanup has finished', async () => {
   await using value = fixture();
   await value.load();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   const cleaned = Promise.withResolvers<void>();
   value.finish.mockReturnValueOnce(cleaned.promise);
   const discarded = value.controller.discard();
-  await value.controller.start({ language: 'en' });
+  await value.controller.start({ language: 'en', maxRegionSeconds: transcriptionRegionSeconds });
   expect(value.capture).toHaveBeenCalledOnce();
   cleaned.resolve();
   await discarded;
-  await value.controller.start({ language: 'en' });
+  await value.controller.start({ language: 'en', maxRegionSeconds: transcriptionRegionSeconds });
   expect(value.capture).toHaveBeenCalledTimes(2);
 });
 
 it('does not let superseded capture cleanup cancel a subsequent file run', async () => {
   await using value = fixture();
   await value.load();
-  await value.controller.start({ language: undefined });
+  await value.controller.start({ language: undefined, maxRegionSeconds: transcriptionRegionSeconds });
   const cleaned = Promise.withResolvers<void>();
   const recognized = Promise.withResolvers<SpeechRecognitionResult>();
   value.finish.mockReturnValueOnce(cleaned.promise);

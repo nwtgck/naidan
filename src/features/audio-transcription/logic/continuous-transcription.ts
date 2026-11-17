@@ -1,9 +1,14 @@
 import { SpeechRuntimeError, speechFailure, speechError, type SpeechFailure } from '@/features/speech-cpp-browser/types';
 import type { SpeechRecognitionRun } from '@/features/speech-cpp-browser/recognition/controller';
 
-export const transcriptionRegionSeconds = 8;
+export const transcriptionRegionSeconds = 14;
 export const transcriptionPendingSeconds = 45;
 export const transcriptionBufferSeconds = 60;
+const minimumPauseBoundarySeconds = 4;
+const speechPauseSeconds = 0.5;
+// Keep headroom between one region and the pending-audio stop threshold.
+export const minimumMicrophoneSegmentSeconds = minimumPauseBoundarySeconds;
+export const maximumMicrophoneSegmentSeconds = 30;
 const maximumTextLength = 500_000;
 const maximumRegions = 2048;
 
@@ -15,20 +20,25 @@ export type ContinuousAudioTranscriptionState = {
   pendingRegionCount: number,
   bufferedSeconds: number,
   recordedSeconds: number,
+  microphoneLevel: number,
   failure: SpeechFailure | undefined,
   stopReason: TranscriptionStopReason | undefined,
 };
 
 export function initialContinuousAudioTranscriptionState(): ContinuousAudioTranscriptionState {
-  return { confirmedText: '', provisionalText: '', confirmedRevision: 0, pendingRegionCount: 0, bufferedSeconds: 0, recordedSeconds: 0, failure: undefined, stopReason: undefined };
+  return { confirmedText: '', provisionalText: '', confirmedRevision: 0, pendingRegionCount: 0, bufferedSeconds: 0, recordedSeconds: 0, microphoneLevel: 0, failure: undefined, stopReason: undefined };
 }
 
-/** The public recognizer is one-shot. Re-recognize only the current bounded
- * region, then commit each non-overlapping region once. Fixed boundaries can
- * split words; this is not a streaming encoder or a speech detector. */
-export function createContinuousAudioTranscription({ sampleRate, language, initial, recognize, onChange, onStopRequested }: {
+export function microphoneSegmentSeconds({ stored }: { stored: number | undefined }): number {
+  return stored !== undefined && Number.isInteger(stored) && stored >= minimumMicrophoneSegmentSeconds && stored <= maximumMicrophoneSegmentSeconds ? stored : transcriptionRegionSeconds;
+}
+
+/** The recognizer is one-shot. Keep the current region provisional until a
+ * speech pause, a memory-bounding time limit, or the end of input. */
+export function createContinuousAudioTranscription({ sampleRate, language, maxRegionSeconds, initial, recognize, onChange, onStopRequested }: {
   sampleRate: number,
   language: string | undefined,
+  maxRegionSeconds: number,
   initial: Pick<ContinuousAudioTranscriptionState, 'confirmedText' | 'confirmedRevision' | 'recordedSeconds'>,
   recognize: ({ samples, sampleRate, language }: { samples: Float32Array<ArrayBuffer>, sampleRate: number, language: string | undefined }) => Promise<Pick<SpeechRecognitionRun, 'text' | 'status' | 'failure'> | undefined>,
   onChange: ({ state }: { state: ContinuousAudioTranscriptionState }) => void,
@@ -39,9 +49,14 @@ export function createContinuousAudioTranscription({ sampleRate, language, initi
   }
   type Region = { chunks: Float32Array<ArrayBuffer>[], samples: number, closed: boolean, text: string, recognizedSamples: number, complete: boolean };
   const regions: Region[] = [];
-  const regionSamples = sampleRate * transcriptionRegionSeconds;
+  const regionSamples = sampleRate * microphoneSegmentSeconds({ stored: maxRegionSeconds });
+  const frameSamples = Math.round(sampleRate * 0.02);
   let state: ContinuousAudioTranscriptionState = { ...initialContinuousAudioTranscriptionState(), ...initial };
   let bufferedSamples = 0, addedSamples = 0;
+  let transcriptGeneration = 0;
+  let frameLength = 0, framePower = 0, speechPeak = 0, silentSamples = 0;
+  let meterFrames = 0, meterPeak = 0, microphoneLevel = 0;
+  let heardSpeech = false;
   let accepting = true, disposed = false, finishingRequested = false;
   let pumping: Promise<void> | undefined;
 
@@ -49,7 +64,7 @@ export function createContinuousAudioTranscription({ sampleRate, language, initi
     if (disposed) {
       return;
     }
-    state = { ...state, provisionalText: regions.map(region => region.text).filter(Boolean).join('\n'), pendingRegionCount: regions.filter(region => region.closed).length, bufferedSeconds: bufferedSamples / sampleRate, recordedSeconds: initial.recordedSeconds + addedSamples / sampleRate };
+    state = { ...state, provisionalText: regions.map(region => region.text).filter(Boolean).join('\n'), pendingRegionCount: regions.filter(region => region.closed).length, bufferedSeconds: bufferedSamples / sampleRate, recordedSeconds: initial.recordedSeconds + addedSamples / sampleRate, microphoneLevel };
     onChange({ state });
   }
   function requestStop({ reason }: { reason: TranscriptionStopReason }): void {
@@ -117,12 +132,16 @@ export function createContinuousAudioTranscription({ sampleRate, language, initi
         snapshot.set(chunk, offset);
         offset += chunk.length;
       }
+      const generation = transcriptGeneration;
       try {
         // Only this disposable snapshot transfers. Master PCM stays available
         // until its final recognition succeeds, including during stop/flush.
         const result = await recognize({ samples: snapshot, sampleRate, language });
         if (disposed) {
           return;
+        }
+        if (generation !== transcriptGeneration) {
+          continue;
         }
         if (result === undefined) {
           throw speechError({ code: 'invalid_state', message: 'The recognition model is no longer ready' });
@@ -156,6 +175,9 @@ export function createContinuousAudioTranscription({ sampleRate, language, initi
           publish();
         }
       } catch (error) {
+        if (generation !== transcriptGeneration) {
+          continue;
+        }
         if (!disposed) {
           fail({ error });
         }
@@ -173,6 +195,33 @@ export function createContinuousAudioTranscription({ sampleRate, language, initi
         pump();
       }
     });
+  }
+  function measureFrame({ pcm, offset, length }: { pcm: Float32Array, offset: number, length: number }): void {
+    for (let i = offset; i < offset + length; i++) {
+      const sample = pcm[i] ?? 0;
+      framePower += sample * sample;
+    }
+    frameLength += length;
+    if (frameLength !== frameSamples) {
+      return;
+    }
+    const level = Math.sqrt(framePower / frameLength);
+    meterPeak = Math.max(meterPeak, level);
+    if (++meterFrames === 4) {
+      // Reuse the pause detector's 20 ms RMS frames without rescanning PCM.
+      microphoneLevel = meterPeak;
+      meterFrames = 0;
+      meterPeak = 0;
+    }
+    speechPeak = Math.max(level, speechPeak * 0.996);
+    if (level >= Math.max(0.002, speechPeak * 0.12)) {
+      heardSpeech = true;
+      silentSamples = 0;
+    } else {
+      silentSamples += frameLength;
+    }
+    frameLength = 0;
+    framePower = 0;
   }
   return {
     getState: () => state,
@@ -192,20 +241,27 @@ export function createContinuousAudioTranscription({ sampleRate, language, initi
         fail({ error: speechError({ code: 'queue_full', message: 'The microphone audio buffer limit was reached; some audio was not accepted' }) });
         return;
       }
+      let chunkStart = 0;
       for (let offset = 0; offset < pcm.length;) {
         let region = current();
         if (region === undefined) {
           region = { chunks: [], samples: 0, closed: false, text: '', recognizedSamples: 0, complete: false };
           regions.push(region);
         }
-        const length = Math.min(pcm.length - offset, regionSamples - region.samples);
-        region.chunks.push(new Float32Array(pcm.subarray(offset, offset + length)));
+        const length = Math.min(pcm.length - offset, regionSamples - region.samples, frameSamples - frameLength);
+        measureFrame({ pcm, offset, length });
         region.samples += length;
         bufferedSamples += length;
         addedSamples += length;
         offset += length;
-        if (region.samples === regionSamples) {
+        if (region.samples === regionSamples || heardSpeech && region.samples >= sampleRate * minimumPauseBoundarySeconds && silentSamples >= sampleRate * speechPauseSeconds) {
           region.closed = true;
+          heardSpeech = false;
+          silentSamples = 0;
+        }
+        if (region.closed || offset === pcm.length) {
+          region.chunks.push(new Float32Array(pcm.subarray(chunkStart, offset)));
+          chunkStart = offset;
         }
       }
       if (bufferedSamples >= sampleRate * transcriptionPendingSeconds) {
@@ -225,6 +281,17 @@ export function createContinuousAudioTranscription({ sampleRate, language, initi
       while (pumping !== undefined) {
         await pumping;
       }
+    },
+    clearText(): void {
+      transcriptGeneration++;
+      regions.splice(0);
+      bufferedSamples = 0;
+      heardSpeech = false;
+      silentSamples = 0;
+      frameLength = 0;
+      framePower = 0;
+      state = { ...state, confirmedText: '', confirmedRevision: 0 };
+      publish();
     },
     discard(): void {
       disposed = true;

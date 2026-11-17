@@ -284,6 +284,10 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
   unimplementedLauncherEntries: missingAsUndefined(dtozod.enum(['show', 'hide'])),
   audioTranscription: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     microphoneAutoCopy: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+    modelId: missingAsUndefined(dtozod.string()),
+    modelAutoLoad: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+    microphoneSegmentMaxSeconds: missingAsUndefined(dtozod.number()),
+    recognitionLanguage: missingAsUndefined(dtozod.enum(['auto', 'ja', 'en'])),
   }))),
   generationSpeed: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     status: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),

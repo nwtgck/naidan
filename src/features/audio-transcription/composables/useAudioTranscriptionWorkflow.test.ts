@@ -3,7 +3,7 @@ import { effectScope, onScopeDispose, ref, shallowRef } from 'vue';
 import { useAudioTranscriptionWorkflow } from './useAudioTranscriptionWorkflow';
 import { useAudioTranscription } from './useAudioTranscription';
 import { initialAudioTranscriptionState, type AudioTranscriptionState } from '@/features/audio-transcription/logic/transcription-controller';
-import { initialContinuousAudioTranscriptionState } from '@/features/audio-transcription/logic/continuous-transcription';
+import { initialContinuousAudioTranscriptionState, transcriptionRegionSeconds } from '@/features/audio-transcription/logic/continuous-transcription';
 import { recognitionInfo } from '@/features/speech-cpp-browser/recognition/recognition.test-support';
 import { initialSpeechRecognitionState } from '@/features/speech-cpp-browser/recognition/types';
 import type { SpeechCapability } from '@/features/speech-cpp-browser/types';
@@ -28,6 +28,7 @@ function fixture() {
     resume: vi.fn<ReturnType<typeof useAudioTranscription>['controller']['resume']>(async () => change({ value: { phase: 'recording', failure: undefined } })),
     stop: vi.fn(async () => change({ value: { phase: 'complete' } })),
     pause: vi.fn(async () => change({ value: { phase: 'paused' } })),
+    clearText: vi.fn(() => change({ value: { confirmedText: '', confirmedRevision: 0, provisionalText: '' } })),
     discard: vi.fn(async () => change({ value: { ...initialContinuousAudioTranscriptionState(), phase: 'idle' } })),
     release: vi.fn(async () => change({ value: { ...initialAudioTranscriptionState() } })),
     runFile: vi.fn<ReturnType<typeof useAudioTranscription>['controller']['runFile']>(async () => {
@@ -46,12 +47,14 @@ function fixture() {
   const text = ref(''), autoCopy = ref<'enabled' | 'disabled'>('disabled'), language = ref<string | undefined>('ja');
   const file = new File(['model'], 'recognizer.gguf', { lastModified: 1 });
   const openSelected = vi.fn<Parameters<typeof useAudioTranscriptionWorkflow>[0]['models']['openSelected']>(async () => ({ modelId: 'recognizer:Q8_0', file }));
-  const models = { openSelected, selectedId: ref<string | undefined>('recognizer'), selectedQuantizationId: ref<string | undefined>('Q8_0') };
+  const openSelectedLocal = vi.fn<Parameters<typeof useAudioTranscriptionWorkflow>[0]['models']['openSelectedLocal']>(async () => ({ modelId: 'recognizer:Q8_0', file }));
+  const models = { openSelected, openSelectedLocal, selectedId: ref<string | undefined>('recognizer'), selectedQuantizationId: ref<string | undefined>('Q8_0') };
   const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
   const writeText = vi.fn<(text: string) => Promise<void>>(async () => {});
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   const scope = effectScope();
-  const api = scope.run(() => useAudioTranscriptionWorkflow({ source, text, autoCopy, models, language }))!;
+  const microphoneSegmentMaxSeconds = ref(transcriptionRegionSeconds);
+  const api = scope.run(() => useAudioTranscriptionWorkflow({ source, text, autoCopy, models, language, microphoneSegmentMaxSeconds, getClipboardWindow: () => window }))!;
   return {
     api,
     controller,
@@ -62,6 +65,7 @@ function fixture() {
     text,
     autoCopy,
     language,
+    microphoneSegmentMaxSeconds,
     models,
     file,
     writeText,
@@ -87,7 +91,7 @@ it('opens the selected model, loads it, and snapshots the requested language bef
   opened.resolve({ modelId: 'recognizer:Q8_0', file: value.file });
   await starting;
   expect(value.controller.load).toHaveBeenCalledExactlyOnceWith({ file: value.file });
-  expect(value.controller.start).toHaveBeenCalledExactlyOnceWith({ language: 'ja' });
+  expect(value.controller.start).toHaveBeenCalledExactlyOnceWith({ language: 'ja', maxRegionSeconds: transcriptionRegionSeconds });
   expect(value.api.phase.value).toBe('recording');
 });
 
@@ -112,7 +116,7 @@ it('reuses one resident model for new input, pause/resume and file recognition',
   await value.api.pauseOrResume();
   expect(value.api.phase.value).toBe('paused');
   await value.api.pauseOrResume();
-  expect(value.controller.resume).toHaveBeenCalledExactlyOnceWith({ language: 'ja' });
+  expect(value.controller.resume).toHaveBeenCalledExactlyOnceWith({ language: 'ja', maxRegionSeconds: transcriptionRegionSeconds });
   await value.api.stop();
   await value.api.start();
   await value.api.stop();
@@ -222,12 +226,93 @@ it('reports clipboard rejection while keeping recognition and edited text availa
   value.writeText.mockRejectedValueOnce(new DOMException('Document is not focused', 'NotAllowedError'));
   await value.api.start();
   value.change({ value: { confirmedText: 'recognized', confirmedRevision: 1 } });
-  await vi.waitFor(() => expect(value.api.clipboardError.value).toBe('Document is not focused'));
+  await vi.waitFor(() => expect(value.api.clipboardError.value).toBe('interaction'));
   expect(value.text.value).toBe('recognized');
   expect(value.api.phase.value).toBe('recording');
   expect(value.controller.stop).not.toHaveBeenCalled();
-  value.api.clearClipboardError();
-  expect(value.api.clipboardError.value).toBeUndefined();
+  window.dispatchEvent(new MouseEvent('click'));
+  await vi.waitFor(() => expect(value.api.clipboardError.value).toBeUndefined());
+  expect(value.api.autoCopyCurrent.value).toBe(true);
+  expect(value.writeText).toHaveBeenCalledTimes(2);
+});
+
+it('copies the visible transcript immediately when auto-copy is enabled from a gesture', async () => {
+  using value = fixture();
+  value.text.value = 'Edited words';
+  value.change({ value: { provisionalText: 'Current draft' } });
+  value.api.copyOnEnable();
+  expect(value.writeText).toHaveBeenCalledExactlyOnceWith(['Edited words', 'Current draft'].join('\n'));
+  value.autoCopy.value = 'enabled';
+  await vi.waitFor(() => expect(value.api.autoCopyCurrent.value).toBe(true));
+  value.api.clearText();
+  expect(value.api.visibleText.value).toBe('');
+  expect(value.writeText).toHaveBeenCalledOnce();
+});
+
+it('preloads a saved model without opening the microphone or requesting a download', async () => {
+  using value = fixture();
+  await value.api.preload();
+  expect(value.controller.load).toHaveBeenCalledExactlyOnceWith({ file: value.file });
+  expect(value.controller.start).not.toHaveBeenCalled();
+  expect(value.models.openSelected).not.toHaveBeenCalled();
+  await value.api.start();
+  expect(value.controller.load).toHaveBeenCalledOnce();
+  expect(value.controller.start).toHaveBeenCalledOnce();
+});
+
+it('uses the same local preload for file transcription and accepts a file while it is loading', async () => {
+  using value = fixture();
+  value.source.value = 'file';
+  await vi.waitFor(() => expect(value.api.pending.value).toBe(false));
+  const local = Promise.withResolvers<{ modelId: string, file: File }>();
+  value.models.openSelectedLocal.mockReturnValueOnce(local.promise);
+  const preload = value.api.preload();
+  const file = new File(['audio'], 'speech.wav');
+  const transcription = value.api.transcribeFile({ file });
+  local.resolve({ modelId: 'recognizer:Q8_0', file: value.file });
+  await preload;
+  await transcription;
+  expect(value.models.openSelected).not.toHaveBeenCalled();
+  expect(value.controller.load).toHaveBeenCalledOnce();
+  expect(value.controller.start).not.toHaveBeenCalled();
+  expect(value.controller.runFile).toHaveBeenCalledExactlyOnceWith({ file, language: 'ja' });
+});
+
+it('starts voice input after the same preload finishes when Start is pressed during loading', async () => {
+  using value = fixture();
+  const local = Promise.withResolvers<{ modelId: string, file: File }>();
+  value.models.openSelectedLocal.mockReturnValueOnce(local.promise);
+  const preload = value.api.preload();
+  expect(value.api.preloading.value).toBe(true);
+  value.language.value = 'en';
+  value.microphoneSegmentMaxSeconds.value = 20;
+  const start = value.api.start();
+  expect(value.api.preloading.value).toBe(false);
+  local.resolve({ modelId: 'recognizer:Q8_0', file: value.file });
+  await preload;
+  await start;
+  expect(value.models.openSelected).not.toHaveBeenCalled();
+  expect(value.controller.load).toHaveBeenCalledOnce();
+  expect(value.controller.start).toHaveBeenCalledExactlyOnceWith({ language: 'en', maxRegionSeconds: 20 });
+});
+
+it('does not start the microphone with an outdated model when selection changes during native loading', async () => {
+  using value = fixture();
+  const loading = Promise.withResolvers<void>();
+  const finishLoading = value.controller.load.getMockImplementation();
+  value.controller.load.mockImplementationOnce(async ({ file }) => {
+    await loading.promise;
+    await finishLoading?.({ file });
+  });
+  const preload = value.api.preload();
+  await vi.waitFor(() => expect(value.controller.load).toHaveBeenCalledOnce());
+  const start = value.api.start();
+  value.models.selectedId.value = 'new-model';
+  loading.resolve();
+  await preload;
+  await start;
+  expect(value.controller.start).not.toHaveBeenCalled();
+  expect(value.api.failureDetails.value).toContain('changed while it was loading');
 });
 
 it('bounds clipboard work to one native request and the latest pending text', async () => {
@@ -243,6 +328,24 @@ it('bounds clipboard work to one native request and the latest pending text', as
   copied.resolve();
   await vi.waitFor(() => expect(value.writeText).toHaveBeenCalledTimes(2));
   expect(value.writeText.mock.calls[1]).toEqual(['latest draft']);
+});
+
+it('copies the final transcript after recording stops even if a draft write is still pending', async () => {
+  using value = fixture();
+  value.autoCopy.value = 'enabled';
+  const draftWrite = Promise.withResolvers<void>();
+  value.writeText.mockReturnValueOnce(draftWrite.promise);
+  await value.api.start();
+  value.change({ value: { provisionalText: 'Draft' } });
+  value.controller.stop.mockImplementationOnce(async () => {
+    value.change({ value: { phase: 'complete', confirmedText: 'Final transcript', confirmedRevision: 1, provisionalText: '' } });
+  });
+  await value.api.stop();
+  expect(value.api.phase.value).toBe('idle');
+  expect(value.writeText).toHaveBeenCalledExactlyOnceWith('Draft');
+  draftWrite.resolve();
+  await vi.waitFor(() => expect(value.api.autoCopyCurrent.value).toBe(true));
+  expect(value.writeText).toHaveBeenLastCalledWith('Final transcript');
 });
 
 it('aborts a download wait promptly and prevents late model load or capture', async () => {
