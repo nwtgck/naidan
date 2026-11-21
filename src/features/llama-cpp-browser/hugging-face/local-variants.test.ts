@@ -128,6 +128,15 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
       ],
     },
     {
+      layout: 'punctuation and repeated names in the same repository',
+      repository: 'owner/Model-VL-GGUF',
+      groups: [
+        { variant: 'Q4_K_M', paths: ['Model-VL-Q4_K_M.gguf'] },
+        { variant: 'ModelVL-Q4_K_M', paths: ['ModelVL-Q4_K_M.gguf'] },
+        { variant: 'ModelVL-ModelVL-Q4_K_M', paths: ['ModelVL-ModelVL-Q4_K_M.gguf'] },
+      ],
+    },
+    {
       layout: 'unknown modifiers and model sizes outside the repository prefix',
       repository: 'owner/Model-GGUF',
       groups: [

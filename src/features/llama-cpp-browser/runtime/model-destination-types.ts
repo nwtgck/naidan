@@ -1,8 +1,6 @@
 import { z } from 'zod';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
-import { splitRepositoryModelId } from '../../../01-models/llama-cpp-browser-model-id';
-// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
-import { modelSourceRepositorySchema, isModelSourceSegment } from '../../../01-models/llama-cpp-browser-model-launch';
+import { parseRepositoryModelId } from '../../../01-models/llama-cpp-browser-model-id';
 
 export const modelDestinationSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('opfs') }).strict(),
@@ -26,25 +24,12 @@ export function destinationKey({ destination }: { destination: ModelDestination 
  * are not directory IDs and must not inherit their length constraint.
  */
 export function parsePublicHostModelReference({ modelId }: { modelId: string }): { alias: string, repository: string, selector: string | undefined } {
-  const { baseId } = splitRepositoryModelId({ modelId });
-  const match = /^host\/([^/]+)\/(.+)$/.exec(baseId);
-  if (!match) {
-    throw new Error('Invalid public linked model reference');
+  const { source, repository, variant } = parseRepositoryModelId({ modelId });
+  switch (source.kind) {
+  case 'host': return { alias: source.alias, repository, selector: variant };
+  case 'hugging-face': throw new Error('Invalid public linked model reference');
+  default: throw new Error(String(source satisfies never));
   }
-  const alias = decodeURIComponent(match[1]!);
-  if (encodeURIComponent(alias) !== match[1]) {
-    throw new Error('Invalid public linked model reference');
-  }
-  // Public selectors are readable relative names. Only the root alias is encoded;
-  // a literal '%2F' in a filename must not turn into a path separator here.
-  const value = match[2]!;
-  const colon = value.indexOf(':');
-  const repository = modelSourceRepositorySchema.parse(colon < 0 ? value : value.slice(0, colon));
-  const selector = colon < 0 ? undefined : value.slice(colon + 1);
-  if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) {
-    throw new Error('Invalid public linked model selector');
-  }
-  return { alias, repository, selector };
 }
 
 export function isHostDestination(destination: ModelDestination | undefined): destination is Extract<ModelDestination, { kind: 'host' }> {

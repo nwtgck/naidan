@@ -1791,7 +1791,11 @@ import { ModelSelectorHuggingFaceSearch__speech_recognition } from '@/strings/me
 import { ModelSelectorHuggingFaceSearch__trending } from '@/strings/messages/ModelSelectorHuggingFaceSearch__trending/en';
 import { ModelSelectorRepositoryRow__configuration_for_model } from '@/strings/messages/ModelSelectorRepositoryRow__configuration_for_model/en';
 import { ModelSelectorRepositorySource__source } from '@/strings/messages/ModelSelectorRepositorySource__source/en';
-import { ModelSelectorStoredVariantsRow__variant_count } from '@/strings/messages/ModelSelectorStoredVariantsRow__variant_count/en';
+import { ModelSelectorStoredVariantsRow__copy_model_id } from '@/strings/messages/ModelSelectorStoredVariantsRow__copy_model_id/en';
+import { ModelSelectorStoredVariantsRow__could_not_copy_model_id } from '@/strings/messages/ModelSelectorStoredVariantsRow__could_not_copy_model_id/en';
+import { ModelSelectorStoredVariantsRow__model_configuration } from '@/strings/messages/ModelSelectorStoredVariantsRow__model_configuration/en';
+import { ModelSelectorStoredVariantsRow__model_id } from '@/strings/messages/ModelSelectorStoredVariantsRow__model_id/en';
+import { ModelSelectorStoredVariantsRow__model_id_copied } from '@/strings/messages/ModelSelectorStoredVariantsRow__model_id_copied/en';
 import { ModelSelector__add_files } from '@/strings/messages/ModelSelector__add_files/en';
 import { ModelSelector__add_model_files } from '@/strings/messages/ModelSelector__add_model_files/en';
 import { ModelSelector__back_to_models } from '@/strings/messages/ModelSelector__back_to_models/en';
@@ -6168,7 +6172,11 @@ export const catalog = {
   ModelSelectorHuggingFaceSearch__trending,
   ModelSelectorRepositoryRow__configuration_for_model,
   ModelSelectorRepositorySource__source,
-  ModelSelectorStoredVariantsRow__variant_count,
+  ModelSelectorStoredVariantsRow__copy_model_id,
+  ModelSelectorStoredVariantsRow__could_not_copy_model_id,
+  ModelSelectorStoredVariantsRow__model_configuration,
+  ModelSelectorStoredVariantsRow__model_id,
+  ModelSelectorStoredVariantsRow__model_id_copied,
   ModelSelector__add_files,
   ModelSelector__add_model_files,
   ModelSelector__back_to_models,

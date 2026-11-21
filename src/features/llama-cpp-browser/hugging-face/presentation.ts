@@ -1,3 +1,4 @@
+import { splitModelIdDisplay } from '@/01-models/llama-cpp-browser-model-id';
 import { variantLabel } from './model-variants';
 import { artifactRole } from './artifact-role';
 import type { ModelCandidate } from './catalog';
@@ -8,6 +9,39 @@ export { preferredProjector, quantizationName, rankedProjectors } from './projec
 
 export type QuantizationChoice = { primaryRelativePath: string, label: string, quantization: string | undefined, models: ModelCandidate[] };
 const fileNameOrder = new Intl.Collator('en', { numeric: true });
+
+export function describeStoredModelVariant({ modelId }: { modelId: string }): { name: string, source: string, label: string, key: string } | undefined {
+  if (!/^(?:hf\.co|host)\//.test(modelId)) {
+    return undefined;
+  }
+  try {
+    const { source, name, variant } = splitModelIdDisplay({ modelId });
+    if (!variant) {
+      return undefined;
+    }
+    const fileName = variant.slice(variant.lastIndexOf('/') + 1);
+    const quantization = quantizationName({ path: fileName });
+    const token = quantization === undefined ? undefined : new RegExp(`(?:^|[-_.])((?:(?:UD|QAD|QAT)[-_])?${quantization})(?=[-.]|$)`, 'i').exec(fileName);
+    if (token == null) {
+      return { name: `${name} ${variant}`, source: source.slice(0, -1), label: '—', key: modelId };
+    }
+    const label = token[1]!;
+    // Only group a trailing quantization. Removing a token from the middle of
+    // a name could make two different configurations look like the same choice.
+    if (token.index + token[0].length !== fileName.length) {
+      return { name: `${name} ${variant}`, source: source.slice(0, -1), label, key: modelId };
+    }
+    const prefix = variant.slice(0, -label.length);
+    // Keep directory separators and other punctuation visible when they
+    // distinguish a stored path from the conventional `name-quant` spelling.
+    const qualifier = prefix.replace(/-$/, '');
+    // The active text/projector choice can replace an inventory entry for
+    // the same main file. Its quantization still belongs to the original row.
+    return { name: qualifier ? `${name} ${qualifier}` : name, source: source.slice(0, -1), label, key: JSON.stringify([source, name, prefix]) };
+  } catch {
+    return undefined;
+  }
+}
 
 export function compareModelVariantsBySize({ left, right }: { left: { bytes: number, path: string }, right: { bytes: number, path: string } }): number {
   return left.bytes - right.bytes || fileNameOrder.compare(left.path, right.path) || lexical({ left: left.path, right: right.path });

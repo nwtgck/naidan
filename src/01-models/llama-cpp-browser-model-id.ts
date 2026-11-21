@@ -75,11 +75,13 @@ export function withoutRepositoryPrefix({ repository, stem }: { repository: stri
   let prefix = repository.split('/').at(-1)!.replace(/[-_.]gguf$/i, '');
   // Repository names can have extra model descriptors. Match whole hyphen-delimited
   // components so dotted versions and unknown variant modifiers remain intact.
+  // Punctuation is part of the saved identity: ignoring it here can make an
+  // existing modelId resolve to a different file in the same repository.
   while (prefix) {
     const remainder = stem.slice(prefix.length);
     const continuesVersion = /\d$/.test(prefix) && /^\.\d/.test(remainder);
     if (stem.toLowerCase().startsWith(prefix.toLowerCase()) && /^[-_.]/.test(remainder) && !continuesVersion) {
-      return stem.slice(prefix.length + 1);
+      return remainder.slice(1);
     }
     prefix = prefix.slice(0, Math.max(0, prefix.lastIndexOf('-')));
   }
@@ -106,15 +108,84 @@ export function modelVariantName({ repository, path }: { repository: string, pat
   return name.split('/').every(name => isModelSourceSegment({ name })) ? name : path;
 }
 
-/** Derive the saved, user-visible selection without requiring installed files. */
-export function formatHuggingFaceModelId({ repository, mainFilePath }: { repository: string, mainFilePath: string }): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)
-      || !repository.split('/').every(name => isModelSourceSegment({ name }))
+type RepositoryModelSource = { kind: 'hugging-face' } | { kind: 'host', alias: string };
+
+function isRepositoryPath({ repository }: { repository: string }): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository) && repository.split('/').every(name => isModelSourceSegment({ name }));
+}
+
+export function formatRepositoryModelId({ source, repository, mainFilePath }: { source: RepositoryModelSource, repository: string, mainFilePath: string }): string {
+  if (!isRepositoryPath({ repository })
       || !mainFilePath.split('/').every(name => isModelSourceSegment({ name }))
       || !/\.gguf$/i.test(mainFilePath)) {
     throw new Error('Invalid model source path');
   }
-  return `hf.co/${repository}:${modelVariantName({ repository, path: mainFilePath })}`;
+  let root: string;
+  switch (source.kind) {
+  case 'hugging-face': root = 'hf.co';
+    break;
+  case 'host': root = `host/${encodeURIComponent(source.alias)}`;
+    break;
+  default: throw new Error(String(source satisfies never));
+  }
+  return `${root}/${repository}:${modelVariantName({ repository, path: mainFilePath })}`;
+}
+
+/** Derive the saved, user-visible selection without requiring installed files. */
+export function formatHuggingFaceModelId({ repository, mainFilePath }: { repository: string, mainFilePath: string }): string {
+  return formatRepositoryModelId({ source: { kind: 'hugging-face' }, repository, mainFilePath });
+}
+
+/** Use the same transformation for listing and selection. The caller handles
+ * an absent or ambiguous match before opening any files. */
+export function matchingRepositoryModelVariants<Model extends { primaryFile: { relativePath: string } }>({ models, repository, variant }: {
+  models: Model[], repository: string, variant: string | undefined,
+}): Model[] {
+  return variant === undefined ? models : models.filter(model => modelVariantName({ repository, path: model.primaryFile.relativePath }) === variant);
+}
+
+function splitModelIdVariant({ modelId }: { modelId: string }): { address: string, variant: string | undefined, configuration: RepositoryModelConfiguration | undefined } {
+  const { baseId, configuration } = splitRepositoryModelId({ modelId });
+  const separator = baseId.indexOf(':');
+  return { address: separator === -1 ? baseId : baseId.slice(0, separator), variant: separator === -1 ? undefined : baseId.slice(separator + 1), configuration };
+}
+
+export function splitModelIdDisplay({ modelId }: { modelId: string }): { source: string, name: string, variant: string | undefined } {
+  // Split the variant off first. The last slash on the left separates the
+  // source from the displayed name. Slashes in a variant belong to its path.
+  const { address, variant } = splitModelIdVariant({ modelId });
+  const slash = address.lastIndexOf('/');
+  return { source: address.slice(0, slash + 1), name: address.slice(slash + 1), variant };
+}
+
+export function parseRepositoryModelId({ modelId }: { modelId: string }): {
+  source: RepositoryModelSource, repository: string, variant: string | undefined, configuration: RepositoryModelConfiguration | undefined,
+} {
+  const { address, variant, configuration } = splitModelIdVariant({ modelId });
+  const [prefix, ...segments] = address.split('/');
+  let source: RepositoryModelSource;
+  switch (prefix) {
+  case 'hf.co': source = { kind: 'hugging-face' };
+    break;
+  case 'host': {
+    const encoded = segments.shift();
+    if (!encoded) {
+      throw new Error('Missing linked model folder');
+    }
+    const alias = decodeURIComponent(encoded);
+    if (encodeURIComponent(alias) !== encoded) {
+      throw new Error('Non-canonical linked model folder');
+    }
+    source = { kind: 'host', alias };
+    break;
+  }
+  default: throw new Error('Unknown model source');
+  }
+  const repository = segments.join('/');
+  if (!isRepositoryPath({ repository }) || (variant !== undefined && !variant.split('/').every(name => isModelSourceSegment({ name })))) {
+    throw new Error('Invalid model reference');
+  }
+  return { source, repository, variant, configuration };
 }
 
 export type RepositoryModelConfiguration = { projectorPath: string | undefined };

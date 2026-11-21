@@ -204,24 +204,67 @@ it('keeps the first-use hint visible until the download starts and omits progres
   expect(value.wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('Qwen speech');
 });
 
-it('groups saved quantizations and preserves the active exact configuration on keyboard selection', async () => {
+it('changes quantization without closing the picker and copies the full selected model ID', async () => {
   const ids = ['hf.co/owner/Model-GGUF:Q4_K_M', 'hf.co/owner/Model-GGUF:Q8_0', 'host/Other/owner/Model-GGUF:Q8_0', 'hf.co/owner/Model-GGUF:Custom-Q8_0'];
   const configured = ids[1] + '//text';
+  const writeText = vi.fn<typeof navigator.clipboard.writeText>().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
   using value = fixture({ props: { modelValue: configured, models: ids.map(id => ({ id, label: id, description: undefined, availability: 'local' })) }, slots: undefined });
   await value.open();
+  expect(value.options()).toEqual([configured, ...ids.slice(2)]);
   const group = value.get({ testId: 'model-selector-stored-variant-group' });
-  expect(group.attributes('aria-expanded')).toBe('false');
-  expect(value.options()).toEqual(ids.slice(2));
+  const button = group.get('[data-testid="model-selector-stored-variant"]');
+  expect(button.text()).toBe('Q8_0');
+  await group.get('[data-testid="model-selector-stored-variant-details"]').trigger('click');
+  await group.get('[data-testid="model-selector-copy-model-id"]').trigger('click');
+  expect(writeText).toHaveBeenLastCalledWith(configured);
+  await button.trigger('click');
+  const q4 = value.get({ testId: 'settings-select-option-' + ids[0] });
+  await q4.trigger('pointerdown');
+  await q4.trigger('click');
+  expect(value.wrapper.emitted('update:modelValue')).toEqual([[ids[0]]]);
+  await value.wrapper.setProps({ modelValue: ids[0] });
+  expect(value.get({ testId: 'model-selector-dropdown' }).attributes('open')).toBeDefined();
+  expect(button.text()).toBe('Q4_K_M');
+  await group.get('[data-testid="model-selector-copy-model-id"]').trigger('click');
+  expect(writeText).toHaveBeenLastCalledWith(ids[0]);
+  const single = document.querySelectorAll('[data-testid="model-selector-stored-variant"]')[1]!;
+  expect(single.hasAttribute('disabled')).toBe(true);
+  expect(single.querySelector('svg')).toBeNull();
   const filter = value.get({ testId: 'model-selector-filter' });
+  filter.element.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
   keydown({ target: filter.element, key: 'Enter', isComposing: false });
-  await nextTick();
-  expect(group.attributes('aria-expanded')).toBe('true');
-  expect(value.options()).toEqual([ids[0], configured, ...ids.slice(2)]);
-  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
-  keydown({ target: filter.element, key: 'ArrowDown', isComposing: false });
-  keydown({ target: filter.element, key: 'ArrowDown', isComposing: false });
-  keydown({ target: filter.element, key: 'Enter', isComposing: false });
-  expect(value.wrapper.emitted('update:modelValue')).toEqual([[configured]]);
+  expect(value.wrapper.emitted('update:modelValue')?.at(-1)).toEqual([ids[0]]);
+});
+
+it('selects the first displayed quantization for a row with no selection', async () => {
+  const ids = ['hf.co/owner/Model-GGUF:Q4_K_M', 'hf.co/owner/Model-GGUF:Q8_0'];
+  using value = fixture({ props: { models: ids.map(id => ({ id, label: id, description: undefined, availability: 'local' })) }, slots: undefined });
+  await value.open();
+  const button = value.get({ testId: 'model-selector-stored-variant' });
+  expect(button.text()).toBe('Q4_K_M');
+  await button.trigger('click');
+  const first = value.get({ testId: 'settings-select-option-' + ids[0] });
+  expect(first.attributes('aria-selected')).toBe('false');
+  await first.trigger('click');
+  expect(value.wrapper.emitted('update:modelValue')).toEqual([[ids[0]]]);
+  expect(value.get({ testId: 'model-selector-dropdown' }).attributes('open')).toBeDefined();
+});
+
+it('finds a saved model across hyphen differences and copies an ID without a quantization separator', async () => {
+  const modelId = 'user/gemma-4-E2B-GGUF/gemma-4-E2B-q4_0';
+  const writeText = vi.fn<typeof navigator.clipboard.writeText>().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  using value = fixture({ props: { models: [...models, { id: modelId, label: modelId, description: undefined, availability: 'local' }] }, slots: undefined });
+  await value.open();
+  await value.get({ testId: 'model-selector-filter' }).setValue('gemma4');
+  expect(value.options()).toEqual([modelId]);
+  const group = value.get({ testId: 'model-selector-stored-variant-group' });
+  expect(group.find('[data-testid="model-selector-stored-variant"]').exists()).toBe(false);
+  await group.get('[data-testid="model-selector-stored-variant-details"]').trigger('click');
+  await group.get('[data-testid="model-selector-copy-model-id"]').trigger('click');
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(modelId);
+  expect(externalFetch).not.toHaveBeenCalled();
 });
 
 it('keeps custom panel input and component state while switching between peer panels', async () => {

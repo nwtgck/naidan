@@ -102,6 +102,39 @@ beforeEach(async () => {
 });
 
 describe('Audio transcription model selector', () => {
+  it('keeps the file details of an imported model alongside its copyable ID', async () => {
+    const models = createModels();
+    const modelId = '~user/ASR';
+    models.pickerModels = computed(() => [{ id: modelId, label: modelId, description: undefined, availability: 'local', modelId, compatibility: undefined }]);
+    vi.mocked(models.detailsForModel).mockImplementation(({ id }) => id === modelId ? { kind: 'local', name: 'ASR', fileName: 'ASR-Q8_0.gguf', bytes: 1024 } : undefined);
+    const wrapper = mount(AudioTranscriptionModelSelector, { props: { models }, global: { stubs: { Teleport: true } } });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    await wrapper.get('button[data-testid="audio-transcription-model-selector"]').trigger('click');
+    await wrapper.get('[data-testid="model-selector-stored-variant-details"]').trigger('click');
+    expect(wrapper.get('code').text()).toBe(modelId);
+    expect(wrapper.find('[data-testid="model-selector-copy-model-id"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('ASR-Q8_0.gguf');
+    expect(wrapper.text()).toContain('1.0 KiB');
+    void cleanup;
+  });
+
+  it('can inspect the Hugging Face configuration of an installed model', async () => {
+    const models = createModels();
+    const modelId = 'hf.co/test/ASR:Q8_0';
+    models.pickerModels = computed(() => [{ id: modelId, label: modelId, description: undefined, availability: 'local', modelId, compatibility: undefined }]);
+    vi.mocked(models.detailsForModel).mockImplementation(({ id }) => id === modelId ? { kind: 'huggingface', repository: 'test/ASR', repositoryUrl: 'https://huggingface.co/test/ASR', revision: undefined, files: undefined } : undefined);
+    const wrapper = mount(AudioTranscriptionModelSelector, { props: { models }, global: { stubs: { Teleport: true } } });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    await wrapper.get('button[data-testid="audio-transcription-model-selector"]').trigger('click');
+    await wrapper.get('[data-testid="model-selector-stored-variant-details"]').trigger('click');
+    expect(wrapper.find('a[href="https://huggingface.co/test/ASR"]').exists()).toBe(true);
+    expect(models.inspectQuantizations).not.toHaveBeenCalled();
+    const inspect = wrapper.findAll('button').find(button => button.text() === 'Show model configuration')!;
+    await inspect.trigger('click');
+    expect(models.inspectQuantizations).toHaveBeenCalledExactlyOnceWith({ id: modelId, signal: expect.any(AbortSignal), pinCurrent: false });
+    void cleanup;
+  });
+
   it('selects a curated model by name and applies a quantization change without closing', async () => {
     const models = createModels();
     const id = 'suggestion:test-asr';

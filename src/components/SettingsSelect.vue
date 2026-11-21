@@ -21,12 +21,15 @@ type SettingsSelectOption = {
 const disclosureOpen = inject<Readonly<Ref<boolean>> | undefined>('settings-disclosure-open', undefined);
 const disclosureFocusReturn = inject<(() => HTMLElement | undefined) | undefined>('settings-disclosure-focus-return', undefined);
 const props = defineProps<{
-  modelValue: string,
+  modelValue: string | undefined,
   options: readonly SettingsSelectOption[],
   label: string | undefined,
+  placeholder?: string,
   disabled?: boolean,
   surface?: 'default' | 'embedded',
   presentation?: 'default' | 'toolbar' | 'inline',
+  palette?: 'neutral',
+  showChevron?: boolean,
   size?: 'default' | 'compact',
   menuWidthRem?: number,
   popupTarget?: HTMLElement,
@@ -41,6 +44,7 @@ defineSlots<{
 }>();
 
 const selected = computed(() => props.options.find(option => option.value === props.modelValue));
+const displayValue = computed(() => selected.value?.label ?? props.modelValue ?? props.placeholder ?? '');
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
 const open = ref(false);
@@ -235,11 +239,11 @@ defineExpose({
     ref="triggerRef"
     type="button"
     :disabled="disabled"
-    :aria-label="`${label ?? ''}: ${selected?.label ?? modelValue}${selected?.detail ? ` (${selected.detail})` : ''}${selected?.source?.description ? ` · ${selected.source.description}` : ''}`"
+    :aria-label="`${label ?? ''}: ${displayValue}${selected?.detail ? ` (${selected.detail})` : ''}${selected?.source?.description ? ` · ${selected.source.description}` : ''}`"
     :aria-haspopup="search ? 'dialog' : 'listbox'"
     :aria-expanded="open"
     :aria-controls="open ? menuId : undefined"
-    :title="[selected?.label, selected?.detail, selected?.source?.description].filter(Boolean).join(' · ')"
+    :title="[selected?.label ?? placeholder, selected?.detail, selected?.source?.description].filter(Boolean).join(' · ')"
     class="settings-select-trigger"
     :class="{ 'settings-select-trigger-embedded': surface === 'embedded', 'settings-select-trigger-toolbar': presentation === 'toolbar', 'settings-select-trigger-compact': size === 'compact', 'settings-select-trigger-inline': presentation === 'inline' }"
     :tw-class="['group flex min-w-0 items-center gap-3 px-3.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30', presentation === 'inline' ? 'w-auto rounded-md border border-transparent bg-transparent hover:border-gray-200 hover:bg-gray-100/70 dark:hover:border-gray-700 dark:hover:bg-gray-800/70' : surface === 'embedded' ? 'h-full w-full rounded-none border-0 bg-transparent shadow-none hover:bg-gray-50 focus-visible:ring-inset dark:hover:bg-gray-800' : 'w-full rounded-xl border border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:border-gray-600 dark:hover:bg-gray-800']"
@@ -249,13 +253,13 @@ defineExpose({
   >
     <slot name="leading" :option="selected" />
     <span :class="{ 'settings-select-content-toolbar': presentation === 'toolbar' || presentation === 'inline' }" tw-class="block min-w-0 flex-1">
-      <span class="settings-select-value" :tw-class="['block truncate', presentation === 'inline' ? 'text-[11px] font-normal leading-4 text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' : size === 'compact' ? 'text-xs font-medium leading-4 text-gray-800 dark:text-gray-100' : 'text-sm font-medium leading-5 text-gray-800 dark:text-gray-100']">{{ selected?.label ?? modelValue }}</span>
+      <span class="settings-select-value" :tw-class="['block truncate', presentation === 'inline' ? 'text-[11px] font-normal leading-4 text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' : size === 'compact' ? 'text-xs font-medium leading-4 text-gray-800 dark:text-gray-100' : 'text-sm font-medium leading-5 text-gray-800 dark:text-gray-100']">{{ displayValue }}</span>
       <span v-if="presentation !== 'toolbar' && presentation !== 'inline'" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5">
         <SettingsSourceBadge :source="selected?.source" />
         <span v-if="selected?.detail" tw-class="min-w-0 flex-1 truncate text-xs leading-4 text-gray-500 dark:text-gray-400">{{ selected.detail }}</span>
       </span>
     </span>
-    <ChevronDownIcon :tw-class="['shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-gray-600 dark:group-hover:text-gray-200', presentation === 'inline' ? 'h-2.5 w-2.5' : size === 'compact' ? 'h-3 w-3' : 'h-4 w-4', open && 'rotate-180']" />
+    <ChevronDownIcon v-if="showChevron !== false" aria-hidden="true" :tw-class="['shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-gray-600 dark:group-hover:text-gray-200', presentation === 'inline' ? 'h-2.5 w-2.5' : size === 'compact' ? 'h-3 w-3' : 'h-4 w-4', open && 'rotate-180']" />
   </button>
   <Teleport :to="popupTarget ?? 'body'">
     <Transition name="settings-select-menu">
@@ -271,7 +275,7 @@ defineExpose({
         :data-placement="popup.placement.value.direction"
         :data-open="open"
         class="settings-select-menu"
-        :tw-class="['overflow-y-auto overscroll-contain border border-gray-200 bg-white p-1.5 shadow-xl shadow-gray-950/15 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/40', size === 'compact' ? 'rounded-xl' : 'rounded-2xl']"
+        :tw-class="['overflow-y-auto overscroll-contain border border-gray-200 p-1.5 shadow-xl shadow-gray-950/15 dark:border-gray-700 dark:shadow-black/40', palette === 'neutral' ? 'bg-[var(--settings-select-menu-background,var(--color-white))] dark:bg-[var(--settings-select-menu-background,var(--color-gray-900))]' : 'bg-white dark:bg-gray-900', size === 'compact' ? 'rounded-xl' : 'rounded-2xl']"
         @keydown="handleMenuKeydown({ event: $event })"
       >
         <div v-if="search" tw-class="sticky top-0 z-10 bg-white pb-1.5 dark:bg-gray-900">
@@ -288,7 +292,7 @@ defineExpose({
             :aria-selected="option.value === modelValue"
             :aria-label="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
             :title="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
-            :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex w-full items-center text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', size === 'compact' ? 'min-h-8 gap-2 rounded-md px-2.5 py-1.5' : 'min-h-12 gap-3 rounded-xl px-3 py-2.5', option.value === modelValue ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
+            :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex w-full items-center text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', size === 'compact' ? 'min-h-8 gap-2 rounded-md px-2.5 py-1.5' : 'min-h-12 gap-3 rounded-xl px-3 py-2.5', option.value === modelValue ? (palette === 'neutral' ? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100' : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400') : ['text-gray-700 hover:bg-gray-100 dark:text-gray-200', palette === 'neutral' ? 'dark:hover:bg-gray-700/60' : 'dark:hover:bg-gray-800']]"
             @click="choose({ value: option.value })"
           >
             <slot name="option" :option="option">

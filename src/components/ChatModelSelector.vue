@@ -7,12 +7,12 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { provideModelSelectorHuggingFaceSearchState } from '@/composables/useModelSelectorHuggingFaceSearchState';
 import SettingsSourceBadge from './SettingsSourceBadge.vue';
 import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
-import { trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
+import { splitModelIdDisplay, trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { lazyStrings } from '@/strings';
 import ModelSelectorStoredVariantsRow from './ModelSelectorStoredVariantsRow.vue';
 import { groupStoredModelVariants } from '@/features/llama-cpp-browser/hugging-face/stored-model-variant-groups';
 import { splitModelName } from '@/utils/model-name';
-import type { ModelSelectorItem } from './model-selector-item';
+import { modelSearchFilter, type ModelSelectorItem } from './model-selector-item';
 
 type ChatModelSelectorPanel = { id: string, label: string | undefined, placement?: 'before-models' };
 
@@ -79,54 +79,51 @@ function modelLabel({ model }: { model: string }): string {
   return label === model ? trySplitRepositoryModelId({ modelId: model })?.baseId ?? model : label;
 }
 
+function displayedModelParts({ model }: { model: string | undefined }): ReturnType<typeof splitModelName> {
+  if (model === undefined) {
+    return { prefix: '', suffix: undefined };
+  }
+  const label = modelLabel({ model });
+  const baseId = /^(?:hf\.co|host)\//.test(label) ? trySplitRepositoryModelId({ modelId: label })?.baseId : undefined;
+  if (baseId !== undefined) {
+    const { source, name, variant } = splitModelIdDisplay({ modelId: baseId });
+    return { prefix: source, suffix: variant === undefined ? name : `${name}:${variant}` };
+  }
+  return splitModelName({ name: label });
+}
+
 const displayModelName = computed(() => {
   const model = props.modelValue || props.inheritedModel?.id;
   return model ? modelLabel({ model }) : props.placeholder || lazyStrings.ModelSelector__select_a_model();
 });
-const inheritedModelParts = computed(() => splitModelName({ name: props.inheritedModel?.id ? modelLabel({ model: props.inheritedModel.id }) : props.clearLabel }));
+const inheritedModelParts = computed(() => props.inheritedModel?.id ? displayedModelParts({ model: props.inheritedModel.id }) : splitModelName({ name: props.clearLabel }));
 
 
 const displayReference = computed(() => props.modelValue || props.inheritedModel?.id || displayModelName.value);
-const modelNameParts = computed(() => splitModelName({ name: displayModelName.value }));
+const modelNameParts = computed(() => props.modelValue || props.inheritedModel?.id ? displayedModelParts({ model: props.modelValue || props.inheritedModel?.id }) : splitModelName({ name: displayModelName.value }));
 const modelHasMetadata = computed(() => Boolean(modelNameParts.value.prefix || (!props.modelValue && props.inheritedModel?.source)));
 const inheritedModelHasMetadata = computed(() => Boolean(inheritedModelParts.value.prefix || props.inheritedModel?.source));
 
-const searchableModels = computed(() => {
-  return availableModels.value.map(m => ({
-    original: m,
-    lower: `${m} ${modelLabel({ model: m })} ${modelIndex.value.get(m)?.description ?? ''}`.toLowerCase(),
-  }));
-});
-
 const filteredModels = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  if (!q) {
+  if (!searchQuery.value.trim()) {
     return availableModels.value;
   }
-
-  const keywords = q.split(/[\s\u3000]+/).filter(k => !!k);
-  if (keywords.length === 0) {
-    return availableModels.value;
-  }
-
-  return searchableModels.value
-    .filter(item => keywords.every(kw => item.lower.includes(kw)))
-    .map(item => item.original);
+  const matches = modelSearchFilter({ query: searchQuery.value });
+  return availableModels.value.filter(model => matches({ fields: [model, modelLabel({ model }), modelIndex.value.get(model)?.description] }));
 });
 
 const modelOptions = computed(() => filteredModels.value.map(model => {
   const label = modelLabel({ model });
   const title = trySplitRepositoryModelId({ modelId: model })?.configuration === undefined ? label : model;
-  return { model, title, details: modelIndex.value.get(model), parts: splitModelName({ name: label }) };
+  return { model, title, details: modelIndex.value.get(model), parts: displayedModelParts({ model }) };
 }));
 
-const expandedModelVariants = ref<string>();
 const groupedModels = computed(() => groupStoredModelVariants({
   items: modelOptions.value,
   identity: ({ item }) => {
     const availability = item.details?.availability;
     switch (availability) {
-    case 'local': return { id: item.model, modelId: item.model };
+    case 'local': return { id: item.model, modelId: item.model, fallback: { name: item.parts.suffix ?? item.title, source: item.details?.description ?? item.parts.prefix.slice(0, -1) } };
     case 'download_required': case 'remote': case 'checking': case undefined:
       return { id: item.model, modelId: undefined };
     default: throw new Error(String(availability satisfies never));
@@ -272,47 +269,24 @@ useEventTargetListener(document, 'pointerdown', event => {
   }
 }, { capture: true });
 
+function activeStoredVariantId({ variants }: { variants: readonly { item: { model: string } }[] }): string {
+  return (variants.find(({ item }) => item.model === (props.modelValue || props.inheritedModel?.id)) ?? variants[0]!).item.model;
+}
+
 const combinedOptions = computed(() => {
-  const options: ({ kind: 'model', id: string | undefined } | { kind: 'group', key: string })[] = [];
-  if (props.allowClear) {
-    options.push({ kind: 'model', id: undefined });
-  }
+  const options: (string | undefined)[] = props.allowClear ? [undefined] : [];
   for (const row of groupedModels.value) {
     switch (row.kind) {
-    case 'single': options.push({ kind: 'model', id: row.item.model });
+    case 'single': options.push(row.item.model);
       break;
-    case 'variants':
-      options.push({ kind: 'group', key: row.key });
-      if (expandedModelVariants.value === row.key) {
-        options.push(...row.variants.map(({ item }) => ({ kind: 'model' as const, id: item.model })));
-      }
+    case 'variants': options.push(activeStoredVariantId({ variants: row.variants }));
       break;
-    default: {
-      const exhaustive: never = row;
-      throw new Error(String(exhaustive));
-    }
+    default: throw new Error(String(row satisfies never));
     }
   }
   return options;
 });
-const optionIndices = computed(() => {
-  const indices = new Map<string | undefined, number>();
-  for (const [index, option] of combinedOptions.value.entries()) {
-    switch (option.kind) {
-    case 'group': indices.set(option.key, index);
-      break;
-    case 'model': indices.set(option.id, index);
-      break;
-    default: throw new Error(String(option satisfies never));
-    }
-  }
-  return indices;
-});
-
-function toggleModelVariants({ key }: { key: string }): void {
-  expandedModelVariants.value = expandedModelVariants.value === key ? undefined : key;
-  highlightedIndex.value = optionIndices.value.get(key) ?? -1;
-}
+const optionIndices = computed(() => new Map(combinedOptions.value.map((id, index) => [id, index])));
 
 function toggleDropdown() {
   if (isOpen.value) {
@@ -336,7 +310,6 @@ function openDropdown(): void {
   animateTabIndicator.value = false;
   isOpen.value = true;
   panelView.value = 'models';
-  expandedModelVariants.value = undefined;
   if (props.initialPanel !== undefined) {
     openPanel({ id: props.initialPanel });
   }
@@ -361,12 +334,14 @@ function isPanelOpen({ id }: { id: string }): boolean {
   return isOpen.value && panelView.value === 'panel' && activePanelId.value === id;
 }
 
-function selectModel({ model }: { model: string | undefined }) {
+function selectModel({ model, keepOpen }: { model: string | undefined, keepOpen?: boolean }) {
   if (!isOpen.value || modelSelectionUnavailable.value || (model !== undefined && !availableModels.value.includes(model))) {
     return;
   }
   emit('update:modelValue', model);
-  closeDropdown({ restoreFocus: true });
+  if (!keepOpen) {
+    closeDropdown({ restoreFocus: true });
+  }
 }
 
 function selectTab({ id }: { id: string }): void {
@@ -481,14 +456,8 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
     break;
   case 'Enter': {
     event.preventDefault();
-    const option = combinedOptions.value[highlightedIndex.value];
-    switch (option?.kind) {
-    case 'model': selectModel({ model: option.id });
-      break;
-    case 'group': toggleModelVariants({ key: option.key });
-      break;
-    case undefined: break;
-    default: throw new Error(String(option satisfies never));
+    if (highlightedIndex.value >= 0 && highlightedIndex.value < combinedOptions.value.length) {
+      selectModel({ model: combinedOptions.value[highlightedIndex.value] });
     }
     break;
   }
@@ -695,7 +664,7 @@ defineExpose({
         @cancel.prevent="closeSources"
         data-testid="model-selector-dropdown"
         class="animate-in fade-in" :tw-class="[
-          'm-0 flex flex-col p-0 bg-[var(--model-selector-panel-background)] [--model-selector-panel-background:var(--color-white)] text-gray-800 dark:text-gray-200 border border-gray-200 rounded-2xl shadow-xl overflow-hidden duration-200 motion-reduce:animate-none',
+          'm-0 flex flex-col p-0 bg-[var(--model-selector-panel-background)] [--model-selector-panel-background:var(--color-white)] [--settings-select-menu-background:var(--model-selector-panel-background)] text-gray-800 dark:text-gray-200 border border-gray-200 rounded-2xl shadow-xl overflow-hidden duration-200 motion-reduce:animate-none',
           popupPresentation === 'inline' ? 'mt-1.5 w-full' : '',
           surface === 'composer' ? 'dark:[--model-selector-panel-background:var(--color-gray-800)]' : 'dark:[--model-selector-panel-background:var(--color-gray-900)]',
           surface === 'sidebar' ? 'dark:border-gray-700/80' : 'dark:border-gray-700'
@@ -813,20 +782,28 @@ defineExpose({
                 <p data-testid="model-selector-empty" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ surface === 'sidebar' && isFetchingModels ? lazyStrings.ModelSelector__loading_models() : surface === 'sidebar' && !availableModels.length && !searchQuery.trim() ? lazyStrings.ModelSelector__no_models_available() : lazyStrings.ModelSelector__no_models_found() }}</p>
               </div>
               <div v-for="row in groupedModels" :key="row.key">
-                <ModelSelectorStoredVariantsRow v-if="row.kind === 'variants'" :name="row.name" :source="row.source" :count="row.variants.length" :selected="row.variants.some(variant => variant.item.model === modelValue)" :expanded="expandedModelVariants === row.key" :index="optionIndices.get(row.key)" :highlighted="highlightedIndex === optionIndices.get(row.key)" @toggle="toggleModelVariants({ key: row.key })" />
-                <div v-if="row.kind === 'single' || expandedModelVariants === row.key" :tw-class="[row.kind === 'variants' && 'ms-4 border-s border-gray-200 ps-2 dark:border-gray-800']">
-                  <div v-for="{ item: { model, title, details, parts }, label: variantLabel } in row.kind === 'single' ? [{ item: row.item, label: undefined }] : row.variants" :key="model" tw-class="flex items-center">
-                    <button type="button" data-testid="model-selector-option" :disabled="modelSelectionUnavailable" @click="selectModel({ model })" :title="title" :aria-pressed="model === modelValue" :data-index="optionIndices.get(model)" @mouseenter="highlightedIndex = optionIndices.get(model) ?? -1" :tw-class="['flex min-h-10 min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', model === modelValue ? 'bg-gray-100 ring-1 ring-inset ring-gray-300 font-medium text-blue-600 dark:bg-gray-700/50 dark:ring-gray-600 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50', highlightedIndex === optionIndices.get(model) && 'ring-1 ring-inset ring-gray-300 dark:ring-gray-600']">
-                      <span tw-class="flex min-w-0 flex-1 flex-col">
-                        <span data-testid="model-selector-option-name" tw-class="truncate font-medium">{{ variantLabel ?? parts.suffix }}</span>
-                        <span v-if="row.kind === 'single' && (details?.description || parts.prefix || details?.availability === 'download_required')" tw-class="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
-                          <span v-if="details?.description || parts.prefix" tw-class="min-w-0 truncate">{{ details?.description || parts.prefix.slice(0, -1) }}</span>
-                          <span v-if="details?.availability === 'download_required'" :title="lazyStrings.ModelSelector__download_before_first_use()" tw-class="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"><DownloadIcon aria-hidden="true" tw-class="h-3 w-3" />{{ lazyStrings.ModelSelector__downloads_automatically() }}</span>
-                        </span>
+                <ModelSelectorStoredVariantsRow
+                  v-if="row.kind === 'variants'" :name="row.name" :source="row.source"
+                  :choices="row.variants.map(({ item, label }) => ({ id: item.model, modelId: item.model, label, title: item.title }))"
+                  :selected-id="modelValue || inheritedModel?.id" :disabled="modelSelectionUnavailable"
+                  :popup-target="dropdownRef ?? undefined"
+                  :index="optionIndices.get(activeStoredVariantId({ variants: row.variants }))" :highlighted="highlightedIndex === optionIndices.get(activeStoredVariantId({ variants: row.variants }))"
+                  @choose="selectModel({ model: $event })" @change-variant="selectModel({ model: $event, keepOpen: true })"
+                  @mouseenter="highlightedIndex = optionIndices.get(activeStoredVariantId({ variants: row.variants })) ?? -1"
+                >
+                  <template v-if="$slots['model-action']" #actions="{ id }"><slot name="model-action" :id="id" :model="modelIndex.get(id)" /></template>
+                </ModelSelectorStoredVariantsRow>
+                <div v-else tw-class="flex items-center">
+                  <button type="button" data-testid="model-selector-option" :disabled="modelSelectionUnavailable" @click="selectModel({ model: row.item.model })" :title="row.item.title" :aria-pressed="row.item.model === modelValue" :data-index="optionIndices.get(row.item.model)" @mouseenter="highlightedIndex = optionIndices.get(row.item.model) ?? -1" :tw-class="['flex min-h-10 min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', row.item.model === modelValue ? 'bg-gray-100 ring-1 ring-inset ring-gray-300 font-medium text-blue-600 dark:bg-gray-700/50 dark:ring-gray-600 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50', highlightedIndex === optionIndices.get(row.item.model) && 'ring-1 ring-inset ring-gray-300 dark:ring-gray-600']">
+                    <span tw-class="flex min-w-0 flex-1 flex-col">
+                      <span data-testid="model-selector-option-name" tw-class="truncate font-medium">{{ row.item.parts.suffix }}</span>
+                      <span v-if="row.item.details?.description || row.item.parts.prefix || row.item.details?.availability === 'download_required'" tw-class="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                        <span v-if="row.item.details?.description || row.item.parts.prefix" tw-class="min-w-0 truncate">{{ row.item.details?.description || row.item.parts.prefix.slice(0, -1) }}</span>
+                        <span v-if="row.item.details?.availability === 'download_required'" :title="lazyStrings.ModelSelector__download_before_first_use()" tw-class="inline-flex shrink-0 items-center gap-1 whitespace-nowrap"><DownloadIcon aria-hidden="true" tw-class="h-3 w-3" />{{ lazyStrings.ModelSelector__downloads_automatically() }}</span>
                       </span>
-                    </button>
-                    <div v-if="$slots['model-action']" tw-class="shrink-0 pr-2"><slot name="model-action" :id="model" :model="details" /></div>
-                  </div>
+                    </span>
+                  </button>
+                  <div v-if="$slots['model-action']" tw-class="shrink-0 pr-2"><slot name="model-action" :id="row.item.model" :model="row.item.details" /></div>
                 </div>
               </div>
             </div>

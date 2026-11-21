@@ -23,6 +23,8 @@ import type { AudioTranscriptionPickerModel, useAudioTranscriptionModels } from 
 import LlamaCppBrowserDownloadDestination from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadDestination.vue';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { splitModelName } from '@/utils/model-name';
+import { modelSearchFilter } from '@/components/model-selector-item';
+import { splitModelIdDisplay, trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 
 const props = defineProps<{ models: ReturnType<typeof useAudioTranscriptionModels> }>();
 type Tab = 'compatible' | 'saved' | 'huggingface' | 'files';
@@ -51,7 +53,6 @@ let hasOpenedHuggingFace = false;
 const hfVisited = ref(false);
 const fileVisited = ref(false);
 const addedModels = ref<readonly LocalModel[]>([]);
-const expandedSavedVariants = ref<string>();
 const openDetails = ref<{ id: string, group: ModelGroup }>();
 const detailId = computed(() => openDetails.value?.id);
 const detailAnchor = ref<HTMLButtonElement>();
@@ -70,7 +71,15 @@ const downloadDestinationLabel = computed(() => {
 });
 const selected = computed(() => props.models.pickerModels.value.find(model => model.id === props.models.selectedId.value));
 const selectedName = computed(() => selected.value?.modelId ?? selected.value?.label);
-const selectedNameParts = computed(() => splitModelName({ name: selectedName.value }));
+const selectedNameParts = computed(() => {
+  const reference = selected.value?.modelId;
+  const parsed = reference !== undefined && /^(?:hf\.co|host)\//.test(reference) ? trySplitRepositoryModelId({ modelId: reference }) : undefined;
+  if (parsed !== undefined) {
+    const { source, name, variant } = splitModelIdDisplay({ modelId: parsed.baseId });
+    return { prefix: source, suffix: variant === undefined ? name : `${name}:${variant}` };
+  }
+  return splitModelName({ name: selectedName.value });
+});
 const downloads = computed(() => {
   const display = new Map<string, ModelSelectorDownloadPresentation>();
   for (const [id, { status, progress }] of props.models.downloadStates.value) {
@@ -89,11 +98,8 @@ const showFirstUseDownloadHint = computed(() => {
 });
 const isRefreshing = computed(() => props.models.refreshing.value);
 const matchingIds = computed(() => {
-  const keywords = query.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  return new Set(props.models.pickerModels.value.filter(model => {
-    const searchable = [model.modelId, model.label, model.description].filter(Boolean).join(' ').toLowerCase();
-    return keywords.every(keyword => searchable.includes(keyword));
-  }).map(model => model.id));
+  const matches = modelSearchFilter({ query: query.value });
+  return new Set(props.models.pickerModels.value.filter(model => matches({ fields: [model.modelId, model.label, model.description] })).map(model => model.id));
 });
 const matching = computed(() => props.models.pickerModels.value
   .filter(model => model.id === detailId.value || matchingIds.value.has(model.id))
@@ -150,11 +156,17 @@ const groupedRows = computed(() => groups.value.map(group => ({
     items: group.models,
     identity: ({ item }) => {
       switch (item.availability) {
-      case 'local': return { id: item.id, modelId: item.modelId };
+      case 'local': return { id: item.id, modelId: item.modelId, fallback: { name: item.name, source: item.subtitle ?? '' } };
       case 'checking': case 'download_required': case 'remote': return { id: item.id, modelId: undefined };
       default: throw new Error(String(item.availability satisfies never));
       }
     },
+  }).map(row => {
+    switch (row.kind) {
+    case 'single': return { row, model: row.item };
+    case 'variants': return { row, model: (row.variants.find(variant => variant.item.id === selected.value?.id) ?? row.variants[0]!).item };
+    default: throw new Error(String(row satisfies never));
+    }
   }),
 })));
 const variants = computed(() => props.models.quantizationsForModel({ id: detailId.value }));
@@ -279,7 +291,6 @@ function toggle(): void {
   tab.value = selected.value?.compatibility === undefined ? 'compatible' : 'saved';
   query.value = '';
   scrollPositions.clear();
-  expandedSavedVariants.value = undefined;
   tabIndicator.value = undefined;
   animateTabIndicator.value = false;
   hfVisited.value = false;
@@ -386,10 +397,19 @@ watch(query, () => {
   }
 });
 
-function choose({ id }: { id: string }): void {
+function choose({ id, keepOpen }: { id: string, keepOpen?: boolean }): void {
   if (!props.models.busy.value) {
     props.models.select({ id });
-    close();
+    if (!keepOpen) {
+      close();
+    }
+  }
+}
+
+function chooseStoredVariant({ id }: { id: string }): void {
+  if (!props.models.busy.value) {
+    closeDetails({ restoreFocus: false });
+    choose({ id, keepOpen: true });
   }
 }
 
@@ -508,49 +528,54 @@ defineExpose({
             <section v-for="group in groupedRows" v-show="group.models.length" :key="group.id">
               <h3 tw-class="px-2 pb-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ group.label }}</h3>
               <ul tw-class="space-y-0.5">
-                <li v-for="row in group.rows" :key="row.key">
-                  <ModelSelectorStoredVariantsRow v-if="row.kind === 'variants'" :name="row.name" :source="row.source" :count="row.variants.length" :selected="row.variants.some(variant => variant.item.id === selected?.id)" :expanded="expandedSavedVariants === row.key" @toggle="expandedSavedVariants = expandedSavedVariants === row.key ? undefined : row.key; closeDetails({ restoreFocus: false })" />
-                  <div v-if="row.kind === 'single' || expandedSavedVariants === row.key" :tw-class="[row.kind === 'variants' && 'ms-4 border-s border-gray-200 ps-2 dark:border-gray-800']">
-                    <ModelSelectorRepositoryRow
-                      v-for="{ item: model, label: variantLabel } in row.kind === 'single' ? [{ item: row.item, label: undefined }] : row.variants" :key="model.id"
-                      as="div" :row-id="model.id" :expanded="detailId === model.id" :configuration-id="popupId + '-model-options'" :checked="selected?.id === model.id"
-                      :choose-label="model.label" :test-id="model.suggested ? 'audio-transcription-suggested-model' : undefined" :download-status="statusLabel({ model })" :disabled="false"
-                      @choose="choose({ id: model.id })" @toggle="toggleDetails({ id: model.id, group: group.id, event: $event })"
-                    >
-                      <span :title="model.title" tw-class="block truncate font-medium">{{ variantLabel ?? model.name }}</span>
-                      <span v-if="row.kind === 'single' && model.subtitle" :title="model.subtitle" tw-class="mt-0.5 block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ model.subtitle }}</span>
-                      <template #actions>
-                        <ModelSelectorDownloadAction v-if="model.download?.active || model.availability === 'download_required'" :label="model.title" :destination-label="downloadDestinationLabel" :state="model.download?.active ? 'active' : 'available'" :active-label="model.download?.label" :percent="model.download?.percent" :disabled="models.downloadDestination.unavailable.value || models.downloadDestination.view.busy.value" @download="models.backgroundDownload({ id: model.id })" @stop="models.stopBackgroundDownload({ id: model.id })" />
-                      </template>
-                      <template #configuration>
-                        <ModelSelectorConfiguration @collapse="closeDetails({ restoreFocus: true })">
-                          <template v-if="details?.kind === 'huggingface' && model.suggested" #summary>
-                            <ModelSelectorConfigurationSummary :status="models.configurationSummary({ id: model.id, variant: currentVariant })" :quantization="selectedVariantDetails?.label" :bytes="selectedVariantDetails?.bytes" :expanded="editingSuggestedConfiguration" selectable :checked="selected?.id === model.id && models.modelVariant({ id: model.id }) === currentVariant" :selection-disabled="models.busy.value || selectedVariantDetails === undefined" @toggle="editingSuggestedConfiguration = !editingSuggestedConfiguration" @choose="chooseSuggestedConfiguration({ id: model.id })" />
-                          </template>
-                          <template v-if="details?.kind === 'huggingface' && (!model.suggested || editingSuggestedConfiguration)" #source>
-                            <ModelSelectorRepositorySource :repository="details.repository" :url="details.repositoryUrl" :files="details.files" />
-                          </template>
-                          <div v-if="details?.kind === 'huggingface'" tw-class="space-y-2">
-                            <ModelSelectorFileOptions test-id="audio-transcription-model-variant" v-if="variants.length && (!model.suggested || editingSuggestedConfiguration)" :model-name="model.name" :selected="model.suggested || selected?.id === model.id ? currentVariant : undefined" :choices="variants" :disabled="models.busy.value" @select="chooseVariant({ id: $event })">
-                              <template #action="{ choice }"><ModelSelectorVariantDownload :request="models.variantDownloadRequest({ id: model.id, variantId: choice.id })" :label="choice.label" :refresh-inventory="models.refresh" :disabled="models.downloadDestination.unavailable.value || models.downloadDestination.view.busy.value" /></template>
-                            </ModelSelectorFileOptions>
-                            <button type="button" :disabled="checkingVariants" :title="lazyStrings.ModelSelector__fetch_configuration()" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 motion-reduce:transition-none" @click="checkVariants">
-                              <Loader2Icon v-if="checkingVariants" aria-hidden="true" tw-class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                              <GlobeIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
-                              {{ lazyStrings.ModelSelector__show_configuration() }}
-                            </button>
-                            <p v-if="checkedVariants && models.quantizationsFailure.value" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.AudioTranscriptionModelSelector__could_not_get_quantizations() }}</p>
-                            <p v-else-if="checkedVariants && !variants.length" role="status" tw-class="text-xs text-gray-500">{{ lazyStrings.AudioTranscriptionModelSelector__no_gguf_choices() }}</p>
-                            <LlamaCppBrowserDownloadDestination v-if="model.availability === 'download_required'" :view="models.downloadDestination.view" :disabled="false" :layout-file="selectedVariantDetails ? { repository: details.repository, path: selectedVariantDetails.filePath } : undefined" :popup-target="panel" layout="compact" />
-                          </div>
-                          <p v-else-if="details?.kind === 'local'" tw-class="flex justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
-                            <span tw-class="min-w-0 break-words">{{ details.fileName || details.name }}</span>
-                            <span tw-class="shrink-0 whitespace-nowrap tabular-nums">{{ formatDownloadBytes({ bytes: details.bytes }) }}</span>
-                          </p>
-                        </ModelSelectorConfiguration>
-                      </template>
-                    </ModelSelectorRepositoryRow>
-                  </div>
+                <li v-for="{ row, model } in group.rows" :key="row.key">
+                  <ModelSelectorRepositoryRow
+                    as="div" :row-id="model.id" :expanded="detailId === model.id" :configuration-id="popupId + '-model-options'" :checked="selected?.id === model.id"
+                    :choose-label="model.label" :test-id="model.suggested ? 'audio-transcription-suggested-model' : undefined" :download-status="statusLabel({ model })" :disabled="false"
+                    @choose="choose({ id: model.id })" @toggle="toggleDetails({ id: model.id, group: group.id, event: $event })"
+                  >
+                    <template v-if="row.kind === 'variants'" #row>
+                      <ModelSelectorStoredVariantsRow
+                        :name="row.name" :source="row.source"
+                        :choices="row.variants.map(({ item, label }) => ({ id: item.id, modelId: item.modelId ?? item.id, label }))"
+                        :popup-target="panel" :configuration="{ open: detailId === model.id, id: popupId + '-model-options' }"
+                        :selected-id="selected?.id" :disabled="models.busy.value" @choose="choose({ id: $event })" @change-variant="chooseStoredVariant({ id: $event })"
+                        @toggle-configuration="toggleDetails({ ...$event, group: group.id })"
+                      />
+                    </template>
+                    <span :title="model.title" tw-class="block truncate font-medium">{{ model.name }}</span>
+                    <span v-if="model.subtitle" :title="model.subtitle" tw-class="mt-0.5 block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ model.subtitle }}</span>
+                    <template #actions>
+                      <ModelSelectorDownloadAction v-if="model.download?.active || model.availability === 'download_required'" :label="model.title" :destination-label="downloadDestinationLabel" :state="model.download?.active ? 'active' : 'available'" :active-label="model.download?.label" :percent="model.download?.percent" :disabled="models.downloadDestination.unavailable.value || models.downloadDestination.view.busy.value" @download="models.backgroundDownload({ id: model.id })" @stop="models.stopBackgroundDownload({ id: model.id })" />
+                    </template>
+                    <template #configuration>
+                      <ModelSelectorConfiguration @collapse="closeDetails({ restoreFocus: true })">
+                        <template v-if="details?.kind === 'huggingface' && model.suggested" #summary>
+                          <ModelSelectorConfigurationSummary :status="models.configurationSummary({ id: model.id, variant: currentVariant })" :quantization="selectedVariantDetails?.label" :bytes="selectedVariantDetails?.bytes" :expanded="editingSuggestedConfiguration" selectable :checked="selected?.id === model.id && models.modelVariant({ id: model.id }) === currentVariant" :selection-disabled="models.busy.value || selectedVariantDetails === undefined" @toggle="editingSuggestedConfiguration = !editingSuggestedConfiguration" @choose="chooseSuggestedConfiguration({ id: model.id })" />
+                        </template>
+                        <template v-if="details?.kind === 'huggingface' && (!model.suggested || editingSuggestedConfiguration)" #source>
+                          <ModelSelectorRepositorySource :repository="details.repository" :url="details.repositoryUrl" :files="details.files" />
+                        </template>
+                        <div v-if="details?.kind === 'huggingface'" tw-class="space-y-2">
+                          <ModelSelectorFileOptions test-id="audio-transcription-model-variant" v-if="variants.length && (!model.suggested || editingSuggestedConfiguration)" :model-name="model.name" :selected="model.suggested || selected?.id === model.id ? currentVariant : undefined" :choices="variants" :disabled="models.busy.value" @select="chooseVariant({ id: $event })">
+                            <template #action="{ choice }"><ModelSelectorVariantDownload :request="models.variantDownloadRequest({ id: model.id, variantId: choice.id })" :label="choice.label" :refresh-inventory="models.refresh" :disabled="models.downloadDestination.unavailable.value || models.downloadDestination.view.busy.value" /></template>
+                          </ModelSelectorFileOptions>
+                          <button type="button" :disabled="checkingVariants" :title="lazyStrings.ModelSelector__fetch_configuration()" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 motion-reduce:transition-none" @click="checkVariants">
+                            <Loader2Icon v-if="checkingVariants" aria-hidden="true" tw-class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                            <GlobeIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                            {{ lazyStrings.ModelSelector__show_configuration() }}
+                          </button>
+                          <p v-if="checkedVariants && models.quantizationsFailure.value" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.AudioTranscriptionModelSelector__could_not_get_quantizations() }}</p>
+                          <p v-else-if="checkedVariants && !variants.length" role="status" tw-class="text-xs text-gray-500">{{ lazyStrings.AudioTranscriptionModelSelector__no_gguf_choices() }}</p>
+                          <LlamaCppBrowserDownloadDestination v-if="model.availability === 'download_required'" :view="models.downloadDestination.view" :disabled="false" :layout-file="selectedVariantDetails ? { repository: details.repository, path: selectedVariantDetails.filePath } : undefined" :popup-target="panel" layout="compact" />
+                        </div>
+                        <p v-else-if="details?.kind === 'local'" tw-class="flex justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span tw-class="min-w-0 break-words">{{ details.fileName || details.name }}</span>
+                          <span tw-class="shrink-0 whitespace-nowrap tabular-nums">{{ formatDownloadBytes({ bytes: details.bytes }) }}</span>
+                        </p>
+                      </ModelSelectorConfiguration>
+                    </template>
+                  </ModelSelectorRepositoryRow>
                 </li>
               </ul>
             </section>

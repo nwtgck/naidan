@@ -5,7 +5,7 @@ export function quantizationName({ path }: { path: string }): string | undefined
   const name = (path.split('/').at(-1) ?? '').toUpperCase();
   // Read the entire token, including extensions such as Q4_K_XL. A prefix
   // match must never silently turn a new scheme into a familiar quantization.
-  const matches = [...name.matchAll(/(?:^|[-_.])((?:I?Q[1-8](?:_[A-Z0-9]+)+|(?:MXFP|NVFP)[0-9]+|BF16|F16|F32))(?=[-.]|$)/g)];
+  const matches = [...name.matchAll(/(?:^|[-_.])((?:(?:I?Q|PQ|P?TQ)[1-8](?:_[A-Z0-9]+)+|(?:MXFP|NVFP)[0-9]+|BF16|F16|F32))(?=[-.]|$)/g)];
   return matches.length === 1 ? matches[0]?.[1] : undefined;
 }
 

@@ -1,12 +1,12 @@
 import { hostDownloadMarker } from './host-download-marker';
 import { isHostDestination, hostModelRoot, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
-import { configuredRepositoryModelId, formatHuggingFaceModelId, splitRepositoryModelId, type RepositoryModelConfiguration } from '@/01-models/llama-cpp-browser-model-id';
+import { configuredRepositoryModelId, formatHuggingFaceModelId, matchingRepositoryModelVariants, parseRepositoryModelId, type RepositoryModelConfiguration } from '@/01-models/llama-cpp-browser-model-id';
 import { storageService } from '@/00-storage/service';
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 import { formatHostModelId } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
-import { modelGroups, modelVariantName } from './model-variants';
+import { modelGroups } from './model-variants';
 import { selectRepositoryModel } from './model-selector';
 export { selectRepositoryModel } from './model-selector';
 import { deletionPlanSchema, executeDeletionPlan, pruneCapturedModelRoot, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
@@ -217,7 +217,7 @@ export async function installedSelection({ selection, destination, expectedRoot,
   const modelId = formatHuggingFaceModelId({ repository: selection.repository, mainFilePath: requested.primaryRelativePath });
   const variant = parseModelReference({ modelId }).variant;
   try {
-    const matching = candidates.filter(candidate => modelVariantName({ repository: selection.repository, path: candidate.primaryFile.relativePath }) === variant);
+    const matching = matchingRepositoryModelVariants({ models: candidates, repository: selection.repository, variant });
     const admitted = matching.length > 1 ? await repositoryDirectories({ repository: selection.repository, destination }) : candidates;
     const selected = selectRepositoryModel({ models: admitted, repository: selection.repository, variant });
     if (selected.primaryFile.relativePath !== requested.primaryRelativePath) {
@@ -247,10 +247,8 @@ export function parseModelReference({ modelId }: { modelId: string }): { reposit
   if (!modelId.startsWith('hf.co/')) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  const { baseId } = splitRepositoryModelId({ modelId });
-  const value = baseId.slice('hf.co/'.length);
-  const colon = value.indexOf(':');
-  return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
+  const { repository, variant } = parseRepositoryModelId({ modelId });
+  return { repository, variant };
 }
 
 export async function resolveRepositoryModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<ModelDirectory> {
@@ -258,7 +256,7 @@ export async function resolveRepositoryModel({ modelId, signal }: { modelId: str
   if (variant === undefined) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  const { configuration } = splitRepositoryModelId({ modelId });
+  const { configuration } = parseRepositoryModelId({ modelId });
   return selectRepositoryModel({ models: await repositoryDirectories({ repository, signal, configuration }), repository, variant });
 }
 
