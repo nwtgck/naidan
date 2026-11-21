@@ -7,6 +7,7 @@ import { naturalSort } from '@/utils/string';
 import ChatModelSelector from './ChatModelSelector.vue';
 import { browserChatModelPanels } from './chat-model-selector-panels';
 import type { ModelSelectorItem } from './model-selector-item';
+import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
 
 const RepositoryModelPicker = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue'));
 const ModelSelectorFileImport = defineAsyncComponent(() => import('./ModelSelectorFileImport.vue'));
@@ -20,6 +21,7 @@ const props = defineProps<{
   placeholder: string | undefined,
   clearLabel?: string,
   allowClear?: boolean,
+  inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   loading: boolean,
   disabled?: boolean,
   refreshModels: () => Promise<void>,
@@ -53,10 +55,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     :surface="surface"
     :frame="frame"
     :model-value="modelValue || undefined"
+    :inherited-model="inheritedModel"
     :models="sortedModels"
     :models-label="usesSavedModels ? lazyStrings.ModelSelector__models_on_this_device() : undefined"
     :panels="panels"
-    :initial-panel="usesSavedModels && !modelValue ? 'chat-candidates' : undefined"
+    :initial-panel="usesSavedModels && !modelValue && inheritedModel === undefined ? 'chat-candidates' : undefined"
     :loading="loading"
     :disabled="disabled"
     :model-selection="endpointType === 'browser_provided_lm' ? 'unavailable' : 'available'"

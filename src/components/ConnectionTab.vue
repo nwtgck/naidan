@@ -22,7 +22,6 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Keep the model fields ready as soon as the connection setup opens.
 import DefaultChatModelSelector from './DefaultChatModelSelector.vue';
-import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import SettingsSelect from './SettingsSelect.vue';
 import EndpointPresetButtons from './EndpointPresetButtons.vue';
@@ -64,9 +63,8 @@ const emit = defineEmits<{
 }>();
 
 const sortedModels = computed(() => naturalSort({ values: Array.isArray(props.availableModels) ? props.availableModels : [] }));
-const titleEndpointModels = ref<string[]>([]);
+const titleEndpointModelList = shallowRef<{ endpoint: Endpoint, ids: readonly string[] }>();
 const isFetchingTitleEndpointModels = ref(false);
-const sortedTitleEndpointModels = computed(() => naturalSort({ values: titleEndpointModels.value }));
 
 const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSettings();
 const { showConfirm } = useConfirm();
@@ -475,9 +473,13 @@ function setGlobalTitleEndpointHttpHeaders({
   });
 }
 
-const globalTitleModelOptions = computed(() => globalTitleEndpointUsesSameScope.value
-  ? sortedModels.value
-  : sortedTitleEndpointModels.value);
+const globalTitleModelIds = computed(() => {
+  if (globalTitleEndpointUsesSameScope.value) {
+    return defaultModelIds.value;
+  }
+  const list = titleEndpointModelList.value;
+  return list !== undefined && areEndpointsEqual({ left: list.endpoint, right: globalEffectiveTitleEndpoint.value }) ? list.ids : [];
+});
 const globalTitleModelAllowClear = computed(() => globalTitleEndpointUsesSameScope.value);
 const globalTitleModelLoading = computed(() => globalTitleEndpointUsesSameScope.value
   ? props.isFetchingModels
@@ -560,7 +562,7 @@ function explicitSettingsTitleModel({
 }: {
   modelId: string | undefined,
 }): { id: string } {
-  return { id: modelId || globalTitleModelOptions.value[0] || form.value.defaultModelId || BROWSER_PROVIDED_LM_MODEL_ID };
+  return { id: modelId || naturalSort({ values: globalTitleModelIds.value })[0] || form.value.defaultModelId || BROWSER_PROVIDED_LM_MODEL_ID };
 }
 
 function setGlobalTitleEndpointType({
@@ -653,7 +655,6 @@ async function fetchTitleEndpointModels(): Promise<void> {
   }
   const endpoint = cloneEndpoint({ endpoint: globalEffectiveTitleEndpoint.value });
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
-    titleEndpointModels.value = [];
     return;
   }
 
@@ -667,7 +668,7 @@ async function fetchTitleEndpointModels(): Promise<void> {
     if (models.length === 0 && endpoint.type !== 'transformers_js' && endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
-    titleEndpointModels.value = models;
+    titleEndpointModelList.value = { endpoint, ids: models };
     const titleGeneration = currentSettingsTitleGeneration();
     if (titleGeneration === 'disabled' || titleGeneration.endpoint === 'same_scope') {
       return;
@@ -1133,7 +1134,24 @@ defineExpose({
               <fieldset :disabled="!globalTitleGenerationEnabled" :inert="!globalTitleGenerationEnabled" :aria-disabled="!globalTitleGenerationEnabled" :tw-class="['min-w-0 space-y-4 pb-5 pt-1', !globalTitleGenerationEnabled && 'opacity-45']">
                 <div class="connection-title-grid">
                   <div tw-class="min-w-0 space-y-2"><span class="connection-field-label">{{ lazyStrings.ConnectionTab__title_endpoint() }}</span><SettingsSelect :model-value="globalTitleEndpointSelectValue" :options="titleEndpointChoices" :label="lazyStrings.ConnectionTab__title_endpoint()" :disabled="!globalTitleGenerationEnabled" @update:model-value="value => setGlobalTitleEndpointType({ endpointType: titleEndpointTypeFromSelectValue({ value }) })" data-testid="setting-title-endpoint-type-select" /></div>
-                  <div tw-class="min-w-0 space-y-2"><span class="connection-field-label">{{ lazyStrings.ConnectionTab__title_generation_model() }}</span><ModelSelector surface="settings" :model-value="globalTitleModelId" :inherited-model="titleModelPresentation" @update:model-value="value => setGlobalTitleModelId({ modelId: value })" :models="globalTitleModelOptions" :loading="globalTitleModelLoading" :disabled="!globalTitleGenerationEnabled || globalEffectiveTitleEndpoint.type === 'browser_provided_lm'" :placeholder="globalTitleEndpointUsesSameScope ? lazyStrings.ConnectionTab__conversation_model() : undefined" :allow-clear="globalTitleModelAllowClear" :clear-label="lazyStrings.ConnectionTab__conversation_model()" @refresh="fetchTitleEndpointModels" data-testid="setting-title-model-select" /></div>
+                  <div tw-class="min-w-0 space-y-2">
+                    <span class="connection-field-label">{{ lazyStrings.ConnectionTab__title_generation_model() }}</span>
+                    <DefaultChatModelSelector
+                      surface="settings"
+                      :model-value="globalTitleModelId"
+                      :inherited-model="titleModelPresentation"
+                      :model-ids="globalTitleModelIds"
+                      :endpoint-type="globalEffectiveTitleEndpoint.type"
+                      :loading="globalTitleModelLoading"
+                      :disabled="!globalTitleGenerationEnabled || globalEffectiveTitleEndpoint.type === 'browser_provided_lm'"
+                      :placeholder="globalTitleEndpointUsesSameScope ? lazyStrings.ConnectionTab__conversation_model() : undefined"
+                      :allow-clear="globalTitleModelAllowClear"
+                      :clear-label="lazyStrings.ConnectionTab__conversation_model()"
+                      :refresh-models="fetchTitleEndpointModels"
+                      :select-model="setGlobalTitleModelId"
+                      data-testid="setting-title-model-select"
+                    />
+                  </div>
                 </div>
                 <ReasoningSettings :selected-effort="reasoningEffortFromTitleReasoningValue({ value: globalTitleReasoningSelectValue })" :selected-value="globalTitleReasoningSelectValue" :leading-options="globalTitleReasoningLeadingOptions" :heading="lazyStrings.ConnectionTab__title_reasoning()" :disabled="!globalTitleGenerationEnabled" surface="plain" notice="inline-help" @update:value="value => setGlobalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })" data-testid="setting-title-reasoning-select" />
                 <RpcRegistrationSelect v-if="globalTitleEndpoint !== 'same_scope' && globalTitleEndpoint.type === 'naidan_rpc'" :model-value="globalTitleEndpoint.registrationId" surface="settings" @update:model-value="registrationId => setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', registrationId }, model: explicitSettingsTitleModel({ modelId: globalTitleModelId }) } })" />
