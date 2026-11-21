@@ -2,7 +2,7 @@ import { shallowRef, watch } from 'vue';
 import { currentLocale, preparingLocales } from '@/strings';
 import { selectHostedTransformersRuntimeVariant } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { requestedOfflineProfiles } from '@/features/llama-cpp-browser/runtime/offline-profile-preferences';
-import { ASSET_SELECTION_CHANGED, READ_ASSET_SELECTION, type AssetSelection, type PrepareOfflineAssetsRequest } from '@/logic/pwa/asset-cache-protocol';
+import { ASSET_SELECTION_CHANGED, READ_ASSET_SELECTION, type AssetSelection, type PrepareOfflineAssetsRequest, type RuntimeSelection } from '@/logic/pwa/asset-cache-protocol';
 import { requestBuildId, requestOfflineAssetPreparation } from '@/logic/pwa/worker-request';
 import { setOfflineAssetAction, setOfflineAssetStatus } from './usePWAOfflineAssets';
 
@@ -19,17 +19,62 @@ export function startPWAOfflineAssetRuntime({ serviceWorkers, baseUrl, buildId }
   let checking: ServiceWorker | undefined;
   let manualSave: AbortController | undefined;
   let offlineReady = false;
-  const llamaProfiles = shallowRef<AssetSelection['llama']>(undefined);
-  void import('@/features/llama-cpp-browser/runtime/offline-profile-probe').then(async ({ probeOfflineLlamaProfiles }) => {
-    llamaProfiles.value = await probeOfflineLlamaProfiles({ signal: lifetime.signal });
-  }).catch(() => {});
+  const llamaProfiles = shallowRef<AssetSelection['llama'] | 'pending'>('pending');
+  const unknownNativeProfiles = {
+    'stable-diffusion-cpp-browser': { status: 'unknown' },
+    'speech-cpp-browser': { status: 'unknown' },
+  } as const;
+  const nativeProfiles = shallowRef<Record<'stable-diffusion-cpp-browser' | 'speech-cpp-browser', RuntimeSelection>>({
+    'stable-diffusion-cpp-browser': { status: 'pending' },
+    'speech-cpp-browser': { status: 'pending' },
+  });
+  const probeSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(5_000)]);
+  const settled = Promise.withResolvers<void>();
+  probeSignal.addEventListener('abort', () => {
+    if (llamaProfiles.value === 'pending') {
+      llamaProfiles.value = undefined;
+    }
+    if (Object.values(nativeProfiles.value).some(selection => selection.status === 'pending')) {
+      nativeProfiles.value = unknownNativeProfiles;
+    }
+    settled.resolve();
+  }, { once: true });
+  const probes = Promise.all([
+    import('@/features/llama-cpp-browser/runtime/offline-profile-probe').then(async ({ probeOfflineLlamaProfiles }) => {
+      const profiles = await probeOfflineLlamaProfiles({ signal: probeSignal });
+      if (!probeSignal.aborted) {
+        llamaProfiles.value = profiles;
+      }
+    }).catch(() => {}).finally(() => {
+      if (llamaProfiles.value === 'pending') {
+        llamaProfiles.value = undefined;
+      }
+    }),
+    (__BUILD_MODE_IS_STANDALONE__ ? Promise.resolve(undefined) : import('./pwa-native-runtime-selection')).then(nativeSelection => {
+      if (!probeSignal.aborted) {
+        nativeProfiles.value = nativeSelection?.selectNativePWAProfiles() ?? unknownNativeProfiles;
+      }
+    }).catch(() => {
+      nativeProfiles.value = unknownNativeProfiles;
+    }),
+  ]);
+  void probes.then(() => settled.resolve());
 
   function readSelection(): AssetSelection {
+    const profiles = llamaProfiles.value;
+    const llama = profiles === undefined || profiles === 'pending' ? undefined : [...new Set([...profiles, ...requestedOfflineProfiles.value])];
+    const transformers = selectHostedTransformersRuntimeVariant({ userAgent: navigator.userAgent, vendor: undefined });
     return {
       locales: [...new Set([currentLocale.value, ...preparingLocales.value])],
       // Navigator.vendor is Window-only. Use the same input as a Dedicated Worker.
-      transformers: selectHostedTransformersRuntimeVariant({ userAgent: navigator.userAgent, vendor: undefined }),
-      llama: llamaProfiles.value === undefined ? undefined : [...new Set([...llamaProfiles.value, ...requestedOfflineProfiles.value])],
+      transformers,
+      llama,
+      runtimes: {
+        ...nativeProfiles.value,
+        'transformers-js': { status: 'known', profiles: [transformers] },
+        'llama-cpp-browser': profiles === 'pending' ? { status: 'pending' } : llama === undefined
+          ? { status: 'unknown' } : { status: 'known', profiles: llama },
+      },
     };
   }
 
@@ -128,6 +173,7 @@ export function startPWAOfflineAssetRuntime({ serviceWorkers, baseUrl, buildId }
   }
 
   async function ensureSelection(): Promise<ServiceWorker | undefined> {
+    await settled.promise;
     const revision = selectionRevision;
     const selection = readSelection();
     try {
@@ -161,7 +207,7 @@ export function startPWAOfflineAssetRuntime({ serviceWorkers, baseUrl, buildId }
   serviceWorkers.addEventListener('message', replyToInstaller);
   serviceWorkers.addEventListener('controllerchange', updateControl);
   updateControl();
-  const stopSelection = watch([currentLocale, preparingLocales, llamaProfiles, requestedOfflineProfiles], ([, pending]) => {
+  const stopSelection = watch([currentLocale, preparingLocales, llamaProfiles, nativeProfiles, requestedOfflineProfiles], ([, pending]) => {
     selectionRevision++;
     notifyInstaller();
     if ((offlineReady || availableFor) && pending.length === 0) {

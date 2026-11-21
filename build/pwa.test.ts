@@ -272,6 +272,9 @@ describe('real generated Workbox worker', () => {
     await worker.lifecycle('install');
     await worker.lifecycle('activate');
 
+    const localized = await worker.request({ url: new URL('naidan-standalone-ja.zip', scope).href, navigation: true });
+    expect(await localized.text()).toBe('version-a:naidan-standalone-ja.zip');
+
     const partial = await worker.request({ url: archive.href, navigation: true, headers: { range: 'bytes=0-2' } });
     expect(partial.status).toBe(206);
     expect(await partial.text()).toBe('zip');

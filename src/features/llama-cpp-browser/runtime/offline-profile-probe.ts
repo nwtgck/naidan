@@ -1,4 +1,4 @@
-import { chatProfileSchema, type ChatProfile } from './chat-profiles';
+import { chatProfileSchema, type ChatProfile } from '@/features/llama-cpp-browser/chat-profiles';
 
 export async function probeOfflineLlamaProfiles({ signal }: { signal: AbortSignal }): Promise<ChatProfile[] | undefined> {
   if (typeof Worker === 'undefined' || signal.aborted) {

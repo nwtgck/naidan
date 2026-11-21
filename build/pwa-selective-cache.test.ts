@@ -14,10 +14,27 @@ const standard = `transformers/${HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.vari
 const asyncify = `transformers/${HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.variants[1].mjs.publicFileName}`;
 const cpu = 'llama-cpp-browser-runtime/profiles/cpu-wasm32/core.wasm.gz';
 const gpu = 'llama-cpp-browser-runtime/profiles/webgpu-wasm64-jspi/core.wasm.gz';
+const runtimeArtifacts = {
+  'stable-diffusion-cpp-browser': [
+    { profile: 'image-a', modulePath: 'image/a.mjs', wasmPath: 'image/a.wasm.gz' },
+    { profile: 'image-b', modulePath: 'image/b.mjs', wasmPath: 'image/b.wasm.gz' },
+  ],
+  'speech-cpp-browser': [
+    { profile: 'speech-a', modulePath: 'speech/a.mjs', wasmPath: 'speech/a.wasm.gz' },
+    { profile: 'speech-b', modulePath: 'speech/b.mjs', wasmPath: 'speech/b.wasm.gz' },
+  ],
+} as const;
 const packId = 'virtual:naidan-boundary-strings/pack/';
 const en = `${packId}en/0000000000000001/0000000000000001`;
 const ja = `${packId}ja/0000000000000001/0000000000000001`;
+const ko = `${packId}ko/0000000000000001/0000000000000001`;
+const secondKo = `${packId}ko/0000000000000003/0000000000000001`;
+const directPack = `${packId}pt-BR/0000000000000001/0000000000000001`;
+const primaryBoundary = 'virtual:naidan-boundary-strings/boundary/0000000000000001/0000000000000001';
+const secondBoundary = 'virtual:naidan-boundary-strings/boundary/0000000000000003/0000000000000001';
 const bootstrap = `${packId}es/0000000000000002/0000000000000001`;
+const koreanMessage = 'src/strings/messages/Test__localized_message/ko.ts';
+const crossLocaleMessage = 'src/strings/messages/Test__shared_message/ko.ts';
 const hidden = '.well-known/future-asset';
 const cpuModule = 'virtual:llama-test-cpu';
 const gpuModule = 'virtual:llama-test-gpu';
@@ -25,6 +42,11 @@ let root: string | undefined;
 let fixture: Awaited<ReturnType<typeof buildPWAFixture>>;
 let english: string;
 let japanese: string;
+let korean: string;
+let secondKorean: string;
+let koreanOnly: string;
+let sharedWithEnglish: string;
+let direct: string;
 let startup: string;
 let cpuScript: string;
 let gpuScript: string;
@@ -36,11 +58,29 @@ beforeAll(async () => {
     mkdir(path.join(root, 'public', '.well-known'), { recursive: true }),
     mkdir(path.dirname(path.join(root, 'public', cpu)), { recursive: true }),
     mkdir(path.dirname(path.join(root, 'public', gpu)), { recursive: true }),
+    mkdir(path.join(root, 'public', 'image'), { recursive: true }),
+    mkdir(path.join(root, 'public', 'speech'), { recursive: true }),
+    mkdir(path.dirname(path.join(root, koreanMessage)), { recursive: true }),
+    mkdir(path.dirname(path.join(root, crossLocaleMessage)), { recursive: true }),
+  ]);
+  await Promise.all([
+    writeFile(path.join(root, koreanMessage), 'export const message = () => "korean-message-only-marker";'),
+    writeFile(path.join(root, crossLocaleMessage), 'export const shared = () => "shared-with-english-message-marker";'),
   ]);
   const modules = new Map([
-    ['virtual:audit-route', `export const loaders = [() => import(${JSON.stringify(en)}), () => import(${JSON.stringify(ja)})];`],
-    [en, 'export default "english-pack-marker";'],
+    ['virtual:audit-route', `
+      import { loaders as primary } from ${JSON.stringify(primaryBoundary)};
+      import { loaders as secondary } from ${JSON.stringify(secondBoundary)};
+      export const loaders = [...primary, ...secondary, () => import(${JSON.stringify(directPack)})];
+    `],
+    [primaryBoundary, `export const loaders = [${[en, ja, ko, directPack].map(id => `() => import(${JSON.stringify(id)})`).join(', ')}];`],
+    [secondBoundary, `export const loaders = [() => import(${JSON.stringify(secondKo)})];`],
+    [en, `import { shared } from "/${crossLocaleMessage}"; export default { name: "english-pack-marker", shared };`],
     [ja, 'export default "japanese-pack-marker";'],
+    [ko, `import { message } from "/${koreanMessage}"; import { shared } from "/${crossLocaleMessage}";
+      export default { name: "korean-first-pack-marker", message, shared };`],
+    [secondKo, `import { message } from "/${koreanMessage}"; export default { name: "korean-second-pack-marker", message };`],
+    [directPack, 'export default "direct-portuguese-pack-marker";'],
     [bootstrap, 'export default "startup-pack-marker";'],
   ]);
   await writeFile(path.join(root, 'llama-probe.js'), `self.onmessage = async event => {
@@ -50,7 +90,12 @@ beforeAll(async () => {
   fixture = await buildPWAFixture({
     root,
     buildId: 'selective-fixture',
-    publicFiles: new Map([[standard, 'standard bytes'], [asyncify, 'asyncify bytes'], [cpu, 'cpu bytes'], [gpu, 'gpu bytes'], [hidden, 'unknown bytes']]),
+    publicFiles: new Map([
+      [standard, 'standard bytes'], [asyncify, 'asyncify bytes'], [cpu, 'cpu bytes'], [gpu, 'gpu bytes'], [hidden, 'unknown bytes'],
+      ['image/shared.mjs', 'shared image helper'],
+      ...Object.values(runtimeArtifacts).flat().flatMap(({ modulePath, wasmPath }) => [[modulePath, modulePath], [wasmPath, wasmPath]] as const),
+    ]),
+    getRuntimeArtifacts: () => runtimeArtifacts,
     entrySource: `console.info(__PWA_BUILD_ID__); if (typeof document !== 'undefined') {
       import('virtual:audit-route').then(({ loaders }) => globalThis.loaders = loaders);
       import(${JSON.stringify(bootstrap)}).then(module => console.log(module.default));
@@ -93,6 +138,11 @@ beforeAll(async () => {
   }
   english = fileForMarker({ marker: 'english-pack-marker' });
   japanese = fileForMarker({ marker: 'japanese-pack-marker' });
+  korean = fileForMarker({ marker: 'korean-first-pack-marker' });
+  secondKorean = fileForMarker({ marker: 'korean-second-pack-marker' });
+  koreanOnly = fileForMarker({ marker: 'korean-message-only-marker' });
+  sharedWithEnglish = fileForMarker({ marker: 'shared-with-english-message-marker' });
+  direct = fileForMarker({ marker: 'direct-portuguese-pack-marker' });
   startup = fileForMarker({ marker: 'startup-pack-marker' });
   cpuScript = fileForMarker({ marker: 'llama-cpu-script-marker' });
   gpuScript = fileForMarker({ marker: 'llama-gpu-script-marker' });
@@ -163,7 +213,7 @@ it('installs the union of live selections, startup packs, and unknown files', as
   const f = setup({ initialSelection: { locales: ['en'], transformers: 'standard', llama: ['cpu-wasm32'] }, beforeFetch: undefined });
   f.addPage({ id: 'second', getSelection: () => ({ locales: ['ja'], transformers: 'standard', llama: ['cpu-wasm32'] }) });
   await f.worker.lifecycle('install');
-  for (const file of [english, japanese, startup, hidden, standard, cpu, cpuScript]) {
+  for (const file of [english, japanese, direct, startup, hidden, standard, cpu, cpuScript]) {
     expect(f.requested).toContain(file);
   }
   expect(f.requested).not.toContain(asyncify);
@@ -174,13 +224,124 @@ it('installs the union of live selections, startup packs, and unknown files', as
   expect((await f.worker.request({ url: `${scope}${japanese}` })).status).toBe(200);
 });
 
+it('defers a split message only when every pack that imports it has the same locale', async () => {
+  expect(koreanOnly).not.toBe(korean);
+  expect(koreanOnly).not.toBe(secondKorean);
+  expect(sharedWithEnglish).not.toBe(english);
+  const englishSelection = setup({ initialSelection: { locales: ['en'] }, beforeFetch: undefined });
+  await englishSelection.worker.lifecycle('install');
+  expect(englishSelection.requested).toContain(sharedWithEnglish);
+  for (const file of [korean, secondKorean, koreanOnly]) {
+    expect(englishSelection.requested).not.toContain(file);
+  }
+
+  const koreanSelection = setup({ initialSelection: { locales: ['ko'] }, beforeFetch: undefined });
+  await koreanSelection.worker.lifecycle('install');
+  for (const file of [korean, secondKorean, koreanOnly, sharedWithEnglish]) {
+    expect(koreanSelection.requested).toContain(file);
+  }
+  koreanSelection.disconnect();
+  expect((await koreanSelection.worker.request({ url: `${scope}${koreanOnly}` })).status).toBe(200);
+});
+
 it('falls back to saving every ambiguous selection asset for an older page', async () => {
   const f = setup({ initialSelection: undefined, beforeFetch: undefined });
   await f.worker.lifecycle('install');
-  for (const file of [english, japanese, standard, asyncify, cpu, gpu, cpuScript, gpuScript]) {
+  for (const file of [english, japanese, korean, secondKorean, koreanOnly, standard, asyncify, cpu, gpu, cpuScript, gpuScript]) {
     expect(f.requested).toContain(file);
   }
   expect(f.requested).not.toContain('naidan-standalone.zip');
+});
+
+it('waits for automatic runtime selection and only installs the resulting profile', async () => {
+  const firstReply = Promise.withResolvers<void>();
+  let detected = false;
+  const f = setup({ initialSelection: { locales: ['en'], llama: ['cpu-wasm32'] }, beforeFetch: undefined });
+  f.addPage({
+    id: 'still-probing',
+    getSelection: () => {
+      firstReply.resolve();
+      return {
+        locales: ['en'],
+        runtimes: { 'llama-cpp-browser': detected ? { status: 'known', profiles: ['cpu-wasm32'] } : { status: 'pending' } },
+      };
+    },
+  });
+  const installing = f.worker.lifecycle('install');
+  await firstReply.promise;
+  detected = true;
+  await installing;
+  expect(f.requested).toContain(cpu);
+  expect(f.requested).not.toContain(gpu);
+});
+
+it('falls back after the runtime detection deadline without saving the manual archive', async () => {
+  const f = setup({
+    initialSelection: { locales: ['en'], runtimes: { 'llama-cpp-browser': { status: 'pending' } } },
+    beforeFetch: undefined,
+  });
+  await f.worker.lifecycle('install');
+  expect(f.requested).toEqual(expect.arrayContaining([cpu, gpu]));
+  expect(f.requested).not.toContain('naidan-standalone.zip');
+}, 10_000);
+
+it('uses the manifest candidates for image and speech selection and retains shared assets', async () => {
+  const f = setup({
+    initialSelection: {
+      locales: ['en'],
+      runtimes: {
+        'stable-diffusion-cpp-browser': { status: 'known', profiles: ['image-b'] },
+        'speech-cpp-browser': { status: 'known', profiles: ['speech-a'] },
+      },
+    },
+    beforeFetch: undefined,
+  });
+  f.addPage({
+    id: 'second-engine-selection',
+    getSelection: () => ({
+      locales: ['en'],
+      runtimes: {
+        'stable-diffusion-cpp-browser': { status: 'known', profiles: ['image-b'] },
+        'speech-cpp-browser': { status: 'known', profiles: [] },
+      },
+    }),
+  });
+  await f.worker.lifecycle('install');
+  expect(f.requested).toEqual(expect.arrayContaining(['image/shared.mjs', 'image/b.mjs', 'image/b.wasm.gz', 'speech/a.mjs', 'speech/a.wasm.gz']));
+  for (const file of ['image/a.mjs', 'image/a.wasm.gz', 'speech/b.mjs', 'speech/b.wasm.gz']) {
+    expect(f.requested).not.toContain(file);
+  }
+});
+
+it('treats a profile from an older deployment as unknown only for its engine', async () => {
+  const f = setup({
+    initialSelection: {
+      locales: ['en'],
+      runtimes: {
+        'stable-diffusion-cpp-browser': { status: 'known', profiles: ['older-image-profile'] },
+        'speech-cpp-browser': { status: 'known', profiles: [] },
+      },
+    },
+    beforeFetch: undefined,
+  });
+  await f.worker.lifecycle('install');
+  expect(f.requested).toEqual(expect.arrayContaining(['image/a.wasm.gz', 'image/b.wasm.gz', 'image/shared.mjs']));
+  expect(f.requested).not.toContain('speech/a.wasm.gz');
+  expect(f.requested).not.toContain('speech/b.wasm.gz');
+});
+
+it('rejects a permanent exclusion reinserted after the manifest transform', async () => {
+  const lateBuildRoot = await mkdtemp(path.join(os.tmpdir(), 'naidan-pwa-late-entry-'));
+  await using _cleanup = {
+    async [Symbol.asyncDispose]() {
+      await rm(lateBuildRoot, { force: true, recursive: true });
+    },
+  };
+  await expect(buildPWAFixture({
+    root: lateBuildRoot,
+    buildId: 'unexpected-manifest-entry',
+    additionalManifestEntries: [{ url: 'naidan-standalone-ja.zip', revision: 'would-be-reinserted' }],
+  })).rejects.toThrow('Unexpected Hosted PWA manifest entry: naidan-standalone-ja.zip');
 });
 
 it('cancels a stalled obsolete request and waits for the new language and runtime', async () => {

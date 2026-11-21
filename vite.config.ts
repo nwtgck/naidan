@@ -130,11 +130,16 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }): Plugin => ({
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
   const isStandalone = mode === 'standalone';
-  const pwaBuild = createPWABuild();
   const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
   const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const imageBuild = createStableDiffusionCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const speechBuild = createSpeechCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
+  const pwaBuild = createPWABuild({
+    getRuntimeArtifacts: () => ({
+      'stable-diffusion-cpp-browser': imageBuild.getRuntimeArtifacts(),
+      'speech-cpp-browser': speechBuild.getRuntimeArtifacts(),
+    }),
+  });
   const isHosted = mode === 'hosted';
   const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: import.meta.dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted

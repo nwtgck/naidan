@@ -1,6 +1,6 @@
 import { readonly, shallowRef } from 'vue';
 import type { RuntimeOptions } from '@/features/llama-cpp-browser/types';
-import { chatProfileSchema, type ChatProfile } from './chat-profiles';
+import { chatProfileSchema, type ChatProfile } from '@/features/llama-cpp-browser/chat-profiles';
 const requested = shallowRef<readonly ChatProfile[]>([]);
 export const requestedOfflineProfiles = readonly(requested);
 

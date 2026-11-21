@@ -11,13 +11,15 @@ import { UI_LOCALES } from '../../src/01-models/ui-locale';
 /** Static inputs for the Node-only generated-worker tests. The production
  * Workbox build receives these files; no browser, UI or app-module stubs are used.
  */
-export async function buildPWAFixture({ root, buildId, publicFiles, entrySource, plugins = [], worker }: {
+export async function buildPWAFixture({ root, buildId, publicFiles, entrySource, plugins = [], worker, getRuntimeArtifacts, additionalManifestEntries }: {
   root: string,
   buildId: string,
   publicFiles?: ReadonlyMap<string, string>,
   entrySource?: string,
   plugins?: readonly PluginOption[],
   worker?: Parameters<ReturnType<typeof createPWABuild>['workerAssetsPlugin']>[0] & { plugins: () => PluginOption[] },
+  getRuntimeArtifacts?: NonNullable<Parameters<typeof createPWABuild>[0]>['getRuntimeArtifacts'],
+  additionalManifestEntries?: Array<{ url: string; revision: string }>,
 }) {
   const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
   await mkdir(path.join(root, 'public'), { recursive: true });
@@ -33,7 +35,10 @@ export async function buildPWAFixture({ root, buildId, publicFiles, entrySource,
   for (const [name, content] of publicFiles ?? []) {
     await writeFile(path.join(root, 'public', name), content);
   }
-  const { options, define, assetsPlugin, workerAssetsPlugin } = createPWABuild({ buildId });
+  const { options, define, assetsPlugin, workerAssetsPlugin } = createPWABuild({ buildId, getRuntimeArtifacts });
+  if (options.injectManifest && additionalManifestEntries !== undefined) {
+    options.injectManifest.additionalManifestEntries = additionalManifestEntries;
+  }
   const outDir = path.join(root, 'dist');
   const result = await build({
     root,

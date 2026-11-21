@@ -1,21 +1,32 @@
 import {
-  READ_ASSET_SELECTION, assetSelectionSchema,
+  READ_ASSET_SELECTION, assetSelectionSchema, readRuntimeSelection,
   type AssetSelection, type DeferredAssetMetadata, type PrepareOfflineAssetsReply, type PrepareOfflineAssetsRequest,
 } from '../src/logic/pwa/asset-cache-protocol';
+import { pwaCachePolicy, type PWARuntimeEngine } from '../src/logic/pwa/cache-policy';
 import { isDocsUrl } from './docs-routing';
 
 type OfflineAsset = DeferredAssetMetadata & { url: string; key: string };
 const downloadTimeout = 120_000;
+const runtimeSelectionTimeout = 5_000;
 
-function needsAsset({ asset, selections }: { asset: OfflineAsset; selections: AssetSelection[] | undefined }): boolean {
+function needsAsset({ asset, selections, runtimeProfiles }: {
+  asset: OfflineAsset;
+  selections: AssetSelection[] | undefined;
+  runtimeProfiles: ReadonlyMap<PWARuntimeEngine, ReadonlySet<string>>;
+}): boolean {
   const group = asset.group;
+  const useAllCandidates = pwaCachePolicy.onUnknownSelection === 'precache-all-candidates';
   switch (group.kind) {
-  case 'standalone-package': return false;
-  case 'locale': return selections === undefined || selections.some(selection => selection.locales.includes(group.locale));
-  case 'transformers': return selections === undefined || selections.some(selection =>
-    selection.transformers === undefined || selection.transformers === group.variant);
-  case 'llama': return selections === undefined || selections.some(selection =>
-    selection.llama === undefined || selection.llama.includes(group.profile));
+  case 'manual': return false;
+  case 'locale': return selections === undefined ? useAllCandidates : selections.some(selection => selection.locales.includes(group.locale));
+  case 'runtime': return selections === undefined ? useAllCandidates : selections.some(selection => {
+    const choice = readRuntimeSelection({ selection, engine: group.engine });
+    const published = runtimeProfiles.get(group.engine);
+    if (choice.status !== 'known' || choice.profiles.some(profile => !published?.has(profile))) {
+      return useAllCandidates;
+    }
+    return choice.profiles.includes(group.profile);
+  });
   default: {
     const exhaustive: never = group;
     throw new Error(String(exhaustive));
@@ -55,6 +66,7 @@ export function createOfflineAssets({ entries, clients, scope }: {
   // A separate cache makes verification provenance independent of legacy Workbox entries.
   const cacheName = `naidan-pwa-verified-assets-v1:${scope.href}`;
   const assets = new Map<string, OfflineAsset>();
+  const runtimeProfiles = new Map<PWARuntimeEngine, Set<string>>();
   for (const entry of entries) {
     if (!entry.deferred) {
       continue;
@@ -63,26 +75,53 @@ export function createOfflineAssets({ entries, clients, scope }: {
     const key = new URL(url);
     key.searchParams.set('__naidan_asset_integrity', entry.deferred.integrity);
     assets.set(url.href, { ...entry.deferred, url: url.href, key: key.href });
+    const { group } = entry.deferred;
+    switch (group.kind) {
+    case 'runtime': {
+      const profiles = runtimeProfiles.get(group.engine) ?? new Set<string>();
+      profiles.add(group.profile);
+      runtimeProfiles.set(group.engine, profiles);
+      break;
+    }
+    case 'locale':
+    case 'manual':
+      break;
+    default: {
+      const exhaustive: never = group;
+      throw new Error(String(exhaustive));
+    }
+    }
   }
-  const installable = [...assets.values()].filter(asset => asset.group.kind !== 'standalone-package');
+  const installable = [...assets.values()].filter(asset => asset.group.kind !== 'manual');
   const expectedKeys = new Set([...assets.values()].map(asset => asset.key));
   let selectionChanged: AbortController | undefined;
   const saves = new Map<OfflineAsset, Promise<void>>();
   const activePreparation = new AbortController();
 
-  async function selectedAssets(): Promise<OfflineAsset[]> {
-    const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true }).catch(() => []);
-    const pages = allClients.filter(client => {
-      const url = new URL(client.url);
-      return client.frameType !== 'nested' && url.origin === scope.origin
-        && url.pathname.startsWith(scope.pathname) && !isDocsUrl({ url, scope })
-        && !['privacy-fetch-broker', 'privacy-fetch-broker.html'].some(file =>
-          url.pathname === new URL(file, scope).pathname);
-    });
-    const replies = await Promise.all(pages.map(client => queryClient({ client })));
-    const known = replies.filter(reply => reply !== undefined);
-    const selections = known.length > 0 && known.length === replies.length ? known : undefined;
-    return installable.filter(asset => needsAsset({ asset, selections }));
+  function pendingSelection({ selections }: { selections: AssetSelection[] | undefined }): boolean {
+    return selections !== undefined && [...runtimeProfiles.keys()].some(engine =>
+      selections.some(selection => readRuntimeSelection({ selection, engine }).status === 'pending'));
+  }
+
+  async function selectedAssets({ deadline, signal }: { deadline: number; signal: AbortSignal }): Promise<OfflineAsset[]> {
+    for (;;) {
+      const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true }).catch(() => []);
+      const pages = allClients.filter(client => {
+        const url = new URL(client.url);
+        return client.frameType !== 'nested' && url.origin === scope.origin
+          && url.pathname.startsWith(scope.pathname) && !isDocsUrl({ url, scope })
+          && !['privacy-fetch-broker', 'privacy-fetch-broker.html'].some(file =>
+            url.pathname === new URL(file, scope).pathname);
+      });
+      const replies = await Promise.all(pages.map(client => queryClient({ client })));
+      const known = replies.filter(reply => reply !== undefined);
+      const selections = known.length > 0 && known.length === replies.length ? known : undefined;
+      const timeLeft = deadline - Date.now();
+      if (signal.aborted || timeLeft <= 0 || !pendingSelection({ selections })) {
+        return installable.filter(asset => needsAsset({ asset, selections, runtimeProfiles }));
+      }
+      await new Promise<void>(resolve => setTimeout(resolve, Math.min(100, timeLeft)));
+    }
   }
 
   async function fetchVerified({ asset, request, signal }: {
@@ -128,11 +167,12 @@ export function createOfflineAssets({ entries, clients, scope }: {
         return;
       }
       const cache = await caches.open(cacheName);
+      const deadline = Date.now() + runtimeSelectionTimeout;
       try {
         for (let attempt = 0; attempt < 8; attempt++) {
           const change = new AbortController();
           selectionChanged = change;
-          const desired = await selectedAssets();
+          const desired = await selectedAssets({ deadline, signal: change.signal });
           const failures = new Map<OfflineAsset, unknown>();
           for (const asset of desired) {
             if (change.signal.aborted) {
@@ -147,7 +187,7 @@ export function createOfflineAssets({ entries, clients, scope }: {
           if (change.signal.aborted) {
             continue;
           }
-          const latest = await selectedAssets();
+          const latest = await selectedAssets({ deadline, signal: change.signal });
           if (change.signal.aborted || latest.some(asset => !desired.includes(asset))) {
             continue;
           }
@@ -197,7 +237,7 @@ export function createOfflineAssets({ entries, clients, scope }: {
         if (cached) {
           return cached;
         }
-        if (asset.group.kind === 'standalone-package' || request.mode === 'no-cors') {
+        if (asset.group.kind === 'manual' || request.mode === 'no-cors') {
           return fetch(request);
         }
         const verified = await fetchVerified({ asset, request, signal: request.signal });
@@ -215,7 +255,7 @@ export function createOfflineAssets({ entries, clients, scope }: {
       const requested = (() => {
         switch (target.kind) {
         case 'remaining': return [...assets.values()];
-        case 'selection': return installable.filter(asset => needsAsset({ asset, selections: [target.selection] }));
+        case 'selection': return installable.filter(asset => needsAsset({ asset, selections: [target.selection], runtimeProfiles }));
         default: {
           const exhaustive: never = target;
           throw new Error(String(exhaustive));

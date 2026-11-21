@@ -2,7 +2,7 @@
 import { parseGenerationMetrics } from '../../01-models/generation-metrics.ts';
 import { z } from 'zod';
 import { errorDetails, maximumErrorDetailsLength } from './error-details.ts';
-import { chatProfileSchema } from './runtime/chat-profiles.ts';
+import { chatProfileSchema } from './chat-profiles.ts';
 
 export { chatProfileSchema };
 // Diagnostic artifacts are deliberately not part of ordinary chat selection.

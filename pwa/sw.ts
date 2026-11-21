@@ -3,6 +3,7 @@ import { PrecacheController, PrecacheRoute, cleanupOutdatedCaches } from 'workbo
 import { NavigationRoute, Router } from 'workbox-routing';
 import { ACTIVATE_BUILD_MESSAGE, BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from '../src/logic/pwa/protocol';
 import { ASSET_SELECTION_CHANGED, PREPARE_OFFLINE_ASSETS, prepareOfflineAssetsRequestSchema, type DeferredAssetMetadata, type PrepareOfflineAssetsReply } from '../src/logic/pwa/asset-cache-protocol';
+import { matchesPermanentCacheExclusion, permanentCacheExclusions } from '../src/logic/pwa/cache-policy';
 import { installStreamDownloadWorker } from '../src/utils/download/service-worker';
 
 import { createOfflineHandoff } from './offline-handoff';
@@ -50,7 +51,8 @@ const precache = new PrecacheController({
     },
   }],
 });
-const manifest = self.__WB_MANIFEST;
+// The named property lets the build audit the manifest after Workbox injects it.
+const manifest = Object.freeze({ __naidanPrecache: self.__WB_MANIFEST }).__naidanPrecache;
 const offlineAssets = createOfflineAssets({ entries: manifest, clients: self.clients, scope });
 precache.addToCacheList(manifest.filter(entry => entry.deferred === undefined));
 self.addEventListener('install', event => {
@@ -89,6 +91,9 @@ self.addEventListener('fetch', event => {
     // mixing old fixed-name runtime files, or changing any model/user cache.
     if (await networkOnly) {
       return fetch(event.request, { cache: 'no-store' });
+    }
+    if (permanentCacheExclusions.some(rule => matchesPermanentCacheExclusion({ file: url.pathname, rule }))) {
+      return fetch(event.request);
     }
     return offlineAssets.handleFetch({ url, request: event.request, event })
       ?? router.handleRequest({ request: event.request, event }) ?? fetch(event.request);

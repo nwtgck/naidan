@@ -1,14 +1,20 @@
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import type { Plugin, Rollup } from 'vite';
+import { parseSync, type Plugin, type Rollup } from 'vite';
 import type { ManifestTransform } from 'workbox-build';
-import { parseUiLocale, type UiLocale } from '../src/01-models/ui-locale.ts';
+import { isDeepStrictEqual } from 'node:util';
+import type { UiLocale } from '../src/01-models/ui-locale.ts';
 import type { LlamaCppProfile } from '../src/features/llama-cpp-browser/types.ts';
-import { chatProfileSchema } from '../src/features/llama-cpp-browser/runtime/chat-profiles.ts';
+import { chatProfileSchema } from '../src/features/llama-cpp-browser/chat-profiles.ts';
 import { HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST } from '../src/features/transformers-js/runtime/runtime-asset-manifest.ts';
 import type { DeferredAssetGroup, DeferredAssetMetadata } from '../src/logic/pwa/asset-cache-protocol.ts';
-import { parseResolvedPackModuleId } from './boundary-strings/virtual-modules.ts';
+import {
+  matchesPermanentCacheExclusion, permanentCacheExclusions, pwaCachePolicy, type PWACacheRule, type PWARuntimeEngine,
+} from '../src/logic/pwa/cache-policy.ts';
+import { createBoundaryStringProjectPaths } from './boundary-strings/message-catalog.ts';
+import { parseLocaleMessageModuleId } from './boundary-strings/module-id.ts';
+import { parseResolvedBoundaryModuleId, parseResolvedPackModuleId } from './boundary-strings/virtual-modules.ts';
 
 function isOutputChunk(item: Rollup.OutputAsset | Rollup.OutputChunk): item is Rollup.OutputChunk {
   switch (item.type) {
@@ -21,20 +27,48 @@ function isOutputChunk(item: Rollup.OutputAsset | Rollup.OutputChunk): item is R
   }
 }
 
-export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number }) {
+type RuntimeArtifact = { profile: string; modulePath: string; wasmPath: string };
+export type PWARuntimeArtifacts = Partial<Record<PWARuntimeEngine, readonly RuntimeArtifact[]>>;
+type ManifestAsset = { url: string; revision: string | null; integrity?: string; deferred?: DeferredAssetMetadata };
+type RuntimeAsset = Extract<DeferredAssetGroup, { kind: 'runtime' }>;
+
+function findInjectedManifest({ node }: { node: unknown }): { start: number; end: number } | undefined {
+  if (node === null || typeof node !== 'object') {
+    return undefined;
+  }
+  if ('type' in node && node.type === 'Property' && 'key' in node && node.key !== null && typeof node.key === 'object'
+    && (('name' in node.key && node.key.name === '__naidanPrecache') || ('value' in node.key && node.key.value === '__naidanPrecache'))
+    && 'value' in node && node.value !== null && typeof node.value === 'object'
+    && 'type' in node.value && node.value.type === 'ArrayExpression'
+    && 'start' in node.value && typeof node.value.start === 'number' && 'end' in node.value && typeof node.value.end === 'number') {
+    return { start: node.value.start, end: node.value.end };
+  }
+  for (const child of Object.values(node)) {
+    const range = findInjectedManifest({ node: child });
+    if (range !== undefined) {
+      return range;
+    }
+  }
+  return undefined;
+}
+
+export function createPWAAssets({ maximumAssetSize, getRuntimeArtifacts }: {
+  maximumAssetSize: number;
+  getRuntimeArtifacts: () => PWARuntimeArtifacts;
+}) {
   let outDir = '';
-  let projectRoot = '';
-  let finalManifest: Set<string> | undefined;
+  let messagesDirectoryPath = '';
+  let finalManifest: Map<string, ManifestAsset> | undefined;
   const localesByFile = new Map<string, UiLocale>();
-  const transformersByFile = new Map<string, DeferredAssetGroup>();
-  const llamaByFile = new Map<string, DeferredAssetGroup>();
-  const llamaScripts = new Map<string, DeferredAssetGroup | undefined>();
+  const builtInRuntimeFiles = new Map<string, RuntimeAsset>();
+  const llamaScripts = new Map<string, RuntimeAsset | undefined>();
   for (const profile of chatProfileSchema.options) {
-    llamaByFile.set(`llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`, { kind: 'llama', profile });
+    builtInRuntimeFiles.set(`llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`, { kind: 'runtime', engine: 'llama-cpp-browser', profile });
   }
   for (const { variant, mjs, wasm } of HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.variants) {
-    transformersByFile.set(`transformers/${mjs.publicFileName}`, { kind: 'transformers', variant });
-    transformersByFile.set(`transformers/${wasm.physicalFileName}`, { kind: 'transformers', variant });
+    const asset = { kind: 'runtime', engine: 'transformers-js', profile: variant } as const;
+    builtInRuntimeFiles.set(`transformers/${mjs.publicFileName}`, asset);
+    builtInRuntimeFiles.set(`transformers/${wasm.physicalFileName}`, asset);
   }
 
   async function listApplicationAssets(): Promise<string[]> {
@@ -42,16 +76,48 @@ export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number
     return entries.filter(entry => entry.isFile()).map(entry =>
       path.relative(outDir, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'),
     ).filter(file => file !== 'sw.js' && file !== 'manifest.webmanifest'
-      && !file.endsWith('.map') && !/^naidan-standalone-.*\.zip$/.test(path.posix.basename(file)));
+      && !permanentCacheExclusions.some(rule => matchesPermanentCacheExclusion({ file, rule })));
   }
 
   const transform: ManifestTransform = async manifest => {
-    const entriesByFile = new Map(manifest.map(entry => [entry.url, entry]));
+    const runtimeFiles = new Map(builtInRuntimeFiles);
+    const ambiguousRuntimeFiles = new Set<string>();
+    const runtimeArtifacts = getRuntimeArtifacts();
+    for (const engine of Object.keys(runtimeArtifacts) as PWARuntimeEngine[]) {
+      for (const artifact of runtimeArtifacts[engine] ?? []) {
+        const asset = { kind: 'runtime', engine, profile: artifact.profile } as const;
+        for (const file of [artifact.modulePath, artifact.wasmPath]) {
+          const previous = runtimeFiles.get(file);
+          if (previous !== undefined && !isDeepStrictEqual(previous, asset)) {
+            ambiguousRuntimeFiles.add(file);
+          }
+          runtimeFiles.set(file, asset);
+        }
+      }
+    }
+    const rules: readonly PWACacheRule[] = pwaCachePolicy.rules;
+    const entriesByFile = new Map(manifest.filter(entry => !permanentCacheExclusions
+      .some(rule => matchesPermanentCacheExclusion({ file: entry.url, rule }))).map(entry => [entry.url, entry]));
     for (const file of await listApplicationAssets()) {
       const locale = localesByFile.get(file);
-      const group: DeferredAssetGroup | undefined = file === 'naidan-standalone.zip' ? { kind: 'standalone-package' }
-        : locale === undefined ? transformersByFile.get(file) ?? llamaByFile.get(file) ?? llamaScripts.get(file)
-          : { kind: 'locale', locale };
+      const runtime = ambiguousRuntimeFiles.has(file) ? undefined : runtimeFiles.get(file) ?? llamaScripts.get(file);
+      const groups: DeferredAssetGroup[] = [];
+      for (const rule of rules) {
+        if (rule.cache === 'manual' && rule.match.path === file) {
+          groups.push({ kind: 'manual' });
+        }
+        if (rule.precacheFor === 'app-locales' && locale !== undefined) {
+          groups.push({ kind: 'locale', locale });
+        }
+        if (rule.precacheFor === 'auto-selected-runtime' && runtime?.engine === rule.match.dedicatedTo) {
+          groups.push(runtime);
+        }
+      }
+      if (groups.length > 1) {
+        throw new Error(`Multiple PWA cache rules match ${file}`);
+      }
+      const disposition = groups.at(0) ?? pwaCachePolicy.default;
+      const group = disposition === 'precache' ? undefined : disposition;
       const existing = entriesByFile.get(file);
       if (group === undefined && existing !== undefined) {
         continue;
@@ -73,7 +139,7 @@ export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number
         ...{ deferred: metadata },
       });
     }
-    finalManifest = new Set(entriesByFile.keys());
+    finalManifest = entriesByFile;
     return { manifest: [...entriesByFile.values()], warnings: [] };
   };
 
@@ -82,7 +148,7 @@ export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number
     apply: 'build',
     configResolved(config) {
       outDir = path.resolve(config.root, config.build.outDir);
-      projectRoot = config.root.replaceAll('\\', '/');
+      messagesDirectoryPath = createBoundaryStringProjectPaths({ root: config.root }).messagesDirectoryPath;
     },
     buildStart() {
       finalManifest = undefined;
@@ -92,10 +158,39 @@ export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number
       order: 'post',
       handler(_options, bundle) {
         localesByFile.clear();
-        const staticallyImported = new Set<string>();
         const chunks = Object.values(bundle).filter(isOutputChunk);
+        const candidates = new Map<string, UiLocale>();
+        const packChunks = new Set<string>();
+        const directlyImportedPacks = new Set<string>();
+        // Rolldown can split messages shared by several packs into their own chunks.
+        for (const item of chunks) {
+          const owners = new Set(item.moduleIds.map(id => {
+            const pack = parseResolvedPackModuleId({ id });
+            if (pack !== undefined) {
+              packChunks.add(item.fileName);
+              const importers = this.getModuleInfo(id)?.dynamicImporters;
+              if (!importers?.length || importers.some(importer => {
+                const boundary = parseResolvedBoundaryModuleId({ id: importer });
+                return boundary?.boundaryId !== pack.boundaryId || boundary.version !== pack.version;
+              })) {
+                directlyImportedPacks.add(item.fileName);
+              }
+              return pack.locale;
+            }
+            if (id.includes('?')) {
+              return undefined;
+            }
+            return parseLocaleMessageModuleId({ moduleId: id, messagesDirectoryPath })?.locale;
+          }));
+          const locale = owners.values().next().value;
+          if (owners.size === 1 && locale !== undefined) {
+            candidates.set(item.fileName, locale);
+          }
+        }
+
         const entryDependencies = chunks.filter(item => item.isEntry).map(item => item.fileName);
         const startup = new Set<string>();
+        const required = new Set<string>();
         while (entryDependencies.length > 0) {
           const file = entryDependencies.pop();
           if (file === undefined || startup.has(file)) {
@@ -107,37 +202,40 @@ export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number
             entryDependencies.push(...item.imports);
             // Settings, initialization and recovery can read a bootstrap locale before settings load.
             for (const imported of item.dynamicImports) {
-              staticallyImported.add(imported);
+              required.add(imported);
             }
           }
         }
         for (const item of chunks) {
+          const locale = candidates.get(item.fileName);
+          if (locale === undefined || startup.has(item.fileName) || directlyImportedPacks.has(item.fileName)) {
+            required.add(item.fileName);
+          }
           for (const imported of item.imports) {
-            staticallyImported.add(imported);
+            if (candidates.get(imported) !== locale) {
+              required.add(imported);
+            }
+          }
+          for (const imported of item.dynamicImports) {
+            // The generated locale loaders target packs. Direct imports of
+            // message modules have no such selection contract.
+            if (candidates.has(imported) && !packChunks.has(imported)) {
+              required.add(imported);
+            }
           }
         }
-        for (const item of chunks) {
-          if (startup.has(item.fileName) || staticallyImported.has(item.fileName)) {
-            continue;
-          }
-          let locale: UiLocale | undefined;
-          let hasPack = false;
-          const messageRoot = `${projectRoot}/src/strings/messages/`;
-          for (const id of item.moduleIds) {
-            const pack = parseResolvedPackModuleId({ id });
-            hasPack ||= pack !== undefined;
-            const messagePath = id.replaceAll('\\', '/');
-            const messageLocale = messagePath.startsWith(messageRoot)
-              ? /^[^/]+\/([^/]+)\.ts$/.exec(messagePath.slice(messageRoot.length))?.[1] : undefined;
-            const owner = parseUiLocale({ value: pack?.locale ?? messageLocale ?? '' });
-            if (owner === undefined || (locale !== undefined && locale !== owner)) {
-              locale = undefined;
-              break;
+        // Unconditional chunks also need their entire static dependency graph.
+        for (const file of required) {
+          const item = bundle[file];
+          if (item && isOutputChunk(item)) {
+            for (const imported of item.imports) {
+              required.add(imported);
             }
-            locale = owner;
           }
-          if (hasPack && locale !== undefined) {
-            localesByFile.set(item.fileName, locale);
+        }
+        for (const [file, locale] of candidates) {
+          if (!required.has(file)) {
+            localesByFile.set(file, locale);
           }
         }
       },
@@ -149,7 +247,26 @@ export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number
         if (error || finalManifest === undefined) {
           return;
         }
-        const missing = (await listApplicationAssets()).filter(file => !finalManifest?.has(file));
+        const expected = new Map(finalManifest);
+        const manifestFile = 'manifest.webmanifest';
+        const webmanifest = await readFile(path.join(outDir, manifestFile));
+        expected.set(manifestFile, { url: manifestFile, revision: createHash('md5').update(webmanifest).digest('hex') });
+        const source = await readFile(path.join(outDir, 'sw.js'), 'utf8');
+        const range = findInjectedManifest({ node: parseSync('sw.js', source).program });
+        if (range === undefined) {
+          throw new Error('Missing final Hosted PWA manifest');
+        }
+        const entries: ManifestAsset[] = JSON.parse(source.slice(range.start, range.end));
+        const seen = new Set<string>();
+        for (const entry of entries) {
+          const asset = expected.get(entry.url);
+          if (asset === undefined || asset.revision !== entry.revision || asset.integrity !== entry.integrity
+            || !isDeepStrictEqual(asset.deferred, entry.deferred)) {
+            throw new Error(`Unexpected Hosted PWA manifest entry: ${entry.url}`);
+          }
+          seen.add(entry.url);
+        }
+        const missing = [...new Set([...expected.keys(), ...await listApplicationAssets()])].filter(file => !seen.has(file));
         if (missing.length > 0) {
           throw new Error(`Hosted PWA manifest is missing assets: ${missing.join(', ')}`);
         }
@@ -169,10 +286,10 @@ export function createPWAAssets({ maximumAssetSize }: { maximumAssetSize: number
             const profiles = new Set(item.moduleIds.map(id => profileForModule({ id })));
             const profile = chatProfileSchema.safeParse(profiles.values().next().value);
             const group = !item.isEntry && !staticallyImported.has(item.fileName) && profiles.size === 1 && profile.success
-              ? { kind: 'llama' as const, profile: profile.data } : undefined;
+              ? { kind: 'runtime' as const, engine: 'llama-cpp-browser' as const, profile: profile.data } : undefined;
             // One filename may be shared by more than one worker build.
             const previous = llamaScripts.get(item.fileName);
-            if (!llamaScripts.has(item.fileName) || (previous?.kind === 'llama' && group?.profile === previous.profile)) {
+            if (!llamaScripts.has(item.fileName) || group?.profile === previous?.profile) {
               llamaScripts.set(item.fileName, group);
             } else {
               llamaScripts.set(item.fileName, undefined);
