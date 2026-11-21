@@ -445,15 +445,14 @@ describe('ConnectionTab controlled settings contracts', () => {
     void cleanup;
   });
 
-  it('keeps the selected llama.cpp configuration when refreshing its base model', async () => {
+  it('keeps the selected llama.cpp model ID when refreshing its inventory', async () => {
     const settings = reactive(createSettings({ endpointType: 'llama_cpp_browser' }));
-    const baseId = 'hf.co/owner/model:Q4_K_M';
-    const selectedModelId = baseId + '//text';
+    const selectedModelId = 'hf.co/owner/model:Q4_K_M';
     settings.defaultModelId = selectedModelId;
-    mockFetchModels.mockResolvedValue([baseId]);
+    mockFetchModels.mockResolvedValue([selectedModelId]);
     const wrapper = mount(ConnectionTab, {
       attachTo: document.body,
-      props: { modelValue: settings, availableModels: [baseId], isFetchingModels: false, hasUnsavedChanges: false },
+      props: { modelValue: settings, availableModels: [selectedModelId], isFetchingModels: false, hasUnsavedChanges: false },
       global: { stubs: globalStubs },
     });
     using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };

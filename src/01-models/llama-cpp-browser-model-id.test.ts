@@ -59,13 +59,18 @@ it('round-trips a publisher filename whose model name uses different punctuation
   expect(matching.map(model => model.primaryFile.relativePath)).toEqual([mainFilePath]);
 });
 
-it('shows the complete variant while resolving its configuration separately', () => {
-  const modelId = 'host/Models/owner/Model-GGUF:custom/Q4_K_M//text';
-  expect(splitModelIdDisplay({ modelId })).toEqual({ source: 'host/Models/owner/', name: 'Model-GGUF', variant: 'custom/Q4_K_M//text' });
+it('retains the complete variant path in the display and repository lookup', () => {
+  const modelId = 'host/Models/owner/Model-GGUF:custom/Q4_K_M';
+  expect(splitModelIdDisplay({ modelId })).toEqual({ source: 'host/Models/owner/', name: 'Model-GGUF', variant: 'custom/Q4_K_M' });
   expect(parseRepositoryModelId({ modelId })).toEqual({
     source: { kind: 'host', alias: 'Models' },
     repository: 'owner/Model-GGUF',
     variant: 'custom/Q4_K_M',
-    configuration: { projectorPath: undefined },
   });
+});
+
+it.each(['hf.co', 'host/Models'])('rejects load options encoded in a %s model ID', source => {
+  const baseId = `${source}/owner/Model-GGUF:Q4_K_M`;
+  expect(() => parseRepositoryModelId({ modelId: baseId + '//text' })).toThrow('Invalid model reference');
+  expect(() => parseRepositoryModelId({ modelId: baseId + '//projector/vision%2Fmmproj-F16.gguf' })).toThrow('Invalid model reference');
 });

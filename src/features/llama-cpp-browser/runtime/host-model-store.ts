@@ -50,8 +50,8 @@ export async function listHostStoredModels({ directories, signal }: {
 export async function resolveHostModel({ modelId, directories, signal }: { modelId: string, directories: readonly { id: HostModelDirectoryId, name: string }[], signal: AbortSignal | undefined }): Promise<ResolvedModel> {
   const { directoryId, repository } = resolveHostModelLocation({ modelId, directories });
   const destination = { kind: 'host' as const, directoryId };
-  const { configuration, variant } = parseRepositoryModelId({ modelId });
-  const models = await repositoryDirectories({ repository, destination, signal, configuration });
+  const { variant } = parseRepositoryModelId({ modelId });
+  const models = await repositoryDirectories({ repository, destination, signal });
   const directory = selectRepositoryModel({ models, repository, variant });
   signal?.throwIfAborted();
   return { modelId, location: { kind: 'host', directoryId, repository }, directory };

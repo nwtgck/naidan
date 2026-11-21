@@ -382,8 +382,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
       const prepared = resolved ?? previous?.selection ?? (jobIsBusy({ job: previous }) ? undefined : await resolveSelection());
       assertCurrent({ input });
       const { destination: target, expectedRoot } = authorized;
-      const configuration = onApplied === undefined ? {} : { exactConfiguration: true };
-      let model = prepared === undefined ? undefined : await installedSelection({ selection: prepared, destination: target, expectedRoot, ...configuration });
+      let model = prepared === undefined ? undefined : await installedSelection({ selection: prepared, destination: target, expectedRoot });
       assertCurrent({ input });
       if (model === undefined && resolved !== undefined && defaultDownloadKey !== undefined) {
         const job = findModelDownloadJob({ jobs: queue.jobs.value, key: defaultDownloadKey, destination: target, selection: undefined });
@@ -398,7 +397,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
           case 'complete': {
             const { selectionKey } = await import('@/features/llama-cpp-browser/hugging-face/download-plan');
             if (result.selection !== undefined && selectionKey({ selection: result.selection }) === key) {
-              model = await installedSelection({ selection: resolved, destination: target, expectedRoot, ...configuration });
+              model = await installedSelection({ selection: resolved, destination: target, expectedRoot });
               assertCurrent({ input });
             }
             break;
@@ -434,7 +433,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
         }
         const selection = result.selection ?? prepared;
         if (selection !== undefined) {
-          model = await installedSelection({ selection, destination: target, expectedRoot, ...configuration });
+          model = await installedSelection({ selection, destination: target, expectedRoot });
         }
       }
       assertCurrent({ input });

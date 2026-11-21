@@ -2,7 +2,7 @@ import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/repository-input';
 import { quantizationName } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { parseTemporaryModelReference } from '@/features/llama-cpp-browser/temporary-model-reference';
-import { hasLocalRepositoryReferencePrefix, parseLocalRepositoryReference, trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
+import { hasLocalRepositoryReferencePrefix, parseLocalRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
 import { modelSuggestions, preferredQuantizationHint, type ModelSuggestion, type SuggestedQuantization } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import { hasTemporaryModelPathPrefix, type TemporaryModelDirectoryInput } from '@/01-models/temporary-model-files';
 
@@ -39,7 +39,7 @@ export function browserModelRepositoryPresentation({ repository, bytes }: { repo
 }
 
 export function localModelDisplayName({ model }: { model: Pick<LocalModel, 'modelId' | 'source'> }): string {
-  const modelId = trySplitRepositoryModelId({ modelId: model.modelId })?.baseId ?? model.modelId;
+  const { modelId } = model;
   let path = model.source?.primaryRelativePath;
   if (path === undefined && hasLocalRepositoryReferencePrefix({ modelId, storage: undefined })) {
     try {

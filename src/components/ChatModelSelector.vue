@@ -7,7 +7,7 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { provideModelSelectorHuggingFaceSearchState } from '@/composables/useModelSelectorHuggingFaceSearchState';
 import SettingsSourceBadge from './SettingsSourceBadge.vue';
 import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
-import { splitModelIdDisplay, trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
+import { splitModelIdDisplay } from '@/01-models/llama-cpp-browser-model-id';
 import { lazyStrings } from '@/strings';
 import ModelSelectorStoredVariantsRow from './ModelSelectorStoredVariantsRow.vue';
 import { groupStoredModelVariants } from '@/features/llama-cpp-browser/hugging-face/stored-model-variant-groups';
@@ -55,28 +55,13 @@ const triggerDetailId = useId();
 const modelSelectionUnavailable = computed(() => props.disabled || props.modelSelection === 'unavailable');
 // Providers own the inventory and external requests. Typing in this component
 // only filters these supplied values; it never authorizes a network request.
-const modelChoices = computed(() => {
-  const reference = props.modelValue || props.inheritedModel?.id;
-  if (reference === undefined || props.models.some(model => model.id === reference)) {
-    return props.models;
-  }
-  const configured = trySplitRepositoryModelId({ modelId: reference });
-  if (configured?.configuration === undefined) {
-    return props.models;
-  }
-  // Inventory reports canonical files. Re-selecting its active configured row
-  // must preserve the current text-only or explicit projector choice.
-  return props.models.map(model => model.id === configured.baseId && model.availability === 'local'
-    ? { ...model, id: reference } : model);
-});
-const modelIndex = computed(() => new Map(modelChoices.value.map(model => [model.id, model])));
-const availableModels = computed(() => modelChoices.value.map(model => model.id));
+const modelIndex = computed(() => new Map(props.models.map(model => [model.id, model])));
+const availableModels = computed(() => props.models.map(model => model.id));
 const isFetchingModels = computed(() => !!props.loading);
 const selectedModel = computed(() => props.modelValue === undefined ? undefined : modelIndex.value.get(props.modelValue));
 
 function modelLabel({ model }: { model: string }): string {
-  const label = modelIndex.value.get(model)?.label ?? model;
-  return label === model ? trySplitRepositoryModelId({ modelId: model })?.baseId ?? model : label;
+  return modelIndex.value.get(model)?.label ?? model;
 }
 
 function displayedModelParts({ model }: { model: string | undefined }): ReturnType<typeof splitModelName> {
@@ -84,9 +69,8 @@ function displayedModelParts({ model }: { model: string | undefined }): ReturnTy
     return { prefix: '', suffix: undefined };
   }
   const label = modelLabel({ model });
-  const baseId = /^(?:hf\.co|host)\//.test(label) ? trySplitRepositoryModelId({ modelId: label })?.baseId : undefined;
-  if (baseId !== undefined) {
-    const { source, name, variant } = splitModelIdDisplay({ modelId: baseId });
+  if (/^(?:hf\.co|host)\//.test(label)) {
+    const { source, name, variant } = splitModelIdDisplay({ modelId: label });
     return { prefix: source, suffix: variant === undefined ? name : `${name}:${variant}` };
   }
   return splitModelName({ name: label });
@@ -112,11 +96,12 @@ const filteredModels = computed(() => {
   return availableModels.value.filter(model => matches({ fields: [model, modelLabel({ model }), modelIndex.value.get(model)?.description] }));
 });
 
-const modelOptions = computed(() => filteredModels.value.map(model => {
-  const label = modelLabel({ model });
-  const title = trySplitRepositoryModelId({ modelId: model })?.configuration === undefined ? label : model;
-  return { model, title, details: modelIndex.value.get(model), parts: displayedModelParts({ model }) };
-}));
+const modelOptions = computed(() => filteredModels.value.map(model => ({
+  model,
+  title: modelLabel({ model }),
+  details: modelIndex.value.get(model),
+  parts: displayedModelParts({ model }),
+})));
 
 const groupedModels = computed(() => groupStoredModelVariants({
   items: modelOptions.value,

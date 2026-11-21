@@ -224,13 +224,11 @@ it('keeps the sidebar reasoning help within the picker and closes it first on Es
   expect(document.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
 });
 
-it.each(['//text', '//projector/vision%2Fmmproj-F16.gguf'])('keeps the model name readable when its reference includes %s', async configuration => {
-  const baseId = 'hf.co/owner/Gemma-GGUF:Q4_K_M';
-  const modelId = baseId + configuration;
-  using value = fixture({ props: { modelValue: modelId, models: [{ id: baseId, label: baseId, description: undefined, availability: 'local' }] }, slots: undefined });
+it.each(['hf.co', 'host/Models'])('shows the model name and complete variant for a %s model', async source => {
+  const modelId = `${source}/owner/Gemma-GGUF:imatrix/Q4_K_M`;
+  using value = fixture({ props: { modelValue: modelId, models: [{ id: modelId, label: modelId, description: undefined, availability: 'local' }] }, slots: undefined });
   const trigger = value.wrapper.get('[data-testid="model-selector-trigger"]');
-  expect(trigger.text()).toContain('Gemma-GGUF:Q4_K_M');
-  expect(trigger.text()).not.toContain('mmproj');
+  expect(trigger.text()).toContain('Gemma-GGUF:imatrix/Q4_K_M');
   expect(trigger.attributes('title')).toBe(modelId);
   await value.open();
   const row = value.get({ testId: 'model-selector-option' });
@@ -249,18 +247,18 @@ it('keeps the first-use hint visible until the download starts and omits progres
 
 it('changes quantization without closing the picker and copies the full selected model ID', async () => {
   const ids = ['hf.co/owner/Model-GGUF:Q4_K_M', 'hf.co/owner/Model-GGUF:Q8_0', 'host/Other/owner/Model-GGUF:Q8_0', 'hf.co/owner/Model-GGUF:Custom-Q8_0'];
-  const configured = ids[1] + '//text';
+  const selectedId = ids[1]!;
   const writeText = vi.fn<typeof navigator.clipboard.writeText>().mockResolvedValue(undefined);
   vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
-  using value = fixture({ props: { modelValue: configured, models: ids.map(id => ({ id, label: id, description: undefined, availability: 'local' })) }, slots: undefined });
+  using value = fixture({ props: { modelValue: selectedId, models: ids.map(id => ({ id, label: id, description: undefined, availability: 'local' })) }, slots: undefined });
   await value.open();
-  expect(value.options()).toEqual([configured, ids[2]]);
+  expect(value.options()).toEqual([selectedId, ids[2]]);
   const group = value.get({ testId: 'model-selector-stored-variant-group' });
   const button = group.get('[data-testid="model-selector-stored-variant"]');
-  expect(button.text()).toBe('Q8_0//text');
+  expect(button.text()).toBe('Q8_0');
   await group.get('[data-testid="model-selector-stored-variant-details"]').trigger('click');
   await group.get('[data-testid="model-selector-copy-model-id"]').trigger('click');
-  expect(writeText).toHaveBeenLastCalledWith(configured);
+  expect(writeText).toHaveBeenLastCalledWith(selectedId);
   await button.trigger('click');
   expect(value.get({ testId: 'settings-select-option-' + ids[3] }).text()).toBe('Custom-Q8_0');
   const q4 = value.get({ testId: 'settings-select-option-' + ids[0] });

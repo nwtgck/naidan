@@ -521,23 +521,23 @@ it('selects the bundled configuration for first use without accessing the reposi
   expect(name?.textContent).not.toContain('Downloads automatically');
 });
 
-it('opens an installed bundled suggestion without metadata or a new download', async () => {
-  const repository = 'google/gemma-4-E2B-it-qat-q4_0-gguf';
-  const companionPath = 'gemma-4-E2B-it-mmproj.gguf';
-  const baseId = `hf.co/${repository}:Q4_0`;
-  const stored = { modelId: baseId, size: 123, importedAt: 1 };
-  const modelId = baseId + '//projector/' + companionPath;
+it.each([
+  { id: 'gemma-4-e2b', repository: 'google/gemma-4-E2B-it-qat-q4_0-gguf', variant: 'Q4_0' },
+  { id: 'smollm2-135m', repository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF', variant: 'Q4_K_M' },
+])('opens the base ID for a saved $id suggestion without metadata or a download', async ({ id, repository, variant }) => {
+  const modelId = `hf.co/${repository}:${variant}`;
+  const stored = { modelId, size: 123, importedAt: 1 };
   mocks.inventory.mockResolvedValue([stored]);
-  mocks.modelEntry.mockResolvedValue({ ...stored, modelId });
+  mocks.modelEntry.mockResolvedValue(stored);
   const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy: 'first-use-download' } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   void cleanup;
-  const row = wrapper.get('[data-testid="chat-model-suggestion"][data-repository="gemma-4-e2b"]');
+  const row = wrapper.get(`[data-testid="chat-model-suggestion"][data-repository="${id}"]`);
   row.element.parentElement?.querySelector<HTMLButtonElement>('[aria-pressed]')?.click();
   await vi.dynamicImportSettled();
   await flushPromises();
   expect(mocks.modelEntry).toHaveBeenCalledWith({ modelId, signal: expect.any(AbortSignal) });
-  expect(wrapper.emitted('select-model')?.[0]).toEqual([{ ...stored, modelId }]);
+  expect(wrapper.emitted('select-model')?.[0]).toEqual([stored]);
   expect(mocks.inspect).not.toHaveBeenCalled();
   expect(mocks.enqueue).not.toHaveBeenCalled();
 });

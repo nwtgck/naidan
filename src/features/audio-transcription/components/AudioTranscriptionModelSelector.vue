@@ -24,7 +24,7 @@ import LlamaCppBrowserDownloadDestination from '@/features/llama-cpp-browser/com
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { splitModelName } from '@/utils/model-name';
 import { modelSearchFilter } from '@/components/model-selector-item';
-import { splitModelIdDisplay, trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
+import { splitModelIdDisplay } from '@/01-models/llama-cpp-browser-model-id';
 
 const props = defineProps<{ models: ReturnType<typeof useAudioTranscriptionModels> }>();
 type Tab = 'compatible' | 'saved' | 'huggingface' | 'files';
@@ -73,9 +73,8 @@ const selected = computed(() => props.models.pickerModels.value.find(model => mo
 const selectedName = computed(() => selected.value?.modelId ?? selected.value?.label);
 const selectedNameParts = computed(() => {
   const reference = selected.value?.modelId;
-  const parsed = reference !== undefined && /^(?:hf\.co|host)\//.test(reference) ? trySplitRepositoryModelId({ modelId: reference }) : undefined;
-  if (parsed !== undefined) {
-    const { source, name, variant } = splitModelIdDisplay({ modelId: parsed.baseId });
+  if (reference !== undefined && /^(?:hf\.co|host)\//.test(reference)) {
+    const { source, name, variant } = splitModelIdDisplay({ modelId: reference });
     return { prefix: source, suffix: variant === undefined ? name : `${name}:${variant}` };
   }
   return splitModelName({ name: selectedName.value });

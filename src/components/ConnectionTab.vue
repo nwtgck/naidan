@@ -12,7 +12,6 @@ import { useToast } from '@/composables/useToast';
 import type { Endpoint, EndpointType, LmParameters, ProviderProfile, Reasoning, Settings, SettingsTitleGeneration } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { areEndpointModelNamespacesEqual, areEndpointsEqual, cloneEndpoint, isHttpEndpoint, selectHttpEndpointSeed } from '@/01-models/endpoint';
-import { trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { naturalSort } from '@/utils/string';
 import { cloneLmParameters as clonePlainLmParameters } from '@/utils/lm-parameters';
 import {
@@ -811,11 +810,7 @@ async function fetchModels() {
       }
     })();
     if (shouldValidateModelSelection) {
-      const defaultModelId = updatedForm.defaultModelId;
-      const baseModelId = defaultModelId && updatedForm.endpoint.type === 'llama_cpp_browser'
-        ? trySplitRepositoryModelId({ modelId: defaultModelId })?.baseId
-        : undefined;
-      if (defaultModelId && !models.includes(defaultModelId) && (baseModelId === undefined || !models.includes(baseModelId))) {
+      if (updatedForm.defaultModelId && !models.includes(updatedForm.defaultModelId)) {
         updatedForm.defaultModelId = '';
         changed = true;
       }

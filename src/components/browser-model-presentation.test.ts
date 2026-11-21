@@ -16,9 +16,9 @@ it.each([
   { modelId: 'temp/Model-120B:Q4_K_M', name: 'Model-120B:Q4_K_M' },
   { modelId: 'temp/Folder/owner/Model-120B-GGUF:Q8_0', name: 'Model-120B-GGUF:Q8_0' },
   { modelId: 'hf.co/owner/Model-120B-GGUF:quant/Model-120B-Q8_0.gguf', name: 'Model-120B-Q8_0' },
-  { modelId: 'hf.co/owner/Model-120B-GGUF:Q8_0//text', name: 'Model-120B-GGUF:Q8_0' },
-  { modelId: 'hf.co/owner/Model-120B-GGUF:Q8_0//projector/vision%2Fmmproj-F16.gguf', name: 'Model-120B-GGUF:Q8_0' },
-  { modelId: 'hf.co/owner/Model-120B-GGUF:quant/Model-120B-Q8_0.gguf//text', name: 'Model-120B-Q8_0' },
+  { modelId: 'hf.co/owner/Model-120B-GGUF:UD-Q8_0', name: 'Model-120B-GGUF:UD-Q8_0' },
+  { modelId: 'host/Library%20A/owner/Model-120B-GGUF:QAD-Q4_0', name: 'Model-120B-GGUF:QAD-Q4_0' },
+  { modelId: 'host/Library/owner/Model-120B-GGUF:quant/Model-120B-Q8_0.gguf', name: 'Model-120B-Q8_0' },
 ])('preserves the complete model size and selector in $modelId without inventory source metadata', ({ modelId, name }) => {
   expect(localModelDisplayName({ model: { modelId } })).toBe(name);
 });
