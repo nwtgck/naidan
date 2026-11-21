@@ -1,0 +1,1 @@
+export const DeveloperTab__could_not_save_offline_files = (): string => "No se pudieron guardar los archivos para usar sin conexión. Actualiza la aplicación o inténtalo de nuevo cuando tengas conexión.";

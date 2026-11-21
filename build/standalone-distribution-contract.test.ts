@@ -38,7 +38,8 @@ describe('standalone distribution contract', () => {
     // vite.config.ts. The generated-worker test in pwa.test.ts also verifies
     // that every supported locale ZIP is served but never precached.
     const { options } = createPWABuild({ buildId: 'standalone-distribution-contract' });
-    expect(options.includeAssets).toEqual(expect.arrayContaining(['favicon.svg', 'naidan-standalone.zip']));
+    expect(options.includeAssets).toContain('favicon.svg');
+    expect(options.includeAssets).not.toContain('naidan-standalone.zip');
     expect(options.strategies).toBe('injectManifest');
     expect(options.injectManifest?.globPatterns).toContain('**/*');
     expect(options.injectManifest?.globIgnores).toContain('**/naidan-standalone-*.zip');

@@ -40,8 +40,8 @@ export function createHostedPackagePlugin({ version, locales }: { version: strin
           packages: [{
             zipFileName: 'naidan-hosted.zip',
             folderName: `naidan-hosted-${version}`,
-            // The universal download is precached by the generated worker, so
-            // it must be available when the ZIP is hosted on its own. Locale
+            // The universal download stays available for manual offline saving
+            // when the ZIP is hosted on its own. Locale
             // downloads are excluded from precaching and remain separate files.
             excludedFileNames: new Set(getStandalonePackageFileNames({ locales }).filter(fileName => fileName !== 'naidan-standalone.zip')),
           }],

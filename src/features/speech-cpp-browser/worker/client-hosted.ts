@@ -5,6 +5,7 @@ import { speechFrameEnvelopeSchema, speechStateEnvelopeSchema, speechStopSchema,
 import { createUnavailableSpeechClient } from './client-unavailable';
 import type { SpeechClient, SpeechObservers } from './types';
 import { speechInvestigationEnvelopeSchema } from './investigation-protocol';
+import { speechHostedUnavailableReason } from '@/features/speech-cpp-browser/runtime/hosted-capability';
 
 type WorkerState = { worker: Worker, remote: WorkerRemote<SpeechWorker>, controller: AbortController, unsubscribe: (() => void)[], investigationCleanup?: () => void };
 
@@ -18,18 +19,9 @@ export function createSpeechClient({ observers }: { observers: SpeechObservers }
     throw new Error(String(exhaustive));
   }
   }
-  if (typeof Worker === 'undefined') {
-    return createUnavailableSpeechClient({ reason: 'worker_unavailable', observers });
-  }
-  if (typeof navigator === 'undefined' || !('gpu' in navigator) || navigator.gpu === undefined) {
-    return createUnavailableSpeechClient({ reason: 'webgpu_unavailable', observers });
-  }
-  if (configuration.artifact.profile === 'webgpu-wasm64-jspi' && (typeof WebAssembly === 'undefined' || !WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1])))) {
-    return createUnavailableSpeechClient({ reason: 'memory64_unavailable', observers });
-  }
-  const wasm = typeof WebAssembly === 'undefined' ? undefined : WebAssembly;
-  if (wasm === undefined || !('Suspending' in wasm) || typeof wasm.Suspending !== 'function' || !('promising' in wasm) || typeof wasm.promising !== 'function') {
-    return createUnavailableSpeechClient({ reason: 'jspi_unavailable', observers });
+  const unavailable = speechHostedUnavailableReason({ configuration });
+  if (unavailable !== undefined) {
+    return createUnavailableSpeechClient({ reason: unavailable, observers });
   }
   const artifact = configuration.artifact;
   let state: SpeechState = { phase: 'unloaded', model: undefined, queuedSamples: 0, completion: undefined, failure: undefined, loadProgress: undefined };

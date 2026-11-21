@@ -6,6 +6,7 @@ import { createLicenseModulePlugins } from './license-module';
 import { createLicenseCacheFixture, licenseCacheEntrySource } from './test-support/license-cache-fixture.test-support';
 import { buildPWAFixture } from './test-support/pwa-fixture.test-support';
 import { createWorkerHarness, MemoryCacheStorage, TestClients } from './test-support/pwa-worker-platform.test-support';
+import { PREPARE_OFFLINE_ASSETS } from '../src/logic/pwa/asset-cache-protocol';
 
 const scope = 'https://example.test/naidan/';
 
@@ -63,9 +64,20 @@ describe('generated PWA cache reuse', () => {
       const bytes = deployed.files.get(name);
       return new Response(bytes === undefined ? 'missing' : new Uint8Array(bytes), { status: bytes === undefined ? 404 : 200 });
     };
-    const previous = createWorkerHarness({ script: a.script, scope, cacheStorage: storage, clients, fetch: network });
+    const active = Object.assign(new EventTarget(), { state: 'activated' }) as ServiceWorker;
+    const previous = createWorkerHarness({
+      script: a.script,
+      scope,
+      cacheStorage: storage,
+      clients,
+      fetch: network,
+      registration: { scope, active },
+    });
     await previous.lifecycle('install');
     await previous.lifecycle('activate');
+    const data = { type: PREPARE_OFFLINE_ASSETS, buildId: a.pageBuildId, target: { kind: 'remaining' } };
+    expect(await previous.message({ clientId: 'page', data })).toEqual({ remaining: 0 });
+    expect(await previous.message({ clientId: 'page', data })).toBe('complete');
     for (const name of [...stable.keys(), 'mutable.bin', licenseA]) {
       expect(requested.filter(item => item === name)).toHaveLength(1);
     }

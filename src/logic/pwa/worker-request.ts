@@ -1,13 +1,15 @@
 
 import { BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from './protocol';
+import { PREPARE_OFFLINE_ASSETS, READ_CACHED_LOCALES, cachedLocalesReplySchema, prepareOfflineAssetsReplySchema, type PrepareOfflineAssetsRequest } from './asset-cache-protocol';
 
 /** A bounded, one-shot exchange. Every terminal path closes both ports. */
-function requestWorker<T>({ worker, signal, message, parse, failure }: {
+function requestWorker<T>({ worker, signal, message, parse, failure, timeoutMs }: {
   worker: ServiceWorker;
   signal: AbortSignal;
   message: { type: string; buildId?: string };
   parse: ({ data }: { data: unknown }) => T;
   failure: string;
+  timeoutMs: number | undefined;
 }): Promise<T> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
@@ -32,7 +34,7 @@ function requestWorker<T>({ worker, signal, message, parse, failure }: {
       }
     };
     const abort = () => finish({ result: { error: new Error('The update runtime was stopped.') } });
-    const timer = setTimeout(() => finish({ result: { error: new Error(failure) } }), 5000);
+    const timer = setTimeout(() => finish({ result: { error: new Error(failure) } }), timeoutMs ?? 5000);
     signal.addEventListener('abort', abort, { once: true });
     // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- One-shot exchange; parse validates before resolution and both ports close on every terminal path.
     channel.port1.onmessage = ({ data }: MessageEvent<unknown>) => {
@@ -56,6 +58,7 @@ export function requestNetworkUpdate({ worker, signal }: { worker: ServiceWorker
     worker,
     signal,
     message: { type: USE_NETWORK_MESSAGE },
+    timeoutMs: undefined,
     failure: 'The current service worker did not enable network updating. Wait for offline preparation and retry.',
     parse({ data }) {
       if (data !== USE_NETWORK_MESSAGE) {
@@ -70,6 +73,7 @@ export function requestBuildId({ worker, signal }: { worker: ServiceWorker; sign
     worker,
     signal,
     message: { type: BUILD_ID_MESSAGE },
+    timeoutMs: undefined,
     failure: 'The service worker did not identify its build.',
     parse({ data }) {
       if (!data || typeof data !== 'object' || !('type' in data) || data.type !== BUILD_ID_MESSAGE
@@ -87,12 +91,45 @@ export function requestOfflineCompletion({ worker, buildId, signal }: { worker: 
     worker,
     signal,
     message: { type: COMPLETE_OFFLINE_MESSAGE, buildId },
+    timeoutMs: undefined,
     failure: 'The current service worker cannot safely finish offline preparation automatically. It will switch after its clients close.',
     parse({ data }) {
       if (data !== COMPLETE_OFFLINE_MESSAGE) {
         throw new Error('Offline completion was not accepted by the current service worker.');
       }
     },
+  });
+}
+
+export function requestOfflineAssetPreparation({ worker, buildId, target, signal }: {
+  worker: ServiceWorker;
+  buildId: string;
+  target: PrepareOfflineAssetsRequest['target'];
+  signal: AbortSignal;
+}) {
+  const message: PrepareOfflineAssetsRequest = { type: PREPARE_OFFLINE_ASSETS, buildId, target };
+  return requestWorker({
+    worker,
+    signal,
+    message,
+    timeoutMs: 125_000,
+    failure: 'The service worker did not reply about offline assets.',
+    parse: ({ data }) => prepareOfflineAssetsReplySchema.parse(data),
+  });
+}
+
+export function requestCachedLocales({ worker, buildId, signal }: {
+  worker: ServiceWorker;
+  buildId: string;
+  signal: AbortSignal;
+}) {
+  return requestWorker({
+    worker,
+    signal,
+    message: { type: READ_CACHED_LOCALES, buildId },
+    timeoutMs: 1000,
+    failure: 'The service worker did not report its cached languages.',
+    parse: ({ data }) => cachedLocalesReplySchema.parse(data),
   });
 }
 

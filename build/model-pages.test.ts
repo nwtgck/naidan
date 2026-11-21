@@ -134,6 +134,7 @@ describe('model pages in the Hosted Vite output', () => {
             events.push('output');
           },
         },
+        pwa.assetsPlugin,
         VitePWA({ ...pwa.options, srcDir: path.join(repository, 'pwa') }),
         createHostedPackagePlugin({ version: 'fixture', locales: ['en'] }),
       ],
@@ -177,7 +178,8 @@ describe('model pages in the Hosted Vite output', () => {
     });
     await harness.lifecycle('install');
     await harness.lifecycle('activate');
-    expect(requested).toContain('naidan-standalone.zip');
+    expect(requested).not.toContain('naidan-standalone.zip');
+    expect(await (await harness.request({ url: `${scope}naidan-standalone.zip` })).text()).toBe('fixture download');
   });
 
   it('does not publish a ZIP after a failing output hook', async () => {

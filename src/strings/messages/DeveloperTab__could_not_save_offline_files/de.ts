@@ -1,0 +1,1 @@
+export const DeveloperTab__could_not_save_offline_files = (): string => "Offline-Dateien konnten nicht gespeichert werden. Aktualisieren Sie die App oder versuchen Sie es erneut, wenn Sie online sind.";
