@@ -8,6 +8,8 @@ import type { ModelFileSource } from '@/features/llama-cpp-browser/runtime/model
 import { createVisionMeasurement } from './vision-measurement';
 import { visionBf16Metadata } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage.test-support';
 import { loadProjector, loadProjectorForBackend } from './projector';
+import { metadataGguf } from '@/features/llama-cpp-browser/model-graph/gguf-metadata.test-support';
+import type { VisionBf16Diagnostics } from '@/features/llama-cpp-browser/runtime/vision-bf16-diagnostics';
 
 const metadata = vi.hoisted(() => ({ value: undefined as unknown }));
 vi.mock('llama-cpp-browser-core/llama-cpp/api/schema.mjs', () => ({
@@ -238,8 +240,8 @@ function modern({ pointerBytes, requested }: { pointerBytes: 4 | 8, requested: n
 
 it.each([4, 8] as const)('captures and confirms the retained policy before handing off a %i-byte projector', async pointerBytes => {
   const f = modern({ pointerBytes, requested: 1 });
-  const loaded = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'webgpu-wasm64-jspi', debug: 'off', signal: undefined, visionBf16Storage: undefined, observation: 'enabled' });
-  expect(loaded.visionStorage).toMatchObject({ preference: 'default', selectedMode: 'retain-checked', contextRequestedMode: 'retain-checked', apiVersion: 1, evidence: 'requested-policy-only', status: 'initialized' });
+  const loaded = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'webgpu-wasm64-jspi', debug: 'off', signal: undefined, visionBf16Storage: 'retain-checked', observation: 'enabled' });
+  expect(loaded.visionStorage).toMatchObject({ preference: 'retain-checked', selectedMode: 'retain-checked', contextRequestedMode: 'retain-checked', apiVersion: 1, evidence: 'requested-policy-only', status: 'initialized' });
   expect(f.initialize).toHaveBeenCalledWith(expect.any(BigInt), 1n, expect.any(BigInt), 1);
   expect(f.api.mtmd_init_from_file).not.toHaveBeenCalled();
   expect(f.fields.get('use_gpu')).toBe(1);
@@ -248,11 +250,87 @@ it.each([4, 8] as const)('captures and confirms the retained policy before handi
   expect(f.api.mtmd_free).toHaveBeenCalledExactlyOnceWith(500n);
 });
 
+it.each(['reviewed', 'duplicate-key', 'read-error'] as const)('reads the leased GGUF metadata before native loading: %s', async scenario => {
+  const f = modern({ pointerBytes: 8, requested: scenario === 'reviewed' ? 1 : 0 });
+  const diagnostics = {
+    version: vi.fn<VisionBf16Diagnostics['version']>().mockResolvedValue(1),
+    classify: vi.fn<VisionBf16Diagnostics['classify']>().mockResolvedValue('reviewed'),
+    initialize: vi.fn<VisionBf16Diagnostics['initialize']>().mockResolvedValue({ pointer: 500n, report: { status: 'succeeded', reason: 'none', phase: 'complete', cleanup: 'not-required' } }),
+  };
+  f.core.visionBf16Diagnostics = diagnostics;
+  const key = 'clip.projector_type';
+  const contents = Uint8Array.from(metadataGguf({
+    items: [
+      { key: 'clip.has_vision_encoder', type: 7, value: true },
+      { key, type: 8, value: 'muse-glimmer' },
+      { key: 'clip.vision.projector_type', type: 8, value: 'ignored-by-common-key' },
+      ...(scenario === 'duplicate-key' ? [{ key, type: 8, value: 'conflicting-projector' }] : []),
+    ],
+  }));
+  f.file.file = new File([contents], 'mmproj.gguf');
+  const ioError = new Error('reading the projector failed');
+  using access = vi.spyOn(modelFileModule, 'openModelFileAccess').mockResolvedValue({
+    getSize: () => contents.length,
+    read(destination, { at }) {
+      if (scenario === 'read-error') {
+        throw ioError;
+      }
+      const source = contents.subarray(at, at + destination.length);
+      destination.set(source);
+      return source.length;
+    },
+    close: f.close,
+  });
+  diagnostics.initialize.mockImplementationOnce(async () => {
+    expect(f.close).not.toHaveBeenCalled();
+    return { pointer: 500n, report: { status: 'succeeded', reason: 'none', phase: 'complete', cleanup: 'not-required' } };
+  });
+  const load = loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'webgpu-wasm64-jspi', debug: 'off', signal: undefined, visionBf16Storage: undefined, observation: 'enabled' });
+  if (scenario === 'read-error') {
+    await expect(load).rejects.toBe(ioError);
+    expect(diagnostics.classify).not.toHaveBeenCalled();
+    expect(diagnostics.initialize).not.toHaveBeenCalled();
+    expect(f.initialize).not.toHaveBeenCalled();
+  } else {
+    const projector = await load;
+    await using _projector = { [Symbol.asyncDispose]: () => projector.release() };
+    if (scenario === 'reviewed') {
+      expect(diagnostics.classify).toHaveBeenCalledExactlyOnceWith({ hasVision: true, commonProjector: 'muse-glimmer', visionProjector: 'ignored-by-common-key' });
+      expect(projector.visionStorage).toMatchObject({ candidate: 'reviewed', selectedMode: 'retain-checked' });
+    } else {
+      expect(diagnostics.classify).not.toHaveBeenCalled();
+      expect(projector.visionStorage).toMatchObject({ candidate: 'unknown', selectedMode: 'legacy-expand' });
+    }
+    expect(diagnostics.initialize).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: scenario === 'reviewed' ? 1 : 0 }));
+  }
+  expect(access).toHaveBeenCalledOnce();
+  expect(f.close).toHaveBeenCalledOnce();
+});
+
 it('cleans an owned projector on getter mismatch without legacy retry', async () => {
   const f = modern({ pointerBytes: 8, requested: 0 });
   await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'off', signal: undefined, visionBf16Storage: 'retain-checked', observation: 'enabled' })).rejects.toThrow('mismatch');
   expect(f.api.mtmd_free).toHaveBeenCalledExactlyOnceWith(500n);
   expect(f.api.mtmd_init_from_file).not.toHaveBeenCalled();
+  expect(f.close).toHaveBeenCalledOnce();
+});
+
+it('keeps native ownership when a report fails validation after returning a projector', async () => {
+  const f = modern({ pointerBytes: 8, requested: 1 });
+  const failure = new Error('Invalid vision BF16 load report header');
+  const diagnostics: VisionBf16Diagnostics = {
+    version: async () => 1,
+    classify: async () => 'reviewed',
+    async initialize({ onProjector }) {
+      onProjector({ pointer: 500n });
+      throw failure;
+    },
+  };
+  f.core.visionBf16Diagnostics = diagnostics;
+  await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: undefined, visionBf16Storage: 'retain-checked', observation: 'enabled' })).rejects.toBe(failure);
+  expect(f.api.mtmd_free).toHaveBeenCalledExactlyOnceWith(500n);
+  expect(f.order).toEqual(['native-free', 'callback-free']);
+  expect(f.initialize).not.toHaveBeenCalled();
   expect(f.close).toHaveBeenCalledOnce();
 });
 

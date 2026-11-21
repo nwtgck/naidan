@@ -6,11 +6,11 @@ import { speechError, type SpeechModelInfo } from '@/features/speech-cpp-browser
 export async function inspectSpeechCandidate({ file, name, signal }: { file: GgufMetadataFile, name: string, signal: AbortSignal | undefined }): Promise<{ kind: 'speech', info: SpeechModelInfo } | { kind: 'other' }> {
   // Most inventory entries belong to another runtime; finish their detection
   // after the architecture key instead of scanning tokenizer metadata.
-  const architecture = await readGgufMetadata({ file, keys: ['general.architecture'], signal, maxStringBytes: 4096 });
+  const architecture = await readGgufMetadata({ file, keys: ['general.architecture'], signal, maxStringBytes: 4096, validation: undefined });
   if (architecture.get('general.architecture') !== 'haru') {
     return { kind: 'other' };
   }
-  const values = await readGgufMetadata({ file, keys: ['general.architecture', 'speech.task', 'speech.sample_rate', 'haru.frame_samples', 'speech.requires', 'speech.layout', 'split.count'], signal, maxStringBytes: 4096 });
+  const values = await readGgufMetadata({ file, keys: ['general.architecture', 'speech.task', 'speech.sample_rate', 'haru.frame_samples', 'speech.requires', 'speech.layout', 'split.count'], signal, maxStringBytes: 4096, validation: undefined });
   const requiredVersion = values.get('speech.requires');
   if (values.get('general.architecture') !== 'haru' || values.get('speech.task') !== 'dialogue') {
     return { kind: 'other' };

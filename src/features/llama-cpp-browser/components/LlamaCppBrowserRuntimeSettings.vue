@@ -31,18 +31,29 @@ watch([storedContextTokens, () => settings.value.storageType], () => {
 });
 const storedVisionStorage = computed(() => settings.value.experimental?.llamaCppBrowser?.visionBf16Storage);
 const storageCapability = shallowRef<VisionBf16Capability>();
-const storageDraft = ref<VisionBf16Storage>(storedVisionStorage.value ?? 'retain-checked');
+const storageDraft = ref<VisionBf16Storage | 'auto'>(storedVisionStorage.value ?? 'auto');
 const storageDirty = ref(false), storageSaving = ref(false), storageSaveFailed = ref(false);
 const storageDisabled = computed(() => props.disabled || storageSaving.value || !initialized.value || storageCapability.value === undefined);
-const savedStorage = computed(() => storageCapability.value === undefined ? undefined : selectVisionBf16Storage({ preference: storedVisionStorage.value, capability: storageCapability.value }));
-const draftStorage = computed(() => storageCapability.value === undefined ? undefined : selectVisionBf16Storage({ preference: storageDraft.value, capability: storageCapability.value }));
+const draftPreference = computed(() => {
+  const draft = storageDraft.value;
+  switch (draft) {
+  case 'auto': return undefined;
+  case 'legacy-expand': case 'retain-checked': return draft;
+  default: {
+    const exhaustive: never = draft;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
+const draftStorage = computed(() => storageCapability.value === undefined ? undefined : selectVisionBf16Storage({ preference: draftPreference.value, capability: storageCapability.value }));
 const storageChoices = computed(() => [
+  { value: 'auto', label: lazyStrings.LlamaCppBrowserRuntimeSettings__automatic_bf16_storage() },
   { value: 'legacy-expand', label: lazyStrings.LlamaCppBrowserRuntimeSettings__legacy_expand(), disabled: storageCapability.value?.status === 'incompatible' },
   { value: 'retain-checked', label: lazyStrings.LlamaCppBrowserRuntimeSettings__retain_checked(), disabled: storageCapability.value?.status !== 'available' },
 ]);
 
 function resetStorageDraft(): void {
-  storageDraft.value = storedVisionStorage.value ?? savedStorage.value?.selectedMode ?? 'retain-checked';
+  storageDraft.value = storedVisionStorage.value ?? 'auto';
   storageDirty.value = false;
   storageSaveFailed.value = false;
 }
@@ -50,9 +61,9 @@ function resetStorageDraft(): void {
 watch([storedVisionStorage, () => settings.value.storageType], resetStorageDraft);
 
 function editStorageDraft({ value }: { value: string }): void {
-  const parsed = visionBf16StorageSchema.safeParse(value);
-  if (parsed.success) {
-    storageDraft.value = parsed.data;
+  const next = value === 'auto' ? value : visionBf16StorageSchema.safeParse(value).data;
+  if (next !== undefined) {
+    storageDraft.value = next;
     storageDirty.value = true;
     storageSaveFailed.value = false;
   }
@@ -272,10 +283,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="min-w-0 space-y-2.5">
           <SettingsSelect :id="`${id}-vision-storage`" :model-value="storageDraft" :options="storageChoices" :label="lazyStrings.LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage()" :disabled="storageDisabled" surface="embedded" presentation="toolbar" size="compact" :menu-width-rem="23" data-testid="llama-cpp-browser-vision-storage" @update:model-value="editStorageDraft({ value: $event })" />
           <div tw-class="flex flex-wrap gap-2">
-            <LlamaCppBrowserModelActionButton :disabled="storageDisabled || draftStorage?.status !== 'selected'" data-testid="llama-cpp-browser-vision-storage-save" @click="saveVisionStorage({ value: storageDraft })">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__save() }}</LlamaCppBrowserModelActionButton>
+            <LlamaCppBrowserModelActionButton :disabled="storageDisabled || (draftPreference !== undefined && draftStorage?.status !== 'selected')" data-testid="llama-cpp-browser-vision-storage-save" @click="saveVisionStorage({ value: draftPreference })">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__save() }}</LlamaCppBrowserModelActionButton>
             <LlamaCppBrowserModelActionButton :disabled="storageDisabled" data-testid="llama-cpp-browser-vision-storage-reset" @click="saveVisionStorage({ value: undefined })">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__reset_to_default() }}</LlamaCppBrowserModelActionButton>
           </div>
-          <p data-testid="llama-cpp-browser-vision-storage-status" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__vision_storage_status({ capability: storageCapability?.status, preference: storedVisionStorage, selected: savedStorage?.selectedMode }) }}</p>
+          <p data-testid="llama-cpp-browser-vision-storage-status" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__vision_storage_status({ capability: storageCapability?.status, preference: storedVisionStorage }) }}</p>
           <p tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load() }}</p>
           <p v-if="storageSaveFailed" role="alert" data-testid="llama-cpp-browser-vision-storage-save-failed" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage() }}</p>
         </div>

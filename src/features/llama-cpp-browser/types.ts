@@ -30,6 +30,7 @@ export const defaultChatContextTokens = 32768;
 export const visionBf16StorageSchema = z.enum(['legacy-expand', 'retain-checked']);
 
 export const runtimeOptionsSchema = z.object({
+  // An omitted override selects the projector's storage mode automatically.
   visionBf16Storage: visionBf16StorageSchema.optional(),
   contextTokens: chatContextTokensSchema.optional(),
   profile: z.union([z.literal('auto'), profileSchema]),

@@ -12,6 +12,7 @@ import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import type { Q8DiagnosticAccess, Q8KernelDiagnosticAdapter } from './q8-kernel-diagnostic';
 import type { ModelGraphNativeExports } from '@/features/llama-cpp-browser/model-graph/native-exports';
 import type { Q8DiagnosticFunctions } from 'llama-cpp-browser-core/llama-cpp/api/extensions';
+import { attachVisionBf16Diagnostics } from './vision-bf16-diagnostics';
 
 // Direct access is limited to metadata, allocation and fixed optional extensions.
 // C calls use the shared marshaler; correlated Embind handles use chat-bindings.
@@ -288,6 +289,7 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     tryAlloc,
     recordSize,
     fieldLayout,
+    visionBf16Diagnostics: attachVisionBf16Diagnostics({ schema, module, invoker: calls.invoker, assertIdle, alloc, bytes, free }),
     hasFunction({ name }: { name: string }): boolean {
       return schema.functions.some(fn => fn.name === name);
     },

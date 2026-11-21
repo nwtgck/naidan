@@ -10,8 +10,10 @@ export const GGUF_METADATA_SCAN_BYTES = 16 * 1024 * 1024;
 const chunkBytes = 64 * 1024;
 const maxItems = 1_000_000;
 
-export async function readGgufMetadata({ file, keys, signal, maxStringBytes }: {
-  file: GgufMetadataFile, keys: readonly string[], signal: AbortSignal | undefined, maxStringBytes: number,
+export class GgufMetadataFormatError extends Error {}
+
+export async function readGgufMetadata({ file, keys, signal, maxStringBytes, validation }: {
+  file: GgufMetadataFile, keys: readonly string[], signal: AbortSignal | undefined, maxStringBytes: number, validation: 'complete' | undefined,
 }): Promise<ReadonlyMap<string, GgufMetadataValue>> {
   let offset = 0;
   let windowStart = 0;
@@ -22,7 +24,7 @@ export async function readGgufMetadata({ file, keys, signal, maxStringBytes }: {
   const wanted = new Set(keys);
   const limit = Math.min(file.size, GGUF_METADATA_SCAN_BYTES);
   function fail(): never {
-    throw new Error('Unsupported or incomplete GGUF metadata');
+    throw new GgufMetadataFormatError('Unsupported or incomplete GGUF metadata');
   }
   function skip({ bytes }: { bytes: number }): void {
     if (!Number.isSafeInteger(bytes) || bytes < 0 || offset + bytes > limit) {
@@ -64,7 +66,11 @@ export async function readGgufMetadata({ file, keys, signal, maxStringBytes }: {
       fail();
     }
     const data = await read({ bytes });
-    return decoder.decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    try {
+      return decoder.decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    } catch {
+      return fail();
+    }
   }
   async function checkpoint(): Promise<void> {
     signal?.throwIfAborted();
@@ -162,12 +168,17 @@ export async function readGgufMetadata({ file, keys, signal, maxStringBytes }: {
     const selected = wanted.has(key);
     const entry = await value({ type, retain: selected, depth: 0 });
     if (selected) {
+      if (validation === 'complete' && (values.has(key) || entry === undefined)) {
+        fail();
+      }
       if (entry !== undefined) {
         values.set(key, entry);
       }
-      wanted.delete(key);
-      if (wanted.size === 0) {
-        break;
+      if (validation === undefined) {
+        wanted.delete(key);
+        if (wanted.size === 0) {
+          break;
+        }
       }
     }
   }

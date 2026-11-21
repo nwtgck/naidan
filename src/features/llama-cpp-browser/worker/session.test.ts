@@ -1373,17 +1373,17 @@ describe('temporary resident model cache', () => {
 });
 
 describe('immutable vision storage identity', () => {
-  function modernProjectors(): void {
+  function modernProjectors({ autoMode }: { autoMode: 'retain-checked' | 'legacy-expand' }): void {
     host.load.mockImplementation(async ({ debug, visionBf16Storage }) => {
       const release = vi.fn(async () => {});
       releases.push(release);
-      const selectedMode = visionBf16Storage ?? 'retain-checked';
-      return { pointer: BigInt(100 + releases.length), debug, release, purpose: 'chat', visionStorage: { preference: visionBf16Storage ?? 'default', selectedMode, contextRequestedMode: selectedMode, capability: 'available', status: 'initialized', apiVersion: 1, evidence: 'requested-policy-only', reason: visionBf16Storage === undefined ? 'default-retain' : 'explicit' } };
+      const selectedMode = visionBf16Storage ?? autoMode;
+      return { pointer: BigInt(100 + releases.length), debug, release, purpose: 'chat', visionStorage: { preference: visionBf16Storage ?? 'default', selectedMode, contextRequestedMode: selectedMode, capability: 'available', status: 'initialized', apiVersion: 1, evidence: 'requested-policy-only', reason: visionBf16Storage === undefined ? autoMode === 'legacy-expand' ? 'auto-retention-refused' : 'auto-review' : 'explicit' } };
     });
   }
 
   it('reuses equal effective modes and replaces only the projector on both storage transitions', async () => {
-    modernProjectors();
+    modernProjectors({ autoMode: 'retain-checked' });
     const first = request({ debug: 'off' });
     const a = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
     const same = request({ debug: 'off' });
@@ -1405,8 +1405,24 @@ describe('immutable vision storage identity', () => {
     expect(a.core.api.llama_free).not.toHaveBeenCalled();
   });
 
+  it('reuses an automatically expanded projector across automatic loads and preserves the LM on explicit retain', async () => {
+    modernProjectors({ autoMode: 'legacy-expand' });
+    const auto = request({ debug: 'off' });
+    const a = await prepareSession({ request: auto, signal: undefined, onProgress: () => {} });
+    const b = await prepareSession({ request: auto, signal: undefined, onProgress: () => {} });
+    expect(b.projector).toBe(a.projector);
+    expect(b.projectorStorage).toMatchObject({ preference: 'default', selectedMode: 'legacy-expand', reason: 'auto-retention-refused' });
+    expect(host.load).toHaveBeenCalledOnce();
+    const retain = request({ debug: 'off' });
+    retain.options.visionBf16Storage = 'retain-checked';
+    const c = await prepareSession({ request: retain, signal: undefined, onProgress: () => {} });
+    expect(c.projector).not.toBe(a.projector);
+    expect(a.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(c.context).toBe(a.context);
+  });
+
   it('does not reload or probe the retained projector when only text is requested after a mode change', async () => {
-    modernProjectors();
+    modernProjectors({ autoMode: 'retain-checked' });
     const image = request({ debug: 'off' });
     image.messages[0]!.content = [{ type: 'image', blob: new Blob(['fixture']) }];
     const a = await prepareGenerationSession({ request: image, signal: undefined, onProgress: () => {} });
