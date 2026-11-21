@@ -27,6 +27,14 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.71.0] - 2026-11-21
+
+### Changed
+
+- Hosted Naidan prepares offline files for the selected display language and automatically chosen browser inference profiles, including local image generation and speech. In Settings under Developer, save the remaining app files for offline use, including the common standalone ZIP when it is available.
+- Choose the default llama.cpp browser model from saved files, suggestions, or Hugging Face in the chat sidebar or connection settings. Download models or add local files there before setting them as the default.
+- **Breaking:** GGUF model IDs no longer contain text-only or companion-file settings. Naidan detects companion files in the same repository when opening a model. Some repository model IDs also use shorter quantization names. If an existing selection no longer opens, choose the model again from the files already on your device.
+
 ## [0.70.0] - 2026-11-21
 
 ### Added
@@ -1208,7 +1216,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.70.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.71.0...develop
+[0.71.0]: https://github.com/nwtgck/naidan/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/nwtgck/naidan/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/nwtgck/naidan/compare/v0.68.0...v0.69.0
 [0.68.0]: https://github.com/nwtgck/naidan/compare/v0.67.0...v0.68.0
