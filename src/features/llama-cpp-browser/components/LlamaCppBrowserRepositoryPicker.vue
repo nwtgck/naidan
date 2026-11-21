@@ -40,7 +40,7 @@ import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 
-const props = defineProps<{ disabled: boolean, layout?: 'inline-results' | 'candidate-results', popupTarget?: HTMLElement, selectionBlocked?: boolean, deferUntilFirstUse?: boolean, selectedForFirstUse?: ChatRepositoryModelSelection, currentModelId?: string, refreshInventory?: () => Promise<void> }>();
+const props = defineProps<{ disabled: boolean, layout?: 'inline-results' | 'candidate-results', popupTarget?: HTMLElement, selectionBlocked?: boolean, selectionPolicy?: 'first-use-download' | 'installed-only', selectedForFirstUse?: ChatRepositoryModelSelection, currentModelId?: string, refreshInventory?: () => Promise<void> }>();
 const emit = defineEmits<{
   select: [request: { target: ModelLaunchTarget, destination: DownloadDestination, authorizeDestination: AuthorizeModelLaunchDestination }],
   'select-model': [model: LocalModel, presentation?: 'keep-open'],
@@ -53,6 +53,7 @@ const { query: inlineQuery } = useModelSelectorHuggingFaceSearchState();
 type ExpandedRepository = { repository: string, source: 'result' | 'url' };
 const search = ref<{ focusOrigin({ repository, source }: { repository: string, source: ExpandedRepository['source'] }): void }>();
 const candidateMode = computed(() => props.layout === 'candidate-results');
+const immediateSelection = computed(() => props.selectionPolicy !== undefined);
 const sourceView = computed(() => candidateMode.value ? LlamaCppBrowserSuggestedModelRows : ModelSelectorHuggingFaceSearch);
 const openedRepository = shallowRef<ExpandedRepository>();
 const choosingResult = shallowRef<ExpandedRepository>();
@@ -238,7 +239,7 @@ watch([selectionTarget, bundledSource, () => downloadQueue?.changed.value, desti
   const hint = candidateHint.value;
   async function checkSaved(): Promise<LocalModel | undefined> {
     if (value !== undefined) {
-      return installedSelection({ selection: value.selection, destination: requestedDestination, ...(props.deferUntilFirstUse ? { exactConfiguration: true } : {}) });
+      return installedSelection({ selection: value.selection, destination: requestedDestination, ...(immediateSelection.value ? { exactConfiguration: true } : {}) });
     }
     if (hint !== undefined && bundled !== undefined) {
       const { listModelInventory } = await import('@/features/llama-cpp-browser/composables/model-inventory');
@@ -268,8 +269,11 @@ watch([selectionTarget, bundledSource, () => downloadQueue?.changed.value, desti
 }, { immediate: true, flush: 'sync' });
 
 const firstUseSelection = computed<ChatRepositoryModelSelection | undefined>(() => {
-  if (!props.deferUntilFirstUse) {
-    return undefined;
+  const policy = props.selectionPolicy;
+  switch (policy) {
+  case 'first-use-download': break;
+  case 'installed-only': case undefined: return undefined;
+  default: throw new Error(String(policy satisfies never));
   }
   const selected = selectionTarget.value;
   if (selected !== undefined) {
@@ -297,7 +301,7 @@ const firstUseSelection = computed<ChatRepositoryModelSelection | undefined>(() 
     authorizeDestination: downloadDestination.authorize,
   };
 });
-const inlineSelectionReady = computed(() => firstUseSelection.value !== undefined || saved.value.status === 'saved' || selectionTarget.value !== undefined && !props.deferUntilFirstUse && saved.value.status === 'missing');
+const inlineSelectionReady = computed(() => firstUseSelection.value !== undefined || saved.value.status === 'saved' || selectionTarget.value !== undefined && !immediateSelection.value && saved.value.status === 'missing');
 
 const configurationSelected = computed(() => {
   if ('model' in saved.value) {
@@ -494,7 +498,7 @@ async function select({ presentation }: { presentation: 'close' | 'keep-open' })
     }
     break;
   case 'missing':
-    if (current !== undefined) {
+    if (current !== undefined && props.selectionPolicy !== 'installed-only') {
       emit('select', { target: current, destination: destination.value, authorizeDestination: downloadDestination.authorize });
     }
     break;
@@ -587,7 +591,7 @@ async function chooseBundledModel({ id }: { id: string }): Promise<void> {
   }
   const opened = openedRepository.value;
   await select({ presentation: 'close' });
-  if (!alreadyOpen && openedRepository.value === opened) {
+  if (!alreadyOpen && openedRepository.value === opened && (props.selectionPolicy !== 'installed-only' || saved.value.status === 'saved')) {
     clearInlineRepository();
   }
 }
@@ -626,7 +630,7 @@ function chooseInlineModel({ id }: { id: string }): void {
 }
 
 function applyEditedConfiguration(): void {
-  if (props.deferUntilFirstUse) {
+  if (immediateSelection.value) {
     void select({ presentation: 'keep-open' });
   }
 }
@@ -729,7 +733,7 @@ async function checkRepository({ value, requestedVariant, freshness }: { value: 
       return;
     }
     catalog.value = found;
-    const current = props.deferUntilFirstUse ? currentRepositoryConfiguration({ repository: found.repository }) : undefined;
+    const current = immediateSelection.value ? currentRepositoryConfiguration({ repository: found.repository }) : undefined;
     const initial = initialRepositorySelection({ catalog: found, requestedVariant: requestedVariant ?? parsed.requestedVariant ?? current?.variant });
     standardRepositoryConfiguration.value = initialRepositorySelection({ catalog: found, requestedVariant: undefined });
     const chosenMainPath = previousMain ?? current?.mainPath;
@@ -760,8 +764,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div v-if="layout !== undefined" tw-class="min-w-0 text-left" @keydown.esc="handleInlineEscape({ event: $event })">
-    <component :is="sourceView" ref="search" v-bind="candidateMode ? { immediateSelection: deferUntilFirstUse, describeCandidate, refreshInventory, destinationLabel: downloadDestination.label, downloadDisabled: disabled || destinationBusy || destinationUnavailable } : { query: inlineQuery, active: !disabled, immediateSelection: deferUntilFirstUse, selectedRepository, choosingRepository: choosingResult?.repository }" :disabled="disabled" :expanded-repository="openedRepository" @update:query="inlineQuery = $event" @select="(repository: string, source: 'result' | 'url') => openInlineRepository({ repository, source })" @choose="chooseInlineModel({ id: $event })" @search="clearInlineRepository">
-      <template v-if="!candidateMode && deferUntilFirstUse" #result-actions="{ repository }">
+    <component :is="sourceView" ref="search" v-bind="candidateMode ? { immediateSelection, describeCandidate, refreshInventory, destinationLabel: downloadDestination.label, downloadDisabled: disabled || destinationBusy || destinationUnavailable } : { query: inlineQuery, active: !disabled, immediateSelection, selectedRepository, choosingRepository: choosingResult?.repository }" :disabled="disabled" :expanded-repository="openedRepository" @update:query="inlineQuery = $event" @select="(repository: string, source: 'result' | 'url') => openInlineRepository({ repository, source })" @choose="chooseInlineModel({ id: $event })" @search="clearInlineRepository">
+      <template v-if="!candidateMode && immediateSelection" #result-actions="{ repository }">
         <ModelSelectorVariantDownload :destination-label="downloadDestination.label" :request="searchResultDownload({ repository })" :label="repository" :disabled="disabled || destinationBusy || destinationUnavailable" :refresh-inventory="refreshInventory" />
       </template>
       <template #repository>

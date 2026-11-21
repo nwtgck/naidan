@@ -132,7 +132,7 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
       repository: 'owner/Model-VL-GGUF',
       groups: [
         { variant: 'Q4_K_M', paths: ['Model-VL-Q4_K_M.gguf'] },
-        { variant: 'ModelVL-Q4_K_M', paths: ['ModelVL-Q4_K_M.gguf'] },
+        { variant: 'Q8_0', paths: ['ModelVL-Q8_0.gguf'] },
         { variant: 'ModelVL-ModelVL-Q4_K_M', paths: ['ModelVL-ModelVL-Q4_K_M.gguf'] },
       ],
     },
@@ -158,9 +158,33 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
   });
 
   it.each([
+    { repository: 'leejet/Z-Image-Turbo-GGUF', path: 'z_image_turbo-Q4_K.gguf', variant: 'Q4_K' },
+    { repository: 'leejet/Qwen-Image-2.1-GGUF', path: 'qwen_image_2.1-Q4_K.gguf', variant: 'Q4_K' },
+    { repository: 'nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB', path: 'Nemotron-3.5-Bolt-E4B-Q4_K_M.gguf', variant: 'Q4_K_M' },
+    { repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', variant: 'Q4_K_M' },
+    { repository: 'sakasegawa/reazonspeech-nemo-v2-GGUF', path: 'reazonspeech-nemo-619M-v2-Q8_0.gguf', variant: 'Q8_0' },
+    { repository: 'meta-models/Muse-Glimmer-30B-GGUF', path: 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf', variant: 'Q4_K_M' },
+    { repository: 'higa2515/Qwen3.8-27B-QSA-GGUF', path: 'Qwen3.8-27B-QSA-Unsloth-UD-Q4_K_M.gguf', variant: 'UD-Q4_K_M' },
+    { repository: 'owner/Model-8B-v2-GGUF', path: 'Model-9B-v2-Q4_K_M.gguf', variant: '9B-v2-Q4_K_M' },
+  ])('round-trips the readable reference for $path', async ({ repository, path, variant }) => {
+    await writeFiles({ repository, paths: [path], destination });
+    const modelId = kind === 'host' ? `host/Models/${repository}:${variant}` : `hf.co/${repository}:${variant}`;
+    expect((await publicModels()).map(model => model.modelId)).toEqual([modelId]);
+    expect((await resolvePublic({ modelId })).primaryFile.relativePath).toBe(path);
+  });
+
+  it('rejects a compact reference shared by two different publisher filenames', async () => {
+    const repository = 'owner/Model-VL-GGUF';
+    await writeFiles({ repository, paths: ['Model-VL-Q4_K_M.gguf', 'ModelVL-Q4_K_M.gguf', 'ModelVL-Q8_0.gguf'], destination });
+    const prefix = kind === 'host' ? `host/Models/${repository}:` : `hf.co/${repository}:`;
+    expect((await publicModels()).map(model => model.modelId)).toEqual([prefix + 'Q8_0']);
+    await expect(resolvePublic({ modelId: prefix + 'Q4_K_M' })).rejects.toThrow('unsupported-input');
+  });
+
+  it.each([
     { path: `${prefix}Q4_K_M.gguf`, variant: 'Q4_K_M' },
     { path: `${prefix}model.bin.gguf`, variant: 'model.bin' },
-    { path: `nested/${prefix}KQuant-17GB-Q4_K_M.gguf`, variant: 'nested/KQuant-17GB-Q4_K_M' },
+    { path: `nested/${prefix}KQuant-17GB-Q4_K_M.gguf`, variant: 'nested/Q4_K_M' },
     { path: `nested/${prefix}custom:100%-Q4.gguf`, variant: 'nested/custom:100%-Q4' },
     { path: `literal%2F/${prefix}Q4.gguf`, variant: 'literal%2F/Q4' },
     { path: '.gguf', variant: '.gguf' },

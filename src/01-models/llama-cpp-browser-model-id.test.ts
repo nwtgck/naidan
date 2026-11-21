@@ -49,7 +49,7 @@ it('round-trips a publisher filename whose model name uses different punctuation
   const mainFilePath = 'Qwen3VL-8B-Instruct-Q4_K_M.gguf';
   const repository = 'Qwen/Qwen3-VL-8B-Instruct-GGUF';
   const modelId = formatHuggingFaceModelId({ repository, mainFilePath });
-  expect(modelId).toBe('hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Qwen3VL-8B-Instruct-Q4_K_M');
+  expect(modelId).toBe('hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M');
   const reference = parseRepositoryModelId({ modelId });
   const matching = matchingRepositoryModelVariants({
     models: [mainFilePath, 'Qwen3VL-8B-Instruct-Q8_0.gguf'].map(relativePath => ({ primaryFile: { relativePath } })),
@@ -59,9 +59,9 @@ it('round-trips a publisher filename whose model name uses different punctuation
   expect(matching.map(model => model.primaryFile.relativePath)).toEqual([mainFilePath]);
 });
 
-it('keeps slashes in the configuration and the exact public folder alias', () => {
+it('shows the complete variant while resolving its configuration separately', () => {
   const modelId = 'host/Models/owner/Model-GGUF:custom/Q4_K_M//text';
-  expect(splitModelIdDisplay({ modelId })).toEqual({ source: 'host/Models/owner/', name: 'Model-GGUF', variant: 'custom/Q4_K_M' });
+  expect(splitModelIdDisplay({ modelId })).toEqual({ source: 'host/Models/owner/', name: 'Model-GGUF', variant: 'custom/Q4_K_M//text' });
   expect(parseRepositoryModelId({ modelId })).toEqual({
     source: { kind: 'host', alias: 'Models' },
     repository: 'owner/Model-GGUF',

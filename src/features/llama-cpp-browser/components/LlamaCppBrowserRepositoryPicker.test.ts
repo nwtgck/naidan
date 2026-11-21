@@ -470,7 +470,7 @@ it('shows bundled companion files for the selected source and explicitly refresh
 });
 
 it('selects the bundled configuration for first use without accessing the repository', async () => {
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', deferUntilFirstUse: true } });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy: 'first-use-download' } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   void cleanup;
   const repository = 'google/gemma-4-E2B-it-qat-q4_0-gguf';
@@ -529,7 +529,7 @@ it('opens an installed bundled suggestion without metadata or a new download', a
   const modelId = baseId + '//projector/' + companionPath;
   mocks.inventory.mockResolvedValue([stored]);
   mocks.modelEntry.mockResolvedValue({ ...stored, modelId });
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', deferUntilFirstUse: true } });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy: 'first-use-download' } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   void cleanup;
   const row = wrapper.get('[data-testid="chat-model-suggestion"][data-repository="gemma-4-e2b"]');
@@ -542,13 +542,18 @@ it('opens an installed bundled suggestion without metadata or a new download', a
   expect(mocks.enqueue).not.toHaveBeenCalled();
 });
 
-it('uses a completed bundled download directly without looking up the repository again', async () => {
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', deferUntilFirstUse: true } });
+it.each(['first-use-download', 'installed-only'] as const)('uses a completed bundled download without another repository lookup with %s selection', async selectionPolicy => {
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   void cleanup;
   const repository = 'google/gemma-4-E2B-it-qat-q4_0-gguf';
   const companionPath = 'gemma-4-E2B-it-mmproj.gguf';
   await wrapper.get('[data-testid="chat-model-suggestion"][data-repository="gemma-4-e2b"]').trigger('click');
+  await flushPromises();
+  const choose = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-choose-configuration"]');
+  expect(choose.element.disabled).toBe(selectionPolicy === 'installed-only');
+  expect(wrapper.emitted('select-model')).toBeUndefined();
+  expect(wrapper.emitted('select-for-first-use')).toBeUndefined();
   const selection = { repository, revision: 'a'.repeat(40), files: [{ path: 'gemma-4-E2B_q4_0-it.gguf', size: 256 }, { path: companionPath, size: 128 }] };
   const model = { modelId: `hf.co/${repository}:Q4_0`, size: 384, importedAt: 1 };
   mocks.installed.mockResolvedValue(model);
@@ -565,14 +570,15 @@ it('uses a completed bundled download directly without looking up the repository
   }];
   await flushPromises();
   expect(wrapper.text()).not.toContain('Downloads automatically');
-  await wrapper.get('[data-testid="model-selector-choose-configuration"]').trigger('click');
+  expect(choose.element.disabled).toBe(false);
+  await choose.trigger('click');
   expect(wrapper.emitted('select-model')).toEqual([[model]]);
   expect(mocks.inspect).not.toHaveBeenCalled();
 });
 
 it('offers a background download and independently selects the standard construction from an HF result name', async () => {
   vi.mocked(searchGgufModels).mockResolvedValueOnce({ results: [{ id: catalog.repository }], nextCursor: undefined });
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', deferUntilFirstUse: true } });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', selectionPolicy: 'first-use-download' } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   await wrapper.get('[data-testid="model-selector-hf-query"]').setValue('example');
   await wrapper.get('form').trigger('submit');
@@ -596,7 +602,7 @@ it('waits for the local check and selects an installed HF result without a first
   vi.mocked(searchGgufModels).mockResolvedValueOnce({ results: [{ id: catalog.repository }], nextCursor: undefined });
   const lookup = Promise.withResolvers<LocalModel | undefined>();
   mocks.installed.mockReturnValueOnce(lookup.promise);
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', deferUntilFirstUse: true } });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', selectionPolicy: 'first-use-download' } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   await wrapper.get('[data-testid="model-selector-hf-query"]').setValue('example');
   await wrapper.get('form').trigger('submit');
@@ -618,7 +624,7 @@ it('waits for the local check and selects an installed HF result without a first
 
 it('keeps the queued default result attached when inspecting a different configuration', async () => {
   vi.mocked(searchGgufModels).mockResolvedValueOnce({ results: [{ id: catalog.repository }], nextCursor: undefined });
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', deferUntilFirstUse: true } });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', selectionPolicy: 'first-use-download' } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   void cleanup;
   await wrapper.get('[data-testid="model-selector-hf-query"]').setValue('example');
@@ -657,7 +663,7 @@ it('restores a selected nondefault variant with multimodal off when the HF row i
     props: {
       disabled: false,
       layout: 'inline-results',
-      deferUntilFirstUse: true,
+      selectionPolicy: 'first-use-download',
       selectedForFirstUse: {
         modelId,
         source: { kind: 'resolved', target: { modelId, mainFilePath: main.path, selection: { repository: catalog.repository, revision: catalog.revision, files: [main] } } },
@@ -681,7 +687,7 @@ it('restores a selected nondefault variant with multimodal off when the HF row i
 });
 
 it('downloads the clicked quantization independently of the checked model', async () => {
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', deferUntilFirstUse: true } });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', selectionPolicy: 'first-use-download' } });
   using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   void cleanup;
   await wrapper.get('[data-testid="model-selector-hf-query"]').setValue(`https://huggingface.co/${catalog.repository}`);

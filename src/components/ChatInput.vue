@@ -42,6 +42,7 @@ import { loadChatWorkerMountsModule } from '@/features/wesh/chat-worker-mounts-l
 import { useLazyVolumeCopies } from '@/composables/useLazyVolumeCopies';
 import VolumeCopyProgress from './VolumeCopyProgress.vue';
 import { queueChatVolumeMount } from '@/logic/chat-volume-mount-queue';
+import { browserChatModelPanels } from './chat-model-selector-panels';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
@@ -73,11 +74,8 @@ function finishHomeIntroduction(): void {
 
 type ChatLocalModelSelection = ReturnType<typeof useChatLocalModel>;
 
-const browserModelPanels = computed(() => [
-  { id: 'chat-candidates', label: lazyStrings.ChatInput__chat_model_suggestions(), placement: 'before-models' },
-  { id: 'huggingface', label: 'Hugging Face' },
-] as const);
-const browserModelPanelsWithFiles = computed(() => [...browserModelPanels.value, { id: 'files', label: lazyStrings.ModelSelector__add_files() }] as const);
+const browserModelPanels = computed(() => browserChatModelPanels({ includeFiles: false }));
+const browserModelPanelsWithFiles = computed(() => browserChatModelPanels({ includeFiles: true }));
 
 const props = defineProps<{
   chatId: ChatId,
@@ -1744,7 +1742,7 @@ defineExpose({
                 <RepositoryModelPicker
                   v-else
                   :layout="panel === 'chat-candidates' ? 'candidate-results' : 'inline-results'" :disabled="!active" :selection-blocked="isChatStreaming" :popup-target="popupTarget"
-                  defer-until-first-use
+                  selection-policy="first-use-download"
                   :refresh-inventory="refreshLocalModelInventory"
                   :selected-for-first-use="deferredRepositoryModel"
                   :current-model-id="chat.modelId ?? inheritedModelId"
@@ -1756,12 +1754,13 @@ defineExpose({
               <template v-if="resolvedReasoningLabel !== undefined" #trigger-detail>
                 <span :title="lazyStrings.ReasoningSettings__think()" tw-class="whitespace-nowrap text-[10px] font-medium leading-4 text-gray-500 dark:text-gray-400"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }}{{ ' ' }}</span><span data-testid="chat-input-reasoning-summary">{{ resolvedReasoningLabel }}</span></span>
               </template>
-              <template #settings>
+              <template #settings="{ popupTarget }">
                 <ReasoningSettings
                   :selected-effort="selectedReasoningEffort"
                   :default-label="inheritedReasoningLabel"
                   :default-source="inheritedReasoningSource"
                   :disabled="pendingReasoningChats.has(chatId)"
+                  :popup-target="popupTarget"
                   surface="plain"
                   layout="inline"
                   notice="inline-help"

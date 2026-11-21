@@ -1,18 +1,30 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import type { Reasoning } from '@/01-models/types';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import { naturalSort } from '@/utils/string';
 import { ensureStrings, lazyStrings } from '@/strings';
-import ModelSelector from './ModelSelector.vue';
+import ChatModelSelector from './ChatModelSelector.vue';
+import type { ModelSelectorItem } from './model-selector-item';
 import ReasoningSettings from './ReasoningSettings.vue';
+import { browserChatModelPanels } from './chat-model-selector-panels';
+
+const RepositoryModelPicker = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue'));
+const ModelSelectorFileImport = defineAsyncComponent(() => import('./ModelSelectorFileImport.vue'));
 
 defineProps<{ expanded: boolean }>();
 
-const { settings, isFetchingModels, availableModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
+const { settings, isFetchingModels, availableModels, fetchModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
 const { addToast } = useToast();
 const reasoningSaveState = ref<'idle' | 'saving'>('idle');
+const usesSavedModels = computed(() => settings.value.endpoint.type === 'llama_cpp_browser');
+const panels = computed(() => usesSavedModels.value ? browserChatModelPanels({ includeFiles: true }) : undefined);
+const addedModels = ref<readonly LocalModel[]>([]);
+watch(usesSavedModels, () => {
+  addedModels.value = [];
+});
 const globalReasoningLabel = computed(() => {
   const effort = settings.value.lmParameters?.reasoning.effort;
   switch (effort) {
@@ -60,19 +72,40 @@ async function handleGlobalModelChange({ newModelId }: { newModelId: string | un
   await updateGlobalModel({ modelId: newModelId });
 }
 
-const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
+const sortedModels = computed<ModelSelectorItem[]>(() => {
+  const availability = usesSavedModels.value ? 'local' : 'remote';
+  return naturalSort({ values: availableModels.value || [] }).map(id => ({ id, label: id, description: undefined, availability }));
+});
+
+async function refreshModels(): Promise<void> {
+  // useSettings reports refresh errors through the application's error log.
+  await fetchModels({}).catch(() => {});
+}
+
+async function chooseLocalModel({ model, close }: { model: LocalModel, close: (() => void) | undefined }): Promise<void> {
+  if (!usesSavedModels.value) {
+    return;
+  }
+  await handleGlobalModelChange({ newModelId: model.modelId });
+  close?.();
+}
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <ModelSelector
+  <ChatModelSelector
     v-if="expanded"
     surface="sidebar"
-    :model-value="settings.defaultModelId || ''"
+    :model-value="settings.defaultModelId || undefined"
     :models="sortedModels"
+    :models-label="usesSavedModels ? lazyStrings.ModelSelector__models_on_this_device() : undefined"
+    :panels="panels"
+    :initial-panel="usesSavedModels && !settings.defaultModelId ? 'chat-candidates' : undefined"
     :loading="isFetchingModels"
     :model-selection="settings.endpoint.type === 'browser_provided_lm' ? 'unavailable' : 'available'"
     @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
+    @refresh="refreshModels"
     :placeholder="lazyStrings.Sidebar__none()"
   >
     <template #trigger-label>{{ lazyStrings.Sidebar__default_model() }}</template>
@@ -80,8 +113,30 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <span data-testid="sidebar-reasoning-summary" :title="globalReasoningDescription"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }} </span><span data-testid="sidebar-reasoning-value">{{ globalReasoningLabel }}</span></span>
     </template>
     <template #unavailable>{{ lazyStrings.Sidebar__model_selection_is_unavailable_for_this_connection() }}</template>
-    <template #settings>
-      <ReasoningSettings :selected-effort="settings.lmParameters?.reasoning.effort" :disabled="reasoningSaveState === 'saving'" surface="plain" notice="inline-help" @update:effort="handleGlobalReasoningChange({ effort: $event })" />
+    <template #panel="{ panel, active, close, popupTarget }">
+      <div v-if="panel === 'files'" tw-class="py-3">
+        <ModelSelectorFileImport
+          v-model:added="addedModels"
+          :selected-model-id="settings.defaultModelId || undefined"
+          :disabled="!active"
+          @choose="model => chooseLocalModel({ model, close })"
+          @inventory-changed="refreshModels"
+        />
+      </div>
+      <RepositoryModelPicker
+        v-else
+        :layout="panel === 'chat-candidates' ? 'candidate-results' : 'inline-results'"
+        :disabled="!active"
+        :popup-target="popupTarget"
+        selection-policy="installed-only"
+        :current-model-id="settings.defaultModelId || undefined"
+        :refresh-inventory="refreshModels"
+        @select-model="(model, presentation) => chooseLocalModel({ model, close: presentation === 'keep-open' ? undefined : close })"
+        @close="close()"
+      />
     </template>
-  </ModelSelector>
+    <template #settings="{ popupTarget }">
+      <ReasoningSettings :selected-effort="settings.lmParameters?.reasoning.effort" :disabled="reasoningSaveState === 'saving'" :popup-target="popupTarget" surface="plain" layout="inline" notice="inline-help" @update:effort="handleGlobalReasoningChange({ effort: $event })" />
+    </template>
+  </ChatModelSelector>
 </template>

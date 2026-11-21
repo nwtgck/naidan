@@ -52,6 +52,7 @@ const emit = defineEmits<{
 const slots = useSlots();
 provideModelSelectorHuggingFaceSearchState();
 const triggerDetailId = useId();
+const chatSurface = computed(() => props.surface === 'composer' || props.surface === 'sidebar');
 const modelSelectionUnavailable = computed(() => props.disabled || props.modelSelection === 'unavailable');
 // Providers own the inventory and external requests. Typing in this component
 // only filters these supplied values; it never authorizes a network request.
@@ -666,8 +667,8 @@ defineExpose({
         class="animate-in fade-in" :tw-class="[
           'm-0 flex flex-col p-0 bg-[var(--model-selector-panel-background)] [--model-selector-panel-background:var(--color-white)] [--settings-select-menu-background:var(--model-selector-panel-background)] text-gray-800 dark:text-gray-200 border border-gray-200 rounded-2xl shadow-xl overflow-hidden duration-200 motion-reduce:animate-none',
           popupPresentation === 'inline' ? 'mt-1.5 w-full' : '',
-          surface === 'composer' ? 'dark:[--model-selector-panel-background:var(--color-gray-800)]' : 'dark:[--model-selector-panel-background:var(--color-gray-900)]',
-          surface === 'sidebar' ? 'dark:border-gray-700/80' : 'dark:border-gray-700'
+          chatSurface ? 'dark:[--model-selector-panel-background:var(--color-gray-800)]' : 'dark:[--model-selector-panel-background:var(--color-gray-900)]',
+          'dark:border-gray-700'
         ]"
         :class="[
           'chat-model-selector-dialog',
@@ -678,7 +679,7 @@ defineExpose({
         @keydown="handleDropdownKeydown({ event: $event })"
         @focusin="handleSidebarFocus({ event: $event })"
       >
-        <div v-if="panelView !== 'sources'" :tw-class="['flex min-h-11 shrink-0 items-end justify-between gap-2 border-b px-3 pt-1.5', surface === 'composer' ? 'border-gray-200 dark:border-gray-700' : 'border-gray-100 dark:border-gray-800']">
+        <div v-if="panelView !== 'sources'" :tw-class="['flex min-h-11 shrink-0 items-end justify-between gap-2 border-b px-3 pt-1.5', chatSurface ? 'border-gray-200 dark:border-gray-700' : 'border-gray-100 dark:border-gray-800']">
           <div ref="tabStrip" role="group" data-testid="chat-model-selector-tabs" tw-class="relative flex min-w-0 items-center gap-2 overflow-x-auto">
             <span v-if="tabIndicator" :style="tabIndicator" aria-hidden="true" data-testid="chat-model-selector-tab-indicator" :class="{ 'chat-model-selector-tab-indicator-moving': animateTabIndicator }" tw-class="pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-blue-500/80 dark:bg-blue-400/80" />
             <button v-for="tab in tabs" :key="tab.id" type="button" :aria-pressed="currentTab === tab.id" tw-class="shrink-0 whitespace-nowrap px-2 pb-2.5 pt-2 text-xs font-medium text-gray-500 transition-colors hover:text-gray-800 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 aria-pressed:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 dark:aria-pressed:text-gray-100 motion-reduce:transition-none" @click="selectTab({ id: tab.id })">{{ tab.label }}</button>
@@ -703,7 +704,7 @@ defineExpose({
           </div>
           <div v-show="panelView === 'models'" :inert="panelView !== 'models' || undefined" :aria-hidden="panelView !== 'models'" :tw-class="[panels?.length && 'px-3 pb-3']">
             <!-- Search and Actions -->
-            <div ref="filterToolbar" :tw-class="['flex items-center gap-1.5 bg-[var(--model-selector-panel-background)]', panels?.length ? 'sticky top-0 z-10 pt-4 pb-2' : 'border-b border-gray-200 p-2 dark:border-gray-700', surface === 'sidebar' && 'shrink-0 dark:border-gray-800']">
+            <div ref="filterToolbar" :tw-class="['flex items-center gap-1.5 bg-[var(--model-selector-panel-background)]', panels?.length ? 'sticky top-0 z-10 pt-4 pb-2' : 'border-b border-gray-200 p-2 dark:border-gray-700']">
               <div tw-class="relative min-w-0 flex-1">
                 <SearchIcon tw-class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                 <input
@@ -714,7 +715,7 @@ defineExpose({
                   type="text"
                   :tw-class="[
                     'w-full rounded-lg pl-8 text-xs outline-none placeholder:text-gray-400 dark:placeholder:text-gray-300 disabled:cursor-not-allowed',
-                    panels?.length ? 'h-9 border border-gray-200 bg-white pr-8 text-gray-800 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100' : surface === 'sidebar' ? 'pr-8 py-2 bg-transparent text-gray-700 dark:text-gray-200 focus:bg-gray-50 dark:focus:bg-gray-800 focus:ring-2 focus:ring-blue-500/15' : 'pr-2 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500/20'
+                    panels?.length ? 'h-9 border border-gray-200 bg-white pr-8 text-gray-800 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100' : 'pr-8 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500/20'
                   ]"
                   :placeholder="lazyStrings.ModelSelector__filter_models()"
                   :aria-label="lazyStrings.ModelSelector__filter_models()"
@@ -735,7 +736,7 @@ defineExpose({
                       @click="handleRefresh({ event: $event })"
                       :tw-class="[
                         'p-2 shrink-0 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-                        panels?.length ? 'grid h-9 w-9 place-items-center border border-gray-200 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-gray-700 dark:hover:bg-gray-800' : surface === 'sidebar' ? 'hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-900/50 shadow-sm'
+                        panels?.length ? 'grid h-9 w-9 place-items-center border border-gray-200 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-gray-700 dark:hover:bg-gray-800' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-900/50 shadow-sm'
                       ]"
                       :disabled="modelSelectionUnavailable || isFetchingModels"
                       :title="lazyStrings.ModelSelector__refresh_model_list()"
@@ -746,7 +747,7 @@ defineExpose({
 
             <!-- List -->
             <!-- Keep some list space; on very short viewports the whole panel can scroll too. -->
-            <div ref="listContainerRef" data-testid="model-selector-list" class="custom-scrollbar" :tw-class="[panels?.length ? 'divide-y divide-gray-100 dark:divide-gray-800' : 'max-h-60 overflow-y-auto overscroll-contain py-1', surface === 'sidebar' ? 'min-h-24 flex-auto px-1.5' : '']">
+            <div ref="listContainerRef" data-testid="model-selector-list" class="custom-scrollbar" :tw-class="[panels?.length ? 'divide-y divide-gray-100 dark:divide-gray-800' : 'max-h-60 overflow-y-auto overscroll-contain py-1']">
               <div v-if="surface === 'sidebar' && modelSelectionUnavailable && $slots.unavailable" data-testid="model-selector-unavailable" tw-class="px-3 py-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                 <slot name="unavailable"></slot>
               </div>
@@ -813,8 +814,8 @@ defineExpose({
             </div>
           </div>
         </div>
-        <div v-if="$slots.settings" data-testid="model-selector-settings" :tw-class="['shrink-0 border-t border-gray-100 px-3', surface === 'sidebar' || surface === 'composer' ? 'py-2' : 'py-3', surface === 'sidebar' ? 'shrink-0 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/30' : 'dark:border-gray-700']" @keydown.stop="handleSettingsKeydown({ event: $event })">
-          <slot name="settings"></slot>
+        <div v-if="$slots.settings" data-testid="model-selector-settings" :tw-class="['shrink-0 border-t border-gray-100 px-3 dark:border-gray-700', chatSurface ? 'py-2' : 'py-3']" @keydown.stop="handleSettingsKeydown({ event: $event })">
+          <slot name="settings" :popup-target="dropdownRef ?? undefined"></slot>
         </div>
       </dialog>
     </Teleport>

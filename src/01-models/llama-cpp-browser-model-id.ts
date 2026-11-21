@@ -101,9 +101,51 @@ export function variantLabel({ repository, path }: { repository: string, path: s
   return [...parts, stem].join('/');
 }
 
+function comparableModelName({ name, owner }: { name: string, owner: string }): string {
+  let modelName = name.toLowerCase();
+  const publisher = owner.toLowerCase();
+  if (modelName.startsWith(publisher + '-') || modelName.startsWith(publisher + '_')) {
+    modelName = modelName.slice(publisher.length + 1);
+  }
+  return modelName.replace(/[-_]\d+(?:\.\d+)?gi?b$/, '').replace(/[-_]/g, '');
+}
+
+function compactRepositoryVariant({ repository, path, label }: { repository: string, path: string, label: string }): string {
+  const [owner = '', repoName] = repository.split('/');
+  if (repoName === undefined) {
+    return label;
+  }
+  const slash = label.lastIndexOf('/');
+  const directory = label.slice(0, slash + 1);
+  const variant = label.slice(slash + 1);
+  // These annotations repeat information already present in the quantization.
+  const compactVariant = variant
+    .replace(/^Unsloth[-_](?=UD[-_])/i, '')
+    .replace(/^KQuant[-_]\d+(?:\.\d+)?Gi?B[-_](?=Q[1-8]_K(?:_|$))/i, '');
+  if (compactVariant !== variant) {
+    return directory + compactVariant;
+  }
+  const stem = path.slice(path.lastIndexOf('/') + 1).replace(/(?:-\d{5}-of-\d{5})?\.gguf$/i, '');
+  const quantization = /[-_.]((?:(?:UD|QAD|QAT)[-_])?(?:(?:I?Q|PQ|P?TQ)[1-8](?:_[A-Z0-9]+)+|(?:MXFP|NVFP)[0-9]+|BF16|F16|F32))$/i.exec(stem);
+  if (quantization === null) {
+    return label;
+  }
+  const fileModelName = stem.slice(0, quantization.index);
+  const repositoryName = repoName.replace(/[-_.]gguf$/i, '');
+  const comparableRepository = comparableModelName({ name: repositoryName, owner });
+  const matches = ({ name }: { name: string }) => comparableModelName({ name, owner }) === comparableRepository;
+  // A file can spell out a parameter count that its repository leaves implicit.
+  // Compare the full names first and retain explicitly different model sizes.
+  const parameterCount = /[-_]\d+(?:\.\d+)?[MB](?=[-_]|$)/i;
+  const nameMatches = matches({ name: fileModelName })
+    || (!parameterCount.test(repositoryName) && matches({ name: fileModelName.replace(parameterCount, '') }));
+  return nameMatches ? directory + quantization[1]! : label;
+}
+
 /** Split files form one model; their count is not part of its public modelId variant. */
 export function modelVariantName({ repository, path }: { repository: string, path: string }): string {
-  const name = variantLabel({ repository, path });
+  const label = variantLabel({ repository, path });
+  const name = compactRepositoryVariant({ repository, path, label });
   // Degenerate stems such as '.gguf' must still have a routable selector.
   return name.split('/').every(name => isModelSourceSegment({ name })) ? name : path;
 }
@@ -151,11 +193,14 @@ function splitModelIdVariant({ modelId }: { modelId: string }): { address: strin
 }
 
 export function splitModelIdDisplay({ modelId }: { modelId: string }): { source: string, name: string, variant: string | undefined } {
-  // Split the variant off first. The last slash on the left separates the
-  // source from the displayed name. Slashes in a variant belong to its path.
-  const { address, variant } = splitModelIdVariant({ modelId });
+  // Users read and copy model IDs. Display everything after the first colon
+  // verbatim so the option matches the copied ID. Keep IDs concise and
+  // unambiguous where they are created. Breaking changes can invalidate saved
+  // selections and require explicit approval from the Naidan repository owner.
+  const colon = modelId.indexOf(':');
+  const address = colon === -1 ? modelId : modelId.slice(0, colon);
   const slash = address.lastIndexOf('/');
-  return { source: address.slice(0, slash + 1), name: address.slice(slash + 1), variant };
+  return { source: address.slice(0, slash + 1), name: address.slice(slash + 1), variant: colon === -1 ? undefined : modelId.slice(colon + 1) };
 }
 
 export function parseRepositoryModelId({ modelId }: { modelId: string }): {

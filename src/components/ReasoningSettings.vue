@@ -41,6 +41,7 @@ const props = defineProps<{
   surface?: 'flat' | 'card' | 'plain',
   layout?: 'stacked' | 'inline',
   notice?: 'paragraph' | 'inline-help',
+  popupTarget?: HTMLElement,
 }>();
 
 const emit = defineEmits<{
@@ -200,7 +201,7 @@ defineExpose({
     <div :tw-class="['flex items-center gap-2', layout === 'inline' ? 'min-h-4 shrink-0 whitespace-nowrap' : surface === 'plain' ? 'min-h-4 mb-0.5' : 'mb-2']">
       <BrainIcon tw-class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
       <span :tw-class="[surface === 'plain' ? 'text-xs font-medium text-gray-500 dark:text-gray-400' : 'text-[9px] font-bold text-gray-400 uppercase tracking-wider']">{{ headingLabel }}</span>
-      <ReasoningSettingsHelp v-if="notice === 'inline-help'" />
+      <ReasoningSettingsHelp v-if="notice === 'inline-help'" :popup-target="popupTarget" />
       <slot name="heading-extra" />
     </div>
 
