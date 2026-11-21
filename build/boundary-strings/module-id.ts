@@ -1,8 +1,8 @@
 import path from 'node:path';
 
-import { UI_LOCALES } from '../../src/01-models/ui-locale.ts';
+import { UI_LOCALES, type UiLocale } from '../../src/01-models/ui-locale.ts';
 
-const localeModuleFileNames = new Set<string>(UI_LOCALES.map((locale) => `${locale}.ts`));
+const localesByModuleFileName = new Map<string, UiLocale>(UI_LOCALES.map((locale) => [`${locale}.ts`, locale]));
 
 const supportedSourceExtensions = new Set([
   '.cjs',
@@ -38,9 +38,18 @@ export function isSupportedSourceModuleId({ moduleId }: {
 export function messageKeyFromLocaleModuleId({ moduleId }: {
   moduleId: string;
 }): string | undefined {
+  return parseLocaleMessageModuleId({ moduleId, messagesDirectoryPath: undefined })?.key;
+}
+
+export function parseLocaleMessageModuleId({ moduleId, messagesDirectoryPath }: {
+  moduleId: string;
+  messagesDirectoryPath: string | undefined;
+}): { key: string; locale: UiLocale } | undefined {
   const normalizedModuleId = normalizeModuleId({ moduleId });
-  const marker = '/src/strings/messages/';
-  const markerIndex = normalizedModuleId.lastIndexOf(marker);
+  const marker = messagesDirectoryPath === undefined ? '/src/strings/messages/'
+    : `${messagesDirectoryPath.replaceAll('\\', '/')}/`;
+  const markerIndex = messagesDirectoryPath === undefined ? normalizedModuleId.lastIndexOf(marker)
+    : normalizedModuleId.startsWith(marker) ? 0 : -1;
   if (markerIndex < 0) {
     return undefined;
   }
@@ -51,8 +60,9 @@ export function messageKeyFromLocaleModuleId({ moduleId }: {
     return undefined;
   }
   const [key, fileName] = segments;
-  if (key === undefined || key.length === 0 || fileName === undefined || !localeModuleFileNames.has(fileName)) {
+  const locale = fileName === undefined ? undefined : localesByModuleFileName.get(fileName);
+  if (key === undefined || key.length === 0 || locale === undefined) {
     return undefined;
   }
-  return key;
+  return { key, locale };
 }

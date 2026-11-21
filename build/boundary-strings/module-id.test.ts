@@ -6,6 +6,7 @@ import {
   isSupportedSourceModuleId,
   messageKeyFromLocaleModuleId,
   normalizeModuleId,
+  parseLocaleMessageModuleId,
   stripModuleQuery,
 } from './module-id';
 
@@ -41,5 +42,20 @@ describe('Boundary Strings module IDs', () => {
     expect(messageKeyFromLocaleModuleId({
       moduleId: '/repo/src/strings/messages/ChatInput__type_a_message/en.ts/extra',
     })).toBeUndefined();
+  });
+
+  it('uses only exact locale module paths under the configured messages directory', () => {
+    const messagesDirectoryPath = '/repo/src/strings/messages';
+    const relative = 'ChatInput__type_a_message/zh-Hans.ts';
+    expect(parseLocaleMessageModuleId({
+      moduleId: `${messagesDirectoryPath}/${relative}`,
+      messagesDirectoryPath,
+    })).toEqual({ key: 'ChatInput__type_a_message', locale: 'zh-Hans' });
+    for (const moduleId of [
+      `/other/src/strings/messages/${relative}`,
+      `${messagesDirectoryPath}/nested/src/strings/messages/${relative}`,
+    ]) {
+      expect(parseLocaleMessageModuleId({ moduleId, messagesDirectoryPath })).toBeUndefined();
+    }
   });
 });

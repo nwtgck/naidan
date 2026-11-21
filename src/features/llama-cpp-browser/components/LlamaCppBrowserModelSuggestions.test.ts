@@ -20,7 +20,7 @@ vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedS
 const muse = preferredQuantizationHint({ suggestion: modelSuggestions.find(entry => entry.id === 'muse-glimmer-30b')! });
 const main = 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf';
 const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
-const local: LocalModel = { modelId: `hf.co/${muse.hfRepository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
+const local: LocalModel = { modelId: `hf.co/${muse.hfRepository}:Q4_K_M`, size: 128, importedAt: 1 };
 const revision = 'a'.repeat(40);
 const wrappers: VueWrapper[] = [];
 

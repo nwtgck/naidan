@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import type { ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination-types';
-import { configuredRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { resolveHostModel, listHostStoredModels } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import { prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
@@ -57,26 +56,44 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
     ? (await resolveHostModel({ modelId, directories, signal: undefined })).directory
     : resolveRepositoryModel({ modelId, signal: undefined });
 
-  it('retains explicit text-only or projector choices through stored model IDs', async () => {
-    const main = prefix + 'Q4_K_M.gguf';
+  it('uses the short SmolLM2 model ID for a completed model-only download', async () => {
+    const repository = 'lmstudio-community/SmolLM2-135M-Instruct-GGUF';
+    const main = 'SmolLM2-135M-Instruct-Q4_K_M.gguf';
+    const modelId = kind === 'host' ? `host/Models/${repository}:Q4_K_M` : `hf.co/${repository}:Q4_K_M`;
+    await writeFiles({ repository, paths: [main], destination });
+    const selection = { repository, revision: 'a'.repeat(40), files: [{ path: main, size: 128 }] };
+    expect((await installedSelection({ selection, destination }))?.modelId).toBe(modelId);
+    expect((await publicModels()).map(model => model.modelId)).toEqual([modelId]);
+    expect((await resolveModel({ modelId, signal: undefined })).directory.files.map(file => file.relativePath)).toEqual([main]);
+  });
+
+  it('uses the same model ID before and after adding a projector to the repository', async () => {
+    const repository = 'Qwen/Qwen3-VL-8B-Instruct-GGUF';
+    const main = 'Qwen3VL-8B-Instruct-Q4_K_M.gguf';
+    const modelId = kind === 'host' ? `host/Models/${repository}:Q4_K_M` : `hf.co/${repository}:Q4_K_M`;
     const preferred = 'mmproj-Q8_0.gguf';
     const chosen = 'vision/mmproj-F16.gguf';
-    await writeFiles({ repository, paths: [main, preferred, chosen], destination });
-    const modelId = modelIdForSelector({ selector: 'Q4_K_M' });
-    expect((await resolvePublic({ modelId })).projectorFile?.relativePath).toBe(preferred);
     const revision = 'a'.repeat(40);
-    for (const projectorPath of [chosen, undefined]) {
-      const paths = projectorPath === undefined ? [main] : [main, projectorPath];
-      const selection = { repository, revision, files: paths.map(path => ({ path, size: 128 })) };
-      const installed = await installedSelection({ selection, destination, exactConfiguration: true });
-      const configuredId = configuredRepositoryModelId({ modelId, configuration: { projectorPath } });
-      expect(installed?.modelId).toBe(configuredId);
-      const resolved = await resolveModel({ modelId: configuredId, signal: undefined });
-      expect(resolved.modelId).toBe(configuredId);
-      expect(resolved.directory.projectorFile?.relativePath).toBe(projectorPath);
-      expect(resolved.directory.files.map(file => file.relativePath)).toEqual(paths);
+    const mainOnly = { repository, revision, files: [{ path: main, size: 128 }] };
+    const withCompanion = { ...mainOnly, files: [...mainOnly.files, { path: chosen, size: 128 }] };
+    const folder = await writeFiles({ repository, paths: [main], destination });
+    expect((await installedSelection({ selection: mainOnly, destination }))?.modelId).toBe(modelId);
+    expect(await installedSelection({ selection: withCompanion, destination })).toBeUndefined();
+    expect((await resolveModel({ modelId, signal: undefined })).directory.files.map(file => file.relativePath)).toEqual([main]);
+
+    await writeFiles({ repository, paths: [preferred, chosen], destination });
+    for (const selection of [mainOnly, withCompanion]) {
+      expect((await installedSelection({ selection, destination }))?.modelId).toBe(modelId);
     }
-    await expect(resolvePublic({ modelId: configuredRepositoryModelId({ modelId, configuration: { projectorPath: 'missing-mmproj.gguf' } }) })).rejects.toThrow('missing-model');
+    expect((await publicModels()).map(model => model.modelId)).toEqual([modelId]);
+    const withProjector = await resolveModel({ modelId, signal: undefined });
+    expect(withProjector.modelId).toBe(modelId);
+    expect(withProjector.directory.projectorFile?.relativePath).toBe(preferred);
+    expect(withProjector.directory.files.map(file => file.relativePath)).toEqual([main, preferred]);
+
+    await folder.removeEntry(preferred);
+    await (await folder.getDirectoryHandle('vision')).removeEntry('mmproj-F16.gguf');
+    expect((await resolveModel({ modelId, signal: undefined })).directory.projectorFile).toBeUndefined();
   });
 
   it.each([
@@ -132,7 +149,7 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
       repository: 'owner/Model-VL-GGUF',
       groups: [
         { variant: 'Q4_K_M', paths: ['Model-VL-Q4_K_M.gguf'] },
-        { variant: 'ModelVL-Q4_K_M', paths: ['ModelVL-Q4_K_M.gguf'] },
+        { variant: 'Q8_0', paths: ['ModelVL-Q8_0.gguf'] },
         { variant: 'ModelVL-ModelVL-Q4_K_M', paths: ['ModelVL-ModelVL-Q4_K_M.gguf'] },
       ],
     },
@@ -158,9 +175,33 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
   });
 
   it.each([
+    { repository: 'leejet/Z-Image-Turbo-GGUF', path: 'z_image_turbo-Q4_K.gguf', variant: 'Q4_K' },
+    { repository: 'leejet/Qwen-Image-2.1-GGUF', path: 'qwen_image_2.1-Q4_K.gguf', variant: 'Q4_K' },
+    { repository: 'nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB', path: 'Nemotron-3.5-Bolt-E4B-Q4_K_M.gguf', variant: 'Q4_K_M' },
+    { repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', variant: 'Q4_K_M' },
+    { repository: 'sakasegawa/reazonspeech-nemo-v2-GGUF', path: 'reazonspeech-nemo-619M-v2-Q8_0.gguf', variant: 'Q8_0' },
+    { repository: 'meta-models/Muse-Glimmer-30B-GGUF', path: 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf', variant: 'Q4_K_M' },
+    { repository: 'higa2515/Qwen3.8-27B-QSA-GGUF', path: 'Qwen3.8-27B-QSA-Unsloth-UD-Q4_K_M.gguf', variant: 'UD-Q4_K_M' },
+    { repository: 'owner/Model-8B-v2-GGUF', path: 'Model-9B-v2-Q4_K_M.gguf', variant: '9B-v2-Q4_K_M' },
+  ])('round-trips the readable reference for $path', async ({ repository, path, variant }) => {
+    await writeFiles({ repository, paths: [path], destination });
+    const modelId = kind === 'host' ? `host/Models/${repository}:${variant}` : `hf.co/${repository}:${variant}`;
+    expect((await publicModels()).map(model => model.modelId)).toEqual([modelId]);
+    expect((await resolvePublic({ modelId })).primaryFile.relativePath).toBe(path);
+  });
+
+  it('rejects a compact reference shared by two different publisher filenames', async () => {
+    const repository = 'owner/Model-VL-GGUF';
+    await writeFiles({ repository, paths: ['Model-VL-Q4_K_M.gguf', 'ModelVL-Q4_K_M.gguf', 'ModelVL-Q8_0.gguf'], destination });
+    const prefix = kind === 'host' ? `host/Models/${repository}:` : `hf.co/${repository}:`;
+    expect((await publicModels()).map(model => model.modelId)).toEqual([prefix + 'Q8_0']);
+    await expect(resolvePublic({ modelId: prefix + 'Q4_K_M' })).rejects.toThrow('unsupported-input');
+  });
+
+  it.each([
     { path: `${prefix}Q4_K_M.gguf`, variant: 'Q4_K_M' },
     { path: `${prefix}model.bin.gguf`, variant: 'model.bin' },
-    { path: `nested/${prefix}KQuant-17GB-Q4_K_M.gguf`, variant: 'nested/KQuant-17GB-Q4_K_M' },
+    { path: `nested/${prefix}KQuant-17GB-Q4_K_M.gguf`, variant: 'nested/Q4_K_M' },
     { path: `nested/${prefix}custom:100%-Q4.gguf`, variant: 'nested/custom:100%-Q4' },
     { path: `literal%2F/${prefix}Q4.gguf`, variant: 'literal%2F/Q4' },
     { path: '.gguf', variant: '.gguf' },

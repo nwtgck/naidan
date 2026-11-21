@@ -168,7 +168,7 @@ export function assertStandaloneImageModule({ rootDir, id }: { rootDir: string, 
   }
 }
 
-export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDir: string, mode: 'hosted' | 'standalone' }): { plugin: Plugin, getNativeLicenseSource: () => NativeLicenseSource | undefined } {
+export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDir: string, mode: 'hosted' | 'standalone' }) {
   const isStandalone = (() => {
     switch (mode) {
     case 'standalone': return true;
@@ -243,7 +243,21 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
       }
     },
   };
-  return { plugin, getNativeLicenseSource: () => load().nativeLicenseSource };
+  return {
+    plugin,
+    getNativeLicenseSource: () => load().nativeLicenseSource,
+    getRuntimeArtifacts() {
+      const { configuration } = load();
+      switch (configuration.kind) {
+      case 'available': return configuration.artifacts;
+      case 'unavailable': return [];
+      default: {
+        const exhaustive: never = configuration;
+        throw new Error(String(exhaustive));
+      }
+      }
+    },
+  };
 }
 
 export const TEST_ONLY = {

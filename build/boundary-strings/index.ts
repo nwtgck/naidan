@@ -36,6 +36,7 @@ import {
   normalizeModuleId,
   stripModuleQuery,
 } from './module-id.ts';
+import { collectBoundaryLocaleAssets, type PublishLocaleAssets } from './locale-assets.ts';
 import {
   createBoundaryStringServeCoordinator,
   type BoundaryStringServeCoordinator,
@@ -158,7 +159,9 @@ function buildCatalogResolutionForBoundary({ boundary, catalog }: {
   };
 }
 
-export function createBoundaryStringsPlugin(): Plugin[] {
+export function createBoundaryStringsPlugin({ onLocaleAssets }: {
+  onLocaleAssets?: PublishLocaleAssets;
+} = {}): Plugin[] {
   let resolvedConfig: ResolvedConfig | undefined;
   let pluginMode: BoundaryStringPluginMode | undefined;
   let projectPaths: BoundaryStringProjectPaths | undefined;
@@ -510,6 +513,7 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       }
 
       sourceRegistry.reset();
+      onLocaleAssets?.({ result: undefined });
       const paths = requireProjectPaths();
       addCatalogWatchFiles({
         addWatchFile: (filePath) => this.addWatchFile(filePath),
@@ -528,6 +532,31 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       });
       buildCatalog = nextCatalog;
       compactionState = nextCompactionState;
+    },
+    buildEnd(error) {
+      if (error !== undefined) {
+        onLocaleAssets?.({ result: { error } });
+      }
+    },
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        if (onLocaleAssets !== undefined) {
+          try {
+            const assets = collectBoundaryLocaleAssets({
+              bundle,
+              catalog: requireBuildCatalog(),
+              paths: requireProjectPaths(),
+              getModuleInfo: this.getModuleInfo.bind(this),
+            });
+            onLocaleAssets({ result: { assets } });
+          } catch (error) {
+            // VitePWA can still run its closeBundle hook after a failed build.
+            onLocaleAssets({ result: { error } });
+            throw error;
+          }
+        }
+      },
     },
     resolveId(id) {
       return resolveBoundaryStringsVirtualId({ id });

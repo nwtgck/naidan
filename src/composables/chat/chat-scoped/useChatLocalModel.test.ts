@@ -585,14 +585,14 @@ it.each([true, false])('prepares only the selected bundled files on first use wh
 it('reuses a completed bundled download offline and leaves preparation to the first generation', async () => {
   const source = { kind: 'bundled' as const, repository: target.selection.repository, variant: 'Q4', companionPath: undefined };
   const destination = { kind: 'opfs' as const };
-  const saved = { ...model, modelId: target.modelId + '//text' };
+  const saved = { ...model, modelId: target.modelId };
   mocks.jobs = [{ id: 12, key: bundledRepositoryDownloadKey(source), repository: source.repository, source: 'suggestion', destination, status: 'complete', selection: target.selection, progress: undefined, error: undefined }];
   mocks.inspectRepository.mockRejectedValue(new Error('offline'));
   mocks.installed.mockResolvedValue(saved);
   const { command } = render({ binding: 'chat' });
   const onApplied = vi.fn();
   await command.prepareRepositoryModel({ selection: { modelId: target.modelId, source, destination, authorizeDestination: undefined }, onApplied });
-  expect(mocks.installed).toHaveBeenCalledExactlyOnceWith({ selection: target.selection, destination, expectedRoot: undefined, exactConfiguration: true });
+  expect(mocks.installed).toHaveBeenCalledExactlyOnceWith({ selection: target.selection, destination, expectedRoot: undefined });
   expect(mocks.inspectRepository).not.toHaveBeenCalled();
   expect(mocks.enqueue).not.toHaveBeenCalled();
   expect(mocks.register).not.toHaveBeenCalled();
@@ -606,7 +606,7 @@ it('joins the matching queued default download on first send', async () => {
   const job: DownloadJob = { id: 9, key, repository: target.selection.repository, source: 'repository', destination, status: 'queued', selection: undefined, progress: undefined, error: undefined };
   mocks.jobs = [job];
   mocks.enqueue.mockReturnValue({ id: 9, done: Promise.resolve({ ...job, status: 'complete', selection: target.selection }) });
-  mocks.installed.mockResolvedValueOnce(undefined).mockResolvedValue({ ...model, modelId: target.modelId + '//text' });
+  mocks.installed.mockResolvedValueOnce(undefined).mockResolvedValue({ ...model, modelId: target.modelId });
   const { command } = render({ binding: 'chat' });
   const onApplied = vi.fn();
   await command.prepareRepositoryModel({ selection: { modelId: target.modelId, source: { kind: 'resolved', target }, defaultDownloadKey: key, destination, authorizeDestination: undefined }, onApplied });

@@ -26,6 +26,7 @@ import {
 import { readSystemJsLicenseDependency } from './build/file-protocol-standalone/systemjs.ts';
 import { createLicenseModulePlugins } from './build/license-module.ts';
 import { createBoundaryStringsPlugin } from './build/boundary-strings/index.ts';
+import { createLocaleAssetReport } from './build/boundary-strings/locale-assets.ts';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core.ts';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin.ts';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html.ts';
@@ -130,11 +131,18 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }): Plugin => ({
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
   const isStandalone = mode === 'standalone';
-  const pwaBuild = createPWABuild();
   const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
   const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const imageBuild = createStableDiffusionCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const speechBuild = createSpeechCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
+  const localeAssets = createLocaleAssetReport();
+  const pwaBuild = createPWABuild({
+    getLocaleAssets: localeAssets.read,
+    getRuntimeArtifacts: () => ({
+      'stable-diffusion-cpp-browser': imageBuild.getRuntimeArtifacts(),
+      'speech-cpp-browser': speechBuild.getRuntimeArtifacts(),
+    }),
+  });
   const isHosted = mode === 'hosted';
   const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: import.meta.dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
@@ -216,7 +224,15 @@ export default defineConfig(({ mode, command }) => {
     ...transformersJsFixes,
     worker: {
       ...transformersJsFixes.worker,
-      plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin(), createNodeEnvBoundaryPlugin({ rootDir: import.meta.dirname })]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode }).corePlugin],
+      plugins: () => {
+        const llamaWorker = createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
+        return [
+          ...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin(), createNodeEnvBoundaryPlugin({ rootDir: import.meta.dirname })]),
+          ...transformersJsFixes.worker.plugins(),
+          llamaWorker.corePlugin,
+          ...(!isStandalone ? [pwaBuild.workerAssetsPlugin({ profileForModule: llamaWorker.profileForModule })] : []),
+        ];
+      },
     },
     plugins: [
       mode !== 'test' && createDocsDevBridge(),
@@ -230,7 +246,9 @@ export default defineConfig(({ mode, command }) => {
       createModelPagesPlugin(),
       createModelPageDevPlugin(),
       createInitialThemeHtmlPlugin(),
-      createBoundaryStringsPlugin(),
+      createBoundaryStringsPlugin({
+        onLocaleAssets: isStandalone ? undefined : localeAssets.publish,
+      }),
       VueRouter({
         /* options */
       }),
@@ -331,6 +349,7 @@ export default defineConfig(({ mode, command }) => {
       }),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
+      !isStandalone && pwaBuild.assetsPlugin,
       !isStandalone && VitePWA(pwaBuild.options),
       // Package only after all output, compression and the generated worker exist.
       createHostedPackagePlugin({ version: pkg.version, locales: UI_LOCALES }),

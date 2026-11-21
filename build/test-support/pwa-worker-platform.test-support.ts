@@ -77,7 +77,7 @@ export class MemoryCacheStorage {
   }
 }
 
-export type TestClient = { id: string; type: 'window' | 'worker' | 'sharedworker'; url: string; postMessage?: (message: unknown) => void };
+export type TestClient = { id: string; type: 'window' | 'worker' | 'sharedworker'; url: string; postMessage?: (message: unknown, transfer: Transferable[]) => void };
 export class TestClients {
   readonly clients = new Map<string, TestClient>();
 
@@ -216,7 +216,7 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     return event.finished();
   }
 
-  async function streamRequest({ url, clientId = '', resultingClientId = '', navigation = false, destination = '', referrer = '', method = 'GET' }: {
+  async function streamRequest({ url, clientId = '', resultingClientId = '', navigation = false, destination = '', referrer = '', method = 'GET', headers }: {
     url: string;
     clientId?: string;
     resultingClientId?: string;
@@ -224,10 +224,11 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     destination?: string;
     referrer?: string;
     method?: string;
+    headers?: HeadersInit;
   }): Promise<{ response: Response; completed: Promise<void> }> {
     // Node's Request constructor cannot create browser-generated navigate
     // requests, so supply their read-only event metadata explicitly.
-    const request = new Request(url, { method, ...(referrer ? { referrer } : {}) });
+    const request = new Request(url, { method, headers, ...(referrer ? { referrer } : {}) });
     Object.defineProperty(request, 'destination', { value: destination });
     if (navigation) {
       Object.defineProperty(request, 'mode', { value: 'navigate' });

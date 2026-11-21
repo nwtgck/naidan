@@ -5,6 +5,7 @@ import { promiseAllKeyed } from '@/utils/promise';
 import { resolveModel } from './runtime/model-resolution';
 import type { ResolvedModel } from './runtime/model-directory';
 import { resolveRuntimeProfile } from './runtime/detect-profile';
+import { recordOfflineProfile } from './runtime/offline-profile-preferences';
 import { audioGenerationInputSchema } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema, resolveProfilePreference, type ProfileCapabilities, type ProfileState } from './runtime/profile-capabilities';
 import { defaultRuntimeOptions, parseRuntimeOptions } from '@/features/llama-cpp-browser/runtime/profile-policy';
@@ -118,6 +119,7 @@ async function resolveGenerationOptions({ worker, options, signal }: { worker: L
   if (client !== worker || !worker.canReuse()) {
     throw new LlamaCppBrowserError({ code: 'worker-failed' });
   }
+  recordOfflineProfile({ profile });
   return { ...options, profile };
 }
 
@@ -567,6 +569,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   setOptions({ options: next }) {
     options = parseRuntimeOptions({ options: next });
+    recordOfflineProfile({ profile: options.profile });
     for (const listener of optionsListeners) {
       try {
         listener({ options: { ...options } });
@@ -905,6 +908,7 @@ async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgr
       const request = await accepted;
       const profile = await resolveRuntimeProfile({ profile: request.options.profile });
       signal.throwIfAborted();
+      recordOfflineProfile({ profile });
       return worker.generate({
         request: { ...request, options: { ...request.options, profile } },
         onEvent,

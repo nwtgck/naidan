@@ -256,7 +256,7 @@ describe('Sidebar Focus Sync', () => {
           ChatInput: true,
           CspLmEndpointHint: true,
           Logo: true,
-          ModelSelector: true,
+          ChatModelSelector: true,
         },
       },
     });
@@ -293,7 +293,7 @@ describe('Sidebar Focus Sync', () => {
           'lucide-vue-next': true,
           Logo: true,
           ThemeToggle: true,
-          ModelSelector: true,
+          ChatModelSelector: true,
         },
       },
     });
@@ -320,7 +320,7 @@ describe('Sidebar Focus Sync', () => {
     mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Chat group', isCollapsed: false, updatedAt: 0, items: [] }];
     // This is the effective route while Vue Router is still at START_LOCATION.
     mockEffectiveRoute.value = router.resolve(path);
-    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ChatModelSelector: true } } });
     await nextTick();
     await nextTick();
     expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: top - (100 - 40) / 3, behavior: 'auto' });
@@ -331,7 +331,7 @@ describe('Sidebar Focus Sync', () => {
     mockCurrentChatGroup.value = null;
     mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Chat group', isCollapsed: false, updatedAt: 0, items: [] }];
     mockEffectiveRoute.value = router.resolve('/');
-    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ChatModelSelector: true } } });
     await nextTick();
     await nextTick();
     expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
@@ -347,7 +347,7 @@ describe('Sidebar Focus Sync', () => {
 
   it('ignores stale selected state after leaving a chat route', async () => {
     mockEffectiveRoute.value = router.resolve('/');
-    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ChatModelSelector: true } } });
     await nextTick();
     layout.setActiveFocusArea({ area: 'chat' });
     await nextTick();
@@ -373,7 +373,7 @@ describe('Sidebar Focus Sync', () => {
       }
       return new DOMRect(0, 0, 100, 40);
     });
-    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ChatModelSelector: true } } });
     await nextTick();
     await nextTick();
     const nav = wrapper.get<HTMLElement>('[data-testid=sidebar-nav]').element;

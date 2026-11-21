@@ -1,9 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type { VitePWAOptions } from 'vite-plugin-pwa';
+import { permanentCacheExclusions } from '../src/logic/pwa/cache-policy.ts';
+import { createPWAAssets, type PWARuntimeArtifacts } from './pwa-assets.ts';
+import type { BoundaryLocaleAssets } from './boundary-strings/locale-assets.ts';
 
 /** One identity for the executing page and its offline worker, including redeploys. */
-export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } = {}) {
+export function createPWABuild({ buildId = randomUUID(), getRuntimeArtifacts = () => ({}), getLocaleAssets = () => new Map() }: {
+  buildId?: string;
+  getRuntimeArtifacts?: () => PWARuntimeArtifacts;
+  getLocaleAssets?: () => BoundaryLocaleAssets | undefined;
+} = {}) {
   const define = { __PWA_BUILD_ID__: JSON.stringify(buildId) };
+  const maximumAssetSize = 100 * 1024 * 1024;
+  const assets = createPWAAssets({ maximumAssetSize, getRuntimeArtifacts, getLocaleAssets });
   const options: Partial<VitePWAOptions> = {
     strategies: 'injectManifest',
     srcDir: 'pwa',
@@ -11,7 +20,7 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
     // PWAManager owns registration AFTER the actual app surface paints.
     injectRegister: false,
     registerType: 'prompt',
-    includeAssets: ['favicon.svg', 'naidan-standalone.zip'],
+    includeAssets: ['favicon.svg'],
     manifest: {
       name: 'Naidan',
       short_name: 'Naidan',
@@ -24,13 +33,14 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
       // Intentionally the SAME automatic all-assets policy as the old generateSW.
       // Never maintain a separate "minimum startup files" list here.
       globPatterns: ['**/*'],
-      globIgnores: ['**/*.map', '**/naidan-standalone-*.zip'],
-      maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
+      globIgnores: permanentCacheExclusions.map(({ match: { basename } }) => `**/${basename.prefix ?? ''}*${basename.suffix}`),
+      maximumFileSizeToCacheInBytes: maximumAssetSize,
+      manifestTransforms: [assets.transform],
       rollupFormat: 'iife',
       buildPlugins: { vite: [{ name: 'naidan-pwa-build-identity', config: () => ({ define }) }] },
     },
   };
-  return { options, define };
+  return { options, define, assetsPlugin: assets.plugin, workerAssetsPlugin: assets.workerPlugin };
 }
 
 export const TEST_ONLY = {

@@ -3,14 +3,13 @@ import { computed, ref } from 'vue';
 import type { Reasoning } from '@/01-models/types';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import { naturalSort } from '@/utils/string';
 import { ensureStrings, lazyStrings } from '@/strings';
-import ModelSelector from './ModelSelector.vue';
+import DefaultChatModelSelector from './DefaultChatModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 defineProps<{ expanded: boolean }>();
 
-const { settings, isFetchingModels, availableModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
+const { settings, isFetchingModels, availableModels, fetchModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
 const { addToast } = useToast();
 const reasoningSaveState = ref<'idle' | 'saving'>('idle');
 const globalReasoningLabel = computed(() => {
@@ -53,26 +52,31 @@ async function handleGlobalReasoningChange({ effort }: { effort: Reasoning['effo
   }
 }
 
-async function handleGlobalModelChange({ newModelId }: { newModelId: string | undefined }) {
-  if (!newModelId) {
+async function handleGlobalModelChange({ modelId }: { modelId: string | undefined }) {
+  if (!modelId) {
     return;
   }
-  await updateGlobalModel({ modelId: newModelId });
+  await updateGlobalModel({ modelId });
 }
 
-const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
+async function refreshModels(): Promise<void> {
+  // useSettings reports refresh errors through the application's error log.
+  await fetchModels({}).catch(() => {});
+}
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <ModelSelector
+  <DefaultChatModelSelector
     v-if="expanded"
     surface="sidebar"
-    :model-value="settings.defaultModelId || ''"
-    :models="sortedModels"
+    :model-value="settings.defaultModelId"
+    :model-ids="availableModels || []"
+    :endpoint-type="settings.endpoint.type"
     :loading="isFetchingModels"
-    :model-selection="settings.endpoint.type === 'browser_provided_lm' ? 'unavailable' : 'available'"
-    @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
+    :refresh-models="refreshModels"
+    :select-model="handleGlobalModelChange"
     :placeholder="lazyStrings.Sidebar__none()"
   >
     <template #trigger-label>{{ lazyStrings.Sidebar__default_model() }}</template>
@@ -80,8 +84,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <span data-testid="sidebar-reasoning-summary" :title="globalReasoningDescription"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }} </span><span data-testid="sidebar-reasoning-value">{{ globalReasoningLabel }}</span></span>
     </template>
     <template #unavailable>{{ lazyStrings.Sidebar__model_selection_is_unavailable_for_this_connection() }}</template>
-    <template #settings>
-      <ReasoningSettings :selected-effort="settings.lmParameters?.reasoning.effort" :disabled="reasoningSaveState === 'saving'" surface="plain" notice="inline-help" @update:effort="handleGlobalReasoningChange({ effort: $event })" />
+    <template #settings="{ popupTarget }">
+      <ReasoningSettings :selected-effort="settings.lmParameters?.reasoning.effort" :disabled="reasoningSaveState === 'saving'" :popup-target="popupTarget" surface="plain" layout="inline" notice="inline-help" @update:effort="handleGlobalReasoningChange({ effort: $event })" />
     </template>
-  </ModelSelector>
+  </DefaultChatModelSelector>
 </template>

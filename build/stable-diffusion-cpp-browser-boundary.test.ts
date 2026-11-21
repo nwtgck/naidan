@@ -58,6 +58,7 @@ export const lazyStrings = new Proxy({}, { get(_target, key) { return () => Stri
 export const ensureStrings = lazyStrings;
 export const currentLocale = { value: "en" };
 export async function prepareLocale() {}
+export const trackLocalePreparation = () => () => {};
 export async function setLocale() {}
 export const resolveBrowserLocale = () => 'en';
 `;

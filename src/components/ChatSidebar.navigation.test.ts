@@ -150,7 +150,7 @@ describe('Sidebar Keyboard Navigation', () => {
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
-    'ModelSelector': true,
+    'ChatModelSelector': true,
     'LauncherButton': true,
   };
 

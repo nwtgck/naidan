@@ -7,8 +7,10 @@ import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { flushPromises } from '@vue/test-utils';
 import {
   currentLocale,
+  ensureStrings,
   registerStringBoundary,
   setLocale as setStringLocale,
+  TEST_ONLY as stringRuntimeTest,
   type StringBoundaryModule,
 } from '@/strings/runtime';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -602,6 +604,41 @@ describe('useSettings Initialization and Bootstrap', () => {
       await init({ storageTypeOverride: undefined, dataZipBase64: 'mock-base64-data', modelRefresh: 'background' });
 
       expect(mockImportFromBase64).toHaveBeenCalledWith({ zipBase64: 'mock-base64-data' });
+    });
+
+    it('waits for the saved locale before startup notices and ZIP errors are translated', async () => {
+      await ensureAllStringsForTest({ locale: 'en' });
+      await setStringLocale({ locale: 'zh-Hans' });
+      stringRuntimeTest.holdInitialLocale();
+      const persisted: Settings = {
+        ...DEFAULT_SETTINGS,
+        storageType: 'local',
+        endpoint: { type: 'openai', url: '' },
+        experimental: { ...DEFAULT_SETTINGS.experimental, locale: 'en' },
+      };
+      const read = Promise.withResolvers<Settings>();
+      mocks.loadSettings.mockReturnValueOnce(read.promise).mockResolvedValue(persisted);
+      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+      let importLocale: string | undefined;
+      let translated: string | undefined;
+      const zipFailure = new Error('Invalid ZIP fixture');
+      mockImportFromBase64.mockImplementationOnce(async () => {
+        importLocale = currentLocale.value;
+        translated = await ensureStrings.useSettings__ok();
+        throw zipFailure;
+      });
+      const { init } = useSettings();
+      const initialization = init({ storageTypeOverride: 'memory', dataZipBase64: 'bad-zip', modelRefresh: 'deferred' });
+      await flushPromises();
+      expect(mockShowConfirm).not.toHaveBeenCalled();
+      expect(mockImportFromBase64).not.toHaveBeenCalled();
+      read.resolve(persisted);
+      await initialization;
+
+      expect(importLocale).toBe('en');
+      expect(translated).toBe('OK');
+      expect(mockShowConfirm).toHaveBeenCalledOnce();
+      expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({ details: zipFailure }));
     });
   });
 

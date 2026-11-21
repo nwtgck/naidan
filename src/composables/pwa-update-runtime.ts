@@ -3,6 +3,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { ensureStrings } from '@/strings';
 import { createPWAUpdateController } from '@/logic/pwa/update-controller';
 import { reloadPWAPage } from '@/logic/pwa/reload-page';
+import { startPWAOfflineAssetRuntime } from './pwa-offline-asset-runtime';
 
 let runtime: { dispose: () => void } | undefined;
 
@@ -14,20 +15,28 @@ export function startPWAUpdateRuntime(): void {
   const { setUpdateState } = usePWAUpdate();
   const { addInfoEvent, addErrorEvent, addEvent } = useGlobalEvents();
   let disposed = false;
+  const baseUrl = new URL(import.meta.env.BASE_URL, document.baseURI);
+  const offlineAssets = startPWAOfflineAssetRuntime({ serviceWorkers: navigator.serviceWorker, baseUrl, buildId: __PWA_BUILD_ID__ });
   const controller = createPWAUpdateController({
     platform: {
       serviceWorkers: navigator.serviceWorker,
       reload: () => reloadPWAPage({ location: window.location, history: window.history }),
     },
     pageBuildId: __PWA_BUILD_ID__,
-    baseUrl: new URL(import.meta.env.BASE_URL, document.baseURI),
+    baseUrl,
     onState: ({ next }) => setUpdateState({ next }),
     onOfflineReady: () => {
-      void ensureStrings.PWAManager__app_ready_to_work_offline().then((message) => {
-        if (!disposed) {
+      void (async () => {
+        const ready = await offlineAssets.confirmReady();
+        if (!ready || disposed) {
+          return;
+        }
+        const message = ready.controlled ? await ensureStrings.PWAManager__app_ready_to_work_offline()
+          : await ensureStrings.PWAManager__reopen_to_use_offline();
+        if (offlineAssets.stillReady(ready)) {
           addInfoEvent({ source: 'PWA', message });
         }
-      }).catch((error: unknown) => {
+      })().catch((error: unknown) => {
         if (!disposed) {
           console.error('[PWA] Failed to load the offline-ready notification.', error);
         }
@@ -45,6 +54,7 @@ export function startPWAUpdateRuntime(): void {
   runtime = {
     dispose() {
       disposed = true;
+      offlineAssets.dispose();
       controller.dispose();
     },
   };

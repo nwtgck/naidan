@@ -1,6 +1,7 @@
 import {
   HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST,
   hostedTransformersRuntimeAssetManifestEntry,
+  type HostedTransformersRuntimeVariant,
 } from "@/features/transformers-js/runtime/runtime-asset-manifest";
 
 interface TransformersJsWasmEnvironmentLike {
@@ -52,6 +53,13 @@ function isSafari({ userAgent, vendor }: {
   return (isAppleVendor || isSafariUserAgent) && !isOtherBrowser;
 }
 
+export function selectHostedTransformersRuntimeVariant({ userAgent, vendor }: {
+  userAgent: string | undefined;
+  vendor: string | undefined;
+}): HostedTransformersRuntimeVariant {
+  return isSafari({ userAgent, vendor }) ? "standard" : "asyncify";
+}
+
 export function resolveHostedTransformersRuntimeAssetUrls({
   workerLocationUrl,
   environment,
@@ -76,7 +84,7 @@ export function resolveHostedTransformersRuntimeAssetUrls({
     }
     }
   })();
-  const variant = isSafari({ userAgent, vendor }) ? "standard" : "asyncify";
+  const variant = selectHostedTransformersRuntimeVariant({ userAgent, vendor });
   const suffix = (() => {
     switch (variant) {
     case "standard":

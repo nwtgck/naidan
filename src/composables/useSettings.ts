@@ -9,6 +9,7 @@ import {
   prepareLocale,
   resolveBrowserLocale,
   setLocale as setStringLocale,
+  trackLocalePreparation,
 } from '@/strings';
 import {
   type Settings,
@@ -38,6 +39,28 @@ import {
 import { useGlobalEvents } from './useGlobalEvents';
 import { useConfirm } from './useConfirm';
 import { areEndpointsEqual, cloneEndpoint, isConfiguredEndpoint, isHttpEndpoint, isSupportedEndpoint } from '@/01-models/endpoint';
+
+async function initializeSettingsLocale({ savedLocale }: { savedLocale: UiLocale | undefined }): Promise<void> {
+  const preferred = savedLocale ?? resolveBrowserLocale();
+  try {
+    await setStringLocale({ locale: preferred });
+  } catch (error) {
+    if (!__BUILD_MODE_IS_HOSTED__ || savedLocale !== undefined || typeof navigator === 'undefined') {
+      throw error;
+    }
+    const worker = navigator.serviceWorker?.controller;
+    if (!worker) {
+      throw error;
+    }
+    const { requestCachedLocales } = await import('@/logic/pwa/worker-request');
+    const locales = await requestCachedLocales({ worker, buildId: __PWA_BUILD_ID__, signal: AbortSignal.timeout(1200) }).catch(() => []);
+    const cached = locales.find(locale => locale !== preferred);
+    if (cached === undefined || navigator.serviceWorker.controller !== worker) {
+      throw error;
+    }
+    await setStringLocale({ locale: cached });
+  }
+}
 
 const _settings = ref<Settings>({
   ...DEFAULT_SETTINGS,
@@ -378,6 +401,7 @@ export function useSettings(): UseSettingsApi {
     initPromise = (async () => {
       loading.value = true;
       try {
+        const startupNotices: (() => Promise<void>)[] = [];
         // Determine storage type from persisted flag
         const {
           rawSavedStorageType,
@@ -400,24 +424,26 @@ export function useSettings(): UseSettingsApi {
         if (storageTypeOverride) {
           if (rawSavedStorageType !== null) {
             if (storageTypeOverride !== rawSavedStorageType) {
-              const { addInfoEvent } = useGlobalEvents();
-              addInfoEvent({
-                source: 'SettingsService',
-                message: await ensureStrings.useSettings__storage_type_is_already_set_and_requested_type_was_ignored({
-                  savedStorageType: rawSavedStorageType,
-                  requestedStorageType: storageTypeOverride,
-                }),
-              });
+              startupNotices.push(async () => {
+                const { addInfoEvent } = useGlobalEvents();
+                addInfoEvent({
+                  source: 'SettingsService',
+                  message: await ensureStrings.useSettings__storage_type_is_already_set_and_requested_type_was_ignored({
+                    savedStorageType: rawSavedStorageType,
+                    requestedStorageType: storageTypeOverride,
+                  }),
+                });
 
-              const { showConfirm } = useConfirm();
-              // Do not await to avoid blocking initialization/mount
-              showConfirm({
-                title: await ensureStrings.useSettings__storage_already_initialized(),
-                message: await ensureStrings.useSettings__request_to_use_storage_type_was_ignored({
-                  savedStorageType: rawSavedStorageType,
-                  requestedStorageType: storageTypeOverride,
-                }),
-                confirmButtonText: await ensureStrings.useSettings__ok(),
+                const { showConfirm } = useConfirm();
+                // Do not await the user's confirmation during initialization.
+                showConfirm({
+                  title: await ensureStrings.useSettings__storage_already_initialized(),
+                  message: await ensureStrings.useSettings__request_to_use_storage_type_was_ignored({
+                    savedStorageType: rawSavedStorageType,
+                    requestedStorageType: storageTypeOverride,
+                  }),
+                  confirmButtonText: await ensureStrings.useSettings__ok(),
+                });
               });
             }
           } else {
@@ -441,11 +467,13 @@ export function useSettings(): UseSettingsApi {
 
         if (rawSavedStorageType !== null && parsedSavedStorageType.status === 'invalid') {
           console.warn(`Invalid storage type found in localStorage: "${rawSavedStorageType}". Falling back to detection.`, parsedSavedStorageType.savedStorageTypeValidationError);
-          const { addErrorEvent } = useGlobalEvents();
-          addErrorEvent({
-            source: 'SettingsService',
-            message: await ensureStrings.useSettings__invalid_storage_type_falling_back_to_default_detection(),
-            details: parsedSavedStorageType.savedStorageTypeValidationError,
+          startupNotices.push(async () => {
+            const { addErrorEvent } = useGlobalEvents();
+            addErrorEvent({
+              source: 'SettingsService',
+              message: await ensureStrings.useSettings__invalid_storage_type_falling_back_to_default_detection(),
+              details: parsedSavedStorageType.savedStorageTypeValidationError,
+            });
           });
         }
 
@@ -468,7 +496,14 @@ export function useSettings(): UseSettingsApi {
 
         await storageService.init({ type: bootstrapType });
 
-        // Handle URL-based data import BEFORE loading existing settings to ensure append mode works correctly
+        let s = await storageService.loadSettings();
+        const initialSavedLocale = s?.experimental?.locale;
+        await initializeSettingsLocale({ savedLocale: initialSavedLocale });
+        for (const notify of startupNotices) {
+          await notify();
+        }
+
+        // The ZIP importer can emit translated errors while verifying the archive.
         if (dataZipBase64) {
           try {
             const { urlImportExportLogic } = await import('@/features/import-export/url-logic');
@@ -489,19 +524,18 @@ export function useSettings(): UseSettingsApi {
               details: err instanceof Error ? err : String(err),
             });
           }
+          s = await storageService.loadSettings();
+          if (s?.experimental?.locale !== initialSavedLocale) {
+            await initializeSettingsLocale({ savedLocale: s?.experimental?.locale });
+          }
         }
 
-        const s = await storageService.loadSettings();
         if (s) {
           _settings.value = s;
           scheduleFakeLmRuntimePrefetch({ status: s.experimental?.fakeLm ?? 'disabled' });
-          await setStringLocale({
-            locale: s.experimental?.locale ?? resolveBrowserLocale(),
-          });
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
           _settings.value.endpoint = { ...DEFAULT_SETTINGS_ENDPOINT };
-          await setStringLocale({ locale: resolveBrowserLocale() });
         }
         flushAutomaticModelRefresh();
       } finally {
@@ -1053,6 +1087,7 @@ export function useSettings(): UseSettingsApi {
   async function setLocale({ locale }: {
     locale: UiLocale,
   }): Promise<void> {
+    const release = trackLocalePreparation({ locale });
     const operation = localeChangeQueue.catch(() => {
       // A failed locale change must not prevent a later explicit request.
     }).then(async () => {
@@ -1066,7 +1101,11 @@ export function useSettings(): UseSettingsApi {
       await setStringLocale({ locale });
     });
     localeChangeQueue = operation;
-    await operation;
+    try {
+      await operation;
+    } finally {
+      release();
+    }
   }
 
   async function setGlobalSearchScope({ scope }: {

@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import DeveloperTab from './DeveloperTab.vue';
 import ActionButton from './ActionButton.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { setOfflineAssetAction, setOfflineAssetStatus } from '@/composables/usePWAOfflineAssets';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSampleChat } from '@/composables/useSampleChat';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -49,6 +50,7 @@ describe('DeveloperTab', () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     setUpdateState({ next: { kind: 'idle' } });
+    setOfflineAssetAction({ action: undefined });
 
     (useConfirm as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       showConfirm,
@@ -87,6 +89,26 @@ describe('DeveloperTab', () => {
     await wrapper.find('[data-testid="setting-create-long-sample-button"]').trigger('click');
 
     expect(createLongSampleChat).toHaveBeenCalled();
+  });
+
+  it('offers optional offline saving when the current worker is ready', async () => {
+    const wrapper = mountDeveloperTab();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+        setOfflineAssetAction({ action: undefined });
+      },
+    };
+    const button = wrapper.get<HTMLButtonElement>('[data-testid="save-remaining-offline-assets"]');
+    expect(button.element.disabled).toBe(true);
+    const save = vi.fn(async () => {
+      setOfflineAssetStatus({ next: 'complete' });
+    });
+    setOfflineAssetAction({ action: save });
+    await vi.waitFor(() => expect(button.element.disabled).toBe(false));
+    await button.trigger('click');
+    expect(save).toHaveBeenCalledOnce();
+    expect(wrapper.get('[role="status"]').text()).toContain('Offline files saved');
   });
 
   it('uses shared native buttons for developer actions and reserves danger for deletion', () => {
