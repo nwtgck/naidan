@@ -1,1 +1,1 @@
-export const LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load = (): string => '次の画像用projectorの読み込み時に適用されます。テキストのみの要求ではモデルとコンテキストを維持します。保持方式での読み込みに失敗しても、従来方式やCPUへ自動で切り替えません。CPUを明示した場合は従来の動作を維持します。';
+export const LlamaCppBrowserRuntimeSettings__vision_storage_applies_on_next_image_load = (): string => '次に画像用プロジェクターを読み込むときに適用されます。自動では、重みを確保する前にBF16保持が拒否された場合に限り、従来方式で一度だけ読み込みをやり直せます。';

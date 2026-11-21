@@ -1,6 +1,7 @@
 import { createValidatedMessagePort } from '@/utils/worker-transport';
 import { z } from 'zod';
 import processor from './capture.worklet.js?raw';
+import hostedProcessorUrl from './capture.worklet.js?url&no-inline';
 import { createLiveResampler } from './audio-resampler';
 
 const eventSchema = z.discriminatedUnion('type', [
@@ -114,11 +115,16 @@ export async function openLiveCapture({ sampleRate, signal, onPcm, onError }: {
     signal.throwIfAborted();
     await resumed;
     signal.throwIfAborted();
-    const url = URL.createObjectURL(new Blob([processor], { type: 'text/javascript' }));
-    try {
-      await context.audioWorklet.addModule(url);
-    } finally {
-      URL.revokeObjectURL(url);
+    if (__BUILD_MODE_IS_STANDALONE__) {
+      const url = URL.createObjectURL(new Blob([processor], { type: 'text/javascript' }));
+      try {
+        await context.audioWorklet.addModule(url);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } else {
+      // Hosted deployments can restrict script-src to the application origin.
+      await context.audioWorklet.addModule(hostedProcessorUrl);
     }
     signal.throwIfAborted();
     source = context.createMediaStreamSource(stream);

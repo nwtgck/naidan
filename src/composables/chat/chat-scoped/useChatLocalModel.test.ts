@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   offer: vi.fn(),
   suspend: vi.fn(),
   installed: vi.fn(),
+  inspectRepository: vi.fn(),
   enqueue: vi.fn(),
   pause: vi.fn(),
   jobs: [] as DownloadJob[],
@@ -50,9 +51,11 @@ vi.mock('@/features/llama-cpp-browser/model-recovery/availability', () => ({ ins
 vi.mock('@/features/llama-cpp-browser/composables/local-model-launch-session', () => ({ registerLocalModelLaunchSession: mocks.register }));
 vi.mock('@/features/llama-cpp-browser/composables/useLocalModelLaunchChat', () => ({ suspendLocalModelLaunchPreparation: mocks.suspend }));
 vi.mock('@/features/llama-cpp-browser/composables/useTemporaryModelSave', () => ({ offerTemporaryModelSave: mocks.offer }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: mocks.inspectRepository }) }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedSelection: mocks.installed }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download-plan', () => ({ selectionKey: () => 'target-key' }));
-vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', () => ({
+vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', async importOriginal => ({
+  ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(),
   getDownloadQueue: () => ({
     jobs: {
       get value() {
@@ -63,6 +66,7 @@ vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', () => ({
     cancel: mocks.pause,
   }),
 }));
+import { bundledRepositoryDownloadKey } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import { useChatLocalModel } from './useChatLocalModel';
 import { chatLocalModelInputs } from './chat-local-model-input';
 
@@ -541,6 +545,73 @@ it.each(['empty-chat', 'chat'] as const)('downloads to the captured host folder 
   expect(mocks.settings!.value.defaultModelId).toBe('remote');
   expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ model: hostModel }));
   expect(mocks.offer).not.toHaveBeenCalled();
+});
+
+it.each([true, false])('prepares only the selected bundled files on first use when the companion is present=%s', async companionPresent => {
+  const main = { path: 'model-Q4_K_M.gguf', size: 128 };
+  const companion = { path: 'mmproj-F16.gguf', size: 192 };
+  const modelId = 'hf.co/owner/model:Q4_K_M';
+  mocks.inspectRepository.mockResolvedValue({
+    repository: target.selection.repository,
+    revision: target.selection.revision,
+    models: [{ label: 'Q4_K_M', size: main.size, files: [main] }],
+    projectors: companionPresent ? [companion] : [],
+  });
+  mocks.installed.mockResolvedValueOnce(undefined).mockResolvedValue({ ...model, modelId });
+  mocks.enqueue.mockReturnValue({ id: 4, done: Promise.resolve({ status: 'complete' }) });
+  const { command } = render({ binding: 'chat' });
+  const onApplied = vi.fn();
+  await command.prepareRepositoryModel({
+    selection: {
+      modelId,
+      source: { kind: 'bundled', repository: target.selection.repository, variant: 'Q4_K_M', companionPath: companion.path },
+      destination: { kind: 'opfs' },
+      authorizeDestination: undefined,
+    },
+    onApplied,
+  });
+  expect(mocks.inspectRepository).toHaveBeenCalledExactlyOnceWith({ input: target.selection.repository, signal: expect.any(AbortSignal), freshness: 'refresh' });
+  if (companionPresent) {
+    expect(mocks.enqueue).toHaveBeenCalledOnce();
+    expect(await mocks.enqueue.mock.calls[0]![0].prepare()).toEqual({ ...target.selection, files: [main, companion] });
+    expect(onApplied).toHaveBeenCalledOnce();
+  } else {
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(onApplied).not.toHaveBeenCalled();
+    expect(command.operation.value?.phase).toBe('error');
+  }
+});
+
+it('reuses a completed bundled download offline and leaves preparation to the first generation', async () => {
+  const source = { kind: 'bundled' as const, repository: target.selection.repository, variant: 'Q4', companionPath: undefined };
+  const destination = { kind: 'opfs' as const };
+  const saved = { ...model, modelId: target.modelId + '//text' };
+  mocks.jobs = [{ id: 12, key: bundledRepositoryDownloadKey(source), repository: source.repository, source: 'suggestion', destination, status: 'complete', selection: target.selection, progress: undefined, error: undefined }];
+  mocks.inspectRepository.mockRejectedValue(new Error('offline'));
+  mocks.installed.mockResolvedValue(saved);
+  const { command } = render({ binding: 'chat' });
+  const onApplied = vi.fn();
+  await command.prepareRepositoryModel({ selection: { modelId: target.modelId, source, destination, authorizeDestination: undefined }, onApplied });
+  expect(mocks.installed).toHaveBeenCalledExactlyOnceWith({ selection: target.selection, destination, expectedRoot: undefined, exactConfiguration: true });
+  expect(mocks.inspectRepository).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(mocks.register).not.toHaveBeenCalled();
+  expect(command.maySend.value).toBe(true);
+  expect(onApplied).toHaveBeenCalledOnce();
+});
+
+it('joins the matching queued default download on first send', async () => {
+  const destination = { kind: 'opfs' as const };
+  const key = 'repository-default:chat:owner/model';
+  const job: DownloadJob = { id: 9, key, repository: target.selection.repository, source: 'repository', destination, status: 'queued', selection: undefined, progress: undefined, error: undefined };
+  mocks.jobs = [job];
+  mocks.enqueue.mockReturnValue({ id: 9, done: Promise.resolve({ ...job, status: 'complete', selection: target.selection }) });
+  mocks.installed.mockResolvedValueOnce(undefined).mockResolvedValue({ ...model, modelId: target.modelId + '//text' });
+  const { command } = render({ binding: 'chat' });
+  const onApplied = vi.fn();
+  await command.prepareRepositoryModel({ selection: { modelId: target.modelId, source: { kind: 'resolved', target }, defaultDownloadKey: key, destination, authorizeDestination: undefined }, onApplied });
+  expect(mocks.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key, destination }));
+  expect(onApplied).toHaveBeenCalledOnce();
 });
 
 it('retries host permission from a fresh explicit action without falling back to OPFS', async () => {

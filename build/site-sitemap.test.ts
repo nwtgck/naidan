@@ -24,6 +24,7 @@ vi.mock('../src/features/llama-cpp-browser/hugging-face/model-suggestions', () =
 // Retained publications are independent of the recommendation list.
 const retainedLaunches = [
   'hf.co/ggml-org/gpt-oss-20b-GGUF',
+  'hf.co/ggml-org/Inkling-2-Mini-GGUF',
   'hf.co/ggml-org/Qwen3.6-35B-A3B-GGUF',
   'hf.co/ggml-org/Qwen3.8-27B-GGUF',
   'hf.co/google/gemma-4-12B-it-qat-q4_0-gguf',
@@ -41,6 +42,7 @@ const retainedLaunches = [
   'hf.co/lmstudio-community/Qwen3.5-9B-GGUF',
   'hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF',
   'hf.co/meta-models/Muse-Glimmer-30B-GGUF',
+  'hf.co/unsloth/Inkling-2-Mini-GGUF',
   'hf.co/unsloth/Qwen3.8-Flash-Next-GGUF',
 ];
 

@@ -39,6 +39,7 @@ const service = vi.hoisted(() => ({
   getState: vi.fn<LlamaCppBrowserService['getState']>(),
   getOptions: vi.fn<LlamaCppBrowserService['getOptions']>(),
   subscribe: vi.fn<LlamaCppBrowserService['subscribe']>(),
+  subscribeModelList: vi.fn<LlamaCppBrowserService['subscribeModelList']>(() => () => {}),
   generateAudio: vi.fn<LlamaCppBrowserService['generateAudio']>(),
   restartRuntime: vi.fn<LlamaCppBrowserService['restartRuntime']>(),
   cancel: vi.fn(),

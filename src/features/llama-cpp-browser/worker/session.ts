@@ -1,5 +1,4 @@
 import { sameModelFile } from './model-file-identity';
-import { defaultVisionBf16Storage } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage-schema';
 import { fileBackedRowsCapability } from '@/features/llama-cpp-browser/runtime/file-backed-rows';
 import { createModelFileDiagnostics } from '@/features/llama-cpp-browser/runtime/model-file-diagnostics';
 import { readLoadedModelDescriptor } from './loaded-model-descriptor';
@@ -563,8 +562,11 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       if (current.projector.purpose !== 'chat' || !current.projector.visionStorage) {
         return true;
       }
-      const selected = request.options.visionBf16Storage ?? defaultVisionBf16Storage({ capability: current.projector.visionStorage.capability });
-      return current.projector.visionStorage.selectedMode !== selected;
+      const preference = request.options.visionBf16Storage;
+      const storage = current.projector.visionStorage;
+      // Auto owns its resident decision, including an early retry to legacy.
+      // A projector loaded for an explicit preference has no auto decision.
+      return preference === undefined ? storage.preference !== 'default' : storage.selectedMode !== preference;
     }
     default: {
       const exhaustive: never = purpose;

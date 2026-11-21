@@ -8,6 +8,27 @@ import { logDiagnostic, logFailure, logOperation } from '@/features/llama-cpp-br
 import { LlamaCppBrowserError, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import type { VisionBf16Storage, VisionBf16StorageObservation } from '@/features/llama-cpp-browser/runtime/vision-bf16-storage-schema';
 import { createProjectorTrace } from './projector-trace';
+import { GgufMetadataFormatError, readGgufMetadata, type GgufMetadataFile } from '@/utils/gguf-metadata';
+
+async function readProjectorMetadata({ file, signal }: { file: GgufMetadataFile, signal: AbortSignal | undefined }) {
+  const [visionKey, projectorKey, visionProjectorKey] = ['clip.has_vision_encoder', 'clip.projector_type', 'clip.vision.projector_type'] as const;
+  try {
+    const values = await readGgufMetadata({ file, keys: [visionKey, projectorKey, visionProjectorKey], signal, maxStringBytes: 4096, validation: 'complete' });
+    const hasVision = values.get(visionKey);
+    const commonProjector = values.get(projectorKey);
+    const visionProjector = values.get(visionProjectorKey);
+    if (typeof hasVision === 'boolean'
+      && (commonProjector === undefined || (typeof commonProjector === 'string' && !commonProjector.includes('\0')))
+      && (visionProjector === undefined || (typeof visionProjector === 'string' && !visionProjector.includes('\0')))) {
+      return { hasVision, commonProjector, visionProjector };
+    }
+  } catch (error) {
+    if (!(error instanceof GgufMetadataFormatError)) {
+      throw error;
+    }
+  }
+  return undefined;
+}
 
 export type ResidentProjector = { pointer: bigint, debug: 'off' | 'on', purpose: 'chat' | 'audio', visionStorage: Readonly<VisionBf16StorageObservation> | undefined, release: () => Promise<void> };
 
@@ -41,29 +62,6 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     }
     }
   };
-  switch (purpose) {
-  case 'chat': {
-    const { prepareVisionBf16Loader } = await import('@/features/llama-cpp-browser/runtime/vision-bf16-storage');
-    storage = await prepareVisionBf16Loader({ core, preference: visionBf16Storage });
-    checkCancelled();
-    recordStorage();
-    const status = storage.observed.status;
-    switch (status) {
-    case 'unavailable': throw new LlamaCppBrowserError({ code: 'unavailable' });
-    case 'selected': case 'initialized': break;
-    default: {
-      const exhaustive: never = status;
-      throw new Error(String(exhaustive));
-    }
-    }
-    break;
-  }
-  case 'audio': break;
-  default: {
-    const exhaustive: never = purpose;
-    throw new Error(String(exhaustive));
-  }
-  }
   const reportFileReads = (() => {
     switch (debug) {
     case 'on': return true;
@@ -126,6 +124,46 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     if (access.getSize() !== file.file.size) {
       throw new LlamaCppBrowserError({ code: 'storage-error' });
     }
+    switch (purpose) {
+    case 'chat': {
+      const { prepareVisionBf16Loader } = await import('@/features/llama-cpp-browser/runtime/vision-bf16-storage');
+      // Classify the same snapshot or OPFS access handle used by both native attempts.
+      const metadataFile: GgufMetadataFile = {
+        size: access.getSize(),
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the standard Blob slice interface.
+        slice(start, end) {
+          return {
+            async arrayBuffer() {
+              const offset = start ?? 0;
+              const bytes = new Uint8Array((end ?? access.getSize()) - offset);
+              if (access.read(bytes, { at: offset }) !== bytes.length) {
+                throw new LlamaCppBrowserError({ code: 'storage-error' });
+              }
+              return bytes.buffer;
+            },
+          };
+        },
+      };
+      storage = await prepareVisionBf16Loader({ core, preference: visionBf16Storage, signal, readMetadata: () => readProjectorMetadata({ file: metadataFile, signal }) });
+      checkCancelled();
+      recordStorage();
+      const status = storage.observed.status;
+      switch (status) {
+      case 'unavailable': throw new LlamaCppBrowserError({ code: 'unavailable' });
+      case 'selected': case 'initialized': break;
+      default: {
+        const exhaustive: never = status;
+        throw new Error(String(exhaustive));
+      }
+      }
+      break;
+    }
+    case 'audio': break;
+    default: {
+      const exhaustive: never = purpose;
+      throw new Error(String(exhaustive));
+    }
+    }
     const readWithTail = access.readWithTail?.bind(access);
     mounted = mountReadOnlyFile({
       core,
@@ -161,7 +199,14 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
     allocations.push(path);
     checkCancelled();
     await logOperation({ diagnostic: { event: 'operation-start', stage: 'projector-load', profile } });
-    pointer = storage ? await storage.initialize({ path, model, params }) : await core.api.mtmd_init_from_file(path, model, params);
+    pointer = storage ? await storage.initialize({
+      path,
+      model,
+      params,
+      onProjector({ pointer: initialized }) {
+        pointer = initialized;
+      },
+    }) : await core.api.mtmd_init_from_file(path, model, params);
     if (pointer !== 0n && storage) {
       checkCancelled();
       await storage.confirm({ pointer });

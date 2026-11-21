@@ -115,7 +115,21 @@ async function fixture() {
   recognition.onRecordingChange.mockImplementation(({ state: next }) => {
     recordingState.value = next;
   });
-  vi.mocked(useSpeechRecognition).mockReturnValue({ state: recognitionState, controller: recognition.controller, recordingState, recording: recognition.recording, TEST_ONLY: {} });
+  vi.mocked(useSpeechRecognition).mockReturnValue({
+    state: recognitionState,
+    controller: {
+      ...recognition.controller,
+      async runFile({ file, language, investigation }) {
+        await recognition.controller.runFile({ file, language, ...(investigation === undefined ? {} : { investigation }) });
+      },
+      async runAudio({ samples, sampleRate, inputName, language, investigation }) {
+        await recognition.controller.runAudio({ samples, sampleRate, inputName, language, ...(investigation === undefined ? {} : { investigation }) });
+      },
+    },
+    recordingState,
+    recording: recognition.recording,
+    TEST_ONLY: {},
+  });
   const responseRecording = createRecognitionUiFixture();
   const responseRecordingState = shallowRef(responseRecording.recorder.getState());
   responseRecording.onRecordingChange.mockImplementation(({ state: next }) => {

@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { openLiveCapture } from './audio-capture';
 import { liveAudioBrowserFixture } from './audio-browser.test-support';
+import hostedProcessorUrl from './capture.worklet.js?url&no-inline';
 
 describe('live microphone lifecycle', () => {
+  it('loads the hosted microphone worklet from a build asset under the same origin', async () => {
+    using f = liveAudioBrowserFixture();
+    f.permission.resolve(f.stream);
+    const capture = await openLiveCapture({ sampleRate: 24000, signal: new AbortController().signal, onPcm: vi.fn(), onError: vi.fn() });
+    await capture.finish({ action: 'discard' });
+    expect(f.contexts[0]?.audioWorklet.addModule).toHaveBeenCalledExactlyOnceWith(hostedProcessorUrl);
+    expect(f.revokeUrl).not.toHaveBeenCalled();
+  });
+
   it('reads actual track settings only on request and exposes a safe subset without device identities', async () => {
     using f = liveAudioBrowserFixture();
     const settings = { autoGainControl: false, echoCancellation: true, noiseSuppression: true, sampleRate: 48000, channelCount: 1, latency: 0.01, deviceId: 'private-device', groupId: 'private-group', label: 'private-label' };
@@ -124,8 +134,15 @@ describe('live microphone lifecycle', () => {
     expect(f.nodes).toHaveLength(0);
   });
 
-  it('resamples validated packets and flushes the tail before closing', async () => {
+  it('resamples validated packets and flushes the tail before closing in the standalone edition', async () => {
     using f = liveAudioBrowserFixture();
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
+    using buildMode = {
+      [Symbol.dispose]() {
+        vi.unstubAllGlobals();
+      },
+    };
+    void buildMode;
     const controller = new AbortController();
     const chunks: Float32Array[] = [];
     f.permission.resolve(f.stream);
@@ -164,6 +181,13 @@ describe('live microphone lifecycle', () => {
 
   it('closes tracks and the context on module load failure', async () => {
     using f = liveAudioBrowserFixture();
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
+    using buildMode = {
+      [Symbol.dispose]() {
+        vi.unstubAllGlobals();
+      },
+    };
+    void buildMode;
     const controller = new AbortController();
     const opening = openLiveCapture({ sampleRate: 16000, signal: controller.signal, onPcm: vi.fn(), onError: vi.fn() });
     f.contexts[0]!.audioWorklet.addModule.mockRejectedValue(new Error('worklet failed'));

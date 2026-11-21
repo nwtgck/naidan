@@ -273,6 +273,9 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
   metaCsp: missingAsUndefined(dtozod.string()),
   chatBrowserModelPickerTab: missingAsUndefined(dtozod.enum(['files', 'linked-folders', 'hugging-face', 'saved'])),
   modelDiscoveryTab: missingAsUndefined(dtozod.enum(['candidates', 'hugging_face', 'local_files'])),
+  huggingFaceModelSearch: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+    autoSearch: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+  }))),
   markdownRendering: missingAsUndefined(dtozod.union([
     dtozod.literal('block_markdown'),
     dtozod.literal('monolithic_html'),
@@ -282,6 +285,13 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
   fakeLm: missingAsUndefined(dtozod.literal('enabled')),
   naidanRpc: missingAsUndefined(dtozod.literal('enabled')),
   unimplementedLauncherEntries: missingAsUndefined(dtozod.enum(['show', 'hide'])),
+  audioTranscription: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+    microphoneAutoCopy: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+    modelId: missingAsUndefined(dtozod.string()),
+    modelAutoLoad: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+    microphoneSegmentMaxSeconds: missingAsUndefined(dtozod.number()),
+    recognitionLanguage: missingAsUndefined(dtozod.enum(['auto', 'ja', 'en'])),
+  }))),
   generationSpeed: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
     status: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
     inlineStats: missingAsUndefined(dtozod.enum(['on_demand', 'always'])),

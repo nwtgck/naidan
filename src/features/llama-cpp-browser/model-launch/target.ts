@@ -1,5 +1,6 @@
 import { modelLaunchTargetSchema, type ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
+import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import type { DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 import { parseRepository, type RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
@@ -180,7 +181,8 @@ export function modelLaunchChatGroupName({ target }: { target: ModelLaunchTarget
 }
 
 export function sameLaunchTarget({ left, right }: { left: ModelLaunchTarget, right: ModelLaunchTarget }): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return left.modelId === right.modelId && left.mainFilePath === right.mainFilePath
+    && selectionKey({ selection: left.selection }) === selectionKey({ selection: right.selection });
 }
 
 // Retain only catalogs obtained by explicit visits/checks. A chat reload never

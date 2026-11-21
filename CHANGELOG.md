@@ -27,6 +27,31 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.70.0] - 2026-11-21
+
+### Added
+
+- Transcribe microphone speech as you speak, or turn supported audio and video files into editable text on the Audio Transcription page.
+- See when the microphone picks up sound and adjust the maximum time between transcription segments during continuous speech.
+- Optionally copy microphone transcription updates to the clipboard automatically. See whether the entire current transcript has been copied, or clear it and keep speaking.
+- Keep voice input controls and the transcript in a floating window on supported browsers.
+- Choose transcription models from the catalog, local GGUF files or folders, and Hugging Face. Browse all models on your device, including those whose compatibility has yet to be confirmed. Choose a quantization and download destination, then download the model ahead of time or when starting transcription.
+- Remember the selected transcription model and audio language. Transcription can preload the selected model when it is already saved on your device.
+- Add searchable browser model pages for the ggml-org and Unsloth distributions of Inkling 2 Mini GGUF.
+
+### Changed
+
+- New setups start with llama.cpp browser as the chat connection, ready for you to choose a local model. Existing saved connections are kept.
+- In llama.cpp browser chats, choose a suggested or saved model, add GGUF files or folders, or search Hugging Face from the model picker. Review the files and download destination, then download the model ahead of time or send a message to start the download.
+- Adjust the current chat's thinking setting from any model picker tab.
+- Find saved models even when the search omits hyphens, switch quantizations without closing the picker, and copy the selected model ID from its details.
+- In the chat and audio transcription model pickers, you can opt in to searching Hugging Face as you type.
+
+### Fixed
+
+- Choose BF16 storage automatically for browser image chat. Projectors without confirmed retention support use legacy expansion, and an early retention refusal can trigger one retry. When you explicitly select retention, Naidan requires that mode and reports an error if retention is unsupported.
+- Keep attached images and surrounding text in separate message blocks when chatting with Inkling 2 through llama.cpp Browser.
+
 ## [0.69.0] - 2026-11-16
 
 ### Added
@@ -1183,7 +1208,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.69.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.70.0...develop
+[0.70.0]: https://github.com/nwtgck/naidan/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/nwtgck/naidan/compare/v0.68.0...v0.69.0
 [0.68.0]: https://github.com/nwtgck/naidan/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/nwtgck/naidan/compare/v0.66.0...v0.67.0

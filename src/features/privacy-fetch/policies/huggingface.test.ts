@@ -3,6 +3,7 @@ import { validatePrivacyFetchUrl } from '@/features/privacy-fetch/validate-url';
 import { normalizeHuggingFaceParameterFilter } from './huggingface';
 
 const searchUrl = 'https://huggingface.co/api/models?apps=llama.cpp&sort=trendingScore&limit=20';
+const ggufSearchUrl = 'https://huggingface.co/api/models?filter=gguf&sort=trendingScore&limit=20';
 
 describe('Hugging Face model search privacy policy', () => {
   it.each([
@@ -19,6 +20,30 @@ describe('Hugging Face model search privacy policy', () => {
     `${searchUrl}&num_parameters=max:128B`,
   ])('accepts bounded public llama.cpp searches: %s', urlText => {
     expect(validatePrivacyFetchUrl({ urlText })).toMatchObject({ ok: true, policyName: 'huggingface_models' });
+  });
+
+  it.each([
+    ggufSearchUrl,
+    `${ggufSearchUrl}&search=qwen-asr`,
+    `${ggufSearchUrl}&cursor=opaque%2B%2F%3D&expand[]=gguf&expand[]=pipeline_tag`,
+    `${ggufSearchUrl}&num_parameters=max:8B`,
+  ])('accepts explicitly scoped GGUF searches: %s', urlText => {
+    expect(validatePrivacyFetchUrl({ urlText })).toMatchObject({ ok: true, policyName: 'huggingface_models' });
+  });
+
+  it.each([
+    `${searchUrl}&filter=gguf`,
+    `${ggufSearchUrl}&apps=llama.cpp`,
+    `${ggufSearchUrl}&filter=gguf`,
+    `${ggufSearchUrl}&filter=safetensors`,
+    ggufSearchUrl.replace('filter=gguf', 'filter=safetensors'),
+    ggufSearchUrl.replace('filter=gguf', 'filter='),
+    ggufSearchUrl.replace('filter=gguf', 'filter[]=gguf'),
+    ggufSearchUrl.replace('filter=gguf', 'library=gguf'),
+    `${ggufSearchUrl}&token=secret`,
+    `${ggufSearchUrl}&cursor=next&cursor=other`,
+  ])('rejects mixed, repeated or unsupported GGUF search scopes: %s', urlText => {
+    expect(validatePrivacyFetchUrl({ urlText }).ok).toBe(false);
   });
 
   it.each([

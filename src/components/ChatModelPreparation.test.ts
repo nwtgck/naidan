@@ -30,6 +30,7 @@ it('keeps failed-download local recovery bound to its current chat operation', a
     downloadJob: computed(() => job.value),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
+    prepareRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     maySend: computed(() => false),
     accept: vi.fn(async () => {}),
@@ -66,12 +67,13 @@ it('keeps failed-download local recovery bound to its current chat operation', a
 
 it('uses the existing download presentation outside the picker with retry, pause and a way to choose again', async () => {
   const operation = shallowRef<ChatLocalModelOperation>({ id: 1, phase: 'downloading', candidates: [], model: undefined, error: undefined, downloadJobId: 1 });
-  const job = shallowRef<DownloadJob>({ id: 1, key: 'download', repository: 'owner/Model-9B', source: 'repository', destination: { kind: 'opfs' }, status: 'downloading', selection: undefined, progress: undefined, error: undefined });
+  const job = shallowRef<DownloadJob | undefined>({ id: 1, key: 'download', repository: 'owner/Model-9B', source: 'repository', destination: { kind: 'opfs' }, status: 'downloading', selection: undefined, progress: undefined, error: undefined });
   const selection = {
     operation: computed(() => operation.value),
     downloadJob: computed(() => job.value),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
+    prepareRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     maySend: computed(() => false),
     accept: vi.fn(async () => {}),
@@ -91,9 +93,19 @@ it('uses the existing download presentation outside the picker with retry, pause
   expect(wrapper.find('[data-testid="chat-local-model-input"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="browser-model-preparation"]').exists()).toBe(false);
   await wrapper.get('[data-testid="llama-download-pause"]').trigger('click');
-  expect(queue.cancel).toHaveBeenCalledWith({ id: job.value.id });
+  expect(queue.cancel).toHaveBeenCalledWith({ id: job.value?.id });
   operation.value = { ...operation.value, phase: 'error', error: 'storage-error' };
-  job.value = { ...job.value, status: 'failed', error: 'failed' };
+  const download = job.value;
+  job.value = undefined;
+  await wrapper.vm.$nextTick();
+  expect(wrapper.get('[role="alert"]').text()).toContain('Could not prepare');
+  await wrapper.get('[data-testid="chat-model-prepare-retry"]').trigger('click');
+  expect(selection.retry).toHaveBeenCalledOnce();
+  selection.retry.mockClear();
+  if (download === undefined) {
+    throw new Error('Expected the original download');
+  }
+  job.value = { ...download, status: 'failed', error: 'failed' };
   await wrapper.vm.$nextTick();
   await wrapper.get('[data-testid="llama-download-resume"]').trigger('click');
   expect(selection.retry).toHaveBeenCalledOnce();
@@ -124,6 +136,7 @@ it('reuses local loading progress and retry without the page-sized preparation p
     downloadJob: computed(() => undefined),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
+    prepareRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     maySend: computed(() => false),
     accept: vi.fn(async () => {}),

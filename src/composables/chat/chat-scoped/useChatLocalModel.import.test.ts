@@ -24,11 +24,14 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
 }));
 vi.mock('./chat-model-binding-operations', () => ({ withChatModelBindingFinalization: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedSelection: state.installed }));
-vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', () => ({ getDownloadQueue: () => ({ jobs: { value: [] }, enqueue: state.enqueue }) }));
-vi.mock('@/features/llama-cpp-browser/hugging-face/download-plan', async () => {
+vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', async importOriginal => ({
+  ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(),
+  getDownloadQueue: () => ({ jobs: { value: [] }, enqueue: state.enqueue }),
+}));
+vi.mock('@/features/llama-cpp-browser/model-launch/bundled-repository-target', async importOriginal => {
   state.importing.resolve();
   await state.release.promise;
-  return { selectionKey: () => 'selected-model' };
+  return importOriginal();
 });
 
 it('does not enqueue a host download after cancellation while lazy download code is importing', async () => {
@@ -44,12 +47,15 @@ it('does not enqueue a host download after cancellation while lazy download code
   const command = scope.run(() => useChatLocalModel({ chatId: ref(chatId), binding: 'empty-chat' }))!;
   const destination = { kind: 'host' as const, directoryId: 'root-a' };
   const target: ModelLaunchTarget = { modelId: 'hf.co/owner/model:Q4', mainFilePath: 'Q4.gguf', selection: { repository: 'owner/model', revision: 'a'.repeat(40), files: [{ path: 'Q4.gguf', size: 128 }] } };
-  const pending = command.useRepositoryModel({ target, destination, authorizeDestination: async () => ({ destination, expectedRoot: { name: 'Models' } as FileSystemDirectoryHandle }) });
+  const authorizeDestination = vi.fn(async () => ({ destination, expectedRoot: { name: 'Models' } as FileSystemDirectoryHandle }));
+  const pending = command.useRepositoryModel({ target, destination, authorizeDestination });
   await state.importing.promise;
-  expect(state.installed).toHaveBeenCalledOnce();
+  expect(authorizeDestination).toHaveBeenCalledExactlyOnceWith({ destination });
+  expect(state.installed).not.toHaveBeenCalled();
   scope.stop();
   state.release.resolve();
   await pending;
+  expect(state.installed).not.toHaveBeenCalled();
   expect(state.enqueue).not.toHaveBeenCalled();
   expect(state.apply).not.toHaveBeenCalled();
   expect(command.maySend.value).toBe(true);

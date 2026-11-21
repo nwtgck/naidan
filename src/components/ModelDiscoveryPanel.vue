@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
-import LlamaCppBrowserLocalFileRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue';
-import { computed, nextTick, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onUnmounted, ref, shallowRef, watch, type Component } from 'vue';
 import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, CheckIcon, CpuIcon, HardDriveIcon, Loader2Icon, SearchIcon, ShieldCheckIcon, XIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useModelDiscoveryTab } from '@/composables/useModelDiscoveryTab';
@@ -18,6 +17,8 @@ import { confirmModelLaunchSelection, modelLaunchEntryState, retireModelLaunch, 
 import type { ModelDiscoveryTab } from './browser-model-presentation';
 import BrowserModelPreparation from './BrowserModelPreparation.vue';
 import SettingsSelect from './SettingsSelect.vue';
+
+const LlamaCppBrowserLocalFileRecovery = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue'));
 
 type ModelPreview = { input?: string, suggestionId: string | undefined, repository: string, variant: string, name: string, developer: string };
 const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab | undefined, interaction?: 'blocked' | 'ready', currentModelId?: string, selectionTarget?: 'chat' }>();

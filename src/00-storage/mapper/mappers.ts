@@ -2307,12 +2307,14 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch,
       markdownRendering,
       toolConfigPersistence,
       toolConfigs,
       fakeLm,
       naidanRpc,
       unimplementedLauncherEntries,
+      audioTranscription,
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
@@ -2355,12 +2357,22 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       metaCspForDevelopmentNotForSecurity: metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch: huggingFaceModelSearch === undefined ? undefined : (() => {
+        const { autoSearch, ...unhandledSearch } = huggingFaceModelSearch;
+        unhandledSearch satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['huggingFaceModelSearch']>>()({ autoSearch });
+      })(),
       markdownRendering,
       toolConfigPersistence: toolConfigPersistence ?? 'enabled',
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
       fakeLm: fakeLm ?? 'disabled',
       naidanRpc: naidanRpc ?? 'disabled',
       unimplementedLauncherEntries,
+      audioTranscription: audioTranscription === undefined ? undefined : (() => {
+        const { microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage, ...unhandledAudioTranscription } = audioTranscription;
+        unhandledAudioTranscription satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['audioTranscription']>>()({ microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage });
+      })(),
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;
@@ -2461,12 +2473,14 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch,
       markdownRendering,
       toolConfigPersistence,
       toolConfigs,
       fakeLm,
       naidanRpc,
       unimplementedLauncherEntries,
+      audioTranscription,
       generationSpeed,
       sidebarSendMessageReorder,
       globalSearch,
@@ -2509,6 +2523,11 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       metaCsp: metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch: huggingFaceModelSearch === undefined ? undefined : (() => {
+        const { autoSearch, ...unhandledSearch } = huggingFaceModelSearch;
+        unhandledSearch satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['huggingFaceModelSearch']>>()({ autoSearch });
+      })(),
       markdownRendering,
       toolConfigPersistence: (() => {
         switch (toolConfigPersistence) {
@@ -2535,6 +2554,11 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         status: fakeLm,
       }),
       unimplementedLauncherEntries,
+      audioTranscription: audioTranscription === undefined ? undefined : (() => {
+        const { microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage, ...unhandledAudioTranscription } = audioTranscription;
+        unhandledAudioTranscription satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['audioTranscription']>>()({ microphoneAutoCopy, modelId, modelAutoLoad, microphoneSegmentMaxSeconds, recognitionLanguage });
+      })(),
       generationSpeed: generationSpeed === undefined ? undefined : (() => {
         const { status, inlineStats, llamaCppServerTimings, ...unhandledGenerationSpeed } = generationSpeed;
         unhandledGenerationSpeed satisfies Record<PropertyKey, never>;

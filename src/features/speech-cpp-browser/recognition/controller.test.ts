@@ -128,6 +128,17 @@ it('accepts microphone PCM without a WAV decode roundtrip and preserves its actu
   expect(value.controller.getState().run).toMatchObject({ inputName: 'microphone.wav', inputSeconds: 2 / 24000, status: 'complete' });
 });
 
+it('returns an independent final snapshot for the exact request and undefined when no request can start', async () => {
+  await using value = fixture();
+  expect(await value.controller.runAudio({ samples: new Float32Array(1), sampleRate: 16000, inputName: 'unloaded', language: undefined })).toBeUndefined();
+  await value.controller.load({ file: new File([], 'recognizer.gguf') });
+  const result = await value.controller.runAudio({ samples: new Float32Array(1), sampleRate: 16000, inputName: 'source', language: 'ja' });
+  expect(result).toMatchObject({ inputName: 'source', status: 'complete', text: 'こんにちは', languages: ['ja'] });
+  expect(result).not.toBe(value.controller.getState().run);
+  result!.languages.push('changed by caller');
+  expect(value.controller.getState().run?.languages).toEqual(['ja']);
+});
+
 it('reuses a load attempt binding for the first run while keeping observer callbacks out of native arguments', async () => {
   await using value = fixture();
   const observer = vi.fn(), context = { operationId: 'attempt', source: 'investigation' as const };

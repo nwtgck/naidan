@@ -9,10 +9,10 @@ export function directoryFromFiles({ files }: { files: File[] }): ModelDirectory
   }
 }
 
-export async function droppedModels({ transfer, signal }: { transfer: DataTransfer, signal?: AbortSignal }): Promise<{ directories: ModelDirectoryInput[], files: File[] }> {
+export async function droppedModels({ transfer, signal, allowOtherFiles }: { transfer: DataTransfer, signal?: AbortSignal, allowOtherFiles?: boolean }): Promise<{ directories: ModelDirectoryInput[], files: File[] }> {
   try {
     const result = await droppedModelFiles({ transfer, signal });
-    if (result.files.some(file => !/\.gguf$/i.test(file.name))) {
+    if (!allowOtherFiles && result.files.some(file => !/\.gguf$/i.test(file.name))) {
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     }
     return result;
@@ -21,7 +21,7 @@ export async function droppedModels({ transfer, signal }: { transfer: DataTransf
     if (error instanceof LlamaCppBrowserError) {
       throw error;
     }
-    throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+    throw new LlamaCppBrowserError({ code: 'unsupported-input', cause: error });
   }
 }
 

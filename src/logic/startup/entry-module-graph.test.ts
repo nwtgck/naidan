@@ -250,6 +250,16 @@ describe('production entry module boundaries', () => {
     expect(graph.referencesFrom({ from: 'src/components/OnBoardingModalV2.vue' })).not.toContainEqual({ from: 'src/components/OnBoardingModalV2.vue', target: 'src/components/OnBoardingModalV2LocalModelInput.vue', kind: 'static' });
   });
 
+  it('keeps download recovery and its file picker out of the initial app imports', () => {
+    const paths = staticModulePaths({ graph, root: 'src/App.vue' });
+    for (const target of [
+      'src/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue',
+      'src/features/llama-cpp-browser/components/LlamaCppBrowserLocalFiles.vue',
+    ]) {
+      expect(paths.has(target), paths.get(target)?.join(' -> ')).toBe(false);
+    }
+  });
+
   it('keeps the root home behind MainApp and loads its creation action only on demand', () => {
     const pending = ['src/App.vue'];
     const visited = new Set<string>();

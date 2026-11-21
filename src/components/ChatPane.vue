@@ -3,7 +3,8 @@ import { useTransformersJsDocumentTitle } from '@/features/transformers-js/compo
 import { downloadStream } from "@/utils/stream-download";
 import { createTextExportStream } from "@/utils/text-export-stream";
 import { ensureStrings, lazyStrings } from '@/strings';
-import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue';
+import { cloneDownloadDestination } from '@/01-models/download';
+import { ref, watch, nextTick, computed, defineAsyncComponent, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatPaneAutoScroll, type ChatPaneInitialOpenTarget, type ChatPaneScrollTarget } from '@/composables/useChatPaneAutoScroll';
 import { useChatPaneSession } from '@/composables/chat/ui/useChatPaneSession';
@@ -50,8 +51,10 @@ import { useGenerationMetrics } from '@/composables/useGenerationMetrics';
 import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
-import { useChatLocalModel } from '@/composables/chat/chat-scoped/useChatLocalModel';
+import { useChatLocalModel, type ChatRepositoryModelSelection } from '@/composables/chat/chat-scoped/useChatLocalModel';
 const ChatLocalModelInput = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/ChatLocalModelInput.vue'));
+const ModelSelectorFileImport = defineAsyncComponent(() => import('@/components/ModelSelectorFileImport.vue'));
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchCard.vue';
 import LlamaCppBrowserModelLaunchPrivacy from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchPrivacy.vue';
 import { modelLaunchPreparationStage } from '@/features/llama-cpp-browser/model-launch/presentation';
@@ -197,12 +200,56 @@ const modelLaunch = useModelLaunchChat({ chat, resolved: computed(() => resolved
 const localModelLaunch = useLocalModelLaunchChat({ chat, resolved: computed(() => resolvedSettings.value ?? undefined) });
 const chatLocalModel = useChatLocalModel({ chatId: computed(() => props.chatId), binding: 'empty-chat' });
 const chatModelSelection = useChatLocalModel({ chatId: computed(() => props.chatId), binding: 'chat' });
+const deferredRepositoryModel = shallowRef<{ selection: ChatRepositoryModelSelection, isCurrent(): boolean }>();
+
+function chooseDeferredRepositoryModel({ selection }: { selection: ChatRepositoryModelSelection }): void {
+  if (chatModelSelection.maySend.value) {
+    modelSelectionOrigin.value = 'selector';
+    deferredRepositoryModel.value = {
+      selection: { ...selection, destination: cloneDownloadDestination({ destination: selection.destination }) },
+      isCurrent: storageService.captureSettingsStorage(),
+    };
+  }
+}
+
+function clearDeferredRepositoryModel(): void {
+  deferredRepositoryModel.value = undefined;
+}
+
+const addedChatModels = shallowRef<readonly LocalModel[]>([]);
+
+function chooseStoredSelectorModel({ model }: { model: LocalModel }): void {
+  modelSelectionOrigin.value = 'selector';
+  clearDeferredRepositoryModel();
+  void chatModelSelection.useModel({ model });
+}
+
+async function prepareDeferredRepositoryModel(): Promise<boolean> {
+  const pending = deferredRepositoryModel.value;
+  if (pending === undefined || !pending.isCurrent() || !chatModelSelection.maySend.value) {
+    return false;
+  }
+  const preparingChatId = props.chatId;
+  let applied = false;
+  await chatModelSelection.prepareRepositoryModel({
+    selection: pending.selection,
+    onApplied: () => {
+      if (deferredRepositoryModel.value === pending && props.chatId === preparingChatId && pending.isCurrent()) {
+        applied = true;
+        clearDeferredRepositoryModel();
+      }
+    },
+  });
+  return applied && props.chatId === preparingChatId && pending.isCurrent();
+}
+
 const localModelInputExpansion = ref<'closed' | 'open'>('closed');
 const localModelReselection = ref(false);
 const chatLocalModelPreparing = computed(() => chatLocalModel.operation.value?.model !== undefined);
 const showLocalModelPreparation = computed(() => chat.value?.root.items.length === 0 && localModelLaunch.visible.value && !localModelReselection.value && chatLocalModel.operation.value === undefined);
 const hasModelPreparation = computed(() => modelLaunch.visible.value || showLocalModelPreparation.value || chatLocalModelPreparing.value);
-const showLocalModelInput = computed(() => chat.value !== null && chat.value.root.items.length === 0 && !hasModelPreparation.value);
+const showLocalModelWelcome = computed(() => chat.value !== null && chat.value.root.items.length === 0 && !hasModelPreparation.value);
+const showLocalModelInput = computed(() => showLocalModelWelcome.value && deferredRepositoryModel.value === undefined);
 const localModelPreparation: LocalModelLaunchChatUi = {
   visible: chatLocalModelPreparing,
   model: computed(() => chatLocalModel.operation.value?.model),
@@ -363,7 +410,7 @@ const inputVisibility = ref<ChatInputVisibility>('active');
 const hasChatHistory = computed(() => (chat.value?.root.items.length ?? 0) > 0);
 const recoveryExpansion = ref<'closed' | 'open'>('closed');
 const recoveryVisited = ref(false);
-const modelSelectionOrigin = ref<'inline' | 'modal'>('modal');
+const modelSelectionOrigin = ref<'inline' | 'selector'>('selector');
 
 function setRecoveryExpansion({ expansion }: { expansion: 'closed' | 'open' }): void {
   recoveryExpansion.value = expansion;
@@ -415,8 +462,9 @@ const chatModelNotice = computed<ChatModelRecoveryNotice | undefined>(() => {
   return undefined;
 });
 const historyModelPreparation = computed(() => chatLocalModelPreparing.value ? localModelPreparation : localModelLaunch.visible.value && localModelLaunch.status.value !== 'ready' ? localModelLaunch : undefined);
-const historyModelPreparationVisible = computed(() => hasChatHistory.value
+const historyModelPreparationVisible = computed(() => (hasChatHistory.value
   && (historyModelPreparation.value !== undefined || chatModelSelection.operation.value?.downloadJobId !== undefined)
+  || deferredRepositoryModel.value !== undefined && chatModelSelection.operation.value !== undefined)
   && appEntry.modelSelection.value === undefined && activeApprovalRequest.value === undefined && activeChoiceRequest.value === undefined);
 const historyModelRecoveryVisible = computed(() => hasChatHistory.value && (chatModelNotice.value !== undefined || chatModelSelection.operation.value !== undefined || recoveryExpansion.value === 'open'));
 const recoveryPresentation = computed(() => historyModelPreparationVisible.value || appEntry.modelSelection.value !== undefined || activeApprovalRequest.value !== undefined || activeChoiceRequest.value !== undefined ? 'suppressed' as const : 'visible' as const);
@@ -427,7 +475,7 @@ const isDragging = ref(false);
 
 function handleDragOver({ event }: { event: DragEvent }) {
   event.preventDefault();
-  isDragging.value = true;
+  isDragging.value = !chatInputRef.value?.isModelFileImportOpen();
 }
 
 function handleDragLeave({ event }: { event: DragEvent }) {
@@ -447,7 +495,7 @@ async function handleDrop({ event }: { event: DragEvent }) {
   event.preventDefault();
   isDragging.value = false;
 
-  if (event.dataTransfer?.items) {
+  if (!chatInputRef.value?.isModelFileImportOpen() && event.dataTransfer?.items) {
     // Pass DataTransferItem[] to processDropItems which handles files AND directories.
     // Items must be collected here (synchronously) before any await, as the DataTransfer
     // object is cleared when control returns to the browser event loop.
@@ -462,10 +510,18 @@ const {
   save: saveSettings,
   setFakeLmDebugModeStatus,
 } = useSettings();
+watch([() => props.chatId, () => settings.value.storageType], clearDeferredRepositoryModel, { flush: 'sync' });
+watch(() => resolvedSettings.value?.endpoint.type, endpointType => {
+  if (endpointType !== 'llama_cpp_browser' && deferredRepositoryModel.value !== undefined) {
+    clearDeferredRepositoryModel();
+    void chatModelSelection.cancel();
+  }
+}, { flush: 'sync' });
+
 watch([() => props.chatId, () => settings.value.storageType], () => {
   recoveryExpansion.value = 'closed';
   recoveryVisited.value = false;
-  modelSelectionOrigin.value = 'modal';
+  modelSelectionOrigin.value = 'selector';
 });
 const router = useRouter();
 const appEntry = useAppEntry();
@@ -1104,6 +1160,9 @@ const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
   if (!chatLocalModel.maySend.value) {
     return 'blocked';
   }
+  if (deferredRepositoryModel.value !== undefined) {
+    return modelLaunch.runtimeUnavailable.value ? 'blocked' : 'send';
+  }
   const resolved = resolvedSettings.value;
   const type = resolvedEndpointType.value;
   if (!resolved) {
@@ -1143,6 +1202,7 @@ const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
 });
 
 async function cancelChatModelPreparation(): Promise<void> {
+  clearDeferredRepositoryModel();
   const targetChatId = props.chatId;
   const isStorageCurrent = storageService.captureModelLaunchStorage();
   chatModelSelection.pauseDownload();
@@ -1161,7 +1221,7 @@ async function chooseAnotherChatModel(): Promise<void> {
     switch (origin) {
     case 'inline': setRecoveryExpansion({ expansion: 'open' });
       break;
-    case 'modal': requestModelSelection();
+    case 'selector': chatInputRef.value?.openModelSelector();
       break;
     default: {
       const exhaustive: never = origin;
@@ -1169,27 +1229,6 @@ async function chooseAnotherChatModel(): Promise<void> {
     }
     }
   }
-}
-
-function requestModelSelection(): void {
-  modelSelectionOrigin.value = 'modal';
-  appEntry.openModelSelection({
-    target: {
-      kind: 'chat',
-      chatId: props.chatId,
-      acceptFiles: ({ directories, controller, save }) => {
-        void chatModelSelection.accept({ directories, controller, save });
-      },
-      useRepositoryModel: ({ target, destination, authorizeDestination }) => {
-        void chatModelSelection.useRepositoryModel({ target, destination, authorizeDestination });
-      },
-      useModel: ({ model }) => {
-        void chatModelSelection.useModel({ model });
-      },
-    },
-    selection: appEntry.homeSelection.value,
-    opener: document.activeElement instanceof HTMLElement ? document.activeElement : undefined,
-  });
 }
 
 const enabledToolNames = computed(() => {
@@ -2124,9 +2163,9 @@ watch(
 
       <!-- Welcome controls must not move with history scrolling, including the
            scroll following a composer resize or its submerged transition. -->
-      <div v-if="chat && activeMessages.length === 0" data-testid="chat-empty-viewport" :tw-class="['absolute inset-0', showLocalModelInput ? 'overflow-clip' : 'overflow-y-auto overscroll-contain']" :style="{ paddingBottom: `${composerLayout.bottomPaddingPx.value}px` }">
+      <div v-if="chat && activeMessages.length === 0" data-testid="chat-empty-viewport" :tw-class="['absolute inset-0', showLocalModelWelcome ? 'overflow-clip' : 'overflow-y-auto overscroll-contain']" :style="{ paddingBottom: `${composerLayout.bottomPaddingPx.value}px` }">
         <WelcomeScreen
-          :class="{ 'model-preparation-welcome': hasModelPreparation, 'chat-local-model-welcome': showLocalModelInput, 'chat-local-model-expanded': showLocalModelInput && localModelInputExpansion === 'open' }"
+          :class="{ 'model-preparation-welcome': hasModelPreparation, 'chat-local-model-welcome': showLocalModelWelcome, 'chat-local-model-expanded': showLocalModelInput && localModelInputExpansion === 'open' }"
           :has-input="(chatInputRef?.input || '').trim().length > 0"
           :suggestions-visibility="welcomeSuggestionsVisibility"
           @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
@@ -2136,8 +2175,10 @@ watch(
             <LocalModelPreparation v-else-if="chatLocalModelPreparing" :state="localModelPreparation" :error-message="chatLocalModel.operation.value?.error === 'not-empty' ? lazyStrings.ChatLocalModelInput__this_chat_already_has_messages() : undefined" />
             <LocalModelPreparation v-else :state="localModelLaunch" />
           </template>
-          <template v-if="showLocalModelInput" #actions>
-            <ChatLocalModelInput v-model:expansion="localModelInputExpansion" :state="chatLocalModel" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" layout="welcome" scroll-mode="source" :source-tabs-host="undefined" @model-drop-area-active="isDragging = false" />
+          <template v-if="showLocalModelWelcome" #actions>
+            <ChatLocalModelInput v-if="showLocalModelInput" v-model:expansion="localModelInputExpansion" :state="chatLocalModel" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" layout="welcome" scroll-mode="source" :source-tabs-host="undefined" @model-drop-area-active="isDragging = false" />
+            <!-- Keep the collapsed import control's space while a repository model is selected. -->
+            <div v-else aria-hidden="true" tw-class="h-9 shrink-0" />
           </template>
           <template v-if="firefoxWebGpuWarning.visible.value" #notice>
             <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
@@ -2183,6 +2224,13 @@ watch(
       :chat="chat"
       :chat-group="chatGroup"
       :endpoint="resolvedSettings?.endpoint"
+      :browser-model-selection="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'"
+      :deferred-repository-model="deferredRepositoryModel?.selection"
+      :prepare-model-for-submission="deferredRepositoryModel ? prepareDeferredRepositoryModel : undefined"
+      :model-selection-busy="deferredRepositoryModel !== undefined && !chatModelSelection.maySend.value"
+      @choose-deferred-repository-model="chooseDeferredRepositoryModel({ selection: $event })"
+      @clear-deferred-repository-model="clearDeferredRepositoryModel"
+      @use-local-model="chooseStoredSelectorModel"
       :resolved-lm-parameters="resolvedSettings?.lmParameters"
       :inherited-model-id="inheritedSettings?.modelId"
       :inherited-model-source="inheritedSettings?.sources.modelId"
@@ -2199,7 +2247,6 @@ watch(
       :is-streaming="isChatStreaming"
       :is-submission-enabled="isChatSubmissionEnabled"
       :text-submission-action="chatTextSubmissionAction"
-      @request-model-selection="requestModelSelection"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
       :available-image-models="availableImageModels"
@@ -2208,6 +2255,9 @@ watch(
       @sent="clearTargetMessageQuery"
       @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
     >
+      <template #model-files="{ close, refreshInventory }">
+        <ModelSelectorFileImport v-model:added="addedChatModels" :selected-model-id="deferredRepositoryModel?.selection.modelId ?? resolvedSettings?.modelId" :disabled="isChatStreaming" @choose="model => { chooseStoredSelectorModel({ model }); close(); }" @inventory-changed="refreshInventory()" />
+      </template>
       <template #above-input>
         <ChatApprovalPanel
           v-if="activeApprovalRequest !== undefined"

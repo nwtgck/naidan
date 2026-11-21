@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, defineComponent, effectScope, h, ref } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import type { Endpoint } from '@/01-models/types';
 import { toChatId } from '@/01-models/ids';
 import { useChatModels, type ChatModelsAdapter } from './useChatModels';
 import { provideChatViewScope } from './ui/chat-view-scope';
@@ -76,6 +77,26 @@ describe('model choices for an embedded ChatPane', () => {
     slow.resolve(['stale same chat']);
     await older;
     expect(view.adapter.availableModels.value).toEqual(['newer']);
+  });
+
+  it('invalidates an inherited endpoint before a stale request can replace the local list', async () => {
+    const endpoint = ref<Endpoint>({ type: 'openai', url: 'http://localhost:8888' });
+    const scope = effectScope();
+    using cleanup = { [Symbol.dispose]: () => scope.stop() };
+    void cleanup;
+    const adapter = scope.run(() => useChatModels({ scope: ref(chatA), endpoint }))!;
+    mocks.chat.mockResolvedValueOnce(['old']);
+    await adapter.fetchForChat({ chatId: chatA });
+    expect(adapter.availableModels.value).toEqual(['old']);
+    const slow = Promise.withResolvers<string[]>();
+    mocks.chat.mockReturnValueOnce(slow.promise).mockResolvedValueOnce(['user/new']);
+    const stale = adapter.fetchForChat({ chatId: chatA });
+    endpoint.value = { type: 'llama_cpp_browser' };
+    expect(adapter.availableModels.value).toEqual([]);
+    await adapter.fetchForChat({ chatId: chatA });
+    slow.resolve(['late']);
+    await stale;
+    expect(adapter.availableModels.value).toEqual(['user/new']);
   });
 
   it('does not publish to another chat or a disposed view and clears loading after errors', async () => {

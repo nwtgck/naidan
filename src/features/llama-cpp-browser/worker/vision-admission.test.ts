@@ -21,14 +21,14 @@ function request({ projector }: { projector: 'present' | 'absent' }): WorkerPrep
 }
 
 describe('native vision admission before sending image bytes', () => {
-  it('records the current default request separately from a reused explicit retained projector', async () => {
+  it('records automatic storage separately from a reused projector expanded after a retention refusal', async () => {
     vi.mocked(prepareSession).mockResolvedValue({
       core: { api: { mtmd_support_vision: async () => 1 } },
       projector: 7n,
-      projectorStorage: { preference: 'retain-checked', selectedMode: 'retain-checked', contextRequestedMode: 'retain-checked', capability: 'available', status: 'initialized', apiVersion: 1, reason: 'explicit', evidence: 'requested-policy-only' },
+      projectorStorage: { preference: 'default', initialMode: 'retain-checked', selectedMode: 'legacy-expand', contextRequestedMode: 'legacy-expand', capability: 'available', status: 'initialized', apiVersion: 1, reason: 'auto-retention-refused', evidence: 'requested-policy-only', retentionRefusal: { status: 'retention-refused', reason: 'weight-unreviewed', phase: 'preupload', cleanup: 'complete' } },
     } as unknown as Awaited<ReturnType<typeof prepareSession>>);
     const result = await prepareVisionMeasurement({ request: request({ projector: 'present' }), signal: new AbortController().signal, onProgress: () => {}, now: () => 0 });
-    expect(result).toMatchObject({ status: 'ready', diagnostic: { storagePolicy: 'runtime-default', storage: { preference: 'default', selectedMode: 'retain-checked', contextRequestedMode: 'retain-checked', reason: 'default-retain', evidence: 'requested-policy-only' } } });
+    expect(result).toMatchObject({ status: 'ready', diagnostic: { storagePolicy: 'runtime-default', storage: { preference: 'default', selectedMode: 'legacy-expand', contextRequestedMode: 'legacy-expand', reason: 'auto-retention-refused', retentionRefusal: { reason: 'weight-unreviewed', phase: 'preupload', cleanup: 'complete' }, evidence: 'requested-policy-only' } } });
   });
 
   it('skips a missing projector before model/native loading', async () => {

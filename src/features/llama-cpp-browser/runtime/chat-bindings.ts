@@ -14,11 +14,12 @@ type ChatInputValues = Pick<common_chat_templates_inputs,
   'delete' | 'tools' | 'add_generation_prompt' | 'use_jinja' | 'parallel_tool_calls' | 'enable_thinking' | 'reasoning_format' | 'chat_template_kwargs'>;
 export type ChatPromptPart = { text: string, isInput: boolean };
 type ParsedMessage = Pick<common_chat_msg, 'delete' | 'tool_calls' | 'content' | 'reasoning_content'>;
+const mediaMarkerPrefix = '<__media_';
 
 /** Bind once to a concrete native module. The generic handles preserve the
  * relation between its constructors and consumers without pretending all
- * generated MainModule declarations have the wasm64 signature. No conversion
- * or cast of size_t, pointers, native handles or model-visible text occurs. */
+ * generated MainModule declarations have the wasm64 signature. This keeps
+ * each profile's size_t, pointer, and handle types intact. */
 // Generic signatures below mirror the generated Embind ABI, retaining each
 // profile's handle relationships; they are not Naidan-owned callback contracts.
 /* eslint-disable local-rules-named-args/require-named-args */
@@ -104,14 +105,26 @@ export function bindNativeChat<
           }
         })();
         const images: { marker: string, blob: Blob }[] = [];
+        let literalMediaPrefix: string | undefined;
+        const protectText = ({ text }: { text: string }): string => {
+          if (!text.includes(mediaMarkerPrefix)) {
+            return text;
+          }
+          // Inkling recognizes the prefix in rendered text. Reserve it for
+          // attachments until the native template has set the message boundaries.
+          literalMediaPrefix ??= `<__text_${crypto.randomUUID()}_`;
+          return text.replaceAll(mediaMarkerPrefix, literalMediaPrefix);
+        };
         const messages = request.messages.map(message => ({
           ...message,
-          content: typeof message.content === 'string' ? message.content : message.content.map(part => {
+          content: typeof message.content === 'string' ? protectText({ text: message.content }) : message.content.map(part => {
             switch (part.type) {
-            case 'text': return part;
+            case 'text': {
+              const text = protectText({ text: part.text });
+              return text === part.text ? part : { ...part, text };
+            }
             case 'image': {
-            // An unpredictable marker keeps literal user text distinct from media.
-              const marker = `<__image_${crypto.randomUUID()}__>`;
+              const marker = `${mediaMarkerPrefix}${crypto.randomUUID()}__>`;
               images.push({ marker, blob: part.blob });
               return { type: 'media_marker', text: marker };
             }
@@ -218,7 +231,8 @@ export function bindNativeChat<
                 throw new Error('Missing native prompt part');
               }
               try {
-                promptParts.push({ text: part.text, isInput: part.is_input });
+                const text = part.text;
+                promptParts.push({ text: literalMediaPrefix === undefined ? text : text.replaceAll(literalMediaPrefix, mediaMarkerPrefix), isInput: part.is_input });
               } finally {
                 part.delete();
               }

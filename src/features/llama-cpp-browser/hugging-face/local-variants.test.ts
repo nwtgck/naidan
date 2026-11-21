@@ -3,12 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import type { ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination-types';
+import { configuredRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { resolveHostModel, listHostStoredModels } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import { prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import { resolveModel } from '@/features/llama-cpp-browser/runtime/model-resolution';
 import { storageService } from '@/00-storage/service';
-import { listHuggingFaceModels, repositoryDirectories, repositoryFolder, resolveRepositoryModel, selectedFile } from './storage';
+import { installedSelection, listHuggingFaceModels, repositoryDirectories, repositoryFolder, resolveRepositoryModel, selectedFile } from './storage';
 
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
 vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
@@ -56,6 +57,28 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
     ? (await resolveHostModel({ modelId, directories, signal: undefined })).directory
     : resolveRepositoryModel({ modelId, signal: undefined });
 
+  it('retains explicit text-only or projector choices through stored model IDs', async () => {
+    const main = prefix + 'Q4_K_M.gguf';
+    const preferred = 'mmproj-Q8_0.gguf';
+    const chosen = 'vision/mmproj-F16.gguf';
+    await writeFiles({ repository, paths: [main, preferred, chosen], destination });
+    const modelId = modelIdForSelector({ selector: 'Q4_K_M' });
+    expect((await resolvePublic({ modelId })).projectorFile?.relativePath).toBe(preferred);
+    const revision = 'a'.repeat(40);
+    for (const projectorPath of [chosen, undefined]) {
+      const paths = projectorPath === undefined ? [main] : [main, projectorPath];
+      const selection = { repository, revision, files: paths.map(path => ({ path, size: 128 })) };
+      const installed = await installedSelection({ selection, destination, exactConfiguration: true });
+      const configuredId = configuredRepositoryModelId({ modelId, configuration: { projectorPath } });
+      expect(installed?.modelId).toBe(configuredId);
+      const resolved = await resolveModel({ modelId: configuredId, signal: undefined });
+      expect(resolved.modelId).toBe(configuredId);
+      expect(resolved.directory.projectorFile?.relativePath).toBe(projectorPath);
+      expect(resolved.directory.files.map(file => file.relativePath)).toEqual(paths);
+    }
+    await expect(resolvePublic({ modelId: configuredRepositoryModelId({ modelId, configuration: { projectorPath: 'missing-mmproj.gguf' } }) })).rejects.toThrow('missing-model');
+  });
+
   it.each([
     {
       layout: 'quantization directory with four shards',
@@ -102,6 +125,15 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
       groups: [
         { variant: 'llama-v2-13b-2.17bpw', paths: ['llama-v2-13b-2.17bpw.gguf'] },
         { variant: 'mistral-7b-2.20bpw', paths: ['mistral-7b-2.20bpw.gguf'] },
+      ],
+    },
+    {
+      layout: 'punctuation and repeated names in the same repository',
+      repository: 'owner/Model-VL-GGUF',
+      groups: [
+        { variant: 'Q4_K_M', paths: ['Model-VL-Q4_K_M.gguf'] },
+        { variant: 'ModelVL-Q4_K_M', paths: ['ModelVL-Q4_K_M.gguf'] },
+        { variant: 'ModelVL-ModelVL-Q4_K_M', paths: ['ModelVL-ModelVL-Q4_K_M.gguf'] },
       ],
     },
     {

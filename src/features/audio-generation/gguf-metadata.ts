@@ -5,7 +5,7 @@ export const AUDIO_METADATA_SCAN_BYTES = GGUF_METADATA_SCAN_BYTES;
 
 /** Retain the audio detector's original per-value allocation bound. */
 export function readAudioGgufMetadata({ file, keys, signal }: { file: GgufMetadataFile, keys: readonly string[], signal: AbortSignal | undefined }): Promise<ReadonlyMap<string, GgufMetadataValue>> {
-  return readGgufMetadata({ file, keys, signal, maxStringBytes: 4096 });
+  return readGgufMetadata({ file, keys, signal, maxStringBytes: 4096, validation: undefined });
 }
 
 export const TEST_ONLY = {

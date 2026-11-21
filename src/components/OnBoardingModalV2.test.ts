@@ -233,7 +233,7 @@ it('offers owned preparation failure guidance directly after the error without c
   const guidance = error.get('[data-testid="welcome-csp-guidance"]');
   expect(error.get('[role="alert"]').element.nextElementSibling?.contains(guidance.element)).toBe(true);
   expect(guidance.attributes()).toMatchObject({ 'data-target': 'huggingface-download', 'data-activity': 'download', 'data-presentation': 'error-details' });
-  expect(error.find('[data-testid="gguf-local-recovery"]').exists()).toBe(true);
+  await vi.waitFor(() => expect(error.find('[data-testid="gguf-local-recovery"]').exists()).toBe(true));
   expect(wrapper.get('[data-testid="browser-model-dialog"]').element).toBe(dialog);
   expect(wrapper.get('[data-testid="start-model"]').element).toBe(start);
   expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeUndefined();
@@ -266,7 +266,7 @@ it('offers local GGUF recovery without CSP guidance and forwards only an explici
   await flushPromises();
   expect(wrapper.find('[data-testid="gguf-local-recovery"]').exists()).toBe(false);
   await wrapper.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
-  const recovery = wrapper.get('[data-testid="welcome-start-error"]').get('[data-testid="gguf-local-recovery"]');
+  const recovery = await vi.waitFor(() => wrapper.get('[data-testid="welcome-start-error"]').get('[data-testid="gguf-local-recovery"]'));
   expect(wrapper.find('[data-testid="welcome-csp-guidance"]').exists()).toBe(false);
   expect(localInput).not.toHaveBeenCalled();
   expect(captureFiles).not.toHaveBeenCalled();

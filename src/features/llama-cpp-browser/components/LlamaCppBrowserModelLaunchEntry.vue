@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, useId, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, shallowRef, useId, watch } from 'vue';
 import { lazyStrings } from '@/strings';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
 import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
-import LlamaCppBrowserLocalFileRecovery from './LlamaCppBrowserLocalFileRecovery.vue';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { usePageDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
@@ -19,6 +18,8 @@ import LanguageSelector from '@/components/LanguageSelector.vue';
 import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { browserModelRepositoryPresentation } from '@/components/browser-model-presentation';
 import BrowserModelPreparation from '@/components/BrowserModelPreparation.vue';
+
+const LlamaCppBrowserLocalFileRecovery = defineAsyncComponent(() => import('./LlamaCppBrowserLocalFileRecovery.vue'));
 
 const props = defineProps<{ input?: string | (string | null)[] | null, interaction?: 'blocked' | 'ready', operation?: symbol }>();
 const appEntry = useAppEntry();

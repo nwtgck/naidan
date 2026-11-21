@@ -195,7 +195,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
   it('toggles submerged state when the submerge button is clicked', async () => {
     wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ChatModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
@@ -215,7 +215,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
   it('automatically unsubmerges when mouse enters the input area', async () => {
     wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ChatModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
@@ -232,7 +232,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
   it('maintains submerged state when switching chats', async () => {
     wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ChatModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
@@ -258,7 +258,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
   it('adjusts scroll container padding-bottom based on visibility state', async () => {
     wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ChatModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
@@ -280,7 +280,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
   it('resets maximized state when submerging', async () => {
     wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ChatModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
@@ -297,7 +297,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
   it('stays in active state on mouseleave if focused', async () => {
     wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ChatModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
@@ -323,7 +323,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
   it('keeps the composer active while interacting with a teleported popup', async () => {
     wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ChatModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
@@ -331,7 +331,7 @@ describe('ChatPane Peek Mode Specifications', () => {
     const card = wrapper.get('[data-testid="chat-input-card"]');
     await card.trigger('mouseenter');
     expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('peeking');
-    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
+    await wrapper.getComponent({ name: 'ChatModelSelector' }).vm.$emit('update:open', true);
     await card.trigger('mouseleave');
     expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('active');
   });

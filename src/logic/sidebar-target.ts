@@ -2,7 +2,7 @@ import type { RouteLocationResolved } from 'vue-router';
 import type { AppEntryIntent } from '@/composables/useAppEntry';
 import { hasModelEntryQuery } from '@/logic/startup/entry-intent';
 
-export type SidebarTarget = 'chat' | 'image_generation' | 'live_conversation' | 'translation' | 'workflow' | 'audio_generation' | 'developer_tools' | 'settings' | 'model_preview' | 'recovery' | 'pending';
+export type SidebarTarget = 'chat' | 'image_generation' | 'live_conversation' | 'translation' | 'workflow' | 'audio_generation' | 'audio_transcription' | 'developer_tools' | 'settings' | 'model_preview' | 'recovery' | 'pending';
 
 function belongsTo({ path, parent }: { path: string, parent: string }): boolean {
   return path === parent || path.startsWith(`${parent}/`);
@@ -45,6 +45,9 @@ export function resolveSidebarTarget({ route, entryKind }: { route: Pick<RouteLo
   }
   if (belongsTo({ path, parent: '/audio-generation' })) {
     return 'audio_generation';
+  }
+  if (belongsTo({ path, parent: '/audio-transcription' })) {
+    return 'audio_transcription';
   }
   if (belongsTo({ path, parent: '/debug' }) || belongsTo({ path, parent: '/llama-cpp-browser/diagnostics' })) {
     return 'developer_tools';
