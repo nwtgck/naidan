@@ -813,6 +813,7 @@ import { DeveloperTab__clear_all } from '@/strings/messages/DeveloperTab__clear_
 import { DeveloperTab__clear_all_cache_storage } from '@/strings/messages/DeveloperTab__clear_all_cache_storage/zh-Hans';
 import { DeveloperTab__clear_cache_storage_warning } from '@/strings/messages/DeveloperTab__clear_cache_storage_warning/zh-Hans';
 import { DeveloperTab__confirm_data_reset } from '@/strings/messages/DeveloperTab__confirm_data_reset/zh-Hans';
+import { DeveloperTab__could_not_save_offline_files } from '@/strings/messages/DeveloperTab__could_not_save_offline_files/zh-Hans';
 import { DeveloperTab__create_long_sample_chat } from '@/strings/messages/DeveloperTab__create_long_sample_chat/zh-Hans';
 import { DeveloperTab__create_sample_chat } from '@/strings/messages/DeveloperTab__create_sample_chat/zh-Hans';
 import { DeveloperTab__danger_zone } from '@/strings/messages/DeveloperTab__danger_zone/zh-Hans';
@@ -821,6 +822,7 @@ import { DeveloperTab__deletes_cache_storage_entries } from '@/strings/messages/
 import { DeveloperTab__developer_tools } from '@/strings/messages/DeveloperTab__developer_tools/zh-Hans';
 import { DeveloperTab__execute_reset } from '@/strings/messages/DeveloperTab__execute_reset/zh-Hans';
 import { DeveloperTab__experimental_features } from '@/strings/messages/DeveloperTab__experimental_features/zh-Hans';
+import { DeveloperTab__offline_files_saved } from '@/strings/messages/DeveloperTab__offline_files_saved/zh-Hans';
 import { DeveloperTab__perform_window_reload } from '@/strings/messages/DeveloperTab__perform_window_reload/zh-Hans';
 import { DeveloperTab__reload_application } from '@/strings/messages/DeveloperTab__reload_application/zh-Hans';
 import { DeveloperTab__reset } from '@/strings/messages/DeveloperTab__reset/zh-Hans';
@@ -828,6 +830,8 @@ import { DeveloperTab__reset_all_app_data_warning } from '@/strings/messages/Dev
 import { DeveloperTab__reset_all_application_data } from '@/strings/messages/DeveloperTab__reset_all_application_data/zh-Hans';
 import { DeveloperTab__reset_data_provider_warning } from '@/strings/messages/DeveloperTab__reset_data_provider_warning/zh-Hans';
 import { DeveloperTab__sample_conversations_description } from '@/strings/messages/DeveloperTab__sample_conversations_description/zh-Hans';
+import { DeveloperTab__save_remaining_app_files_for_offline_use } from '@/strings/messages/DeveloperTab__save_remaining_app_files_for_offline_use/zh-Hans';
+import { DeveloperTab__saving_offline_files } from '@/strings/messages/DeveloperTab__saving_offline_files/zh-Hans';
 import { DeveloperTab__simulate_pwa_update } from '@/strings/messages/DeveloperTab__simulate_pwa_update/zh-Hans';
 import { DeveloperTab__toggle_update_notification } from '@/strings/messages/DeveloperTab__toggle_update_notification/zh-Hans';
 import { DeveloperToolsPanel__audio_response_investigation } from '@/strings/messages/DeveloperToolsPanel__audio_response_investigation/zh-Hans';
@@ -2051,6 +2055,7 @@ import { OpenSourceLicenseFilter__filter_licenses } from '@/strings/messages/Ope
 import { OpenSourceLicenses__matching_packages } from '@/strings/messages/OpenSourceLicenses__matching_packages/zh-Hans';
 import { OpenSourceLicenses__no_matching_packages } from '@/strings/messages/OpenSourceLicenses__no_matching_packages/zh-Hans';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/zh-Hans';
+import { PWAManager__reopen_to_use_offline } from '@/strings/messages/PWAManager__reopen_to_use_offline/zh-Hans';
 import { PWAUpdateNotification__applying_update } from '@/strings/messages/PWAUpdateNotification__applying_update/zh-Hans';
 import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/zh-Hans';
 import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/zh-Hans';
@@ -5192,6 +5197,7 @@ export const catalog = {
   DeveloperTab__clear_all_cache_storage,
   DeveloperTab__clear_cache_storage_warning,
   DeveloperTab__confirm_data_reset,
+  DeveloperTab__could_not_save_offline_files,
   DeveloperTab__create_long_sample_chat,
   DeveloperTab__create_sample_chat,
   DeveloperTab__danger_zone,
@@ -5200,6 +5206,7 @@ export const catalog = {
   DeveloperTab__developer_tools,
   DeveloperTab__execute_reset,
   DeveloperTab__experimental_features,
+  DeveloperTab__offline_files_saved,
   DeveloperTab__perform_window_reload,
   DeveloperTab__reload_application,
   DeveloperTab__reset,
@@ -5207,6 +5214,8 @@ export const catalog = {
   DeveloperTab__reset_all_application_data,
   DeveloperTab__reset_data_provider_warning,
   DeveloperTab__sample_conversations_description,
+  DeveloperTab__save_remaining_app_files_for_offline_use,
+  DeveloperTab__saving_offline_files,
   DeveloperTab__simulate_pwa_update,
   DeveloperTab__toggle_update_notification,
   DeveloperToolsPanel__audio_response_investigation,
@@ -6430,6 +6439,7 @@ export const catalog = {
   OpenSourceLicenses__matching_packages,
   OpenSourceLicenses__no_matching_packages,
   PWAManager__app_ready_to_work_offline,
+  PWAManager__reopen_to_use_offline,
   PWAUpdateNotification__applying_update,
   PWAUpdateNotification__preparing_update,
   PWAUpdateNotification__reload_to_update,

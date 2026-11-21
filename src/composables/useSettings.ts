@@ -9,6 +9,7 @@ import {
   prepareLocale,
   resolveBrowserLocale,
   setLocale as setStringLocale,
+  trackLocalePreparation,
 } from '@/strings';
 import {
   type Settings,
@@ -1053,6 +1054,7 @@ export function useSettings(): UseSettingsApi {
   async function setLocale({ locale }: {
     locale: UiLocale,
   }): Promise<void> {
+    const release = trackLocalePreparation({ locale });
     const operation = localeChangeQueue.catch(() => {
       // A failed locale change must not prevent a later explicit request.
     }).then(async () => {
@@ -1066,7 +1068,11 @@ export function useSettings(): UseSettingsApi {
       await setStringLocale({ locale });
     });
     localeChangeQueue = operation;
-    await operation;
+    try {
+      await operation;
+    } finally {
+      release();
+    }
   }
 
   async function setGlobalSearchScope({ scope }: {

@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { VitePWAOptions } from 'vite-plugin-pwa';
+import { createPWAAssets } from './pwa-assets.ts';
 
 /** One identity for the executing page and its offline worker, including redeploys. */
 export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } = {}) {
   const define = { __PWA_BUILD_ID__: JSON.stringify(buildId) };
+  const maximumAssetSize = 100 * 1024 * 1024;
+  const assets = createPWAAssets({ maximumAssetSize });
   const options: Partial<VitePWAOptions> = {
     strategies: 'injectManifest',
     srcDir: 'pwa',
@@ -11,7 +14,7 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
     // PWAManager owns registration AFTER the actual app surface paints.
     injectRegister: false,
     registerType: 'prompt',
-    includeAssets: ['favicon.svg', 'naidan-standalone.zip'],
+    includeAssets: ['favicon.svg'],
     manifest: {
       name: 'Naidan',
       short_name: 'Naidan',
@@ -25,12 +28,13 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
       // Never maintain a separate "minimum startup files" list here.
       globPatterns: ['**/*'],
       globIgnores: ['**/*.map', '**/naidan-standalone-*.zip'],
-      maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
+      maximumFileSizeToCacheInBytes: maximumAssetSize,
+      manifestTransforms: [assets.transform],
       rollupFormat: 'iife',
       buildPlugins: { vite: [{ name: 'naidan-pwa-build-identity', config: () => ({ define }) }] },
     },
   };
-  return { options, define };
+  return { options, define, assetsPlugin: assets.plugin, workerAssetsPlugin: assets.workerPlugin };
 }
 
 export const TEST_ONLY = {

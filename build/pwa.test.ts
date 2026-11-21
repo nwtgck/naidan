@@ -7,6 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { buildPWAFixture } from './test-support/pwa-fixture.test-support';
 import { createWorkerHarness, MemoryCacheStorage, TestClients } from './test-support/pwa-worker-platform.test-support';
 import { ACTIVATE_BUILD_MESSAGE, BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from '../src/logic/pwa/protocol';
+import { PREPARE_OFFLINE_ASSETS } from '../src/logic/pwa/asset-cache-protocol';
 import { createRegistrationPlatform } from './test-support/pwa-registration-platform.test-support';
 import { createPWAUpdateController } from '../src/logic/pwa/update-controller';
 import type { PWAUpdateState } from '../src/logic/pwa/update-state';
@@ -54,7 +55,7 @@ function setup() {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const file = url.pathname.slice('/naidan/'.length) || 'index.html';
     requested.push({ path: file, cache: init?.cache ?? (input instanceof Request ? input.cache : undefined) });
-    if (file === 'naidan-standalone.zip' && hold) {
+    if (file === 'future-format.arbitrary' && hold) {
       delayed?.();
       await hold;
     }
@@ -210,12 +211,12 @@ describe('real generated Workbox worker', () => {
     expect(f.requested).toEqual([]);
   });
 
-  it('keeps every automatic precache resource but excludes locale packages and source maps', async () => {
+  it('keeps automatic application assets and skips the optional standalone packages and source maps', async () => {
     const f = setup(), worker = f.make(a);
     await worker.lifecycle('install');
     await worker.lifecycle('activate');
     const downloaded = f.requested.map(item => item.path);
-    for (const file of ['runtime.wasm.gz', 'future-format.arbitrary', 'naidan-standalone.zip', 'worker.js']) {
+    for (const file of ['runtime.wasm.gz', 'future-format.arbitrary', 'worker.js']) {
       expect(downloaded).toContain(file);
     }
     for (const locale of UI_LOCALES) {
@@ -224,9 +225,30 @@ describe('real generated Workbox worker', () => {
       expect(downloaded).not.toContain(file);
     }
     expect(downloaded).not.toContain('ignored.map');
+    expect(downloaded).not.toContain('naidan-standalone.zip');
     f.offline();
     expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
-    expect(await (await worker.request({ url: `${scope}naidan-standalone.zip` })).text()).toBe('version-a:naidan-standalone.zip');
+    await expect(worker.request({ url: `${scope}naidan-standalone.zip` })).rejects.toThrow('offline');
+  });
+
+  it('saves the common archive only on request and can serve it offline after restarting', async () => {
+    const f = setup(), native = createRegistrationPlatform({ scope, fetch: f.network });
+    native.addWorker({ key: 'worker-a', script: a.script });
+    await native.install({ key: 'worker-a' });
+    native.page({ key: 'page' });
+    const archive = 'naidan-standalone.zip';
+    expect(await (await native.request({ pageKey: 'page', path: archive })).text()).toBe('version-a:naidan-standalone.zip');
+    f.offline();
+    await expect(native.request({ pageKey: 'page', path: archive })).rejects.toThrow('offline');
+    f.online();
+    const worker = native.workers.get('worker-a')!.runtime;
+    const data = { type: PREPARE_OFFLINE_ASSETS, buildId: a.pageBuildId, target: { kind: 'remaining' } };
+    expect(await worker.message({ clientId: 'page', data: { ...data, buildId: 'old-build' } })).toBe('unavailable');
+    expect(await worker.message({ clientId: 'page', data })).toEqual({ remaining: 0 });
+    expect(await worker.message({ clientId: 'page', data })).toBe('complete');
+    f.offline();
+    const restarted = createWorkerHarness({ script: a.script, scope, cacheStorage: native.storage, clients: f.clients, fetch: f.network });
+    expect(await (await restarted.request({ url: `${scope}${archive}` })).text()).toBe('version-a:naidan-standalone.zip');
   });
 
   it('serves B before full installation, survives worker restart, and returns to offline only with B', async () => {
@@ -403,7 +425,7 @@ describe('real generated Workbox worker', () => {
     }
     const fetch: typeof globalThis.fetch = async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
-      if (url.pathname.endsWith('/naidan-standalone.zip')) {
+      if (url.pathname.endsWith('/runtime.wasm.gz')) {
         if (mode === 'http') {
           return new Response('missing', { status: 404 });
         }

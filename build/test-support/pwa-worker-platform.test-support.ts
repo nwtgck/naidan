@@ -77,7 +77,7 @@ export class MemoryCacheStorage {
   }
 }
 
-export type TestClient = { id: string; type: 'window' | 'worker' | 'sharedworker'; url: string; postMessage?: (message: unknown) => void };
+export type TestClient = { id: string; type: 'window' | 'worker' | 'sharedworker'; url: string; postMessage?: (message: unknown, transfer: Transferable[]) => void };
 export class TestClients {
   readonly clients = new Map<string, TestClient>();
 

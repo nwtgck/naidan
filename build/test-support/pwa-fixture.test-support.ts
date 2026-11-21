@@ -2,7 +2,8 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { build, transformWithOxc, type PluginOption } from 'vite';
+import { build, parseSync, transformWithOxc, type PluginOption } from 'vite';
+import MagicString from 'magic-string';
 import { VitePWA } from 'vite-plugin-pwa';
 import { createPWABuild } from '../pwa';
 import { UI_LOCALES } from '../../src/01-models/ui-locale';
@@ -10,12 +11,13 @@ import { UI_LOCALES } from '../../src/01-models/ui-locale';
 /** Static inputs for the Node-only generated-worker tests. The production
  * Workbox build receives these files; no browser, UI or app-module stubs are used.
  */
-export async function buildPWAFixture({ root, buildId, publicFiles, entrySource, plugins = [] }: {
+export async function buildPWAFixture({ root, buildId, publicFiles, entrySource, plugins = [], worker }: {
   root: string,
   buildId: string,
   publicFiles?: ReadonlyMap<string, string>,
   entrySource?: string,
   plugins?: readonly PluginOption[],
+  worker?: Parameters<ReturnType<typeof createPWABuild>['workerAssetsPlugin']>[0] & { plugins: () => PluginOption[] },
 }) {
   const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
   await mkdir(path.join(root, 'public'), { recursive: true });
@@ -31,7 +33,7 @@ export async function buildPWAFixture({ root, buildId, publicFiles, entrySource,
   for (const [name, content] of publicFiles ?? []) {
     await writeFile(path.join(root, 'public', name), content);
   }
-  const { options, define } = createPWABuild({ buildId });
+  const { options, define, assetsPlugin, workerAssetsPlugin } = createPWABuild({ buildId });
   const outDir = path.join(root, 'dist');
   const result = await build({
     root,
@@ -39,7 +41,11 @@ export async function buildPWAFixture({ root, buildId, publicFiles, entrySource,
     define,
     logLevel: 'silent',
     base: './',
-    plugins: [...plugins, VitePWA({ ...options, srcDir: path.join(projectRoot, 'pwa') })],
+    worker: worker === undefined ? undefined : {
+      format: 'es',
+      plugins: () => [...worker.plugins(), workerAssetsPlugin({ profileForModule: worker.profileForModule })],
+    },
+    plugins: [...plugins, assetsPlugin, VitePWA({ ...options, srcDir: path.join(projectRoot, 'pwa') })],
     build: { outDir, emptyOutDir: true, modulePreload: false },
   });
   const files = new Map<string, Buffer>();
@@ -70,7 +76,15 @@ export async function buildPWAFixture({ root, buildId, publicFiles, entrySource,
   const evaluation = await transformWithOxc(entry.toString(), 'pwa-fixture-entry.js', {
     define: { 'import.meta': JSON.stringify({ url: 'https://example.test/entry.js' }) },
   });
-  vm.runInNewContext(evaluation.code, {
+  const executable = new MagicString(evaluation.code);
+  for (const statement of parseSync('pwa-fixture-entry.js', evaluation.code).program.body) {
+    // Rolldown may export a helper for lazy chunks to share. Strip only the
+    // export list from the evaluator, keeping the emitted page and helper intact.
+    if (statement.type === 'ExportNamedDeclaration' && !statement.source && !statement.declaration) {
+      executable.remove(statement.start, statement.end);
+    }
+  }
+  vm.runInNewContext(executable.toString(), {
     console: {
       info(value: unknown) {
         pageBuildId = value;

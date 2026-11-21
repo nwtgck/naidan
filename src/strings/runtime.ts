@@ -138,6 +138,27 @@ const initialLocale = resolveEffectiveLocale({ locale: resolveBrowserLocale() })
 const currentLocaleState = shallowRef<UiLocale>(initialLocale);
 applyDocumentLocale({ locale: initialLocale });
 export const currentLocale = readonly(currentLocaleState);
+const localePreparations = new Map<UiLocale, number>();
+const preparingLocaleState = shallowRef<readonly UiLocale[]>([]);
+export const preparingLocales = readonly(preparingLocaleState);
+
+export function trackLocalePreparation({ locale }: { locale: UiLocale }): () => void {
+  const effectiveLocale = resolveEffectiveLocale({ locale });
+  const count = localePreparations.get(effectiveLocale) ?? 0;
+  localePreparations.set(effectiveLocale, count + 1);
+  if (count === 0) {
+    preparingLocaleState.value = [...localePreparations.keys()];
+  }
+  return () => {
+    const remaining = (localePreparations.get(effectiveLocale) ?? 1) - 1;
+    if (remaining > 0) {
+      localePreparations.set(effectiveLocale, remaining);
+    } else {
+      localePreparations.delete(effectiveLocale);
+      preparingLocaleState.value = [...localePreparations.keys()];
+    }
+  };
+}
 
 function boundaryLoadKey({ boundaryId, locale }: {
   boundaryId: string;
@@ -655,18 +676,23 @@ export async function setLocale({ locale }: {
 }): Promise<void> {
   const effectiveLocale = resolveEffectiveLocale({ locale });
   const request = ++localeSwitchRequest;
-  do {
-    await prepareLocale({ locale: effectiveLocale });
-    if (request !== localeSwitchRequest) {
-      return;
-    }
-    // A module can register or replace a boundary after preparation completes
-    // but before this continuation runs. Recheck readiness before committing.
-  } while (hasUnpreparedLocaleBoundaries({ locale: effectiveLocale }));
+  const release = trackLocalePreparation({ locale: effectiveLocale });
+  try {
+    do {
+      await prepareLocale({ locale: effectiveLocale });
+      if (request !== localeSwitchRequest) {
+        return;
+      }
+      // A module can register or replace a boundary after preparation completes
+      // but before this continuation runs. Recheck readiness before committing.
+    } while (hasUnpreparedLocaleBoundaries({ locale: effectiveLocale }));
 
-  if (currentLocaleState.value !== effectiveLocale) {
-    currentLocaleState.value = effectiveLocale;
-    applyDocumentLocale({ locale: effectiveLocale });
+    if (currentLocaleState.value !== effectiveLocale) {
+      currentLocaleState.value = effectiveLocale;
+      applyDocumentLocale({ locale: effectiveLocale });
+    }
+  } finally {
+    release();
   }
 }
 

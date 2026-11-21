@@ -15,7 +15,7 @@ beforeEach(async () => {
   dispose.mockReset();
   useGlobalEvents().clearEvents();
   start.mockReturnValue({ dispose });
-  vi.stubGlobal('navigator', { serviceWorker: {} });
+  vi.stubGlobal('navigator', { serviceWorker: new EventTarget() });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 

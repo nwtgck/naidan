@@ -2,16 +2,18 @@
 import { PrecacheController, PrecacheRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { NavigationRoute, Router } from 'workbox-routing';
 import { ACTIVATE_BUILD_MESSAGE, BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from '../src/logic/pwa/protocol';
+import { ASSET_SELECTION_CHANGED, PREPARE_OFFLINE_ASSETS, prepareOfflineAssetsRequestSchema, type DeferredAssetMetadata, type PrepareOfflineAssetsReply } from '../src/logic/pwa/asset-cache-protocol';
 import { installStreamDownloadWorker } from '../src/utils/download/service-worker';
 
 import { createOfflineHandoff } from './offline-handoff';
 import { waitForActiveCleanup } from './precache-lifecycle';
 import { isDocsUrl } from './docs-routing';
 import { isModelPageNavigation } from './model-page-routing';
+import { createOfflineAssets } from './offline-assets';
 
 declare const __PWA_BUILD_ID__: string;
-declare const self: ServiceWorkerGlobalScope & {
-  __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
+declare const self: Omit<ServiceWorkerGlobalScope, '__WB_MANIFEST'> & {
+  __WB_MANIFEST: Array<{ url: string; revision: string | null; deferred?: DeferredAssetMetadata }>;
 };
 
 // Register before BOTH the precache router and network-only update path. Local
@@ -48,12 +50,13 @@ const precache = new PrecacheController({
     },
   }],
 });
-// Full, automatically generated manifest: no minimum-files list or partial install.
-precache.addToCacheList(self.__WB_MANIFEST);
+const manifest = self.__WB_MANIFEST;
+const offlineAssets = createOfflineAssets({ entries: manifest, clients: self.clients, scope });
+precache.addToCacheList(manifest.filter(entry => entry.deferred === undefined));
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     await waitForActiveCleanup({ registration: self.registration });
-    await precache.install(event);
+    await Promise.all([precache.install(event).then(() => undefined), offlineAssets.install()]);
   })());
 });
 self.addEventListener('activate', event => {
@@ -62,6 +65,7 @@ self.addEventListener('activate', event => {
   // A later uncontended activation cleans up any entries left by a failed C.
   if (!self.registration.installing) {
     event.waitUntil(precache.activate(event));
+    event.waitUntil(offlineAssets.cleanObsolete());
   }
 });
 cleanupOutdatedCaches();
@@ -86,7 +90,8 @@ self.addEventListener('fetch', event => {
     if (await networkOnly) {
       return fetch(event.request, { cache: 'no-store' });
     }
-    return router.handleRequest({ request: event.request, event }) ?? fetch(event.request);
+    return offlineAssets.handleFetch({ request: event.request, event })
+      ?? router.handleRequest({ request: event.request, event }) ?? fetch(event.request);
   })();
   event.respondWith(response);
   event.waitUntil(response.then(() => undefined, () => undefined));
@@ -102,6 +107,12 @@ self.addEventListener('message', event => {
   }
   const data: unknown = event.data;
   if (!data || typeof data !== 'object' || !('type' in data)) {
+    return;
+  }
+  if (data.type === ASSET_SELECTION_CHANGED) {
+    if (fromPage) {
+      offlineAssets.selectionChanged();
+    }
     return;
   }
   if (data.type === ACTIVATE_BUILD_MESSAGE) {
@@ -130,6 +141,30 @@ self.addEventListener('message', event => {
   }
   if (!fromPage) {
     reply.close();
+    return;
+  }
+  if (data.type === PREPARE_OFFLINE_ASSETS) {
+    event.waitUntil((async () => {
+      let outcome: PrepareOfflineAssetsReply = 'unavailable';
+      try {
+        const parsed = prepareOfflineAssetsRequestSchema.safeParse(data);
+        if (parsed.success && parsed.data.buildId === __PWA_BUILD_ID__
+          && self.registration.active?.state === 'activated' && !await networkOnly) {
+          const { target } = parsed.data;
+          // Only a client controlled by this Worker can start a remaining-assets job.
+          // The first uncontrolled page may verify its selected assets before reopening.
+          if (target.kind === 'selection' || (await self.clients.matchAll({ type: 'window' })).some(client => client.id === source.id)) {
+            outcome = await offlineAssets.prepareNext({ target });
+          }
+        }
+      } catch (error) {
+        console.warn('[PWA] Could not prepare offline assets.', error);
+        outcome = 'failed';
+      }
+      // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Bounded outcome; the one-shot client parses it before using it.
+      reply.postMessage(outcome);
+      reply.close();
+    })());
     return;
   }
   if (data.type === COMPLETE_OFFLINE_MESSAGE) {
@@ -164,6 +199,7 @@ self.addEventListener('message', event => {
       // to old caches. Installation uses native fetch and is unaffected.
       await (await caches.open(modeCache)).put(modeKey, new Response(__PWA_BUILD_ID__));
       networkOnly = Promise.resolve(true);
+      offlineAssets.stopActivePreparation();
       // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- One scoped command with a literal acknowledgement, not a long-lived worker API.
       reply.postMessage(USE_NETWORK_MESSAGE);
     } catch (error) {

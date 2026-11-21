@@ -23,6 +23,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   runtimeAssetsPlugin: Plugin;
   embeddedBinaries: readonly StandaloneEmbeddedBinary[];
   nativeLicenseSource: NativeLicenseSource;
+  profileForModule({ id }: { id: string }): LlamaCppProfile | undefined;
 } {
   const artifact = readLlamaArtifactPackage({ rootDir });
   const { packageRoot, profileRoot: artifactProfiles, manifestPaths, files, readArtifact } = artifact;
@@ -72,6 +73,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
 
 
   return {
+    profileForModule: ({ id }) => byId.get(normalizePath(id))?.profile,
     embeddedBinaries,
     runtimeAssetsPlugin: createLlamaCppRuntimeAssetsPlugin({ artifact, profiles }),
     nativeLicenseSource: { runtime: 'llama-cpp', kind: 'installed', rootDir, manifestPaths, files: new Set(files.keys()), readArtifact },

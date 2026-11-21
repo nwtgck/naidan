@@ -2,8 +2,9 @@
 import { parseGenerationMetrics } from '../../01-models/generation-metrics.ts';
 import { z } from 'zod';
 import { errorDetails, maximumErrorDetailsLength } from './error-details.ts';
+import { chatProfileSchema } from './runtime/chat-profiles.ts';
 
-export const chatProfileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm32']);
+export { chatProfileSchema };
 // Diagnostic artifacts are deliberately not part of ordinary chat selection.
 export const gpuProfilingProfile = 'webgpu-wasm64-jspi-gpu-profile' as const;
 export const profileSchema = z.enum([...chatProfileSchema.options, gpuProfilingProfile]);

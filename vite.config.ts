@@ -216,7 +216,15 @@ export default defineConfig(({ mode, command }) => {
     ...transformersJsFixes,
     worker: {
       ...transformersJsFixes.worker,
-      plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin(), createNodeEnvBoundaryPlugin({ rootDir: import.meta.dirname })]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode }).corePlugin],
+      plugins: () => {
+        const llamaWorker = createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
+        return [
+          ...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin(), createNodeEnvBoundaryPlugin({ rootDir: import.meta.dirname })]),
+          ...transformersJsFixes.worker.plugins(),
+          llamaWorker.corePlugin,
+          ...(!isStandalone ? [pwaBuild.workerAssetsPlugin({ profileForModule: llamaWorker.profileForModule })] : []),
+        ];
+      },
     },
     plugins: [
       mode !== 'test' && createDocsDevBridge(),
@@ -331,6 +339,7 @@ export default defineConfig(({ mode, command }) => {
       }),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
+      !isStandalone && pwaBuild.assetsPlugin,
       !isStandalone && VitePWA(pwaBuild.options),
       // Package only after all output, compression and the generated worker exist.
       createHostedPackagePlugin({ version: pkg.version, locales: UI_LOCALES }),

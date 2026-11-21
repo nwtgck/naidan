@@ -2,6 +2,7 @@
 import { useSampleChat } from '@/composables/useSampleChat';
 import { computed } from 'vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { usePWAOfflineAssets } from '@/composables/usePWAOfflineAssets';
 import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon, SearchCheckIcon } from 'lucide-vue-next';
 import ModelGraphDefinitionRegistryPanel from '@/features/llama-cpp-browser/model-graph/components/ModelGraphDefinitionRegistryPanel.vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
@@ -25,6 +26,7 @@ const emit = defineEmits<{
 const { createSampleChat, createLongSampleChat } = useSampleChat();
 const canOpenModelSupportInvestigation = computed(() => isModelSupportInvestigationAvailable);
 const { status: pwaStatus, setUpdateState } = usePWAUpdate();
+const { status: offlineAssetStatus, saveRemaining } = usePWAOfflineAssets();
 const hasPWAUpdate = computed(() => {
   const status = pwaStatus.value;
   switch (status) {
@@ -154,6 +156,23 @@ defineExpose({
         <DeveloperOpenStateLinks />
 
         <DeveloperCspDiagnostics />
+
+        <section tw-class="space-y-2 border-t border-gray-200/70 pt-5 dark:border-gray-800">
+          <ActionButton
+            :icon-tone="undefined"
+            :disabled="offlineAssetStatus === 'unavailable' || offlineAssetStatus === 'saving'"
+            appearance="secondary"
+            data-testid="save-remaining-offline-assets"
+            @click="saveRemaining"
+          >
+            {{ lazyStrings.DeveloperTab__save_remaining_app_files_for_offline_use() }}
+          </ActionButton>
+          <p role="status" tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+            <span v-if="offlineAssetStatus === 'saving'">{{ lazyStrings.DeveloperTab__saving_offline_files() }}</span>
+            <span v-else-if="offlineAssetStatus === 'complete'">{{ lazyStrings.DeveloperTab__offline_files_saved() }}</span>
+            <span v-else-if="offlineAssetStatus === 'failed'">{{ lazyStrings.DeveloperTab__could_not_save_offline_files() }}</span>
+          </p>
+        </section>
 
         <section tw-class="grid gap-4 border-t border-gray-200/70 pt-5 dark:border-gray-800 @2xl:grid-cols-2">
           <div tw-class="min-w-0 space-y-2">

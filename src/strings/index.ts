@@ -1,8 +1,10 @@
 export {
   currentLocale,
   prepareLocale,
+  preparingLocales,
   resolveBrowserLocale,
   setLocale,
+  trackLocalePreparation,
   lazyStrings,
   ensureStrings,
 } from './runtime';
