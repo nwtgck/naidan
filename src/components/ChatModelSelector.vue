@@ -772,6 +772,7 @@ defineExpose({
                   :popup-target="dropdownRef ?? undefined"
                   :index="optionIndices.get(activeStoredVariantId({ variants: row.variants }))" :highlighted="highlightedIndex === optionIndices.get(activeStoredVariantId({ variants: row.variants }))"
                   @choose="selectModel({ model: $event })" @change-variant="selectModel({ model: $event, keepOpen: true })"
+                  @open-file-explorer="closeDropdown({ restoreFocus: true })"
                   @mouseenter="highlightedIndex = optionIndices.get(activeStoredVariantId({ variants: row.variants })) ?? -1"
                 >
                   <template v-if="$slots['model-action']" #actions="{ id }"><slot name="model-action" :id="id" :model="modelIndex.get(id)" /></template>

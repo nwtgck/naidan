@@ -6,12 +6,19 @@ import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types
 import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-handle-transport';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
 import type { ManagedVolumeRemoteAccess } from '@/features/wesh/worker/managed-volume-access';
+import { remoteDirectoryEntrySchema, type RemoteDirectoryAccess } from '@/utils/remote-directory-handle';
 
 function isBlob(value: unknown): value is Blob {
   return typeof Blob !== 'undefined' && value instanceof Blob;
 }
 
 const fileExplorerPathSchema = z.string().min(1);
+const fileExplorerRemoteMountSchema = z.object({
+  path: fileExplorerPathSchema,
+  root: remoteDirectoryEntrySchema,
+  readOnly: z.boolean(),
+});
+export type FileExplorerRemoteMount = z.infer<typeof fileExplorerRemoteMountSchema> & { access: RemoteDirectoryAccess };
 const fileExplorerArchiveSourceDescriptorSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('blob'),
@@ -49,6 +56,7 @@ export const fileExplorerRootDescriptorSchema = z.discriminatedUnion('kind', [
     kind: z.literal('wesh-mounts'),
     rootName: z.string().min(1),
     mounts: z.array(weshWorkerMountSchema),
+    remoteMounts: z.array(fileExplorerRemoteMountSchema).optional(),
   }),
   z.object({
     kind: z.literal('archive-root'),

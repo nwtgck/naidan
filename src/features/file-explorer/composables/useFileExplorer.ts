@@ -2,6 +2,7 @@ import { ensureStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import type { InjectionKey } from 'vue';
 import { createFileExplorerWorkerClient } from '@/features/file-explorer/worker/client';
+import type { FileExplorerRemoteMount } from '@/features/file-explorer/worker/types';
 import type {
   FileExplorerEntry,
   FileExplorerContext,
@@ -36,14 +37,16 @@ function buildInitialPath({ initialPath }: { initialPath: string[] | undefined }
 
 export async function useFileExplorer({
   root,
+  remoteMounts,
   initialPath,
   initialLocked,
 }: {
   root: FileExplorerRootDescriptor,
+  remoteMounts?: readonly FileExplorerRemoteMount[],
   initialPath: string[] | undefined,
   initialLocked: boolean,
 }) {
-  const client = await createFileExplorerWorkerClient({ root });
+  const client = await createFileExplorerWorkerClient({ root, ...(remoteMounts === undefined ? {} : { remoteMounts }) });
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 

@@ -52,7 +52,7 @@ const initialLocked = computed(() => {
     return false;
   case 'native-directory':
   case 'wesh-mounts':
-    return false;
+    return fileExplorerOptions.value.initialLocked ?? false;
   default: {
     const _exhaustiveCheck: never = fileExplorerOptions.value;
     throw new Error(`Unhandled file explorer modal options: ${JSON.stringify(_exhaustiveCheck)}`);
@@ -79,9 +79,9 @@ const title = computed(() => {
 const initialPath = computed(() => {
   const options = fileExplorerOptions.value;
   switch (options.kind) {
-  case 'opfs-root':
   case 'archive-root':
     return undefined;
+  case 'opfs-root':
   case 'native-directory':
   case 'wesh-mounts':
     return options.initialPath;
@@ -95,6 +95,14 @@ const initialPath = computed(() => {
 const root = computed(() => mapFileExplorerModalOptionsToRootDescriptor({
   options: fileExplorerOptions.value,
 }));
+const remoteMounts = computed(() => {
+  const options = fileExplorerOptions.value;
+  switch (options.kind) {
+  case 'wesh-mounts': return options.remoteMounts;
+  case 'opfs-root': case 'native-directory': case 'archive-root': return undefined;
+  default: throw new Error(String(options satisfies never));
+  }
+});
 
 
 defineExpose({
@@ -149,6 +157,7 @@ defineExpose({
           <Suspense v-else @resolve="focusExplorer">
             <FileExplorer
               :root="root"
+              :remote-mounts="remoteMounts"
               :initial-path="initialPath"
               :initial-locked="initialLocked"
               initial-view-mode="list"

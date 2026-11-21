@@ -344,6 +344,20 @@ async function createSessionFromRoot({
       }
       }
     }
+    for (const mount of root.remoteMounts ?? []) {
+      if (managedVolumeRemoteAccess === undefined) {
+        throw new Error('Remote directory access is required for this mount');
+      }
+      const remoteAccess = managedVolumeRemoteAccess;
+      await vfs.mount({
+        path: mount.path,
+        readOnly: mount.readOnly,
+        handle: createRemoteDirectoryHandle({
+          root: mount.root,
+          access: { request: ({ request }) => remoteAccess.request({ path: mount.path, request }) },
+        }),
+      });
+    }
     return {
       kind: 'wesh-mounts',
       rootName: root.rootName,

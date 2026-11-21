@@ -9,13 +9,15 @@ import {
   STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
 } from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
-import { createManagedVolumeRemoteAccess, observeManagedVolumeWorker } from '@/features/wesh/worker/managed-volume-access';
+import { observeManagedVolumeWorker } from '@/features/wesh/worker/managed-volume-access';
+import { connectFileExplorerRemoteMounts } from './remote-mounts';
 import {
   fileExplorerAnalyzeZipUploadResponseSchema,
   fileExplorerExecuteZipUploadResponseSchema,
   fileExplorerReadZipUploadPreviewDirectoryResponseSchema,
   fileExplorerSuggestArchiveExclusionsResponseSchema,
   toPlainFileExplorerZipUploadPlacement,
+  type FileExplorerRemoteMount,
   fileExplorerPrepareSessionResponseSchema,
   fileExplorerReadDirectoryResponseSchema,
   fileExplorerReadFileResponseSchema,
@@ -25,7 +27,6 @@ import {
   type IFileExplorerWorker,
 } from './types';
 import {
-  getFileExplorerRootMounts,
   normalizeFileExplorerRootMounts,
   mapFileExplorerRootToOpfsLocators,
 } from './root-transport';
@@ -39,8 +40,10 @@ function createZipUploadJobId(): string {
 
 export async function createFileExplorerWorkerClient({
   root,
+  remoteMounts,
 }: {
   root: FileExplorerRootDescriptor,
+  remoteMounts?: readonly FileExplorerRemoteMount[],
 }): Promise<FileExplorerWorkerClient> {
   root = normalizeFileExplorerRootMounts({ root });
   const naidanSysfsRemoteReader = (() => {
@@ -61,7 +64,7 @@ export async function createFileExplorerWorkerClient({
     prepared: Parameters<IFileExplorerWorker['prepareSession']>[0],
   }) => {
     const requestRoot = prepared.request.root;
-    const managedVolumes = await createManagedVolumeRemoteAccess({ mounts: getFileExplorerRootMounts({ root: requestRoot }) });
+    const managedVolumes = await connectFileExplorerRemoteMounts({ root: requestRoot, remoteMounts });
     try {
       const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
       const { remote } = session;

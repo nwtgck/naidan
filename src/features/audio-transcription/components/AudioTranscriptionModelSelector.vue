@@ -540,6 +540,7 @@ defineExpose({
                         :popup-target="panel" :configuration="{ open: detailId === model.id, id: popupId + '-model-options' }"
                         :selected-id="selected?.id" :disabled="models.busy.value" @choose="choose({ id: $event })" @change-variant="chooseStoredVariant({ id: $event })"
                         @toggle-configuration="toggleDetails({ ...$event, group: group.id })"
+                        @open-file-explorer="close"
                       />
                     </template>
                     <span :title="model.title" tw-class="block truncate font-medium">{{ model.name }}</span>

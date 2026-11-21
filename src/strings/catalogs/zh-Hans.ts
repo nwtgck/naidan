@@ -1796,6 +1796,13 @@ import { ModelSelectorHuggingFaceSearch__speech_recognition } from '@/strings/me
 import { ModelSelectorHuggingFaceSearch__trending } from '@/strings/messages/ModelSelectorHuggingFaceSearch__trending/zh-Hans';
 import { ModelSelectorRepositoryRow__configuration_for_model } from '@/strings/messages/ModelSelectorRepositoryRow__configuration_for_model/zh-Hans';
 import { ModelSelectorRepositorySource__source } from '@/strings/messages/ModelSelectorRepositorySource__source/zh-Hans';
+import { ModelSelectorStoredModelFiles__browse_by_model_id } from '@/strings/messages/ModelSelectorStoredModelFiles__browse_by_model_id/zh-Hans';
+import { ModelSelectorStoredModelFiles__checking_model_files } from '@/strings/messages/ModelSelectorStoredModelFiles__checking_model_files/zh-Hans';
+import { ModelSelectorStoredModelFiles__could_not_find_model_files } from '@/strings/messages/ModelSelectorStoredModelFiles__could_not_find_model_files/zh-Hans';
+import { ModelSelectorStoredModelFiles__could_not_open_model_folder } from '@/strings/messages/ModelSelectorStoredModelFiles__could_not_open_model_folder/zh-Hans';
+import { ModelSelectorStoredModelFiles__model_files } from '@/strings/messages/ModelSelectorStoredModelFiles__model_files/zh-Hans';
+import { ModelSelectorStoredModelFiles__model_folders } from '@/strings/messages/ModelSelectorStoredModelFiles__model_folders/zh-Hans';
+import { ModelSelectorStoredModelFiles__open_storage_folder } from '@/strings/messages/ModelSelectorStoredModelFiles__open_storage_folder/zh-Hans';
 import { ModelSelectorStoredVariantsRow__copy_model_id } from '@/strings/messages/ModelSelectorStoredVariantsRow__copy_model_id/zh-Hans';
 import { ModelSelectorStoredVariantsRow__could_not_copy_model_id } from '@/strings/messages/ModelSelectorStoredVariantsRow__could_not_copy_model_id/zh-Hans';
 import { ModelSelectorStoredVariantsRow__model_configuration } from '@/strings/messages/ModelSelectorStoredVariantsRow__model_configuration/zh-Hans';
@@ -6180,6 +6187,13 @@ export const catalog = {
   ModelSelectorHuggingFaceSearch__trending,
   ModelSelectorRepositoryRow__configuration_for_model,
   ModelSelectorRepositorySource__source,
+  ModelSelectorStoredModelFiles__browse_by_model_id,
+  ModelSelectorStoredModelFiles__checking_model_files,
+  ModelSelectorStoredModelFiles__could_not_find_model_files,
+  ModelSelectorStoredModelFiles__could_not_open_model_folder,
+  ModelSelectorStoredModelFiles__model_files,
+  ModelSelectorStoredModelFiles__model_folders,
+  ModelSelectorStoredModelFiles__open_storage_folder,
   ModelSelectorStoredVariantsRow__copy_model_id,
   ModelSelectorStoredVariantsRow__could_not_copy_model_id,
   ModelSelectorStoredVariantsRow__model_configuration,

@@ -3,6 +3,7 @@ import { computed, ref, useId } from 'vue';
 import { lazyStrings } from '@/strings';
 import { CheckIcon, ChevronDownIcon, CopyIcon } from 'lucide-vue-next';
 import SettingsSelect from './SettingsSelect.vue';
+import ModelSelectorStoredModelFiles from './ModelSelectorStoredModelFiles.vue';
 
 const props = defineProps<{
   name: string,
@@ -15,7 +16,7 @@ const props = defineProps<{
   index?: number,
   configuration?: { open: boolean, id: string },
 }>();
-const emit = defineEmits<{ choose: [id: string], changeVariant: [id: string], toggleConfiguration: [{ id: string, event: MouseEvent }] }>();
+const emit = defineEmits<{ choose: [id: string], changeVariant: [id: string], toggleConfiguration: [{ id: string, event: MouseEvent }], openFileExplorer: [] }>();
 const ownDetailsOpen = ref(false);
 const detailsOpen = computed(() => props.configuration?.open ?? ownDetailsOpen.value);
 const detailsId = useId();
@@ -71,12 +72,15 @@ defineExpose({
         <ChevronDownIcon aria-hidden="true" :tw-class="['h-3.5 w-3.5 transition-transform motion-reduce:transition-none', detailsOpen && 'rotate-180']" />
       </button>
     </div>
-    <div v-if="detailsOpen" :id="detailsId" tw-class="flex min-w-0 items-start gap-2 px-2 pt-1 pb-2">
-      <code tw-class="min-w-0 flex-1 break-all py-1.5 text-[11px] text-gray-500 dark:text-gray-400">{{ current.modelId }}</code>
-      <button type="button" :aria-label="lazyStrings.ModelSelectorStoredVariantsRow__copy_model_id()" :title="lazyStrings.ModelSelectorStoredVariantsRow__copy_model_id()" data-testid="model-selector-copy-model-id" tw-class="grid size-7 shrink-0 place-items-center rounded-md text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-gray-700" @click="copyModelId">
-        <CheckIcon v-if="copyResult?.modelId === current.modelId && copyResult.status === 'copied'" aria-hidden="true" tw-class="size-3.5" />
-        <CopyIcon v-else aria-hidden="true" tw-class="size-3.5" />
-      </button>
+    <div v-if="detailsOpen" :id="detailsId" tw-class="min-w-0 px-2 pt-1 pb-2">
+      <ModelSelectorStoredModelFiles :model-id="current.modelId" @open-file-explorer="emit('openFileExplorer')" />
+      <div tw-class="flex min-w-0 items-start gap-2">
+        <code tw-class="min-w-0 flex-1 break-all py-1.5 text-[11px] text-gray-500 dark:text-gray-400">{{ current.modelId }}</code>
+        <button type="button" :aria-label="lazyStrings.ModelSelectorStoredVariantsRow__copy_model_id()" :title="lazyStrings.ModelSelectorStoredVariantsRow__copy_model_id()" data-testid="model-selector-copy-model-id" tw-class="grid size-7 shrink-0 place-items-center rounded-md text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-gray-700" @click="copyModelId">
+          <CheckIcon v-if="copyResult?.modelId === current.modelId && copyResult.status === 'copied'" aria-hidden="true" tw-class="size-3.5" />
+          <CopyIcon v-else aria-hidden="true" tw-class="size-3.5" />
+        </button>
+      </div>
     </div>
     <p v-if="detailsOpen && copyResult?.modelId === current.modelId" role="status" tw-class="px-2 pb-2 text-[11px] text-gray-500 dark:text-gray-400">
       {{ copyResult.status === 'copied' ? lazyStrings.ModelSelectorStoredVariantsRow__model_id_copied() : lazyStrings.ModelSelectorStoredVariantsRow__could_not_copy_model_id() }}
