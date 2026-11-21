@@ -1,7 +1,7 @@
 import { Secret } from '@/utils/secret';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { mount, flushPromises } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import WorkflowValueEditor from './WorkflowValueEditor.vue';
 import WorkflowJsonComposer from './WorkflowJsonComposer.vue';
@@ -14,7 +14,7 @@ import WorkflowConnectionDetails from './WorkflowConnectionDetails.vue';
 import LmParametersEditor from '@/components/LmParametersEditor.vue';
 import { workflowModelReviewKey } from '@/features/workflow/composables/model-review';
 import { describeWorkflowConnection } from '@/features/workflow/logic/model-permissions';
-import ModelSelector from '@/components/ModelSelector.vue';
+import ChatModelSelector from '@/components/ChatModelSelector.vue';
 import type { WorkflowValue } from '@/01-models/workflow';
 import { createWorkflowInputDrafts, workflowInputDraftsKey } from '@/features/workflow/composables/input-drafts';
 import { emptyWorkflowTypeScope } from '@/features/workflow/logic/value-types';
@@ -165,10 +165,15 @@ describe('Existing model selector integration', () => {
       },
     };
     expect(requests.load).not.toHaveBeenCalled();
-    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:open', true);
+    await mounted.wrapper.get('[data-testid="workflow-model-selector"] [data-testid="model-selector-trigger"]').trigger('click');
     await flushPromises();
     expect(listModels).toHaveBeenCalledOnce();
-    expect(mounted.wrapper.getComponent(ModelSelector).props('models')).toEqual(['model-2', 'model-10']);
+    const selector = mounted.wrapper.getComponent(ChatModelSelector);
+    expect(selector.props('models').map(({ id, availability }) => [id, availability])).toEqual([['model-2', 'local'], ['model-10', 'local']]);
+    // Saving a model choice recreates the endpoint object in the workflow definition.
+    await mounted.wrapper.setProps({ value: { endpoint: { type: 'llama_cpp_browser' }, modelId: 'model-2', lmParameters: undefined } });
+    expect(mounted.wrapper.getComponent(ChatModelSelector).element).toBe(selector.element);
+    expect(new DOMWrapper(document.body).find('[data-testid="model-selector-dropdown"]').exists()).toBe(true);
     await mounted.wrapper.get('[data-testid="workflow-model-id"]').setValue('manual-model');
     expect(mounted.wrapper.emitted('change')?.at(-1)?.[0]).toMatchObject({ modelId: 'manual-model' });
   });
@@ -184,12 +189,15 @@ describe('Existing model selector integration', () => {
         wrapper.unmount();
       },
     };
-    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:open', true);
+    await mounted.wrapper.get('[data-testid="workflow-model-selector"] [data-testid="model-selector-trigger"]').trigger('click');
     await flushPromises();
+    const page = new DOMWrapper(document.body);
+    expect(page.find('[data-testid="model-selector-dropdown"]').exists()).toBe(true);
     await mounted.wrapper.setProps({ value: { endpoint: { type: 'llama_cpp_browser' }, modelId: 'b', lmParameters: undefined } });
+    expect(page.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
     old.resolve(['stale']);
     await flushPromises();
-    expect(mounted.wrapper.getComponent(ModelSelector).props('models')).toEqual([]);
+    expect(mounted.wrapper.getComponent(ChatModelSelector).props('models')).toEqual([]);
     expect(mounted.wrapper.emitted('change')).toBeUndefined();
   });
 });
@@ -209,17 +217,18 @@ describe('Workflow connection review presentation', () => {
     await mounted.wrapper.setProps({ value: { ...value, modelId: 'imported' } });
     expect(review).not.toHaveBeenCalled();
     requests.load.mockResolvedValue({ listModels: async () => ['candidate'] });
-    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:open', true);
+    await mounted.wrapper.get('[data-testid="workflow-model-selector"] [data-testid="model-selector-trigger"]').trigger('click');
     await flushPromises();
     expect(review).not.toHaveBeenCalled();
-    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:modelValue', 'candidate');
+    const page = new DOMWrapper(document.body);
+    await page.get('[data-testid="model-selector-option"][title="candidate"]').trigger('click');
     expect(review).toHaveBeenCalledOnce();
     expect(review).toHaveBeenLastCalledWith({ target: { ...value, modelId: 'candidate' } });
     await mounted.wrapper.getComponent(WorkflowDisclosure).get('button[aria-expanded]').trigger('click');
     mounted.wrapper.getComponent(LmParametersEditor).vm.$emit('update:modelValue', undefined);
     expect(review).toHaveBeenCalledOnce();
     await mounted.wrapper.setProps({ disabled: true });
-    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:modelValue', 'late');
+    mounted.wrapper.getComponent(ChatModelSelector).vm.$emit('update:modelValue', 'late');
     expect(review).toHaveBeenCalledOnce();
   });
 

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { mount, flushPromises } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { audioStep } from '@/features/workflow/logic/audio-generation.test-support';
 import { valueStep, literal } from '@/features/workflow/logic/workflow.test-support';
@@ -11,7 +11,7 @@ import { workflowValueScopeKey } from '@/features/workflow/composables/value-con
 import WorkflowAudioEditor from './WorkflowAudioEditor.vue';
 import WorkflowValueEditor from './WorkflowValueEditor.vue';
 import WorkflowDisclosure from './WorkflowDisclosure.vue';
-import ModelSelector from '@/components/ModelSelector.vue';
+import ChatModelSelector from '@/components/ChatModelSelector.vue';
 import type { WorkflowStep } from '@/01-models/workflow';
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), inspect: vi.fn() }));
@@ -65,12 +65,13 @@ describe('Workflow audio editor', () => {
   it('discovers local candidates explicitly without applying the detector default', async () => {
     const step = { ...audioStep({ id: 'voice' }), modelId: literal({ value: 'keep-this.gguf' }) };
     using view = editor({ step, before: [] });
-    view.wrapper.getComponent(ModelSelector).vm.$emit('update:open', true);
+    await view.wrapper.get('[data-testid="workflow-audio-model-selector"] [data-testid="model-selector-trigger"]').trigger('click');
     await flushPromises();
     expect(mocks.list).toHaveBeenCalledOnce();
     expect(mocks.inspect).toHaveBeenCalledTimes(2);
-    expect(view.wrapper.getComponent(ModelSelector).props('models')).toEqual(['voice.gguf']);
-    expect(view.wrapper.getComponent(ModelSelector).props('modelValue')).toBe('keep-this.gguf');
+    const selector = view.wrapper.getComponent(ChatModelSelector);
+    expect(selector.props('models').map(({ id, availability }) => [id, availability])).toEqual([['voice.gguf', 'local']]);
+    expect(selector.props('modelValue')).toBe('keep-this.gguf');
     expect(view.review).not.toHaveBeenCalled();
     expect(view.wrapper.emitted('change')).toBeUndefined();
   });
@@ -86,8 +87,11 @@ describe('Workflow audio editor', () => {
     await input.trigger('input');
     await input.trigger('change');
     expect(view.review).toHaveBeenCalledExactlyOnceWith({ modelId: 'model.gguf' });
-    view.wrapper.getComponent(ModelSelector).vm.$emit('update:modelValue', 'other.gguf');
-    expect(view.review).toHaveBeenLastCalledWith({ modelId: 'other.gguf' });
+    await view.wrapper.get('[data-testid="workflow-audio-model-selector"] [data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const page = new DOMWrapper(document.body);
+    await page.get('[data-testid="model-selector-option"][title="voice.gguf"]').trigger('click');
+    expect(view.review).toHaveBeenLastCalledWith({ modelId: 'voice.gguf' });
   });
 
   it('does not authorize model-name expressions through the plain selection callback', async () => {
@@ -103,13 +107,13 @@ describe('Workflow audio editor', () => {
     using view = editor({ step: audioStep({ id: 'voice' }), before: [] });
     const gate = Promise.withResolvers<unknown[]>();
     mocks.list.mockReturnValue(gate.promise);
-    view.wrapper.getComponent(ModelSelector).vm.$emit('update:open', true);
+    await view.wrapper.get('[data-testid="workflow-audio-model-selector"] [data-testid="model-selector-trigger"]').trigger('click');
     await flushPromises();
     await view.wrapper.setProps({ disabled: true });
     gate.resolve([{ modelId: 'late', size: 2 }]);
     await flushPromises();
     expect(mocks.inspect).not.toHaveBeenCalled();
-    expect(view.wrapper.getComponent(ModelSelector).props('models')).toEqual([]);
+    expect(view.wrapper.getComponent(ChatModelSelector).props('models')).toEqual([]);
     expect(view.review).not.toHaveBeenCalled();
   });
 

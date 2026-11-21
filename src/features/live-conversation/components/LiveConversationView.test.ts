@@ -84,23 +84,6 @@ vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', ()
     },
   }),
 }));
-vi.mock('@/components/ModelSelector.vue', () => ({
-  default: defineComponent({
-    props: ['modelValue', 'disabled', 'models'],
-    emits: ['update:modelValue'],
-    setup(props, { emit }) {
-      return () => h('input', {
-        value: props.modelValue,
-        disabled: props.disabled,
-        onChange: (event: Event) => {
-          if (event.target instanceof HTMLInputElement) {
-            emit('update:modelValue', event.target.value);
-          }
-        },
-      });
-    },
-  }),
-}));
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -242,6 +225,37 @@ function downloadedSnapshot(): SpeechInvestigationSnapshot | undefined {
 }
 
 describe('independent live conversation workspace', () => {
+  it('groups compatible quantizations in diagnostics and resets the open list when the task changes', async () => {
+    const dialogueModels = ['hf.co/example/Haru-GGUF:Q4_K_M', 'hf.co/example/Haru-GGUF:Q8_0'];
+    const transcriptionModel = 'hf.co/example/ASR-GGUF:Q8_0';
+    managerInventory = [...dialogueModels, transcriptionModel, 'user/unrelated'].map(modelId => ({ modelId, size: 1, importedAt: 0 }));
+    vi.mocked(inspectStoredSpeechModel).mockImplementation(async ({ modelId }) => dialogueModels.includes(modelId) ? speechInspection : { kind: 'other' });
+    vi.mocked(inspectStoredSpeechRecognitionModel).mockImplementation(async ({ modelId }) => modelId === transcriptionModel ? recognitionInspection : { kind: 'other' });
+    await using f = await fixture();
+    await f.wrapper.setProps({ panel: 'diagnostics', task: 'response' });
+    await flushPromises();
+    const trigger = '[data-testid="live-diagnostics-model"] [data-testid="model-selector-trigger"]';
+    const dropdown = '[data-testid="model-selector-dropdown"]';
+    await f.wrapper.get(trigger).trigger('click');
+    const picker = f.page.get(dropdown);
+    expect(picker.findAll('[data-testid="model-selector-stored-variant-group"]')).toHaveLength(1);
+    expect(picker.get('[data-testid="model-selector-option"]').attributes('title')).toBe(dialogueModels[0]);
+    expect(picker.find('[data-testid="model-selector-stored-variant"]').exists()).toBe(true);
+
+    await f.wrapper.setProps({ task: 'transcription' });
+    await flushPromises();
+    expect(f.page.find(dropdown).exists()).toBe(false);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-load-model"]').attributes('disabled')).toBeDefined();
+    await f.wrapper.get(trigger).trigger('click');
+    const transcriptionPicker = f.page.get(dropdown);
+    expect(transcriptionPicker.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'))).toEqual([transcriptionModel]);
+    await transcriptionPicker.get('[data-testid="model-selector-option"]').trigger('click');
+    await flushPromises();
+    expect(f.wrapper.get(trigger).attributes('title')).toBe(transcriptionModel);
+    expect(f.wrapper.get('[data-testid="live-diagnostics-load-model"]').attributes('disabled')).toBeUndefined();
+    expect(f.recognition.client.loadModel).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['speech', 'conversation'], ['speech', 'diagnostics'], ['recognition', 'conversation'], ['recognition', 'diagnostics'],
   ] as const)('keeps the %s load failure through inventory refresh and cleanup in %s until a different model is selected', async (engine, panel) => {
@@ -666,7 +680,8 @@ describe('independent live conversation workspace', () => {
     expect(f.wrapper.get('[data-testid="live-diagnostics-input-name"]').text()).toBe(file.name);
     await f.wrapper.setProps({ task: 'response' });
     await flushPromises();
-    await f.wrapper.get('[data-testid="live-diagnostics-model"]').setValue('user/live');
+    await f.wrapper.get('[data-testid="live-diagnostics-model"] [data-testid="model-selector-trigger"]').trigger('click');
+    await f.page.get('[data-testid="model-selector-option"][title="user/live"]').trigger('click');
     await flushPromises();
     const releaseRecognition = vi.mocked(f.recognition.client.releaseModel).getMockImplementation();
     if (!releaseRecognition) {
@@ -1357,7 +1372,7 @@ describe('independent live conversation workspace', () => {
     expect(f.speech.client.loadModel).toHaveBeenCalledTimes(engine === 'speech' ? 1 : 0);
     expect(f.runLiveSession).toHaveBeenCalledTimes(engine === 'llama' ? 1 : 0);
     if (panel === 'diagnostics') {
-      expect(f.wrapper.get('[data-testid="live-diagnostics-model"]').element).toHaveProperty('value', 'next/model');
+      expect(f.wrapper.get('[data-testid="live-diagnostics-model"] [data-testid="model-selector-trigger"]').attributes('title')).toBe('next/model');
       expect(f.wrapper.get('[data-testid="live-diagnostics-generate"]').attributes('disabled')).toBeDefined();
       expect(f.wrapper.find('[data-testid="live-diagnostics-unavailable"]').exists()).toBe(engine !== 'speech');
       expect(f.wrapper.get('[data-testid="live-diagnostics-resident-model"]').text()).toContain('user/live');

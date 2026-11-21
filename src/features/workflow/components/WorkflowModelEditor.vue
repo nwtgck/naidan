@@ -7,7 +7,8 @@ import { cloneEndpoint, areEndpointsEqual } from '@/01-models/endpoint';
 import { useSettings } from '@/composables/useSettings';
 import { naturalSort } from '@/utils/string';
 import HttpHeadersEditor from '@/components/HttpHeadersEditor.vue';
-import ModelSelector from '@/components/ModelSelector.vue';
+import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import type { ModelSelectorItem } from '@/components/model-selector-item';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import LmParametersEditor from '@/components/LmParametersEditor.vue';
 import WorkflowDisclosure from './WorkflowDisclosure.vue';
@@ -26,6 +27,21 @@ function changeConnection({ target }: { target: WorkflowModelConfiguration }): v
 }
 
 const models = ref<string[]>([]), loading = ref(false), failed = ref(false);
+const selectorRevision = ref(0);
+const usesSavedModels = computed(() => {
+  const type = props.value.endpoint.type;
+  switch (type) {
+  case 'llama_cpp_browser': return true;
+  case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case 'naidan_rpc': case 'unsupported_experimental_endpoint': return false;
+  default: throw new Error(String(type satisfies never));
+  }
+});
+const modelOptions = computed<ModelSelectorItem[]>(() => models.value.map(id => ({
+  id,
+  label: id,
+  description: undefined,
+  availability: usesSavedModels.value ? 'local' : 'remote',
+})));
 let controller: AbortController | undefined;
 let alive = true;
 const endpointOptions = computed(() => [
@@ -34,13 +50,18 @@ const endpointOptions = computed(() => [
   { value: 'browser_provided_lm', label: 'Browser LM' },
   ...(!['openai', 'ollama', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm'].includes(props.value.endpoint.type) ? [{ value: props.value.endpoint.type, label: props.value.endpoint.type, disabled: true }] : []),
 ]);
-watch(() => props.value.endpoint, () => {
+watch(() => cloneEndpoint({ endpoint: props.value.endpoint }), (endpoint, previous) => {
+  // The workflow editor reparses the definition after each edit, including changes to the model ID.
+  if (areEndpointsEqual({ left: endpoint, right: previous })) {
+    return;
+  }
   controller?.abort();
   controller = undefined;
   models.value = [];
   loading.value = false;
   failed.value = false;
-}, { flush: 'sync', deep: true });
+  selectorRevision.value++;
+}, { flush: 'sync' });
 watch(() => props.disabled, disabled => {
   if (disabled) {
     controller?.abort();
@@ -144,7 +165,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <SettingsFormSelect :model-value="value.endpoint.type" :options="endpointOptions" :disabled="disabled" :label="lazyStrings.workflow__endpoint()" @update:model-value="endpointType({ type: $event })" />
     <input v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :value="value.endpoint.url" :disabled="disabled" :aria-label="lazyStrings.workflow__endpoint()" @change="changeConnection({ target: { ...value, endpoint: { ...value.endpoint, url: workflowInputText({ event: $event }) } } })" type="url" spellcheck="false" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/70 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-45" />
     <fieldset v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :disabled="disabled"><HttpHeadersEditor :model-value="value.endpoint.httpHeaders ?? []" test-id-prefix="workflow-headers" @update:model-value="changeConnection({ target: { ...value, endpoint: { ...value.endpoint, httpHeaders: $event } } })" /></fieldset>
-    <ModelSelector data-testid="workflow-model-selector" :model-value="value.modelId" :models="models" :loading="loading" :disabled="disabled" surface="settings" @update:model-value="setId({ modelId: $event })" @update:open="opened({ open: $event })" @refresh="refresh" />
+    <ChatModelSelector
+      :key="selectorRevision"
+      data-testid="workflow-model-selector"
+      surface="settings"
+      :model-value="value.modelId || undefined"
+      :models="modelOptions"
+      :models-label="usesSavedModels ? lazyStrings.ModelSelector__models_on_this_device() : undefined"
+      :loading="loading"
+      :disabled="disabled"
+      @update:model-value="setId({ modelId: $event })"
+      @update:open="opened({ open: $event })"
+      @refresh="refresh"
+    />
     <input data-testid="workflow-model-id" :value="value.modelId" :disabled="disabled" @input="typeId({ modelId: workflowInputText({ event: $event }) })" @change="confirmId({ modelId: workflowInputText({ event: $event }) })" :placeholder="lazyStrings.workflow__model_id()" :aria-label="lazyStrings.workflow__model_id()" spellcheck="false" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/70 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-45" />
     <p v-if="failed" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.workflow__model_candidates_failed() }}</p>
     <WorkflowDisclosure v-if="showParameters" :title="lazyStrings.workflow__parameters()" :initially-open="!!value.lmParameters">
