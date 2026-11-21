@@ -10,7 +10,7 @@ import type { installedSelection } from '@/features/llama-cpp-browser/hugging-fa
 import type { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
 import { repositoryDefaultDownloadKey } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
 import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
-import { acquireAudioModel } from './model-acquisition';
+import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
 import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref, shallowRef } from 'vue';
@@ -286,7 +286,8 @@ describe('first-use audio model download', () => {
     default: throw new Error(String(access satisfies never));
     }
     download.installed.mockResolvedValue(model);
-    const pending = acquireAudioModel({
+    const pending = acquireRepositoryModel({
+      usage: 'audio-generation',
       selection: { modelId: target.modelId, source: { kind: 'resolved', target }, destination, authorizeDestination },
       models: [],
       signal: new AbortController().signal,

@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, onMounted, shallowRef, computed } from 'vue';
-import { DOMWrapper, mount, flushPromises } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useLiveConversation } from '@/features/live-conversation/composables/useLiveConversation';
 import { createLiveControllerFixture } from '@/features/live-conversation/logic/controller.test-support';
 import LiveConversationView from './LiveConversationView.vue';
+import ChatModelSelector from '@/components/ChatModelSelector.vue';
 import { useLiveModelPreference } from '@/features/live-conversation/composables/useLiveModelPreference';
 import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
+import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { useLiveSpeechConversation } from '@/features/live-conversation/composables/useLiveSpeechConversation';
 import { useSpeechRecognition } from '@/features/live-conversation/composables/useSpeechRecognition';
 import { useSpeechResponseRecording } from '@/features/live-conversation/composables/useSpeechResponseRecording';
@@ -33,11 +36,22 @@ const speechInspection: Awaited<ReturnType<typeof inspectStoredSpeechModel>> = {
 const recognitionInspection: Awaited<ReturnType<typeof inspectStoredSpeechRecognitionModel>> = { kind: 'recognition', info: { name: 'ASR model', bytes: 1, architecture: 'qwen3-asr', task: 'recognition', sampleRate: 16000, requiredVersion: 'test' } };
 const residentPanels = [['speech', 'conversation'], ['speech', 'diagnostics'], ['llama', 'conversation'], ['llama', 'diagnostics']] as const;
 let speechCapability: SpeechCapability = { kind: 'available' };
+let managerInventory: LocalModel[];
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: confirm }) }));
 vi.mock('@/features/live-conversation/composables/useLiveModelPreference', () => ({ useLiveModelPreference: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/composables/model-inventory', () => ({ listModelInventory: vi.fn(async () => [{ modelId: 'user/live', size: 1, importedAt: 0 }]) }));
 vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { subscribeModelList: vi.fn(() => vi.fn()), captureModelFiles } }));
-vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue', () => ({ default: defineComponent({ name: 'LiveCatalogStub', props: ['suggestions', 'disabled', 'defaultActionDisabled', 'selectionAction'], emits: ['changed', 'select'], setup: () => () => h('div', { 'data-testid': 'mock-catalog' }) }) }));
+vi.mock('@/features/llama-cpp-browser/model-launch/acquire-repository-model', () => ({ acquireRepositoryModel: vi.fn() }));
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue', () => ({
+  __esModule: true,
+  __isTeleport: false,
+  default: defineComponent({
+    name: 'LiveCatalogStub',
+    props: ['suggestions', 'disabled', 'layout', 'selectionPolicy'],
+    emits: ['select-model'],
+    setup: () => () => h('div', { 'data-testid': 'mock-catalog' }),
+  }),
+}));
 
 vi.mock('@/features/live-conversation/composables/useLiveConversation', () => ({ useLiveConversation: vi.fn() }));
 vi.mock('@/features/live-conversation/composables/useLiveSpeechConversation', () => ({ useLiveSpeechConversation: vi.fn() }));
@@ -46,15 +60,24 @@ vi.mock('@/features/live-conversation/composables/useSpeechResponseRecording', (
 vi.mock('@/features/speech-cpp-browser/investigation/archive', () => ({ downloadSpeechInvestigation: vi.fn(async () => {}) }));
 vi.mock('@/features/speech-cpp-browser/recognition/models', () => ({ inspectStoredSpeechRecognitionModel: vi.fn(async () => ({ kind: 'other' })), openStoredSpeechRecognitionModel: vi.fn(async () => new File(['ASR model'], 'recognition.gguf')) }));
 vi.mock('@/features/speech-cpp-browser/models', () => ({ inspectStoredSpeechModel: vi.fn(async () => ({ kind: 'other' })), openStoredSpeechModel: vi.fn(async () => new File(['model'], 'model.gguf')) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { listVolumes: async function* () {} } }));
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    listVolumes: async function* () {},
+    subscribeLocalModelPromotions: () => () => {},
+    subscribeToChanges: () => () => {},
+  },
+}));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({
   default: defineComponent({
     props: ['suspended', 'runtimeSettings'],
     emits: ['models-changed', 'model-selected', 'runtime-ready'],
     setup(_props, { emit }) {
       onMounted(() => {
-        emit('models-changed', [{ modelId: 'user/live', size: 1, importedAt: 0 }]);
-        emit('model-selected', 'user/live');
+        emit('models-changed', managerInventory);
+        const firstModel = managerInventory[0];
+        if (firstModel) {
+          emit('model-selected', firstModel.modelId);
+        }
         emit('runtime-ready', true);
       });
       return () => h('div', { 'data-testid': 'mock-model-manager' });
@@ -83,6 +106,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   captureModelFiles.mockReset();
   speechCapability = { kind: 'available' };
+  managerInventory = [{ modelId: 'user/live', size: 1, importedAt: 0 }];
+  vi.mocked(acquireRepositoryModel).mockReset();
   vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
   vi.mocked(openStoredSpeechModel).mockResolvedValue(new File(['model'], 'model.gguf'));
   vi.mocked(inspectStoredSpeechRecognitionModel).mockResolvedValue({ kind: 'other' });
@@ -173,6 +198,25 @@ async function fixture() {
       revokeUrl.mockRestore();
     },
   };
+}
+
+async function openCatalog({ page }: { page: DOMWrapper<HTMLElement> }): Promise<void> {
+  await page.get('[data-testid="live-model"] [data-testid="model-selector-trigger"]').trigger('click');
+  await page.get('[data-testid="chat-model-selector-tabs"] button').trigger('click');
+  await flushPromises();
+}
+
+async function selectDownloadedModel({ wrapper, page, modelId }: { wrapper: VueWrapper, page: DOMWrapper<HTMLElement>, modelId: string }): Promise<void> {
+  const openedSettings = !page.get('[data-testid="live-settings-surface"]').isVisible();
+  if (openedSettings) {
+    await wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+  }
+  await openCatalog({ page });
+  wrapper.getComponent({ name: 'LiveCatalogStub' }).vm.$emit('select-model', { modelId, size: 1, importedAt: 0 });
+  if (openedSettings) {
+    await page.get('[data-testid="live-settings-close"]').trigger('click');
+  }
+  await flushPromises();
 }
 
 function downloadedSnapshot(): SpeechInvestigationSnapshot | undefined {
@@ -529,8 +573,7 @@ describe('independent live conversation workspace', () => {
     expect(f.recognition.decodeFile).not.toHaveBeenCalled();
     expect(f.wrapper.get('[data-testid="live-recognition-text"]').text()).toBe('こんにちは。');
     const sourceName = f.recognition.recorder.getState().clip?.file.name;
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/model' });
     await f.wrapper.get('[data-testid="live-investigation-save"]').trigger('click');
     await flushPromises();
     const saved = vi.mocked(downloadSpeechInvestigation).mock.calls.at(-1)?.[0];
@@ -593,8 +636,7 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.setProps({ panel: 'diagnostics', task: 'transcription' });
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'asr/model', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'asr/model' });
     const file = new File(['audio'], 'retained.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
     await flushPromises();
@@ -841,8 +883,7 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-diagnostics-generate"]').trigger('click');
     await flushPromises();
     const secondUrl = f.wrapper.get('[data-testid="live-diagnostics-download-input"]').attributes('href');
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'speech/next', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'speech/next' });
     expect(f.wrapper.findAll('[data-testid="live-response-result"]')).toHaveLength(1);
     expect(f.revokeUrl).not.toHaveBeenCalledWith(secondUrl);
     expect(f.speech.client.loadModel).toHaveBeenCalledOnce();
@@ -1303,8 +1344,7 @@ describe('independent live conversation workspace', () => {
     expect(reset).toHaveBeenCalledOnce();
     expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue(engine === 'speech' ? { kind: 'other' } : speechInspection);
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/model' });
     expect(f.speech.client.releaseModel).not.toHaveBeenCalled();
     expect(f.player.close).not.toHaveBeenCalled();
     await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
@@ -1357,7 +1397,7 @@ describe('independent live conversation workspace', () => {
     const manager = f.wrapper.findComponent(LlamaCppBrowserManager);
     manager.vm.$emit('runtime-ready', false);
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/lfm' });
     await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
     await flushPromises();
     expect(manager.props('runtimeSettings')).toBe('show');
@@ -1376,7 +1416,7 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/lfm' });
     await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
     await flushPromises();
     vi.mocked(f.speech.client.releaseModel).mockRejectedValueOnce(new Error('The resident model could not be released'));
@@ -1396,7 +1436,7 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.setProps({ panel });
     const reset = vi.spyOn(engine === 'speech' ? f.speech.controller : f.controller, 'reset');
     vi.mocked(inspectStoredSpeechModel).mockRejectedValue(new Error('Selected model is missing'));
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'missing/model', size: 1, importedAt: 0 });
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'missing/model' });
     vi.mocked(listModelInventory).mockResolvedValue([{ modelId: 'user/live', size: 1, importedAt: 0 }]);
     // A disappeared candidate does not invalidate a model already held by the runtime.
     const listener = vi.mocked(llamaCppBrowserModelFiles.subscribeModelList).mock.calls[0]![0].listener;
@@ -1420,8 +1460,7 @@ describe('independent live conversation workspace', () => {
     await flushPromises();
     await f.wrapper.setProps({ panel });
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue(target === 'speech' ? speechInspection : { kind: 'other' });
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/model' });
     if (panel === 'diagnostics' && target === 'llama') {
       expect(f.wrapper.get('[data-testid="live-diagnostics-load-model"]').attributes('disabled')).toBeDefined();
       expect(f.wrapper.find('[data-testid="live-investigation-model-mismatch"]').exists()).toBe(true);
@@ -1593,8 +1632,7 @@ describe('independent live conversation workspace', () => {
     const file = new File(['audio'], 'comparison.wav', { type: 'audio/wav' });
     await f.wrapper.get('[data-testid="live-diagnostics-input"]').trigger('drop', { dataTransfer: { files: [file], types: ['Files'] } });
     await flushPromises();
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/audio', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/audio' });
     await f.wrapper.get('[data-testid="live-diagnostics-load-model"]').trigger('click');
     await flushPromises();
     expect(f.speech.client.loadModel).toHaveBeenCalledTimes(2);
@@ -1686,8 +1724,7 @@ describe('independent live conversation workspace', () => {
       await second.promise;
       f.speech.change({ state: { phase: 'ready', model: { name: 'second', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } } });
     });
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'speech/second', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'speech/second' });
     void f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     first.resolve(new File(['late'], 'first.gguf'));
@@ -1709,8 +1746,7 @@ describe('independent live conversation workspace', () => {
     }
     async function addSpeechHistory() {
       vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'speech', info: { name: 'speech', architecture: 'haru', task: 'dialogue', bytes: 1, sampleRate: 24000, frameSamples: 3200, requiredVersion: 'test' } });
-      f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'speech/model', size: 1, importedAt: 0 });
-      await flushPromises();
+      await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'speech/model' });
       await f.wrapper.get('[data-testid="live-start"]').trigger('click');
       await flushPromises();
       await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
@@ -1720,8 +1756,7 @@ describe('independent live conversation workspace', () => {
     }
     async function addLfmHistory() {
       vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
-      f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'user/live', size: 1, importedAt: 0 });
-      await flushPromises();
+      await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'user/live' });
       await f.wrapper.get('[data-testid="live-start"]').trigger('click');
       await flushPromises();
       await f.wrapper.get('[data-testid="live-text"]').setValue('LFM history');
@@ -1816,8 +1851,7 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-speech-start"]').trigger('click');
     f.speech.frame({ text: 'Previous answer', samples: new Float32Array() });
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/lfm' });
     f.speech.change({ state: { phase: 'failed', model: undefined, failure: { code: 'runtime_failed', message: 'Worker stopped', nativeStatus: -9, nativeInput: 'speech_step' } } });
     await flushPromises();
     expect(f.wrapper.get('[data-testid="live-speech-failure"]').text()).toContain('Worker stopped');
@@ -1835,8 +1869,7 @@ describe('independent live conversation workspace', () => {
     f.speech.change({ state: { phase: 'failed', model: undefined, failure: { code: 'runtime_failed', message: 'Worker stopped', nativeStatus: undefined, nativeInput: undefined } } });
     await flushPromises();
     vi.mocked(inspectStoredSpeechModel).mockResolvedValue({ kind: 'other' });
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/lfm', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/lfm' });
     expect(f.wrapper.find('[data-testid="live-speech-controls"]').exists()).toBe(false);
     expect(f.wrapper.get('[data-testid="live-start"]').attributes('disabled')).toBeUndefined();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
@@ -1934,7 +1967,7 @@ describe('independent live conversation workspace', () => {
     expect(f.wrapper.get('[data-testid="live-open-settings"]').attributes('disabled')).toBeUndefined();
   });
 
-  it('keeps header and composer outside the message scroller and opens settings without replacing the catalog', async () => {
+  it('keeps header and composer outside the message scroller and moves the same model selector into settings', async () => {
     await using f = await fixture();
     const scroller = f.wrapper.get('[data-testid="live-message-scroll"]').element;
     const header = f.wrapper.get('[data-testid="live-header"]').element;
@@ -1943,7 +1976,7 @@ describe('independent live conversation workspace', () => {
     expect(scroller.contains(footer)).toBe(false);
     expect(header.parentElement).toBe(scroller.parentElement);
     expect(footer.parentElement).toBe(scroller.parentElement);
-    const catalog = f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm;
+    const modelSelector = f.wrapper.getComponent(ChatModelSelector).element;
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.get('[data-testid="live-text"]').setValue('unfinished draft');
@@ -1951,22 +1984,35 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
     await flushPromises();
     expect(f.page.find('[role="dialog"]').exists()).toBe(true);
-    expect(f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm).toBe(catalog);
+    expect(f.wrapper.getComponent(ChatModelSelector).element).toBe(modelSelector);
     expect(f.wrapper.get('[data-testid="live-conversation-page"]').attributes('inert')).toBeDefined();
+    const bounds = vi.spyOn(modelSelector, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, window.innerHeight - 84, 320, 40));
+    using _restoreBounds = { [Symbol.dispose]: () => bounds.mockRestore() };
+    await openCatalog({ page: f.page });
+    const settings = f.page.get('[data-testid="live-settings"]');
+    const picker = settings.get<HTMLDialogElement>('[data-testid="model-selector-dropdown"]');
+    expect(picker.element.parentElement).toBe(settings.element);
+    expect(settings.get('[data-testid="live-settings-body"]').element.contains(picker.element)).toBe(false);
+    expect(picker.element.style.bottom).toBe('92px');
+    expect(picker.element.style.maxHeight).toBe(`${window.innerHeight - 108}px`);
+    expect(picker.get('[data-testid="chat-model-selector-tabs"]').findAll('button').map(tab => tab.text())).toEqual(['Model catalog', 'On this device', 'Hugging Face', 'Add files']);
+    expect(picker.find('[data-testid="mock-catalog"]').exists()).toBe(true);
+    await picker.trigger('keydown', { key: 'Escape' });
+    expect(settings.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
+    expect(settings.isVisible()).toBe(true);
     await f.page.get('[data-testid="live-settings-close"]').trigger('click');
     await flushPromises();
     expect(scroller.scrollTop).toBe(120);
     expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="live-text"]').element.value).toBe('unfinished draft');
     expect(f.runLiveSession).toHaveBeenCalledOnce();
-    expect(f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm).toBe(catalog);
+    expect(f.wrapper.getComponent(ChatModelSelector).element).toBe(modelSelector);
   });
 
   it('shows the resident model until the selected model is explicitly loaded', async () => {
     await using f = await fixture();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'next/model', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'next/model' });
     expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe('user/live');
     expect(f.wrapper.get('[data-testid="live-header-model"]').text()).toBe('live');
     await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');
@@ -2012,7 +2058,8 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     expect(f.runLiveSession).toHaveBeenCalledOnce();
-    expect(f.page.get('[data-testid="live-model"]').attributes('disabled')).toBeUndefined();
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    expect(f.page.get('[data-testid="live-model"] [data-testid="model-selector-trigger"]').attributes('disabled')).toBeUndefined();
     expect(f.capture).not.toHaveBeenCalled();
     await f.page.get('[data-testid="live-release"]').trigger('click');
     await flushPromises();
@@ -2112,15 +2159,63 @@ describe('independent live conversation workspace', () => {
     await using f = await fixture();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
-    const catalog = f.wrapper.findComponent({ name: 'LiveCatalogStub' });
+    await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
+    await openCatalog({ page: f.page });
+    const catalog = f.wrapper.getComponent({ name: 'LiveCatalogStub' });
     expect(catalog.props('disabled')).toBe(false);
-    expect(catalog.props('selectionAction')).toBe('select');
+    expect(catalog.props('selectionPolicy')).toBe('installed-only');
     const listener = vi.mocked(llamaCppBrowserModelFiles.subscribeModelList).mock.calls[0]![0].listener;
     listener();
     await flushPromises();
     expect(listModelInventory).toHaveBeenCalled();
     expect(f.runLiveSession).toHaveBeenCalledOnce();
     expect(f.player.close).not.toHaveBeenCalled();
+  });
+
+  it('preselects the default online source and waits for an explicit start before downloading', async () => {
+    managerInventory = [];
+    const repository = 'LiquidAI/LFM3-Audio-2B-GGUF';
+    const modelId = `hf.co/${repository}:Q4_K_M`;
+    const downloaded = Promise.withResolvers<LocalModel>();
+    vi.mocked(acquireRepositoryModel).mockReturnValue(downloaded.promise);
+    await using f = await fixture();
+    expect(f.wrapper.get('[data-testid="live-offline-introduction"]').text()).toBe('Your audio and messages are processed offline in your browser.');
+    expect(f.wrapper.getComponent(ChatModelSelector).props('modelValue')).toBe(modelId);
+    expect(f.wrapper.getComponent(ChatModelSelector).props('selectionAvailability')).toBe('download_required');
+    expect(acquireRepositoryModel).not.toHaveBeenCalled();
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+    await f.page.get('[data-testid="live-start"]').trigger('click');
+    expect(f.page.find('[data-testid="live-model-download-progress"]').exists()).toBe(true);
+    expect(acquireRepositoryModel).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      usage: 'live-conversation',
+      selection: expect.objectContaining({ modelId, source: { kind: 'bundled', repository, variant: 'Q4_K_M', companionPath: 'mmproj-LFM3-Audio-2B-Q8_0.gguf' } }),
+    }));
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+    downloaded.resolve({ modelId, size: 1, importedAt: 0 });
+    await flushPromises();
+    expect(f.runLiveSession).toHaveBeenCalledOnce();
+    expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe(modelId);
+    expect(f.wrapper.getComponent(ChatModelSelector).props('selectionAvailability')).toBeUndefined();
+    expect(vi.mocked(useLiveModelPreference).mock.results[0]?.value.remember).toHaveBeenCalledExactlyOnceWith({ modelId });
+  });
+
+  it('keeps the first-use model selected when its pending load is cancelled', async () => {
+    managerInventory = [];
+    const downloaded = Promise.withResolvers<LocalModel>();
+    vi.mocked(acquireRepositoryModel).mockReturnValue(downloaded.promise);
+    await using f = await fixture();
+    const selector = f.wrapper.getComponent(ChatModelSelector);
+    const modelId = selector.props('modelValue')!;
+    await f.page.get('[data-testid="live-start"]').trigger('click');
+    const { signal } = vi.mocked(acquireRepositoryModel).mock.calls[0]![0];
+    await f.page.get('[data-testid="live-cancel-model-loading"]').trigger('click');
+    expect(signal.aborted).toBe(true);
+    downloaded.resolve({ modelId, size: 1, importedAt: 0 });
+    await flushPromises();
+    expect(f.runLiveSession).not.toHaveBeenCalled();
+    expect(selector.props('modelValue')).toBe(modelId);
+    expect(f.page.find('[data-testid="live-model-download-progress"]').exists()).toBe(false);
+    expect(f.page.get('[data-testid="live-start"]').attributes('disabled')).toBeUndefined();
   });
 
   it('accepts file input without microphone permission and renders the real model name', async () => {
@@ -2144,11 +2239,10 @@ describe('independent live conversation workspace', () => {
     await using f = await fixture();
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
-    f.wrapper.findComponent({ name: 'LiveCatalogStub' }).vm.$emit('select', { modelId: 'user/LFM3-Omni-2B', size: 1, importedAt: 0 });
-    await flushPromises();
+    await selectDownloadedModel({ wrapper: f.wrapper, page: f.page, modelId: 'user/LFM3-Omni-2B' });
     expect(f.runLiveSession).toHaveBeenCalledOnce();
     expect(f.player.close).not.toHaveBeenCalled();
-    expect(f.page.get<HTMLInputElement>('[data-testid="live-model"]').element.value).toBe('user/LFM3-Omni-2B');
+    expect(f.page.get('[data-testid="live-model"] [data-testid="model-selector-trigger"]').attributes('title')).toBe('user/LFM3-Omni-2B');
     await f.wrapper.get('[data-testid="live-text"]').setValue('keep this until confirmed');
     confirm.mockResolvedValueOnce(false);
     await f.wrapper.get('[data-testid="live-new-conversation"]').trigger('click');

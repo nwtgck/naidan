@@ -39,6 +39,7 @@ const props = defineProps<{
   frame?: 'standalone' | 'embedded',
   triggerSize?: 'compact',
   popupPresentation?: 'floating' | 'inline',
+  popupTarget?: HTMLElement,
   chevronVisibility?: 'visible' | 'hidden',
   refreshVisibility?: 'visible' | 'hidden',
   inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
@@ -651,7 +652,7 @@ defineExpose({
     </button>
 
     <!-- Inline mode keeps this menu inside an aria-modal and its scroll region. -->
-    <Teleport to="body" :disabled="popupPresentation === 'inline'">
+    <Teleport :to="popupTarget ?? 'body'" :disabled="popupPresentation === 'inline'">
       <!-- Sticky toolbars share the opaque panel background to cover scrolling rows. -->
       <dialog
         v-if="isOpen"

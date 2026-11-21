@@ -7,6 +7,7 @@ import { toHostModelDirectoryId } from '@/01-models/ids';
 import type { useSettings } from '@/composables/useSettings';
 import type { HostModelDirectoryChoice } from '@/composables/useHostModelDirectories';
 import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
+import { liveModelCatalog } from '@/features/live-conversation/model-catalog';
 import ModelSelectorVariantDownload from '@/components/ModelSelectorVariantDownload.vue';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { TEST_ONLY as destinationTest } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
@@ -579,13 +580,17 @@ it.each(['first-use-download', 'installed-only'] as const)('uses a completed bun
   expect(mocks.inspect).not.toHaveBeenCalled();
 });
 
-it('uses the bundled audio files offline and resolves both files when download is requested', async () => {
-  const suggestion = audioModelCatalog[0]!;
+it.each([
+  ['audio-generation', audioModelCatalog, 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf'],
+  ['live-conversation', liveModelCatalog, 'mmproj-LFM3-Audio-2B-Q8_0.gguf'],
+] as const)('uses the bundled %s files offline and resolves both files when download is requested', async (repositoryUsage, suggestions, companionPath) => {
+  const suggestion = suggestions[0]!;
   const hint = suggestion.quantizationHints[0];
-  const companion = hint.companionFiles?.[0];
+  const companion = hint.companionFiles?.find(file => file.path === companionPath);
+  expect(companion).toBeDefined();
   const live = { ...catalog, repository: hint.hfRepository, projectors: companion ? [companion] : [] };
   mocks.inspect.mockResolvedValue(live);
-  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy: 'installed-only', suggestions: audioModelCatalog, repositoryUsage: 'audio-generation' } });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy: 'installed-only', suggestions, repositoryUsage } });
   using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
   const audioRow = wrapper.get(`[data-testid="chat-model-suggestion"][data-repository="${suggestion.id}"]`);
   await audioRow.trigger('click');

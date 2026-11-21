@@ -1,6 +1,6 @@
 import { awaitInspection } from '@/logic/model-file-inspection/abort';
 import { findModelDownloadJob, getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
-import { repositoryDefaultDownloadKey } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
+import { repositoryDefaultDownloadKey, type RepositoryDownloadUsage } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
 import { quantizationName } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { findLocalSuggestedModel } from '@/features/llama-cpp-browser/hugging-face/suggestion-plan';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
@@ -11,19 +11,19 @@ import type { DownloadSelection } from '@/features/llama-cpp-browser/hugging-fac
 import { repositoryModelDownloadIdentity, resolveBundledRepositoryTarget, type RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
 
-export function audioSearchDownloadKey({ selection }: { selection: RepositoryModelSelection }): string | undefined {
+export function repositorySearchDownloadKey({ selection, usage }: { selection: RepositoryModelSelection, usage: RepositoryDownloadUsage }): string | undefined {
   const { source, defaultDownloadKey } = selection;
   if (defaultDownloadKey !== undefined) {
     return defaultDownloadKey;
   }
   switch (source.kind) {
-  case 'bundled': return repositoryDefaultDownloadKey({ repository: source.repository, usage: 'audio-generation' });
+  case 'bundled': return repositoryDefaultDownloadKey({ repository: source.repository, usage });
   case 'resolved': return undefined;
   default: throw new Error(String(source satisfies never));
   }
 }
 
-export function matchesAudioDownload({ selection, files }: { selection: RepositoryModelSelection, files: DownloadSelection | undefined }): boolean {
+export function matchesRepositoryDownload({ selection, files }: { selection: RepositoryModelSelection, files: DownloadSelection | undefined }): boolean {
   if (files === undefined) {
     return false;
   }
@@ -46,9 +46,10 @@ export function matchesAudioDownload({ selection, files }: { selection: Reposito
   }
 }
 
-/** The caller invokes this from Generate, while linked-folder permission can still be requested. */
-export async function acquireAudioModel({ selection, models, signal, onDownload }: {
+/** Invoke from the user's action so linked-folder permission can still be requested. */
+export async function acquireRepositoryModel({ selection, usage, models, signal, onDownload }: {
   selection: RepositoryModelSelection,
+  usage: RepositoryDownloadUsage,
   models: readonly LocalModel[],
   signal: AbortSignal,
   onDownload({ id }: { id: number }): void,
@@ -61,7 +62,7 @@ export async function acquireAudioModel({ selection, models, signal, onDownload 
   const previous = findModelDownloadJob({ jobs: queue.jobs.value, key, selection: resolved, destination: requestedDestination });
   const prepared = resolved ?? previous?.selection;
   const host = requestedDestination.kind === 'host';
-  // The cached handle must request permission during the Generate gesture.
+  // The cached handle must request permission during the initiating gesture.
   // Keep denial pending until we know the model really needs to be written.
   const authorization = authorizeDestination?.({ destination: requestedDestination }).then(
     authorized => ({ authorized, error: undefined }),
@@ -141,7 +142,7 @@ export async function acquireAudioModel({ selection, models, signal, onDownload 
     signal.throwIfAborted();
     const job = queue.enqueue({ key: jobKey, repository, source: 'repository', destination, expectedRoot, prepare });
     onDownload({ id: job.id });
-    // Cancelling generation only stops this view's wait. The shared download can
+    // Cancellation only stops this view's wait. The shared download can
     // be resumed or used by other views from the download manager.
     const result = await awaitInspection({ task: job.done, signal });
     signal.throwIfAborted();
@@ -164,14 +165,14 @@ export async function acquireAudioModel({ selection, models, signal, onDownload 
     default: throw new Error(String(source satisfies never));
     }
   })();
-  const searchDownloadKey = audioSearchDownloadKey({ selection });
+  const searchDownloadKey = repositorySearchDownloadKey({ selection, usage });
   if (searchDownloadKey !== undefined && !jobIsBusy({ job: previous })) {
     const existing = findModelDownloadJob({ jobs: queue.jobs.value, key: searchDownloadKey, destination, selection: undefined });
     // Search defaults can resolve to a different quantization in the same repo.
     // Only attach once the manager has confirmed the requested files.
-    if (jobIsBusy({ job: existing }) && matchesAudioDownload({ selection, files: existing?.selection })) {
+    if (jobIsBusy({ job: existing }) && matchesRepositoryDownload({ selection, files: existing?.selection })) {
       const downloaded = await waitForDownload({ jobKey: searchDownloadKey, repository });
-      if (matchesAudioDownload({ selection, files: downloaded })) {
+      if (matchesRepositoryDownload({ selection, files: downloaded })) {
         const model = await awaitInspection({ task: installedSelection({ selection: downloaded, destination, expectedRoot }), signal });
         signal.throwIfAborted();
         if (model !== undefined) {

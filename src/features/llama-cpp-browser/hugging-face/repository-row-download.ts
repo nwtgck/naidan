@@ -14,7 +14,7 @@ export type RepositoryModelDownloadRequest = {
   prepare({ signal }: { signal: AbortSignal }): Promise<DownloadSelection>,
 };
 
-export type RepositoryDownloadUsage = 'chat' | 'transcription' | 'audio-generation';
+export type RepositoryDownloadUsage = 'chat' | 'transcription' | 'audio-generation' | 'live-conversation';
 
 export function repositoryDefaultDownloadKey({ repository, usage }: { repository: string, usage: RepositoryDownloadUsage }): string {
   return `repository-default:${usage}:${repository.toLowerCase()}`;

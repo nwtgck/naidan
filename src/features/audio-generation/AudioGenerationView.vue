@@ -25,7 +25,7 @@ import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import ChatModelSelector from '@/components/ChatModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import { audioModelCatalog, defaultAudioModel } from './model-catalog';
-import { acquireAudioModel, audioSearchDownloadKey, matchesAudioDownload } from './model-acquisition';
+import { acquireRepositoryModel, repositorySearchDownloadKey, matchesRepositoryDownload } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
 import { preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { repositoryModelDownloadIdentity, type RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
@@ -139,11 +139,11 @@ const selectionDownloadIsActive = computed(() => {
   const { key, selection } = repositoryModelDownloadIdentity({ source: pending.source });
   const jobs = downloadQueue.jobs.value;
   const queued = findModelDownloadJob({ jobs, key, selection, destination: pending.destination });
-  const defaultKey = audioSearchDownloadKey({ selection: pending });
+  const defaultKey = repositorySearchDownloadKey({ selection: pending, usage: 'audio-generation' });
   const defaultJob = defaultKey === undefined ? undefined
     : findModelDownloadJob({ jobs, key: defaultKey, selection: undefined, destination: pending.destination });
   return acquiringModel.value || jobIsBusy({ job: queued })
-    || jobIsBusy({ job: defaultJob }) && matchesAudioDownload({ selection: pending, files: defaultJob?.selection });
+    || jobIsBusy({ job: defaultJob }) && matchesRepositoryDownload({ selection: pending, files: defaultJob?.selection });
 });
 const canGenerate = computed(() => {
   if (blocked.value || referenceBusy.value || !runtimeReady.value) {
@@ -440,8 +440,9 @@ async function generate(): Promise<void> {
     let selectedId = input.modelId;
     if (pending !== undefined) {
       acquiringModel.value = true;
-      const model = await acquireAudioModel({
+      const model = await acquireRepositoryModel({
         selection: pending,
+        usage: 'audio-generation',
         models: models.value,
         signal: active.signal,
         onDownload: ({ id }) => {

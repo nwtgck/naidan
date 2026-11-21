@@ -3289,6 +3289,7 @@ import { liveConversation__input_level_not_observed } from '@/strings/messages/l
 import { liveConversation__input_pacing } from '@/strings/messages/liveConversation__input_pacing/de';
 import { liveConversation__input_pacing_measurements } from '@/strings/messages/liveConversation__input_pacing_measurements/de';
 import { liveConversation__input_preparation_time } from '@/strings/messages/liveConversation__input_preparation_time/de';
+import { liveConversation__input_processed_offline } from '@/strings/messages/liveConversation__input_processed_offline/de';
 import { liveConversation__input_queue_limit_reached } from '@/strings/messages/liveConversation__input_queue_limit_reached/de';
 import { liveConversation__input_submission_time } from '@/strings/messages/liveConversation__input_submission_time/de';
 import { liveConversation__input_text } from '@/strings/messages/liveConversation__input_text/de';
@@ -7684,6 +7685,7 @@ export const catalog = {
   liveConversation__input_pacing,
   liveConversation__input_pacing_measurements,
   liveConversation__input_preparation_time,
+  liveConversation__input_processed_offline,
   liveConversation__input_queue_limit_reached,
   liveConversation__input_submission_time,
   liveConversation__input_text,
