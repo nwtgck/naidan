@@ -3,7 +3,7 @@ import { createAbortableByteStream } from '@/utils/abortable-byte-stream';
 import { isGpuProfileTrial, summarizeGpuProfiles } from './gpu-profile-summary';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { StreamingZipWriter, createWebZipCompressionCodec } from '@/utils/zip-stream';
-import { snapshotSchema, type PerformanceSnapshot } from './types';
+import { performanceProtocol, snapshotSchema, type PerformanceSnapshot } from './types';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 
 function archiveReadme({ protocol }: { protocol: PerformanceSnapshot['plan']['protocol'] }): string {
@@ -185,7 +185,7 @@ No hardware performance counters, physical GPU residency, swap, bandwidth
 utilization or per-instruction timings are collected.
 
 ## What changed in this protocol
-The default is one block: initial short (up to 8 output tokens), short before
+The default baseline is one block: initial short (up to 8 output tokens), short before
 (up to 64), its real continuation (up to 16), long input (up to 8), and the
 same fresh short input after (up to 64). The initial call doubles as warm-up;
 there is no additional full-length warm-up or regenerated continuation parent.
@@ -199,7 +199,21 @@ first-use graph/pipeline work; it is NOT a warmed-prefill claim. Increase blocks
 only when a specific comparison needs confirmation, not to hide chronological drift.
 The input is English. Results are not interchangeable with standard-text-v1
 (Japanese) or standard-text-en-v2 (a different schedule and output budget).
-
+${protocol === performanceProtocol ? `
+## Tool result continuation
+One additional pair per selected model runs after the baseline in its lane. Paired
+mode puts it in the standard lane. The first request gives the model a synthetic
+tool and asks it to generate a call with a long argument. Its output ceiling is
+512 tokens. The next request uses the same runtime and tool definition, with the
+real generated call and a fixed short tool result. The result request generates
+up to 32 tokens. The diagnostic does not execute the generated call.
+Use outputs/<id>.json for the actual tool definition, argument string, and tool
+result. For the tool-continuation row in trials.jsonl, compare
+summary.performance.cacheReuse with the prefill stages and checkpoint breakdown.
+firstReceivedMs and firstReasoningMs are relative to the continuation request;
+summary.performance.earlyGenerationTiming gives the native sampling timestamps.
+Skip reasons distinguish a rejected template from an unusable generated call.
+` : ''}
 ## Operation diagnostic: capabilities and limitations
 The diagnostic uses the public native evaluation callback. Prefill observations
 are metadata-only. When decodeCompletionTiming is present, the same public
@@ -600,7 +614,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
       await addLines({
         name: 'trials.jsonl',
         values: snapshot.trials,
-        format: ({ value: { input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record } }) => {
+        format: ({ value: { input: _input, tools: _tools, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record } }) => {
           const coverage = (() => {
             if (!memoryDiagnostics) {
               return undefined;
@@ -654,7 +668,7 @@ export function createPerformanceArchiveStream({ snapshot: input, signal }: { sn
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,
           step?.dependsOn === undefined ? undefined : trialsByStep.get(step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
           instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason, execution?.kind ?? 'unobserved', graph?.definitionSha256, graph?.format, graph?.nativeExtensionSha256]);
-        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, vision: trial.vision, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
+        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, tools: trial.tools, vision: trial.vision, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
       await addLines({ name: 'summary.csv', values: rows, format: ({ value: row }) => row.map(value => csvCell({ value })).join(',') + '\r' });
       await writer.finalize();

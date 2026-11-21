@@ -7,6 +7,7 @@ import { summarizePerformance, performanceFindings, trialRates } from './summary
 import { runtimeBuildEvidence } from './runtime-evidence';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
 import type { PerformanceSnapshot } from './types';
+import { performanceTools } from './tool-continuation';
 
 function snapshot(): PerformanceSnapshot {
   const plan = performancePlan();
@@ -70,9 +71,18 @@ ordinary chat tok/s`);
     expect(zip.file('q8-kernel-diagnostic.json')).toBeNull();
   });
 
-  it('preserves the request-local cache decision and checkpoint phases in the existing trials export', async () => {
+  it('exports exact tool requests alongside continuation timing and cache decisions', async () => {
     const source = snapshot();
-    const metrics = source.trials[0]!.summary!.performance!;
+    source.plan = performancePlan({ workload: 'tool-continuation' });
+    const trial = source.trials[0]!;
+    trial.stepId = source.plan.steps.at(-1)!.id;
+    trial.tools = performanceTools;
+    const rawArguments = '{"passage": "example","label": "archive"}';
+    trial.input.push(
+      { role: 'assistant', content: '', tool_calls: [{ id: 'example01', type: 'function', function: { name: 'record_sample', arguments: rawArguments } }] },
+      { role: 'tool', content: '{"ok":true}', name: 'record_sample', tool_call_id: 'example01' },
+    );
+    const metrics = trial.summary!.performance!;
     metrics.cacheReuse = {
       tokens: 80,
       cachedTokens: 60,
@@ -107,12 +117,16 @@ ordinary chat tok/s`);
     metrics.firstLogits = { finite: 16, nan: 2, positiveInfinity: 1, negativeInfinity: 3, finiteRange: { minimum: -2, maximum: 5, secondHighest: 5 } };
     const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
     const record = JSON.parse(await zip.file('trials.jsonl')!.async('string'));
+    expect(record.tools).toBeUndefined();
+    expect(record.input).toBeUndefined();
+    expect(JSON.parse(await zip.file('outputs/attempt_one.json')!.async('string'))).toMatchObject({ input: trial.input, tools: performanceTools });
     const exported = diagnosticSchema.parse(record.summary).performance!;
     expect(exported.cacheReuse).toEqual(metrics.cacheReuse);
     expect(exported.checkpoint).toEqual(metrics.checkpoint);
     expect(exported.earlyGenerationTiming).toEqual(metrics.earlyGenerationTiming);
     expect(exported.firstLogits).toEqual(metrics.firstLogits);
     expect(await zip.file('README.md')!.async('string')).toContain('cacheReuse records the cache decision before prefill');
+    expect(await zip.file('README.md')!.async('string')).toContain('## Tool result continuation');
     expect(await zip.file('README.md')!.async('string')).toContain('generation-overlap includes delivery and decode');
   });
 

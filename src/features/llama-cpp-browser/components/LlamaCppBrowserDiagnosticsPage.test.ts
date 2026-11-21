@@ -138,7 +138,8 @@ describe('in-app llama Diagnostics page', () => {
     await saveManually();
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
     const exported = mocks.archive.mock.calls[0]![0].snapshot;
-    expect(exported.trials).toHaveLength(12);
+    expect(exported.trials).toHaveLength(16);
+    expect(exported.trials.filter((trial: { skipReason?: string }) => trial.skipReason === 'no-usable-tool-call')).toHaveLength(2);
     expect(exported.plan.options.profile).toBe('webgpu-wasm64-jspi');
     await wrapper.get('[data-testid="llama-performance-back"]').trigger('click');
     await flushPromises();
@@ -388,7 +389,7 @@ describe('profiling modes and safe result actions', () => {
     await saveManually();
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
     expect(mocks.runPerformanceOperation.mock.calls[0]![0].options.profile).toBe('webgpu-wasm64-jspi-gpu-profile');
-    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(6);
+    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(8);
   });
 
   it.each(['standard', 'both'] as const)('allows %s and runs exactly the selected lanes', async mode => {
@@ -399,7 +400,7 @@ describe('profiling modes and safe result actions', () => {
     await wrapper!.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     expect(mocks.runPerformanceOperation.mock.calls.map(([args]) => args.options.profile)).toEqual(mode === 'both' ? ['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm64-jspi-gpu-profile'] : ['webgpu-wasm64-jspi']);
-    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(mode === 'both' ? 12 : 6);
+    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(mode === 'both' ? 14 : 8);
     expect(mocks.archive.mock.calls[0]![0].snapshot.plan.settings.mode).toBe(mode);
   });
 
@@ -510,9 +511,10 @@ describe('current-trial interruption controls', () => {
     await saveManually();
     const snapshot = mocks.archive.mock.calls[0]![0].snapshot;
     expect(snapshot.status).toBe('completed');
-    expect(snapshot.trials).toHaveLength(6);
+    expect(snapshot.trials).toHaveLength(8);
     expect(snapshot.trials[0]).toMatchObject({ status: 'interrupted', partialText: 'partial from slow model', interruption: { recovery: 'new-scope' }, summary: { performance: { outcome: 'aborted' } }, memoryDiagnostics: { samples: [] } });
-    expect(snapshot.trials.slice(1).every((trial: { status: string }) => trial.status === 'succeeded')).toBe(true);
+    expect(snapshot.trials.slice(1, -1).every((trial: { status: string }) => trial.status === 'succeeded')).toBe(true);
+    expect(snapshot.trials.at(-1)).toMatchObject({ status: 'skipped', skipReason: 'no-usable-tool-call' });
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
   });
 
@@ -808,10 +810,10 @@ describe('Diagnostics page URL contract', () => {
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
     expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(20);
-    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(120);
+    expect(mocks.archive.mock.calls[0]![0].snapshot.trials).toHaveLength(160);
     expect(wrapper.findAll('tbody tr')).toHaveLength(100);
     await wrapper.get('[data-testid="llama-diagnostics-more-trials"]').trigger('click');
-    expect(wrapper.findAll('tbody tr')).toHaveLength(120);
+    expect(wrapper.findAll('tbody tr')).toHaveLength(160);
     expect(router.currentRoute.value.query).toEqual({ 'all-models': null, mode: 'standard' });
   });
 

@@ -7,6 +7,7 @@ import { maximumExecutionIntervals, planSchema, type PerformanceSnapshot, type P
 import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 import { q8DiagnosticWorkerResultSchema } from './q8-diagnostic-worker-types';
 import { q8KernelBenchmarkProgressSchema } from './q8-kernel-schema';
+import { performanceTools, toolCallForContinuation } from './tool-continuation';
 
 /** No chat store, alternate inference loop, rendering or archive work here. */
 export function createPerformanceRunner({ service, now, date, hidden, waitUntilVisible, publish, runKernelDiagnostic }: {
@@ -153,6 +154,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
           let remaining = steps;
           let resuming: PerformanceTrial | undefined;
           let modelSkip: 'missing-projector' | 'native-no-vision' | undefined;
+          let toolSkip: 'tool-template-unsupported' | undefined;
           // Never call generate again on a failed scope. Recovery re-enters the
           // existing service only AFTER it retires the Worker and releases its lane.
           while (remaining.length && !control.signal.aborted) {
@@ -205,14 +207,45 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         await visible({ modelIndex, stepId: step.id, lane, runtimeSegment });
                         control.signal.throwIfAborted();
                         const parent = step.dependsOn === undefined ? undefined : trialsByStep.get(step.dependsOn);
-                        if (step.dependsOn !== undefined && (parent?.status !== 'succeeded' || (parent.runtimeSegment ?? 0) !== runtimeSegment || !parent.output || parent.output.toolCalls.length || (!parent.output.content && !parent.output.reasoningContent))) {
-                          skip({ step, options: scope.options, error: 'Continuation preparation did not produce a usable response in this runtime segment', skipReason: parent?.status === 'succeeded' && (parent.runtimeSegment ?? 0) !== runtimeSegment ? 'dependency-runtime-reset' : undefined });
-                          notify();
-                          continue;
+                        const toolWorkload = step.scenario === 'tool-call' || step.scenario === 'tool-continuation';
+                        const tools = toolWorkload ? performanceTools : undefined;
+                        let messages: PerformanceTrial['input'] = [{ role: 'user', content: step.prompt }];
+                        if (step.dependsOn !== undefined) {
+                          const output = parent?.output;
+                          if (!parent || parent.status !== 'succeeded' || (parent.runtimeSegment ?? 0) !== runtimeSegment || !output) {
+                            skip({ step, options: scope.options, error: 'Continuation preparation did not produce a usable response in this runtime segment', skipReason: parent?.status === 'succeeded' && (parent.runtimeSegment ?? 0) !== runtimeSegment ? 'dependency-runtime-reset' : undefined });
+                            notify();
+                            continue;
+                          }
+                          switch (step.scenario) {
+                          case 'tool-continuation': {
+                            const call = toolCallForContinuation({ output });
+                            if (!call) {
+                              skip({ step, options: scope.options, error: 'Model did not complete the requested tool call with usable arguments', skipReason: 'no-usable-tool-call' });
+                              notify();
+                              continue;
+                            }
+                            messages = [
+                              ...parent.input,
+                              { role: 'assistant', content: output.content, ...(output.reasoningContent ? { reasoning_content: output.reasoningContent } : {}), tool_calls: [call] },
+                              { role: 'tool', content: step.prompt, tool_call_id: call.id, name: call.function.name },
+                            ];
+                            break;
+                          }
+                          case 'initial': case 'short': case 'long': case 'continuation': case 'placement': case 'tool-call':
+                            if (output.toolCalls.length || (!output.content && !output.reasoningContent)) {
+                              skip({ step, options: scope.options, error: 'Continuation preparation did not produce a usable response in this runtime segment' });
+                              notify();
+                              continue;
+                            }
+                            messages = [...parent.input, { role: 'assistant', content: output.content, reasoning_content: output.reasoningContent }, { role: 'user', content: step.prompt }];
+                            break;
+                          default: {
+                            const exhaustive: never = step.scenario;
+                            throw new Error(String(exhaustive));
+                          }
+                          }
                         }
-                        const messages: PerformanceTrial['input'] = parent?.output
-                          ? [...parent.input, { role: 'assistant', content: parent.output.content, reasoning_content: parent.output.reasoningContent }, { role: 'user', content: step.prompt }]
-                          : [{ role: 'user', content: step.prompt }];
                         const trial: PerformanceTrial = {
                           id: nanoid(),
                           stepId: step.id,
@@ -223,6 +256,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           startedAt: date(),
                           startedMs: elapsed(),
                           input: messages,
+                          ...(tools === undefined ? {} : { tools }),
                           vision: step.vision,
                           options: { ...scope.options },
                           partialText: '',
@@ -265,7 +299,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           }
                           switch (step.scenario) {
                           case 'placement': return 'placement' as const;
-                          case 'initial': case 'short': case 'long': case 'continuation': return undefined;
+                          case 'initial': case 'short': case 'long': case 'continuation': case 'tool-call': case 'tool-continuation': return undefined;
                           default: {
                             const exhaustive: never = step.scenario;
                             throw new Error(String(exhaustive));
@@ -275,6 +309,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         const input: Omit<GenerateInput, 'options'> = {
                           modelId: model.modelId,
                           messages: step.vision && image ? [{ role: 'user', content: [{ type: 'image', blob: image }, { type: 'text', text: step.prompt }] }] : messages,
+                          ...(tools === undefined ? {} : { tools }),
                           debug: 'off',
                           temperature: 0,
                           topP: 1,
@@ -365,11 +400,16 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           local.signal.throwIfAborted();
                           trial.status = 'succeeded';
                         } catch (error) {
-                          trial.status = control.signal.aborted ? 'cancelled' : trial.interruption ? 'interrupted' : modelSkip ? 'skipped' : 'failed';
-                          if (modelSkip) {
-                            trial.skipReason = modelSkip;
+                          const code = errorCode({ error });
+                          if (toolWorkload && code === 'template-unsupported' && !local.signal.aborted) {
+                            toolSkip = 'tool-template-unsupported';
                           }
-                          trial.error = modelSkip ?? (timedOut ? 'trial-timeout' : errorCode({ error }));
+                          const skipReason = modelSkip ?? toolSkip;
+                          trial.status = control.signal.aborted ? 'cancelled' : trial.interruption ? 'interrupted' : skipReason ? 'skipped' : 'failed';
+                          if (skipReason) {
+                            trial.skipReason = skipReason;
+                          }
+                          trial.error = skipReason ?? (timedOut ? 'trial-timeout' : code);
                           if (trial.interruption) {
                             interrupted = trial;
                             trial.exclusion.push('interrupted');
@@ -526,12 +566,13 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                   trial.interruption.recovery = control.signal.aborted ? 'stopped' : 'failed';
                 }
               }
-              if (!modelSkip) {
+              const skipReason = modelSkip ?? (toolSkip && errorCode({ error }) === 'template-unsupported' ? toolSkip : undefined);
+              if (!skipReason) {
                 activeSnapshot.modelErrors.push({ modelIndex, lane, error: error instanceof Error ? error.message : String(error) });
               }
               for (const step of steps) {
                 if (!trialsByStep.has(step.id)) {
-                  skip({ step, options, error: modelSkip ?? (control.signal.aborted ? 'cancelled' : 'model-operation-failed'), skipReason: modelSkip });
+                  skip({ step, options, error: skipReason ?? (control.signal.aborted ? 'cancelled' : 'model-operation-failed'), skipReason });
                 }
               }
               notify();

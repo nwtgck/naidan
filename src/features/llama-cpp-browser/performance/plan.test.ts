@@ -27,17 +27,22 @@ describe('versioned English performance workload', () => {
   });
 });
 
-it('uses six bounded calls with separate placement and a measured continuation parent', () => {
+it('keeps the bounded baseline and adds a tool round trip once per model', () => {
   const source = performancePlan();
   const plan = createPerformancePlan({ ...source, settings: { ...source.settings, repeats: 1, maxTokens: 64, diagnostics: 'placement' } });
-  expect(plan.steps.map(step => [step.scenario, step.position, step.maxTokens])).toEqual([
+  expect(plan.steps.slice(0, 6).map(step => [step.scenario, step.position, step.maxTokens])).toEqual([
     ['initial', 'initial', 8], ['short', 'before', 64], ['continuation', 'workload', 16],
     ['long', 'workload', 8], ['short', 'after', 64], ['placement', 'diagnostic', 2],
   ]);
-  expect(plan.steps.reduce((sum, step) => sum + step.maxTokens, 0)).toBe(162);
+  expect(plan.steps.slice(0, 6).reduce((sum, step) => sum + step.maxTokens, 0)).toBe(162);
   expect(plan.steps[2]!.dependsOn).toBe(plan.steps[1]!.id);
   expect(plan.steps[4]!.prompt).toBe(plan.steps[1]!.prompt);
   expect(plan.steps[4]!.sequence).toBe('fresh');
+  expect(plan.protocol).toBe('targeted-text-en-v5');
+  expect(plan.steps.slice(6)).toMatchObject([
+    { scenario: 'tool-call', sequence: 'fresh', role: 'preparation', maxTokens: 512 },
+    { scenario: 'tool-continuation', sequence: 'continue', role: 'measurement', dependsOn: plan.steps[6]!.id, maxTokens: 32 },
+  ]);
 });
 
 describe('standard and profiling workload lanes', () => {
@@ -62,4 +67,17 @@ describe('standard and profiling workload lanes', () => {
       }
     }
   });
+});
+
+it.each(['standard', 'gpu-profile', 'both'] as const)('keeps the tool result adjacent to its real call and in one lane in %s mode', mode => {
+  const plan = performancePlan({ models: 2, repeats: 3, mode, workload: 'tool-continuation' });
+  const pairs = plan.steps.filter(step => step.scenario === 'tool-call' || step.scenario === 'tool-continuation');
+  const lane = mode === 'gpu-profile' ? 'gpu-profile' : 'standard';
+  expect(pairs).toMatchObject([
+    { modelIndex: 0, lane, scenario: 'tool-call' },
+    { modelIndex: 0, lane, scenario: 'tool-continuation', dependsOn: pairs[0]!.id },
+    { modelIndex: 1, lane, scenario: 'tool-call' },
+    { modelIndex: 1, lane, scenario: 'tool-continuation', dependsOn: pairs[2]!.id },
+  ]);
+  expect(planSchema.safeParse({ ...plan, steps: plan.steps.filter(step => step.id !== pairs[3]!.id) }).success).toBe(false);
 });

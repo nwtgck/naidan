@@ -323,7 +323,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
               <p v-if="loading" role="status" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppPerformance__checking_profiling_support() }}</p>
               <p v-else-if="profilingUnavailableText" role="status" data-testid="llama-performance-profiling-unavailable" tw-class="text-xs text-amber-700 dark:text-amber-400">{{ profilingUnavailableText }}</p>
             </fieldset>
-            <p tw-class="text-sm text-gray-600 dark:text-gray-400">{{ lazyStrings.llamaCppPerformance__standard_measurement_help() }}</p>
+            <p v-if="workload === 'text'" tw-class="text-sm text-gray-600 dark:text-gray-400">{{ lazyStrings.llamaCppPerformance__standard_measurement_help() }}</p>
             <details data-testid="llama-diagnostics-conditions" tw-class="group/performance-conditions rounded-xl border border-gray-200/70 bg-white/60 p-3.5 dark:border-gray-800/80 dark:bg-gray-900/20">
               <summary tw-class="flex min-h-7 cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-gray-700 outline-none focus-visible:text-blue-600 dark:text-gray-300 [&::-webkit-details-marker]:hidden">{{ lazyStrings.llamaCppPerformance__advanced_conditions() }}<ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 transition-transform duration-200 group-open/performance-conditions:rotate-90 motion-reduce:transition-none" /></summary>
               <fieldset :disabled="preparingRun || running || exporting" tw-class="mt-3 grid gap-3 text-sm disabled:opacity-60 sm:grid-cols-2">

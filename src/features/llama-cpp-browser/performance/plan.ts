@@ -1,6 +1,7 @@
 import { visionFixture, visionPrompt, visionProtocol } from './vision-plan';
 import { gpuProfilingProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { measurementLanes, performanceProtocol, planSchema, type MeasurementLane, type MeasurementMode, type PerformancePlan, type PerformanceStep } from './types';
+import { toolCallPrompt, toolCallTokenLimit, toolContinuationTokenLimit, toolResult } from './tool-continuation';
 
 // Public, versioned English fixtures. Changing these changes the workload, so
 // retain both the protocol identity and exact input messages in every archive.
@@ -10,9 +11,11 @@ const followUp = 'Choose the most important limitation from your previous explan
 
 export function createPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
   const steps: PerformanceStep[] = [];
-  for (const { modelIndex, lane } of models.flatMap((_, modelIndex) => performanceLanes({ mode: settings.mode }).map(lane => ({ modelIndex, lane })))) {
+  const lanes = performanceLanes({ mode: settings.mode });
+  let baselineIndex = 0;
+  for (const { modelIndex, lane } of models.flatMap((_, modelIndex) => lanes.map(lane => ({ modelIndex, lane })))) {
     const add = ({ scenario, position, repetition, dependsOn, prompt, maxTokens }: { scenario: PerformanceStep['scenario'], position: PerformanceStep['position'], repetition: PerformanceStep['repetition'], dependsOn?: PerformanceStep['dependsOn'], prompt: PerformanceStep['prompt'], maxTokens: PerformanceStep['maxTokens'] }): string => {
-      const id = `m${modelIndex}-${steps.length}`;
+      const id = `m${modelIndex}-${baselineIndex++}`;
       steps.push({
         id,
         modelIndex,
@@ -51,6 +54,35 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
       const exhaustive: never = settings.diagnostics;
       throw new Error(String(exhaustive));
     }
+    }
+    // Complete the ordinary trials first so a tool-template failure has no effect
+    // on their evidence. Paired mode runs the tool round trip in the standard lane.
+    if (lane === lanes[0]) {
+      const id = `m${modelIndex}-tool-call`;
+      steps.push({
+        id,
+        modelIndex,
+        lane,
+        scenario: 'tool-call',
+        position: 'workload',
+        role: 'preparation',
+        repetition: 0,
+        sequence: 'fresh',
+        prompt: toolCallPrompt,
+        maxTokens: toolCallTokenLimit,
+      }, {
+        id: `m${modelIndex}-tool-continuation`,
+        modelIndex,
+        lane,
+        scenario: 'tool-continuation',
+        position: 'workload',
+        role: 'measurement',
+        repetition: 0,
+        sequence: 'continue',
+        dependsOn: id,
+        prompt: toolResult,
+        maxTokens: Math.min(toolContinuationTokenLimit, settings.maxTokens),
+      });
     }
   }
   const plan = planSchema.parse({ version: 1, protocol: performanceProtocol, id, createdAt, models, settings, options: settings.mode === 'both' || settings.mode === 'gpu-profile' ? { ...options, profile: 'webgpu-wasm64-jspi' } : options, notes, steps });

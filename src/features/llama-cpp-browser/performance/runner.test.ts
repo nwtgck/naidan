@@ -8,8 +8,8 @@ import { maximumExecutionIntervals, planSchema, snapshotSchema, type Measurement
 import { summarizePerformance, performanceFindings } from './summary';
 import type { Q8DiagnosticClient } from './q8-diagnostic-worker-types';
 
-function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode } = {}) {
-  const plan = performancePlan({ models, diagnostics, mode, repeats });
+function setup({ models = 1, diagnostics = 'none', mode, repeats = 1, workload }: { repeats?: number, models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode, workload?: 'baseline' | 'tool-continuation' } = {}) {
+  const plan = performancePlan({ models, diagnostics, mode, repeats, workload });
   const order: string[] = [];
   let clock = 0, hidden = false;
   const generate = vi.fn<LlamaCppPerformanceScope['generate']>(async ({ input, sequence, onEvent, onSummary }) => {
@@ -68,6 +68,92 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeat
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('tool result continuation measurement', () => {
+  const rawArguments = `{"passage":"${'Text in the archive. '.repeat(24)}","label": "archive"}`;
+  const call = { id: '', type: 'function' as const, function: { name: 'record_sample', arguments: rawArguments } };
+
+  it('replays actual arguments byte for byte and sends the short result in the same runtime', async () => {
+    const test = setup({ workload: 'tool-continuation' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async ({ input, sequence, onSummary, onEvent, ...rest }) => {
+      if (input.tools && sequence === 'fresh') {
+        onSummary({ diagnostic: performanceReport() });
+        return { content: '', reasoningContent: 'choose the tool', toolCalls: [call], finishReason: 'stop' };
+      }
+      return ordinary({ input, sequence, onSummary, onEvent, ...rest });
+    });
+    await test.start();
+
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledOnce();
+    expect(test.generate).toHaveBeenCalledTimes(7);
+    expect(test.generate.mock.calls.slice(0, 5).every(([{ input }]) => input.tools === undefined)).toBe(true);
+    const [preparation, continuation] = test.generate.mock.calls.slice(-2).map(([args]) => args);
+    expect(continuation).toMatchObject({
+      sequence: 'continue',
+      input: {
+        tools: preparation!.input.tools,
+        debug: 'off',
+        messages: [
+          preparation!.input.messages[0],
+          { role: 'assistant', content: '', reasoning_content: 'choose the tool', tool_calls: [{ ...call, id: 'perfcall1' }] },
+          { role: 'tool', content: '{"ok":true}', name: 'record_sample', tool_call_id: 'perfcall1' },
+        ],
+      },
+    });
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.at(-1)).toMatchObject({
+      runtimeSegment: 0,
+      status: 'succeeded',
+      input: continuation!.input.messages,
+      tools: continuation!.input.tools,
+      firstReceivedMs: 100,
+      firstReasoningMs: 100,
+      firstTextMs: 200,
+      summary: { performance: { reusedTokens: 32 } },
+    });
+    expect(summarizePerformance({ snapshot }).map(group => group.scenario)).toContain('tool-continuation');
+    expect(summarizePerformance({ snapshot }).map(group => group.scenario)).not.toContain('tool-call');
+  });
+
+  it.each(['no call', 'invalid arguments', 'unfinished call'] as const)('preserves baseline trials and skips the result for %s', async kind => {
+    const test = setup({ workload: 'tool-continuation' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async ({ input, ...rest }) => {
+      const output = await ordinary({ input, ...rest });
+      if (!input.tools || kind === 'no call') {
+        return output;
+      }
+      return kind === 'invalid arguments'
+        ? { ...output, toolCalls: [{ ...call, function: { ...call.function, arguments: '{"label": "archive"}' } }] }
+        : { ...output, toolCalls: [call], finishReason: 'length' };
+    });
+    await test.start();
+
+    expect(test.generate).toHaveBeenCalledTimes(6);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.modelErrors).toEqual([]);
+    expect(snapshot.trials.slice(0, -1).every(trial => trial.status === 'succeeded')).toBe(true);
+    expect(snapshot.trials.at(-1)).toMatchObject({ status: 'skipped', skipReason: 'no-usable-tool-call' });
+  });
+
+  it('keeps measuring the next model if the current template rejects tool input', async () => {
+    const test = setup({ models: 2, workload: 'tool-continuation' });
+    const ordinary = test.generate.getMockImplementation()!;
+    test.generate.mockImplementation(async ({ input, ...rest }) => {
+      if (input.modelId === 'user/m0' && input.tools) {
+        throw new LlamaCppBrowserError({ code: 'template-unsupported' });
+      }
+      return ordinary({ input, ...rest });
+    });
+    await test.start();
+
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.modelErrors).toEqual([]);
+    expect(snapshot.trials.filter(trial => trial.skipReason === 'tool-template-unsupported').map(trial => trial.modelIndex)).toEqual([0, 0]);
+    expect(snapshot.trials.filter(trial => trial.modelIndex === 1 && trial.status === 'succeeded')).toHaveLength(6);
+  });
 });
 
 function setupKernelDiagnostic({ mode, run }: { mode: MeasurementMode, run: Q8DiagnosticClient['run'] }) {

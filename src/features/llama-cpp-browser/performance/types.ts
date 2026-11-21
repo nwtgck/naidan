@@ -4,11 +4,12 @@ import { memoryDiagnosticsSchema } from './memory-schema';
 import { q8DiagnosticObservationSchema } from './q8-diagnostic-observation';
 import { z } from 'zod';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
-import { generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
+import { generateInputSchema, generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema, toolCallSchema } from '@/features/llama-cpp-browser/types';
+import { toolCallPrompt, toolCallTokenLimit, toolContinuationTokenLimit, toolResult } from './tool-continuation';
 
 export const maximumExecutionIntervals = 8192;
 
-export const performanceProtocol = 'targeted-text-en-v4' as const;
+export const performanceProtocol = 'targeted-text-en-v5' as const;
 export const measurementModeSchema = z.enum(['gpu-profile', 'standard', 'both']);
 export const measurementLaneSchema = z.enum(['standard', 'gpu-profile']);
 export type MeasurementMode = z.infer<typeof measurementModeSchema>;
@@ -36,16 +37,16 @@ export const protocolSchema = z.object({
   timeoutMs: z.number().int().min(1000).max(3600000),
   diagnostics: z.enum(['none', 'placement']).optional(),
 }).strict();
-export const textMessageSchema = z.object({
-  role: z.enum(['user', 'assistant']),
-  content: z.string(),
-  reasoning_content: z.string().optional(),
-}).strict();
+const textMessageSchema = z.discriminatedUnion('role', [
+  z.object({ role: z.literal('user'), content: z.string() }).strict(),
+  z.object({ role: z.literal('assistant'), content: z.string(), reasoning_content: z.string().optional(), tool_calls: z.array(toolCallSchema).optional() }).strict(),
+  z.object({ role: z.literal('tool'), content: z.string(), tool_call_id: z.string(), name: z.string() }).strict(),
+]);
 export const stepSchema = z.object({
   id: idSchema,
   modelIndex: z.number().int().nonnegative(),
   lane: measurementLaneSchema.optional(),
-  scenario: z.enum(['initial', 'short', 'long', 'continuation', 'placement']),
+  scenario: z.enum(['initial', 'short', 'long', 'continuation', 'placement', 'tool-call', 'tool-continuation']),
   position: z.enum(['initial', 'before', 'after', 'workload', 'diagnostic']),
   maxTokens: z.number().int().min(1).max(512),
   role: z.enum(['measurement', 'preparation']),
@@ -57,7 +58,7 @@ export const stepSchema = z.object({
 }).strict();
 export const planSchema = z.object({
   version: z.literal(1),
-  protocol: z.enum(['targeted-text-en-v3', performanceProtocol, visionProtocol]),
+  protocol: z.enum(['targeted-text-en-v3', 'targeted-text-en-v4', performanceProtocol, visionProtocol]),
   visionFixture: visionFixtureSchema.optional(),
   id: idSchema,
   createdAt: z.string(),
@@ -103,6 +104,9 @@ export const planSchema = z.object({
     }
   }
   const seen = new Map<string, typeof plan.steps[number]>();
+  const toolLane = allowed[0];
+  const toolCalls = new Set<number>();
+  let previous: PerformanceStep | undefined;
   for (const step of plan.steps) {
     if (plan.protocol === visionProtocol) {
       if (!step.vision || step.dependsOn !== undefined || step.sequence !== 'fresh' || step.prompt !== visionPrompt
@@ -121,13 +125,42 @@ export const planSchema = z.object({
     if (seen.has(step.id) || step.modelIndex >= plan.models.length) {
       context.addIssue({ code: 'custom', message: 'Invalid measurement step identity' });
     }
+    const parent = step.dependsOn === undefined ? undefined : seen.get(step.dependsOn);
     if (step.dependsOn !== undefined) {
-      const parent = seen.get(step.dependsOn);
       if (!parent || parent.modelIndex !== step.modelIndex || (parent.lane ?? 'standard') !== (step.lane ?? 'standard')) {
         context.addIssue({ code: 'custom', message: 'Continuation crosses a model or runtime lane' });
       }
     }
+    switch (step.scenario) {
+    case 'tool-call': case 'tool-continuation': {
+      const preparation = step.scenario === 'tool-call';
+      if (plan.protocol !== performanceProtocol || (step.lane ?? 'standard') !== toolLane
+        || step.position !== 'workload' || step.repetition !== 0 || (preparation
+        ? step.role !== 'preparation' || step.dependsOn !== undefined || step.sequence !== 'fresh' || step.prompt !== toolCallPrompt
+            || step.maxTokens !== toolCallTokenLimit || toolCalls.has(step.modelIndex)
+        : step.role !== 'measurement' || !parent || parent !== previous || parent.scenario !== 'tool-call' || step.sequence !== 'continue'
+            || step.prompt !== toolResult || step.maxTokens !== Math.min(toolContinuationTokenLimit, plan.settings.maxTokens))) {
+        context.addIssue({ code: 'custom', message: 'Invalid tool continuation workload' });
+      }
+      if (preparation) {
+        toolCalls.add(step.modelIndex);
+      }
+      break;
+    }
+    case 'initial': case 'short': case 'long': case 'continuation': case 'placement': break;
+    default: {
+      const exhaustive: never = step.scenario;
+      throw new Error(String(exhaustive));
+    }
+    }
+    if (previous?.scenario === 'tool-call' && step.scenario !== 'tool-continuation') {
+      context.addIssue({ code: 'custom', message: 'Missing tool continuation after tool call preparation' });
+    }
     seen.set(step.id, step);
+    previous = step;
+  }
+  if (previous?.scenario === 'tool-call' || (plan.protocol === performanceProtocol && toolCalls.size !== plan.models.length)) {
+    context.addIssue({ code: 'custom', message: 'Expected one tool round trip per model' });
   }
 });
 const interruptionSchema = z.object({
@@ -146,11 +179,12 @@ export const trialSchema = z.object({
   interruption: interruptionSchema.optional(),
   // Segment is local to model/lane. Omitted in older archives (segment zero).
   runtimeSegment: z.number().int().nonnegative().optional(),
-  skipReason: z.enum(['dependency-interrupted', 'dependency-runtime-reset', 'missing-projector', 'native-no-vision']).optional(),
+  skipReason: z.enum(['dependency-interrupted', 'dependency-runtime-reset', 'missing-projector', 'native-no-vision', 'tool-template-unsupported', 'no-usable-tool-call']).optional(),
   startedAt: z.string(),
   startedMs: milliseconds.optional(),
   elapsedMs: milliseconds.optional(),
   input: z.array(textMessageSchema),
+  tools: generateInputSchema.shape.tools,
   visionAdmission: visionAdmissionSchema.optional(),
   vision: visionTrialSchema.optional(),
   options: runtimeOptionsSchema,

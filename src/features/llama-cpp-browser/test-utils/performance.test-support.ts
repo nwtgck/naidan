@@ -2,8 +2,8 @@ import { createGenerationPerformance } from '@/features/llama-cpp-browser/worker
 import { createPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
 import type { MeasurementMode, PerformanceSnapshot } from '@/features/llama-cpp-browser/performance/types';
 
-export function performancePlan({ models = 1, repeats = 1, diagnostics = 'none', mode }: { models?: number, repeats?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode } = {}) {
-  return createPerformancePlan({
+export function performancePlan({ models = 1, repeats = 1, diagnostics = 'none', mode, workload = 'baseline' }: { models?: number, repeats?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode, workload?: 'baseline' | 'tool-continuation' } = {}) {
+  const plan = createPerformancePlan({
     id: 'test_run',
     createdAt: '2026-10-01T00:00:00.000Z',
     models: Array.from({ length: models }, (_, index) => ({ modelId: `user/m${index}`, size: 4096, importedAt: 1 })),
@@ -11,6 +11,19 @@ export function performancePlan({ models = 1, repeats = 1, diagnostics = 'none',
     options: { profile: 'webgpu-wasm64-jspi' },
     notes: '',
   });
+  // Keep existing timing, cancellation and archive fixtures on the v4 schedule.
+  switch (workload) {
+  case 'tool-continuation': return plan;
+  case 'baseline': return {
+    ...plan,
+    protocol: 'targeted-text-en-v4' as const,
+    steps: plan.steps.filter(step => step.scenario !== 'tool-call' && step.scenario !== 'tool-continuation'),
+  };
+  default: {
+    const exhaustive: never = workload;
+    throw new Error(String(exhaustive));
+  }
+  }
 }
 
 export function performanceReport({ reused = 0, outcome = 'completed' }: { reused?: number, outcome?: 'completed' | 'failed' | 'aborted' } = {}) {
