@@ -5,12 +5,12 @@ import type { SpeechRecognitionCandidateInfo } from './types';
 /** Header selection only. The native model-info API validates tensor layout,
  * language options and the supported speech.cpp file version before loading. */
 export async function inspectSpeechRecognitionCandidate({ file, name, signal }: { file: GgufMetadataFile, name: string, signal: AbortSignal | undefined }): Promise<{ kind: 'recognition', info: SpeechRecognitionCandidateInfo } | { kind: 'other' }> {
-  const architectureValues = await readGgufMetadata({ file, keys: ['general.architecture'], signal, maxStringBytes: 4096 });
+  const architectureValues = await readGgufMetadata({ file, keys: ['general.architecture'], signal, maxStringBytes: 4096, validation: undefined });
   const architecture = architectureValues.get('general.architecture');
   if (architecture !== 'qwen3-asr' && architecture !== 'fastconformer') {
     return { kind: 'other' };
   }
-  const values = await readGgufMetadata({ file, keys: ['speech.task', 'speech.sample_rate', 'speech.requires', 'speech.layout', 'split.count'], signal, maxStringBytes: 4096 });
+  const values = await readGgufMetadata({ file, keys: ['speech.task', 'speech.sample_rate', 'speech.requires', 'speech.layout', 'split.count'], signal, maxStringBytes: 4096, validation: undefined });
   if (values.get('speech.task') !== 'recognition') {
     return { kind: 'other' };
   }

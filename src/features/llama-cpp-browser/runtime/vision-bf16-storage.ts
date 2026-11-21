@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Core } from './core';
 import type { LowLevelFunctions } from 'llama-cpp-browser-core/llama-cpp/api/functions';
 import type { VisionBf16Storage, VisionBf16StorageObservation } from './vision-bf16-storage-schema';
+import type { VisionBf16Diagnostics } from './vision-bf16-diagnostics';
 
 // The public mtmd-vision-bf16.h contract. Parameter records remain pointer-lowered
 // by the record bridge; no raw calls or hard-coded record offsets here.
@@ -74,7 +75,7 @@ export function selectVisionBf16Storage({ preference, capability }: { preference
   case 'available':
     switch (preference) {
     case 'legacy-expand': case 'retain-checked': return { ...base, status: 'selected', selectedMode: preference, reason: 'explicit' };
-    case undefined: return { ...base, status: 'selected', selectedMode: 'retain-checked', reason: 'default-retain' };
+    case undefined: return { ...base, status: 'selected', selectedMode: 'legacy-expand', reason: 'auto-diagnostics-unavailable' };
     default: {
       const exhaustive: never = preference;
       throw new Error(String(exhaustive));
@@ -89,12 +90,14 @@ export function selectVisionBf16Storage({ preference, capability }: { preference
 
 type Initialize = LowLevelFunctions['mtmd_init_from_file_with_vision_bf16_storage'];
 type Requested = LowLevelFunctions['mtmd_context_vision_bf16_storage'];
+type ClassifierInput = Parameters<VisionBf16Diagnostics['classify']>[0];
 
 /** Fixed optional API only, using Core.api's existing native suspension guard. */
-export async function prepareVisionBf16Loader({ core, preference }: { core: {
+export async function prepareVisionBf16Loader({ core, preference, readMetadata, signal }: { core: {
   api: Pick<LowLevelFunctions, 'mtmd_init_from_file' | 'mtmd_vision_bf16_storage_version' | 'mtmd_init_from_file_with_vision_bf16_storage' | 'mtmd_context_vision_bf16_storage'>,
   constant: Core['constant'], hasFunction: Core['hasFunction'],
-}, preference: VisionBf16Storage | undefined }) {
+  visionBf16Diagnostics?: VisionBf16Diagnostics | undefined,
+}, preference: VisionBf16Storage | undefined, readMetadata: (() => Promise<ClassifierInput | undefined>) | undefined, signal: AbortSignal | undefined }) {
   let capability = await loadVisionBf16Capability();
   if (capability.status === 'absent' && Object.values(names).some(name => core.hasFunction({ name }))) {
     capability = { status: 'incompatible', reason: 'api-incompatible' };
@@ -107,6 +110,7 @@ export async function prepareVisionBf16Loader({ core, preference }: { core: {
   let initialize: Initialize | undefined;
   let requested: Requested | undefined;
   let mode: number | undefined;
+  let diagnostics: VisionBf16Diagnostics | undefined;
   if (observed.status !== 'unavailable' && observed.capability === 'available') {
     const exportsPresent = Object.values(names).every(name => core.hasFunction({ name }));
     if (!exportsPresent) {
@@ -123,6 +127,31 @@ export async function prepareVisionBf16Loader({ core, preference }: { core: {
         if (values[0] !== -1 || values[1] !== 0 || values[2] !== 1) {
           unavailable({ reason: 'api-constant' });
         } else {
+          const candidateApi = core.visionBf16Diagnostics;
+          if (candidateApi && await candidateApi.version() === 1) {
+            diagnostics = candidateApi;
+            if (preference === undefined && readMetadata) {
+              signal?.throwIfAborted();
+              const metadata = await readMetadata();
+              signal?.throwIfAborted();
+              const candidate = metadata ? await diagnostics.classify(metadata) : 'unknown';
+              observed.candidate = candidate;
+              switch (candidate) {
+              case 'reviewed':
+                observed.selectedMode = 'retain-checked';
+                observed.reason = 'auto-review';
+                break;
+              case 'unknown': case 'legacy-first': case 'not-applicable': case 'unreviewed':
+                observed.selectedMode = 'legacy-expand';
+                observed.reason = 'auto-legacy';
+                break;
+              default: {
+                const exhaustive: never = candidate;
+                throw new Error(String(exhaustive));
+              }
+              }
+            }
+          }
           switch (observed.selectedMode) {
           case 'retain-checked': mode = values[2];
             break;
@@ -154,8 +183,11 @@ export async function prepareVisionBf16Loader({ core, preference }: { core: {
     get observed(): Readonly<VisionBf16StorageObservation> {
       return Object.freeze({ ...observed });
     },
-    async initialize({ path, model, params }: { path: bigint, model: bigint, params: bigint }): Promise<bigint> {
+    async initialize({ path, model, params, onProjector }: {
+      path: bigint, model: bigint, params: bigint, onProjector: Parameters<VisionBf16Diagnostics['initialize']>[0]['onProjector'],
+    }): Promise<bigint> {
       requireAvailable();
+      signal?.throwIfAborted();
       switch (observed.capability) {
       case 'absent': return core.api.mtmd_init_from_file(path, model, params);
       case 'available':
@@ -163,7 +195,31 @@ export async function prepareVisionBf16Loader({ core, preference }: { core: {
           throw new Error('Checked vision storage initializer is unavailable');
         }
         {
-          const pointer = await initialize(path, model, params, mode);
+          let pointer: bigint;
+          if (diagnostics) {
+            const result = await diagnostics.initialize({ path, model, params, mode, onProjector });
+            observed.loadReport = result.report;
+            pointer = result.pointer;
+            if (preference === undefined && observed.selectedMode === 'retain-checked' && pointer === 0n
+              && result.report.status === 'retention-refused' && result.report.phase === 'preupload' && result.report.cleanup === 'complete'
+              && (result.report.reason === 'projector-unreviewed' || result.report.reason === 'weight-unreviewed')) {
+              signal?.throwIfAborted();
+              // The rejected call may never have suspended. Let queued worker
+              // cancellation run before beginning a potentially large expansion.
+              await new Promise<void>(resolve => setTimeout(resolve, 0));
+              signal?.throwIfAborted();
+              observed.initialMode = observed.selectedMode;
+              observed.retentionRefusal = result.report;
+              observed.selectedMode = 'legacy-expand';
+              observed.reason = 'auto-retention-refused';
+              mode = 0;
+              const retry = await diagnostics.initialize({ path, model, params, mode, onProjector });
+              observed.loadReport = retry.report;
+              pointer = retry.pointer;
+            }
+          } else {
+            pointer = await initialize(path, model, params, mode);
+          }
           if (typeof pointer !== 'bigint' || pointer < 0n || pointer > (1n << 64n) - 1n) {
             throw new TypeError('Invalid native projector pointer');
           }

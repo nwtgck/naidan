@@ -35,6 +35,7 @@ export type HfRepositoryEntry = {
 export const hfRepositories = [
   { hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF', modelNaming: { kind: 'base-model-aligned' } },
   { hfRepository: 'ggml-org/gpt-oss-20b-GGUF', modelNaming: { kind: 'base-model-aligned' } },
+  { hfRepository: 'ggml-org/Inkling-2-Mini-GGUF', modelNaming: { kind: 'base-model-aligned' } },
   { hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF', modelNaming: { kind: 'base-model-aligned' } },
   { hfRepository: 'ggml-org/Qwen3.8-27B-GGUF', modelNaming: { kind: 'base-model-aligned' } },
   { hfRepository: 'google/gemma-4-12B-it-qat-q4_0-gguf', modelNaming: { kind: 'base-model-aligned' } },
@@ -58,6 +59,13 @@ export const hfRepositories = [
   { hfRepository: 'lmstudio-community/Qwen3.5-9B-GGUF', modelNaming: { kind: 'base-model-aligned' } },
   { hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF', modelNaming: { kind: 'base-model-aligned' } },
   { hfRepository: 'meta-models/Muse-Glimmer-30B-GGUF', modelNaming: { kind: 'base-model-aligned' } },
+  {
+    hfRepository: 'unsloth/Inkling-2-Mini-GGUF',
+    modelNaming: {
+      kind: 'custom-variant',
+      name: 'Inkling-2-Mini (Unsloth)',
+    },
+  },
   {
     hfRepository: 'unsloth/Qwen3.8-Flash-Next-GGUF',
     modelNaming: {

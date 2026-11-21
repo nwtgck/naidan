@@ -73,6 +73,7 @@ function fixture() {
     apply = apply;
   }
   const maps: { values: Map<string, string>, deleted: ReturnType<typeof vi.fn> }[] = [];
+  const parseJson = vi.fn((_text: string) => ({ delete() {} }));
   const fakeNative = {
     string_map: class {
       readonly values = new Map<string, string>();
@@ -91,7 +92,7 @@ function fixture() {
       }
     },
     common_reasoning_format: { COMMON_REASONING_FORMAT_DEEPSEEK: 1 },
-    common_json: { parse: (_text: string) => ({ delete() {} }) },
+    common_json: { parse: parseJson },
     common_chat_msgs_parse_oaicompat: (_json: unknown) => ({ delete() {} }),
     common_chat_tools_parse_oaicompat: (_json: unknown) => ({ delete() {} }),
     common_chat_templates_inputs: Inputs,
@@ -111,6 +112,7 @@ function fixture() {
     templateConstructed,
     deletedTemplates,
     apply,
+    parseJson,
     deleteParser,
     deleteParams,
     arena,
@@ -131,6 +133,38 @@ function fixture() {
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+it('reserves the native media prefix for attachments and restores literal occurrences in rendered text', () => {
+  using f = fixture();
+  const literal = '<__media_example__>';
+  const blob = new Blob(['image']);
+  const apply = f.apply.getMockImplementation()!;
+  f.apply.mockImplementationOnce(inputs => {
+    const json = f.parseJson.mock.calls[0]![0];
+    const messages = JSON.parse(json) as { content: string | { type: string, text: string }[] }[];
+    const first = messages[0]!.content;
+    const second = messages[1]!.content;
+    if (typeof first !== 'string' || typeof second === 'string') {
+      throw new Error('Unexpected native inputs');
+    }
+    expect(first).not.toContain('<__media_');
+    expect(second[0]).toEqual({ type: 'text', text: first });
+    expect(second[1]).toEqual({ type: 'media_marker', text: expect.stringMatching(/^<__media_[a-f0-9-]+__>$/u) });
+    f.promptParts[1]!.text = first + second[1]!.text;
+    return apply(inputs);
+  });
+  const prepared = f.chat.prepare({
+    assertIdle: f.assertIdle,
+    model: 7n,
+    request: {
+      ...f.request,
+      messages: [{ role: 'user', content: literal }, { role: 'user', content: [{ type: 'text', text: literal }, { type: 'image', blob }] }],
+    },
+  });
+  using _prepared = { [Symbol.dispose]: prepared.dispose };
+  expect(prepared.images).toEqual([{ marker: expect.stringMatching(/^<__media_[a-f0-9-]+__>$/u), blob }]);
+  expect(prepared.promptParts[1]).toEqual({ text: literal + prepared.images[0]!.marker, isInput: true });
+});
 
 describe('native chat template lifetime', () => {
   it('explicit live generation boundaries do not change ordinary chat defaults', () => {

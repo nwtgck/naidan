@@ -196,24 +196,24 @@ describe('persisted chat context controls', () => {
 });
 
 describe('image BF16 storage settings', () => {
-  it('uses available legacy on an old artifact without saving an override or instantiating a runtime', async () => {
+  it('shows automatic legacy expansion on an old artifact without saving an override or instantiating a runtime', async () => {
     using view = render({ disabled: false });
     await flushPromises();
     const control = view.wrapper.findAllComponents(SettingsSelect).find(component => component.vm.$attrs['data-testid'] === 'llama-cpp-browser-vision-storage')!;
-    expect(control.props('modelValue')).toBe('legacy-expand');
+    expect(control.props('modelValue')).toBe('auto');
     expect(control.props('options').find(option => option.value === 'retain-checked')?.disabled).toBe(true);
     expect(view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-status"]').text()).toContain('no retained-storage API');
     expect(host.update).not.toHaveBeenCalled();
     expect(host.setOptions).not.toHaveBeenCalled();
   });
 
-  it('defaults new artifacts to retain and persists an explicit legacy request independently of context', async () => {
+  it('defaults to automatic and persists an explicit legacy request independently of context', async () => {
     host.storageCapability.mockResolvedValue({ status: 'available' });
     settings.value.experimental!.llamaCppBrowser!.contextTokens = 65536;
     using view = render({ disabled: false });
     await flushPromises();
     const control = view.wrapper.findAllComponents(SettingsSelect).find(component => component.vm.$attrs['data-testid'] === 'llama-cpp-browser-vision-storage')!;
-    expect(control.props('modelValue')).toBe('retain-checked');
+    expect(control.props('modelValue')).toBe('auto');
     control.vm.$emit('update:modelValue', 'legacy-expand');
     await flushPromises();
     await view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-save"]').trigger('click');
@@ -223,7 +223,7 @@ describe('image BF16 storage settings', () => {
     await view.wrapper.get('[data-testid="llama-cpp-browser-vision-storage-reset"]').trigger('click');
     await flushPromises();
     expect(settings.value.experimental?.llamaCppBrowser?.visionBf16Storage).toBeUndefined();
-    expect(control.props('modelValue')).toBe('retain-checked');
+    expect(control.props('modelValue')).toBe('auto');
   });
 
   it('does not silently use legacy for a stored explicit retain request on an old artifact', async () => {
