@@ -3,11 +3,13 @@ import { Secret } from '@/utils/secret';
 import { SettingsSelectStub } from './settings-select.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { reactive } from 'vue';
 import { EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 import SettingsSelect from './SettingsSelect.vue';
 import ModelSelector from './ModelSelector.vue';
+import ChatModelSelector from './ChatModelSelector.vue';
 import HttpHeadersEditor from './HttpHeadersEditor.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { toProviderProfileId, toNaidanRpcRegistrationId } from '@/01-models/ids';
@@ -277,11 +279,12 @@ describe('ConnectionTab Ollama management integration', () => {
     });
     await flushPromises();
 
-    const selectors = wrapper.findAllComponents({ name: 'ModelSelector' });
-    expect(selectors[0]?.props('modelValue')).toBe('browser-provided-language-model');
-    expect(selectors[0]?.props('disabled')).toBe(true);
-    expect(selectors[1]?.props('modelValue')).toBe('browser-provided-language-model');
-    expect(selectors[1]?.props('disabled')).toBe(true);
+    const defaultModel = wrapper.getComponent(ChatModelSelector);
+    expect(defaultModel.props('modelValue')).toBe('browser-provided-language-model');
+    expect(defaultModel.props('disabled')).toBe(true);
+    const titleModel = wrapper.getComponent(ModelSelector);
+    expect(titleModel.props('modelValue')).toBe('browser-provided-language-model');
+    expect(titleModel.props('disabled')).toBe(true);
     wrapper.unmount();
   });
 
@@ -404,6 +407,72 @@ describe('Naidan RPC endpoint availability', () => {
 });
 
 describe('ConnectionTab controlled settings contracts', () => {
+  it('chooses and clears the default model in the draft before saving the edited connection', async () => {
+    const settings = reactive(createSettings({ endpointType: 'ollama' }));
+    settings.defaultModelId = 'original-model';
+    mockFetchModels.mockResolvedValue(['draft-model']);
+    const wrapper = mount(ConnectionTab, {
+      attachTo: document.body,
+      props: { modelValue: settings, availableModels: ['original-model'], isFetchingModels: false, hasUnsavedChanges: true },
+      global: { stubs: globalStubs },
+    });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const trigger = wrapper.get('[data-testid="setting-model-select"] [data-testid="model-selector-trigger"]');
+    const popup = new DOMWrapper(document.body);
+    expect(trigger.text()).toBe('original-model');
+    await wrapper.get('[data-testid="setting-url-input"]').setValue('https://draft.example');
+    await trigger.trigger('click');
+    expect(popup.find('[data-testid="model-selector-option"]').exists()).toBe(false);
+    expect(mockFetchModels).not.toHaveBeenCalled();
+
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    expect(mockFetchModels).toHaveBeenCalledExactlyOnceWith({ overrides: settings.endpoint });
+    await popup.get('[data-testid="model-selector-option"]').trigger('click');
+    expect(settings.defaultModelId).toBe('draft-model');
+    await trigger.trigger('click');
+    await popup.get('[data-testid="model-selector-clear"]').trigger('click');
+    expect(settings.defaultModelId).toBeUndefined();
+    expect(mockSave).not.toHaveBeenCalled();
+
+    await trigger.trigger('click');
+    await popup.get('[data-testid="model-selector-option"]').trigger('click');
+    await wrapper.get('[data-testid="setting-save-button"]').trigger('click');
+    await flushPromises();
+    expect(mockSave).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      patch: expect.objectContaining({ endpoint: settings.endpoint, defaultModelId: 'draft-model' }),
+    }));
+    void cleanup;
+  });
+
+  it('keeps the selected llama.cpp configuration when refreshing its base model', async () => {
+    const settings = reactive(createSettings({ endpointType: 'llama_cpp_browser' }));
+    const baseId = 'hf.co/owner/model:Q4_K_M';
+    const selectedModelId = baseId + '//text';
+    settings.defaultModelId = selectedModelId;
+    mockFetchModels.mockResolvedValue([baseId]);
+    const wrapper = mount(ConnectionTab, {
+      attachTo: document.body,
+      props: { modelValue: settings, availableModels: [baseId], isFetchingModels: false, hasUnsavedChanges: false },
+      global: { stubs: globalStubs },
+    });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const picker = wrapper.getComponent(ChatModelSelector);
+    expect(picker.props('frame')).toBe('embedded');
+    expect(picker.props('panels')?.map(panel => panel.id)).toEqual(['chat-candidates', 'huggingface', 'files']);
+    expect(picker.props('initialPanel')).toBeUndefined();
+    await picker.get('[data-testid="model-selector-trigger"]').trigger('click');
+    const popup = new DOMWrapper(document.body);
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    const choice = popup.get('[data-testid="model-selector-option"]');
+    expect(choice.attributes('title')).toBe(selectedModelId);
+    expect(choice.attributes('aria-pressed')).toBe('true');
+    expect(settings.defaultModelId).toBe(selectedModelId);
+    expect(mockSave).not.toHaveBeenCalled();
+    void cleanup;
+  });
+
   it('keeps headers and disclosures in the draft until the explicit global save action', async () => {
     const settings = createSettings({ endpointType: 'openai' });
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: true }, global: { stubs: globalStubs } });
@@ -413,12 +482,12 @@ describe('ConnectionTab controlled settings contracts', () => {
       },
     };
     await flushPromises();
-    const titleModel = wrapper.findAllComponents(ModelSelector)[1]!;
+    const titleModel = wrapper.getComponent(ModelSelector);
     const titleElement = titleModel.element;
     await wrapper.get('[data-testid="setting-title-disclosure"]').trigger('click');
     await wrapper.get('[data-testid="setting-title-disclosure"]').trigger('click');
     await wrapper.get('[data-testid="setting-parameters-disclosure"]').trigger('click');
-    expect(wrapper.findAllComponents(ModelSelector)[1]!.element).toBe(titleElement);
+    expect(wrapper.getComponent(ModelSelector).element).toBe(titleElement);
     const headers = wrapper.findAllComponents(HttpHeadersEditor)[0]!;
     headers.vm.$emit('update:modelValue', [['X-API-Key', Secret.from({ value: 'draft-secret' })]]);
     headers.vm.$emit('save');
@@ -446,13 +515,13 @@ describe('ConnectionTab controlled settings contracts', () => {
     expect(choices[0]).toMatchObject({ value: 'same_scope', label: 'Conversation connection', source: { label: 'Conversation' } });
     expect(choices.find(option => option.value === 'llama_cpp_browser')).toMatchObject({ label: expect.stringContaining('llama.cpp') });
     expect(choices.find(option => option.value === 'llama_cpp_browser')?.source).toBeUndefined();
-    const titleModel = wrapper.findAllComponents(ModelSelector)[1]!;
+    const titleModel = wrapper.getComponent(ModelSelector);
     expect(titleModel.props()).toMatchObject({ models: [], allowClear: true, clearLabel: 'Conversation model', inheritedModel: { id: undefined, source: { label: 'Conversation' } } });
     expect(JSON.stringify(titleModel.props('inheritedModel'))).not.toContain('global-draft-model');
     titleSelect.vm.$emit('update:modelValue', 'openai');
     await flushPromises();
-    expect(wrapper.findAllComponents(ModelSelector)[1]!.props('allowClear')).toBe(false);
-    expect(wrapper.findAllComponents(ModelSelector)[1]!.props('inheritedModel')).toBeUndefined();
+    expect(wrapper.getComponent(ModelSelector).props('allowClear')).toBe(false);
+    expect(wrapper.getComponent(ModelSelector).props('inheritedModel')).toBeUndefined();
     expect(wrapper.findAllComponents(ReasoningSettings).find(control => control.attributes('data-testid') === 'setting-title-reasoning-select')!.props('leadingOptions')?.[0]?.label).toBeUndefined();
     expect(mockFetchModels).not.toHaveBeenCalled();
   });
@@ -468,7 +537,7 @@ describe('ConnectionTab controlled settings contracts', () => {
     };
     await wrapper.get('[data-testid="setting-auto-title-checkbox"]').setValue(false);
     expect(settings.titleGeneration).toBe('disabled');
-    expect(wrapper.findAllComponents(ModelSelector)[1]!.props('disabled')).toBe(true);
+    expect(wrapper.getComponent(ModelSelector).props('disabled')).toBe(true);
     expect(wrapper.findAllComponents(ReasoningSettings).find(control => control.attributes('data-testid') === 'setting-title-reasoning-select')!.props('disabled')).toBe(true);
     const titleSelect = wrapper.findAllComponents(SettingsSelect).find(select => select.attributes('data-testid') === 'setting-title-endpoint-type-select')!;
     expect(titleSelect.props('disabled')).toBe(true);

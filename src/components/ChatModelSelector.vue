@@ -52,7 +52,6 @@ const emit = defineEmits<{
 const slots = useSlots();
 provideModelSelectorHuggingFaceSearchState();
 const triggerDetailId = useId();
-const chatSurface = computed(() => props.surface === 'composer' || props.surface === 'sidebar');
 const modelSelectionUnavailable = computed(() => props.disabled || props.modelSelection === 'unavailable');
 // Providers own the inventory and external requests. Typing in this component
 // only filters these supplied values; it never authorizes a network request.
@@ -665,10 +664,8 @@ defineExpose({
         @cancel.prevent="closeSources"
         data-testid="model-selector-dropdown"
         class="animate-in fade-in" :tw-class="[
-          'm-0 flex flex-col p-0 bg-[var(--model-selector-panel-background)] [--model-selector-panel-background:var(--color-white)] [--settings-select-menu-background:var(--model-selector-panel-background)] text-gray-800 dark:text-gray-200 border border-gray-200 rounded-2xl shadow-xl overflow-hidden duration-200 motion-reduce:animate-none',
+          'm-0 flex flex-col p-0 bg-[var(--model-selector-panel-background)] [--model-selector-panel-background:var(--color-white)] dark:[--model-selector-panel-background:var(--color-gray-800)] [--settings-select-menu-background:var(--model-selector-panel-background)] text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden duration-200 motion-reduce:animate-none',
           popupPresentation === 'inline' ? 'mt-1.5 w-full' : '',
-          chatSurface ? 'dark:[--model-selector-panel-background:var(--color-gray-800)]' : 'dark:[--model-selector-panel-background:var(--color-gray-900)]',
-          'dark:border-gray-700'
         ]"
         :class="[
           'chat-model-selector-dialog',
@@ -679,7 +676,7 @@ defineExpose({
         @keydown="handleDropdownKeydown({ event: $event })"
         @focusin="handleSidebarFocus({ event: $event })"
       >
-        <div v-if="panelView !== 'sources'" :tw-class="['flex min-h-11 shrink-0 items-end justify-between gap-2 border-b px-3 pt-1.5', chatSurface ? 'border-gray-200 dark:border-gray-700' : 'border-gray-100 dark:border-gray-800']">
+        <div v-if="panelView !== 'sources'" tw-class="flex min-h-11 shrink-0 items-end justify-between gap-2 border-b border-gray-200 px-3 pt-1.5 dark:border-gray-700">
           <div ref="tabStrip" role="group" data-testid="chat-model-selector-tabs" tw-class="relative flex min-w-0 items-center gap-2 overflow-x-auto">
             <span v-if="tabIndicator" :style="tabIndicator" aria-hidden="true" data-testid="chat-model-selector-tab-indicator" :class="{ 'chat-model-selector-tab-indicator-moving': animateTabIndicator }" tw-class="pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-blue-500/80 dark:bg-blue-400/80" />
             <button v-for="tab in tabs" :key="tab.id" type="button" :aria-pressed="currentTab === tab.id" tw-class="shrink-0 whitespace-nowrap px-2 pb-2.5 pt-2 text-xs font-medium text-gray-500 transition-colors hover:text-gray-800 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 aria-pressed:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 dark:aria-pressed:text-gray-100 motion-reduce:transition-none" @click="selectTab({ id: tab.id })">{{ tab.label }}</button>
@@ -814,7 +811,7 @@ defineExpose({
             </div>
           </div>
         </div>
-        <div v-if="$slots.settings" data-testid="model-selector-settings" :tw-class="['shrink-0 border-t border-gray-100 px-3 dark:border-gray-700', chatSurface ? 'py-2' : 'py-3']" @keydown.stop="handleSettingsKeydown({ event: $event })">
+        <div v-if="$slots.settings" data-testid="model-selector-settings" tw-class="shrink-0 border-t border-gray-100 px-3 py-2 dark:border-gray-700" @keydown.stop="handleSettingsKeydown({ event: $event })">
           <slot name="settings" :popup-target="dropdownRef ?? undefined"></slot>
         </div>
       </dialog>

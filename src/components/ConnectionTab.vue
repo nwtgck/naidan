@@ -6,12 +6,13 @@ import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/
 import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { generateId } from '@/01-models/id';
-import { ref, watch, computed, h, useId } from 'vue';
+import { ref, shallowRef, watch, computed, h, useId } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import type { Endpoint, EndpointType, LmParameters, ProviderProfile, Reasoning, Settings, SettingsTitleGeneration } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { areEndpointModelNamespacesEqual, areEndpointsEqual, cloneEndpoint, isHttpEndpoint, selectHttpEndpointSeed } from '@/01-models/endpoint';
+import { trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { naturalSort } from '@/utils/string';
 import { cloneLmParameters as clonePlainLmParameters } from '@/utils/lm-parameters';
 import {
@@ -20,7 +21,8 @@ import {
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
-// IMPORTANT: ModelSelector is a core part of the connection setup UI and should not flicker.
+// Keep the model fields ready as soon as the connection setup opens.
+import DefaultChatModelSelector from './DefaultChatModelSelector.vue';
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import SettingsSelect from './SettingsSelect.vue';
@@ -77,6 +79,23 @@ const form = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val),
 });
+
+const initialModelEndpoint = cloneEndpoint({ endpoint: form.value.endpoint });
+const draftModelList = shallowRef<{ endpoint: Endpoint, ids: readonly string[] }>();
+const defaultModelIds = computed(() => {
+  // Keep the list for the edited connection separate from another endpoint's
+  // result, including the separately editable title connection.
+  const fetched = draftModelList.value;
+  if (fetched !== undefined) {
+    return areEndpointsEqual({ left: fetched.endpoint, right: form.value.endpoint }) ? fetched.ids : [];
+  }
+  return areEndpointsEqual({ left: initialModelEndpoint, right: form.value.endpoint }) ? sortedModels.value : [];
+});
+let latestDefaultModelRequest = 0;
+
+function setDefaultModelId({ modelId }: { modelId: string | undefined }): void {
+  form.value.defaultModelId = modelId;
+}
 
 const rpcEnabled = computed(() => form.value.experimental?.naidanRpc === 'enabled');
 
@@ -756,13 +775,16 @@ async function fetchModels() {
     return;
   }
 
+  const request = ++latestDefaultModelRequest;
   error.value = null;
   try {
     // Trigger global fetch with current form values (may be unsaved)
     const models = await fetchModelsGlobal({ overrides: requestedEndpoint });
-    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
+    if (request !== latestDefaultModelRequest || !areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
       return;
     }
+
+    draftModelList.value = { endpoint: requestedEndpoint, ids: models };
 
     if (models.length === 0 && form.value.endpoint.type !== 'transformers_js' && form.value.endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
@@ -789,7 +811,11 @@ async function fetchModels() {
       }
     })();
     if (shouldValidateModelSelection) {
-      if (updatedForm.defaultModelId && !models.includes(updatedForm.defaultModelId)) {
+      const defaultModelId = updatedForm.defaultModelId;
+      const baseModelId = defaultModelId && updatedForm.endpoint.type === 'llama_cpp_browser'
+        ? trySplitRepositoryModelId({ modelId: defaultModelId })?.baseId
+        : undefined;
+      if (defaultModelId && !models.includes(defaultModelId) && (baseModelId === undefined || !models.includes(baseModelId))) {
         updatedForm.defaultModelId = '';
         changed = true;
       }
@@ -814,7 +840,7 @@ async function fetchModels() {
       connectionSuccess.value = false;
     }, 3000);
   } catch (err) {
-    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
+    if (request !== latestDefaultModelRequest || !areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
       return;
     }
     console.error(err);
@@ -1050,7 +1076,21 @@ defineExpose({
           <div class="connection-model" tw-class="min-w-0 space-y-2" data-testid="connection-model-selection">
             <span class="connection-label">{{ lazyStrings.ConnectionTab__default_model() }}</span>
             <div tw-class="flex min-w-0 items-stretch overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700/60 dark:bg-gray-800/55">
-              <ModelSelector surface="settings" frame="embedded" :model-value="form.defaultModelId" @update:model-value="value => { form.defaultModelId = value; }" :models="sortedModels" :loading="isFetchingModels" :disabled="endpointType === 'browser_provided_lm'" :placeholder="lazyStrings.ConnectionTab__none()" allow-clear :clear-label="lazyStrings.ConnectionTab__none()" @refresh="fetchModels" data-testid="setting-model-select" />
+              <DefaultChatModelSelector
+                surface="settings"
+                frame="embedded"
+                :model-value="form.defaultModelId"
+                :model-ids="defaultModelIds"
+                :endpoint-type="endpointType"
+                :loading="isFetchingModels"
+                :disabled="endpointType === 'browser_provided_lm'"
+                :placeholder="lazyStrings.ConnectionTab__none()"
+                allow-clear
+                :clear-label="lazyStrings.ConnectionTab__none()"
+                :refresh-models="fetchModels"
+                :select-model="setDefaultModelId"
+                data-testid="setting-model-select"
+              />
               <router-link v-if="endpointType === 'llama_cpp_browser' || endpointType === 'transformers_js'" :to="{ query: { ...$route?.query, settings: endpointType === 'llama_cpp_browser' ? 'llama-cpp-browser' : 'transformers-js' } }" :title="lazyStrings.ConnectionTab__model_management()" :aria-label="lazyStrings.ConnectionTab__model_management()" tw-class="flex shrink-0 items-center justify-center gap-1.5 border-l border-gray-200 px-3 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="setting-model-management"><FolderOpenIcon tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" /><span>{{ lazyStrings.ConnectionTab__model_management() }}</span></router-link>
             </div>
             <ReasoningSettings :selected-effort="form.lmParameters?.reasoning.effort" :disabled="mainReasoningDisabled" surface="plain" notice="inline-help" @update:effort="effort => setMainReasoningEffort({ effort })" data-testid="setting-main-reasoning-select" />
