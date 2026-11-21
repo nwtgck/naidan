@@ -157,11 +157,6 @@ const globalStubs = {
     template: '<div data-testid="upsell-stub"></div>',
     props: ['show'],
   },
-  'ModelSelector': {
-    name: 'ModelSelector',
-    template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
-    props: ['modelValue', 'models', 'loading', 'placeholder', 'allowClear', 'clearLabel', 'disabled', 'inheritedModel'],
-  },
   'ChatGroupToolsSettings': {
     name: 'ChatGroupToolsSettings',
     template: '<div data-testid="chat-group-tools-settings-mock"></div>',
@@ -405,6 +400,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     // Default global settings
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     mockSettings.defaultModelId = 'global-model';
+    mockSettings.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS };
     mockSettings.providerProfiles = [];
     mockSettings.systemPrompt = undefined;
     mockSettings.experimental = { toolConfigPersistence: 'enabled' };
@@ -429,13 +425,17 @@ describe('ChatGroupSettingsPanel.vue', () => {
     // Customize group to have an endpoint so URL input/error exists
     mockGroup.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
 
-    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, {
+      attachTo: document.body,
+      global: { stubs: { ...globalStubs, teleport: false } },
+    });
 
     await flushPromises();
     mockFetchAvailableModels.mockRejectedValueOnce(new Error(errorMessage));
-    await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
-    await nextTick();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await wrapper.get('[data-testid="group-setting-model-select"] [data-testid="model-selector-trigger"]').trigger('click');
+    const popup = new DOMWrapper(document.body);
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
 
     expect(wrapper.text()).toContain(errorMessage);
   });
@@ -456,22 +456,36 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockSettings.endpoint = { type: 'ollama', url: 'http://global-ollama' };
     mockSettings.defaultModelId = 'global-model';
 
-    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
-    await nextTick();
+    const wrapper = mount(ChatGroupSettingsPanel, {
+      attachTo: document.body,
+      global: { stubs: { ...globalStubs, teleport: false } },
+    });
+    await wrapper.get('[data-testid="group-setting-title-disclosure"]').trigger('click');
 
-    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
-    expect(titleModelSelector).toBeDefined();
-    expect(titleModelSelector!.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
-    expect(titleModelSelector!.props('allowClear')).toBe(true);
-    expect(titleModelSelector!.props('disabled')).toBe(false);
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="group-setting-title-model-select"] [data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toContain('global-model');
+    expect(trigger.text()).toContain('Global');
+    expect(trigger.element.disabled).toBe(false);
 
-    await titleModelSelector!.vm.$emit('update:modelValue', 'group-title-model');
+    const popup = new DOMWrapper(document.body);
+    await trigger.trigger('click');
+    expect(popup.get('[data-testid="model-selector-clear"]').text()).toContain('global-model');
+    mockFetchAvailableModels.mockResolvedValueOnce(['group-title-model']);
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    await popup.get('[data-testid="model-selector-option"][title="group-title-model"]').trigger('click');
     await flushPromises();
 
     expect(mockGroup.titleGeneration).toMatchObject({
       endpoint: 'same_scope',
       model: { id: 'group-title-model' },
     });
+
+    await trigger.trigger('click');
+    await popup.get('[data-testid="model-selector-clear"]').trigger('click');
+    await flushPromises();
+    expect(mockGroup.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
+    expect(trigger.text()).toContain('global-model');
   });
 
   it('preserves inherited title settings when switching the group to override if same scope would differ', async () => {
@@ -566,33 +580,37 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
   });
 
-  it('loads inherited title model options without requiring a manual model refresh', async () => {
+  it('loads and sorts models from the inherited title endpoint without a manual refresh', async () => {
     mockGroup.titleGeneration = undefined;
+    const endpoint = { type: 'ollama', url: 'http://localhost:11434' } as const;
+    const lmParameters = { ...EMPTY_LM_PARAMETERS, temperature: 0.3 };
+    const modelIds = ['title-model-10', 'title-model-2', 'title-model-1'];
     mockSettings.titleGeneration = {
-      endpoint: 'same_scope',
-      model: 'same_scope',
-      lmParameters: {
-        temperature: undefined,
-        topP: undefined,
-        maxCompletionTokens: undefined,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: { effort: undefined },
-      },
+      endpoint,
+      model: { id: 'title-model-2' },
+      lmParameters,
     };
-    mockSettings.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
-    mockSettings.defaultModelId = 'global-model';
-    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
+    mockFetchAvailableModels.mockResolvedValueOnce(modelIds);
 
-    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, {
+      attachTo: document.body,
+      global: { stubs: { ...globalStubs, teleport: false } },
+    });
     await flushPromises();
-    await nextTick();
+    expect(mockFetchAvailableModels).toHaveBeenCalledExactlyOnceWith({ endpoint });
 
-    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
-    expect(titleModelSelector).toBeDefined();
-    expect(titleModelSelector!.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
-    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
+    await wrapper.get('[data-testid="group-setting-title-disclosure"]').trigger('click');
+    const trigger = wrapper.get('[data-testid="group-setting-title-model-select"] [data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toContain('title-model-2');
+    expect(trigger.text()).toContain('Global');
+    await trigger.trigger('click');
+    const popup = new DOMWrapper(document.body);
+    expect(popup.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'))).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
+
+    mockFetchAvailableModels.mockResolvedValueOnce(modelIds);
+    await popup.get('[data-testid="model-selector-option"][title="title-model-10"]').trigger('click');
+    await flushPromises();
+    expect(mockGroup.titleGeneration).toEqual({ endpoint, model: { id: 'title-model-10' }, lmParameters });
   });
 
   it('shows the selected model without adding a separate override header', async () => {
@@ -602,7 +620,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     mockGroup.modelId = 'some-model';
     await nextTick();
-    expect(wrapper.getComponent({ name: 'ModelSelector' }).props('modelValue')).toBe('some-model');
+    expect(wrapper.get('[data-testid="group-setting-model-select"] [data-testid="model-selector-trigger"]').text()).toBe('some-model');
   });
 
   it('returns the connection summary to inheritance when its override is cleared', async () => {
@@ -1320,22 +1338,44 @@ describe('ChatGroupSettingsPanel.vue', () => {
     }]);
   });
 
-  it('passes a naturally sorted list of models to ModelSelector', async () => {
-    // We need to set groupModels in the component to trigger the computed property
-    // But groupModels is local state populated by fetchModels.
-    // Let's mock fetchAvailableModels to return unsorted models and trigger fetch.
-    mockFetchAvailableModels.mockResolvedValue(['model-10', 'model-2', 'model-1']);
-    mockGroup.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
-
-    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
-
-    // Trigger fetch via refresh button
-    await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
+  it('sorts models from the chat group endpoint, saves the selection, and restores the inherited model when cleared', async () => {
+    const endpoint = { type: 'ollama', url: 'http://ollama:11434' } as const;
+    mockGroup.endpoint = endpoint;
+    const wrapper = mount(ChatGroupSettingsPanel, {
+      attachTo: document.body,
+      global: { stubs: { ...globalStubs, teleport: false } },
+    });
     await flushPromises();
-    await nextTick();
 
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
-    expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+    const trigger = wrapper.get('[data-testid="group-setting-model-select"] [data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toContain('global-model');
+    expect(trigger.text()).toContain('Global');
+
+    const popup = new DOMWrapper(document.body);
+    await trigger.trigger('click');
+    mockFetchAvailableModels.mockResolvedValueOnce(['model-10', 'model-2', 'model-1']);
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    expect(mockFetchAvailableModels).toHaveBeenLastCalledWith({ endpoint });
+    expect(popup.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'))).toEqual(['model-1', 'model-2', 'model-10']);
+
+    await popup.get('[data-testid="model-selector-option"][title="model-2"]').trigger('click');
+    await flushPromises();
+    expectLatestGroupUpdate({ partial: { id: mockGroup.id, modelId: 'model-2' } });
+    expect(trigger.text()).toBe('model-2');
+
+    await trigger.trigger('click');
+    await popup.get('[data-testid="model-selector-clear"]').trigger('click');
+    await flushPromises();
+    expectLatestGroupUpdate({ partial: { id: mockGroup.id, modelId: undefined } });
+    expect(trigger.text()).toContain('global-model');
+    expect(trigger.text()).toContain('Global');
+
+    await trigger.trigger('click');
+    expect(popup.find('[data-testid="model-selector-dropdown"]').exists()).toBe(true);
+    mockCurrentGroup.value = { ...mockGroup, id: toChatGroupId({ raw: 'g2' }) };
+    await flushPromises();
+    expect(popup.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
   });
 
   it('clears modelId override if it is not available in newly fetched models', async () => {

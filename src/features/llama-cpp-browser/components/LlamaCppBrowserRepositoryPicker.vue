@@ -3,7 +3,6 @@ import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, GlobeIcon, HardDriveIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
-import type { ChatRepositoryModelSelection } from '@/composables/chat/chat-scoped/useChatLocalModel';
 import { parseRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { findLocalSuggestedModel } from '@/features/llama-cpp-browser/hugging-face/suggestion-plan';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
@@ -30,21 +29,21 @@ import ToggleSwitch from '@/components/ToggleSwitch.vue';
 import { repositoryUrlPath } from '@/features/llama-cpp-browser/hugging-face/types';
 import { downloadJobKey, findModelDownloadJob, getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { fileDownloadUrl, selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
-import { hasActiveRepositoryDefaultDownload, repositoryDefaultDownloadKey, repositoryRowDownload, type RepositoryModelDownloadRequest } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
+import { hasActiveRepositoryDefaultDownload, repositoryDefaultDownloadKey, repositoryRowDownload, type RepositoryDownloadUsage, type RepositoryModelDownloadRequest } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
 import { preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import ModelSelectorVariantDownload from '@/components/ModelSelectorVariantDownload.vue';
-import { bundledRepositoryDownloadKey, repositoryModelDownloadIdentity, resolveBundledRepositoryTarget } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
+import { bundledRepositoryDownloadKey, repositoryModelDownloadIdentity, resolveBundledRepositoryTarget, type RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import LlamaCppBrowserSuggestedModelRows from './LlamaCppBrowserSuggestedModelRows.vue';
 import LlamaCppBrowserModelConfiguration from './LlamaCppBrowserModelConfiguration.vue';
 import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 
-const props = defineProps<{ disabled: boolean, layout?: 'inline-results' | 'candidate-results', popupTarget?: HTMLElement, selectionBlocked?: boolean, selectionPolicy?: 'first-use-download' | 'installed-only', selectedForFirstUse?: ChatRepositoryModelSelection, currentModelId?: string, refreshInventory?: () => Promise<void> }>();
+const props = defineProps<{ disabled: boolean, layout?: 'inline-results' | 'candidate-results', suggestions?: readonly ModelSuggestion[], repositoryUsage?: RepositoryDownloadUsage, popupTarget?: HTMLElement, selectionBlocked?: boolean, selectionPolicy?: 'first-use-download' | 'installed-only', selectedForFirstUse?: RepositoryModelSelection, currentModelId?: string, refreshInventory?: () => Promise<void> }>();
 const emit = defineEmits<{
   select: [request: { target: ModelLaunchTarget, destination: DownloadDestination, authorizeDestination: AuthorizeModelLaunchDestination }],
   'select-model': [model: LocalModel, presentation?: 'keep-open'],
-  'select-for-first-use': [selection: ChatRepositoryModelSelection, presentation?: 'keep-open'],
+  'select-for-first-use': [selection: RepositoryModelSelection, presentation?: 'keep-open'],
   'view-change': [view: 'search' | 'configuration'],
   close: [],
 }>();
@@ -59,7 +58,24 @@ const openedRepository = shallowRef<ExpandedRepository>();
 const choosingResult = shallowRef<ExpandedRepository>();
 const candidateHintId = ref<string>();
 const editingConfiguration = ref(false);
-const candidate = computed(() => candidateMode.value ? modelSuggestions.find(item => item.id === openedRepository.value?.repository) : undefined);
+const suggestions = computed(() => props.suggestions ?? modelSuggestions);
+const repositoryUsage = computed(() => props.repositoryUsage ?? 'chat');
+const candidate = computed(() => candidateMode.value ? suggestions.value.find(item => item.id === openedRepository.value?.repository) : undefined);
+
+function suggestionRequiresCompanion({ suggestion }: { suggestion: ModelSuggestion | undefined }): boolean {
+  const companion = suggestion?.companion;
+  switch (companion) {
+  case 'required': return true;
+  case undefined: return false;
+  default: throw new Error(String(companion satisfies never));
+  }
+}
+
+function requiresCompanion({ repository }: { repository: string }): boolean {
+  return suggestions.value.some(suggestion => suggestionRequiresCompanion({ suggestion })
+    && suggestion.quantizationHints.some(hint => hint.hfRepository.toLowerCase() === repository.toLowerCase()));
+}
+
 const candidateHint = computed(() => candidate.value?.quantizationHints.find(hint => hint.id === candidateHintId.value));
 const currentReference = computed(() => {
   const modelId = props.currentModelId;
@@ -99,11 +115,15 @@ const failureContext = ref<'metadata'>();
 const mainPath = ref('');
 const companionPath = ref('');
 const multimodal = ref<'on' | 'off'>('off');
+const companionRequired = computed(() => suggestionRequiresCompanion({ suggestion: candidate.value })
+  || (catalog.value !== undefined && requiresCompanion({ repository: catalog.value.repository })));
+const effectiveMultimodal = computed(() => companionRequired.value ? 'on' : multimodal.value);
 const includesMultimodal = computed(() => {
-  switch (multimodal.value) {
+  const mode = effectiveMultimodal.value;
+  switch (mode) {
   case 'on': return true;
   case 'off': return false;
-  default: throw new Error(String(multimodal.value satisfies never));
+  default: throw new Error(String(mode satisfies never));
   }
 });
 const choices = computed(() => {
@@ -115,17 +135,8 @@ const target = computed(() => {
     return undefined;
   }
   try {
-    const companionFilePath = (() => {
-      switch (multimodal.value) {
-      case 'off': return undefined;
-      case 'on': return companionPath.value || undefined;
-      default: {
-        const exhaustive: never = multimodal.value;
-        throw new Error(String(exhaustive));
-      }
-      }
-    })();
-    return confirmModelLaunchConfiguration({ catalog: catalog.value, mainFilePath: mainPath.value, companionFilePath, multimodal: multimodal.value });
+    const companionFilePath = includesMultimodal.value ? companionPath.value || undefined : undefined;
+    return confirmModelLaunchConfiguration({ catalog: catalog.value, mainFilePath: mainPath.value, companionFilePath, multimodal: effectiveMultimodal.value });
   } catch {
     return undefined;
   }
@@ -165,11 +176,17 @@ const configurationQuantization = computed(() => {
   }
   return choice?.quantization ?? choice?.label;
 });
-const configurationMultimodal = computed<'included' | 'excluded' | undefined>(() => {
+const configurationMultimodal = computed<'included' | 'excluded' | 'required' | undefined>(() => {
   if (!companionVariants.value.length) {
     return undefined;
   }
-  return !includesMultimodal.value ? 'excluded' : companionVariants.value.some(variant => variant.id === companionPath.value) ? 'included' : undefined;
+  if (!includesMultimodal.value) {
+    return 'excluded';
+  }
+  if (companionVariants.value.some(variant => variant.id === companionPath.value)) {
+    return companionRequired.value ? 'required' : 'included';
+  }
+  return undefined;
 });
 const defaultRepositoryConfiguration = computed(() => {
   const standard = standardRepositoryConfiguration.value;
@@ -190,7 +207,7 @@ const configurationStatus = computed<'standard' | 'selected' | 'missing'>(() => 
   const hasCompanion = projectorsForHint({ hint }).length > 0;
   const chosenMain = catalog.value === undefined ? hint.preferredQuantization : currentMainChoice.value?.quantization;
   return hint.id === suggested.id && chosenMain === suggested.preferredQuantization
-    && (hasCompanion ? multimodal.value === 'on' && companionPath.value === projector?.path : multimodal.value === 'off')
+    && (hasCompanion ? includesMultimodal.value && companionPath.value === projector?.path : multimodal.value === 'off')
     ? 'standard' : 'selected';
 });
 const downloadDestination = useModelDownloadDestination({ blocked: () => props.disabled, changed: () => {} });
@@ -214,7 +231,7 @@ const selectedDownloadStatus = computed(() => {
 });
 const bundledSource = computed(() => {
   const hint = candidateHint.value;
-  if (catalog.value !== undefined || hint === undefined || (multimodal.value === 'on' && !companionPath.value)) {
+  if (catalog.value !== undefined || hint === undefined || (includesMultimodal.value && !companionPath.value)) {
     return undefined;
   }
   return {
@@ -249,10 +266,20 @@ watch([selectionTarget, bundledSource, () => downloadQueue?.changed.value, desti
   }
   const requestedDestination = destination.value;
   const hint = candidateHint.value;
+  const required = companionRequired.value;
+
+  async function hasInstalledCompanion({ model }: { model: LocalModel }): Promise<boolean> {
+    const { llamaCppBrowserModelFiles } = await import('@/features/llama-cpp-browser/model-files');
+    const { directory } = await llamaCppBrowserModelFiles.inspectModelFiles({ modelId: model.modelId, signal: controller.signal });
+    // A public modelId identifies the main model. Any companion resolved for
+    // that ID is usable here, even if it differs from the download suggestion.
+    return directory.projectorFile !== undefined;
+  }
+
   async function checkSaved(): Promise<LocalModel | undefined> {
     if (value !== undefined) {
       const model = await installedSelection({ selection: value.selection, destination: requestedDestination });
-      if (model !== undefined || bundled === undefined) {
+      if (model !== undefined && (!required || await hasInstalledCompanion({ model }))) {
         return model;
       }
     }
@@ -263,6 +290,9 @@ watch([selectionTarget, bundledSource, () => downloadQueue?.changed.value, desti
       const matching = findLocalSuggestedModel({ quantization: hint, models: inventory, destination: requestedDestination });
       if (matching !== undefined) {
         try {
+          if (required) {
+            return await hasInstalledCompanion({ model: matching }) ? matching : undefined;
+          }
           return await llamaCppBrowserModelFiles.getModelEntry({ modelId: matching.modelId, signal: controller.signal });
         } catch {
           controller.signal.throwIfAborted();
@@ -282,7 +312,7 @@ watch([selectionTarget, bundledSource, () => downloadQueue?.changed.value, desti
   });
 }, { immediate: true, flush: 'sync' });
 
-const firstUseSelection = computed<ChatRepositoryModelSelection | undefined>(() => {
+const firstUseSelection = computed<RepositoryModelSelection | undefined>(() => {
   const policy = props.selectionPolicy;
   switch (policy) {
   case 'first-use-download': break;
@@ -298,7 +328,7 @@ const firstUseSelection = computed<ChatRepositoryModelSelection | undefined>(() 
       source: { kind: 'resolved', target: selected },
       destination: destination.value,
       authorizeDestination: downloadDestination.authorize,
-      ...(defaultRepositoryConfiguration.value ? { defaultDownloadKey: repositoryDefaultDownloadKey({ repository: selected.selection.repository, usage: 'chat' }) } : {}),
+      ...(defaultRepositoryConfiguration.value ? { defaultDownloadKey: repositoryDefaultDownloadKey({ repository: selected.selection.repository, usage: repositoryUsage.value }) } : {}),
     };
     case 'checking': case 'saved': case 'unavailable': return undefined;
     default: throw new Error(String(state satisfies never));
@@ -354,7 +384,7 @@ function variantDownload({ id }: { id: string }): RepositoryModelDownloadRequest
     }
     let chosen: ModelLaunchTarget;
     try {
-      chosen = confirmModelLaunchConfiguration({ catalog: catalog.value, mainFilePath: id, companionFilePath: includesMultimodal.value ? companionPath.value || undefined : undefined, multimodal: multimodal.value });
+      chosen = confirmModelLaunchConfiguration({ catalog: catalog.value, mainFilePath: id, companionFilePath: includesMultimodal.value ? companionPath.value || undefined : undefined, multimodal: effectiveMultimodal.value });
     } catch {
       return undefined;
     }
@@ -369,7 +399,7 @@ function variantDownload({ id }: { id: string }): RepositoryModelDownloadRequest
   const projector = includesMultimodal.value
     ? files.find(file => file.path === companionPath.value) ?? preferredProjector({ files })
     : undefined;
-  if (multimodal.value === 'on' && projector === undefined) {
+  if (includesMultimodal.value && projector === undefined) {
     return undefined;
   }
   return bundledDownload({ source: { repository: hint.hfRepository, variant: hint.preferredQuantization, companionPath: projector?.path }, targetDestination: destination.value });
@@ -395,9 +425,11 @@ function searchResultDownload({ repository }: { repository: string }): Repositor
   const selected = current?.source.kind === 'resolved' && current.source.target.selection.repository.toLowerCase() === repository.toLowerCase()
     ? { target: current.source.target, destination: current.destination } : undefined;
   const targetDestination = selected?.destination ?? destination.value;
-  const activeDefault = hasActiveRepositoryDefaultDownload({ repository, usage: 'chat', destination: targetDestination });
+  const required = requiresCompanion({ repository });
+  const usage = repositoryUsage.value;
+  const activeDefault = hasActiveRepositoryDefaultDownload({ repository, usage, destination: targetDestination });
   if (!activeDefault) {
-    if (selected === undefined && current === undefined && selectedRepository.value?.toLowerCase() === repository.toLowerCase()) {
+    if (selected === undefined && current === undefined && !required && selectedRepository.value?.toLowerCase() === repository.toLowerCase()) {
       return undefined;
     }
     if (selected === undefined && catalog.value?.repository.toLowerCase() === repository.toLowerCase()) {
@@ -407,11 +439,15 @@ function searchResultDownload({ repository }: { repository: string }): Repositor
   return repositoryRowDownload({
     repository,
     destination: targetDestination,
-    usage: 'chat',
+    usage,
     selection: activeDefault ? undefined : selected?.target.selection,
     defaultSelection: ({ catalog }) => {
+      const companionRequired = required || requiresCompanion({ repository: catalog.repository });
+      if (required && catalog.repository.toLowerCase() !== repository.toLowerCase()) {
+        throw new Error('The repository for the required companion has changed');
+      }
       const initial = initialRepositorySelection({ catalog, requestedVariant: undefined });
-      return confirmModelLaunchConfiguration({ catalog, mainFilePath: initial.mainPath, companionFilePath: initial.companionPath || undefined, multimodal: initial.multimodal }).selection;
+      return confirmModelLaunchConfiguration({ catalog, mainFilePath: initial.mainPath, companionFilePath: initial.companionPath || undefined, multimodal: companionRequired ? 'on' : initial.multimodal }).selection;
     },
   });
 }
@@ -444,9 +480,12 @@ function describeCandidate({ candidate }: { candidate: ModelSuggestion }) {
     };
   }
   const projector = preferredProjector({ files: projectorsForHint({ hint }) });
-  const download = pending !== undefined && source?.kind === 'bundled'
-    ? bundledDownload({ source, targetDestination: pending.destination })
-    : selected ? undefined : bundledDownload({ source: { repository: hint.hfRepository, variant: hint.preferredQuantization, companionPath: projector?.path }, targetDestination: destination.value });
+  let download: RepositoryModelDownloadRequest | undefined;
+  if (pending !== undefined && source?.kind === 'bundled') {
+    download = bundledDownload({ source, targetDestination: pending.destination });
+  } else if (suggestionRequiresCompanion({ suggestion: candidate }) ? projector !== undefined : !selected) {
+    download = bundledDownload({ source: { repository: hint.hfRepository, variant: hint.preferredQuantization, companionPath: projector?.path }, targetDestination: destination.value });
+  }
   const selectedProjector = (() => {
     switch (source?.kind) {
     case 'bundled': return projectorsForHint({ hint }).find(file => file.path === source.companionPath);
@@ -555,7 +594,7 @@ function pendingDownloadConfiguration({ repository }: { repository: string }): {
   }
 }
 
-function openInlineRepository({ repository, source }: { repository: string, source: 'result' | 'url' }): void {
+function openInlineRepository({ repository, source, requestedVariant }: { repository: string, source: 'result' | 'url', requestedVariant: string | undefined }): void {
   if (source === 'result' && openedRepository.value?.source === source && openedRepository.value.repository === repository) {
     closeInlineRepository();
     return;
@@ -575,21 +614,21 @@ function openInlineRepository({ repository, source }: { repository: string, sour
     }
     return;
   }
-  void checkRepository({ value: repository, requestedVariant: undefined, freshness: 'reuse' });
+  void checkRepository({ value: repository, requestedVariant, freshness: 'reuse' });
 }
 
 async function chooseBundledModel({ id }: { id: string }): Promise<void> {
-  const suggestion = modelSuggestions.find(suggestion => suggestion.id === id);
+  const suggestion = suggestions.value.find(suggestion => suggestion.id === id);
   if (suggestion === undefined) {
     return;
   }
-  if (isSelectedCandidate({ candidate: suggestion })) {
+  if (!suggestionRequiresCompanion({ suggestion }) && isSelectedCandidate({ candidate: suggestion })) {
     emit('close');
     return;
   }
   const alreadyOpen = openedRepository.value?.repository === id;
   if (!alreadyOpen) {
-    openInlineRepository({ repository: id, source: 'result' });
+    openInlineRepository({ repository: id, source: 'result', requestedVariant: undefined });
   }
   const opened = openedRepository.value;
   await select({ presentation: 'close' });
@@ -602,7 +641,7 @@ async function chooseSearchResult({ repository }: { repository: string }): Promi
   if (props.disabled || props.selectionBlocked || choosingResult.value?.repository === repository) {
     return;
   }
-  if (selectedRepository.value?.toLowerCase() === repository.toLowerCase()) {
+  if (!requiresCompanion({ repository }) && selectedRepository.value?.toLowerCase() === repository.toLowerCase()) {
     emit('close');
     return;
   }
@@ -638,7 +677,7 @@ function applyEditedConfiguration(): void {
 }
 
 function projectorsForHint({ hint }: { hint: typeof candidateHint.value }) {
-  return hint === undefined ? [] : [...suggestedProjectors({ repository: hint.hfRepository })];
+  return hint === undefined ? [] : [...(hint.companionFiles ?? suggestedProjectors({ repository: hint.hfRepository }))];
 }
 
 function chooseCandidateHint({ id }: { id: string }): void {
@@ -734,13 +773,18 @@ async function checkRepository({ value, requestedVariant, freshness }: { value: 
     if (controller.signal.aborted || active.value !== controller) {
       return;
     }
+    if (requiresCompanion({ repository: parsed.repository }) && found.repository.toLowerCase() !== parsed.repository.toLowerCase()) {
+      error.value = true;
+      return;
+    }
     catalog.value = found;
     const current = immediateSelection.value ? pendingDownloadConfiguration({ repository: found.repository }) : undefined;
     const savedReference = currentReference.value;
     const savedVariant = savedReference?.repository.toLowerCase() === found.repository.toLowerCase() ? savedReference.variant : undefined;
-    const initial = initialRepositorySelection({ catalog: found, requestedVariant: requestedVariant ?? parsed.requestedVariant ?? current?.variant ?? savedVariant });
+    const explicitVariant = requestedVariant ?? parsed.requestedVariant;
+    const initial = initialRepositorySelection({ catalog: found, requestedVariant: explicitVariant ?? current?.variant ?? savedVariant });
     standardRepositoryConfiguration.value = initialRepositorySelection({ catalog: found, requestedVariant: undefined });
-    const chosenMainPath = previousMain ?? current?.mainPath;
+    const chosenMainPath = previousMain ?? (explicitVariant === undefined ? current?.mainPath : undefined);
     mainPath.value = chosenMainPath && found.models.some(model => model.files[0]?.path === chosenMainPath) ? chosenMainPath : initial.mainPath;
     const previousProjector = previousCompanion ?? (current === undefined ? undefined : current.projectorPath ?? '');
     companionPath.value = previousProjector === undefined
@@ -768,7 +812,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div v-if="layout !== undefined" tw-class="min-w-0 text-left" @keydown.esc="handleInlineEscape({ event: $event })">
-    <component :is="sourceView" ref="search" v-bind="candidateMode ? { immediateSelection, describeCandidate, refreshInventory, destinationLabel: downloadDestination.label, downloadDisabled: disabled || destinationBusy || destinationUnavailable } : { query: inlineQuery, active: !disabled, immediateSelection, selectedRepository, choosingRepository: choosingResult?.repository }" :disabled="disabled" :expanded-repository="openedRepository" @update:query="inlineQuery = $event" @select="(repository: string, source: 'result' | 'url') => openInlineRepository({ repository, source })" @choose="chooseInlineModel({ id: $event })" @search="clearInlineRepository">
+    <component :is="sourceView" ref="search" v-bind="candidateMode ? { suggestions, immediateSelection, describeCandidate, refreshInventory, destinationLabel: downloadDestination.label, downloadDisabled: disabled || destinationBusy || destinationUnavailable } : { query: inlineQuery, active: !disabled, immediateSelection, selectedRepository, choosingRepository: choosingResult?.repository }" :disabled="disabled" :expanded-repository="openedRepository" @update:query="inlineQuery = $event" @select="(repository: string, source: 'result' | 'url', requestedVariant?: string) => openInlineRepository({ repository, source, requestedVariant })" @choose="chooseInlineModel({ id: $event })" @search="clearInlineRepository">
       <template v-if="!candidateMode && immediateSelection" #result-actions="{ repository }">
         <ModelSelectorVariantDownload :destination-label="downloadDestination.label" :request="searchResultDownload({ repository })" :label="repository" :disabled="disabled || destinationBusy || destinationUnavailable" :refresh-inventory="refreshInventory" />
       </template>
@@ -791,14 +835,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <ModelSelectorFileOptions v-if="catalog && variants.length && editingConfiguration" :model-name="catalog.repository" :choices="variants" :selected="mainPath" :disabled="disabled || active !== undefined" test-id="chat-repository-main-file" @select="mainPath = $event; applyEditedConfiguration()">
             <template #action="{ choice }"><ModelSelectorVariantDownload :request="variantDownload({ id: choice.id })" :label="choice.label" :disabled="disabled || active !== undefined || destinationBusy || destinationUnavailable" :refresh-inventory="refreshInventory" /></template>
           </ModelSelectorFileOptions>
+          <p v-if="catalog && companionRequired && !companionVariants.length" role="alert" tw-class="px-1 py-2 text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__no_companion_files_available() }}</p>
           <div v-if="companionVariants.length && editingConfiguration" tw-class="border-t border-gray-100 pt-2 dark:border-gray-800">
-            <div tw-class="flex items-center justify-between gap-3 px-2 py-1">
+            <div v-if="!companionRequired" tw-class="flex items-center justify-between gap-3 px-2 py-1">
               <span tw-class="text-xs font-medium">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__download_companion_files() }}</span>
               <ToggleSwitch>
                 <button type="button" role="switch" :aria-label="lazyStrings.LlamaCppBrowserRepositoryPicker__download_companion_files()" data-testid="chat-repository-multimodal" :aria-checked="multimodal === 'on'" :disabled="disabled || active !== undefined" @click="multimodal = multimodal === 'on' ? 'off' : 'on'; applyEditedConfiguration()" />
               </ToggleSwitch>
             </div>
-            <div v-if="multimodal === 'on'" tw-class="mt-1">
+            <div v-if="includesMultimodal" tw-class="mt-1">
               <p tw-class="px-2 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__companion_files() }}</p>
               <ModelSelectorFileOptions :model-name="catalog?.repository ?? candidate?.name ?? ''" :choices="companionVariants" :selected="companionPath" :disabled="disabled || active !== undefined" test-id="chat-repository-companion-file" @select="companionPath = $event; applyEditedConfiguration()" />
             </div>
@@ -808,7 +853,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <button v-if="catalog && editingConfiguration" type="button" :disabled="active !== undefined" tw-class="rounded-lg px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-gray-800" @click="returnToCandidate">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__back_to_suggestions() }}</button>
           </div>
           <div v-if="candidateHint || (catalog && variants.length)" tw-class="space-y-2 border-t border-gray-100 pt-2 dark:border-gray-800">
-            <LlamaCppBrowserDownloadDestination layout="compact" :view="downloadDestination.view" :disabled="disabled" :layout-file="catalog ? { repository: catalog.repository, path: mainPath } : undefined" :popup-target="popupTarget" />
+            <div tw-class="flex flex-wrap items-center gap-1.5">
+              <LlamaCppBrowserDownloadDestination layout="compact" :view="downloadDestination.view" :disabled="disabled" :layout-file="catalog ? { repository: catalog.repository, path: mainPath } : undefined" :popup-target="popupTarget" />
+              <ModelSelectorVariantDownload v-if="openedRepository.source === 'url' && selectionPolicy === 'installed-only' && catalog" :request="variantDownload({ id: mainPath })" :label="catalog.repository" :disabled="disabled || active !== undefined || destinationBusy || destinationUnavailable" :refresh-inventory="refreshInventory" />
+            </div>
             <p v-if="destinationFailure || (catalog && saved.status === 'unavailable')" role="status" tw-class="px-2 text-xs text-gray-500 dark:text-gray-400">{{ destination.kind === 'host' ? lazyStrings.LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings() : lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() }}</p>
             <p v-if="firstUseSelection && (!candidateMode || !configurationSelected)" :title="lazyStrings.ModelSelector__download_before_first_use()" tw-class="px-1 text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSelector__downloads_automatically() }}</p>
           </div>

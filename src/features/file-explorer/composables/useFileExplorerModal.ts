@@ -1,10 +1,10 @@
 import { ref, shallowRef } from 'vue';
 import type { WeshMount } from '@/features/wesh/types';
-import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
+import type { FileExplorerRemoteMount, FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 import { mapWeshMountsToWorkerMounts } from '@/features/wesh/worker/types';
 
 export type FileExplorerModalOptions =
-  | { kind: 'opfs-root' }
+  | { kind: 'opfs-root', initialPath?: string[] }
   | {
     kind: 'native-directory',
     title: string,
@@ -12,13 +12,16 @@ export type FileExplorerModalOptions =
     handle: FileSystemDirectoryHandle,
     readOnly: boolean,
     initialPath: string[] | undefined,
+    initialLocked?: boolean,
   }
   | {
     kind: 'wesh-mounts',
     title: string,
     rootName: string,
     mounts: WeshMount[],
+    remoteMounts?: FileExplorerRemoteMount[],
     initialPath: string[] | undefined,
+    initialLocked?: boolean,
   }
   | {
     kind: 'archive-root',
@@ -51,6 +54,7 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
       kind: 'wesh-mounts',
       rootName: options.rootName,
       mounts: mapWeshMountsToWorkerMounts({ mounts: options.mounts }),
+      ...(options.remoteMounts === undefined ? {} : { remoteMounts: options.remoteMounts.map(({ access: _access, ...mount }) => mount) }),
     };
   case 'archive-root':
     return {
@@ -67,9 +71,12 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
 
 const isOpen = ref(false);
 const options = shallowRef<FileExplorerModalOptions>({ kind: 'opfs-root' });
+let onClose: (() => void) | undefined;
 
 export function useFileExplorerModal() {
-  function openFileExplorer({ options: opts }: { options?: FileExplorerModalOptions }): void {
+  function openFileExplorer({ options: opts, onClose: callback }: { options?: FileExplorerModalOptions, onClose?: () => void }): void {
+    onClose?.();
+    onClose = callback;
     options.value = opts ?? { kind: 'opfs-root' };
     isOpen.value = true;
   }
@@ -77,6 +84,9 @@ export function useFileExplorerModal() {
   function closeFileExplorer(): void {
     isOpen.value = false;
     options.value = { kind: 'opfs-root' };
+    const callback = onClose;
+    onClose = undefined;
+    callback?.();
   }
 
   return {

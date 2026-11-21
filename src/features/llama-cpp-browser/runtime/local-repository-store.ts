@@ -5,7 +5,8 @@ import { readTemporaryModelFile } from '@/logic/model-file-system';
 import { temporaryModelFiles, type TemporaryModelFiles } from '@/logic/temporary-model-files';
 import { hasLocalRepositoryReferencePrefix, localRepositoryReference, parseLocalRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
 import { LlamaCppBrowserError, type LocalModel, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
-import { describeDirectory, validGguf, type ModelDirectory, type ResolvedModel } from './model-directory';
+import { describeDirectory, modelDirectory, validGguf, type ModelDirectory, type ResolvedModel } from './model-directory';
+import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { localRepositoryInput } from './model-directory-input';
 import { localRepositoryDirectories } from './local-repository-layout';
 import { reserveLocalRepositoryName } from './local-repository-name';
@@ -134,6 +135,13 @@ function createLocalRepositoryStore({ registry }: { registry: TemporaryModelFile
     notify();
     return entry.retirement;
   }
+  function registerPendingLifetime({ entry }: { entry: Entry }): void {
+    const { source } = entry;
+    entry.releaseLifetime.push(registerLocalRepositoryLifetime({
+      modelIds: source.configurations.map(({ selector }) => localRepositoryReference({ storage: 'pending', rootName: source.rootName, selector })),
+      lifetime: { isCurrent: () => entry.source === source && current({ entry }), retain: () => pin({ source }) },
+    }));
+  }
   registry.subscribe({
     listener: ({ rootPath }) => {
       for (const entry of entries.values()) {
@@ -145,6 +153,42 @@ function createLocalRepositoryStore({ registry }: { registry: TemporaryModelFile
   });
   return {
     sourceFor,
+    sourceForRoot({ root }: { root: TemporaryModelDirectory }): LocalRepositorySource | undefined {
+      const entry = entries.get(root.sourceRootName);
+      return entry?.source.root === root && current({ entry }) ? entry.source : undefined;
+    },
+    removeFiles({ source, paths }: { source: LocalRepositorySource, paths: ReadonlySet<string> }): LocalRepositorySource {
+      const entry = entryFor({ source });
+      if (entry.operations > 0 || entry.saved !== undefined) {
+        throw new DOMException('The temporary model folder is in use', 'NoModificationAllowedError');
+      }
+      registry.subtractFiles({
+        root: source.root,
+        paths,
+        prepare: ({ next }) => {
+          const files = next.files.map(({ relativePath }) => readTemporaryModelFile({ root: next, relativePath }));
+          const projectors = files.filter(file => isProjector({ path: file.relativePath }));
+          const byPath = new Map(files.map(file => [file.relativePath, file]));
+          const configurations = source.configurations.flatMap(({ selector, directory }) => {
+            const weights = directory.files.filter(file => !isProjector({ path: file.relativePath }));
+            // An incomplete shard set disappears from the picker. Sibling variants
+            // remain usable and shared companions are selected again from this revision.
+            if (weights.some(file => !byPath.has(file.relativePath))) {
+              return [];
+            }
+            return [{ selector, directory: modelDirectory({ files: [...weights.map(file => byPath.get(file.relativePath)!), ...projectors] }) }];
+          });
+          claimLocalRepositoryRoot({ root: next });
+          for (const release of entry.releaseLifetime.splice(0)) {
+            release();
+          }
+          entry.source = Object.freeze({ ...source, sourceId: toLocalModelSourceId({ raw: nanoid() }), root: next, configurations });
+          registerPendingLifetime({ entry });
+        },
+      });
+      notify();
+      return entry.source;
+    },
     pin,
     retire,
     isCurrent({ source }: { source: LocalRepositorySource }): boolean {
@@ -184,10 +228,7 @@ function createLocalRepositoryStore({ registry }: { registry: TemporaryModelFile
         const source: LocalRepositorySource = Object.freeze({ sourceId: toLocalModelSourceId({ raw: nanoid() }), rootName: reservation.rootName, root, configurations });
         const entry: Entry = { source, phase: 'active', reservation, operations: 0, excluded: new Set(), drained: [], saved: undefined, releaseLifetime: [], retirement: undefined };
         entries.set(source.rootName, entry);
-        entry.releaseLifetime.push(registerLocalRepositoryLifetime({
-          modelIds: configurations.map(({ selector }) => localRepositoryReference({ storage: 'pending', rootName: source.rootName, selector })),
-          lifetime: { isCurrent: () => current({ entry }), retain: () => pin({ source }) },
-        }));
+        registerPendingLifetime({ entry });
         notify();
         return source;
       } catch (error) {

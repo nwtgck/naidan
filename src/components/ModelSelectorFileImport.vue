@@ -10,10 +10,11 @@ import { listModelInventory } from '@/features/llama-cpp-browser/composables/mod
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
 import { splitModelName } from '@/utils/model-name';
-import { savedLocalModelReferences } from '@/00-storage/service/local-model-references';
+import { localRepositories } from '@/features/llama-cpp-browser/runtime/local-repository-store';
 
 const props = defineProps<{
   disabled: boolean,
+  availableModelIds: readonly string[],
   selectedModelId?: string,
   importFiles?: ({ request }: { request: LocalModelImportRequest }) => Promise<{ models: readonly LocalModel[], skipped: readonly string[] }>,
 }>();
@@ -63,13 +64,19 @@ function remember({ models }: { models: readonly LocalModel[] }): void {
   }
 }
 
-function currentId({ model }: { model: LocalModel }): string {
-  return savedLocalModelReferences({ modelIds: [model.modelId] })[0]?.modelId ?? model.modelId;
-}
-
-function choose({ model }: { model: LocalModel }): void {
-  emit('choose', { ...model, modelId: currentId({ model }) });
-}
+// This tab remembers which models were added here. The live inventory owns
+// their availability, including after File Explorer removes a GGUF or shard.
+const availableAddedModels = computed(() => {
+  const available = new Set(props.availableModelIds);
+  const result = new Map<string, LocalModel>();
+  for (const model of added.value) {
+    const modelId = localRepositories.savedModelId({ modelId: model.modelId });
+    if (available.has(modelId)) {
+      result.set(modelId, { ...model, modelId });
+    }
+  }
+  return [...result.values()];
+});
 
 async function accept({ request }: { request: LocalModelImportRequest }): Promise<void> {
   const { controller, directories, save } = request;
@@ -155,11 +162,11 @@ defineExpose({
         <li v-for="file in skippedFiles" :key="file">{{ file }}</li>
       </ul>
     </details>
-    <section v-if="added.length" :aria-label="lazyStrings.ModelSelectorFileImport__added_models()">
+    <section v-if="availableAddedModels.length" :aria-label="lazyStrings.ModelSelectorFileImport__added_models()">
       <h3 tw-class="px-2 pb-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSelectorFileImport__added_models() }}</h3>
       <ul tw-class="space-y-0.5">
-        <li v-for="model in added" :key="model.modelId">
-          <button type="button" :title="model.modelId" :aria-label="model.modelId" :aria-pressed="currentId({ model }) === selectedModelId" :disabled="disabled" :tw-class="['block min-w-0 w-full rounded-lg px-2.5 py-2 text-left text-xs focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50', currentId({ model }) === selectedModelId ? 'bg-blue-50 text-blue-800 dark:bg-blue-500/15 dark:text-blue-200' : 'hover:bg-gray-100 dark:hover:bg-gray-800']" @click="choose({ model })">
+        <li v-for="model in availableAddedModels" :key="model.modelId">
+          <button type="button" :title="model.modelId" :aria-label="model.modelId" :aria-pressed="model.modelId === selectedModelId" :disabled="disabled" :tw-class="['block min-w-0 w-full rounded-lg px-2.5 py-2 text-left text-xs focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50', model.modelId === selectedModelId ? 'bg-blue-50 text-blue-800 dark:bg-blue-500/15 dark:text-blue-200' : 'hover:bg-gray-100 dark:hover:bg-gray-800']" @click="emit('choose', model)">
             <span tw-class="block truncate font-medium">{{ splitModelName({ name: model.modelId }).suffix }}</span>
             <span v-if="splitModelName({ name: model.modelId }).prefix" tw-class="block truncate text-[11px] text-gray-500 dark:text-gray-400">{{ splitModelName({ name: model.modelId }).prefix.slice(0, -1) }}</span>
           </button>

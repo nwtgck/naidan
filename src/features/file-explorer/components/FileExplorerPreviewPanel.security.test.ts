@@ -178,6 +178,7 @@ function createContext({
     onDragEnd: () => undefined,
     readOnly: false,
     readOnlyReason: undefined,
+    isDeletionOnly: () => false,
     isLocked: false,
     toggleLock: () => undefined,
     columnPanes: [],

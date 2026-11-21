@@ -137,7 +137,7 @@ describe('Sidebar IME handling', () => {
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
-    'ChatModelSelector': true,
+    'ModelSelector': true,
   };
 
   beforeEach(() => {

@@ -8,13 +8,23 @@ const props = defineProps<{
   status: 'standard' | 'selected' | 'missing',
   bytes: number | undefined,
   quantization?: string,
-  multimodal?: 'included' | 'excluded',
+  multimodal?: 'included' | 'excluded' | 'required',
   expanded: boolean,
   selectable?: boolean,
   checked?: boolean,
   selectionDisabled?: boolean,
 }>();
 const emit = defineEmits<{ toggle: [], choose: [] }>();
+const companionLabel = computed(() => {
+  const { multimodal } = props;
+  switch (multimodal) {
+  case 'required': return lazyStrings.llamaCppBrowserDownloads__required_companion_included();
+  case 'included': return lazyStrings.ModelSelectorConfigurationSummary__multimodal_included();
+  case 'excluded': return lazyStrings.ModelSelectorConfigurationSummary__multimodal_excluded();
+  case undefined: return undefined;
+  default: throw new Error(String(multimodal satisfies never));
+  }
+});
 const label = computed(() => ({ standard: lazyStrings.ModelSelectorConfigurationSummary__standard(), selected: lazyStrings.ModelSelectorConfigurationSummary__selected(), missing: lazyStrings.ModelSelectorConfigurationSummary__choose() })[props.status]);
 
 
@@ -42,7 +52,7 @@ defineExpose({
         </span>
         <span v-if="quantization || multimodal" tw-class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-gray-500 dark:text-gray-400">
           <span v-if="quantization" tw-class="whitespace-nowrap">{{ quantization }}</span>
-          <span v-if="multimodal">{{ multimodal === 'included' ? lazyStrings.ModelSelectorConfigurationSummary__multimodal_included() : lazyStrings.ModelSelectorConfigurationSummary__multimodal_excluded() }}</span>
+          <span v-if="multimodal">{{ companionLabel }}</span>
         </span>
       </span>
     </component>

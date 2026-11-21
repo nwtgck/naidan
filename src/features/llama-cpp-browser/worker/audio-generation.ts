@@ -144,12 +144,15 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
     if (!helper) {
       throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
     }
+    stage = 'audio-input';
     const params = record({ name: 'mtmd_helper_gen_audio_inp' });
+    // The native defaults include a positive playback speed. A zeroed record
+    // is rejected even when Naidan leaves speed and loudness at their defaults.
+    await api.mtmd_helper_gen_audio_inp_default(params);
     const language = capabilities.language === 'weights' || accepted.language === 'default' ? 0n : string({ text: accepted.language });
     for (const [field, value] of Object.entries({ seq_id: 0, prompt: string({ text: accepted.text }), prompt_len: BigInt(new TextEncoder().encode(accepted.text).length), speaker_ref: speaker, lang: language, top_k: accepted.topK, top_p: accepted.topP, seed: accepted.seed, out_type: core.constant({ name: 'MTMD_HELPER_GEN_AUDIO_OUTTYPE_WAV' }) })) {
       core.setField({ name: 'mtmd_helper_gen_audio_inp', pointer: params, field, value });
     }
-    stage = 'audio-input';
     if (await checked({ call: () => api.mtmd_helper_gen_audio_set_input(helper, params) }) !== 0) {
       throw new LlamaCppBrowserError({ code: 'unsupported-input' });
     }

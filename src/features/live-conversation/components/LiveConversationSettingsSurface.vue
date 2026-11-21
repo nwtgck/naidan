@@ -85,16 +85,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <!-- Keep one catalog/manager mounted. Teleport moves the same settings DOM
+  <!-- Teleport moves the same settings DOM
        between first-use setup and a ChatSettingsPanel-style modal. -->
   <Teleport to="body" :disabled="onboarding && !open">
     <div v-show="onboarding || open" :tw-class="open ? 'fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 backdrop-blur-[2px] md:p-6' : ''" @click.self="open && emit('close')" @keydown="keydown({ event: $event })" data-testid="live-settings-surface">
-      <section ref="dialog" :role="open ? 'dialog' : undefined" :aria-modal="open ? true : undefined" :aria-labelledby="open ? headingId : undefined" tabindex="-1" :tw-class="open ? 'relative flex max-h-[90dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl outline-none dark:border-gray-800 dark:bg-gray-900' : 'min-w-0'" data-testid="live-settings">
+      <section ref="dialog" :role="open ? 'dialog' : undefined" :aria-modal="open ? true : undefined" :aria-labelledby="open ? headingId : undefined" tabindex="-1" :tw-class="open ? 'relative flex max-h-[90dvh] w-full max-w-4xl flex-col rounded-3xl border border-gray-200 bg-white shadow-2xl outline-none dark:border-gray-800 dark:bg-gray-900' : 'min-w-0'" data-testid="live-settings">
         <header v-if="open" tw-class="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/70 px-5 py-3 dark:border-gray-800">
           <h2 :id="headingId" tw-class="min-w-0 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ lazyStrings.liveConversation__conversation_settings() }}</h2>
           <button ref="closeButton" type="button" @click="emit('close')" :aria-label="lazyStrings.liveConversation__close_settings()" :title="lazyStrings.liveConversation__close_settings()" tw-class="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800 dark:hover:text-gray-100" data-testid="live-settings-close"><XIcon aria-hidden="true" tw-class="h-5 w-5" /></button>
         </header>
-        <div :tw-class="open ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6' : 'space-y-5'" data-testid="live-settings-body"><slot /></div>
+        <div :tw-class="open ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-b-3xl p-5 sm:p-6' : 'space-y-5'" data-testid="live-settings-body"><slot :popup-target="open ? dialog : undefined" /></div>
       </section>
     </div>
   </Teleport>

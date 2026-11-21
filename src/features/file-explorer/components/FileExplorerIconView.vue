@@ -82,7 +82,7 @@ function onBackgroundClick({ event }: { event: MouseEvent }): void {
 const isExternalDragOver = ref(false);
 
 function onExternalDragOver({ event }: { event: DragEvent }): void {
-  if (ctx.readOnly) {
+  if (ctx.readOnly || ctx.isDeletionOnly({ path: ctx.currentDirectoryPath })) {
     isExternalDragOver.value = false;
     return;
   }
@@ -93,7 +93,7 @@ function onExternalDragOver({ event }: { event: DragEvent }): void {
 
 async function onExternalDrop({ event }: { event: DragEvent }): Promise<void> {
   isExternalDragOver.value = false;
-  if (ctx.readOnly) {
+  if (ctx.readOnly || ctx.isDeletionOnly({ path: ctx.currentDirectoryPath })) {
     return;
   }
   const files = event.dataTransfer?.files;

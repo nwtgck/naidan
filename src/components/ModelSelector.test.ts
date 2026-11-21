@@ -1,1049 +1,576 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { beforeEach, afterEach, expect, expectTypeOf, it, vi } from 'vitest';
+import { DOMWrapper, flushPromises, mount, type ComponentMountingOptions } from '@vue/test-utils';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
-import { useSettings } from '@/composables/useSettings';
-import { ref, nextTick, h } from 'vue';
+import type { ModelSelectorItem } from './model-selector-item';
 
-// Mock useSettings
-vi.mock('../composables/useSettings', () => ({
-  useSettings: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ useSettings: vi.fn() }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: mocks.useSettings }));
+const externalFetch = vi.fn<typeof fetch>();
+type Props = InstanceType<typeof ModelSelector>['$props'];
 
-enableAutoUnmount(afterEach);
-
-// Mock @vueuse/core for positioning tests
-const mockBounding = {
-  top: ref(100),
-  bottom: ref(140),
-  left: ref(100),
-  width: ref(200),
-};
-const mockWindowSize = {
-  width: ref(1024),
-  height: ref(768),
-};
-
-vi.mock('@vueuse/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@vueuse/core')>();
-  return {
-    ...actual,
-    useElementBounding: vi.fn(() => mockBounding),
-    useWindowSize: vi.fn(() => mockWindowSize),
-  };
-});
+const models: readonly ModelSelectorItem[] = [
+  { id: 'catalog/qwen', label: 'Qwen speech', description: 'Japanese recognition', availability: 'download_required' },
+  { id: 'stored/parakeet', label: 'Local Parakeet', description: 'English recognition', availability: 'local' },
+];
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
+  mocks.useSettings.mockReset().mockImplementation(() => {
+    throw new Error('The supplied model selector must not initialize chat settings');
+  });
+  externalFetch.mockReset().mockRejectedValue(new Error('Unexpected external request'));
+  vi.stubGlobal('fetch', externalFetch);
 });
 
-describe('ModelSelector.vue', () => {
-  const availableModels = ref(['model-a', 'model-b', 'model-c']);
-  const isFetchingModels = ref(false);
-  const fetchModels = vi.fn();
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    availableModels.value = ['model-a', 'model-b', 'model-c'];
-    (useSettings as any).mockReturnValue({
-      availableModels,
-      isFetchingModels,
-      fetchModels,
-    });
-    // Reset positioning mocks
-    mockBounding.top.value = 100;
-    mockBounding.bottom.value = 140;
-    mockBounding.left.value = 100;
-    mockBounding.width.value = 200;
-    mockWindowSize.width.value = 1024;
-    mockWindowSize.height.value = 768;
-    document.body.innerHTML = '';
-  });
-
-  afterEach(async () => {
-    await flushPromises();
-    document.body.innerHTML = '';
-  });
-
-  it('renders correctly with initial modelValue', () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-      },
-    });
-
-    expect(wrapper.text()).toContain('model-a');
-    expect(wrapper.get('[data-testid="model-selector-trigger"]').attributes('aria-describedby')).toBeUndefined();
-    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
-  });
-
-  it('describes the closed trigger with optional detail even when the model has no namespace or inheritance metadata', () => {
-    const wrapper = mount(ModelSelector, {
-      props: { modelValue: 'model-a', surface: 'composer', chevronVisibility: 'hidden' },
-      slots: { 'trigger-detail': '<span>Think High</span>' },
-    });
-    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-    const metadata = trigger.get('[data-testid="model-selector-trigger-metadata"]');
-    expect(metadata.text()).toBe('Think High');
-    expect(metadata.get('[id]').attributes('id')).toBe(trigger.attributes('aria-describedby'));
-    expect(trigger.text()).toContain('model-a');
-    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
-  });
-
-  it('toggles dropdown when clicked', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-      },
-    });
-
-    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-    await trigger.trigger('click');
-    await flushPromises();
-
-    // Teleported to body
-    await vi.waitFor(() => {
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
-    });
-    const dropdown = document.body.querySelector('.animate-in');
-    expect(dropdown?.querySelector('[data-testid="model-selector-filter"]')).toBeTruthy();
-    expect(dropdown?.textContent).toContain('model-b');
-    expect(dropdown?.textContent).toContain('model-c');
-
-    await trigger.trigger('click');
-    await flushPromises();
-    expect(document.body.querySelector('.animate-in')).toBeFalsy();
-  });
-
-  it('focuses the search input when the dropdown opens', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-      },
-      attachTo: document.body,
-    });
-
-    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-    await trigger.trigger('click');
-    await flushPromises();
-
-    const input = document.body.querySelector('[data-testid="model-selector-filter"]') as HTMLInputElement;
-    expect(document.activeElement).toBe(input);
-
-    wrapper.unmount();
-  });
-
-  it('filters models based on search query', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-      },
-    });
-
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-
-    const input = document.body.querySelector('[data-testid="model-selector-filter"]') as HTMLInputElement;
-    input.value = 'model-b';
-    input.dispatchEvent(new Event('input'));
-    await nextTick();
-
-    const listItems = Array.from(document.body.querySelectorAll('.custom-scrollbar button'));
-    expect(listItems.some(i => i.textContent?.includes('model-a'))).toBe(false);
-    expect(listItems.some(i => i.textContent?.includes('model-b'))).toBe(true);
-    expect(listItems.some(i => i.textContent?.includes('model-c'))).toBe(false);
-
-    wrapper.unmount();
-  });
-
-  it('filters models using space-separated keywords', async () => {
-    availableModels.value = [
-      'anthropic/claude-3-5-sonnet',
-      'openai/gpt-4o',
-      'openai/gpt-3.5-turbo',
-      'google/gemini-1.5-pro',
-    ];
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: undefined,
-      },
-    });
-
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-
-    const input = document.body.querySelector('[data-testid="model-selector-filter"]') as HTMLInputElement;
-
-    // Case 1: "gpt 4" should match "openai/gpt-4o"
-    input.value = 'gpt 4';
-    input.dispatchEvent(new Event('input'));
-    await nextTick();
-
-    let listItems = Array.from(document.body.querySelectorAll('[data-testid="model-selector-option"]'));
-    expect(listItems.map(i => i.getAttribute('title'))).toEqual(['openai/gpt-4o']);
-
-    // Case 2: "turbo" should match "openai/gpt-3.5-turbo"
-    input.value = 'turbo';
-    input.dispatchEvent(new Event('input'));
-    await nextTick();
-
-    listItems = Array.from(document.body.querySelectorAll('[data-testid="model-selector-option"]'));
-    expect(listItems.map(i => i.getAttribute('title'))).toEqual(['openai/gpt-3.5-turbo']);
-
-    // Case 3: "sonnet anthropic" (out of order) should match "anthropic/claude-3-5-sonnet"
-    input.value = 'sonnet anthropic';
-    input.dispatchEvent(new Event('input'));
-    await nextTick();
-
-    listItems = Array.from(document.body.querySelectorAll('[data-testid="model-selector-option"]'));
-    expect(listItems.map(i => i.getAttribute('title'))).toEqual(['anthropic/claude-3-5-sonnet']);
-
-    wrapper.unmount();
-  });
-
-  it('emits update:modelValue when a model is selected', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-      },
-    });
-
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-
-    const options = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
-      .filter(b => b.textContent?.includes('model-c'));
-
-    (options[0] as HTMLElement).click();
-    await nextTick();
-
-    expect(wrapper.emitted('update:modelValue')).toBeTruthy();
-    expect(wrapper.emitted('update:modelValue')![0]).toEqual(['model-c']);
-
-    wrapper.unmount();
-  });
-
-  it('emits undefined when the placeholder/clear option is selected', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-        placeholder: 'Global Default',
-        allowClear: true,
-      },
-    });
-
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-
-    const clearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
-    expect(clearBtn.textContent).toContain('Global Default');
-    clearBtn.click();
-    await nextTick();
-
-    expect(wrapper.emitted('update:modelValue')).toBeTruthy();
-    expect(wrapper.emitted('update:modelValue')![0]).toEqual([undefined]);
-
-    wrapper.unmount();
-  });
-
-  it('does not show clear option when allowClear is false', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-        allowClear: false,
-      },
-    });
-
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    expect(document.body.querySelector('[data-testid="model-selector-clear"]')).toBeFalsy();
-
-    wrapper.unmount();
-  });
-
-  it('calls fetchModels when refresh button is clicked', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-      },
-    });
-
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-
-    const refreshBtn = Array.from(document.body.querySelectorAll('button'))
-      .find(b => b.getAttribute('title') === 'Refresh model list');
-
-    (refreshBtn as HTMLElement).click();
-    await nextTick();
-
-    expect(fetchModels).toHaveBeenCalled();
-
-    wrapper.unmount();
-  });
-
-  it('shows loading state when isFetchingModels is true', () => {
-    isFetchingModels.value = true;
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: 'model-a',
-      },
-    });
-
-    expect(wrapper.find('.animate-spin').exists()).toBe(true);
-    isFetchingModels.value = false;
-  });
-
-  describe('Design and Styling Regressions', () => {
-    it('has dynamic positioning and fixed styling', async () => {
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: 'model-a' },
-      });
-
+function fixture({ props, slots }: { props: Partial<Props>, slots: ComponentMountingOptions<typeof ModelSelector>['slots'] | undefined }) {
+  const host = document.createElement('div');
+  document.body.append(host);
+  const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models, ...props }, slots, attachTo: host });
+  return {
+    wrapper,
+    get({ testId }: { testId: string }) {
+      const element = document.body.querySelector(`[data-testid="${testId}"]`);
+      if (element === null) {
+        throw new Error(`Missing selector element: ${testId}`);
+      }
+      return new DOMWrapper(element);
+    },
+    async open(): Promise<void> {
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-      const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
-
-      expect(dropdown.style.position).toBe('fixed');
-      expect(dropdown.style.zIndex).toBe('9999');
-
-      wrapper.unmount();
-    });
-
-    it('keeps the full model label available alongside compact candidate text', async () => {
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: 'owner/repository/model-a', models: ['owner/repository/model-a'] },
-      });
-
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-      const option = document.body.querySelector('[data-testid="model-selector-option"]');
-      expect(option?.getAttribute('title')).toBe('owner/repository/model-a');
-      expect(option?.querySelector('[data-testid="model-selector-option-name"]')?.textContent).toBe('model-a');
-      expect(option?.querySelector('[data-testid="model-selector-option-namespace"]')?.textContent).toBe('owner/repository');
-
-      wrapper.unmount();
-    });
-  });
-
-  it('preserves the order of models as provided in props', async () => {
-    const customModels = ['model-z', 'model-a', 'model-m'];
-    const wrapper = mount(ModelSelector, {
-      props: {
-        modelValue: undefined,
-        models: customModels,
-      },
-    });
-
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-
-    const options = Array.from(document.body.querySelectorAll('[data-testid="model-selector-option"]'));
-    const displayedOrder = options.map(option => option.getAttribute('title'));
-
-    expect(displayedOrder).toEqual(customModels);
-
-    wrapper.unmount();
-  });
-
-  describe('Adaptive Positioning Features (New Specs)', () => {
-    it('opens downward by default when space is available', async () => {
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-
-      const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
-      expect(dropdown.classList.contains('slide-in-from-top-2')).toBe(true);
-      expect(dropdown.style.top).not.toBe('auto');
-      expect(dropdown.style.bottom).toBe('auto');
-      wrapper.unmount();
-    });
-
-    it('flips to open upward when space below is insufficient', async () => {
-      mockBounding.bottom.value = 700;
-      mockBounding.top.value = 660;
-      mockWindowSize.height.value = 768;
-
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-
-      const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
-      expect(dropdown.classList.contains('slide-in-from-bottom-2')).toBe(true);
-      expect(dropdown.style.bottom).not.toBe('auto');
-      expect(dropdown.style.top).toBe('auto');
-      wrapper.unmount();
-    });
-
-    it('shifts left if the dropdown would overflow the right edge', async () => {
-      mockBounding.left.value = 900;
-      mockBounding.width.value = 100;
-      mockWindowSize.width.value = 1024;
-
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-
-      const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
-      const leftValue = parseFloat(dropdown.style.left);
-      const dropdownWidth = parseFloat(dropdown.style.width);
-
-      expect(leftValue).toBeLessThan(900);
-      expect(leftValue + dropdownWidth).toBeLessThanOrEqual(mockWindowSize.width.value - 16);
-      wrapper.unmount();
-    });
-
-    it('closes on window width resize but stays open on height resize', async () => {
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-      await vi.waitFor(() => {
-        expect(document.body.querySelector('.animate-in')).toBeTruthy();
-      });
-
-      // Height change (like keyboard opening) - should STAY OPEN
-      mockWindowSize.height.value = 400;
       await nextTick();
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
-
-      // Width change (like orientation change) - should CLOSE
-      mockWindowSize.width.value = 800;
-      await nextTick();
-      expect(document.body.querySelector('.animate-in')).toBeFalsy();
-
+    },
+    options(): string[] {
+      return Array.from(document.body.querySelectorAll('[data-testid="model-selector-option"]'), element => element.getAttribute('title') ?? '');
+    },
+    panelButton({ label }: { label: string }) {
+      const element = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-testid="model-selector-dropdown"] [role="group"] button')).find(button => button.textContent === label);
+      if (element === undefined) {
+        throw new Error(`Missing selector panel: ${label}`);
+      }
+      return new DOMWrapper(element);
+    },
+    [Symbol.dispose]() {
       wrapper.unmount();
-    });
+      host.remove();
+    },
+  };
+}
 
-    it('identifies clicks inside the teleported dropdown as "inside"', async () => {
-      const addSpy = vi.spyOn(document, 'addEventListener');
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: 'model-a' },
-        attachTo: document.body,
-      });
+function keydown({ target, key, isComposing }: { target: Element, key: string, isComposing: boolean }): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { key, isComposing, bubbles: true, cancelable: true });
+  target.dispatchEvent(event);
+  return event;
+}
 
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-      const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
+it.each([
+  { surface: 'composer', triggerLeft: 720, popupLeft: 510 },
+  { surface: 'composer', triggerLeft: 1300, popupLeft: 864 },
+  { surface: 'composer', triggerLeft: 24, popupLeft: 16 },
+  { surface: 'sidebar', triggerLeft: 720, popupLeft: 720 },
+] as const)('positions the $surface popup at $popupLeft with the trigger at $triggerLeft', async ({ surface, triggerLeft, popupLeft }) => {
+  vi.stubGlobal('innerWidth', 1440);
+  vi.stubGlobal('innerHeight', 900);
+  vi.stubGlobal('visualViewport', undefined);
+  const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(triggerLeft, 780, 140, 36));
+  using restoreBounds = { [Symbol.dispose]: () => bounds.mockRestore() };
+  void restoreBounds;
+  using value = fixture({ props: { surface }, slots: undefined });
+  await value.open();
+  const popup = value.get({ testId: 'model-selector-dropdown' }).element as HTMLDialogElement;
+  expect(popup.style.left).toBe(`${popupLeft}px`);
+  expect(popup.style.width).toBe('560px');
+  expect(popup.style.maxHeight).toBe('756px');
+});
 
-      // Find the mousedown listener
-      const mousedownCall = addSpy.mock.calls.find(call => call[0] === 'mousedown');
-      const handler = mousedownCall![1] as any;
+it('requires supplied models and filters their identifiers, labels and descriptions without fetching', async () => {
+  expectTypeOf<Pick<Props, 'models'>>().toExtend<{ models: readonly ModelSelectorItem[] }>();
+  using value = fixture({ props: {}, slots: undefined });
+  await value.open();
+  expect(value.options()).toEqual(['Qwen speech', 'Local Parakeet']);
+  await value.get({ testId: 'model-selector-filter' }).setValue('JAPANESE qwen');
+  expect(value.options()).toEqual(['Qwen speech']);
+  await value.get({ testId: 'model-selector-filter' }).setValue('stored');
+  expect(value.options()).toEqual(['Local Parakeet']);
+  await value.wrapper.setProps({ models: [] });
+  await value.get({ testId: 'model-selector-filter' }).setValue('');
+  expect(value.options()).toEqual([]);
+  expect(value.wrapper.emitted('refresh')).toBeUndefined();
+  expect(mocks.useSettings).not.toHaveBeenCalled();
+  expect(externalFetch).not.toHaveBeenCalled();
+});
 
-      // 1. Click inside dropdown
-      handler({ target: dropdown.querySelector('input') });
-      await nextTick();
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+it('emits controlled query edits and follows the supplied value rather than an unaccepted local edit', async () => {
+  using value = fixture({ props: { query: 'Japanese' }, slots: undefined });
+  await value.open();
+  expect(value.options()).toEqual(['Qwen speech']);
+  await value.get({ testId: 'model-selector-filter' }).setValue('English');
+  expect(value.wrapper.emitted('update:query')?.at(-1)).toEqual(['English']);
+  expect(value.options()).toEqual(['Qwen speech']);
+  await value.wrapper.setProps({ query: 'English' });
+  expect(value.options()).toEqual(['Local Parakeet']);
+  expect(externalFetch).not.toHaveBeenCalled();
+});
 
-      // 2. Click outside
-      handler({ target: document.body });
-      await nextTick();
-      expect(document.body.querySelector('.animate-in')).toBeFalsy();
+it('refreshes only through an explicit event and respects the loading gate', async () => {
+  using value = fixture({ props: { surface: 'sidebar', modelValue: 'stored/parakeet' }, slots: { 'trigger-label': 'Default model' } });
+  await value.open();
+  const refresh = value.get({ testId: 'model-selector-refresh' });
+  for (const key of ['Enter', ' ', 'ArrowDown']) {
+    expect(keydown({ target: refresh.element, key, isComposing: false }).defaultPrevented).toBe(false);
+  }
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+  await refresh.trigger('click');
+  expect(value.wrapper.emitted('refresh')).toEqual([[]]);
+  const filter = value.get({ testId: 'model-selector-filter' });
+  await filter.setValue('Japanese');
+  await value.get({ testId: 'model-selector-clear-filter' }).trigger('click');
+  expect((filter.element as HTMLInputElement).value).toBe('');
+  expect(document.activeElement).toBe(filter.element);
+  await value.wrapper.setProps({ loading: true });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  expect(trigger.attributes('aria-busy')).toBe('true');
+  expect(trigger.attributes('title')).toBe('stored/parakeet');
+  expect(trigger.text()).toContain('Default model');
+  expect(trigger.text()).toContain('Local Parakeet');
+  await value.get({ testId: 'model-selector-refresh' }).trigger('click');
+  expect(value.wrapper.emitted('refresh')).toEqual([[]]);
+  expect(mocks.useSettings).not.toHaveBeenCalled();
+  expect(externalFetch).not.toHaveBeenCalled();
+});
 
-      wrapper.unmount();
-      addSpy.mockRestore();
-    });
+it('distinguishes loading, an empty sidebar inventory, and unmatched filtering', async () => {
+  using value = fixture({ props: { surface: 'sidebar', models: [], loading: true }, slots: undefined });
+  await value.open();
+  expect(value.get({ testId: 'model-selector-empty' }).text()).toBe('Loading models…');
+  await value.wrapper.setProps({ loading: false });
+  expect(value.get({ testId: 'model-selector-empty' }).text()).toBe('No models available');
+  await value.wrapper.setProps({ models });
+  await value.get({ testId: 'model-selector-filter' }).setValue('missing model');
+  expect(value.get({ testId: 'model-selector-empty' }).text()).toBe('No models found');
+});
 
-    it('uses a wider preferred width for long model names', async () => {
-      mockBounding.width.value = 150;
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
+it.each([false, true])('exposes a clear choice only when allowed (%s)', async allowClear => {
+  using value = fixture({ props: { modelValue: 'catalog/qwen', allowClear, clearLabel: 'Use default' }, slots: undefined });
+  await value.open();
+  const dropdown = value.get({ testId: 'model-selector-dropdown' });
+  const clear = dropdown.find('[data-testid="model-selector-clear"]');
+  expect(clear.exists()).toBe(allowClear);
+  if (allowClear) {
+    expect(clear.text()).toBe('Use default');
+    await clear.trigger('click');
+    expect(value.wrapper.emitted('update:modelValue')).toEqual([[undefined]]);
+  }
+});
 
-      const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
-      expect(parseFloat(dropdown.style.width)).toBe(480);
-      wrapper.unmount();
-    });
+it('describes a plain model with its optional trigger detail', () => {
+  using value = fixture({ props: { modelValue: 'model-a', surface: 'composer' }, slots: { 'trigger-detail': '<span>Think High</span>' } });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  const detail = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+  expect(trigger.text()).toContain('model-a');
+  expect(detail.text()).toBe('Think High');
+  expect(detail.get('[id]').attributes('id')).toBe(trigger.attributes('aria-describedby'));
+});
 
-    it('remains open when search input is focused and triggers height change (keyboard regression)', async () => {
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: 'model-a' },
-        attachTo: document.body,
-      });
+it.each(['floating', 'inline'] as const)('opens and selects with the keyboard in %s mode', async popupPresentation => {
+  using value = fixture({ props: { modelValue: 'catalog/qwen', popupPresentation }, slots: undefined });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  keydown({ target: trigger.element, key: 'ArrowDown', isComposing: false });
+  await nextTick();
+  const dropdown = value.get({ testId: 'model-selector-dropdown' });
+  const filter = value.get({ testId: 'model-selector-filter' });
+  expect(value.wrapper.element.contains(dropdown.element)).toBe(popupPresentation === 'inline');
+  expect(document.activeElement).toBe(filter.element);
+  keydown({ target: filter.element, key: 'ArrowUp', isComposing: false });
+  keydown({ target: filter.element, key: 'Enter', isComposing: true });
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+  keydown({ target: filter.element, key: 'Enter', isComposing: false });
+  await nextTick();
+  expect(value.wrapper.emitted('update:modelValue')).toEqual([['stored/parakeet']]);
+  expect(document.activeElement).toBe(trigger.element);
 
-      // 1. Open dropdown
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+  await value.open();
+  const reopenedFilter = value.get({ testId: 'model-selector-filter' });
+  keydown({ target: reopenedFilter.element, key: 'ArrowDown', isComposing: false });
+  await reopenedFilter.setValue('recognition');
+  keydown({ target: reopenedFilter.element, key: 'Enter', isComposing: false });
+  expect(value.wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['catalog/qwen']);
+});
 
-      // 2. Search input is automatically focused on toggle
-      const input = document.body.querySelector('input') as HTMLInputElement;
-      expect(document.activeElement).toBe(input);
+it('closes an inline picker on Escape before its enclosing dialog receives the key', async () => {
+  using value = fixture({ props: { popupPresentation: 'inline', surface: 'settings' }, slots: undefined });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  const host = value.wrapper.element.parentElement!;
+  const escape = vi.fn();
+  host.addEventListener('keydown', escape);
+  await value.open();
+  const filter = value.get({ testId: 'model-selector-filter' });
+  const tab = keydown({ target: filter.element, key: 'Tab', isComposing: false });
+  expect(tab.defaultPrevented).toBe(false);
+  expect(escape).toHaveBeenCalledWith(tab);
+  escape.mockClear();
+  keydown({ target: filter.element, key: 'Escape', isComposing: false });
+  await nextTick();
+  expect(escape).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(trigger.element);
+  keydown({ target: trigger.element, key: 'Escape', isComposing: false });
+  expect(escape).toHaveBeenCalledOnce();
+});
 
-      // 3. Simulate software keyboard opening (triggers height change)
-      mockWindowSize.height.value = 350; // Significant height reduction
-      await nextTick();
+it('closes a disabled picker and ignores a stale option click', async () => {
+  using value = fixture({ props: {}, slots: undefined });
+  await value.open();
+  const option = value.get({ testId: 'model-selector-option' });
+  await value.wrapper.setProps({ disabled: true });
+  await option.trigger('click');
+  expect(document.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+});
 
-      // Dropdown should REMAIN OPEN
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+it('keeps Tab navigation available and lets a native panel button activate without selecting a model', async () => {
+  using value = fixture({ props: { panels: [{ id: 'hugging-face', label: 'Hugging Face' }], surface: 'composer' }, slots: { panel: '<input data-testid="hf-query" />' } });
+  await value.open();
+  const tab = keydown({ target: value.get({ testId: 'model-selector-filter' }).element, key: 'Tab', isComposing: false });
+  expect(tab.defaultPrevented).toBe(false);
+  expect(value.get({ testId: 'model-selector-dropdown' }).exists()).toBe(true);
+  const panel = value.panelButton({ label: 'Hugging Face' });
+  panel.element.focus();
+  const enter = keydown({ target: panel.element, key: 'Enter', isComposing: false });
+  expect(enter.defaultPrevented).toBe(false);
+  // jsdom does not synthesize a native button click from Enter.
+  await panel.trigger('click');
+  expect(value.get({ testId: 'hf-query' }).isVisible()).toBe(true);
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+});
 
-      wrapper.unmount();
-    });
+it('opens directly on Models without moving the indicator and animates only a tab change in the open popup', async () => {
+  using value = fixture({
+    props: {
+      panels: [
+        { id: 'chat-candidates', label: 'Chat candidates', placement: 'before-models' },
+        { id: 'hugging-face', label: 'Hugging Face' },
+      ],
+    },
+    slots: undefined,
   });
+  const indicator = () => value.get({ testId: 'model-selector-tab-indicator' });
+  const moving = 'model-selector-tab-indicator-moving';
+  await value.open();
+  expect(value.panelButton({ label: 'Models' }).attributes('aria-pressed')).toBe('true');
+  expect(indicator().classes()).not.toContain(moving);
+  await value.panelButton({ label: 'Chat candidates' }).trigger('click');
+  expect(value.panelButton({ label: 'Chat candidates' }).attributes('aria-pressed')).toBe('true');
+  expect(indicator().classes()).toContain(moving);
+  await value.wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+  await value.open();
+  expect(value.panelButton({ label: 'Models' }).attributes('aria-pressed')).toBe('true');
+  expect(indicator().classes()).not.toContain(moving);
+});
 
-  describe('Keyboard Navigation (New Specs)', () => {
-    it('opens the dropdown when ArrowDown is pressed on the trigger', async () => {
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+it('opens the requested candidate tab without moving the underline on entry', async () => {
+  using value = fixture({
+    props: { initialPanel: 'chat-candidates', panels: [{ id: 'chat-candidates', label: 'Chat candidates', placement: 'before-models' }] },
+    slots: { panel: '<p data-testid="chat-candidates-panel">Candidates</p>' },
+  });
+  await value.open();
+  expect(value.panelButton({ label: 'Chat candidates' }).attributes('aria-pressed')).toBe('true');
+  expect(value.get({ testId: 'chat-candidates-panel' }).isVisible()).toBe(true);
+  expect(value.get({ testId: 'model-selector-tab-indicator' }).classes()).not.toContain('model-selector-tab-indicator-moving');
+  expect(externalFetch).not.toHaveBeenCalled();
+});
 
-      await trigger.trigger('keydown', { key: 'ArrowDown' });
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
-      wrapper.unmount();
-    });
+it('keeps chat settings visible in the same footer on every tab', async () => {
+  const panels = [
+    { id: 'chat-candidates', label: 'Chat candidates', placement: 'before-models' },
+    { id: 'hugging-face', label: 'Hugging Face' },
+    { id: 'files', label: 'Add files' },
+  ] as const;
+  using value = fixture({ props: { surface: 'composer', initialPanel: 'chat-candidates', panels }, slots: { settings: '<button type="button">Thinking</button>' } });
+  await value.open();
+  expect(value.panelButton({ label: 'Chat candidates' }).attributes('aria-pressed')).toBe('true');
+  const footer = value.get({ testId: 'model-selector-settings' });
+  expect(footer.isVisible()).toBe(true);
+  for (const label of ['Models', ...panels.map(panel => panel.label)]) {
+    await value.panelButton({ label }).trigger('click');
+    expect(value.panelButton({ label }).attributes('aria-pressed')).toBe('true');
+    const visibleFooter = value.get({ testId: 'model-selector-settings' });
+    expect(visibleFooter.element).toBe(footer.element);
+    expect(visibleFooter.isVisible()).toBe(true);
+  }
+});
 
-    it('navigates through models with Arrow keys and wraps around', async () => {
-      const wrapper = mount(ModelSelector, {
-        props: {
-          modelValue: 'model-a',
-          allowClear: true, // index 0: Inherit, index 1: model-a, index 2: model-b, index 3: model-c
+it('keeps the sidebar reasoning help within the picker and closes it first on Escape', async () => {
+  using value = fixture({
+    props: { surface: 'sidebar', modelSelection: 'unavailable' },
+    slots: {
+      unavailable: 'This connection manages model choice.',
+      settings: ({ popupTarget }: { popupTarget: HTMLElement | undefined }) => h(ReasoningSettings, { selectedEffort: undefined, surface: 'plain', layout: 'inline', notice: 'inline-help', popupTarget }),
+    },
+  });
+  await value.open();
+  const dropdown = value.get({ testId: 'model-selector-dropdown' });
+  const help = value.get({ testId: 'reasoning-help-button' });
+  expect(value.get({ testId: 'model-selector-unavailable' }).text()).toBe('This connection manages model choice.');
+  expect((value.get({ testId: 'model-selector-filter' }).element as HTMLInputElement).disabled).toBe(true);
+  expect(value.get({ testId: 'model-selector-option' }).attributes('disabled')).toBeDefined();
+  expect(value.get({ testId: 'model-selector-refresh' }).attributes('disabled')).toBeDefined();
+  await help.trigger('click');
+  const tooltip = value.get({ testId: 'reasoning-help' });
+  expect(dropdown.element.contains(tooltip.element)).toBe(true);
+  tooltip.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, composed: true }));
+  await tooltip.trigger('click');
+  expect(dropdown.attributes('open')).toBeDefined();
+  await help.trigger('keydown', { key: 'Escape' });
+  expect(document.querySelector('[data-testid="reasoning-help"]')).toBeNull();
+  expect(dropdown.attributes('open')).toBeDefined();
+  await help.trigger('keydown', { key: 'Escape' });
+  expect(document.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+});
+
+it.each(['hf.co', 'host/Models'])('shows the model name and complete variant for a %s model', async source => {
+  const modelId = `${source}/owner/Gemma-GGUF:imatrix/Q4_K_M`;
+  using value = fixture({ props: { modelValue: modelId, models: [{ id: modelId, label: modelId, description: undefined, availability: 'local' }] }, slots: undefined });
+  const trigger = value.wrapper.get('[data-testid="model-selector-trigger"]');
+  expect(trigger.text()).toContain('Gemma-GGUF:imatrix/Q4_K_M');
+  expect(trigger.attributes('title')).toBe(modelId);
+  await value.open();
+  const row = value.get({ testId: 'model-selector-option' });
+  expect(row.attributes('aria-pressed')).toBe('true');
+  await row.trigger('click');
+  expect(value.wrapper.emitted('update:modelValue')?.[0]).toEqual([modelId]);
+});
+
+it('keeps the first-use hint visible until the download starts and omits progress from the closed selector', async () => {
+  using value = fixture({ props: { modelValue: 'catalog/qwen' }, slots: undefined });
+  expect(value.wrapper.find('[data-testid="model-selector-download-hint"]').exists()).toBe(true);
+  await value.wrapper.setProps({ hideFirstUseDownloadHint: true });
+  expect(value.wrapper.find('[data-testid="model-selector-download-hint"]').exists()).toBe(false);
+  expect(value.wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('Qwen speech');
+});
+
+it('refreshes the picker’s model inventory when its File Explorer closes', async () => {
+  const modelId = '~user/model';
+  const relativePath = 'model.gguf';
+  const primary = { storageKind: 'temp' as const, relativePath, file: new File([], relativePath), registrationRevision: 1 };
+  const { llamaCppBrowserModelFiles } = await import('@/features/llama-cpp-browser/model-files');
+  const explorer = await import('@/features/llama-cpp-browser/model-file-explorer');
+  const inspect = vi.spyOn(llamaCppBrowserModelFiles, 'inspectModelFiles').mockResolvedValue({
+    modelId,
+    directory: { primaryFile: primary, files: [primary], projectorFile: undefined },
+    location: { kind: 'temp', rootPath: modelId },
+  });
+  const createOptions = vi.spyOn(explorer, 'createModelFileExplorerOptions').mockResolvedValue({ kind: 'opfs-root' });
+  const { isFileExplorerOpen, closeFileExplorer } = useFileExplorerModal();
+  using cleanup = {
+    [Symbol.dispose]() {
+      closeFileExplorer();
+      inspect.mockRestore();
+      createOptions.mockRestore();
+    },
+  };
+  void cleanup;
+  const refreshAfterFileExplorer = vi.fn();
+  using value = fixture({
+    props: {
+      modelValue: modelId,
+      models: [{ id: modelId, label: modelId, description: undefined, availability: 'local' }],
+      refreshAfterFileExplorer,
+    },
+    slots: undefined,
+  });
+  await value.open();
+  await value.get({ testId: 'model-selector-stored-variant-details' }).trigger('click');
+  await flushPromises();
+  await value.get({ testId: 'model-selector-open-model-folders' }).trigger('click');
+  await flushPromises();
+  expect(isFileExplorerOpen.value).toBe(true);
+  expect(refreshAfterFileExplorer).not.toHaveBeenCalled();
+  closeFileExplorer();
+  expect(refreshAfterFileExplorer).toHaveBeenCalledOnce();
+});
+
+it('changes quantization without closing the picker and copies the full selected model ID', async () => {
+  const ids = ['hf.co/owner/Model-GGUF:Q4_K_M', 'hf.co/owner/Model-GGUF:Q8_0', 'host/Other/owner/Model-GGUF:Q8_0', 'hf.co/owner/Model-GGUF:Custom-Q8_0'];
+  const selectedId = ids[1]!;
+  const writeText = vi.fn<typeof navigator.clipboard.writeText>().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  using value = fixture({ props: { modelValue: selectedId, models: ids.map(id => ({ id, label: id, description: undefined, availability: 'local' })) }, slots: undefined });
+  await value.open();
+  expect(value.options()).toEqual([selectedId, ids[2]]);
+  const group = value.get({ testId: 'model-selector-stored-variant-group' });
+  const button = group.get('[data-testid="model-selector-stored-variant"]');
+  expect(button.text()).toBe('Q8_0');
+  await group.get('[data-testid="model-selector-stored-variant-details"]').trigger('click');
+  await group.get('[data-testid="model-selector-copy-model-id"]').trigger('click');
+  expect(writeText).toHaveBeenLastCalledWith(selectedId);
+  await button.trigger('click');
+  expect(value.get({ testId: 'settings-select-option-' + ids[3] }).text()).toBe('Custom-Q8_0');
+  const q4 = value.get({ testId: 'settings-select-option-' + ids[0] });
+  await q4.trigger('pointerdown');
+  await q4.trigger('click');
+  expect(value.wrapper.emitted('update:modelValue')).toEqual([[ids[0]]]);
+  await value.wrapper.setProps({ modelValue: ids[0] });
+  expect(value.get({ testId: 'model-selector-dropdown' }).attributes('open')).toBeDefined();
+  expect(button.text()).toBe('Q4_K_M');
+  await group.get('[data-testid="model-selector-copy-model-id"]').trigger('click');
+  expect(writeText).toHaveBeenLastCalledWith(ids[0]);
+  const single = document.querySelectorAll('[data-testid="model-selector-stored-variant"]')[1]!;
+  expect(single.hasAttribute('disabled')).toBe(true);
+  expect(single.querySelector('svg')).toBeNull();
+  const filter = value.get({ testId: 'model-selector-filter' });
+  filter.element.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+  keydown({ target: filter.element, key: 'Enter', isComposing: false });
+  expect(value.wrapper.emitted('update:modelValue')?.at(-1)).toEqual([ids[0]]);
+});
+
+it('selects the first displayed quantization for a row with no selection', async () => {
+  const ids = ['hf.co/leejet/Z-Image-Turbo-GGUF:image_turbo-Q4_K', 'hf.co/leejet/Z-Image-Turbo-GGUF:image_turbo-Q8_0'];
+  using value = fixture({ props: { models: ids.map(id => ({ id, label: id, description: undefined, availability: 'local' })) }, slots: undefined });
+  await value.open();
+  const button = value.get({ testId: 'model-selector-stored-variant' });
+  expect(value.get({ testId: 'model-selector-option-name' }).text()).toBe('Z-Image-Turbo-GGUF');
+  expect(button.text()).toBe('image_turbo-Q4_K');
+  await button.trigger('click');
+  const first = value.get({ testId: 'settings-select-option-' + ids[0] });
+  expect(first.attributes('aria-selected')).toBe('false');
+  await first.trigger('click');
+  expect(value.wrapper.emitted('update:modelValue')).toEqual([[ids[0]]]);
+  expect(value.get({ testId: 'model-selector-dropdown' }).attributes('open')).toBeDefined();
+});
+
+it('finds a saved model across hyphen differences and copies an ID without a quantization separator', async () => {
+  const modelId = 'user/gemma-4-E2B-GGUF/gemma-4-E2B-q4_0';
+  const writeText = vi.fn<typeof navigator.clipboard.writeText>().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  using value = fixture({ props: { models: [...models, { id: modelId, label: modelId, description: undefined, availability: 'local' }] }, slots: undefined });
+  await value.open();
+  await value.get({ testId: 'model-selector-filter' }).setValue('gemma4');
+  expect(value.options()).toEqual([modelId]);
+  const group = value.get({ testId: 'model-selector-stored-variant-group' });
+  expect(group.find('[data-testid="model-selector-stored-variant"]').exists()).toBe(false);
+  await group.get('[data-testid="model-selector-stored-variant-details"]').trigger('click');
+  await group.get('[data-testid="model-selector-copy-model-id"]').trigger('click');
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(modelId);
+  expect(externalFetch).not.toHaveBeenCalled();
+});
+
+it('keeps custom panel input and component state while switching between peer panels', async () => {
+  const CustomPanel = defineComponent({
+    setup() {
+      const query = ref('');
+      return () => h('input', {
+        'data-testid': 'hf-query',
+        value: query.value,
+        onInput(event: Event) {
+          if (event.target instanceof HTMLInputElement) {
+            query.value = event.target.value;
+          }
         },
       });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-
-      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-
-      // Initial state: model-a is selected, so index 1 should be highlighted
-      const getHighlighted = () => {
-        const listButtons = Array.from(document.body.querySelectorAll('.custom-scrollbar button'));
-        return listButtons.findIndex(b => b.classList.contains('bg-gray-100'));
-      };
-
-      expect(getHighlighted()).toBe(1);
-
-      // Move down to model-b
-      await trigger.trigger('keydown', { key: 'ArrowDown' });
-      expect(getHighlighted()).toBe(2);
-
-      // Move down to model-c
-      await trigger.trigger('keydown', { key: 'ArrowDown' });
-      expect(getHighlighted()).toBe(3);
-
-      // Wrap around to Inherit (index 0)
-      await trigger.trigger('keydown', { key: 'ArrowDown' });
-      expect(getHighlighted()).toBe(0);
-
-      // Move up to model-c (index 3)
-      await trigger.trigger('keydown', { key: 'ArrowUp' });
-      expect(getHighlighted()).toBe(3);
-
-      wrapper.unmount();
-    });
-
-    it('selects the highlighted model when Enter is pressed', async () => {
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-
-      // Move down to model-b (index 1 if allowClear is false)
-      await trigger.trigger('keydown', { key: 'ArrowDown' });
-      await trigger.trigger('keydown', { key: 'Enter' });
-
-      expect(wrapper.emitted('update:modelValue')![0]).toEqual(['model-b']);
-      expect(document.body.querySelector('.animate-in')).toBeFalsy();
-      wrapper.unmount();
-    });
-
-    it('closes the dropdown when Escape is pressed', async () => {
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
-      await trigger.trigger('keydown', { key: 'Escape' });
-      expect(document.body.querySelector('.animate-in')).toBeFalsy();
-      wrapper.unmount();
-    });
-
-    it('resets highlighted index when search query changes', async () => {
-      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      await flushPromises();
-
-      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-      const input = document.body.querySelector('input') as HTMLInputElement;
-
-      // Move highlight to second item
-      await trigger.trigger('keydown', { key: 'ArrowDown' });
-
-      // Update search
-      input.value = 'model';
-      input.dispatchEvent(new Event('input'));
-      await nextTick();
-
-      // Highlight should reset to 0
-      const highlighted = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
-        .findIndex(b => b.classList.contains('bg-gray-100'));
-      expect(highlighted).toBe(0);
-
-      wrapper.unmount();
-    });
+    },
   });
-
-  describe('Smart Truncation Logic', () => {
-    it('splits model name with slash into prefix and suffix', () => {
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: 'huggingface/user/model-name' },
-      });
-
-      const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
-      const prefixSpan = trigger.find('span[style*="direction: rtl"]');
-      const suffixSpan = trigger.find('.truncate.flex-1');
-
-      expect(prefixSpan.text()).toBe('huggingface/user/');
-      expect(suffixSpan.text()).toBe('model-name');
-    });
-
-    it('handles model names without a slash correctly', () => {
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: 'gpt-4o' },
-      });
-
-      const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
-      const prefixSpan = trigger.find('span[style*="direction: rtl"]');
-      const suffixSpan = trigger.find('.truncate.flex-1');
-
-      expect(prefixSpan.exists()).toBe(false);
-      expect(suffixSpan.text()).toBe('gpt-4o');
-    });
-
-    it('applies correct layout styles for prioritization', () => {
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: 'org/model' },
-      });
-
-      const prefixSpan = wrapper.find('span[style*="direction: rtl"]');
-      const suffixSpan = wrapper.find('.truncate.flex-1');
-
-      // Prefix should have high shrink to prioritize model name
-      expect(prefixSpan.attributes('style')).toContain('flex: 0 1000 auto');
-      // Suffix should have flex: 1 1 auto
-      expect(suffixSpan.attributes('style')).toContain('flex: 1 1 auto');
-    });
-
-    it('shows placeholder when no model value is provided', () => {
-      const wrapper = mount(ModelSelector, {
-        props: { modelValue: '', placeholder: 'Custom Placeholder' },
-      });
-
-      expect(wrapper.text()).toContain('Custom Placeholder');
-    });
-  });
+  using value = fixture({ props: { panels: [{ id: 'hugging-face', label: 'Hugging Face' }] }, slots: { panel: () => h(CustomPanel) } });
+  await value.open();
+  await value.panelButton({ label: 'Hugging Face' }).trigger('click');
+  const query = value.get({ testId: 'hf-query' });
+  await query.setValue('user/repository');
+  const enter = keydown({ target: query.element, key: 'Enter', isComposing: false });
+  expect(enter.defaultPrevented).toBe(false);
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+  await value.panelButton({ label: 'Models' }).trigger('click');
+  expect(query.isVisible()).toBe(false);
+  expect(query.element.closest('[inert]')?.getAttribute('aria-hidden')).toBe('true');
+  await value.panelButton({ label: 'Hugging Face' }).trigger('click');
+  const returned = value.get({ testId: 'hf-query' });
+  expect(returned.element).toBe(query.element);
+  expect(returned.element).toHaveProperty('value', 'user/repository');
+  expect(returned.isVisible()).toBe(true);
+  const composing = keydown({ target: returned.element, key: 'Escape', isComposing: true });
+  expect(composing.defaultPrevented).toBe(false);
+  expect(returned.isVisible()).toBe(true);
+  keydown({ target: returned.element, key: 'Escape', isComposing: false });
+  await nextTick();
+  expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+  expect(document.activeElement).toBe(value.wrapper.get('[data-testid="model-selector-trigger"]').element);
 });
 
-describe('controlled local-model choices', () => {
-  const internalFetch = vi.fn();
-
-  beforeEach(() => {
-    vi.mocked(useSettings, { partial: true }).mockReturnValue({ availableModels: ref(['chat-only']), isFetchingModels: ref(true), fetchModels: internalFetch });
-    internalFetch.mockClear();
-  });
-
-  it('keeps sidebar trigger metadata and the selected model visible during refresh', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: { surface: 'sidebar', modelValue: 'owner/repo/model-q4', models: [], loading: false },
-      slots: { 'trigger-label': 'Default model', 'trigger-summary': 'Think Medium' },
-    });
-    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-    expect(trigger.text()).toContain('Default model');
-    expect(trigger.text()).toContain('Think Medium');
-    expect(trigger.text()).toContain('owner/repo/');
-    expect(trigger.text()).toContain('model-q4');
-    expect(trigger.attributes('title')).toBe('owner/repo/model-q4');
-    await wrapper.setProps({ loading: true });
-    expect(trigger.text()).toContain('model-q4');
-    expect(trigger.attributes('aria-busy')).toBe('true');
-    expect(wrapper.findAll('button')).toHaveLength(1);
-  });
-
-  it.each(['default', 'composer'] as const)('keeps sidebar metadata out of the %s trigger', surface => {
-    const wrapper = mount(ModelSelector, {
-      props: { surface, modelValue: 'owner/model', models: [] },
-      slots: { 'trigger-label': 'Sidebar-only heading', 'trigger-summary': 'Sidebar-only summary' },
-    });
-    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-    expect(trigger.text()).toContain('owner/');
-    expect(trigger.text()).toContain('model');
-    expect(trigger.text()).not.toContain('Sidebar-only');
-  });
-
-  it.each(['default', 'composer', 'sidebar'] as const)('shows %s model names and namespaces separately while emitting stable IDs', async surface => {
-    const wrapper = mount(ModelSelector, {
-      props: { surface, modelValue: 'owner/selected', models: ['owner/selected', 'namespace/other', 'plain'], loading: false },
-    });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const options = [...document.body.querySelectorAll<HTMLButtonElement>('[data-testid="model-selector-option"]')];
-    expect(options.map(option => option.querySelector('[data-testid="model-selector-option-name"]')?.textContent)).toEqual(['selected', 'other', 'plain']);
-    expect(options.map(option => option.querySelector('[data-testid="model-selector-option-namespace"]')?.textContent)).toEqual(['owner', 'namespace', undefined]);
-    expect(options[0]!.getAttribute('title')).toBe('owner/selected');
-    expect(options[0]!.getAttribute('aria-pressed')).toBe('true');
-    options[1]!.click();
+it.each(['trigger', 'Escape'] as const)('closes explicitly through %s and restores trigger focus', async action => {
+  using value = fixture({ props: {}, slots: undefined });
+  await value.open();
+  if (action === 'trigger') {
+    await value.wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+  } else {
+    keydown({ target: value.get({ testId: 'model-selector-filter' }).element, key: 'Escape', isComposing: false });
     await nextTick();
-    expect(wrapper.emitted('update:modelValue')).toEqual([['namespace/other']]);
-  });
+  }
+  expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+  expect(document.activeElement).toBe(value.wrapper.get('[data-testid="model-selector-trigger"]').element);
+});
 
-  it.each(['default', 'composer'] as const)('splits friendly labels in %s candidates without changing their IDs', async surface => {
-    const wrapper = mount(ModelSelector, {
-      props: {
-        surface,
-        modelValue: 'stable-id-a',
-        models: ['stable-id-a', 'stable-id-b'],
-        modelLabels: { 'stable-id-a': 'owner/repository/friendly-model', 'stable-id-b': 'Friendly plain model' },
-        loading: false,
-      },
-    });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const options = [...document.body.querySelectorAll<HTMLButtonElement>('[data-testid="model-selector-option"]')];
-    expect(options[0]!.querySelector('[data-testid="model-selector-option-name"]')?.textContent).toBe('friendly-model');
-    expect(options[0]!.querySelector('[data-testid="model-selector-option-namespace"]')?.textContent).toBe('owner/repository');
-    expect(options[0]!.getAttribute('title')).toBe('owner/repository/friendly-model');
-    expect(options[1]!.querySelector('[data-testid="model-selector-option-name"]')?.textContent).toBe('Friendly plain model');
-    expect(options[1]!.querySelector('[data-testid="model-selector-option-namespace"]')).toBeNull();
-    options[0]!.click();
-    await nextTick();
-    expect(wrapper.emitted('update:modelValue')).toEqual([['stable-id-a']]);
-  });
+it('keeps the popup through drag and resize and dismisses it on outside pointer down', async () => {
+  using value = fixture({ props: {}, slots: { sources: '<input type="file" data-testid="model-file-input" />' } });
+  const outside = document.createElement('button');
+  const originalWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+  if (originalWidth === undefined) {
+    throw new Error('The DOM test environment must provide a viewport width');
+  }
+  document.body.append(outside);
+  using cleanup = {
+    [Symbol.dispose]() {
+      outside.remove();
+      Object.defineProperty(window, 'innerWidth', originalWidth);
+    },
+  };
+  await value.open();
+  outside.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  outside.focus();
+  outside.dispatchEvent(new Event('dragenter', { bubbles: true }));
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: window.innerWidth - 100 });
+  window.dispatchEvent(new Event('resize'));
+  await nextTick();
+  expect(value.get({ testId: 'model-selector-dropdown' }).exists()).toBe(true);
+  const sources = value.get({ testId: 'model-selector-open-sources' });
+  const enter = keydown({ target: sources.element, key: 'Enter', isComposing: false });
+  expect(enter.defaultPrevented).toBe(false);
+  await sources.trigger('click');
+  outside.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  outside.focus();
+  await nextTick();
+  expect(value.get({ testId: 'model-file-input' }).isVisible()).toBe(true);
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+  keydown({ target: value.get({ testId: 'model-file-input' }).element, key: 'Escape', isComposing: false });
+  await nextTick();
+  expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+  expect(document.activeElement).toBe(value.wrapper.get('[data-testid="model-selector-trigger"]').element);
+  await value.open();
+  outside.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+  await nextTick();
+  expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+  void cleanup;
+});
 
-  it('distinguishes loading, an empty model list, and unmatched filtering in the sidebar', async () => {
-    const wrapper = mount(ModelSelector, { props: { surface: 'sidebar', modelValue: undefined, models: [], loading: true } });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const emptyText = () => document.body.querySelector('[data-testid="model-selector-empty"]')?.textContent;
-    expect(emptyText()).toBe('Loading models…');
-    await wrapper.setProps({ loading: false });
-    expect(emptyText()).toBe('No models available');
-    await wrapper.setProps({ models: ['model-a'] });
-    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
-    filter.value = 'absent';
-    filter.dispatchEvent(new Event('input', { bubbles: true }));
-    await nextTick();
-    expect(emptyText()).toBe('No models found');
+it('keeps row actions independent while clicking the model name selects and closes', async () => {
+  const rowAction = vi.fn();
+  using value = fixture({
+    props: {},
+    slots: { 'model-action': ({ id }: { id: string }) => h('button', { type: 'button', 'data-testid': `action-${id}`, onClick: () => rowAction({ id }) }, 'Details') },
   });
-
-  it.each(['Enter', ' '])('preserves native sidebar button activation with %s', async key => {
-    const refresh = vi.fn();
-    const wrapper = mount(ModelSelector, {
-      props: { surface: 'sidebar', modelValue: 'model-a', models: ['model-a', 'model-b'], loading: false, onRefresh: refresh },
-      slots: { settings: '<button data-testid="reasoning-control">Reasoning</button>' },
-      attachTo: document.body,
-    });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const refreshButton = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-refresh"]')!;
-    refreshButton.focus();
-    const refreshArrow = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
-    refreshButton.dispatchEvent(refreshArrow);
-    expect(refreshArrow.defaultPrevented).toBe(false);
-    const refreshKey = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-    refreshButton.dispatchEvent(refreshKey);
-    expect(refreshKey.defaultPrevented).toBe(false);
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    refreshButton.click();
-    await nextTick();
-    expect(refresh).toHaveBeenCalledOnce();
-    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
-    filter.value = 'model';
-    filter.dispatchEvent(new Event('input', { bubbles: true }));
-    await nextTick();
-    const clear = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-clear-filter"]')!;
-    clear.focus();
-    const clearArrow = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
-    clear.dispatchEvent(clearArrow);
-    expect(clearArrow.defaultPrevented).toBe(false);
-    const clearKey = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-    clear.dispatchEvent(clearKey);
-    expect(clearKey.defaultPrevented).toBe(false);
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    clear.click();
-    await nextTick();
-    expect(filter.value).toBe('');
-    expect(document.activeElement).toBe(filter);
-    const secondOption = document.body.querySelectorAll<HTMLButtonElement>('[data-testid="model-selector-option"]')[1]!;
-    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-    secondOption.focus();
-    const optionArrow = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
-    secondOption.dispatchEvent(optionArrow);
-    expect(optionArrow.defaultPrevented).toBe(false);
-    const optionKey = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-    secondOption.dispatchEvent(optionKey);
-    expect(optionKey.defaultPrevented).toBe(false);
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    secondOption.click();
-    await nextTick();
-    expect(wrapper.emitted('update:modelValue')).toEqual([['model-b']]);
-  });
-
-  it('keeps sidebar search navigation independent from optional settings', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: { surface: 'sidebar', modelValue: 'model-a', models: ['model-a', 'model-b'], loading: false },
-      slots: { settings: '<button data-testid="reasoning-control">Reasoning</button>' },
-      attachTo: document.body,
-    });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
-    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await nextTick();
-    expect(wrapper.emitted('update:modelValue')).toEqual([['model-b']]);
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
-  });
-
-  it('explains unavailable sidebar selection while keeping reasoning reachable', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: { surface: 'sidebar', modelValue: 'model-a', models: [], loading: false, modelSelection: 'unavailable' },
-      slots: { unavailable: 'This connection manages model choice.', settings: '<button data-testid="reasoning-control">Reasoning</button>' },
-      attachTo: document.body,
-    });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    expect(document.body.querySelector('[data-testid="model-selector-unavailable"]')?.textContent).toBe('This connection manages model choice.');
-    expect(document.body.querySelector('[data-testid="model-selector-empty"]')).toBeNull();
-    expect(document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')?.disabled).toBe(true);
-    expect(document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-refresh"]')?.disabled).toBe(true);
-    const reasoning = document.body.querySelector<HTMLButtonElement>('[data-testid="reasoning-control"]')!;
-    expect(document.activeElement).toBe(reasoning);
-    reasoning.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await nextTick();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
-    expect(document.activeElement).toBe(wrapper.get('[data-testid="model-selector-trigger"]').element);
-    expect(internalFetch).not.toHaveBeenCalled();
-  });
-
-  it('searches friendly labels and stable IDs while emitting the ID', async () => {
-    const wrapper = mount(ModelSelector, { props: { modelValue: 'a/1', models: ['a/1', 'b/2'], modelLabels: { 'a/1': 'Voice 日本語', 'b/2': 'Voice English' } } });
-    expect(wrapper.text()).toContain('Voice 日本語');
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
-    filter.value = 'English';
-    filter.dispatchEvent(new Event('input', { bubbles: true }));
-    await nextTick();
-    const options = [...document.body.querySelectorAll<HTMLButtonElement>('[data-testid="model-selector-option"]')];
-    expect(options).toHaveLength(1);
-options[0]!.click();
-await nextTick();
-expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
-  });
-
-  it('does not refresh the chat provider when given an explicit local list', async () => {
-    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: ['local'], loading: false } });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const refresh = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-refresh"]')!;
-    expect(refresh.disabled).toBe(false);
-    refresh.click();
-    await flushPromises();
-    expect(internalFetch).not.toHaveBeenCalled();
-  });
-
-  it('closes a teleported selector when disabled and cannot emit a programmatic selection', async () => {
-    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: ['local'] } });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const staleOption = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!;
-    await wrapper.setProps({ disabled: true });
-    staleOption.click();
-    await nextTick();
-    expect(document.body.querySelector('[data-testid="model-selector-filter"]')).toBeNull();
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-  });
-
-  it('keeps optional settings keyboard interactions independent from model selection', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: { modelValue: 'model-a' },
-      slots: { settings: '<button data-testid="reasoning-control">Reasoning</button>' },
-      attachTo: document.body,
-    });
-    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
-    await trigger.trigger('click');
-    await flushPromises();
-    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
-    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-    const settings = document.body.querySelector<HTMLButtonElement>('[data-testid="reasoning-control"]')!;
-    settings.focus();
-    settings.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    settings.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await nextTick();
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
-    settings.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await nextTick();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
-    expect(document.activeElement).toBe(trigger.element);
-  });
-
-  it('allows settings while explicitly disabling only model selection', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: { modelValue: 'model-a', modelSelection: 'unavailable' },
-      slots: { settings: '<button data-testid="reasoning-control">Reasoning</button>' },
-      attachTo: document.body,
-    });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
-    const refresh = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-refresh"]')!;
-    const option = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!;
-    expect(filter.disabled).toBe(true);
-    expect(refresh.disabled).toBe(true);
-    expect(option.disabled).toBe(true);
-    option.click();
-    refresh.click();
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    expect(internalFetch).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(document.body.querySelector('[data-testid="reasoning-control"]'));
-  });
-
-  it('preserves the width ceiling for a wide trigger and ignores composing Enter', async () => {
-    mockBounding.width.value = 900;
-    const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const popup = document.body.querySelector<HTMLElement>('[data-testid="model-selector-dropdown"]')!;
-    expect(popup.style.width).toBe('640px');
-    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
-    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
-    await nextTick();
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
-  });
-
-  it('keeps teleported reasoning help inside the interaction boundary without closing model selection', async () => {
-    const wrapper = mount(ModelSelector, {
-      props: { modelValue: 'model-a' },
-      slots: { settings: () => h(ReasoningSettings, { selectedEffort: undefined, surface: 'plain', notice: 'inline-help' }) },
-      attachTo: document.body,
-    });
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const help = document.body.querySelector<HTMLButtonElement>('[data-testid="reasoning-help-button"]')!;
-    help.focus();
-    await nextTick();
-    const tooltip = document.body.querySelector<HTMLElement>('[data-testid="reasoning-help"]')!;
-    const pressingHelp = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
-    tooltip.dispatchEvent(pressingHelp);
-    expect(pressingHelp.defaultPrevented).toBe(true);
-    tooltip.click();
-    await nextTick();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
-    expect(document.body.querySelector('[data-testid="reasoning-help"]')).toBeTruthy();
-    help.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await nextTick();
-    expect(document.body.querySelector('[data-testid="reasoning-help"]')).toBeNull();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
-    help.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await nextTick();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-  });
-
-  it.each(['settings', 'composer'] as const)('shows %s inherited model presentation separately from the raw clear choice', async surface => {
-    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: undefined, surface, inheritedModel: { id: 'owner/repository/model-Q4', source: { label: 'Global', description: 'Follows global changes' } }, models: ['owner/repository/model-Q4'], allowClear: true } });
-    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-    expect(trigger.text()).toContain('model-Q4');
-    expect(trigger.text()).toContain('owner/repository');
-    expect(trigger.get('[data-testid="model-selector-trigger-metadata"]').text()).toContain('Global');
-    expect(trigger.attributes('aria-label')).toContain('Follows global changes');
-    await trigger.trigger('click');
-    const clear = document.querySelector<HTMLButtonElement>('[data-testid="model-selector-clear"]')!;
-    expect(clear.getAttribute('aria-label')).toContain('Follows global changes');
-    document.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!.click();
-    expect(wrapper.emitted('update:modelValue')).toEqual([['owner/repository/model-Q4']]);
-    await wrapper.setProps({ modelValue: 'owner/repository/model-Q4' });
-    expect(trigger.attributes('aria-label')).not.toContain('Follows global changes');
-    expect(trigger.get('[data-testid="model-selector-trigger-metadata"]').text()).not.toContain('Global');
-    await trigger.trigger('click');
-    document.querySelector<HTMLButtonElement>('[data-testid="model-selector-clear"]')!.click();
-    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([undefined]);
-  });
-
-  it('returns from a settings popup to the anchor before a natural Tab move', async () => {
-    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: 'model-a', surface: 'settings', models: ['model-a'], allowClear: true } });
-    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-    await trigger.trigger('click');
-    const option = document.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!;
-    option.focus();
-    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
-    option.dispatchEvent(tab);
-    await nextTick();
-    expect(document.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
-    expect(document.activeElement).toBe(trigger.element);
-    expect(tab.defaultPrevented).toBe(false);
-  });
-
-  it.each(['settings', 'composer'] as const)('shows %s metadata only when the displayed model has a path or active source', async surface => {
-    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: [], surface, placeholder: 'None' } });
-    using _cleanupResource = {
-      [Symbol.dispose]() {
-        wrapper.unmount();
-      },
-    };
-    expect(wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('None');
-    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
-    await wrapper.setProps({ inheritedModel: { id: undefined, source: { label: undefined, description: undefined } } });
-    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(true);
-    await wrapper.setProps({ inheritedModel: { id: undefined, source: { label: 'Conversation', description: 'Uses each conversation' } } });
-    expect(wrapper.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Conversation');
-    await wrapper.setProps({ modelValue: 'owner/repository/model' });
-    expect(wrapper.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('owner/repository');
-    await wrapper.setProps({ modelValue: 'plain-model-name' });
-    expect(wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('plain-model-name');
-    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
-    await wrapper.setProps({ modelValue: undefined, inheritedModel: { id: 'plain-model-name', source: undefined }, allowClear: true });
-    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
-    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    expect(document.querySelector('[data-testid="model-selector-clear-metadata"]')).toBeNull();
-  });
-
-  it('keeps an inline popup inside its modal and handles each navigation key once', async () => {
-    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: 'model-a', models: ['model-a', 'model-b', 'model-c'], surface: 'settings', popupPresentation: 'inline' } });
-    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
-    await trigger.trigger('click');
-    const dropdown = wrapper.get<HTMLElement>('[data-testid="model-selector-dropdown"]');
-    expect(wrapper.element.contains(dropdown.element)).toBe(true);
-    expect(dropdown.element.style.position).toBe('');
-    const filter = wrapper.get<HTMLInputElement>('[data-testid="model-selector-filter"]');
-    expect(document.activeElement).toBe(filter.element);
-    await filter.trigger('keydown', { key: 'ArrowDown' });
-    await filter.trigger('keydown', { key: 'Enter' });
-    expect(wrapper.emitted('update:modelValue')).toEqual([['model-b']]);
-    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
-    expect(document.activeElement).toBe(trigger.element);
-  });
-
-  it.each([false, true])('closes its popup before an enclosing dialog on Escape (inline=%s)', async inline => {
-    const escaped = vi.fn();
-    const host = document.createElement('section');
-    document.body.append(host);
-    const wrapper = mount(ModelSelector, { attachTo: host, props: { modelValue: 'model-a', models: ['model-a'], surface: 'settings', popupPresentation: inline ? 'inline' : 'floating' } });
-    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
-    host.addEventListener('keydown', escaped);
-    await trigger.trigger('click');
-    // Escape can originate at the trigger as well as the focused popup filter.
-    trigger.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-    await nextTick();
-    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
-    expect(escaped).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(trigger.element);
-    trigger.element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-    expect(escaped).toHaveBeenCalledOnce();
-  });
-
-  it.each([false, true])('returns focus from an inline menu on Tab without blocking native focus navigation (shift=%s)', async shiftKey => {
-    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: 'model-a', models: ['model-a'], surface: 'settings', popupPresentation: 'inline' } });
-    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
-    await trigger.trigger('click');
-    const tab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
-    wrapper.get('[data-testid="model-selector-filter"]').element.dispatchEvent(tab);
-    await nextTick();
-    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
-    expect(document.activeElement).toBe(trigger.element);
-    expect(tab.defaultPrevented).toBe(false);
-  });
+  await value.open();
+  const action = value.get({ testId: 'action-catalog/qwen' });
+  const enter = keydown({ target: action.element, key: 'Enter', isComposing: false });
+  expect(enter.defaultPrevented).toBe(false);
+  await action.trigger('click');
+  expect(rowAction).toHaveBeenCalledExactlyOnceWith({ id: 'catalog/qwen' });
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+  const name = value.get({ testId: 'model-selector-option-name' });
+  await name.trigger('click');
+  expect(value.wrapper.emitted('update:modelValue')).toEqual([['catalog/qwen']]);
+  expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
 });

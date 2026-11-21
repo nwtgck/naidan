@@ -4,11 +4,11 @@ import type { FileExplorerEntry, DragState } from '@/features/file-explorer/logi
 export function useFileExplorerDragDrop({
   moveEntries,
   currentDirectoryPath,
-  isReadOnly,
+  isMoveBlocked,
 }: {
   moveEntries: ({ entries, targetPath }: { entries: FileExplorerEntry[], targetPath: string }) => Promise<void>,
   currentDirectoryPath: { readonly value: string },
-  isReadOnly: () => boolean,
+  isMoveBlocked: ({ path }: { path: string }) => boolean,
 }) {
   const dragState = ref<DragState>({ status: 'idle' });
 
@@ -23,7 +23,7 @@ export function useFileExplorerDragDrop({
     event: DragEvent,
     entries: FileExplorerEntry[],
   }): void {
-    if (isReadOnly()) {
+    if (isMoveBlocked({ path: currentDirectoryPath.value }) || entries.some(entry => isMoveBlocked({ path: entry.path }))) {
       return;
     }
     if (!event.dataTransfer) {
@@ -46,6 +46,9 @@ export function useFileExplorerDragDrop({
     event: DragEvent,
     entry: FileExplorerEntry,
   }): void {
+    if (isMoveBlocked({ path: entry.path })) {
+      return;
+    }
     switch (dragState.value.status) {
     case 'dragging':
       break;
@@ -98,7 +101,7 @@ export function useFileExplorerDragDrop({
   }
 
   async function onDropEntry({ entry }: { entry: FileExplorerEntry }): Promise<void> {
-    if (isReadOnly()) {
+    if (isMoveBlocked({ path: entry.path })) {
       activeDragEntries.value = [];
       dragState.value = { status: 'idle' };
       return;

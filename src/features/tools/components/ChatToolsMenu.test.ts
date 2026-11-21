@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -166,6 +166,37 @@ describe('ChatToolsMenu', () => {
 
     const formatButtons = Array.from(document.body.querySelectorAll('button')).filter(b => ['Original', 'WebP', 'JPEG', 'PNG'].includes(b.textContent || ''));
     expect(formatButtons.length).toBe(4);
+  });
+
+  it('selects an Ollama image model without closing the tools menu', async () => {
+    const selectedImageModel = 'x/z-image-turbo:latest';
+    const otherImageModel = 'x/flux2-klein:latest';
+    wrapper = mount(ChatToolsMenu, {
+      props: { ...defaultProps, isImageMode: true, selectedImageModel, availableImageModels: [selectedImageModel, otherImageModel] },
+      attachTo: document.body,
+    });
+    const toolsButton = wrapper.get('[data-testid="chat-tools-button"]');
+    await toolsButton.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    const page = new DOMWrapper(document.body);
+    const menu = page.get('[data-testid="chat-tools-dropdown"]');
+    const trigger = menu.get('[data-testid="model-selector-trigger"]');
+    expect(trigger.attributes('title')).toBe(selectedImageModel);
+    const metadata = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+    expect(metadata.element.previousElementSibling?.textContent).toBe('z-image-turbo:latest');
+    expect(metadata.text()).toBe('x');
+
+    await trigger.trigger('click');
+    const picker = menu.get('[data-testid="model-selector-dropdown"]');
+    const option = picker.get(`[data-testid="model-selector-option"][title="${otherImageModel}"]`);
+    await option.trigger('mousedown');
+    await option.trigger('click');
+
+    expect(wrapper.emitted('update:model')).toEqual([[otherImageModel]]);
+    expect(toolsButton.attributes('aria-expanded')).toBe('true');
+    expect(menu.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
   });
 
   it('emits update:resolution when a resolution is selected', async () => {

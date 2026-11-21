@@ -98,8 +98,12 @@ export function useAudioModels({ inspect }: { inspect: typeof inspectStoredAudio
     }
     modelId.value = matches[0]!.modelId;
     selectionChanged();
-    if (!isDetected({ modelId: modelId.value })) {
-      scope.value = 'all';
+    const status = detections.value.get(modelId.value)?.status;
+    switch (status) {
+    case 'unverified': scope.value = 'all';
+      break;
+    case 'detected': case undefined: break;
+    default: throw new Error(String(status satisfies never));
     }
   }
   function scopeChanged(): void {

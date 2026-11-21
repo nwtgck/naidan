@@ -2,6 +2,7 @@ import { ensureStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import type { InjectionKey } from 'vue';
 import { createFileExplorerWorkerClient } from '@/features/file-explorer/worker/client';
+import type { FileExplorerRemoteMount } from '@/features/file-explorer/worker/types';
 import type {
   FileExplorerEntry,
   FileExplorerContext,
@@ -36,14 +37,16 @@ function buildInitialPath({ initialPath }: { initialPath: string[] | undefined }
 
 export async function useFileExplorer({
   root,
+  remoteMounts,
   initialPath,
   initialLocked,
 }: {
   root: FileExplorerRootDescriptor,
+  remoteMounts?: readonly FileExplorerRemoteMount[],
   initialPath: string[] | undefined,
   initialLocked: boolean,
 }) {
-  const client = await createFileExplorerWorkerClient({ root });
+  const client = await createFileExplorerWorkerClient({ root, ...(remoteMounts === undefined ? {} : { remoteMounts }) });
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 
@@ -58,6 +61,13 @@ export async function useFileExplorer({
     sortConfig: sortConfig as { value: SortConfig },
     filterQuery: filterQuery as { value: string },
   });
+
+  function isDeletionOnly({ path }: { path: string }): boolean {
+    // Temporary model mounts allow deleting registered files. Creation and
+    // replacement still go through the model selector's import path.
+    return remoteMounts?.some(mount => mount.deletionOnly === true
+      && (path === mount.path || path.startsWith(`${mount.path}/`))) ?? false;
+  }
 
   const sel = useFileExplorerSelection();
 
@@ -95,7 +105,7 @@ export async function useFileExplorer({
   const dnd = useFileExplorerDragDrop({
     moveEntries: ops.moveEntries,
     currentDirectoryPath: nav.currentDirectoryPath,
-    isReadOnly: () => isLocked.value || nav.currentDirectoryReadOnly.value,
+    isMoveBlocked: ({ path }) => isLocked.value || nav.currentDirectoryReadOnly.value || isDeletionOnly({ path }),
   });
 
   function setViewMode({ mode }: { mode: ViewMode }): void {
@@ -359,7 +369,7 @@ export async function useFileExplorer({
 
   async function clipboardPaste(): Promise<void> {
     const clipboardState = clipboard.clipboardState.value;
-    if (!clipboardState.operation || clipboardState.entries.length === 0) {
+    if (!clipboardState.operation || clipboardState.entries.length === 0 || isDeletionOnly({ path: nav.currentDirectoryPath.value })) {
       return;
     }
 
@@ -401,6 +411,7 @@ export async function useFileExplorer({
       }
       return undefined;
     },
+    isDeletionOnly,
     get pathSegments() {
       return nav.pathSegments.value;
     },

@@ -6,10 +6,14 @@ import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import type { useSettings } from '@/composables/useSettings';
 import type { HostModelDirectoryChoice } from '@/composables/useHostModelDirectories';
+import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
+import { liveModelCatalog } from '@/features/live-conversation/model-catalog';
+import ModelSelectorVariantDownload from '@/components/ModelSelectorVariantDownload.vue';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { TEST_ONLY as destinationTest } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { type DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { confirmModelLaunchConfiguration } from '@/features/llama-cpp-browser/model-launch/target';
 import { bundledRepositoryDownloadKey } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import { repositoryDefaultDownloadKey } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
@@ -17,7 +21,7 @@ import { searchGgufModels, searchModels, type RepositoryCatalog } from '@/featur
 import LlamaCppBrowserRepositoryPicker from './LlamaCppBrowserRepositoryPicker.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
-const mocks = vi.hoisted(() => ({ inspect: vi.fn(), installed: vi.fn(), inventory: vi.fn(), modelEntry: vi.fn(), permission: vi.fn(), add: vi.fn(), reconnect: vi.fn(), enqueue: vi.fn(), stopDownload: vi.fn() }));
+const mocks = vi.hoisted(() => ({ inspect: vi.fn(), installed: vi.fn(), inventory: vi.fn(), modelEntry: vi.fn(), modelFiles: vi.fn(), permission: vi.fn(), add: vi.fn(), reconnect: vi.fn(), enqueue: vi.fn(), stopDownload: vi.fn() }));
 let settings: Ref<Settings>;
 let entries: Ref<HostModelDirectoryChoice[]>;
 let supported: Ref<boolean>;
@@ -55,7 +59,7 @@ vi.mock('@/composables/useHostModelDirectories', () => ({
   }),
 }));
 vi.mock('@/features/llama-cpp-browser/composables/model-inventory', () => ({ listModelInventory: mocks.inventory }));
-vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { getModelEntry: mocks.modelEntry } }));
+vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { getModelEntry: mocks.modelEntry, inspectModelFiles: mocks.modelFiles } }));
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: mocks.inspect }) }));
 vi.mock('../hugging-face/storage', () => ({ installedSelection: mocks.installed }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', async original => ({
@@ -574,6 +578,113 @@ it.each(['first-use-download', 'installed-only'] as const)('uses a completed bun
   await choose.trigger('click');
   expect(wrapper.emitted('select-model')).toEqual([[model]]);
   expect(mocks.inspect).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['audio-generation', audioModelCatalog, 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf'],
+  ['live-conversation', liveModelCatalog, 'mmproj-LFM3-Audio-2B-Q8_0.gguf'],
+] as const)('uses the bundled %s files offline and resolves both files when download is requested', async (repositoryUsage, suggestions, companionPath) => {
+  const suggestion = suggestions[0]!;
+  const hint = suggestion.quantizationHints[0];
+  const companion = hint.companionFiles?.find(file => file.path === companionPath);
+  expect(companion).toBeDefined();
+  const live = { ...catalog, repository: hint.hfRepository, projectors: companion ? [companion] : [] };
+  mocks.inspect.mockResolvedValue(live);
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy: 'installed-only', suggestions, repositoryUsage } });
+  using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+  const audioRow = wrapper.get(`[data-testid="chat-model-suggestion"][data-repository="${suggestion.id}"]`);
+  await audioRow.trigger('click');
+  expect(wrapper.text()).toContain('Required companion');
+  await wrapper.get('[data-testid="model-selector-edit-configuration"]').trigger('click');
+  expect(wrapper.find('[role="switch"]').exists()).toBe(false);
+  expect(mocks.inspect).not.toHaveBeenCalled();
+
+  const request = wrapper.getComponent(ModelSelectorVariantDownload).props('request');
+  const signal = new AbortController().signal;
+  expect(await request?.prepare({ signal })).toEqual({ repository: hint.hfRepository, revision: live.revision, files: [live.models[0]!.files[0], companion] });
+  expect(mocks.inspect).toHaveBeenCalledOnce();
+  mocks.inspect.mockResolvedValue({ ...live, projectors: [] });
+  await expect(request?.prepare({ signal })).rejects.toThrow();
+});
+
+it('checks for the required companion before selecting a bundled audio model already on the device', async () => {
+  const suggestion = audioModelCatalog[0]!;
+  const hint = suggestion.quantizationHints[0];
+  const model = { modelId: `hf.co/${hint.hfRepository}:${hint.preferredQuantization}`, size: 256, importedAt: 1 };
+  mocks.inventory.mockResolvedValue([model]);
+  mocks.modelFiles.mockResolvedValue({ directory: { projectorFile: undefined } });
+  mocks.modelEntry.mockResolvedValue(model);
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'candidate-results', selectionPolicy: 'installed-only', suggestions: audioModelCatalog, repositoryUsage: 'audio-generation' } });
+  using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+  await wrapper.get(`[data-testid="chat-model-suggestion-choose"][aria-label="${suggestion.name}"]`).trigger('click');
+  await vi.dynamicImportSettled();
+  await flushPromises();
+  expect(mocks.modelFiles).toHaveBeenCalled();
+  expect(mocks.modelEntry).not.toHaveBeenCalled();
+  expect(wrapper.emitted('select-model')).toBeUndefined();
+  expect(mocks.inspect).not.toHaveBeenCalled();
+  expect(wrapper.get('[data-testid="model-selector-choose-configuration"]').attributes('disabled')).toBeDefined();
+});
+
+it('includes the mandatory audio companion when downloading from a Hugging Face search result', async () => {
+  const repository = audioModelCatalog[0]!.quantizationHints[0].hfRepository;
+  const projector = { path: 'current-mmproj-Q8_0.gguf', size: 128 };
+  const live = { ...catalog, repository, projectors: [projector] };
+  vi.mocked(searchGgufModels).mockResolvedValueOnce({ results: [{ id: repository }], nextCursor: undefined });
+  mocks.inspect.mockResolvedValue(live);
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', selectionPolicy: 'installed-only', suggestions: audioModelCatalog, repositoryUsage: 'audio-generation' } });
+  using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+  await wrapper.get('[data-testid="model-selector-hf-query"]').setValue('audio');
+  await wrapper.get('form').trigger('submit');
+  await flushPromises();
+  expect(mocks.inspect).not.toHaveBeenCalled();
+  const request = wrapper.getComponent(ModelSelectorVariantDownload).props('request');
+  const signal = new AbortController().signal;
+  expect(request?.key).toBe(repositoryDefaultDownloadKey({ repository, usage: 'audio-generation' }));
+  expect(await request?.prepare({ signal })).toEqual({ repository, revision: live.revision, files: [live.models[0]!.files[0], projector] });
+  mocks.inspect.mockResolvedValue({ ...live, projectors: [] });
+  await expect(request?.prepare({ signal })).rejects.toThrow();
+
+  await wrapper.get('[data-testid="model-selector-hf-result"]').trigger('click');
+  await flushPromises();
+  expect(wrapper.get('[data-testid="model-selector-choose-configuration"]').attributes('disabled')).toBeDefined();
+  expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  expect(mocks.installed).not.toHaveBeenCalled();
+});
+
+it.each(['hf.co/', ''] as const)('keeps a pasted %s repository variant and offers its audio download', async prefix => {
+  const repository = audioModelCatalog[0]!.quantizationHints[0].hfRepository;
+  const projector = { path: 'current-mmproj-Q8_0.gguf', size: 128 };
+  const live = { ...catalog, repository, projectors: [projector] };
+  mocks.inspect.mockResolvedValue(live);
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, { props: { disabled: false, layout: 'inline-results', selectionPolicy: 'installed-only', suggestions: audioModelCatalog, repositoryUsage: 'audio-generation' } });
+  using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+  await wrapper.get('[data-testid="model-selector-hf-query"]').setValue(prefix + repository + ':Q8_0');
+  expect(mocks.inspect).not.toHaveBeenCalled();
+  await wrapper.get('form').trigger('submit');
+  await flushPromises();
+  expect(searchGgufModels).not.toHaveBeenCalled();
+  const request = wrapper.getComponent(ModelSelectorVariantDownload).props('request');
+  expect(request?.prepared).toEqual({ repository, revision: live.revision, files: [live.models[1]!.files[0], projector] });
+  expect(wrapper.find('[data-testid="chat-repository-multimodal"]').exists()).toBe(false);
+});
+
+it('uses the pasted variant ahead of a first-use selection for the same repository', async () => {
+  const target = confirmModelLaunchConfiguration({ catalog, mainFilePath: 'Model-Q4_K_M.gguf', companionFilePath: undefined, multimodal: 'off' });
+  const wrapper = mount(LlamaCppBrowserRepositoryPicker, {
+    props: {
+      disabled: false,
+      layout: 'inline-results',
+      selectionPolicy: 'first-use-download',
+      selectedForFirstUse: { modelId: target.modelId, source: { kind: 'resolved', target }, destination: { kind: 'opfs' }, authorizeDestination: async ({ destination }) => ({ destination, expectedRoot: undefined }) },
+    },
+  });
+  using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+  await wrapper.get('[data-testid="model-selector-hf-query"]').setValue(catalog.repository + ':Q8_0');
+  await wrapper.get('form').trigger('submit');
+  await flushPromises();
+  await wrapper.get('[data-testid="model-selector-choose-configuration"]').trigger('click');
+  expect(wrapper.emitted('select-for-first-use')?.[0]?.[0]).toMatchObject({ source: { target: { mainFilePath: 'Model-Q8_0.gguf' } } });
 });
 
 it('offers a background download and independently selects the standard construction from an HF result name', async () => {

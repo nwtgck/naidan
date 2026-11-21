@@ -1,1 +1,1 @@
-export const LlamaCppBrowserSuggestedModelRows__filter = (): string => "チャット向けモデルを絞り込む";
+export const LlamaCppBrowserSuggestedModelRows__filter = (): string => "候補モデルを絞り込む";
