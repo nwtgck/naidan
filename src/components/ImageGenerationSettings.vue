@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { computed, ref, nextTick } from 'vue';
+import { computed, ref, nextTick, useId } from 'vue';
 import { ImageIcon, Loader2Icon, CheckIcon, ArrowLeftRightIcon, Dice5Icon } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
+import type { ModelSelectorItem } from './model-selector-item';
 
 defineOptions({
   name: 'ImageGenerationSettings',
@@ -42,6 +43,13 @@ const resolutions = [
 ];
 
 const counts = [1, 5, 10, 50];
+const imageModelInputId = useId();
+const imageModels = computed<ModelSelectorItem[]>(() => props.availableImageModels.map(id => ({
+  id,
+  label: id,
+  description: undefined,
+  availability: 'remote',
+})));
 
 const saveFormats = computed(() => [
   { label: lazyStrings.ImageGenerationSettings__original(), value: 'original' },
@@ -137,13 +145,16 @@ defineExpose({
   <div v-if="isImageMode" tw-class="border-t dark:border-gray-700 mt-1">
     <!-- Model Selector -->
     <div v-if="availableImageModels.length > 0" tw-class="px-3 py-2 border-b dark:border-gray-700">
-      <div tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">{{ lazyStrings.ImageGenerationSettings__image_model() }}</div>
+      <label :for="imageModelInputId" tw-class="mb-2 block text-[9px] font-bold uppercase tracking-wider text-gray-400">{{ lazyStrings.ImageGenerationSettings__image_model() }}</label>
       <ModelSelector
+        :input-id="imageModelInputId"
+        surface="settings"
+        popup-presentation="inline"
+        refresh-visibility="hidden"
         :model-value="selectedImageModel"
         @update:model-value="val => val && handleModelUpdate({ modelId: val })"
-        :models="availableImageModels"
+        :models="imageModels"
         :placeholder="lazyStrings.ImageGenerationSettings__select_image_model()"
-        tw-class="w-full"
       />
     </div>
 

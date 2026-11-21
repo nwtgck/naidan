@@ -138,7 +138,7 @@ describe('Sidebar Duplicate Group Feature', () => {
           'lucide-vue-next': true,
           'Logo': true,
           'ThemeToggle': true,
-          'ChatModelSelector': true,
+          'ModelSelector': true,
           'ChatGroupActions': ChatGroupActions,
         },
       },

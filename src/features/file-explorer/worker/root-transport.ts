@@ -92,7 +92,7 @@ export async function mapFileExplorerRootToOpfsLocators({
     }
   }
   case 'wesh-mounts': {
-    const { kind, rootName, mounts, ...unhandledRoot } = root;
+    const { kind, rootName, mounts, remoteMounts, ...unhandledRoot } = root;
     unhandledRoot satisfies Record<PropertyKey, never>;
     const mappedMounts: typeof mounts = [];
     for (const mount of getEffectiveWeshMounts({ mounts })) {
@@ -130,7 +130,7 @@ export async function mapFileExplorerRootToOpfsLocators({
       }
       }
     }
-    return { kind, rootName, mounts: mappedMounts };
+    return { kind, rootName, mounts: mappedMounts, ...(remoteMounts === undefined ? {} : { remoteMounts }) };
   }
   default: {
     const _ex: never = root;

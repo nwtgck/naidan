@@ -5,7 +5,7 @@ import { storageService } from '@/00-storage/service';
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 import { formatHostModelId } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
 import { OPFS_MODELS_DIR } from '@/constants';
-import { rankedProjectors } from './presentation';
+import { quantizationName, rankedProjectors } from './presentation';
 import { modelGroups } from './model-variants';
 import { selectRepositoryModel } from './model-selector';
 export { selectRepositoryModel } from './model-selector';
@@ -174,6 +174,36 @@ async function assertExpectedRoot({ destination, expectedRoot }: { destination: 
   if (!await current.isSameEntry(expectedRoot)) {
     throw new LlamaCppBrowserError({ code: 'storage-error' });
   }
+}
+
+/** Check one linked repository after the folder becomes readable. */
+export async function installedHostRepositoryVariant({ repository, variant, requireProjector, destination, expectedRoot, signal }: {
+  repository: string, variant: string, requireProjector: boolean,
+  destination: Extract<ModelDestination, { kind: 'host' }>, expectedRoot: FileSystemDirectoryHandle | undefined, signal: AbortSignal,
+}): Promise<LocalModel | undefined> {
+  await assertExpectedRoot({ destination, expectedRoot });
+  let models: ModelDirectory[];
+  try {
+    models = await repositoryDirectories({ repository, destination, signal });
+  } catch (error) {
+    if (isMissing({ error })) {
+      return undefined;
+    }
+    throw error;
+  }
+  const matching = models.filter(model => quantizationName({ path: model.primaryFile.relativePath }) === variant);
+  const directory = matching.length === 1 ? matching[0] : undefined;
+  if (directory === undefined || (requireProjector && directory.projectorFile === undefined)) {
+    return undefined;
+  }
+  const directories = await storageService.loadHostModelDirectories();
+  const model = describeRepositoryModel({ directory, repository, destination, directories });
+  if (models.some(other => other !== directory && describeRepositoryModel({ directory: other, repository, destination, directories }).modelId === model.modelId)) {
+    return undefined;
+  }
+  await assertExpectedRoot({ destination, expectedRoot });
+  signal.throwIfAborted();
+  return model;
 }
 
 export async function installedSelection({ selection, destination, expectedRoot }: { selection: DownloadSelection, destination?: ModelDestination, expectedRoot?: FileSystemDirectoryHandle }): Promise<LocalModel | undefined> {

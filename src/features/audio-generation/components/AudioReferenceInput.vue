@@ -9,7 +9,7 @@ import { referenceAudioErrorMessage } from '@/features/audio-generation/referenc
 import AudioReferenceClip from './AudioReferenceClip.vue';
 
 const props = defineProps<{ disabled: boolean, invalid: boolean }>();
-const emit = defineEmits<{ busy: [busy: boolean], changed: [] }>();
+const emit = defineEmits<{ busy: [busy: boolean], changed: [], 'recording-failed': [] }>();
 const id = useId();
 const fileInput = ref<HTMLInputElement>();
 const dragDepth = ref(0);
@@ -30,6 +30,11 @@ const recording = useReferenceRecording({
 const { status: recordingStatus, elapsed, supported: recordingSupported, error: recordingError } = recording;
 const locked = computed(() => props.disabled || recordingStatus.value !== 'idle');
 watch(recordingStatus, status => emit('busy', status !== 'idle'), { immediate: true, flush: 'sync' });
+watch(recordingError, error => {
+  if (error !== undefined) {
+    emit('recording-failed');
+  }
+});
 
 function reportChange(): void {
   preparationFailure.value = undefined;
@@ -111,10 +116,12 @@ async function prepare({ signal }: { signal: AbortSignal }): Promise<Blob | unde
   }
 }
 
-defineExpose({ prepare, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
+const selectedCount = computed(() => selected.value.size);
+
+defineExpose({ prepare, selectedCount, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <section tw-class="space-y-3 rounded-2xl border border-gray-200/70 bg-white/70 p-4 sm:p-5 dark:border-gray-800/80 dark:bg-gray-900/40" data-testid="audio-reference-library" data-audio-field="reference" :aria-invalid="invalid || undefined" :aria-labelledby="`${id}-label`">
+  <section tw-class="space-y-3 rounded-2xl border border-gray-200/70 bg-white/70 p-4 sm:p-5 dark:border-gray-800/80 dark:bg-gray-900/40" data-testid="audio-reference-library" data-audio-field="reference" tabindex="-1" :aria-invalid="invalid || undefined" :aria-labelledby="`${id}-label`">
     <h2 :id="`${id}-label`" tw-class="text-sm font-medium">{{ lazyStrings.audioGeneration__reference_voice() }}</h2>
     <div @dragover.prevent.stop @dragenter.prevent.stop="dragDepth++" @dragleave.prevent.stop="dragDepth = Math.max(0, dragDepth - 1)" @drop.prevent.stop="drop({ event: $event })" data-testid="audio-reference-drop" :tw-class="['flex flex-wrap items-center gap-3 rounded-xl border border-dashed bg-gray-50/40 px-3.5 py-4 transition-colors dark:bg-gray-800/20', !locked && dragDepth > 0 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700/70', { 'opacity-60': locked }]">
       <div tw-class="flex min-w-0 grow basis-48 items-center gap-2">

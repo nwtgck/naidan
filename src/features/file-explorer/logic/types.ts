@@ -275,6 +275,7 @@ export interface FileExplorerContext {
 
   readOnly: boolean,
   readOnlyReason: 'lock' | 'source' | undefined,
+  isDeletionOnly: ({ path }: { path: string }) => boolean,
 
   isLocked: boolean,
   toggleLock: () => void,

@@ -48,7 +48,7 @@ describe('useFileExplorerDragDrop', () => {
   });
 
   function makeDnd({ isReadOnly = () => false }: { isReadOnly?: () => boolean } = {}) {
-    return useFileExplorerDragDrop({ moveEntries, currentDirectoryPath, isReadOnly });
+    return useFileExplorerDragDrop({ moveEntries, currentDirectoryPath, isMoveBlocked: isReadOnly });
   }
 
   // ---- initial state ----

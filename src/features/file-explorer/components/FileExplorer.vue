@@ -13,11 +13,12 @@ import FileExplorerZipUploadDialog from './FileExplorerZipUploadDialog.vue';
 import { useFileExplorer, FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import { useFileExplorerKeyboard } from '@/features/file-explorer/composables/useFileExplorerKeyboard';
 import type { ViewMode, PreviewVisibility } from '@/features/file-explorer/logic/types';
-import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
+import type { FileExplorerRemoteMount, FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   root: FileExplorerRootDescriptor,
+  remoteMounts?: readonly FileExplorerRemoteMount[],
   initialViewMode: ViewMode,
   initialPreviewVisibility: PreviewVisibility,
   initialPath: string[] | undefined,
@@ -42,6 +43,7 @@ defineExpose({
 
 const { context, client, _viewMode, _preview } = await useFileExplorer({
   root: props.root,
+  remoteMounts: props.remoteMounts,
   initialPath: props.initialPath,
   initialLocked: props.initialLocked,
 });

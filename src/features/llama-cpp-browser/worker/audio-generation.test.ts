@@ -45,6 +45,19 @@ describe.each([4, 8] as const)('audio native orchestration with %i-byte pointers
     expect(native.api.llama_sampler_chain_add).toHaveBeenCalledTimes(4);
   });
 
+  it('initializes the submitted native input before setting model-specific fields', async () => {
+    const native = audioNativeFixture({ pointerBytes });
+    native.api.mtmd_helper_gen_audio_inp_default.mockImplementationOnce(async () => {
+      // Native initialization can overwrite existing values in the record.
+      native.fields.set('mtmd_helper_gen_audio_inp.prompt_len', 0n);
+    });
+    native.api.mtmd_helper_gen_audio_set_input.mockImplementationOnce(async (_helper, params) => {
+      const initialized = native.api.mtmd_helper_gen_audio_inp_default.mock.calls.some(([initializedParams]) => initializedParams === params);
+      return initialized && native.fields.get('mtmd_helper_gen_audio_inp.prompt_len') === 15n ? 0 : 2;
+    });
+    await expect(synthesizeAudio({ core: native.core, context: 20n, projector: 30n, request: request(), cancellationSignal: undefined, onProgress: () => {} })).resolves.toEqual(audioResult());
+  });
+
   it('reads out-parameters using refreshed heap views after memory growth', async () => {
     const native = audioNativeFixture({ pointerBytes });
     native.controls.growDuringStep = true;

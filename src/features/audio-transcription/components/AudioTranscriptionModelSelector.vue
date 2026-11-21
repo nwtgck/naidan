@@ -540,6 +540,7 @@ defineExpose({
                         :popup-target="panel" :configuration="{ open: detailId === model.id, id: popupId + '-model-options' }"
                         :selected-id="selected?.id" :disabled="models.busy.value" @choose="choose({ id: $event })" @change-variant="chooseStoredVariant({ id: $event })"
                         @toggle-configuration="toggleDetails({ ...$event, group: group.id })"
+                        @open-file-explorer="close"
                       />
                     </template>
                     <span :title="model.title" tw-class="block truncate font-medium">{{ model.name }}</span>
@@ -585,7 +586,7 @@ defineExpose({
             <AudioTranscriptionModelSources :models="models" :disabled="false" :popup-target="panel" :active="open && tab === 'huggingface'" v-model:query="huggingFaceQuery" @selected="close" />
           </div>
           <div v-if="fileVisited" v-show="tab === 'files'" :inert="tab !== 'files' || undefined" tw-class="p-3">
-            <ModelSelectorFileImport v-model:added="addedModels" :selected-model-id="models.selectedModelId.value" :disabled="models.busy.value" :import-files="models.importModels" @choose="chooseAddedModel({ modelId: $event.modelId })" />
+            <ModelSelectorFileImport v-model:added="addedModels" :available-model-ids="models.storedModelIds.value" :selected-model-id="models.selectedModelId.value" :disabled="models.busy.value" :import-files="models.importModels" @choose="chooseAddedModel({ modelId: $event.modelId })" />
           </div>
         </div>
 

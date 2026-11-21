@@ -14,11 +14,13 @@ export type RepositoryModelDownloadRequest = {
   prepare({ signal }: { signal: AbortSignal }): Promise<DownloadSelection>,
 };
 
-export function repositoryDefaultDownloadKey({ repository, usage }: { repository: string, usage: 'chat' | 'transcription' }): string {
+export type RepositoryDownloadUsage = 'chat' | 'transcription' | 'audio-generation' | 'live-conversation';
+
+export function repositoryDefaultDownloadKey({ repository, usage }: { repository: string, usage: RepositoryDownloadUsage }): string {
   return `repository-default:${usage}:${repository.toLowerCase()}`;
 }
 
-export function hasActiveRepositoryDefaultDownload({ repository, usage, destination }: { repository: string, usage: 'chat' | 'transcription', destination: DownloadDestination }): boolean {
+export function hasActiveRepositoryDefaultDownload({ repository, usage, destination }: { repository: string, usage: RepositoryDownloadUsage, destination: DownloadDestination }): boolean {
   const key = repositoryDefaultDownloadKey({ repository, usage });
   return jobIsBusy({ job: findModelDownloadJob({ jobs: getDownloadQueue().jobs.value, key, destination, selection: undefined }) });
 }
@@ -26,7 +28,7 @@ export function hasActiveRepositoryDefaultDownload({ repository, usage, destinat
 export function repositoryRowDownload({ repository, destination, usage, selection, defaultSelection }: {
   repository: string,
   destination: DownloadDestination,
-  usage: 'chat' | 'transcription',
+  usage: RepositoryDownloadUsage,
   selection: DownloadSelection | undefined,
   defaultSelection({ catalog }: { catalog: RepositoryCatalog }): DownloadSelection,
 }): RepositoryModelDownloadRequest {

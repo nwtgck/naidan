@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { ArrowDownIcon, AudioLinesIcon, DownloadIcon, FolderOpenIcon, InfoIcon, Loader2Icon, MessageSquarePlusIcon, SlidersHorizontalIcon, SquareIcon, Trash2Icon, MicIcon, MicOffIcon, Volume2Icon, VolumeXIcon } from 'lucide-vue-next';
 import { currentLocale, ensureStrings, lazyStrings } from '@/strings';
 import { storageService } from '@/00-storage/service';
@@ -7,10 +7,16 @@ import { idToRaw } from '@/01-models/ids';
 import type { Volume } from '@/01-models/types';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
+import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
+import { getDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
+import type { RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
+import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
 import LlamaCppBrowserManager from '@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue';
-import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
 import ModelSelector from '@/components/ModelSelector.vue';
+import type { ModelSelectorItem } from '@/components/model-selector-item';
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsDisclosure from '@/components/SettingsDisclosure.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
@@ -55,6 +61,9 @@ import { createSpeechInvestigationCollection } from '@/features/speech-cpp-brows
 import type { SpeechInvestigationCollectionSnapshot, SpeechInvestigationSnapshot } from '@/features/speech-cpp-browser/investigation/types';
 import { createSpeechResponseResultViews, type SpeechResponseResultView } from '@/features/live-conversation/logic/response-result-views';
 import { createInvestigationPlan } from '@/features/live-conversation/logic/investigation-plan';
+
+const ModelSelectorFileImport = defineAsyncComponent(() => import('@/components/ModelSelectorFileImport.vue'));
+const RepositoryModelPicker = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue'));
 
 const id = useId();
 const props = defineProps<{ panel?: LiveConversationPanel, task?: LiveInvestigationTask }>();
@@ -151,6 +160,18 @@ const conversationLanguageOptions = computed(() => liveSpeechLanguageOptions({ l
 const preference = useLiveModelPreference();
 const { showConfirm } = useConfirm();
 const models = ref<LocalModel[]>([]);
+const addedModels = shallowRef<readonly LocalModel[]>([]);
+const modelOptions = computed<ModelSelectorItem[]>(() => models.value.map(({ modelId }) => ({
+  id: modelId,
+  label: modelId,
+  description: undefined,
+  availability: 'local',
+})));
+const modelPanels = computed(() => [
+  { id: 'catalog', label: lazyStrings.llamaCppBrowserDownloads__model_catalog(), placement: 'before-models' },
+  { id: 'huggingface', label: 'Hugging Face' },
+  { id: 'files', label: lazyStrings.ModelSelector__add_files() },
+] as const);
 const modelId = ref(preference.remembered.value ?? '');
 const residentModelId = ref('');
 const residentModelFile = shallowRef<File>();
@@ -173,8 +194,12 @@ const writable = ref(false);
 const folderFailure = ref<string>();
 const preferenceFailure = ref(false);
 const inventoryFailure = ref(false);
+const inventoryRefreshing = ref(false);
+const inventoryKnown = ref(false);
 const modelFailure = shallowRef<{ kind: 'inspection' | 'load', details: SpeechFailure }>();
 const startingModel = ref(false);
+const acquiringDefaultModel = ref(false);
+const activeDownloadId = ref<number>();
 const changingConversation = ref(false);
 const talkPending = ref(false);
 const manualReplay = shallowRef<HTMLAudioElement>();
@@ -202,6 +227,28 @@ const speechMode = computed(() => residentEngine.value && (active.value || start
 const recognitionMode = computed(() => residentEngine.value && (active.value || startingModel.value) ? residentEngine.value === 'recognition' : selectedEngine.value === 'recognition');
 const llamaMode = computed(() => !speechMode.value && !recognitionMode.value);
 const active = computed(() => state.value.phase !== 'idle' || speech.state.value.runtime.model !== undefined || recognitionState.value.runtime.model !== undefined);
+const modelPickerDisabled = computed(() => changingConversation.value || startingModel.value || (!settingsOpen.value && (active.value || diagnostics.value)));
+const downloadQueue = getDownloadQueue();
+const downloadDestination = useModelDownloadDestination({ blocked: () => modelPickerDisabled.value, changed: () => {} });
+const defaultModelDownloadProgress = computed(() => downloadQueue.jobs.value.find(job => job.id === activeDownloadId.value)?.progress);
+const pendingDefaultModel = computed<RepositoryModelSelection | undefined>(() => {
+  if (modelId.value || diagnostics.value) {
+    return undefined;
+  }
+  const hint = liveModelCatalog[0].quantizationHints[0];
+  const companion = preferredProjector({ files: hint.companionFiles ?? [] });
+  if (companion === undefined) {
+    return undefined;
+  }
+  const { hfRepository: repository, preferredQuantization: variant } = hint;
+  return {
+    modelId: `hf.co/${repository}:${variant}`,
+    source: { kind: 'bundled', repository, variant, companionPath: companion.path },
+    destination: downloadDestination.destination.value,
+    authorizeDestination: downloadDestination.authorize,
+  };
+});
+const selectedModelId = computed(() => pendingDefaultModel.value?.modelId ?? (modelId.value || undefined));
 const idleForTurn = computed(() => state.value.phase === 'ready' && !state.value.playing && !changingConversation.value && !talkPending.value && !manualReplay.value && !recordingActive.value && !recognitionRunning.value && !filePending.value);
 const vision = computed(() => llamaMode.value && state.value.info?.vision !== 'unavailable');
 const selectedFolder = computed(() => volumes.value.find(volume => idToRaw({ id: volume.id }) === volumeId.value));
@@ -232,7 +279,16 @@ const selectedRuntimeReady = computed(() => {
   }
   }
 });
-const canStart = computed(() => !active.value && !startingModel.value && !changingConversation.value && !busy.value && selectedAvailable.value && selectedRuntimeReady.value && (!diagnostics.value || diagnosticSelectionSupported.value));
+const canStart = computed(() => {
+  if (active.value || startingModel.value || changingConversation.value || busy.value || !selectedRuntimeReady.value) {
+    return false;
+  }
+  if (pendingDefaultModel.value !== undefined) {
+    return inventoryKnown.value && !inventoryFailure.value && !inventoryRefreshing.value
+      && !downloadDestination.unavailable.value && !downloadDestination.view.busy.value;
+  }
+  return selectedAvailable.value && (!diagnostics.value || diagnosticSelectionSupported.value);
+});
 const canQueue = computed(() => llamaMode.value && active.value && state.value.phase !== 'closing' && !changingConversation.value && !recordingActive.value && !recognitionRunning.value && !filePending.value);
 const canTalk = computed(() => llamaMode.value && active.value && !changingConversation.value && !talkPending.value && !recordingActive.value && !recognitionRunning.value && !filePending.value && !['loading', 'closing', 'stopping', 'preparing-input', 'recording'].includes(state.value.phase) && microphone.value && outputSelected.value);
 const canReset = computed(() => !changingSource.value && !startingModel.value && !changingConversation.value && !['loading', 'closing', 'stopping'].includes(state.value.phase) && !['loading_model', 'starting', 'stopping'].includes(speech.state.value.runtime.phase) && !['loading_model', 'cancelling'].includes(recognitionState.value.runtime.phase));
@@ -250,6 +306,10 @@ const navigationBusy = computed(() => busy.value || startingModel.value || chang
 // Preparing an input/settings does not own the model-load operation.
 const sourceBlocked = computed(() => changingSource.value || changingConversation.value || filePending.value || recordingActive.value || recognitionRunning.value || speechRunning.value || talkPending.value || (llamaMode.value && !['idle', 'loading', 'ready'].includes(state.value.phase)));
 const diagnosticSelectionSupported = computed(() => diagnosticModelIds.value.includes(modelId.value));
+const diagnosticModelOptions = computed(() => {
+  const compatibleIds = new Set(diagnosticModelIds.value);
+  return modelOptions.value.filter(({ id }) => compatibleIds.has(id));
+});
 const canLoadSelectedModel = computed(() => !navigationBusy.value && selectedAvailable.value && selectedRuntimeReady.value && (!diagnostics.value || diagnosticSelectionSupported.value) && (!active.value || residentModelId.value !== modelId.value));
 const fileRun = computed(() => sourceFile.value !== undefined && lastRunFile.value === sourceFile.value ? speechState.value.fileRun : undefined);
 const fileText = computed(() => fileRun.value?.text ?? '');
@@ -503,6 +563,7 @@ function fileRunAudioDescription({ role }: { role: 'input' | 'output' }): string
 }
 
 function updateModels({ entries }: { entries: LocalModel[] }): void {
+  inventoryKnown.value = true;
   models.value = entries;
   if (!modelId.value && !manualSelection && !active.value) {
     modelId.value = preference.remembered.value ?? entries.find(model => /LFM3-(Audio|Omni)-2B/i.test(model.modelId))?.modelId ?? '';
@@ -513,6 +574,7 @@ async function refreshInventory(): Promise<void> {
   scan?.abort();
   const current = new AbortController();
   scan = current;
+  inventoryRefreshing.value = true;
   try {
     const entries = await listModelInventory({ signal: current.signal });
     if (!disposed && scan === current) {
@@ -522,6 +584,11 @@ async function refreshInventory(): Promise<void> {
   } catch {
     if (!disposed && !current.signal.aborted) {
       inventoryFailure.value = true;
+    }
+  } finally {
+    if (!disposed && scan === current) {
+      scan = undefined;
+      inventoryRefreshing.value = false;
     }
   }
 }
@@ -540,11 +607,15 @@ function selectModel({ value }: { value: string | undefined }): void {
   });
 }
 
-function catalogSelect({ model }: { model: LocalModel }): void {
+function selectDownloadedModel({ model, close }: { model: LocalModel, close?: () => void }): void {
+  if (disposed || modelPickerDisabled.value) {
+    return;
+  }
   if (!models.value.some(entry => entry.modelId === model.modelId)) {
     models.value = [...models.value, model];
   }
   selectModel({ value: model.modelId });
+  close?.();
 }
 
 watch(preference.remembered, value => {
@@ -896,6 +967,16 @@ async function start(): Promise<void> {
   if (!canStart.value) {
     return;
   }
+  const pendingDefault = pendingDefaultModel.value;
+  let selected = modelId.value;
+  if (pendingDefault !== undefined) {
+    const model = await downloadDefaultModel({ selection: pendingDefault });
+    if (model === undefined || disposed || diagnostics.value) {
+      return;
+    }
+    selected = model.modelId;
+    updateModels({ entries: [...models.value.filter(entry => entry.modelId !== selected), model] });
+  }
   pauseReplays();
   clearResponseComparison();
   void speech.controller.clearFileRun();
@@ -903,12 +984,11 @@ async function start(): Promise<void> {
   void recognition.controller.clearRun();
   applyAudioRetention();
   settingsOpen.value = false;
-  const selected = modelId.value;
   residentLoadSnapshot.value = undefined;
   residentLoadIdentity.value = undefined;
   selectModel({ value: selected });
   residentModelId.value = selected;
-  if (speechMode.value || recognitionMode.value) {
+  if (pendingDefault === undefined && (speechMode.value || recognitionMode.value)) {
     const recognizing = recognitionMode.value;
     const target = recognizing ? recognition.controller : speech.controller;
     residentEngine.value = recognizing ? 'recognition' : 'speech';
@@ -985,6 +1065,40 @@ async function start(): Promise<void> {
   if (!active.value) {
     residentModelId.value = '';
     residentEngine.value = undefined;
+  }
+}
+
+async function downloadDefaultModel({ selection }: { selection: RepositoryModelSelection }): Promise<LocalModel | undefined> {
+  const current = new AbortController();
+  modelOpening = current;
+  startingModel.value = true;
+  acquiringDefaultModel.value = true;
+  modelFailure.value = undefined;
+  try {
+    const model = await acquireRepositoryModel({
+      selection,
+      usage: 'live-conversation',
+      models: models.value,
+      capturedRoot: downloadDestination.captureRoot({ destination: selection.destination }),
+      signal: current.signal,
+      onDownload: ({ id: jobId }) => {
+        activeDownloadId.value = jobId;
+      },
+    });
+    current.signal.throwIfAborted();
+    return model;
+  } catch (error) {
+    if (!current.signal.aborted && !disposed) {
+      modelFailure.value = { kind: 'load', details: speechFailure({ error }) };
+    }
+    return undefined;
+  } finally {
+    if (modelOpening === current) {
+      acquiringDefaultModel.value = false;
+      activeDownloadId.value = undefined;
+      startingModel.value = false;
+      modelOpening = undefined;
+    }
   }
 }
 
@@ -1181,6 +1295,8 @@ async function cancelModelLoading(): Promise<void> {
   } finally {
     if (modelOpening === current) {
       modelInspectionPending.value = false;
+      acquiringDefaultModel.value = false;
+      activeDownloadId.value = undefined;
       modelOpening = undefined;
       startingModel.value = false;
       residentEngine.value = undefined;
@@ -1764,6 +1880,9 @@ async function loadSelectedModel(): Promise<void> {
 watch(investigationTask, pauseReplays);
 
 watch(diagnostics, async () => {
+  if (acquiringDefaultModel.value) {
+    modelOpening?.abort();
+  }
   pauseReplays();
   if (!filePending.value && speechRunning.value) {
     await speech.controller.stop({ mode: 'cancel' });
@@ -1825,6 +1944,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <AudioLinesIcon aria-hidden="true" tw-class="hidden h-4 w-4 shrink-0 text-gray-400 sm:block" />
         <div tw-class="min-w-0 flex-1">
           <h1 tw-class="text-sm font-medium leading-5 text-gray-800 dark:text-gray-100">{{ diagnostics ? lazyStrings.liveConversation__diagnostics() : lazyStrings.liveConversation__live_conversation() }}</h1>
+          <p v-if="!diagnostics" tw-class="text-[11px] leading-4 text-gray-500 dark:text-gray-400" data-testid="live-offline-introduction">{{ lazyStrings.liveConversation__input_processed_offline() }}</p>
           <button type="button" @click="settingsOpen = true" aria-haspopup="dialog" :title="active ? residentModelId : modelId" tw-class="block max-w-full truncate rounded text-left text-[11px] leading-5 text-gray-500 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:text-gray-400 dark:hover:text-blue-400" data-testid="live-header-model">{{ headerModel || lazyStrings.liveConversation__choose_model() }}</button>
         </div>
         <button type="button" :disabled="!canReset" @click="newConversation" :title="lazyStrings.liveConversation__new_conversation()" :aria-label="lazyStrings.liveConversation__new_conversation()" tw-class="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800" data-testid="live-new-conversation"><MessageSquarePlusIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
@@ -1833,9 +1953,57 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </header>
     <main ref="scroll" @scroll="historyScroll.rememberScroll" tabindex="0" :aria-label="lazyStrings.liveConversation__conversation()" tw-class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain outline-none [overflow-anchor:none]" data-testid="live-message-scroll">
       <div ref="historyContent" tw-class="mx-auto w-full max-w-4xl space-y-5 px-4 py-5 sm:px-6" data-testid="live-history-content">
-        <LiveConversationSettingsSurface :open="settingsOpen" :onboarding="!active && !diagnostics" @close="settingsOpen = false">
+        <LiveConversationSettingsSurface v-slot="{ popupTarget: settingsPopupTarget }" :open="settingsOpen" :onboarding="!active && !diagnostics" @close="settingsOpen = false">
           <div tw-class="space-y-5">
-            <div tw-class="space-y-2"><label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.liveConversation__model() }}</label><ModelSelector surface="settings" :input-id="`${id}-model`" :model-value="modelId || undefined" :models="models.map(model => model.modelId)" :loading="false" :disabled="changingConversation || startingModel" :placeholder="lazyStrings.liveConversation__choose_model()" @update:model-value="selectModel({ value: $event })" @refresh="refreshInventory" data-testid="live-model" /></div>
+            <div tw-class="space-y-2">
+              <label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.liveConversation__model() }}</label>
+              <ModelSelector
+                surface="settings"
+                :popup-target="settingsPopupTarget"
+                :input-id="`${id}-model`"
+                :model-value="selectedModelId"
+                :selection-availability="pendingDefaultModel ? 'download_required' : undefined"
+                :hide-first-use-download-hint="acquiringDefaultModel"
+                :first-use-download-destination="pendingDefaultModel ? downloadDestination.label({ destination: pendingDefaultModel.destination }) : undefined"
+                :models="modelOptions"
+                :models-label="lazyStrings.ModelSelector__models_on_this_device()"
+                :panels="modelPanels"
+                :initial-panel="modelId ? undefined : 'catalog'"
+                :loading="inventoryRefreshing"
+                :disabled="modelPickerDisabled"
+                :placeholder="lazyStrings.liveConversation__choose_model()"
+                data-testid="live-model"
+                @update:model-value="selectModel({ value: $event })"
+                @refresh="refreshInventory"
+              >
+                <template #panel="{ panel: modelPanel, active: panelActive, close, popupTarget }">
+                  <ModelSelectorFileImport
+                    v-if="modelPanel === 'files'"
+                    v-model:added="addedModels"
+                    :available-model-ids="models.map(model => model.modelId)"
+                    :selected-model-id="modelId || undefined"
+                    :disabled="!panelActive || modelPickerDisabled"
+                    tw-class="pt-3"
+                    @choose="model => selectDownloadedModel({ model, close })"
+                    @inventory-changed="refreshInventory"
+                  />
+                  <RepositoryModelPicker
+                    v-else
+                    :layout="modelPanel === 'catalog' ? 'candidate-results' : 'inline-results'"
+                    :suggestions="modelSuggestions"
+                    repository-usage="live-conversation"
+                    selection-policy="installed-only"
+                    :current-model-id="modelId || undefined"
+                    :selected-for-first-use="pendingDefaultModel"
+                    :disabled="!panelActive || modelPickerDisabled"
+                    :popup-target="popupTarget"
+                    :refresh-inventory="refreshInventory"
+                    @select-model="(model, presentation) => selectDownloadedModel({ model, close: presentation === 'keep-open' ? undefined : close })"
+                    @close="close()"
+                  />
+                </template>
+              </ModelSelector>
+            </div>
             <p v-if="active" tw-class="break-all text-[11px] text-gray-500 dark:text-gray-400" data-testid="live-loaded-model">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</p>
             <p v-if="active && modelId !== residentModelId" tw-class="text-xs leading-5 text-amber-700 dark:text-amber-300" data-testid="live-next-model">{{ lazyStrings.liveConversation__load_selected_model_to_switch() }}</p>
             <p v-if="preferenceFailure" role="alert" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.liveConversation__model_preference_failed() }}</p>
@@ -1843,14 +2011,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p v-if="modelFailure" role="alert" tw-class="whitespace-pre-wrap break-words text-xs text-red-600 dark:text-red-400" data-testid="live-model-failure">{{ modelFailure.details.message }}<template v-if="modelFailure.details.nativeStatus !== undefined">{{ '\n' }}{{ modelFailure.details.nativeStatus }}</template><template v-if="modelFailure.details.nativeInput !== undefined">{{ '\n' }}{{ modelFailure.details.nativeInput }}</template></p>
             <p v-if="speechMode" tw-class="text-xs leading-6 text-gray-500 dark:text-gray-400" data-testid="live-speech-help">{{ lazyStrings.liveConversation__continuous_conversation_help() }}</p>
             <p v-if="(speechMode || selectedEngine === 'speech') && speechUnavailable" role="status" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-speech-unavailable">{{ speechUnavailable }}</p>
-            <LlamaCppBrowserModelSuggestions :suggestions="modelSuggestions" :models="models" :disabled="false" :default-model="undefined" :default-action-disabled="changingConversation" selection-action="select" memory-filter="hide" @select="catalogSelect({ model: $event })" @changed="refreshInventory" />
-            <SettingsDisclosure :title="lazyStrings.liveConversation__manage_models_and_runtime()" test-id="live-model-manager">
-              <template #icon><FolderOpenIcon tw-class="h-4 w-4" /></template>
-              <div tw-class="space-y-4"><p tw-class="text-xs leading-6 text-gray-500 dark:text-gray-400">{{ selectedEngine === 'speech' ? lazyStrings.liveConversation__speech_model_setup() : lazyStrings.liveConversation__model_setup() }}</p><LlamaCppBrowserManager presentation="embedded" suggestions="none" :runtime-settings="selectedEngine === 'llama' ? 'show' : 'hide'" :suspended="active || startingModel" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ value: $event })" @runtime-ready="runtimeReady = $event" /></div>
-            </SettingsDisclosure>
             <button v-if="!active && !startingModel" type="button" :disabled="!canStart || changingConversation" @click="start" tw-class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40" data-testid="live-start">{{ !llamaMode ? lazyStrings.liveConversation__load_model() : lazyStrings.liveConversation__start_session() }}</button>
             <button v-if="active && modelId !== residentModelId" type="button" :disabled="!canLoadSelectedModel" @click="loadSelectedModel" tw-class="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40" data-testid="live-load-model">{{ lazyStrings.liveConversation__load_model() }}</button>
-            <div v-if="startingModel" tw-class="space-y-3" data-testid="live-model-loading"><LiveModelLoadProgress :progress="modelLoadProgress" :ready="modelLoadReady" :generation="modelLoadGeneration" /><button type="button" :disabled="changingConversation" @click="cancelModelLoading" tw-class="rounded-lg px-3 py-2 text-xs text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-cancel-model-loading">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button></div>
+            <div v-if="startingModel" tw-class="space-y-3" data-testid="live-model-loading">
+              <div v-if="acquiringDefaultModel" tw-class="max-w-sm" data-testid="live-model-download-progress">
+                <LlamaCppBrowserDownloadProgress v-if="defaultModelDownloadProgress" :progress="defaultModelDownloadProgress" appearance="welcome" activity="active" compact />
+                <p v-else role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__downloading_model() }}</p>
+              </div>
+              <LiveModelLoadProgress v-else :progress="modelLoadProgress" :ready="modelLoadReady" :generation="modelLoadGeneration" />
+              <button type="button" :disabled="changingConversation" @click="cancelModelLoading" tw-class="rounded-lg px-3 py-2 text-xs text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-cancel-model-loading">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button>
+            </div>
+            <SettingsDisclosure :title="lazyStrings.liveConversation__manage_models_and_runtime()" test-id="live-model-manager">
+              <template #icon><FolderOpenIcon tw-class="h-4 w-4" /></template>
+              <div tw-class="space-y-4"><p tw-class="text-xs leading-6 text-gray-500 dark:text-gray-400">{{ selectedEngine === 'speech' ? lazyStrings.liveConversation__speech_model_setup() : lazyStrings.liveConversation__model_setup() }}</p><LlamaCppBrowserManager presentation="embedded" model-view="local" suggestions="none" :runtime-settings="selectedEngine === 'llama' ? 'show' : 'hide'" :suspended="active || startingModel" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ value: $event })" @runtime-ready="runtimeReady = $event" /></div>
+            </SettingsDisclosure>
             <SettingsDisclosure v-if="!recognitionMode" :title="lazyStrings.liveConversation__channels_and_playback()" test-id="live-channel-settings">
               <template #icon><SlidersHorizontalIcon tw-class="h-4 w-4" /></template>
               <label v-if="speechMode" tw-class="mb-4 block text-xs">{{ lazyStrings.liveConversation__maximum_session_seconds() }}<input v-model.number="maxSeconds" type="number" min="1" max="3600" :disabled="speechRunning || filePending" tw-class="mt-2 block w-32 rounded-lg border border-gray-200 bg-transparent p-2 text-sm disabled:opacity-40 dark:border-gray-700" data-testid="live-speech-max-seconds" /></label>
@@ -1878,7 +2052,33 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p v-if="(filePending || recognitionRunning) && (!diagnostics || activeFileTask !== investigationTask)" role="status" tw-class="flex flex-wrap items-center gap-3 text-xs leading-6 text-gray-500 dark:text-gray-400" data-testid="live-investigation-background-status"><span>{{ activeFileTask === 'transcription' ? lazyStrings.liveConversation__transcribing_audio_file() : lazyStrings.liveConversation__generating_response() }}</span><button type="button" @click="activeFileTask && setInvestigationTask({ task: activeFileTask })" tw-class="rounded text-blue-600 underline dark:text-blue-400" data-testid="live-investigation-open-running">{{ activeFileTask === 'transcription' ? lazyStrings.liveConversation__audio_to_transcription() : lazyStrings.liveConversation__audio_to_response() }}</button><button type="button" @click="cancelFile" tw-class="rounded text-gray-600 underline dark:text-gray-300" data-testid="live-investigation-cancel-running">{{ lazyStrings.SHARED__cancel() }}</button></p>
         <LiveConversationDiagnostics v-if="diagnostics" ref="fileView" :file="sourceFile" :task="investigationTask" :busy="filePending || recognitionRunning || recordingActive" :blocked="sourceBlocked && !(filePending || recognitionRunning || recordingActive)" :file-input="currentInputSource === 'file' ? 'shown' : 'hidden'" :playback-blocked="recordingActive" @task="setInvestigationTask({ task: $event })" @select="selectAudioFile({ files: $event })" @clear="clearAudioFile" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })">
           <template #input-controls><LiveSpeechRecordingInput purpose="transcription" v-if="investigationTask === 'transcription'" :source="recognitionInputSource" :state="recordingState" :clip="currentRecordingSnapshot" :blocked="sourceBlocked && !recognitionRecordingActive" @source="recognitionInputSource = $event" @start="startRecognitionRecording" @stop="stopRecognitionRecording" @discard="discardRecognitionRecording" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })" /><LiveSpeechRecordingInput v-else purpose="response" :source="responseInputSource" :state="responseRecordingState" :clip="currentRecordingSnapshot" :blocked="sourceBlocked && !responseRecordingActive" @source="responseInputSource = $event" @start="startResponseRecording" @stop="responseRecording.recording.stop()" @discard="discardResponseRecording" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })" /></template>
-          <template #model><div tw-class="space-y-3 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/40"><label :for="`${id}-diagnostic-model`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__model() }}</label><ModelSelector surface="settings" :input-id="`${id}-diagnostic-model`" :model-value="modelId || undefined" :models="diagnosticModelIds" :loading="diagnosticModelsScanning || selectedEngine === 'checking'" :disabled="navigationBusy" :placeholder="lazyStrings.liveConversation__choose_model()" @update:model-value="selectModel({ value: $event })" @refresh="refreshInventory" data-testid="live-diagnostics-model" /><div tw-class="flex flex-wrap items-center gap-3"><button type="button" :disabled="!canLoadSelectedModel" @click="loadSelectedModel" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-diagnostics-load-model">{{ lazyStrings.liveConversation__load_model() }}</button><span v-if="active" data-testid="live-diagnostics-resident-model" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</span><button v-if="startingModel" type="button" @click="cancelModelLoading" data-testid="live-diagnostics-cancel-model" tw-class="rounded text-xs text-blue-600 underline dark:text-blue-400">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button></div><LiveModelLoadProgress v-if="startingModel" :progress="modelLoadProgress" :ready="modelLoadReady" :generation="modelLoadGeneration" /><p v-if="modelId && !diagnosticModelsScanning && !diagnosticSelectionSupported" role="status" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-investigation-model-mismatch">{{ investigationTask === 'transcription' ? lazyStrings.liveConversation__transcription_model_required() : lazyStrings.liveConversation__audio_file_generation_unavailable() }}</p><p v-if="modelFailure" role="alert" tw-class="whitespace-pre-wrap break-words text-xs text-red-600 dark:text-red-400" data-testid="live-diagnostics-model-failure">{{ modelFailure.details.message }}<template v-if="modelFailure.details.nativeStatus !== undefined">{{ '\n' }}{{ modelFailure.details.nativeStatus }}</template><template v-if="modelFailure.details.nativeInput !== undefined">{{ '\n' }}{{ modelFailure.details.nativeInput }}</template></p></div></template>
+          <template #model>
+            <div tw-class="space-y-3 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/40">
+              <label :for="`${id}-diagnostic-model`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__model() }}</label>
+              <ModelSelector
+                :key="investigationTask"
+                surface="settings"
+                :input-id="`${id}-diagnostic-model`"
+                :model-value="modelId || undefined"
+                :models="diagnosticModelOptions"
+                :models-label="lazyStrings.ModelSelector__models_on_this_device()"
+                :loading="diagnosticModelsScanning || inventoryRefreshing || selectedEngine === 'checking'"
+                :disabled="navigationBusy || settingsOpen"
+                :placeholder="lazyStrings.liveConversation__choose_model()"
+                data-testid="live-diagnostics-model"
+                @update:model-value="selectModel({ value: $event })"
+                @refresh="refreshInventory"
+              />
+              <div tw-class="flex flex-wrap items-center gap-3">
+                <button type="button" :disabled="!canLoadSelectedModel" @click="loadSelectedModel" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="live-diagnostics-load-model">{{ lazyStrings.liveConversation__load_model() }}</button>
+                <span v-if="active" data-testid="live-diagnostics-resident-model" tw-class="text-[11px] text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</span>
+                <button v-if="startingModel" type="button" @click="cancelModelLoading" data-testid="live-diagnostics-cancel-model" tw-class="rounded text-xs text-blue-600 underline dark:text-blue-400">{{ lazyStrings.liveConversation__cancel_model_loading() }}</button>
+              </div>
+              <LiveModelLoadProgress v-if="startingModel" :progress="modelLoadProgress" :ready="modelLoadReady" :generation="modelLoadGeneration" />
+              <p v-if="modelId && !diagnosticModelsScanning && !diagnosticSelectionSupported" role="status" tw-class="text-xs leading-6 text-amber-700 dark:text-amber-300" data-testid="live-investigation-model-mismatch">{{ investigationTask === 'transcription' ? lazyStrings.liveConversation__transcription_model_required() : lazyStrings.liveConversation__audio_file_generation_unavailable() }}</p>
+              <p v-if="modelFailure" role="alert" tw-class="whitespace-pre-wrap break-words text-xs text-red-600 dark:text-red-400" data-testid="live-diagnostics-model-failure">{{ modelFailure.details.message }}<template v-if="modelFailure.details.nativeStatus !== undefined">{{ '\n' }}{{ modelFailure.details.nativeStatus }}</template><template v-if="modelFailure.details.nativeInput !== undefined">{{ '\n' }}{{ modelFailure.details.nativeInput }}</template></p>
+            </div>
+          </template>
           <LiveSpeechResponseInvestigation v-if="investigationTask === 'response'" :file="sourceFile" :run="responseRun" :text="fileText" :results="visibleResponseResults" :comparison="visibleResponseComparison" :busy="filePending && fileTask === 'response'" :blocked="sourceBlocked && !(filePending && fileTask === 'response')" :can-generate="canGenerateFile" :unavailable="fileUnavailable" :selection-failure="fileSelectionFailure" :tail-seconds="tailSeconds" :seed="fileSeed" :input-pacing="fileInputPacing" :input-levels="fileInputLevels" :queued-samples="speechState.runtime.queuedSamples" :model-load-milliseconds="modelLoadMilliseconds" @seed="fileSeed = $event" @input-pacing="fileInputPacing = $event" @input-levels="fileInputLevels = $event" @generate="generateFile" @cancel="cancelFile" @settings="settingsOpen = true" @replay-start="replayStarted({ element: $event })" @replay-end="replayEnded({ element: $event })">
             <template #settings><div tw-class="space-y-2"><label :for="`${id}-diagnostic-language`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__conversation_language() }}</label><span tw-class="block w-full sm:max-w-xs"><SettingsFormSelect :id="`${id}-diagnostic-language`" v-model="conversationLanguage" :options="conversationLanguageOptions" :label="lazyStrings.liveConversation__conversation_language()" :disabled="sourceBlocked" :aria-describedby="`${id}-diagnostic-language-help`" data-testid="live-diagnostics-language" /></span><p :id="`${id}-diagnostic-language-help`" data-testid="live-diagnostics-language-help" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.liveConversation__conversation_language_help() }}</p></div><label tw-class="block space-y-2 text-xs font-medium text-gray-600 dark:text-gray-300"><span>{{ lazyStrings.liveConversation__instructions() }}</span><textarea v-model="instructions" :disabled="sourceBlocked" rows="2" maxlength="16384" tw-class="block w-full rounded-lg border border-gray-200 bg-transparent p-3 text-sm disabled:opacity-40 dark:border-gray-700" data-testid="live-diagnostics-instructions" /></label></template>
           </LiveSpeechResponseInvestigation>

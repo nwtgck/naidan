@@ -15,7 +15,7 @@ import { useModelSelectorHuggingFaceSearchState } from '@/composables/useModelSe
 
 type RepositorySource = 'url' | 'result';
 const props = defineProps<{ query: string, active: boolean, disabled: boolean, expandedRepository?: { repository: string, source: RepositorySource }, immediateSelection?: boolean, selectedRepository?: string, choosingRepository?: string }>();
-const emit = defineEmits<{ 'update:query': [value: string], select: [repository: string, source: RepositorySource], choose: [repository: string], search: [] }>();
+const emit = defineEmits<{ 'update:query': [value: string], select: [repository: string, source: RepositorySource, requestedVariant?: string], choose: [repository: string], search: [] }>();
 defineSlots<{ repository(): unknown, 'result-actions'({ repository }: { repository: string }): unknown }>();
 const id = useId();
 const { autoSearch, saving, saveFailed, setAutoSearch } = useHuggingFaceModelSearchPreferences();
@@ -112,7 +112,7 @@ function updateQuery({ event }: { event: Event }): void {
 }
 
 function isRepositoryInput({ query }: { query: string }): boolean {
-  return huggingFaceUrl({ input: query }) !== undefined || /^https?:\/\//i.test(query) || query.startsWith('hf.co/');
+  return huggingFaceUrl({ input: query }) !== undefined || /^https?:\/\//i.test(query) || query.startsWith('hf.co/') || /^[^/:\s]+\/[^/:\s]+:.+$/.test(query);
 }
 
 async function requestPage({ query, cursor, numParameters, automatic }: { query: string, cursor: string | undefined, numParameters: string | undefined, automatic: boolean }): Promise<void> {
@@ -174,9 +174,13 @@ async function runSearch({ automatic }: { automatic: boolean }): Promise<void> {
       return;
     }
     try {
-      const { repository } = parseRepository({ input: huggingFaceUrl({ input: query }) ?? query });
+      const { repository, requestedVariant } = parseRepository({ input: huggingFaceUrl({ input: query }) ?? query });
       status.value = resultSearch.value === undefined ? 'idle' : 'ready';
-      emit('select', repository, 'url');
+      if (requestedVariant === undefined) {
+        emit('select', repository, 'url');
+      } else {
+        emit('select', repository, 'url', requestedVariant);
+      }
     } catch {
       status.value = 'invalid-repository';
     }

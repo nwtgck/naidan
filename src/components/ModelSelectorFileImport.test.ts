@@ -40,7 +40,7 @@ it('adds usable variants from a dropped folder without choosing and reports skip
   const added: LocalModel[] = input.slice(0, 2).map(file => ({ modelId: '~user/Folder/' + file.name, size: file.size, importedAt: 1 }));
   mocks.importLocalDirectory.mockResolvedValue({ models: added, publication: { isCurrent: () => true } });
   const wrapper = mount(ModelSelectorFileImport, {
-    props: { added: [], disabled: false, selectedModelId: 'user/existing/Q8_0' },
+    props: { added: [], availableModelIds: [], disabled: false, selectedModelId: 'user/existing/Q8_0' },
   });
   using cleanup = {
     [Symbol.dispose]() {
@@ -69,7 +69,7 @@ it('adds usable variants from a dropped folder without choosing and reports skip
   expect(wrapper.get('details').text()).toContain('Broken.gguf');
   expect(wrapper.get('details').text()).toContain('Incomplete-00001-of-00002.gguf');
 
-  await wrapper.setProps({ added });
+  await wrapper.setProps({ added, availableModelIds: added.map(model => model.modelId) });
   const options = wrapper.findAll('section[aria-label="Added models"] button');
   expect(options.map(option => option.attributes('aria-label'))).toEqual(added.map(model => model.modelId));
   expect(options.map(option => option.attributes('aria-pressed'))).toEqual(['false', 'false']);

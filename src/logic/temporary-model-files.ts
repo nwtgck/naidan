@@ -67,6 +67,18 @@ export function createTemporaryModelFiles() {
   }
   return {
     register,
+    subtractFiles({ root, paths, prepare }: { root: TemporaryModelDirectory, paths: ReadonlySet<string>, prepare({ next }: { next: TemporaryModelDirectory }): void }): TemporaryModelDirectory {
+      if (roots.get(root.rootPath) !== root) {
+        throw new DOMException('The temporary folder has changed', 'NotFoundError');
+      }
+      const files = root.files.filter(file => !paths.has(file.relativePath));
+      const next = Object.freeze({ ...root, registrationRevision: ++revision, files: Object.freeze(files) });
+      // Update the owning projection before notifying observers of a new revision.
+      prepare({ next });
+      roots.set(root.rootPath, next);
+      notify({ rootPath: root.rootPath });
+      return next;
+    },
     list(): readonly TemporaryModelDirectory[] {
       return [...roots.values()];
     },

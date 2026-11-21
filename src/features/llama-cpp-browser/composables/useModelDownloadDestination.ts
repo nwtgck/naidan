@@ -7,7 +7,7 @@ import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import { useSettings } from '@/composables/useSettings';
 import { useHostModelDirectories } from '@/composables/useHostModelDirectories';
 import { getDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
-import type { ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
+import { isHostDestination, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 
 export type AuthorizedModelDestination = { destination: ModelDestination, expectedRoot: FileSystemDirectoryHandle | undefined };
 
@@ -210,13 +210,16 @@ export function useModelDownloadDestination({ blocked, changed, folderLinked }: 
     }
     }
   }
+  function captureRoot({ destination }: { destination: ModelDestination }): FileSystemDirectoryHandle | undefined {
+    return isHostDestination(destination) ? host.currentHandle({ id: destination.directoryId }) : undefined;
+  }
   async function authorize({ destination: requested }: { destination: ModelDestination }): Promise<AuthorizedModelDestination> {
     // The caller captures its root before permission UI yields. Never consult
     // the current selector after that await or fall back to browser storage.
     switch (requested.kind) {
     case 'opfs': return { destination: { kind: 'opfs' }, expectedRoot: undefined };
     case 'host': {
-      const expectedRoot = host.currentHandle({ id: requested.directoryId });
+      const expectedRoot = captureRoot({ destination: requested });
       if (!expectedRoot) {
         throw new Error('Reconnect this model directory before downloading');
       }
@@ -261,6 +264,7 @@ export function useModelDownloadDestination({ blocked, changed, folderLinked }: 
     linkedFolders: host.view,
     destination,
     unavailable,
+    captureRoot,
     authorize,
     revision,
     failure,

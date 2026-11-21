@@ -13,7 +13,7 @@ import { selectableProfiles } from '@/features/llama-cpp-browser/runtime/profile
 import { chatContextTokensSchema, defaultChatContextTokens, minimumChatContextTokens, maximumChatContextTokens, errorCode, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
 import { resolveProfilePreference, profileFeatures, type ProfileCapabilities, type ProfileState, type ProfileUnavailableReason } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 
-const props = defineProps<{ disabled: boolean, releaseDisabled: boolean }>();
+const props = defineProps<{ disabled: boolean, releaseDisabled: boolean, hideChatSettings?: boolean }>();
 const emit = defineEmits<{ runtimeReady: [ready: boolean] }>();
 const id = useId();
 const profileState = shallowRef<ProfileState>(llamaCppBrowserService.getProfileState());
@@ -254,7 +254,9 @@ onMounted(() => {
     },
   });
   void probeProfiles();
-  void loadStorageCapability();
+  if (!props.hideChatSettings) {
+    void loadStorageCapability();
+  }
 });
 onUnmounted(() => {
   disposed = true;
@@ -278,7 +280,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </SettingsSelect>
         </div>
       </div>
-      <div tw-class="grid gap-2 border-t border-gray-100 pt-4 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-4 dark:border-gray-800/70">
+      <div v-if="!hideChatSettings" tw-class="grid gap-2 border-t border-gray-100 pt-4 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-4 dark:border-gray-800/70">
         <label :for="`${id}-vision-storage`" :tw-class="['font-medium text-gray-500 dark:text-gray-400', isSettingsTypography ? 'text-sm' : 'text-[11px]']">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage() }}</label>
         <div tw-class="min-w-0 space-y-2.5">
           <SettingsSelect :id="`${id}-vision-storage`" :model-value="storageDraft" :options="storageChoices" :label="lazyStrings.LlamaCppBrowserRuntimeSettings__image_projector_bf16_storage()" :disabled="storageDisabled" surface="embedded" presentation="toolbar" size="compact" :menu-width-rem="23" data-testid="llama-cpp-browser-vision-storage" @update:model-value="editStorageDraft({ value: $event })" />
@@ -291,7 +293,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <p v-if="storageSaveFailed" role="alert" data-testid="llama-cpp-browser-vision-storage-save-failed" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__could_not_save_vision_storage() }}</p>
         </div>
       </div>
-      <div tw-class="grid gap-2 border-t border-gray-100 pt-4 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-4 dark:border-gray-800/70">
+      <div v-if="!hideChatSettings" tw-class="grid gap-2 border-t border-gray-100 pt-4 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-4 dark:border-gray-800/70">
         <label :for="`${id}-context-tokens`" :tw-class="['font-medium text-gray-500 sm:pt-2.5 dark:text-gray-400', isSettingsTypography ? 'text-sm' : 'text-[11px]']">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__context_size_tokens() }}</label>
         <div tw-class="min-w-0 space-y-2.5">
           <div tw-class="flex flex-wrap items-center gap-2">
@@ -310,6 +312,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p v-else-if="selectedFailure" role="status" data-testid="llama-cpp-browser-profile-unavailable" tw-class="text-xs text-amber-600 dark:text-amber-400">{{ lazyStrings.llamaCppBrowser__unavailable_feature({ feature: profileFeatures[selectedFailure] }) }}</p>
     <p v-else-if="profileState.status === 'error'" role="alert" tw-class="text-xs text-red-500">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     <LlamaCppBrowserModelActionButton v-if="profileState.status !== 'checking' && !runtimeReady" :disabled="false" data-testid="llama-cpp-browser-probe-profiles" @click="probeProfiles"><RefreshCcwIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />{{ lazyStrings.llamaCppBrowser__check_browser_support() }}</LlamaCppBrowserModelActionButton>
-    <div tw-class="flex flex-wrap items-start gap-3 rounded-lg border border-blue-100/70 bg-blue-50/40 p-3 dark:border-blue-500/10 dark:bg-blue-500/5"><p :tw-class="['flex min-w-0 flex-[1_1_16rem] items-start gap-2 leading-5 text-gray-500 dark:text-gray-400', isSettingsTypography ? 'text-xs' : 'text-[11px]']"><InfoIcon aria-hidden="true" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><span>{{ lazyStrings.llamaCppBrowser__image_chat_requires_matching_projector() }}</span></p><LlamaCppBrowserModelActionButton :disabled="releaseDisabled" data-testid="llama-cpp-browser-release" tw-class="ml-auto" @click="releaseRuntime"><PowerOffIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />{{ lazyStrings.llamaCppBrowser__release_runtime() }}</LlamaCppBrowserModelActionButton></div>
+    <div tw-class="flex flex-wrap items-start gap-3 rounded-lg border border-blue-100/70 bg-blue-50/40 p-3 dark:border-blue-500/10 dark:bg-blue-500/5"><p v-if="!hideChatSettings" :tw-class="['flex min-w-0 flex-[1_1_16rem] items-start gap-2 leading-5 text-gray-500 dark:text-gray-400', isSettingsTypography ? 'text-xs' : 'text-[11px]']"><InfoIcon aria-hidden="true" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><span>{{ lazyStrings.llamaCppBrowser__image_chat_requires_matching_projector() }}</span></p><LlamaCppBrowserModelActionButton :disabled="releaseDisabled" data-testid="llama-cpp-browser-release" tw-class="ml-auto" @click="releaseRuntime"><PowerOffIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />{{ lazyStrings.llamaCppBrowser__release_runtime() }}</LlamaCppBrowserModelActionButton></div>
   </section>
 </template>

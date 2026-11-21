@@ -49,7 +49,7 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
     // Ctrl/Cmd+X: cut (write operation — blocked when readOnly)
     if (isCtrlOrCmd && event.key === 'x') {
       event.preventDefault();
-      if (!ctx.readOnly && ctx.selectedEntries.length > 0) {
+      if (!ctx.readOnly && ctx.selectedEntries.length > 0 && !ctx.selectedEntries.some(entry => ctx.isDeletionOnly({ path: entry.path }))) {
         ctx.clipboardCut({ entries: ctx.selectedEntries });
       }
       return;
@@ -58,7 +58,7 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
     // Ctrl/Cmd+V: paste (write operation — blocked when readOnly)
     if (isCtrlOrCmd && event.key === 'v') {
       event.preventDefault();
-      if (!ctx.readOnly) {
+      if (!ctx.readOnly && !ctx.isDeletionOnly({ path: ctx.currentDirectoryPath })) {
         await ctx.clipboardPaste();
       }
       return;
@@ -80,7 +80,7 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
         const focused = ctx.sortedFilteredEntries.find(
           e => e.name === ctx.selectionState.focusName,
         );
-        if (focused) {
+        if (focused && !ctx.isDeletionOnly({ path: focused.path })) {
           event.preventDefault();
           ctx.startRename({ entry: focused });
         }

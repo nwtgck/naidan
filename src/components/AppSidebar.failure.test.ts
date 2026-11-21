@@ -20,7 +20,6 @@ vi.mock('@/features/workflow/components/WorkflowSidebar.vue', () => {
   failedImports();
   throw new Error('The workflow sidebar chunk is unavailable');
 });
-vi.mock('@/features/audio-generation/components/AudioGenerationSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div data-testid="audio-content" />' } }));
 
 it('keeps common controls usable after a chunk fails and retries the same feature after leaving and returning', async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -35,7 +34,8 @@ it('keeps common controls usable after a chunk fails and retries the same featur
   expect(wrapper.get('[data-testid="common-controls"]').attributes('disabled')).toBeUndefined();
   await router.push('/audio-generation');
   await flushPromises();
-  expect(wrapper.find('[data-testid="audio-content"]').exists()).toBe(true);
+  expect(wrapper.attributes('data-sidebar-target')).toBe('audio_generation');
+  expect(wrapper.find('[data-testid="sidebar-preparing"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="sidebar-load-error"]').exists()).toBe(false);
   await router.push('/workflows');
   await flushPromises();

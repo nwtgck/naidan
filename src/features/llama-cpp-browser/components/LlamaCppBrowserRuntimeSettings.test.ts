@@ -61,6 +61,17 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
+it('keeps profile and release controls on the audio screen without probing chat image options', async () => {
+  const wrapper = mount(LlamaCppBrowserRuntimeSettings, { props: { disabled: false, releaseDisabled: false, hideChatSettings: true } });
+  using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+  await flushPromises();
+  expect(wrapper.find('[data-testid="llama-cpp-browser-profile"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="llama-cpp-browser-release"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="llama-cpp-browser-context-tokens"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="llama-cpp-browser-vision-storage"]').exists()).toBe(false);
+  expect(host.storageCapability).not.toHaveBeenCalled();
+});
+
 describe('persisted chat context controls', () => {
   it('shows the default without writing an override when opened', () => {
     using view = render({ disabled: false });

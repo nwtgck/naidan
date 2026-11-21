@@ -11,7 +11,7 @@ import { areEndpointsEqual } from '@/01-models/endpoint';
 import { generateId } from '@/01-models/id';
 import { naturalSort } from '@/utils/string';
 import { promiseAllKeyed } from '@/utils/promise';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import type { ModelSelectorItem } from './model-selector-item';
 import { localRepositoryReferenceStorage } from '@/01-models/llama-cpp-browser-model-id';
 import { hasTemporaryModelPathPrefix } from '@/01-models/temporary-model-files';
@@ -403,7 +403,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const rootElement = ref<HTMLElement | null>(null);
 const aboveInputElement = ref<HTMLElement>();
 const openPopup = ref<'model' | 'attach' | 'tools'>();
-const modelSelector = ref<InstanceType<typeof ChatModelSelector>>();
+const modelSelector = ref<InstanceType<typeof ModelSelector>>();
 
 function isModelFileImportOpen(): boolean {
   return modelSelector.value?.isPanelOpen({ id: 'files' }) === true;
@@ -1713,7 +1713,7 @@ defineExpose({
             </button>
           </div>
           <div tw-class="w-max min-w-0 max-w-xs">
-            <ChatModelSelector
+            <ModelSelector
               ref="modelSelector"
               :key="idToRaw({ id: chatId })"
               surface="composer"
@@ -1736,8 +1736,8 @@ defineExpose({
               data-testid="model-override-select"
             >
               <template #panel="{ panel, active, close, popupTarget }">
-                <div v-if="panel === 'files'" data-testid="chat-model-selector-sources" tw-class="py-3">
-                  <slot name="model-files" :close="close" :refresh-inventory="refreshLocalModelInventory" />
+                <div v-if="panel === 'files'" data-testid="model-selector-sources" tw-class="py-3">
+                  <slot name="model-files" :close="close" :refresh-inventory="refreshLocalModelInventory" :available-model-ids="chatModels.availableModels.value" />
                 </div>
                 <RepositoryModelPicker
                   v-else
@@ -1767,7 +1767,7 @@ defineExpose({
                   @update:effort="updateReasoningEffort({ effort: $event })"
                 />
               </template>
-            </ChatModelSelector>
+            </ModelSelector>
           </div>
           <button
             @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"

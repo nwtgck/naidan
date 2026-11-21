@@ -13,6 +13,7 @@ import { listStoredModels, removeStoredModel } from './runtime/model-store';
 import { listHostStoredModels, recordOpfsInventoryIssue } from './runtime/host-model-store';
 import { modelMutationLockName, withModelMutationLock } from './runtime/model-mutation-lock';
 import { parseTemporaryModelReference } from './temporary-model-reference';
+import { isProjector } from './hugging-face/model-variants';
 import type { DeletionPlan, DeletionResult } from './runtime/deletion-plan';
 import { errorCode as importErrorCode, LlamaCppBrowserError, modelDirectoryInputSchema, modelsSchema, type LocalModel, type ModelDirectoryInput, type Progress } from './types';
 
@@ -259,8 +260,12 @@ export function saveLocalRepository({ source }: { source: LocalRepositorySource 
         saving.copy = undefined;
       }
       if (!saving.copy) {
+        // File Explorer may have removed a shard. Keep its remaining files
+        // browsable in memory and publish only complete model variants.
+        const weights = new Set(source.configurations.flatMap(configuration => configuration.directory.files.map(file => file.relativePath)));
+        const files = source.root.files.filter(file => weights.has(file.relativePath) || isProjector({ path: file.relativePath }) || !/\.gguf$/i.test(file.relativePath));
         await importCapturedModelRepository({
-          directory: { rootName: source.rootName, files: [...source.root.files] },
+          directory: { rootName: source.rootName, files },
           signal: controller.signal,
           onProgress: ({ progress }) => {
             saving.state = { ...saving.state, progress };
@@ -361,6 +366,11 @@ export function cancelLocalRepositorySave({ source }: { source: LocalRepositoryS
 
 export const llamaCppBrowserModelFiles = {
   listModelEntries,
+  async inspectModelFiles({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<ResolvedModel> {
+    await validateStoredPublications({ signal, modelId });
+    return resolveModel({ modelId, signal });
+  },
+  notifyFilesChanged: notifyModels,
   /** Capture the selected files without starting an inference engine. File
    * snapshots retain their identity independently of later inventory edits. */
   async captureModelFiles({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<{ primaryRelativePath: string, files: { relativePath: string, file: File }[] }> {

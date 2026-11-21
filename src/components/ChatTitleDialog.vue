@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { XIcon, SparklesIcon, SquareIcon } from 'lucide-vue-next';
-import ModelSelector from './ModelSelector.vue';
+import DefaultChatModelSelector from './DefaultChatModelSelector.vue';
 import type { Endpoint } from '@/01-models/types';
 import CspLmEndpointHint from '@/features/lm/components/CspLmEndpointHint.vue';
 import { UNTITLED_CHAT_TITLE } from '@/constants';
@@ -19,6 +19,8 @@ const props = defineProps<{
   generatingTitle: boolean,
   fetchingModels: boolean,
   endpoint: Endpoint | undefined,
+  modelEndpointType: Endpoint['type'] | undefined,
+  refreshModels: () => Promise<void>,
 }>();
 
 const emit = defineEmits<{
@@ -26,7 +28,6 @@ const emit = defineEmits<{
   (e: 'save-title', title: string): void,
   (e: 'generate-title', modelId: string | undefined): void,
   (e: 'abort-title'): void,
-  (e: 'refresh-models'): void,
 }>();
 
 const titleInput = ref('');
@@ -99,6 +100,10 @@ watch(
 
 function emitGenerateTitle() {
   emit('generate-title', selectedTitleModelDraft.value);
+}
+
+function selectTitleModel({ modelId }: { modelId: string | undefined }): void {
+  selectedTitleModelDraft.value = modelId;
 }
 
 function selectGeneratedTitle({ title }: { title: string }) {
@@ -251,15 +256,20 @@ defineExpose({
 
                 <div tw-class="space-y-2">
                   <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</label>
-                  <ModelSelector
-                    v-model="selectedTitleModelDraft"
-                    :models="availableModels"
+                  <!-- Using the chat model can switch the title endpoint even when the browser supplies the current model. -->
+                  <DefaultChatModelSelector
+                    surface="settings"
+                    model-selection="available"
+                    :model-value="selectedTitleModelDraft"
+                    :model-ids="availableModels"
+                    :endpoint-type="modelEndpointType"
                     :loading="fetchingModels"
-                    :allow-clear="true"
+                    allow-clear
                     :clear-label="lazyStrings.ChatTitleDialog__use_chat_model()"
                     :placeholder="lazyStrings.ChatTitleDialog__use_chat_model()"
+                    :select-model="selectTitleModel"
+                    :refresh-models="refreshModels"
                     data-testid="chat-title-model-select"
-                    @refresh="emit('refresh-models')"
                   />
                 </div>
               </div>

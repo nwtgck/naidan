@@ -1199,6 +1199,7 @@ export function useAudioTranscriptionModels({ preference }: { preference: { mode
   return {
     models,
     pickerModels,
+    storedModelIds: computed(() => [...stored.value.map(model => model.modelId), ...unverifiedStored.value.map(({ model }) => model.modelId)]),
     selectedId: readonly(selectedId),
     selectedModelId,
     select,

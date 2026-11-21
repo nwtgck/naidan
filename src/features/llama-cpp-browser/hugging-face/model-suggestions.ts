@@ -27,6 +27,7 @@ export type SuggestedQuantization = {
   approximateMultimodalBytes: number | undefined,
   suggestedMemoryGiB: number,
   suggestedMultimodalMemoryGiB: number | undefined,
+  companionFiles?: readonly SuggestedProjector[],
 };
 export type ModelSuggestion = {
   // Some pipelines require a companion even for text-only inputs (e.g. TTS).

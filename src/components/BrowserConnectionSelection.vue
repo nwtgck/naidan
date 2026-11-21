@@ -13,7 +13,7 @@ import { useSettings } from '@/composables/useSettings';
 import { modelConnectionApiKey, withModelConnectionApiKey } from '@/logic/model-connection';
 import { lazyStrings } from '@/strings';
 import LanguageSelector from './LanguageSelector.vue';
-import ModelSelector from './ModelSelector.vue';
+import DefaultChatModelSelector from './DefaultChatModelSelector.vue';
 import EndpointPresetButtons from './EndpointPresetButtons.vue';
 import HttpHeadersEditor from './HttpHeadersEditor.vue';
 import SettingsCollapse from './SettingsCollapse.vue';
@@ -60,6 +60,11 @@ const modelList = useModelConnectionSelection({
   headers: httpHeaders,
   getFakeLmDebugModeStatus: () => settings.value.experimental?.fakeLm ?? 'disabled',
 });
+
+function selectModel({ modelId }: { modelId: string | undefined }): void {
+  modelList.modelId.value = modelId;
+}
+
 const modelListError = computed(() => {
   const state = modelList.state.value;
   switch (state.status) {
@@ -340,7 +345,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <!-- Explicit draft models never refresh the saved global connection. -->
               <div tw-class="space-y-2">
                 <div tw-class="flex items-center justify-between gap-3"><label for="model-connection-model" tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.BrowserConnectionSelection__model() }}</label><button type="button" data-testid="connection-fetch-models" :disabled="disabled || modelList.state.value.status === 'loading'" tw-class="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-wait disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-500/10" @click="modelList.refresh"><Loader2Icon v-if="modelList.state.value.status === 'loading'" aria-hidden="true" tw-class="h-3.5 w-3.5 animate-spin" />{{ lazyStrings.BrowserConnectionSelection__fetch_models() }}</button></div>
-                <ModelSelector class="connection-model-selector" v-model="modelList.modelId.value" input-id="model-connection-model" surface="settings" popup-presentation="inline" :models="modelList.models.value" :loading="modelList.state.value.status === 'loading'" :disabled="disabled" :placeholder="lazyStrings.BrowserConnectionSelection__choose_model()" @refresh="modelList.refresh" />
+                <DefaultChatModelSelector
+                  class="connection-model-selector"
+                  input-id="model-connection-model"
+                  surface="settings"
+                  popup-presentation="inline"
+                  :model-value="modelList.modelId.value"
+                  :model-ids="modelList.models.value"
+                  :endpoint-type="endpoint"
+                  :loading="modelList.state.value.status === 'loading'"
+                  :disabled="disabled"
+                  :placeholder="lazyStrings.BrowserConnectionSelection__choose_model()"
+                  :refresh-models="modelList.refresh"
+                  :select-model="selectModel"
+                />
                 <p v-if="modelListError" role="alert" data-testid="connection-model-list-error" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ modelListError }}</p>
                 <CspLmEndpointHint activity-for-display-only="model-list" :fake-lm-debug-mode-status="undefined" v-if="modelList.state.value.status === 'failed' && modelList.state.value.reason === 'request'" :endpoint="modelList.endpoint.value" operation="models" presentation="error" />
               </div>

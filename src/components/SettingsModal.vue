@@ -434,6 +434,7 @@ defineExpose({
               <RecipeImportTab
                 v-if="activeTab === 'recipes'"
                 :available-models="availableModels"
+                :model-availability="settings.endpoint.type === 'llama_cpp_browser' ? 'local' : 'remote'"
                 @import="handleImportRecipes({ recipes: $event })"
                 @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
               />

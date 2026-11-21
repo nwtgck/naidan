@@ -307,7 +307,6 @@ describe('production entry module boundaries', () => {
       'src/features/translation/components/TranslationSidebar.vue',
       'src/features/workflow/components/WorkflowSidebar.vue',
       'src/features/workflow/components/WorkflowSidebarActions.vue',
-      'src/features/audio-generation/components/AudioGenerationSidebar.vue',
       'src/components/DeveloperToolsSidebar.vue',
     ];
     for (const target of deferredBodies) {
@@ -316,6 +315,7 @@ describe('production entry module boundaries', () => {
       expect(paths.has(target), paths.get(target)?.join(' -> ')).toBe(false);
     }
     for (const target of [
+      'src/features/audio-generation/AudioGenerationView.vue',
       'src/features/image-generation/components/ImageGenerationWorkspace.vue',
       'src/features/live-conversation/components/LiveConversationView.vue',
       'src/features/translation/components/TranslationWorkspace.vue',

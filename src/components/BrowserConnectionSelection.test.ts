@@ -133,10 +133,24 @@ describe('browser model connection selection', () => {
     await wrapper.get('#model-connection-url').setValue('https://example.invalid/v1/');
     await wrapper.get('[data-testid="connection-fetch-models"]').trigger('click');
     await flushPromises();
-    expect(wrapper.getComponent(ModelSelector).props('models')).toEqual(['model-a', 'model-b']);
-    expect(wrapper.getComponent(ModelSelector).props('modelValue')).toBe('model-a');
+    const trigger = wrapper.get('#model-connection-model');
+    expect(trigger.text()).toBe('model-a');
+    await trigger.trigger('click');
+    const popup = wrapper.get('[data-testid="model-selector-dropdown"]');
+    expect(popup.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'))).toEqual(['model-a', 'model-b']);
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    expect(mocks.loadLmProvider).toHaveBeenCalledTimes(2);
+    expect(mocks.loadLmProvider).toHaveBeenLastCalledWith({ endpoint: { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: undefined }, fakeLmDebugModeStatus: 'disabled' });
+    const filter = popup.get('[data-testid="model-selector-filter"]');
+    await filter.setValue('modelb');
+    expect(popup.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'))).toEqual(['model-b']);
+    await filter.setValue('');
+    await filter.trigger('keydown', { key: 'ArrowDown' });
+    await filter.trigger('keydown', { key: 'Enter' });
+    expect(trigger.text()).toBe('model-b');
+    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
     expect(apply).not.toHaveBeenCalled();
-    wrapper.getComponent(ModelSelector).vm.$emit('update:modelValue', 'model-b');
     await wrapper.get('[data-testid="connection-submit"]').trigger('click');
     expect(apply).toHaveBeenCalledExactlyOnceWith({ endpoint: { type: 'openai', url: 'https://example.invalid/v1', httpHeaders: undefined }, modelId: 'model-b' });
     expect(mocks.globalFetch).not.toHaveBeenCalled();
@@ -195,13 +209,13 @@ describe('browser model connection selection', () => {
   it('keeps API form controls mounted while presets change type and URL', async () => {
     const wrapper = renderConnection({ initialEndpoint: 'openai', applySelection: vi.fn().mockResolvedValue(undefined) });
     const input = wrapper.get('#model-connection-url').element;
-    const selector = wrapper.getComponent(ModelSelector).element;
+    const selector = wrapper.get('#model-connection-model').element;
     await wrapper.get('[data-testid="connection-preset-lm-studio--local-"]').trigger('click');
     expect(wrapper.get<HTMLInputElement>('#model-connection-url').element.value).toBe('http://localhost:1234/v1');
     await wrapper.get('[data-testid="connection-preset-ollama--local-"]').trigger('click');
     expect(wrapper.get<HTMLInputElement>('#model-connection-url').element.value).toBe('http://localhost:11434');
     expect(wrapper.get('#model-connection-url').element).toBe(input);
-    expect(wrapper.getComponent(ModelSelector).element).toBe(selector);
+    expect(wrapper.get('#model-connection-model').element).toBe(selector);
   });
 
   it('links the optional API-key control and the header editor without clearing a collapsed key', async () => {
@@ -244,14 +258,14 @@ describe('browser model connection selection', () => {
     await flushPromises();
     await wrapper.get('[data-testid="connection-submit"]').trigger('click');
     expect(wrapper.get('[data-testid="model-connection-back"]').attributes('disabled')).toBeDefined();
-    expect(wrapper.getComponent(ModelSelector).props('disabled')).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('#model-connection-model').element.disabled).toBe(true);
     pending.reject(new Error('save failed: secret'));
     await flushPromises();
     expect(wrapper.get('[data-testid="connection-save-error"]').text()).toContain('Could not save');
     expect(wrapper.get('[data-testid="connection-save-error"]').text()).not.toContain('secret');
     expect(wrapper.get<HTMLInputElement>('#model-connection-url').element.value).toBe('https://example.invalid/v1');
     expect(wrapper.get<HTMLInputElement>('#model-connection-key').element.value).toBe('secret');
-    expect(wrapper.getComponent(ModelSelector).props('modelValue')).toBe('model-a');
+    expect(wrapper.get('#model-connection-model').text()).toBe('model-a');
     await wrapper.get('[data-testid="connection-submit"]').trigger('click');
     expect(apply).toHaveBeenCalledTimes(2);
   });
@@ -397,5 +411,28 @@ describe('browser model connection selection', () => {
     expect(escaped).not.toHaveBeenCalled();
     await trigger.trigger('keydown', { key: 'Escape' });
     expect(escaped).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the model picker in the scrollable form and lets the modal handle Tab', async () => {
+    const wrapper = renderConnection({ initialEndpoint: 'openai', applySelection: vi.fn().mockResolvedValue(undefined) });
+    const trigger = wrapper.get('#model-connection-model');
+    await trigger.trigger('keydown', { key: 'ArrowDown' });
+    const fields = wrapper.get('[data-testid="model-connection-fields"]');
+    const popup = fields.get('[data-testid="model-selector-dropdown"]');
+    const filter = popup.get('[data-testid="model-selector-filter"]');
+    expect(trigger.attributes('aria-controls')).toBe(popup.attributes('id'));
+    expect(document.activeElement).toBe(filter.element);
+
+    const keydown = vi.fn<(event: Event) => void>();
+    wrapper.element.addEventListener('keydown', keydown);
+    await filter.trigger('keydown', { key: 'Tab' });
+    expect(keydown).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key: 'Tab', defaultPrevented: false }));
+    expect(fields.find('[data-testid="model-selector-dropdown"]').exists()).toBe(true);
+    await filter.trigger('keydown', { key: 'Escape' });
+    expect(keydown).toHaveBeenCalledTimes(1);
+    expect(fields.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+    await trigger.trigger('keydown', { key: 'Escape' });
+    expect(keydown).toHaveBeenLastCalledWith(expect.objectContaining({ key: 'Escape', defaultPrevented: false }));
   });
 });

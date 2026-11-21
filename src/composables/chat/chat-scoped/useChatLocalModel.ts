@@ -1,5 +1,5 @@
 import { computed, onScopeDispose, shallowReactive, shallowRef, watch, type Ref } from 'vue';
-import type { RepositoryModelSource } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
+import type { RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import type { ChatId } from '@/01-models/ids';
 import type { SettingsTitleGeneration } from '@/01-models/types';
 import { cloneModelLaunchTarget, type ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
@@ -19,13 +19,7 @@ import { retainLocalRepositorySource } from '@/features/llama-cpp-browser/local-
 import { isPendingLocalModelReference } from '@/features/llama-cpp-browser/local-repository-reference';
 
 export type { ChatLocalModelOperation } from './chat-local-model-input';
-export type ChatRepositoryModelSelection = {
-  modelId: string,
-  source: RepositoryModelSource,
-  defaultDownloadKey?: string,
-  destination: DownloadDestination,
-  authorizeDestination: AuthorizeModelLaunchDestination | undefined,
-};
+export type ChatRepositoryModelSelection = RepositoryModelSelection;
 
 let sequence = 0;
 const downloadQueue = shallowRef<ReturnType<typeof getDownloadQueue>>();

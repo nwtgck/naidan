@@ -1695,10 +1695,6 @@ async function fetchTitleDialogModels(): Promise<void> {
   }
 }
 
-async function handleRefreshModels() {
-  await fetchTitleDialogModels();
-}
-
 watch(
   () => [showTitleDialog.value, activeTitleEndpoint.value] as const,
   ([isOpen]) => {
@@ -1951,6 +1947,8 @@ watch(
       :available-models="titleDialogAvailableModels"
       :selected-title-model="activeTitleModelId"
       :endpoint="activeTitleEndpoint"
+      :model-endpoint-type="(activeTitleEndpoint ?? resolvedSettings?.endpoint)?.type"
+      :refresh-models="fetchTitleDialogModels"
       :title-model-source="activeTitleModelSource"
       :generated-titles="generatedTitleHistory"
       :generating-title="isGeneratingTitle"
@@ -1959,7 +1957,6 @@ watch(
       @save-title="title => handleSaveTitle({ title })"
       @generate-title="modelId => handleGenerateTitle({ modelId })"
       @abort-title="handleAbortTitleGeneration()"
-      @refresh-models="handleRefreshModels()"
     />
 
     <!-- History Manipulation Modal -->
@@ -2255,8 +2252,8 @@ watch(
       @sent="clearTargetMessageQuery"
       @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
     >
-      <template #model-files="{ close, refreshInventory }">
-        <ModelSelectorFileImport v-model:added="addedChatModels" :selected-model-id="deferredRepositoryModel?.selection.modelId ?? resolvedSettings?.modelId" :disabled="isChatStreaming" @choose="model => { chooseStoredSelectorModel({ model }); close(); }" @inventory-changed="refreshInventory()" />
+      <template #model-files="{ close, refreshInventory, availableModelIds }">
+        <ModelSelectorFileImport v-model:added="addedChatModels" :available-model-ids="availableModelIds" :selected-model-id="deferredRepositoryModel?.selection.modelId ?? resolvedSettings?.modelId" :disabled="isChatStreaming" @choose="model => { chooseStoredSelectorModel({ model }); close(); }" @inventory-changed="refreshInventory()" />
       </template>
       <template #above-input>
         <ChatApprovalPanel

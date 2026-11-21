@@ -9,9 +9,11 @@ remains user-controlled; there is no automatic streaming player or autoplay.
 ## Layout and form behavior
 
 Only this view owns an absolute, vertically scrollable viewport inside the
-existing relative main layout slot. The expanded model manager has a separate
-bounded scroll area. Do not change global body overflow or the common layout to
-fix this screen. `novalidate` is intentional: browser validation cannot focus an
+existing relative main layout slot. The input card keeps the text field, model,
+language, and generation controls together. Reference audio and settings open
+below the card and close when a valid request starts. Results follow the form.
+The sidebar uses the common app controls. Previously linked section hashes
+still focus and scroll to the appropriate part of this page. `novalidate` is intentional: browser validation cannot focus an
 invalid input inside closed details. Zod validation instead renders a visible
 summary, opens the field's ancestor details, focuses it, and adds inline range
 information / aria-invalid. The worker validates again at its boundary.
@@ -147,38 +149,27 @@ Users can save WAVs or explicitly delete results to reclaim their owned data.
 
 ## Model controls and reusable composition
 
-The page's native `details` element is the disclosure and scroll boundary only.
-`LlamaCppBrowserManager` coordinates the inventory, removals, subscriptions, and
-child controls; it is not a second settings modal. Repository inspection already
-lives in `LlamaCppBrowserHuggingFaceManager`, and the chat recommendation catalog
-remains in its existing components. Device file/folder import and runtime settings
-are independent `LlamaCppBrowserModelImport` and `LlamaCppBrowserRuntimeSettings`
-components. Preserve settings-modal behavior when composing them elsewhere.
+The generation form's picker offers the audio catalog, local models, Hugging Face,
+and file or directory import. The model name and source appear on separate lines
+and selection preserves the readable model ID. Audio metadata guides the local
+filter and default selection. The saved-model panel also lets users select any
+local model manually. Refreshing the list only reads local storage. When the
+inventory has no recognized audio model, the bundled 0.6B Q4_K_M configuration
+becomes the initial selection. Generate authorizes a missing model's download
+to the displayed destination. Cancelling generation stops the view from
+waiting for the shared download. The download remains in the download manager.
 
-The audio catalog now uses the original `LlamaCppBrowserModelSuggestions` and
-`LlamaCppBrowserModelSuggestion` UI, outside the model/runtime `details`. Its
-custom disclosure has independent state and inert collapsed contents. The shared
-component accepts optional bundled entries and a local-selection action; settings
-continues to use the original chat catalog and default-model action. The older
-repository-link-only catalog is no longer used on this page.
+Catalog hints include reviewed companion files and rounded sizes. Inspecting
+the live configuration or starting a download resolves the actual repository
+files at a specific revision. Browsing the bundled hints never initiates a
+request. Both the bundled rows and Hugging Face results require a companion for
+the known audio repositories. A main model without its companion remains visible
+in the local inventory but cannot satisfy those repository configurations.
 
-The two Qwen entries use existing explicit Check/Download handlers, the metadata
-session, download queue, pinned plans, and local storage checks. Mounting,
-folding, unfolding, details, quantization changes, and local-inventory refreshes
-never authorize repository requests. There are no remote icons or eager hints.
-Required audio companions are included in resolved plans and cannot be toggled
-off; ambiguous/missing companions fail instead of downloading only the talker.
-File sizes are rounded editorial hints from the repositories, not identities.
-Audio hides the text-catalog memory filter, which is not a TTS runtime guarantee.
-
-Audio choices use the shared `ModelSelector` with the readable `modelId` as both
-the selection value and displayed text. Detection status is shown separately.
-The same `modelId` is inspected, submitted to generation, and captured in history;
-file paths and host registration IDs are resolved separately. Refresh explicitly
-reloads the local inventory; it must not fetch an unrelated chat provider.
-Candidate filtering, the all-models escape hatch, and user-selection preservation
-are unchanged. A temporary reference denotes the current registration and can
-become unresolved after removal or page reload.
+Runtime controls have their own disclosure. Its model-management button opens
+the llama.cpp browser settings, where users can remove models or reconnect
+folders. The generation page subscribes to file changes independently of
+the settings disclosure.
 
 ## Recovery after runtime errors
 

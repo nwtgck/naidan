@@ -89,7 +89,6 @@ vi.mock('@/features/workflow/components/WorkflowSidebar.vue', () => {
   return { __esModule: true, __isTeleport: false, default: { template: '<section data-testid="workflow-sidebar" />' } };
 });
 vi.mock('@/features/workflow/components/WorkflowSidebarActions.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], template: '<button data-testid="workflow-action">new workflow</button>' } }));
-vi.mock('@/features/audio-generation/components/AudioGenerationSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], template: '<section data-testid="audio-sidebar" />' } }));
 vi.mock('@/features/audio-transcription/components/AudioTranscriptionSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], template: '<section data-testid="transcription-sidebar" />' } }));
 vi.mock('@/components/DeveloperToolsSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { props: ['expanded'], emits: ['openModelSupportInvestigation'], template: '<section data-testid="developer-sidebar"><button data-testid="investigate" @click="$emit(\'openModelSupportInvestigation\', $event.currentTarget)">investigate</button></section>' } }));
 
@@ -287,7 +286,8 @@ it('preserves image drafts and common menus across nested navigation and confirm
   stopNavigation();
   await router.push('/audio-generation');
   await flushPromises();
-  expect(wrapper.find('[data-testid="audio-sidebar"]').exists()).toBe(true);
+  expect(wrapper.attributes('data-sidebar-target')).toBe('audio_generation');
+  expect(wrapper.find('[data-testid="image-sidebar"]').exists()).toBe(false);
   expect(wrapper.get('[data-testid="open-launcher"]').element).toBe(launcher);
   expect(wrapper.find('[data-testid="quick-access"]').exists()).toBe(true);
 });
@@ -310,7 +310,6 @@ it.each([true, false])('returns to the most recent remaining chat with expanded=
 });
 
 it.each([
-  ['/audio-generation', 'audio-sidebar'],
   ['/debug/standalone', 'developer-sidebar'],
   ['/workflows/runs', 'workflow-sidebar'],
   ['/audio-transcription', 'transcription-sidebar'],
@@ -322,6 +321,24 @@ it.each([
   expect(wrapper.find('[data-testid="sidebar-preparing"]').exists()).toBe(false);
   expect(wrapper.find(`[data-testid="${testId}"]`).exists()).toBe(true);
   expect(wrapper.find('[data-testid="sidebar-footer"]').exists()).toBe(true);
+});
+
+it('keeps common navigation available without a feature heading or page-section links on audio generation', async () => {
+  const { wrapper, router } = await mountSidebar({ path: '/audio-generation?settings=developer', activation: 'inactive' });
+  const launcher = wrapper.get('[data-testid="open-launcher"]').element;
+  expect(wrapper.attributes('data-sidebar-target')).toBe('audio_generation');
+  expect(wrapper.find('[data-testid="sidebar-primary"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="sidebar-preparing"]').exists()).toBe(false);
+
+  await wrapper.setProps({ postStartupFeatures: 'active' });
+  expect(wrapper.find('[data-testid="sidebar-primary"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="sidebar-toggle"]').trigger('click');
+  expect(wrapper.find('[data-testid="chat-sidebar"]').exists()).toBe(false);
+  expect(wrapper.find('[data-testid="sidebar-preparing"]').exists()).toBe(false);
+  expect(wrapper.findAll('a[href*="#audio-generation-"]')).toHaveLength(0);
+  expect(wrapper.get('[data-testid="open-launcher"]').element).toBe(launcher);
+  expect(wrapper.get('[data-testid="sidebar-back"]').attributes('href')).toBe('/');
+  expect(router.currentRoute.value.fullPath).toBe('/audio-generation?settings=developer');
 });
 
 it('opens global settings with the same trigger and preserves error feedback and Quick Access', async () => {

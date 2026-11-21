@@ -1,1 +1,1 @@
-export const liveConversation__live_conversation = (): string => 'ライブ対話';
+export const liveConversation__live_conversation = (): string => 'ライブ会話';

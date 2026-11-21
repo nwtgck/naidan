@@ -13,6 +13,7 @@ import { workflowValueScopeKey } from '@/features/workflow/composables/value-con
 import { emptyWorkflowTypeScope } from '@/features/workflow/logic/value-types';
 import { newWorkflowValueInput } from '@/features/workflow/logic/value-inputs';
 import ModelSelector from '@/components/ModelSelector.vue';
+import type { ModelSelectorItem } from '@/components/model-selector-item';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import ToggleSwitch from '@/components/ToggleSwitch.vue';
 import WorkflowValueEditor from './WorkflowValueEditor.vue';
@@ -29,7 +30,12 @@ const parameterValueModes = ref(new Set<keyof WorkflowAudioParameters>());
 const loading = ref(false), failed = ref(false);
 const candidates = useAudioModels({ inspect: async ({ modelId, signal }) => (await import('@/features/audio-generation/model-detection')).inspectStoredAudioModel({ modelId, signal }) });
 const selectedModelId = computed(() => props.step.modelId.type === 'literal' && typeof props.step.modelId.value === 'string' ? props.step.modelId.value : '');
-const models = computed(() => candidates.visibleModels.value.map(entry => entry.modelId));
+const modelOptions = computed<ModelSelectorItem[]>(() => candidates.visibleModels.value.map(({ modelId }) => ({
+  id: modelId,
+  label: modelId,
+  description: undefined,
+  availability: 'local',
+})));
 const languages = computed(() => [{ value: 'default', label: lazyStrings.audioGeneration__model_default() }, ...audioLanguageOptions({ locale: currentLocale.value })]);
 const backends = computed(() => [{ value: 'profile', label: lazyStrings.audioGeneration__runtime_audio() }, { value: 'cpu', label: lazyStrings.audioGeneration__cpu_audio() }]);
 let controller: AbortController | undefined;
@@ -145,7 +151,18 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
       <WorkflowValueEditor v-if="modelValueMode || step.modelId.type !== 'literal'" :value="step.modelId" :steps="steps" :disabled="disabled" expected="text" @change="emit('change', { ...step, modelId: $event })" />
       <template v-else>
-        <ModelSelector :model-value="selectedModelId" :models="models" :loading="loading || candidates.scanState.value === 'scanning'" :disabled="locked" surface="settings" @update:model-value="chooseModel({ modelId: $event })" @update:open="opened({ open: $event })" @refresh="refresh" data-testid="workflow-audio-model-selector" />
+        <ModelSelector
+          data-testid="workflow-audio-model-selector"
+          surface="settings"
+          :model-value="selectedModelId || undefined"
+          :models="modelOptions"
+          :models-label="lazyStrings.ModelSelector__models_on_this_device()"
+          :loading="loading || candidates.scanState.value === 'scanning'"
+          :disabled="locked"
+          @update:model-value="chooseModel({ modelId: $event })"
+          @update:open="opened({ open: $event })"
+          @refresh="refresh"
+        />
         <input :value="selectedModelId" :disabled="locked" :aria-label="lazyStrings.workflow__model_id()" @input="typeModel({ modelId: workflowInputText({ event: $event }) })" @change="confirmModel({ modelId: workflowInputText({ event: $event }) })" spellcheck="false" data-testid="workflow-audio-model-id" tw-class="w-full min-w-0 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-40" />
         <label tw-class="flex items-center gap-2 text-xs text-gray-500"><ToggleSwitch><input type="checkbox" :checked="candidates.scope.value === 'all'" :disabled="locked" @change="candidates.scope.value = candidates.scope.value === 'all' ? 'detected' : 'all'" /></ToggleSwitch>{{ lazyStrings.audioGeneration__show_all_llama_cpp_browser_models() }}</label>
         <p v-if="failed" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.workflow__model_candidates_failed() }}</p>
