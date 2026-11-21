@@ -162,7 +162,7 @@ describe('Sidebar Group Overrides', () => {
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
-    'ModelSelector': true,
+    'ChatModelSelector': true,
   };
 
   beforeEach(() => {

@@ -90,8 +90,8 @@ describe('Sidebar Transformers.js Support', () => {
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
-    'ModelSelector': {
-      name: 'ModelSelector',
+    'ChatModelSelector': {
+      name: 'ChatModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue"><slot name="trigger-label" />{{ modelValue }}</div>',
       props: ['modelValue', 'models', 'loading'],
     },
@@ -139,7 +139,7 @@ describe('Sidebar Transformers.js Support', () => {
     });
     await nextTick();
 
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
     await selector.vm.$emit('update:modelValue', 'model-2');
 
     expect(mockUpdateGlobalModel).toHaveBeenCalledWith({ modelId: 'model-2' });

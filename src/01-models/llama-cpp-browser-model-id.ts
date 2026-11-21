@@ -101,9 +101,51 @@ export function variantLabel({ repository, path }: { repository: string, path: s
   return [...parts, stem].join('/');
 }
 
+function comparableModelName({ name, owner }: { name: string, owner: string }): string {
+  let modelName = name.toLowerCase();
+  const publisher = owner.toLowerCase();
+  if (modelName.startsWith(publisher + '-') || modelName.startsWith(publisher + '_')) {
+    modelName = modelName.slice(publisher.length + 1);
+  }
+  return modelName.replace(/[-_]\d+(?:\.\d+)?gi?b$/, '').replace(/[-_]/g, '');
+}
+
+function compactRepositoryVariant({ repository, path, label }: { repository: string, path: string, label: string }): string {
+  const [owner = '', repoName] = repository.split('/');
+  if (repoName === undefined) {
+    return label;
+  }
+  const slash = label.lastIndexOf('/');
+  const directory = label.slice(0, slash + 1);
+  const variant = label.slice(slash + 1);
+  // These annotations repeat information already present in the quantization.
+  const compactVariant = variant
+    .replace(/^Unsloth[-_](?=UD[-_])/i, '')
+    .replace(/^KQuant[-_]\d+(?:\.\d+)?Gi?B[-_](?=Q[1-8]_K(?:_|$))/i, '');
+  if (compactVariant !== variant) {
+    return directory + compactVariant;
+  }
+  const stem = path.slice(path.lastIndexOf('/') + 1).replace(/(?:-\d{5}-of-\d{5})?\.gguf$/i, '');
+  const quantization = /[-_.]((?:(?:UD|QAD|QAT)[-_])?(?:(?:I?Q|PQ|P?TQ)[1-8](?:_[A-Z0-9]+)+|(?:MXFP|NVFP)[0-9]+|BF16|F16|F32))$/i.exec(stem);
+  if (quantization === null) {
+    return label;
+  }
+  const fileModelName = stem.slice(0, quantization.index);
+  const repositoryName = repoName.replace(/[-_.]gguf$/i, '');
+  const comparableRepository = comparableModelName({ name: repositoryName, owner });
+  const matches = ({ name }: { name: string }) => comparableModelName({ name, owner }) === comparableRepository;
+  // A file can spell out a parameter count that its repository leaves implicit.
+  // Compare the full names first and retain explicitly different model sizes.
+  const parameterCount = /[-_]\d+(?:\.\d+)?[MB](?=[-_]|$)/i;
+  const nameMatches = matches({ name: fileModelName })
+    || (!parameterCount.test(repositoryName) && matches({ name: fileModelName.replace(parameterCount, '') }));
+  return nameMatches ? directory + quantization[1]! : label;
+}
+
 /** Split files form one model; their count is not part of its public modelId variant. */
 export function modelVariantName({ repository, path }: { repository: string, path: string }): string {
-  const name = variantLabel({ repository, path });
+  const label = variantLabel({ repository, path });
+  const name = compactRepositoryVariant({ repository, path, label });
   // Degenerate stems such as '.gguf' must still have a routable selector.
   return name.split('/').every(name => isModelSourceSegment({ name })) ? name : path;
 }
@@ -144,24 +186,25 @@ export function matchingRepositoryModelVariants<Model extends { primaryFile: { r
   return variant === undefined ? models : models.filter(model => modelVariantName({ repository, path: model.primaryFile.relativePath }) === variant);
 }
 
-function splitModelIdVariant({ modelId }: { modelId: string }): { address: string, variant: string | undefined, configuration: RepositoryModelConfiguration | undefined } {
-  const { baseId, configuration } = splitRepositoryModelId({ modelId });
-  const separator = baseId.indexOf(':');
-  return { address: separator === -1 ? baseId : baseId.slice(0, separator), variant: separator === -1 ? undefined : baseId.slice(separator + 1), configuration };
+function splitModelIdVariant({ modelId }: { modelId: string }): { address: string, variant: string | undefined } {
+  const colon = modelId.indexOf(':');
+  return { address: colon === -1 ? modelId : modelId.slice(0, colon), variant: colon === -1 ? undefined : modelId.slice(colon + 1) };
 }
 
 export function splitModelIdDisplay({ modelId }: { modelId: string }): { source: string, name: string, variant: string | undefined } {
-  // Split the variant off first. The last slash on the left separates the
-  // source from the displayed name. Slashes in a variant belong to its path.
+  // Users read and copy model IDs. Display everything after the first colon
+  // verbatim so the option matches the copied ID. Keep IDs concise and
+  // unambiguous where they are created. Breaking changes can invalidate saved
+  // selections and require explicit approval from the Naidan repository owner.
   const { address, variant } = splitModelIdVariant({ modelId });
   const slash = address.lastIndexOf('/');
   return { source: address.slice(0, slash + 1), name: address.slice(slash + 1), variant };
 }
 
 export function parseRepositoryModelId({ modelId }: { modelId: string }): {
-  source: RepositoryModelSource, repository: string, variant: string | undefined, configuration: RepositoryModelConfiguration | undefined,
+  source: RepositoryModelSource, repository: string, variant: string | undefined,
 } {
-  const { address, variant, configuration } = splitModelIdVariant({ modelId });
+  const { address, variant } = splitModelIdVariant({ modelId });
   const [prefix, ...segments] = address.split('/');
   let source: RepositoryModelSource;
   switch (prefix) {
@@ -185,47 +228,7 @@ export function parseRepositoryModelId({ modelId }: { modelId: string }): {
   if (!isRepositoryPath({ repository }) || (variant !== undefined && !variant.split('/').every(name => isModelSourceSegment({ name })))) {
     throw new Error('Invalid model reference');
   }
-  return { source, repository, variant, configuration };
-}
-
-export type RepositoryModelConfiguration = { projectorPath: string | undefined };
-
-function validProjectorPath({ path }: { path: string }): boolean {
-  return /\.gguf$/i.test(path) && path.split('/').every(name => isModelSourceSegment({ name }));
-}
-
-/** The empty path segment separates exact configurations from readable,
- * legacy selectors. Legacy references still allow automatic file selection. */
-export function configuredRepositoryModelId({ modelId, configuration }: { modelId: string, configuration: RepositoryModelConfiguration }): string {
-  const { projectorPath } = configuration;
-  if (!/^(?:hf\.co|host)\//.test(modelId) || modelId.includes('//') || !modelId.includes(':')
-    || (projectorPath !== undefined && !validProjectorPath({ path: projectorPath }))) {
-    throw new Error('Invalid repository model configuration');
-  }
-  return modelId + (projectorPath === undefined ? '//text' : '//projector/' + encodeURIComponent(projectorPath));
-}
-
-export function splitRepositoryModelId({ modelId }: { modelId: string }): { baseId: string, configuration: RepositoryModelConfiguration | undefined } {
-  const separator = modelId.indexOf('//');
-  if (separator < 0 || !/^(?:hf\.co|host)\//.test(modelId)) {
-    return { baseId: modelId, configuration: undefined };
-  }
-  const baseId = modelId.slice(0, separator);
-  const suffix = modelId.slice(separator + 2);
-  const projectorPath = suffix.startsWith('projector/') ? decodeURIComponent(suffix.slice('projector/'.length)) : undefined;
-  const configuration = { projectorPath };
-  if (configuredRepositoryModelId({ modelId: baseId, configuration }) !== modelId) {
-    throw new Error('Invalid repository model configuration');
-  }
-  return { baseId, configuration };
-}
-
-export function trySplitRepositoryModelId({ modelId }: { modelId: string }): ReturnType<typeof splitRepositoryModelId> | undefined {
-  try {
-    return splitRepositoryModelId({ modelId });
-  } catch {
-    return undefined;
-  }
+  return { source, repository, variant };
 }
 
 export const TEST_ONLY = {

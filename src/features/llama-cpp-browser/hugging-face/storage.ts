@@ -1,6 +1,6 @@
 import { hostDownloadMarker } from './host-download-marker';
 import { isHostDestination, hostModelRoot, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
-import { configuredRepositoryModelId, formatHuggingFaceModelId, matchingRepositoryModelVariants, parseRepositoryModelId, type RepositoryModelConfiguration } from '@/01-models/llama-cpp-browser-model-id';
+import { formatHuggingFaceModelId, matchingRepositoryModelVariants, parseRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { storageService } from '@/00-storage/service';
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 import { formatHostModelId } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
@@ -117,19 +117,16 @@ async function repositoryFiles({ repository, destination, signal }: { repository
   return (await readModelFiles({ folder, prefix: '', storageKind: isHostDestination(destination) ? 'host' : 'opfs', signal })).filter(file => !hidden.has(file.relativePath));
 }
 
-export async function repositoryDirectories({ repository, destination, signal, configuration }: { repository: string, destination?: ModelDestination, signal?: AbortSignal, configuration?: RepositoryModelConfiguration }): Promise<ModelDirectory[]> {
-  return describeRepositoryDirectories({ actual: await repositoryFiles({ repository, destination, signal }), onlyPrimaryRelativePath: undefined, signal, configuration });
+export async function repositoryDirectories({ repository, destination, signal }: { repository: string, destination?: ModelDestination, signal?: AbortSignal }): Promise<ModelDirectory[]> {
+  return describeRepositoryDirectories({ actual: await repositoryFiles({ repository, destination, signal }), onlyPrimaryRelativePath: undefined, signal });
 }
 
-async function describeRepositoryDirectories({ actual, onlyPrimaryRelativePath, signal, configuration }: { actual: ModelDirectory['files'], onlyPrimaryRelativePath: string | undefined, signal: AbortSignal | undefined, configuration: RepositoryModelConfiguration | undefined }): Promise<ModelDirectory[]> {
+async function describeRepositoryDirectories({ actual, onlyPrimaryRelativePath, signal }: { actual: ModelDirectory['files'], onlyPrimaryRelativePath: string | undefined, signal: AbortSignal | undefined }): Promise<ModelDirectory[]> {
   const { models, projectors } = modelGroups({ files: actual });
   const result: ModelDirectory[] = [];
-  const projector = configuration === undefined
-    ? rankedProjectors({ files: projectors.map(entry => ({ path: entry.relativePath, entry })) })[0]?.entry
-    : projectors.find(entry => entry.relativePath === configuration.projectorPath);
-  if (configuration?.projectorPath !== undefined && projector === undefined) {
-    return [];
-  }
+  // A repository model ID identifies its primary GGUF. Adding a companion
+  // file changes what can be loaded from the same ID.
+  const projector = rankedProjectors({ files: projectors.map(entry => ({ path: entry.relativePath, entry })) })[0]?.entry;
   for (const group of models) {
     signal?.throwIfAborted();
     const files = [...group, ...projector ? [projector] : []];
@@ -179,7 +176,7 @@ async function assertExpectedRoot({ destination, expectedRoot }: { destination: 
   }
 }
 
-export async function installedSelection({ selection, destination, expectedRoot, exactConfiguration }: { selection: DownloadSelection, destination?: ModelDestination, expectedRoot?: FileSystemDirectoryHandle, exactConfiguration?: boolean }): Promise<LocalModel | undefined> {
+export async function installedSelection({ selection, destination, expectedRoot }: { selection: DownloadSelection, destination?: ModelDestination, expectedRoot?: FileSystemDirectoryHandle }): Promise<LocalModel | undefined> {
   // A launch may have captured a physical folder before a permission prompt.
   // An installed model must not bypass the queue's check by using a relinked ID.
   await assertExpectedRoot({ destination, expectedRoot });
@@ -204,8 +201,7 @@ export async function installedSelection({ selection, destination, expectedRoot,
     return undefined;
   }
   const requested = resolveModelFiles({ files: selection.files.map(file => ({ relativePath: file.path })) });
-  const configuration = exactConfiguration ? { projectorPath: requested.projectorRelativePath } : undefined;
-  const directories = await describeRepositoryDirectories({ actual, onlyPrimaryRelativePath: requested.primaryRelativePath, signal: undefined, configuration });
+  const directories = await describeRepositoryDirectories({ actual, onlyPrimaryRelativePath: requested.primaryRelativePath, signal: undefined });
   const directory = directories.find(model => model.primaryFile.relativePath === requested.primaryRelativePath);
   if (!directory) {
     return undefined;
@@ -231,7 +227,7 @@ export async function installedSelection({ selection, destination, expectedRoot,
   }
   const model = describeRepositoryModel({ directory, repository: selection.repository, destination, directories: isHostDestination(destination) ? await storageService.loadHostModelDirectories() : [] });
   await assertExpectedRoot({ destination, expectedRoot });
-  return configuration === undefined ? model : { ...model, modelId: configuredRepositoryModelId({ modelId: model.modelId, configuration }) };
+  return model;
 }
 
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
@@ -256,8 +252,7 @@ export async function resolveRepositoryModel({ modelId, signal }: { modelId: str
   if (variant === undefined) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  const { configuration } = parseRepositoryModelId({ modelId });
-  return selectRepositoryModel({ models: await repositoryDirectories({ repository, signal, configuration }), repository, variant });
+  return selectRepositoryModel({ models: await repositoryDirectories({ repository, signal }), repository, variant });
 }
 
 export async function listHuggingFaceModels({ destination, onIssue, directories, signal }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void, directories?: HostDirectories, signal?: AbortSignal } = {}): Promise<LocalModel[]> {

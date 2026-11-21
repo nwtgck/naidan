@@ -5,6 +5,8 @@ import { InfoIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 
+defineProps<{ popupTarget?: HTMLElement }>();
+
 const buttonRef = ref<HTMLButtonElement | null>(null);
 const tooltipRef = ref<HTMLElement | null>(null);
 const helpId = useId();
@@ -114,7 +116,7 @@ defineExpose({
   >
     <InfoIcon tw-class="w-3.5 h-3.5" />
   </button>
-  <Teleport to="body">
+  <Teleport :to="popupTarget ?? 'body'">
     <div
       v-if="visibility !== 'closed'"
       :id="helpId"

@@ -141,7 +141,7 @@ describe('Sidebar Streaming Indicators', () => {
   const globalStubs = {
     'Logo': true,
     'ThemeToggle': true,
-    'ModelSelector': true,
+    'ChatModelSelector': true,
   };
 
   beforeEach(() => {

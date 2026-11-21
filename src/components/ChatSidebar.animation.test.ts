@@ -248,7 +248,7 @@ describe('Sidebar Animation Logic', () => {
             template: '<div><slot name="item" v-for="item in $attrs.modelValue" :element="item"></slot></div>',
           },
           'ThemeToggle': true,
-          'ModelSelector': true,
+          'ChatModelSelector': true,
         },
       },
     });

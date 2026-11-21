@@ -1560,8 +1560,8 @@ import { LlamaCppBrowserRepositoryPicker__back_to_search } from '@/strings/messa
 import { LlamaCppBrowserRepositoryPicker__back_to_suggestions } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__back_to_suggestions/de';
 import { LlamaCppBrowserRepositoryPicker__companion_files } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__companion_files/de';
 import { LlamaCppBrowserRepositoryPicker__could_not_check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__could_not_check_repository/de';
+import { LlamaCppBrowserRepositoryPicker__download_companion_files } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__download_companion_files/de';
 import { LlamaCppBrowserRepositoryPicker__fetching_configuration } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__fetching_configuration/de';
-import { LlamaCppBrowserRepositoryPicker__multimodal } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__multimodal/de';
 import { LlamaCppBrowserRepositoryPicker__saved } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__saved/de';
 import { LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser/de';
 import { LlamaCppBrowserRepositoryPreview__not_estimated } from '@/strings/messages/LlamaCppBrowserRepositoryPreview__not_estimated/de';
@@ -5944,8 +5944,8 @@ export const catalog = {
   LlamaCppBrowserRepositoryPicker__back_to_suggestions,
   LlamaCppBrowserRepositoryPicker__companion_files,
   LlamaCppBrowserRepositoryPicker__could_not_check_repository,
+  LlamaCppBrowserRepositoryPicker__download_companion_files,
   LlamaCppBrowserRepositoryPicker__fetching_configuration,
-  LlamaCppBrowserRepositoryPicker__multimodal,
   LlamaCppBrowserRepositoryPicker__saved,
   LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser,
   LlamaCppBrowserRepositoryPreview__not_estimated,

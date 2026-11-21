@@ -94,7 +94,7 @@ describe('Sidebar Glitch Reproduction', () => {
   const globalStubs = {
     'Logo': true,
     'ThemeToggle': true,
-    'ModelSelector': true,
+    'ChatModelSelector': true,
     'draggable': {
       template: '<div><slot name="item" v-for="item in modelValue" :element="item" :index="0"></slot></div>',
       props: ['modelValue'],

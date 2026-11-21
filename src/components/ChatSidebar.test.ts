@@ -25,6 +25,7 @@ const mockEventCount = ref(0);
 const mockToggleDebug = vi.fn();
 const mockOpenFileExplorer = vi.fn();
 const mockUpdateGlobalModel = vi.fn();
+const mockFetchModels = vi.fn(async () => []);
 const mockUpdateGlobalReasoningEffort = vi.fn();
 const mockAddToast = vi.fn();
 vi.mock('../composables/useToast', () => ({ useToast: () => ({ addToast: mockAddToast }) }));
@@ -197,6 +198,7 @@ vi.mock('../composables/useSettings', () => ({
     settings: mockSettings,
     availableModels: mockAvailableModels,
     isFetchingModels: mockIsFetchingModels,
+    fetchModels: mockFetchModels,
     save: mockSaveSettings,
     updateGlobalModel: mockUpdateGlobalModel,
     updateGlobalReasoningEffort: mockUpdateGlobalReasoningEffort,
@@ -282,14 +284,17 @@ describe('Sidebar Logic Stability', () => {
         </div>
       `,
     }),
-    'ModelSelector': {
-      name: 'ModelSelector',
+    'ChatModelSelector': {
+      name: 'ChatModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear" :placeholder="placeholder"><slot name="trigger-label" /><slot name="trigger-summary" />{{ modelValue || placeholder }}<slot name="unavailable" v-if="modelSelection === \'unavailable\'" /><slot name="settings" /><div v-if="loading" class="animate-spin-mock"></div></div>',
       props: {
         surface: String,
         modelValue: String,
         modelSelection: String,
         models: Array,
+        modelsLabel: String,
+        initialPanel: String,
+        panels: Array,
         placeholder: String,
         loading: {
           type: Boolean,
@@ -325,7 +330,8 @@ describe('Sidebar Logic Stability', () => {
 
       const selector = wrapper.find('[data-testid="model-selector-mock"]');
       expect(selector.exists()).toBe(true);
-      expect(wrapper.getComponent({ name: 'ModelSelector' }).props('surface')).toBe('sidebar');
+      expect(wrapper.getComponent({ name: 'ChatModelSelector' }).props('surface')).toBe('sidebar');
+      expect(wrapper.getComponent({ name: 'ChatModelSelector' }).props('panels')).toBeUndefined();
       await vi.waitFor(() => {
         expect(wrapper.text()).toContain('Default model');
       });
@@ -354,7 +360,7 @@ describe('Sidebar Logic Stability', () => {
       expect(selector.text()).toContain('None');
     });
 
-    it('displays the current model via ModelSelector', async () => {
+    it('displays the current model via ChatModelSelector', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -399,26 +405,52 @@ describe('Sidebar Logic Stability', () => {
       });
       await nextTick();
 
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
       expect(selector.props('allowClear')).toBe(false);
     });
 
-    it('calls save when ModelSelector emits update:modelValue', async () => {
+    it('calls save when ChatModelSelector emits update:modelValue', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
       await nextTick();
 
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
       await selector.vm.$emit('update:modelValue', 'mistral');
 
       expect(mockUpdateGlobalModel).toHaveBeenCalledWith({ modelId: 'mistral' });
+    });
+
+    it('opens suggested models first only while the browser default is empty', async () => {
+      mockSettings.value.endpoint = { type: 'llama_cpp_browser' };
+      mockSettings.value.defaultModelId = '';
+      mockAvailableModels.value = ['hf.co/owner/model:Q4_K_M'];
+      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+      using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+      expect(selector.props('initialPanel')).toBe('chat-candidates');
+      expect(selector.props('modelsLabel')).toBeTruthy();
+      expect(selector.props('panels')).toEqual([
+        expect.objectContaining({ id: 'chat-candidates', placement: 'before-models' }),
+        expect.objectContaining({ id: 'huggingface' }),
+        expect.objectContaining({ id: 'files' }),
+      ]);
+      expect(selector.props('models')).toEqual([expect.objectContaining({ id: mockAvailableModels.value[0], availability: 'local' })]);
+      expect(mockFetchModels).not.toHaveBeenCalled();
+      await selector.vm.$emit('refresh');
+      expect(mockFetchModels).toHaveBeenCalledExactlyOnceWith({});
+      mockSettings.value.defaultModelId = mockAvailableModels.value[0]!;
+      await nextTick();
+      expect(selector.props('initialPanel')).toBeUndefined();
+      expect(selector.props('modelValue')).toBe(mockAvailableModels.value[0]);
+      void cleanup;
     });
 
     it('persists global reasoning separately from model selection and allows retry after failure', async () => {
       const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
       const reasoning = wrapper.getComponent(ReasoningSettings);
       expect(reasoning.props('selectedEffort')).toBeUndefined();
+      expect(reasoning.props('layout')).toBe('inline');
       const pending = Promise.withResolvers<void>();
       mockUpdateGlobalReasoningEffort.mockImplementationOnce(() => pending.promise);
       const control = reasoning.element;
@@ -453,7 +485,7 @@ describe('Sidebar Logic Stability', () => {
       await wrapper.getComponent(ReasoningSettings).vm.$emit('update:effort', 'high');
       mockIsSidebarOpen.value = false;
       await nextTick();
-      expect(wrapper.findComponent({ name: 'ModelSelector' }).exists()).toBe(false);
+      expect(wrapper.findComponent({ name: 'ChatModelSelector' }).exists()).toBe(false);
       expect(wrapper.getComponent(ChatSidebarModelControls).vm.$).toBe(owner);
       mockIsSidebarOpen.value = true;
       await nextTick();
@@ -471,7 +503,7 @@ describe('Sidebar Logic Stability', () => {
     it('keeps global reasoning reachable when the provider manages its own model', async () => {
       mockSettings.value.endpoint = { type: 'browser_provided_lm' };
       const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
-      expect(wrapper.getComponent({ name: 'ModelSelector' }).props('modelSelection')).toBe('unavailable');
+      expect(wrapper.getComponent({ name: 'ChatModelSelector' }).props('modelSelection')).toBe('unavailable');
       expect(wrapper.text()).toContain('You cannot change the model for this connection.');
       const reasoning = wrapper.getComponent(ReasoningSettings);
       expect(reasoning.props('disabled')).toBe(false);
@@ -490,16 +522,20 @@ describe('Sidebar Logic Stability', () => {
       expect(wrapper.find('.animate-spin-mock').exists()).toBe(true);
     });
 
-    it('passes a naturally sorted list of models to ModelSelector', async () => {
+    it('passes a naturally sorted list of models to ChatModelSelector', async () => {
       mockAvailableModels.value = ['model-10', 'model-2', 'model-1'];
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
       await nextTick();
 
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
-      const passedModels = selector.props('models');
-      expect(passedModels).toEqual(['model-1', 'model-2', 'model-10']);
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+      expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10'].map(id => ({
+        id,
+        label: id,
+        description: undefined,
+        availability: 'remote',
+      })));
     });
   });
 
