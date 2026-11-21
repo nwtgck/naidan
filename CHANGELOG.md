@@ -27,6 +27,31 @@ See changelog-unreleased/AGENTS.md for instructions.
 Do not add entries directly here during ordinary development.
 -->
 
+## [0.72.0] - 2026-11-21
+
+### Added
+
+- Open a local model’s details to see the files it uses. Open its storage folder to browse the full path, or browse model folders by model ID in File Explorer. Unlock File Explorer to edit saved files or remove temporarily added files.
+
+### Changed
+
+- Choose a local model for automatic chat titles from saved models, suggestions, Hugging Face, or newly added files in connection, chat, and chat group settings.
+- When generating a title from the chat title editor, browse saved local models, search Hugging Face, or add model files directly from the model picker.
+- Override the model for a chat or chat group using saved local models, suggestions, Hugging Face, or newly added files from its settings.
+- Filter OpenAI-compatible and Ollama model lists during setup without typing every hyphen or underscore in the model name.
+- Show the selected model’s name and source on separate lines when importing chat group recipes.
+- Choose an Ollama image model from within the chat tools menu, with the model name and source shown on separate lines.
+- Show the model name and source on separate lines when choosing a prompt translation model in image generation settings.
+- In audio generation, browse suggested models, search Hugging Face, select models on your device, or add local files from the model selector. When no compatible model is available on your device, the default Qwen3-TTS model downloads when you first generate audio. The audio generation form keeps the text field and Generate button together, with reference audio and settings available from the form.
+- In Live Conversation, browse the model catalog, search Hugging Face, select a model on your device, or add local model files from the model selector.
+- Live Conversation preselects LFM3-Audio-2B when no previous selection or installed LFM3 conversation model is available. Starting the conversation downloads the model if needed.
+- In Live Conversation diagnostics, select a quantization directly from the row for a compatible model on your device.
+- In the workflow editor, choose among saved quantizations from the same model row in model selection steps, model inputs, and audio generation steps.
+
+### Fixed
+
+- Fix audio generation failing to start with the default playback speed.
+
 ## [0.71.0] - 2026-11-21
 
 ### Changed
@@ -1216,7 +1241,8 @@ Do not add entries directly here during ordinary development.
 - Concurrent responses in different chats and synchronization between browser tabs.
 - Browser-local conversation storage, data import/export, standalone browser downloads, and a local HTTP-server executable.
 
-[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.71.0...develop
+[Unreleased]: https://github.com/nwtgck/naidan/compare/v0.72.0...develop
+[0.72.0]: https://github.com/nwtgck/naidan/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/nwtgck/naidan/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/nwtgck/naidan/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/nwtgck/naidan/compare/v0.68.0...v0.69.0
