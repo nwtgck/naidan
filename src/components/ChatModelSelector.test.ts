@@ -119,15 +119,118 @@ it('emits controlled query edits and follows the supplied value rather than an u
 });
 
 it('refreshes only through an explicit event and respects the loading gate', async () => {
-  using value = fixture({ props: {}, slots: undefined });
+  using value = fixture({ props: { surface: 'sidebar', modelValue: 'stored/parakeet' }, slots: { 'trigger-label': 'Default model' } });
   await value.open();
-  await value.get({ testId: 'model-selector-refresh' }).trigger('click');
+  const refresh = value.get({ testId: 'model-selector-refresh' });
+  for (const key of ['Enter', ' ', 'ArrowDown']) {
+    expect(keydown({ target: refresh.element, key, isComposing: false }).defaultPrevented).toBe(false);
+  }
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+  await refresh.trigger('click');
   expect(value.wrapper.emitted('refresh')).toEqual([[]]);
+  const filter = value.get({ testId: 'model-selector-filter' });
+  await filter.setValue('Japanese');
+  await value.get({ testId: 'model-selector-clear-filter' }).trigger('click');
+  expect((filter.element as HTMLInputElement).value).toBe('');
+  expect(document.activeElement).toBe(filter.element);
   await value.wrapper.setProps({ loading: true });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  expect(trigger.attributes('aria-busy')).toBe('true');
+  expect(trigger.attributes('title')).toBe('stored/parakeet');
+  expect(trigger.text()).toContain('Default model');
+  expect(trigger.text()).toContain('Local Parakeet');
   await value.get({ testId: 'model-selector-refresh' }).trigger('click');
   expect(value.wrapper.emitted('refresh')).toEqual([[]]);
   expect(mocks.useSettings).not.toHaveBeenCalled();
   expect(externalFetch).not.toHaveBeenCalled();
+});
+
+it('distinguishes loading, an empty sidebar inventory, and unmatched filtering', async () => {
+  using value = fixture({ props: { surface: 'sidebar', models: [], loading: true }, slots: undefined });
+  await value.open();
+  expect(value.get({ testId: 'model-selector-empty' }).text()).toBe('Loading models…');
+  await value.wrapper.setProps({ loading: false });
+  expect(value.get({ testId: 'model-selector-empty' }).text()).toBe('No models available');
+  await value.wrapper.setProps({ models });
+  await value.get({ testId: 'model-selector-filter' }).setValue('missing model');
+  expect(value.get({ testId: 'model-selector-empty' }).text()).toBe('No models found');
+});
+
+it.each([false, true])('exposes a clear choice only when allowed (%s)', async allowClear => {
+  using value = fixture({ props: { modelValue: 'catalog/qwen', allowClear, clearLabel: 'Use default' }, slots: undefined });
+  await value.open();
+  const dropdown = value.get({ testId: 'model-selector-dropdown' });
+  const clear = dropdown.find('[data-testid="model-selector-clear"]');
+  expect(clear.exists()).toBe(allowClear);
+  if (allowClear) {
+    expect(clear.text()).toBe('Use default');
+    await clear.trigger('click');
+    expect(value.wrapper.emitted('update:modelValue')).toEqual([[undefined]]);
+  }
+});
+
+it('describes a plain model with its optional trigger detail', () => {
+  using value = fixture({ props: { modelValue: 'model-a', surface: 'composer' }, slots: { 'trigger-detail': '<span>Think High</span>' } });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  const detail = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+  expect(trigger.text()).toContain('model-a');
+  expect(detail.text()).toBe('Think High');
+  expect(detail.get('[id]').attributes('id')).toBe(trigger.attributes('aria-describedby'));
+});
+
+it.each(['floating', 'inline'] as const)('opens and selects with the keyboard in %s mode', async popupPresentation => {
+  using value = fixture({ props: { modelValue: 'catalog/qwen', popupPresentation }, slots: undefined });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  keydown({ target: trigger.element, key: 'ArrowDown', isComposing: false });
+  await nextTick();
+  const dropdown = value.get({ testId: 'model-selector-dropdown' });
+  const filter = value.get({ testId: 'model-selector-filter' });
+  expect(value.wrapper.element.contains(dropdown.element)).toBe(popupPresentation === 'inline');
+  expect(document.activeElement).toBe(filter.element);
+  keydown({ target: filter.element, key: 'ArrowUp', isComposing: false });
+  keydown({ target: filter.element, key: 'Enter', isComposing: true });
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
+  keydown({ target: filter.element, key: 'Enter', isComposing: false });
+  await nextTick();
+  expect(value.wrapper.emitted('update:modelValue')).toEqual([['stored/parakeet']]);
+  expect(document.activeElement).toBe(trigger.element);
+
+  await value.open();
+  const reopenedFilter = value.get({ testId: 'model-selector-filter' });
+  keydown({ target: reopenedFilter.element, key: 'ArrowDown', isComposing: false });
+  await reopenedFilter.setValue('recognition');
+  keydown({ target: reopenedFilter.element, key: 'Enter', isComposing: false });
+  expect(value.wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['catalog/qwen']);
+});
+
+it('closes an inline picker on Escape before its enclosing dialog receives the key', async () => {
+  using value = fixture({ props: { popupPresentation: 'inline', surface: 'settings' }, slots: undefined });
+  const trigger = value.get({ testId: 'model-selector-trigger' });
+  const host = value.wrapper.element.parentElement!;
+  const escape = vi.fn();
+  host.addEventListener('keydown', escape);
+  await value.open();
+  const filter = value.get({ testId: 'model-selector-filter' });
+  const tab = keydown({ target: filter.element, key: 'Tab', isComposing: false });
+  expect(tab.defaultPrevented).toBe(false);
+  expect(escape).toHaveBeenCalledWith(tab);
+  escape.mockClear();
+  keydown({ target: filter.element, key: 'Escape', isComposing: false });
+  await nextTick();
+  expect(escape).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(trigger.element);
+  keydown({ target: trigger.element, key: 'Escape', isComposing: false });
+  expect(escape).toHaveBeenCalledOnce();
+});
+
+it('closes a disabled picker and ignores a stale option click', async () => {
+  using value = fixture({ props: {}, slots: undefined });
+  await value.open();
+  const option = value.get({ testId: 'model-selector-option' });
+  await value.wrapper.setProps({ disabled: true });
+  await option.trigger('click');
+  expect(document.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+  expect(value.wrapper.emitted('update:modelValue')).toBeUndefined();
 });
 
 it('keeps Tab navigation available and lets a native panel button activate without selecting a model', async () => {
@@ -205,12 +308,18 @@ it('keeps chat settings visible in the same footer on every tab', async () => {
 it('keeps the sidebar reasoning help within the picker and closes it first on Escape', async () => {
   using value = fixture({
     props: { surface: 'sidebar', modelSelection: 'unavailable' },
-    slots: { settings: ({ popupTarget }: { popupTarget: HTMLElement | undefined }) => h(ReasoningSettings, { selectedEffort: undefined, surface: 'plain', layout: 'inline', notice: 'inline-help', popupTarget }) },
+    slots: {
+      unavailable: 'This connection manages model choice.',
+      settings: ({ popupTarget }: { popupTarget: HTMLElement | undefined }) => h(ReasoningSettings, { selectedEffort: undefined, surface: 'plain', layout: 'inline', notice: 'inline-help', popupTarget }),
+    },
   });
   await value.open();
   const dropdown = value.get({ testId: 'model-selector-dropdown' });
   const help = value.get({ testId: 'reasoning-help-button' });
+  expect(value.get({ testId: 'model-selector-unavailable' }).text()).toBe('This connection manages model choice.');
   expect((value.get({ testId: 'model-selector-filter' }).element as HTMLInputElement).disabled).toBe(true);
+  expect(value.get({ testId: 'model-selector-option' }).attributes('disabled')).toBeDefined();
+  expect(value.get({ testId: 'model-selector-refresh' }).attributes('disabled')).toBeDefined();
   await help.trigger('click');
   const tooltip = value.get({ testId: 'reasoning-help' });
   expect(dropdown.element.contains(tooltip.element)).toBe(true);

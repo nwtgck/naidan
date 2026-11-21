@@ -22,8 +22,8 @@ import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import LanguageSelector from './LanguageSelector.vue';
 // IMPORTANT: Logo is part of the core onboarding UI.
 import Logo from './Logo.vue';
-// IMPORTANT: ModelSelector is part of the core onboarding UI.
-import ModelSelector from './ModelSelector.vue';
+import ChatModelSelector from './ChatModelSelector.vue';
+import type { ModelSelectorItem } from './model-selector-item';
 
 // Load onboarding subviews only when their current template branch needs them.
 const ServerSetupGuide = defineAsyncComponent(() => import('./ServerSetupGuide.vue'));
@@ -284,7 +284,12 @@ const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? J
 const isTesting = ref(false);
 const error = ref<string | null>(null);
 const availableModels = ref<string[]>(onboardingDraft.value?.models ? JSON.parse(JSON.stringify(onboardingDraft.value.models)) : []);
-const sortedModels = computed(() => naturalSort({ values: availableModels.value }));
+const modelOptions = computed<ModelSelectorItem[]>(() => naturalSort({ values: availableModels.value }).map(id => ({
+  id,
+  label: id,
+  description: undefined,
+  availability: isLlamaCppBrowser.value ? 'local' : 'remote',
+})));
 const localRuntimeReady = ref(false);
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
@@ -770,7 +775,14 @@ defineExpose({
                 <LlamaCppBrowserManager v-else presentation="embedded" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ modelId: $event })" />
                 <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
-                  <ModelSelector v-model="selectedModel" :models="sortedModels" :loading="false" @refresh="refreshLocalModels({ signal: undefined })" :placeholder="lazyStrings.OnboardingModal__select_a_model()" />
+                  <ChatModelSelector
+                    popup-presentation="inline"
+                    :model-value="selectedModel || undefined"
+                    :models="modelOptions"
+                    :placeholder="lazyStrings.OnboardingModal__select_a_model()"
+                    @update:model-value="selectedModel = $event ?? ''"
+                    @refresh="refreshLocalModels({ signal: undefined })"
+                  />
                 </div>
                 <p v-if="isLlamaCppBrowser && error" role="alert" tw-class="text-xs text-red-500">{{ error }}</p>
 
@@ -942,11 +954,13 @@ defineExpose({
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     {{ lazyStrings.OnboardingModal__default_model() }}
                   </label>
-                  <ModelSelector
-                    v-model="selectedModel"
-                    :models="sortedModels"
+                  <ChatModelSelector
+                    popup-presentation="inline"
+                    :model-value="selectedModel || undefined"
+                    :models="modelOptions"
                     :loading="isTesting"
                     :disabled="isBrowserProvidedLm"
+                    @update:model-value="selectedModel = $event ?? ''"
                     @refresh="handleConnect"
                     :placeholder="lazyStrings.OnboardingModal__select_a_model()"
                   />

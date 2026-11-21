@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModalWhichMustBePreservedForFutureReferenceAndMustNeverBeUsedInProduction.vue';
+import ChatModelSelector from './ChatModelSelector.vue';
 import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/features/theme/composables/useTheme';
@@ -336,6 +337,7 @@ describe('OnboardingModal.vue', () => {
   it('preserves normalized URL and selected model when dismissed', async () => {
     listModelsMock.mockResolvedValue(['model-x', 'model-y']); // Mock models to ensure Step 2 is reachable
     const wrapper = mount(OnboardingModal);
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
 
     // 1. Enter non-normalized URL and Connect
     await wrapper.find('input').setValue('api.openai.com'); // URL without schema
@@ -346,13 +348,11 @@ describe('OnboardingModal.vue', () => {
     await nextTick();
 
     // 2. Select second model
-    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
     await trigger.trigger('click');
-    // Find the button for 'model-y'
-    const modelYBtn = Array.from(document.body.querySelectorAll('button'))
-      .find(b => b.textContent === 'model-y');
-    await modelYBtn?.click();
-    await new Promise(resolve => setTimeout(resolve, 0)); // Wait for state update
+    const picker = wrapper.get('[data-testid="model-selector-dropdown"]');
+    await picker.get('[data-testid="model-selector-option"][title="model-y"]').trigger('click');
+    await flushPromises();
 
     // 3. Dismiss via X
     await wrapper.find('[data-testid="onboarding-close-x"]').trigger('click');
@@ -512,20 +512,19 @@ describe('OnboardingModal.vue', () => {
     };
 
     const wrapper = mount(OnboardingModal);
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
 
     // Should be in Step 2 directly because models exist
     expect(wrapper.text()).toContain('Successfully Connected!');
     expect(wrapper.text()).toContain('http://restored-url:11434');
 
-    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
     expect(trigger.text()).toBe('model-b');
 
     await trigger.trigger('click');
-    const modelButtons = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
-      .filter(b => ['model-a', 'model-b'].includes(b.textContent || ''));
-    expect(modelButtons.length).toBe(2);
-
-    wrapper.unmount();
+    const picker = wrapper.get('[data-testid="model-selector-dropdown"]');
+    const modelIds = picker.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'));
+    expect(modelIds).toEqual(['model-a', 'model-b']);
   });
 
   it('shows error message when saving settings fails', async () => {
@@ -624,7 +623,7 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.findAll('input').length).toBe(1); // Only URL input left
   });
 
-  it('passes a naturally sorted list of models to ModelSelector', async () => {
+  it('passes a naturally sorted list of models to the shared selector', () => {
     mockOnboardingDraft.value = {
       url: 'http://localhost:11434',
       type: 'ollama',
@@ -633,20 +632,10 @@ describe('OnboardingModal.vue', () => {
       selectedModel: 'model-1',
     };
 
-    const wrapper = mount(OnboardingModal, {
-      global: {
-        stubs: {
-          ModelSelector: {
-            name: 'ModelSelector',
-            template: '<div class="model-selector-stub" />',
-            props: ['models'],
-          },
-        },
-      },
-    });
-
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
-    expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+    const wrapper = mount(OnboardingModal);
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const selector = wrapper.getComponent(ChatModelSelector);
+    expect(selector.props('models').map(({ id }) => id)).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
   describe('Focus Management', () => {
