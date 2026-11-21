@@ -509,6 +509,10 @@ export interface Settings {
     metaCspForDevelopmentNotForSecurity?: string,
     chatBrowserModelPickerTab?: 'files' | 'linked-folders' | 'hugging-face' | 'saved',
     modelDiscoveryTab?: 'candidates' | 'hugging_face' | 'local_files',
+    huggingFaceModelSearch?: {
+      /** Search text is sent while editing the Hugging Face search field only after explicit opt-in. */
+      autoSearch?: 'enabled' | 'disabled',
+    },
     markdownRendering?: 'block_markdown' | 'monolithic_html',
     /**
      * Controls whether tool configuration changes are persisted.
@@ -525,6 +529,14 @@ export interface Settings {
     naidanRpc?: 'disabled' | 'enabled',
     /** Home/launcher entry visibility only; missing means hide. */
     unimplementedLauncherEntries?: 'show' | 'hide',
+    audioTranscription?: {
+      /** Automatically copies microphone transcription text; missing means disabled. */
+      microphoneAutoCopy?: 'enabled' | 'disabled',
+      modelId?: string,
+      modelAutoLoad?: 'enabled' | 'disabled',
+      microphoneSegmentMaxSeconds?: number,
+      recognitionLanguage?: 'auto' | 'ja' | 'en',
+    },
     /** Display and collection preferences only; generation measurements remain in memory. */
     generationSpeed?: {
       status?: 'enabled' | 'disabled',
@@ -553,6 +565,8 @@ export interface Settings {
     hostModelDirectories?: { id: HostModelDirectoryId, name: string }[],
   },
 }
+
+export const DEFAULT_SETTINGS_ENDPOINT = { type: 'llama_cpp_browser' } as const satisfies Endpoint;
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
   // Fresh settings only. Persisted/legacy settings retain their own reasoning values.

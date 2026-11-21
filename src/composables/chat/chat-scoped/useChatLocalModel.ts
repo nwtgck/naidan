@@ -1,4 +1,5 @@
 import { computed, onScopeDispose, shallowReactive, shallowRef, watch, type Ref } from 'vue';
+import type { RepositoryModelSource } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import type { ChatId } from '@/01-models/ids';
 import type { SettingsTitleGeneration } from '@/01-models/types';
 import { cloneModelLaunchTarget, type ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
@@ -18,6 +19,14 @@ import { retainLocalRepositorySource } from '@/features/llama-cpp-browser/local-
 import { isPendingLocalModelReference } from '@/features/llama-cpp-browser/local-repository-reference';
 
 export type { ChatLocalModelOperation } from './chat-local-model-input';
+export type ChatRepositoryModelSelection = {
+  modelId: string,
+  source: RepositoryModelSource,
+  defaultDownloadKey?: string,
+  destination: DownloadDestination,
+  authorizeDestination: AuthorizeModelLaunchDestination | undefined,
+};
+
 let sequence = 0;
 const downloadQueue = shallowRef<ReturnType<typeof getDownloadQueue>>();
 
@@ -83,7 +92,7 @@ function remove({ input }: { input: ChatLocalModelInput }): void {
   }
 }
 
-async function applyModel({ input, model }: { input: ChatLocalModelInput, model: LocalModel }): Promise<void> {
+async function applyModel({ input, model, prepareOn }: { input: ChatLocalModelInput, model: LocalModel, prepareOn: 'selection' | 'send' }): Promise<void> {
   const sourcePin = retainLocalRepositorySource({ modelId: model.modelId });
   try {
     assertCurrent({ input });
@@ -104,7 +113,6 @@ async function applyModel({ input, model }: { input: ChatLocalModelInput, model:
     }
     const source = isPendingLocalModelReference({ modelId: model.modelId }) ? await captureTemporaryModelSource({ modelId: model.modelId, signal: input.controller.signal }) : undefined;
     const { suspendLocalModelLaunchPreparation } = await import('@/features/llama-cpp-browser/composables/useLocalModelLaunchChat');
-    const { registerLocalModelLaunchSession } = await import('@/features/llama-cpp-browser/composables/local-model-launch-session');
     const { offerTemporaryModelSave } = await import('@/features/llama-cpp-browser/composables/useTemporaryModelSave');
     await withChatModelBindingFinalization({
       chatId: input.chatId,
@@ -149,19 +157,29 @@ async function applyModel({ input, model }: { input: ChatLocalModelInput, model:
           throw new Error(String(exhaustive));
         }
         }
+        // Send admission rejects a loading preparation session. When the
+        // user pressed Send, the generation call owns the model load.
         const context = contextFor({ chatId: input.chatId });
         if (context !== undefined && input.isStorageCurrent()) {
-          registerLocalModelLaunchSession({
-            chat: context.chat,
-            model,
-            homeOriginId: undefined,
-            isCurrent: () => input.isStorageCurrent() && (source?.isCurrent() ?? true),
-            readBinding: () => {
-              const latest = contextFor({ chatId: input.chatId }) ?? context;
-              const resolved = resolveChatSettings({ chat: latest.chat, groups: latest.chatGroups, globalSettings: latest.settings });
-              return { chatGroupId: latest.chat.groupId, endpoint: resolved.endpoint, modelId: resolved.modelId };
-            },
-          });
+          switch (prepareOn) {
+          case 'selection': {
+            const { registerLocalModelLaunchSession } = await import('@/features/llama-cpp-browser/composables/local-model-launch-session');
+            registerLocalModelLaunchSession({
+              chat: context.chat,
+              model,
+              homeOriginId: undefined,
+              isCurrent: () => input.isStorageCurrent() && (source?.isCurrent() ?? true),
+              readBinding: () => {
+                const latest = contextFor({ chatId: input.chatId }) ?? context;
+                const resolved = resolveChatSettings({ chat: latest.chat, groups: latest.chatGroups, globalSettings: latest.settings });
+                return { chatGroupId: latest.chat.groupId, endpoint: resolved.endpoint, modelId: resolved.modelId };
+              },
+            });
+            break;
+          }
+          case 'send': break;
+          default: throw new Error(String(prepareOn satisfies never));
+          }
           if (source !== undefined) {
             offerTemporaryModelSave({ chatId: input.chatId, source, chatGroupId: undefined });
           }
@@ -263,7 +281,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
       if (only === undefined) {
         input.state.phase = 'choosing';
       } else {
-        await applyModel({ input, model: only });
+        await applyModel({ input, model: only, prepareOn: 'selection' });
       }
     };
     return run({ input });
@@ -297,7 +315,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
     if (input === undefined || input.pending !== undefined || model === undefined) {
       return Promise.resolve();
     }
-    input.run = () => applyModel({ input, model });
+    input.run = () => applyModel({ input, model, prepareOn: 'selection' });
     return run({ input });
   }
   function useModel({ model }: { model: LocalModel }): Promise<void> {
@@ -305,15 +323,28 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
     if (input === undefined) {
       return Promise.resolve();
     }
-    input.run = () => applyModel({ input, model });
+    input.run = () => applyModel({ input, model, prepareOn: 'selection' });
     return run({ input });
   }
   function useRepositoryModel({ target, destination, authorizeDestination }: { target: ModelLaunchTarget, destination: DownloadDestination, authorizeDestination: AuthorizeModelLaunchDestination | undefined }): Promise<void> {
+    return prepareRepositoryModel({
+      selection: { modelId: target.modelId, source: { kind: 'resolved', target }, destination, authorizeDestination },
+      onApplied: undefined,
+    });
+  }
+  function prepareRepositoryModel({ selection, onApplied }: { selection: ChatRepositoryModelSelection, onApplied: (() => void) | undefined }): Promise<void> {
     const input = begin({ controller: new AbortController() });
     if (input === undefined) {
       return Promise.resolve();
     }
-    const requestedTarget = cloneModelLaunchTarget({ target });
+    const { source, destination, authorizeDestination, defaultDownloadKey } = selection;
+    const requestedSource = (() => {
+      switch (source.kind) {
+      case 'bundled': return { ...source };
+      case 'resolved': return { kind: 'resolved' as const, target: cloneModelLaunchTarget({ target: source.target }) };
+      default: throw new Error(String(source satisfies never));
+      }
+    })();
     const requestedDestination = cloneDownloadDestination({ destination });
     input.run = async () => {
       assertCurrent({ input });
@@ -326,17 +357,72 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
       const authorized = authorization === undefined ? { destination: requestedDestination, expectedRoot: undefined }
         : await awaitInspection({ task: authorization, signal: input.controller.signal });
       assertCurrent({ input });
+      const repositoryTarget = await import('@/features/llama-cpp-browser/model-launch/bundled-repository-target');
+      const { getDownloadQueue, findModelDownloadJob, jobIsBusy } = await import('@/features/llama-cpp-browser/hugging-face/download-queue');
       const { installedSelection } = await import('@/features/llama-cpp-browser/hugging-face/storage');
       assertCurrent({ input });
-      let model = await installedSelection({ selection: requestedTarget.selection, destination: authorized.destination, expectedRoot: authorized.expectedRoot });
+      const queue = getDownloadQueue();
+      const { key, selection: resolved } = repositoryTarget.repositoryModelDownloadIdentity({ source: requestedSource });
+      const previous = findModelDownloadJob({ jobs: queue.jobs.value, key, selection: resolved, destination: authorized.destination });
+      const signal = input.controller.signal;
+      async function resolveSelection() {
+        switch (requestedSource.kind) {
+        case 'resolved': return requestedSource.target.selection;
+        case 'bundled': return (await repositoryTarget.resolveBundledRepositoryTarget({
+          repository: requestedSource.repository,
+          variant: requestedSource.variant,
+          companionPath: requestedSource.companionPath,
+          signal,
+        })).selection;
+        default: throw new Error(String(requestedSource satisfies never));
+        }
+      }
+      // A download pins its own revision. Reuse that selection even if the
+      // repository moved or is offline when the first message is submitted.
+      const prepared = resolved ?? previous?.selection ?? (jobIsBusy({ job: previous }) ? undefined : await resolveSelection());
       assertCurrent({ input });
+      const { destination: target, expectedRoot } = authorized;
+      const configuration = onApplied === undefined ? {} : { exactConfiguration: true };
+      let model = prepared === undefined ? undefined : await installedSelection({ selection: prepared, destination: target, expectedRoot, ...configuration });
+      assertCurrent({ input });
+      if (model === undefined && resolved !== undefined && defaultDownloadKey !== undefined) {
+        const job = findModelDownloadJob({ jobs: queue.jobs.value, key: defaultDownloadKey, destination: target, selection: undefined });
+        if (jobIsBusy({ job })) {
+          downloadQueue.value = queue;
+          const joined = queue.enqueue({ key: defaultDownloadKey, repository: resolved.repository, source: 'repository', destination: target, expectedRoot, prepare: async () => resolved });
+          input.state.downloadJobId = joined.id;
+          input.state.phase = 'downloading';
+          const result = await awaitInspection({ task: joined.done, signal });
+          assertCurrent({ input });
+          switch (result.status) {
+          case 'complete': {
+            const { selectionKey } = await import('@/features/llama-cpp-browser/hugging-face/download-plan');
+            if (result.selection !== undefined && selectionKey({ selection: result.selection }) === key) {
+              model = await installedSelection({ selection: resolved, destination: target, expectedRoot, ...configuration });
+              assertCurrent({ input });
+            }
+            break;
+          }
+          case 'queued': case 'resolving': case 'downloading': case 'pausing': case 'paused': case 'failed': case 'cancelled':
+            throw new LlamaCppBrowserError({ code: 'storage-error' });
+          default: throw new Error(String(result.status satisfies never));
+          }
+        }
+      }
       if (model === undefined) {
-        const { getDownloadQueue } = await import('@/features/llama-cpp-browser/hugging-face/download-queue');
-        const { selectionKey } = await import('@/features/llama-cpp-browser/hugging-face/download-plan');
-        const queue = getDownloadQueue();
         downloadQueue.value = queue;
-        assertCurrent({ input });
-        const download = queue.enqueue({ key: selectionKey({ selection: requestedTarget.selection }), repository: requestedTarget.selection.repository, source: 'repository', destination: authorized.destination, expectedRoot: authorized.expectedRoot, prepare: async () => requestedTarget.selection });
+        const repository = prepared?.repository ?? previous?.repository;
+        if (repository === undefined) {
+          throw new LlamaCppBrowserError({ code: 'missing-model' });
+        }
+        const download = queue.enqueue({
+          key,
+          repository,
+          source: 'repository',
+          destination: target,
+          expectedRoot,
+          prepare: async () => prepared ?? await resolveSelection(),
+        });
         input.state.downloadJobId = download.id;
         input.state.phase = 'downloading';
         const result = await awaitInspection({ task: download.done, signal: input.controller.signal });
@@ -344,18 +430,19 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
         switch (result.status) {
         case 'complete': break;
         case 'queued': case 'resolving': case 'downloading': case 'pausing': case 'paused': case 'failed': case 'cancelled': throw new LlamaCppBrowserError({ code: 'storage-error' });
-        default: {
-          const exhaustive: never = result.status;
-          throw new Error(String(exhaustive));
+        default: throw new Error(String(result.status satisfies never));
         }
+        const selection = result.selection ?? prepared;
+        if (selection !== undefined) {
+          model = await installedSelection({ selection, destination: target, expectedRoot, ...configuration });
         }
-        model = await installedSelection({ selection: requestedTarget.selection, destination: authorized.destination, expectedRoot: authorized.expectedRoot });
       }
       assertCurrent({ input });
       if (model === undefined) {
         throw new LlamaCppBrowserError({ code: 'missing-model' });
       }
-      await applyModel({ input, model });
+      await applyModel({ input, model, prepareOn: onApplied === undefined ? 'selection' : 'send' });
+      onApplied?.();
     };
     return run({ input });
   }
@@ -365,6 +452,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
       return;
     }
     input.state.error = undefined;
+    input.state.downloadJobId = undefined;
     input.state.phase = 'reading';
     await run({ input });
   }
@@ -382,7 +470,7 @@ export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<Ch
   }
   const operation = computed(() => chatLocalModelInputs.value.get(chatId.value)?.state);
   const downloadJob = computed(() => downloadQueue.value?.jobs.value.find(job => job.id === operation.value?.downloadJobId));
-  return { operation, downloadJob, maySend: computed(() => !chatLocalModelInputs.value.has(chatId.value)), accept, acceptAfterFailedDownload, choose, useModel, useRepositoryModel, retry, cancel, pauseDownload, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
+  return { operation, downloadJob, maySend: computed(() => !chatLocalModelInputs.value.has(chatId.value)), accept, acceptAfterFailedDownload, choose, useModel, useRepositoryModel, prepareRepositoryModel, retry, cancel, pauseDownload, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
 
 export type ChatLocalModelUi = ReturnType<typeof useChatLocalModel>;

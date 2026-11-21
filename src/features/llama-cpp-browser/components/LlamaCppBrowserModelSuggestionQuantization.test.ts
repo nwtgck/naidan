@@ -58,7 +58,7 @@ function unrender({ wrapper }: { wrapper: VueWrapper }): void {
   wrappers.splice(wrappers.indexOf(wrapper), 1);
 }
 
-function selected({ wrapper }: { wrapper: VueWrapper }): string {
+function selected({ wrapper }: { wrapper: VueWrapper }): string | undefined {
   return modelSuggestionQuantizationControl({ view: wrapper }).props('modelValue');
 }
 

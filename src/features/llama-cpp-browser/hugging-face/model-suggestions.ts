@@ -1,4 +1,5 @@
-import { getHfRepository } from './model-repositories';
+import { getHfRepository, type HfRepositoryName } from './model-repositories';
+import { preferredProjector } from './projector-selection';
 
 /**
  * Bundled suggestions, NOT a mirror of a Hugging Face repository.
@@ -37,12 +38,71 @@ export type ModelSuggestion = {
   quantizationHints: readonly [SuggestedQuantization, ...SuggestedQuantization[]],
 };
 
+// Confirmed filenames and rounded published sizes, scoped to the actual
+// repository. These hints support comparison without contacting Hugging Face.
+type SuggestedProjector = Readonly<{ path: string, size: number }>;
+const suggestedProjectorsByRepository: Readonly<Partial<Record<HfRepositoryName, readonly SuggestedProjector[]>>> = {
+  'bartowski/Qwen3.8-Flash-Next-GGUF': [
+    { path: 'mmproj-Qwen3.8-Flash-Next-f16.gguf', size: 904_000_000 },
+    { path: 'mmproj-Qwen3.8-Flash-Next-bf16.gguf', size: 908_000_000 },
+  ],
+  'ggml-org/Qwen3.6-35B-A3B-GGUF': [
+    { path: 'mmproj-Qwen3.6-35B-A3B-Q8_0.gguf', size: 614_000_000 },
+    { path: 'mmproj-Qwen3.6-35B-A3B-BF16.gguf', size: 903_000_000 },
+  ],
+  'ggml-org/Qwen3.8-27B-GGUF': [
+    { path: 'mmproj-Qwen3.8-27B-Q8_0.gguf', size: 629_000_000 },
+    { path: 'mmproj-Qwen3.8-27B-BF16.gguf', size: 931_000_000 },
+  ],
+  'google/gemma-4-26B-A4B-it-qat-q4_0-gguf': [
+    { path: 'gemma-4-26B-it-mmproj.gguf', size: 1_190_000_000 },
+  ],
+  'google/gemma-4-E2B-it-qat-q4_0-gguf': [
+    { path: 'gemma-4-E2B-it-mmproj.gguf', size: 987_000_000 },
+  ],
+  'google/gemma-4-E4B-it-qat-q4_0-gguf': [
+    { path: 'gemma-4-E4B-it-mmproj.gguf', size: 992_000_000 },
+  ],
+  'lmstudio-community/gemma-4-26B-A4B-it-GGUF': [
+    { path: 'mmproj-gemma-4-26B-A4B-it-BF16.gguf', size: 1_190_000_000 },
+  ],
+  'lmstudio-community/gemma-4-E2B-it-GGUF': [
+    { path: 'mmproj-gemma-4-E2B-it-BF16.gguf', size: 987_000_000 },
+  ],
+  'lmstudio-community/gemma-4-E4B-it-GGUF': [
+    { path: 'mmproj-gemma-4-E4B-it-BF16.gguf', size: 992_000_000 },
+  ],
+  'lmstudio-community/Qwen3.5-9B-GGUF': [
+    { path: 'mmproj-Qwen3.5-9B-BF16.gguf', size: 922_000_000 },
+  ],
+  'meta-models/Muse-Glimmer-30B-GGUF': [
+    { path: 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf', size: 1_400_000_000 },
+  ],
+};
+
+export function suggestedProjectors({ repository }: { repository: string }): readonly SuggestedProjector[] {
+  if (!Object.hasOwn(suggestedProjectorsByRepository, repository)) {
+    return [];
+  }
+  return suggestedProjectorsByRepository[repository as HfRepositoryName] ?? [];
+}
+
+type ChatQuantization = Omit<SuggestedQuantization, 'approximateMultimodalBytes'>;
+type ChatModelSuggestion = Omit<ModelSuggestion, 'quantizationHints'> & {
+  quantizationHints: readonly [ChatQuantization, ...ChatQuantization[]],
+};
+
+function withProjectorHint({ hint }: { hint: ChatQuantization }): SuggestedQuantization {
+  const files = suggestedProjectors({ repository: hint.hfRepository });
+  return { ...hint, approximateMultimodalBytes: preferredProjector({ files })?.size };
+}
+
 // Array order intentionally keeps developers adjacent; no group model is needed.
 // Sources reference the shared repository registry; UI order is independent.
 // Sizes/options are bundled hints,
 // reviewed 2026-09-22, NOT promises that current main contains those artifacts.
 // Resolve only the selected source after an explicit Start or download action.
-export const modelSuggestions: readonly ModelSuggestion[] = [
+const chatModelSuggestions: readonly ChatModelSuggestion[] = [
   // QAT (Quantization-Aware Training) describes the checkpoint, not a GGUF
   // tensor type. Keep the matcher at Q4_0 and label only that choice as QAT.
   // Non-QAT choices explicitly use LM Studio Community; their projectors must
@@ -52,10 +112,10 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Gemma 4 E2B it',
     developer: 'Google',
     quantizationHints: [
-      { id: 'qat-q4_0', hfRepository: getHfRepository({ hfRepository: 'google/gemma-4-E2B-it-qat-q4_0-gguf' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 3_350_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 3_430_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 3_850_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 4_970_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'qat-q4_0', hfRepository: getHfRepository({ hfRepository: 'google/gemma-4-E2B-it-qat-q4_0-gguf' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 3_350_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 3_430_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 3_850_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E2B-it-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 4_970_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
     ],
   },
   {
@@ -63,10 +123,10 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Gemma 4 E4B it',
     developer: 'Google',
     quantizationHints: [
-      { id: 'qat-q4_0', hfRepository: getHfRepository({ hfRepository: 'google/gemma-4-E4B-it-qat-q4_0-gguf' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 5_150_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 5_340_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 6_220_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 8_030_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'qat-q4_0', hfRepository: getHfRepository({ hfRepository: 'google/gemma-4-E4B-it-qat-q4_0-gguf' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 5_150_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 5_340_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 6_220_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-E4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 8_030_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
     ],
   },
   {
@@ -74,10 +134,10 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Gemma 4 26B-A4B it',
     developer: 'Google',
     quantizationHints: [
-      { id: 'qat-q4_0', hfRepository: getHfRepository({ hfRepository: 'google/gemma-4-26B-A4B-it-qat-q4_0-gguf' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 14_400_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 16_800_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
-      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 22_600_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 26_900_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
+      { id: 'qat-q4_0', hfRepository: getHfRepository({ hfRepository: 'google/gemma-4-26B-A4B-it-qat-q4_0-gguf' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 14_400_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 16_800_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 22_600_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 26_900_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
     ],
   },
   // The Q8_0/BF16 files here are auxiliary drafter weights, not main choices.
@@ -86,7 +146,7 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'gpt-oss-20b',
     developer: 'OpenAI',
     quantizationHints: [
-      { id: 'mxfp4', hfRepository: getHfRepository({ hfRepository: 'ggml-org/gpt-oss-20b-GGUF' }).hfRepository, preferredQuantization: 'MXFP4', checkpoint: 'standard', approximateModelBytes: 12_100_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'mxfp4', hfRepository: getHfRepository({ hfRepository: 'ggml-org/gpt-oss-20b-GGUF' }).hfRepository, preferredQuantization: 'MXFP4', checkpoint: 'standard', approximateModelBytes: 12_100_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: undefined },
     ],
   },
   {
@@ -94,9 +154,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Qwen3.5 9B',
     developer: 'Qwen',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/Qwen3.5-9B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 5_630_000_000, approximateMultimodalBytes: 922_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/Qwen3.5-9B-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 7_360_000_000, approximateMultimodalBytes: 922_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/Qwen3.5-9B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 9_530_000_000, approximateMultimodalBytes: 922_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/Qwen3.5-9B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 5_630_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/Qwen3.5-9B-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 7_360_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/Qwen3.5-9B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 9_530_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
     ],
   },
   {
@@ -104,9 +164,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Qwen3.6 35B-A3B',
     developer: 'Qwen',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 20_400_000_000, approximateMultimodalBytes: 614_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 36_900_000_000, approximateMultimodalBytes: 614_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
-      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 69_400_000_000, approximateMultimodalBytes: 614_000_000, suggestedMemoryGiB: 128, suggestedMultimodalMemoryGiB: 128 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 20_400_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 36_900_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
+      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.6-35B-A3B-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 69_400_000_000, suggestedMemoryGiB: 128, suggestedMultimodalMemoryGiB: 128 },
     ],
   },
   {
@@ -114,9 +174,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Qwen3.8 27B',
     developer: 'Qwen',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 19_000_000_000, approximateMultimodalBytes: 629_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 28_600_000_000, approximateMultimodalBytes: 629_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
-      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 53_800_000_000, approximateMultimodalBytes: 629_000_000, suggestedMemoryGiB: 128, suggestedMultimodalMemoryGiB: 128 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 19_000_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 28_600_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
+      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'ggml-org/Qwen3.8-27B-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 53_800_000_000, suggestedMemoryGiB: 128, suggestedMultimodalMemoryGiB: 128 },
     ],
   },
   {
@@ -124,8 +184,8 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Qwen3.8-Flash-Next 125B',
     developer: 'Qwen',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 119_600_000_000, approximateMultimodalBytes: 904_000_000, suggestedMemoryGiB: 192, suggestedMultimodalMemoryGiB: 192 },
-      { id: 'q3_k_m', hfRepository: getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).hfRepository, preferredQuantization: 'Q3_K_M', checkpoint: 'standard', approximateModelBytes: 91_960_000_000, approximateMultimodalBytes: 904_000_000, suggestedMemoryGiB: 128, suggestedMultimodalMemoryGiB: 128 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 119_600_000_000, suggestedMemoryGiB: 192, suggestedMultimodalMemoryGiB: 192 },
+      { id: 'q3_k_m', hfRepository: getHfRepository({ hfRepository: 'bartowski/Qwen3.8-Flash-Next-GGUF' }).hfRepository, preferredQuantization: 'Q3_K_M', checkpoint: 'standard', approximateModelBytes: 91_960_000_000, suggestedMemoryGiB: 128, suggestedMultimodalMemoryGiB: 128 },
     ],
   },
   {
@@ -133,13 +193,13 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'LFM2.5 230M',
     developer: 'Liquid AI',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 153_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q4_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'standard', approximateModelBytes: 149_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q5_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q5_K_M', checkpoint: 'standard', approximateModelBytes: 172_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 191_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 247_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'f16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'F16', checkpoint: 'standard', approximateModelBytes: 462_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 462_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 153_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q4_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'standard', approximateModelBytes: 149_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q5_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q5_K_M', checkpoint: 'standard', approximateModelBytes: 172_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 191_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 247_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'f16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'F16', checkpoint: 'standard', approximateModelBytes: 462_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-230M-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 462_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
     ],
   },
   {
@@ -147,13 +207,13 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'LFM2.5 2.6B',
     developer: 'Liquid AI',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 1_670_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q4_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'standard', approximateModelBytes: 1_590_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q5_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q5_K_M', checkpoint: 'standard', approximateModelBytes: 1_940_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 2_220_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 2_870_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'f16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'F16', checkpoint: 'standard', approximateModelBytes: 5_400_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 5_400_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 1_670_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q4_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q4_0', checkpoint: 'standard', approximateModelBytes: 1_590_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q5_k_m', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q5_K_M', checkpoint: 'standard', approximateModelBytes: 1_940_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 2_220_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 2_870_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'f16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'F16', checkpoint: 'standard', approximateModelBytes: 5_400_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'bf16', hfRepository: getHfRepository({ hfRepository: 'LiquidAI/LFM2.5-2.6B-GGUF' }).hfRepository, preferredQuantization: 'BF16', checkpoint: 'standard', approximateModelBytes: 5_400_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: undefined },
     ],
   },
   // Match full tokens, including XL; KQuant filename modifiers are not tokens.
@@ -162,8 +222,8 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'Muse-Glimmer 30B',
     developer: 'Meta',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'meta-models/Muse-Glimmer-30B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 16_800_000_000, approximateMultimodalBytes: 1_400_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
-      { id: 'q4_k_xl', hfRepository: getHfRepository({ hfRepository: 'meta-models/Muse-Glimmer-30B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_XL', checkpoint: 'standard', approximateModelBytes: 19_700_000_000, approximateMultimodalBytes: 1_400_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'meta-models/Muse-Glimmer-30B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 16_800_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
+      { id: 'q4_k_xl', hfRepository: getHfRepository({ hfRepository: 'meta-models/Muse-Glimmer-30B-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_XL', checkpoint: 'standard', approximateModelBytes: 19_700_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
     ],
   },
   {
@@ -171,13 +231,17 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     name: 'SmolLM2 135M Instruct',
     developer: 'Hugging Face',
     quantizationHints: [
-      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 105_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q3_k_l', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q3_K_L', checkpoint: 'standard', approximateModelBytes: 97_500_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 138_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
-      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 145_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q4_k_m', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 105_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q3_k_l', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q3_K_L', checkpoint: 'standard', approximateModelBytes: 97_500_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q6_k', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 138_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
+      { id: 'q8_0', hfRepository: getHfRepository({ hfRepository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF' }).hfRepository, preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 145_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
     ],
   },
 ];
+export const modelSuggestions: readonly ModelSuggestion[] = chatModelSuggestions.map(({ quantizationHints: [first, ...rest], ...suggestion }) => ({
+  ...suggestion,
+  quantizationHints: [withProjectorHint({ hint: first }), ...rest.map(hint => withProjectorHint({ hint }))],
+}));
 export type MultimodalDownload = 'off' | 'on';
 export type SuggestedMemoryFilter = 'all' | 8 | 16 | 32;
 export const suggestedMemoryFilters: readonly SuggestedMemoryFilter[] = ['all', 8, 16, 32];

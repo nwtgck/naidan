@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preferredProjector, quantizationChoices, quantizationName } from './presentation';
+import { describeStoredModelVariant, compareModelVariantsBySize, preferredProjector, quantizationChoices, quantizationName } from './presentation';
 import { variantLabel } from './model-variants';
 
 function model({ path }: { path: string }) {
@@ -7,6 +7,13 @@ function model({ path }: { path: string }) {
 }
 
 describe('Hugging Face candidate presentation', () => {
+  it('orders visible variants by download size and compares equal-size filenames numerically', () => {
+    const variants = [{ path: 'model-10.gguf', bytes: 128 }, { path: 'model-1.gguf', bytes: 256 }, { path: 'model-2.gguf', bytes: 128 }];
+    expect(variants.sort((left, right) => compareModelVariantsBySize({ left, right })).map(variant => variant.path)).toEqual([
+      'model-2.gguf', 'model-10.gguf', 'model-1.gguf',
+    ]);
+  });
+
   it('labels Ornith quantizations when the repository has an extra architecture descriptor', () => {
     const repository = 'ornith-ai/Ornith-1.5-35B-A3B-GGUF';
     const paths = ['BF16', 'Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0'].map(quantization => `Ornith-1.5-35B-${quantization}.gguf`);
@@ -106,4 +113,39 @@ describe('Hugging Face candidate presentation', () => {
     expect(preferredProjector({ files: [{ path: 'special-mmproj.gguf', size: 128 }] })?.path).toBe('special-mmproj.gguf');
     expect(preferredProjector({ files: [{ path: 'base-mmproj-F16.gguf', size: 128 }, { path: 'other-mmproj-F16.gguf', size: 128 }] })).toBeUndefined();
   });
+});
+
+it.each([
+  ['reazonspeech-nemo-v2-GGUF:619M-v2-Q8_0', 'reazonspeech-nemo-v2-GGUF 619M-v2', 'Q8_0'],
+  ['Qwen3-VL-8B-Instruct-GGUF:Qwen3VL-8B-Instruct-Q4_K_M', 'Qwen3-VL-8B-Instruct-GGUF Qwen3VL-8B-Instruct', 'Q4_K_M'],
+  ['LFM3-1.7B-GGUF:QAD-Q4_0', 'LFM3-1.7B-GGUF', 'QAD-Q4_0'],
+  ['Gemma-4-GGUF:qat-Q4_0', 'Gemma-4-GGUF', 'qat-Q4_0'],
+  ['Qwen3.8-Flash-Next-GGUF:UD-IQ4_XS', 'Qwen3.8-Flash-Next-GGUF', 'UD-IQ4_XS'],
+  ['Ternary-Bonsai-2-4B-gguf:PQ2_0-MTP-Q8_0', 'Ternary-Bonsai-2-4B-gguf PQ2_0-MTP-Q8_0', '—'],
+])('shows a short quantization control for %s and retains the model details', (suffix, name, label) => {
+  const source = 'host/Models/owner';
+  expect(describeStoredModelVariant({ modelId: source + '/' + suffix })).toMatchObject({ name, label, source });
+});
+
+it('reads the quantization from the filename and keeps the original directory for grouping', () => {
+  const prefix = 'hf.co/owner/Model-GGUF:Q4_K_M-extra/preferred-';
+  const q4 = describeStoredModelVariant({ modelId: prefix + 'Q4_K_M' });
+  const q8 = describeStoredModelVariant({ modelId: prefix + 'Q8_0' });
+  expect(q4).toMatchObject({ name: 'Model-GGUF Q4_K_M-extra/preferred', label: 'Q4_K_M' });
+  expect(q8).toMatchObject({ key: q4?.key, label: 'Q8_0' });
+});
+
+it('distinguishes configurations with the same quantization in different positions', () => {
+  const prefix = 'hf.co/owner/Model-GGUF:';
+  const infix = describeStoredModelVariant({ modelId: prefix + 'foo-Q4_K_M-bar' });
+  const suffix = describeStoredModelVariant({ modelId: prefix + 'foo-bar-Q4_K_M' });
+  expect(infix).toMatchObject({ name: 'Model-GGUF foo-Q4_K_M-bar', label: 'Q4_K_M' });
+  expect(suffix).toMatchObject({ name: 'Model-GGUF foo-bar', label: 'Q4_K_M' });
+  expect(infix?.key).not.toBe(suffix?.key);
+});
+
+it('distinguishes a filename qualifier from a directory of the same name', () => {
+  const prefix = 'hf.co/owner/Model-GGUF:';
+  expect(describeStoredModelVariant({ modelId: prefix + 'foo-Q4_K_M' })).toMatchObject({ name: 'Model-GGUF foo', label: 'Q4_K_M' });
+  expect(describeStoredModelVariant({ modelId: prefix + 'foo/Q4_K_M' })).toMatchObject({ name: 'Model-GGUF foo/', label: 'Q4_K_M' });
 });

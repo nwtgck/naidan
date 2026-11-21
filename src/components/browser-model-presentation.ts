@@ -2,7 +2,7 @@ import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/repository-input';
 import { quantizationName } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { parseTemporaryModelReference } from '@/features/llama-cpp-browser/temporary-model-reference';
-import { hasLocalRepositoryReferencePrefix, parseLocalRepositoryReference } from '@/01-models/llama-cpp-browser-model-id';
+import { hasLocalRepositoryReferencePrefix, parseLocalRepositoryReference, trySplitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { modelSuggestions, preferredQuantizationHint, type ModelSuggestion, type SuggestedQuantization } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import { hasTemporaryModelPathPrefix, type TemporaryModelDirectoryInput } from '@/01-models/temporary-model-files';
 
@@ -39,25 +39,26 @@ export function browserModelRepositoryPresentation({ repository, bytes }: { repo
 }
 
 export function localModelDisplayName({ model }: { model: Pick<LocalModel, 'modelId' | 'source'> }): string {
+  const modelId = trySplitRepositoryModelId({ modelId: model.modelId })?.baseId ?? model.modelId;
   let path = model.source?.primaryRelativePath;
-  if (path === undefined && hasLocalRepositoryReferencePrefix({ modelId: model.modelId, storage: undefined })) {
+  if (path === undefined && hasLocalRepositoryReferencePrefix({ modelId, storage: undefined })) {
     try {
-      const reference = parseLocalRepositoryReference({ modelId: model.modelId });
+      const reference = parseLocalRepositoryReference({ modelId });
       path = reference.selector ?? reference.rootName;
     } catch { /* Missing references still need a display fallback. */ }
   }
-  if (path === undefined && hasTemporaryModelPathPrefix({ path: model.modelId })) {
+  if (path === undefined && hasTemporaryModelPathPrefix({ path: modelId })) {
     try {
-      const reference = parseTemporaryModelReference({ modelId: model.modelId });
+      const reference = parseTemporaryModelReference({ modelId });
       const name = reference.repository ?? reference.rootName;
       path = reference.selector === undefined ? name : /\.gguf$/i.test(reference.selector) ? reference.selector : `${name}:${reference.selector}`;
     } catch { /* A display fallback must also work for a missing legacy reference. */ }
   }
   if (path === undefined) {
-    const selector = model.modelId.split(':').slice(1).join(':');
-    path = /\.gguf$/i.test(selector) ? selector : model.modelId;
+    const selector = modelId.split(':').slice(1).join(':');
+    path = /\.gguf$/i.test(selector) ? selector : modelId;
   }
-  return (path?.split('/').at(-1) ?? model.modelId).replace(/\.gguf$/i, '');
+  return (path?.split('/').at(-1) ?? modelId).replace(/\.gguf$/i, '');
 }
 
 /** Match a real local selection to a catalog family and its complete quantization token. */

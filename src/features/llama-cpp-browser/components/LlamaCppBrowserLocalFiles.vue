@@ -1,24 +1,41 @@
 <script setup lang="ts">
-import { onScopeDispose, ref, shallowRef } from 'vue';
+import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import ToggleSwitch from '@/components/ToggleSwitch.vue';
-import { lazyStrings } from '@/strings';
+import { lazyStrings, ensureStrings } from '@/strings';
 import { LlamaCppBrowserError, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
-import { captureDroppedLocalModels, localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
+import { type LocalModelImportRequest, captureDroppedLocalModels, filterModelFilesForAddition, localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
 import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-browser/composables/useLlamaCppBrowserSettingsTypography';
+import { droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
 import LlamaCppBrowserModelFileInput from './LlamaCppBrowserModelFileInput.vue';
 import LlamaCppBrowserRepositoryLayout from './LlamaCppBrowserRepositoryLayout.vue';
 import type { LocalRepositoryLayoutChoice } from '@/features/llama-cpp-browser/runtime/local-repository-layout';
 
-const props = defineProps<{ disabled: boolean, layout: 'compact' | 'expanded' | 'fill' }>();
+const props = defineProps<{ disabled: boolean, layout: 'compact' | 'expanded' | 'fill', intent?: 'add' }>();
 const emit = defineEmits<{
-  accept: [input: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController, save: 'browser' | 'later', repositoryLayout: 'confirmed' }],
+  accept: [request: LocalModelImportRequest],
   'drag-active': [state: 'active' | 'idle'],
   'layout-pending': [pending: boolean],
+  skipped: [files: string[]],
 }>();
 const save = ref<'browser' | 'later'>('later');
 const question = shallowRef<{ rootName: string, choices: LocalRepositoryLayoutChoice[], choose({ layout }: { layout: LocalRepositoryLayoutChoice['layout'] }): void, cancel(): void }>();
 const controllers = new Set<AbortController>();
 const isSettingsTypography = useLlamaCppBrowserSettingsTypography();
+
+const addingFiles = computed(() => {
+  switch (props.intent) {
+  case 'add': return true;
+  case undefined: return false;
+  default: throw new Error(String(props.intent satisfies never));
+  }
+});
+const fileDescription = computed(() => {
+  switch (save.value) {
+  case 'browser': return addingFiles.value ? lazyStrings.LlamaCppBrowserLocalFiles__save_in_browser() : lazyStrings.LlamaCppBrowserLocalFiles__start_now_and_save_in_background();
+  case 'later': return addingFiles.value ? lazyStrings.LlamaCppBrowserLocalFiles__use_until_page_closes() : lazyStrings.LlamaCppBrowserLocalFiles__start_without_copying_and_save_later();
+  default: throw new Error(String(save.value satisfies never));
+  }
+});
 
 async function confirmLayouts({ directories, controller }: { directories: ModelDirectoryInput[], controller: AbortController }): Promise<ModelDirectoryInput[]> {
   const result: ModelDirectoryInput[] = [];
@@ -67,7 +84,7 @@ async function confirmLayouts({ directories, controller }: { directories: ModelD
   return result;
 }
 
-function handOff({ collect }: { collect({ controller }: { controller: AbortController }): Promise<ModelDirectoryInput[]> }): void {
+function handOff({ collect, skipped }: { collect({ controller }: { controller: AbortController }): Promise<ModelDirectoryInput[]>, skipped?: string[] }): void {
   if (props.disabled || question.value !== undefined) {
     return;
   }
@@ -81,7 +98,17 @@ function handOff({ collect }: { collect({ controller }: { controller: AbortContr
   } catch (error) {
     captured = Promise.reject(error);
   }
-  const directories = captured.then(directories => confirmLayouts({ directories, controller })).finally(() => {
+  const directories = captured.then(async directories => {
+    if (!addingFiles.value) {
+      return confirmLayouts({ directories, controller });
+    }
+    const result = await filterModelFilesForAddition({ directories, signal: controller.signal });
+    emit('skipped', [...skipped ?? [], ...result.skipped]);
+    if (!result.directories.length) {
+      throw new LlamaCppBrowserError({ code: 'unsupported-input', details: await ensureStrings.LlamaCppBrowserLocalFiles__no_gguf_files() });
+    }
+    return confirmLayouts({ directories: result.directories, controller });
+  }).finally(() => {
     controllers.delete(controller);
   });
   void directories.catch(() => {});
@@ -98,6 +125,14 @@ function chooseFiles({ event, selection }: { event: Event, selection: 'files' | 
   if (!files.length) {
     return;
   }
+  if (addingFiles.value && selection === 'files') {
+    const modelFiles = files.filter(file => /\.gguf$/i.test(file.name));
+    handOff({
+      skipped: files.filter(file => !/\.gguf$/i.test(file.name)).map(file => file.name),
+      collect: async () => localModelDirectoriesFromFiles({ files: modelFiles, selection }),
+    });
+    return;
+  }
   handOff({ collect: async () => localModelDirectoriesFromFiles({ files, selection }) });
 }
 
@@ -107,7 +142,29 @@ function dropFiles({ event }: { event: DragEvent }): void {
     return;
   }
   // The adapter must run before any import awaits, while drag data is readable.
-  handOff({ collect: ({ controller }) => captureDroppedLocalModels({ transfer, signal: controller.signal }) });
+  if (!addingFiles.value) {
+    handOff({ collect: ({ controller }) => captureDroppedLocalModels({ transfer, signal: controller.signal }) });
+    return;
+  }
+  const skipped: string[] = [];
+  handOff({
+    skipped,
+    collect: ({ controller }) => droppedModels({ transfer, signal: controller.signal, allowOtherFiles: true }).then(({ directories, files }) => {
+      const models: File[] = [];
+      for (const file of files) {
+        if (/\.gguf$/i.test(file.name)) {
+          models.push(file);
+        } else {
+          skipped.push(file.name);
+        }
+      }
+      if (models.length && models.every(file => /mmproj/i.test(file.name))) {
+        skipped.push(...models.map(file => file.name));
+        return directories;
+      }
+      return [...directories, ...localModelDirectoriesFromFiles({ files: models, selection: 'files' })];
+    }),
+  });
 }
 
 onScopeDispose(() => {
@@ -126,7 +183,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <ToggleSwitch><input type="checkbox" :checked="save === 'browser'" :disabled="disabled || question !== undefined" data-testid="local-model-save-in-browser" @change="save = ($event.target as HTMLInputElement).checked ? 'browser' : 'later'" /></ToggleSwitch>
     </label>
     <LlamaCppBrowserRepositoryLayout v-if="question" :root-name="question.rootName" :choices="question.choices" heading="visible" @choose="question.choose({ layout: $event })" @cancel="question.cancel" />
-    <LlamaCppBrowserModelFileInput v-else :class="{ 'local-files-picker-fill': layout === 'fill' }" :disabled="disabled" mode="temp" :layout="layout" :description="save === 'browser' ? lazyStrings.LlamaCppBrowserLocalFiles__start_now_and_save_in_background() : lazyStrings.LlamaCppBrowserLocalFiles__start_without_copying_and_save_later()" @files="chooseFiles({ event: $event, selection: 'files' })" @directory="chooseFiles({ event: $event, selection: 'directory' })" @drop-files="dropFiles({ event: $event })" @drag-active="emit('drag-active', $event)" />
+    <LlamaCppBrowserModelFileInput v-else :class="{ 'local-files-picker-fill': layout === 'fill' }" :disabled="disabled" mode="temp" :layout="layout" :description="fileDescription" @files="chooseFiles({ event: $event, selection: 'files' })" @directory="chooseFiles({ event: $event, selection: 'directory' })" @drop-files="dropFiles({ event: $event })" @drag-active="emit('drag-active', $event)" />
   </div>
 </template>
 

@@ -38,7 +38,11 @@ export function validateHuggingFacePrivacyFetchUrl({ url }: { url: URL }): Priva
   }
   if (url.pathname === '/api/models') {
     const limit = url.searchParams.get('limit') ?? '';
-    if (url.searchParams.get('apps') !== 'llama.cpp' || url.searchParams.get('sort') !== 'trendingScore' || !/^(?:[1-9]\d?|100)$/.test(limit) || String(Number(limit)) !== limit) {
+    const apps = url.searchParams.getAll('apps');
+    const filters = url.searchParams.getAll('filter');
+    const supportedScope = (apps.length === 1 && apps[0] === 'llama.cpp' && filters.length === 0)
+      || (filters.length === 1 && filters[0] === 'gguf' && apps.length === 0);
+    if (!supportedScope || url.searchParams.get('sort') !== 'trendingScore' || !/^(?:[1-9]\d?|100)$/.test(limit) || String(Number(limit)) !== limit) {
       return reject();
     }
     const expandedFields = new Set<string>();
@@ -50,7 +54,7 @@ export function validateHuggingFacePrivacyFetchUrl({ url }: { url: URL }): Priva
         expandedFields.add(value);
         continue;
       }
-      if (!['apps', 'sort', 'search', 'limit', 'cursor', 'num_parameters'].includes(key) || url.searchParams.getAll(key).length !== 1 || (key === 'search' && (value.length > 200 || /\p{Cc}/u.test(value))) || (key === 'cursor' && (value.length === 0 || value.length > 8192 || /\p{Cc}/u.test(value))) || (key === 'num_parameters' && normalizeHuggingFaceParameterFilter({ value }) === undefined)) {
+      if (!['apps', 'filter', 'sort', 'search', 'limit', 'cursor', 'num_parameters'].includes(key) || url.searchParams.getAll(key).length !== 1 || (key === 'search' && (value.length > 200 || /\p{Cc}/u.test(value))) || (key === 'cursor' && (value.length === 0 || value.length > 8192 || /\p{Cc}/u.test(value))) || (key === 'num_parameters' && normalizeHuggingFaceParameterFilter({ value }) === undefined)) {
         return reject();
       }
     }

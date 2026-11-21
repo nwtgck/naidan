@@ -1,7 +1,7 @@
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { parsePublicHostModelReference } from './model-destination-types';
-import { modelVariantName } from '@/01-models/llama-cpp-browser-model-id';
+import { formatRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 
 type Directories = readonly { id: HostModelDirectoryId, name: string }[];
 
@@ -36,7 +36,7 @@ export function formatHostModelId({ directoryId, repository, primaryRelativePath
   if (alias === undefined) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  return `host/${encodeURIComponent(alias)}/${repository}:${modelVariantName({ repository, path: primaryRelativePath })}`;
+  return formatRepositoryModelId({ source: { kind: 'host', alias }, repository, mainFilePath: primaryRelativePath });
 }
 
 /** Resolve only the current public alias. Storage locations remain structured. */

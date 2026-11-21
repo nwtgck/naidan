@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { discoverRepository, groupModelFiles, parseRepository, searchModels } from './catalog';
+import { discoverRepository, groupModelFiles, parseRepository, searchGgufModels, searchModels } from './catalog';
 import { createSearchParameterFilter } from './parameter-filter';
 import { privacyFetchStream } from '@/features/privacy-fetch';
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
@@ -120,6 +120,7 @@ describe('Hugging Face repository search', () => {
     expect(url.origin + url.pathname).toBe('https://huggingface.co/api/models');
     expect(url.searchParams.get('search')).toBe('qwen & 日本語');
     expect(url.searchParams.get('limit')).toBe('20');
+    expect(url.searchParams.has('filter')).toBe(false);
     expect(url.searchParams.getAll('expand[]')).toEqual(['pipeline_tag', 'gguf', 'safetensors', 'downloads', 'likes', 'lastModified']);
   });
 
@@ -200,23 +201,29 @@ describe('Hugging Face repository search', () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
-  it('does not fetch for an already-aborted request or invalid search text', async () => {
+  it.each([
+    { scope: 'llama.cpp', search: searchModels },
+    { scope: 'gguf', search: searchGgufModels },
+  ])('does not fetch for an already-aborted request or invalid $scope search text', async ({ search }) => {
     const calls = vi.mocked(privacyFetchStream).mock.calls.length;
     const controller = new AbortController();
     controller.abort();
-    await expect(searchModels({ query: 'model', cursor: undefined, numParameters: undefined, signal: controller.signal })).rejects.toThrow();
-    await expect(searchModels({ query: 'x'.repeat(201), cursor: undefined, numParameters: undefined, signal: new AbortController().signal })).rejects.toThrow();
-    await expect(searchModels({ query: 'model\u0000name', cursor: undefined, numParameters: undefined, signal: new AbortController().signal })).rejects.toThrow();
+    await expect(search({ query: 'model', cursor: undefined, numParameters: undefined, signal: controller.signal })).rejects.toThrow();
+    await expect(search({ query: 'x'.repeat(201), cursor: undefined, numParameters: undefined, signal: new AbortController().signal })).rejects.toThrow();
+    await expect(search({ query: 'model\u0000name', cursor: undefined, numParameters: undefined, signal: new AbortController().signal })).rejects.toThrow();
     expect(vi.mocked(privacyFetchStream).mock.calls).toHaveLength(calls);
   });
 
-  it('rejects a response whose request was aborted before parsing completed', async () => {
+  it.each([
+    { scope: 'llama.cpp', search: searchModels },
+    { scope: 'gguf', search: searchGgufModels },
+  ])('rejects a $scope response whose request was aborted before parsing completed', async ({ search }) => {
     const controller = new AbortController();
     vi.mocked(privacyFetchStream).mockImplementationOnce(async () => {
       controller.abort();
       return jsonResponse({ value: [{ id: 'old/model' }], headers: new Headers() });
     });
-    await expect(searchModels({ query: 'model', cursor: undefined, numParameters: undefined, signal: controller.signal })).rejects.toThrow();
+    await expect(search({ query: 'model', cursor: undefined, numParameters: undefined, signal: controller.signal })).rejects.toThrow();
   });
 
   it('extracts only the next cursor and rebuilds committed search parameters for the next request', async () => {
@@ -272,5 +279,55 @@ describe('Hugging Face repository search', () => {
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: [], headers: new Headers({ link: '<?cursor=same>; rel="next"' }) }));
     expect((await searchModels({ query: '', cursor: 'same', numParameters: undefined, signal: new AbortController().signal })).nextCursor).toBeUndefined();
     expect(new URL(vi.mocked(privacyFetchStream).mock.calls.at(-1)![0].request.url).searchParams.has('search')).toBe(false);
+  });
+
+  it('searches the GGUF format through the privacy stream without a llama.cpp application filter', async () => {
+    vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: [{ id: 'owner/asr', pipeline_tag: 'automatic-speech-recognition' }], headers: new Headers() }));
+    const signal = new AbortController().signal;
+    expect(await searchGgufModels({ query: '  日本語 ASR  ', cursor: undefined, numParameters: undefined, signal })).toEqual({ results: [{ id: 'owner/asr', pipeline_tag: 'automatic-speech-recognition' }], nextCursor: undefined });
+    const request = vi.mocked(privacyFetchStream).mock.calls.at(-1)![0].request;
+    const url = new URL(request.url);
+    expect(request.signal).toBe(signal);
+    expect(url.origin + url.pathname).toBe('https://huggingface.co/api/models');
+    expect(url.searchParams.getAll('filter')).toEqual(['gguf']);
+    expect(url.searchParams.has('apps')).toBe(false);
+    expect(url.searchParams.get('search')).toBe('日本語 ASR');
+    expect(url.searchParams.get('limit')).toBe('20');
+    expect(url.searchParams.get('sort')).toBe('trendingScore');
+  });
+
+  it('keeps the GGUF scope when rebuilding a cursor-only page and accepts a matching explicit filter', async () => {
+    vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: [], headers: new Headers({ link: '<?cursor=next>; rel="next"' }) }));
+    const first = await searchGgufModels({ query: 'asr', cursor: undefined, numParameters: undefined, signal: new AbortController().signal });
+    expect(first.nextCursor).toBe('next');
+    vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: [], headers: new Headers({ link: '<?cursor=after&filter=gguf>; rel="next"' }) }));
+    const second = await searchGgufModels({ query: 'asr', cursor: first.nextCursor, numParameters: undefined, signal: new AbortController().signal });
+    expect(second.nextCursor).toBe('after');
+    const url = new URL(vi.mocked(privacyFetchStream).mock.calls.at(-1)![0].request.url);
+    expect(url.searchParams.get('filter')).toBe('gguf');
+    expect(url.searchParams.has('apps')).toBe(false);
+    expect(url.searchParams.get('search')).toBe('asr');
+    expect(url.searchParams.get('cursor')).toBe('next');
+  });
+
+  it.each([
+    { scope: 'llama.cpp', search: searchModels, changedScope: 'filter=gguf' },
+    { scope: 'gguf', search: searchGgufModels, changedScope: 'apps=llama.cpp' },
+  ])('rejects a next link that changes the $scope search scope', async ({ search, changedScope }) => {
+    vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: [{ id: 'owner/kept' }], headers: new Headers({ link: `<?cursor=next&${changedScope}>; rel="next"` }) }));
+    expect(await search({ query: 'asr', cursor: undefined, numParameters: undefined, signal: new AbortController().signal })).toEqual({ results: [{ id: 'owner/kept' }], nextCursor: undefined });
+  });
+
+  it.each([
+    'filter=gguf&filter=gguf',
+    'filter=safetensors',
+    'filter=',
+    'filter[]=gguf',
+    'library=gguf',
+    'filter=gguf&apps=llama.cpp',
+    'filter=gguf&token=secret',
+  ])('preserves valid GGUF results while refusing an unsupported next scope: %s', parameters => {
+    vi.mocked(privacyFetchStream).mockResolvedValueOnce(jsonResponse({ value: [{ id: 'owner/kept' }], headers: new Headers({ link: `<?cursor=next&${parameters}>; rel="next"` }) }));
+    return expect(searchGgufModels({ query: 'asr', cursor: undefined, numParameters: undefined, signal: new AbortController().signal })).resolves.toEqual({ results: [{ id: 'owner/kept' }], nextCursor: undefined });
   });
 });

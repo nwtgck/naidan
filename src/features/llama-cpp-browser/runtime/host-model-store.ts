@@ -1,7 +1,9 @@
+import { parseRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { type HostModelDirectoryId, idToRaw } from '@/01-models/ids';
 import { listHuggingFaceModels, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
-import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
-import { formatHostModelId, resolveHostModelLocation } from './host-model-aliases';
+import { selectRepositoryModel } from '@/features/llama-cpp-browser/hugging-face/model-selector';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
+import { resolveHostModelLocation } from './host-model-aliases';
 import type { ResolvedModel } from './model-directory';
 
 export type HostModelInventoryIssue = { directoryId: string, directoryName: string, message: string };
@@ -48,13 +50,11 @@ export async function listHostStoredModels({ directories, signal }: {
 export async function resolveHostModel({ modelId, directories, signal }: { modelId: string, directories: readonly { id: HostModelDirectoryId, name: string }[], signal: AbortSignal | undefined }): Promise<ResolvedModel> {
   const { directoryId, repository } = resolveHostModelLocation({ modelId, directories });
   const destination = { kind: 'host' as const, directoryId };
-  const models = await repositoryDirectories({ repository, destination, signal });
-  const matching = models.filter(directory => formatHostModelId({ directoryId, repository, primaryRelativePath: directory.primaryFile.relativePath, directories }) === modelId);
-  if (matching.length !== 1) {
-    throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
-  }
+  const { configuration, variant } = parseRepositoryModelId({ modelId });
+  const models = await repositoryDirectories({ repository, destination, signal, configuration });
+  const directory = selectRepositoryModel({ models, repository, variant });
   signal?.throwIfAborted();
-  return { modelId, location: { kind: 'host', directoryId, repository }, directory: matching[0]! };
+  return { modelId, location: { kind: 'host', directoryId, repository }, directory };
 }
 
 export const TEST_ONLY = {

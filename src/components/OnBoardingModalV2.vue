@@ -5,7 +5,6 @@ import BrowserModelDialog from './BrowserModelDialog.vue';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
 import HuggingFaceDownloadFailureHint from '@/components/HuggingFaceDownloadFailureHint.vue';
 import CspMessageHint from '@/components/csp/CspMessageHint.vue';
-import LlamaCppBrowserLocalFileRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue';
 import { browserModelRepositoryPresentation, browserModelSuggestionSelection, type BrowserModelLocalInput, type BrowserModelSelection, type ModelDiscoveryTab } from './browser-model-presentation';
 import { useCspMessageHintsOnly } from '@/composables/useCspMessageHintsOnly';
 import type { CspHintTarget } from '@/logic/csp-message-hints/types';
@@ -28,6 +27,7 @@ const connectionLoader = createModuleLoader({ importModule: () => import('./Brow
 const ConnectionSelection = shallowRef<Component>();
 const localModelInputLoader = createModuleLoader({ importModule: () => import('./OnBoardingModalV2LocalModelInput.vue'), onPrefetchError: () => {} });
 const OnBoardingModalV2LocalModelInput = defineAsyncComponent({ loader: localModelInputLoader.load });
+const LlamaCppBrowserLocalFileRecovery = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserLocalFileRecovery.vue'));
 type ConnectionPresentation = {
   initialEndpoint: 'openai' | 'browser_provided_lm',
   isCurrent(): boolean,

@@ -39,6 +39,7 @@ const props = defineProps<{
   heading?: string | undefined,
   disabled?: boolean,
   surface?: 'flat' | 'card' | 'plain',
+  layout?: 'stacked' | 'inline',
   notice?: 'paragraph' | 'inline-help',
 }>();
 
@@ -192,10 +193,11 @@ defineExpose({
       surface === 'card'
         ? 'p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl'
         : surface === 'plain' ? '' : 'px-3 py-2 border-b dark:border-gray-700',
-      disabled && surface !== 'plain' ? 'opacity-50' : ''
+      disabled && surface !== 'plain' ? 'opacity-50' : '',
+      layout === 'inline' && 'flex flex-wrap items-center gap-x-3 gap-y-1',
     ]"
   >
-    <div :tw-class="['flex items-center gap-2', surface === 'plain' ? 'min-h-4 mb-0.5' : 'mb-2']">
+    <div :tw-class="['flex items-center gap-2', layout === 'inline' ? 'min-h-4 shrink-0 whitespace-nowrap' : surface === 'plain' ? 'min-h-4 mb-0.5' : 'mb-2']">
       <BrainIcon tw-class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
       <span :tw-class="[surface === 'plain' ? 'text-xs font-medium text-gray-500 dark:text-gray-400' : 'text-[9px] font-bold text-gray-400 uppercase tracking-wider']">{{ headingLabel }}</span>
       <ReasoningSettingsHelp v-if="notice === 'inline-help'" />
@@ -203,7 +205,7 @@ defineExpose({
     </div>
 
     <!-- Segmented Control Container -->
-    <div ref="containerRef" data-testid="reasoning-effort-options" class="reasoning-effort-options" :tw-class="['relative flex p-0.5 rounded-lg border bg-gray-100 dark:bg-gray-800 border-gray-200/50 dark:border-gray-700/50', surface === 'plain' ? 'items-center' : '']">
+    <div ref="containerRef" data-testid="reasoning-effort-options" class="reasoning-effort-options" :tw-class="['relative flex p-0.5 rounded-lg border bg-gray-100 dark:bg-gray-800 border-gray-200/50 dark:border-gray-700/50', surface === 'plain' ? 'items-center' : '', layout === 'inline' && 'min-w-0 flex-[1_1_16rem]']">
 
       <!-- Animated Slider Background -->
       <div
@@ -248,7 +250,7 @@ defineExpose({
       </button>
     </div>
 
-    <div v-if="notice !== 'inline-help'" tw-class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
+    <div v-if="notice !== 'inline-help'" :tw-class="['mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5', layout === 'inline' && 'w-full']">
       {{ lazyStrings.ReasoningSettings__effort_levels_may_be_ignored_by_some_models() }}
     </div>
   </div>

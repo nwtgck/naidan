@@ -61,7 +61,7 @@ export function createSpeechRecognitionController({ createClient, decodeFile, no
     await client.cancel();
     await current?.task;
   }
-  async function run({ inputName, prepare, language, investigation }: { inputName: string, prepare: ({ signal, modelSampleRate }: { signal: AbortSignal, modelSampleRate: number }) => Promise<{ samples: Float32Array<ArrayBuffer>, sampleRate: number }>, language: string | undefined, investigation: SpeechInvestigationBinding | undefined }): Promise<void> {
+  async function run({ inputName, prepare, language, investigation }: { inputName: string, prepare: ({ signal, modelSampleRate }: { signal: AbortSignal, modelSampleRate: number }) => Promise<{ samples: Float32Array<ArrayBuffer>, sampleRate: number }>, language: string | undefined, investigation: SpeechInvestigationBinding | undefined }): Promise<SpeechRecognitionRun | undefined> {
     const model = state.runtime.model;
     if (disposed || running !== undefined || state.runtime.phase !== 'ready' || model === undefined) {
       return;
@@ -127,6 +127,9 @@ export function createSpeechRecognitionController({ createClient, decodeFile, no
         running = undefined;
       }
     }
+    // Return this request's snapshot so continuous callers do not infer which
+    // result belongs to them by polling mutable controller state.
+    return { ...run, languages: [...run.languages] };
   }
   return {
     capability: client.capability,
@@ -146,12 +149,12 @@ export function createSpeechRecognitionController({ createClient, decodeFile, no
         observed?.release();
       }
     },
-    async runFile({ file, language, investigation }: { file: File, language: string | undefined, investigation?: SpeechInvestigationBinding }): Promise<void> {
-      await run({ inputName: file.name, language, investigation, prepare: async ({ signal, modelSampleRate }) => ({ samples: await decodeFile({ file, sampleRate: modelSampleRate, signal }), sampleRate: modelSampleRate }) });
+    async runFile({ file, language, investigation }: { file: File, language: string | undefined, investigation?: SpeechInvestigationBinding }): Promise<SpeechRecognitionRun | undefined> {
+      return run({ inputName: file.name, language, investigation, prepare: async ({ signal, modelSampleRate }) => ({ samples: await decodeFile({ file, sampleRate: modelSampleRate, signal }), sampleRate: modelSampleRate }) });
     },
     /** The caller transfers ownership of temporary PCM, without WAV decoding. */
-    async runAudio({ samples, sampleRate, inputName, language, investigation }: { samples: Float32Array<ArrayBuffer>, sampleRate: number, inputName: string, language: string | undefined, investigation?: SpeechInvestigationBinding }): Promise<void> {
-      await run({ inputName, language, investigation, prepare: async () => ({ samples, sampleRate }) });
+    async runAudio({ samples, sampleRate, inputName, language, investigation }: { samples: Float32Array<ArrayBuffer>, sampleRate: number, inputName: string, language: string | undefined, investigation?: SpeechInvestigationBinding }): Promise<SpeechRecognitionRun | undefined> {
+      return run({ inputName, language, investigation, prepare: async () => ({ samples, sampleRate }) });
     },
     cancel: () => cancel({ includeModelLoad: true }),
     /** Cancel only this controller's active decode/transcribe task, preserving a model load. */

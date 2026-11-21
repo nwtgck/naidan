@@ -55,6 +55,7 @@ it('prefetches code through the shared mechanism without mounting a late tab aft
     maySend: computed(() => true),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
+    prepareRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     accept: vi.fn(async () => {}),
     acceptAfterFailedDownload: vi.fn(async () => {}),

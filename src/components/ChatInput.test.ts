@@ -13,6 +13,7 @@ import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import type { AppInteraction } from '@/composables/useAppPresentation';
 
 beforeEach(async () => {
+  mockOpenModelDropdown.mockClear();
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
@@ -74,10 +75,12 @@ vi.mock('lucide-vue-next', () => ({
   WrapTextIcon: { template: '<span>WrapText</span>' },
   BarChart2Icon: { template: '<span>BarChart2</span>' },
   AlignLeftIcon: { template: '<span>AlignLeft</span>' },
+  FilePlusIcon: { template: '<span>FilePlus</span>' },
 }));
 
 // Mock child components
-vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div><slot name="trigger-detail" /><slot name="settings" /></div>' } }));
+const mockOpenModelDropdown = vi.hoisted(() => vi.fn());
+vi.mock('./ChatModelSelector.vue', () => ({ default: { name: 'ChatModelSelector', methods: { openDropdown: mockOpenModelDropdown }, template: '<div><slot name="trigger-detail" /><slot name="settings" /></div>' } }));
 vi.mock('../features/tools/components/ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
 const mockOpenFileExplorer = vi.fn();
@@ -517,10 +520,11 @@ describe('ChatInput Integration', () => {
     }));
   });
 
-  const getWrapper = ({ autoSendPrompt, isSubmissionEnabled, textSubmissionAction }: {
+  const getWrapper = ({ autoSendPrompt, isSubmissionEnabled, textSubmissionAction, prepareModelForSubmission }: {
     autoSendPrompt?: string,
     isSubmissionEnabled?: boolean,
     textSubmissionAction?: ChatTextSubmissionAction,
+    prepareModelForSubmission?: () => Promise<boolean>,
   } = {}) => mount(ChatInput, {
     props: {
       endpoint: undefined,
@@ -535,6 +539,7 @@ describe('ChatInput Integration', () => {
       isStreaming: false,
       isSubmissionEnabled,
       textSubmissionAction,
+      prepareModelForSubmission,
       canGenerateImage: true,
       hasImageModel: true,
       availableImageModels: [],
@@ -753,20 +758,20 @@ describe('ChatInput Integration', () => {
     };
     await flushPromises();
     const textarea = wrapper.get('[data-testid="chat-input"]').element;
-    const selector = wrapper.getComponent({ name: 'ModelSelector' }).element;
+    const selector = wrapper.getComponent({ name: 'ChatModelSelector' }).element;
     const send = wrapper.get('[data-testid="send-button"]');
     const card = wrapper.get('[data-testid="chat-input-card"]');
     const initialChildren = Array.from(card.element.children);
     const initialFetches = mockChatStore.fetchAvailableModels.mock.calls.length;
     await wrapper.setProps({ endpoint: { type: 'openai', url: 'https://configured.example/v1' } });
     expect(wrapper.findComponent({ name: 'CspLmEndpointHint' }).exists()).toBe(false);
-    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
+    await wrapper.getComponent({ name: 'ChatModelSelector' }).vm.$emit('update:open', true);
     await nextTick();
     expect(wrapper.findComponent({ name: 'CspLmEndpointHint' }).exists()).toBe(false);
     expect(Array.from(card.element.children)).toEqual(initialChildren);
     expect(card.element.lastElementChild?.contains(send.element)).toBe(true);
     expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea);
-    expect(wrapper.getComponent({ name: 'ModelSelector' }).element).toBe(selector);
+    expect(wrapper.getComponent({ name: 'ChatModelSelector' }).element).toBe(selector);
     expect(mockChatStore.fetchAvailableModels).toHaveBeenCalledTimes(initialFetches);
     await wrapper.get('[data-testid="chat-input"]').setValue('Send without a composer notice row');
     expect(send.element).toHaveProperty('disabled', false);
@@ -1253,7 +1258,7 @@ describe('ChatInput Integration', () => {
     { label: 'button', shortcut: undefined },
     { label: 'Ctrl+Enter', shortcut: { ctrlKey: true } },
     { label: 'Cmd+Enter', shortcut: { metaKey: true } },
-  ])('requests onboarding with %s rather than submitting an incomplete chat', async ({ shortcut }) => {
+  ])('opens the model selector with %s and keeps the incomplete draft', async ({ shortcut }) => {
     const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'select-model' });
     const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Unsent draft');
@@ -1271,7 +1276,7 @@ describe('ChatInput Integration', () => {
     }
     await flushPromises();
 
-    expect(wrapper.emitted('request-model-selection')).toHaveLength(1);
+    expect(mockOpenModelDropdown).toHaveBeenCalledOnce();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
     expect(textarea.element.value).toBe('Unsent draft');
     expect(wrapper.vm.TEST_ONLY.attachments.value).toEqual([attachment]);
@@ -1286,7 +1291,7 @@ describe('ChatInput Integration', () => {
     await flushPromises();
     expect(mockSendImageRequest).toHaveBeenCalledOnce();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
-    expect(wrapper.emitted('request-model-selection')).toBeUndefined();
+    expect(mockOpenModelDropdown).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -1297,11 +1302,42 @@ describe('ChatInput Integration', () => {
       textSubmissionAction: 'select-model',
     });
     await flushPromises();
-    expect(wrapper.emitted('request-model-selection')).toBeUndefined();
+    expect(mockOpenModelDropdown).not.toHaveBeenCalled();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
     expect(wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]').element.value).toBe('Unsent prompt from URL');
     expect(wrapper.emitted('auto-sent')).toHaveLength(1);
     wrapper.unmount();
+  });
+
+  it('prepares the chosen model on explicit Send and keeps edits made during preparation', async () => {
+    const ready = Promise.withResolvers<boolean>();
+    const prepare = vi.fn(() => ready.promise);
+    mockSendMessageForChat.mockResolvedValue(true);
+    const wrapper = getWrapper({ textSubmissionAction: 'send', prepareModelForSubmission: prepare });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    void cleanup;
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Original message');
+    expect(prepare).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="send-button"]').trigger('click');
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    await textarea.setValue('New draft');
+    ready.resolve(true);
+    await flushPromises();
+    expect(mockSendMessageForChat).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ content: 'Original message' }));
+    expect(textarea.element.value).toBe('New draft');
+  });
+
+  it('never starts a first-use download from an automatic prompt', async () => {
+    const prepareModelForSubmission = vi.fn().mockResolvedValue(true);
+    const wrapper = getWrapper({ textSubmissionAction: 'send', autoSendPrompt: 'Unsent prompt from URL', prepareModelForSubmission });
+    using cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    void cleanup;
+    await flushPromises();
+    expect(prepareModelForSubmission).not.toHaveBeenCalled();
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]').element.value).toBe('Unsent prompt from URL');
   });
 
   it('does not retry an intercepted message automatically after setup finishes', async () => {
@@ -1309,7 +1345,7 @@ describe('ChatInput Integration', () => {
     const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Send after setup');
     await wrapper.get('[data-testid="send-button"]').trigger('click');
-    expect(wrapper.emitted('request-model-selection')).toHaveLength(1);
+    expect(mockOpenModelDropdown).toHaveBeenCalledOnce();
     await wrapper.setProps({ isSubmissionEnabled: true, textSubmissionAction: 'send' });
     await flushPromises();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
@@ -1512,7 +1548,7 @@ describe('ChatInput Integration', () => {
     await textarea.trigger('keydown', { key: 'Enter', ctrlKey: true, isComposing: true });
     await textarea.trigger('keydown', { key: 'Enter', metaKey: true, keyCode: 229 });
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
-    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
+    await wrapper.getComponent({ name: 'ChatModelSelector' }).vm.$emit('update:open', true);
     expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea.element);
     expect(textarea.element.value).toBe('Draft remains here');
   });

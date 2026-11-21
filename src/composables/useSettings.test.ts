@@ -686,16 +686,19 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(isOnboardingDismissed.value).toBe(false);
   });
 
-  it('should NOT set isOnboardingDismissed to true if no settings are loaded (first run)', async () => {
+  it('starts with llama.cpp browser and keeps onboarding available for a new user choosing a model', async () => {
     // Setup mock to return null
     mocks.loadSettings.mockResolvedValue(null);
 
     // Act
-    const { init, isOnboardingDismissed } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
+    const { init, settings, isOnboardingDismissed } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'deferred' });
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(false);
+    expect(settings.value.endpoint).toEqual({ type: 'llama_cpp_browser' });
+    expect(settings.value.defaultModelId).toBeUndefined();
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 
   it('should handle parallel init calls correctly using the promise guard', async () => {

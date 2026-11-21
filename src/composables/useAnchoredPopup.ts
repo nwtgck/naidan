@@ -1,13 +1,14 @@
-import { computed, onBeforeUnmount, onMounted, ref, type CSSProperties, type Ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, toValue, type CSSProperties, type MaybeRefOrGetter, type Ref } from 'vue';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 /** Keep a body-teleported popup inside the currently visible viewport. */
-export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferredPlacement }: {
+export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferredPlacement, horizontalAlignment }: {
   anchor: Ref<HTMLElement | null>,
   preferredWidth: { unit: 'px' | 'rem', value: number },
   maxWidthPx: number | undefined,
   preferredPlacement?: { direction: 'top' | 'bottom', minHeightPx: number },
+  horizontalAlignment?: MaybeRefOrGetter<'left' | 'center'>,
 }) {
   const bounds = useElementBounding(anchor);
   const windowSize = useWindowSize();
@@ -59,7 +60,16 @@ export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferred
       }
     })();
     const width = Math.max(0, Math.min(Math.max(bounds.width.value, preferredWidthPx), visible.width - gap * 2, maxWidthPx ?? Number.POSITIVE_INFINITY));
-    const left = Math.max(visible.left + gap, Math.min(bounds.left.value, visible.left + visible.width - gap - width));
+    const alignment = toValue(horizontalAlignment);
+    let preferredLeft = bounds.left.value;
+    switch (alignment) {
+    case 'center':
+      preferredLeft += (bounds.width.value - width) / 2;
+      break;
+    case 'left': case undefined: break;
+    default: throw new Error(String(alignment satisfies never));
+    }
+    const left = Math.max(visible.left + gap, Math.min(preferredLeft, visible.left + visible.width - gap - width));
     const bottom = visible.top + visible.height;
     const spaceAbove = Math.max(0, Math.min(bounds.top.value, bottom) - visible.top - gap - 8);
     const spaceBelow = Math.max(0, bottom - Math.max(bounds.bottom.value, visible.top) - gap - 8);

@@ -29,9 +29,18 @@ export type ModelSearchPage = { results: ModelSearchResult[], nextCursor: string
 const searchExpandedFields = ['pipeline_tag', 'gguf', 'safetensors', 'downloads', 'likes', 'lastModified'];
 const searchCursorSchema = z.string().min(1).max(8192).regex(/^[^\p{Cc}]+$/u);
 
-function searchUrl({ query, cursor, numParameters }: { query: string, cursor: string | undefined, numParameters: string | undefined }): URL {
+function searchUrl({ scope, query, cursor, numParameters }: { scope: 'llama.cpp' | 'gguf', query: string, cursor: string | undefined, numParameters: string | undefined }): URL {
   const url = new URL('https://huggingface.co/api/models');
-  url.searchParams.set('apps', 'llama.cpp');
+  switch (scope) {
+  case 'llama.cpp': url.searchParams.set('apps', 'llama.cpp');
+    break;
+  case 'gguf': url.searchParams.set('filter', 'gguf');
+    break;
+  default: {
+    const exhaustive: never = scope;
+    throw new Error(String(exhaustive));
+  }
+  }
   url.searchParams.set('sort', 'trendingScore');
   if (query) {
     url.searchParams.set('search', query);
@@ -85,7 +94,7 @@ function nextSearchCursor({ link, requestUrl, cursor }: { link: string | undefin
       }
       next.searchParams.set('num_parameters', normalized);
     }
-    for (const key of ['apps', 'sort', 'limit', 'search', 'num_parameters']) {
+    for (const key of ['apps', 'filter', 'sort', 'limit', 'search', 'num_parameters']) {
       if (next.searchParams.has(key) && (next.searchParams.get(key) ?? '') !== (requestUrl.searchParams.get(key) ?? '')) {
         return undefined;
       }
@@ -104,15 +113,24 @@ function nextSearchCursor({ link, requestUrl, cursor }: { link: string | undefin
   }
 }
 
-// Calling this function requires an explicit search or trending-list request.
-export async function searchModels({ query, cursor, numParameters, signal }: { query: string, cursor: string | undefined, numParameters: string | undefined, signal: AbortSignal }): Promise<ModelSearchPage> {
+async function searchModelRepositories({ scope, query, cursor, numParameters, signal }: { scope: 'llama.cpp' | 'gguf', query: string, cursor: string | undefined, numParameters: string | undefined, signal: AbortSignal }): Promise<ModelSearchPage> {
   const search = z.string().max(200).regex(/^[^\p{Cc}]*$/u).parse(query.trim());
   signal.throwIfAborted();
-  const url = searchUrl({ query: search, cursor, numParameters });
+  const url = searchUrl({ scope, query: search, cursor, numParameters });
   const response = await fetchJson({ url: url.href, signal });
   signal.throwIfAborted();
   const results = z.array(modelSearchResultSchema).parse(response.value);
   return { results: [...new Map(results.map(result => [result.id, result])).values()].slice(0, 20), nextCursor: nextSearchCursor({ link: response.headers.get('link') ?? undefined, requestUrl: url, cursor }) };
+}
+
+// Calling either entry point requires an explicit search or trending-list request.
+export function searchModels({ query, cursor, numParameters, signal }: { query: string, cursor: string | undefined, numParameters: string | undefined, signal: AbortSignal }): Promise<ModelSearchPage> {
+  return searchModelRepositories({ scope: 'llama.cpp', query, cursor, numParameters, signal });
+}
+
+// GGUF is a file-format filter, not a claim that a runtime supports the model.
+export function searchGgufModels({ query, cursor, numParameters, signal }: { query: string, cursor: string | undefined, numParameters: string | undefined, signal: AbortSignal }): Promise<ModelSearchPage> {
+  return searchModelRepositories({ scope: 'gguf', query, cursor, numParameters, signal });
 }
 
 export { parseRepository } from './repository-input';

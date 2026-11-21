@@ -1,4 +1,4 @@
-import type { Endpoint } from './types';
+import { DEFAULT_SETTINGS_ENDPOINT, type Endpoint } from './types';
 
 /** Endpoint and model inheritance are independent, including empty model overrides. */
 export function resolveChatModelBinding({ chat, chatGroup, settings }: {
@@ -14,7 +14,7 @@ export function resolveChatModelBinding({ chat, chatGroup, settings }: {
   // A first chat can own a binding before global settings have ever been saved.
   // Resolve only its initial binding; do not create a persisted Settings record.
   const global: { endpoint: Endpoint, modelId: string } = settings === null
-    ? { endpoint: { type: 'openai', url: '' }, modelId: '' }
+    ? { endpoint: { ...DEFAULT_SETTINGS_ENDPOINT }, modelId: '' }
     : { endpoint: settings.endpoint, modelId: settings.defaultModelId || '' };
   const groupPair = { endpoint: chatGroup?.endpoint ?? global.endpoint, modelId: chatGroup?.modelId || global.modelId };
   return {
