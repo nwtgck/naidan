@@ -3,7 +3,7 @@ import { readGgufMetadata, type GgufMetadataFile } from '@/utils/gguf-metadata';
 import type { TranslationDetection } from './types';
 
 export async function inspectTranslationGguf({ file, signal }: { file: GgufMetadataFile, signal: AbortSignal }): Promise<TranslationDetection> {
-  const metadata = await readGgufMetadata({ file, signal, keys: ['general.architecture', 'tokenizer.chat_template'], maxStringBytes: 65536 });
+  const metadata = await readGgufMetadata({ file, signal, keys: ['general.architecture', 'tokenizer.chat_template'], maxStringBytes: 65536, validation: undefined });
   const template = metadata.get('tokenizer.chat_template');
   // Architecture alone also matches ordinary PLaMo chat models. Filenames can
   // be renamed and are not evidence of an embedded translation template.
