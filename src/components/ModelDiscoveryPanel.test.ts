@@ -344,6 +344,7 @@ describe('browser model discovery', () => {
     expect(error.element.nextElementSibling).toBe(guidance.element);
     expect(messages.find('[data-testid="discovery-local-recovery"]').exists()).toBe(false);
     await guidance.get('[data-testid="hf-download-failure-trigger"]').trigger('click');
+    await vi.waitFor(() => expect(messages.find('[data-testid="discovery-local-recovery"]').exists()).toBe(true));
     expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('disabled')).toBe(false);
     expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('acceptLocalInput')).toBeUndefined();
     expect(wrapper.get('[data-testid="discovery-detail-viewport"]').element.contains(messages.element)).toBe(true);

@@ -181,6 +181,26 @@ it('opens the requested candidate tab without moving the underline on entry', as
   expect(externalFetch).not.toHaveBeenCalled();
 });
 
+it('keeps chat settings visible in the same footer on every tab', async () => {
+  const panels = [
+    { id: 'chat-candidates', label: 'Chat candidates', placement: 'before-models' },
+    { id: 'hugging-face', label: 'Hugging Face' },
+    { id: 'files', label: 'Add files' },
+  ] as const;
+  using value = fixture({ props: { surface: 'composer', initialPanel: 'chat-candidates', panels }, slots: { settings: '<button type="button">Thinking</button>' } });
+  await value.open();
+  expect(value.panelButton({ label: 'Chat candidates' }).attributes('aria-pressed')).toBe('true');
+  const footer = value.get({ testId: 'model-selector-settings' });
+  expect(footer.isVisible()).toBe(true);
+  for (const label of ['Models', ...panels.map(panel => panel.label)]) {
+    await value.panelButton({ label }).trigger('click');
+    expect(value.panelButton({ label }).attributes('aria-pressed')).toBe('true');
+    const visibleFooter = value.get({ testId: 'model-selector-settings' });
+    expect(visibleFooter.element).toBe(footer.element);
+    expect(visibleFooter.isVisible()).toBe(true);
+  }
+});
+
 it.each(['//text', '//projector/vision%2Fmmproj-F16.gguf'])('keeps the model name readable when its reference includes %s', async configuration => {
   const baseId = 'hf.co/owner/Gemma-GGUF:Q4_K_M';
   const modelId = baseId + configuration;

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, reactive, nextTick, computed } from 'vue';
 import ChatPane from './ChatPane.vue';
-import ModelSelector from './ModelSelector.vue';
+import ChatModelSelector from './ChatModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -317,7 +317,7 @@ describe('ChatPane Group Inheritance UI', () => {
     expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('global-model');
     expect(modelBadge.get('[data-testid="chat-model-source"]').text()).toBe('Global');
 
-    const selector = wrapper.getComponent(ModelSelector);
+    const selector = wrapper.getComponent(ChatModelSelector);
     expect(selector.props('modelValue')).toBeUndefined();
     expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
     expect(selector.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Global');
@@ -344,7 +344,7 @@ describe('ChatPane Group Inheritance UI', () => {
     expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('group-model');
     expect(modelBadge.get('[data-testid="chat-model-source"]').text()).toBe('Chat group');
 
-    const selector = wrapper.getComponent(ModelSelector);
+    const selector = wrapper.getComponent(ChatModelSelector);
     expect(selector.props('modelValue')).toBeUndefined();
     expect(selector.props('inheritedModel')).toMatchObject({ id: 'group-model', source: { label: 'Chat group' } });
     expect(selector.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Chat group');
@@ -376,7 +376,7 @@ describe('ChatPane Group Inheritance UI', () => {
     expect(modelBadge.attributes('aria-description')).toBe('specific-model');
 
     // Keep the inherited choice available while displaying the explicit model.
-    const selector = wrapper.getComponent(ModelSelector);
+    const selector = wrapper.getComponent(ChatModelSelector);
     expect(selector.props('modelValue')).toBe('specific-model');
     expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
     expect(selector.get('[data-testid="model-selector-trigger"]').text()).toBe('specific-model');
@@ -392,7 +392,7 @@ describe('ChatPane Group Inheritance UI', () => {
     // 1. Initially Global
     expect(wrapper.get('[data-testid="chat-model-name"]').text()).toBe('global-model');
     expect(wrapper.get('[data-testid="chat-model-source"]').text()).toBe('Global');
-    const selector = wrapper.getComponent(ModelSelector);
+    const selector = wrapper.getComponent(ChatModelSelector);
     expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
 
     // 2. Simulate moving to a group with a different model

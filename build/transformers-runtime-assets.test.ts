@@ -87,18 +87,18 @@ describe('hosted Transformers runtime assets', () => {
   });
 
   it('rejects a missing or tampered emitted runtime manifest', () => {
-    const first = createValidatedOutputBundle();
-    delete first.outputBundle[first.expectedBundle.manifestFileName];
+    const { expectedBundle, outputBundle } = createValidatedOutputBundle();
+    const { manifestFileName } = expectedBundle;
+    const missingManifest = { ...outputBundle };
+    delete missingManifest[manifestFileName];
     expect(() => TEST_ONLY.validateHostedTransformersRuntimeOutputBundle({
-      expectedBundle: first.expectedBundle,
-      bundle: first.outputBundle,
+      expectedBundle,
+      bundle: missingManifest,
     })).toThrow(/runtime manifest output is missing/u);
 
-    const second = createValidatedOutputBundle();
-    second.outputBundle[second.expectedBundle.manifestFileName] = { type: 'asset', source: '{"tampered":true}' };
     expect(() => TEST_ONLY.validateHostedTransformersRuntimeOutputBundle({
-      expectedBundle: second.expectedBundle,
-      bundle: second.outputBundle,
+      expectedBundle,
+      bundle: { ...outputBundle, [manifestFileName]: { type: 'asset', source: '{"tampered":true}' } },
     })).toThrow(/runtime manifest output differs/u);
   });
 });

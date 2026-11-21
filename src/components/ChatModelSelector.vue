@@ -678,7 +678,7 @@ defineExpose({
         @keydown="handleDropdownKeydown({ event: $event })"
         @focusin="handleSidebarFocus({ event: $event })"
       >
-        <div v-if="panelView !== 'sources'" :tw-class="['flex min-h-12 shrink-0 items-end justify-between gap-2 border-b px-3 pt-1.5', surface === 'composer' ? 'border-gray-200 dark:border-gray-700' : 'border-gray-100 dark:border-gray-800']">
+        <div v-if="panelView !== 'sources'" :tw-class="['flex min-h-11 shrink-0 items-end justify-between gap-2 border-b px-3 pt-1.5', surface === 'composer' ? 'border-gray-200 dark:border-gray-700' : 'border-gray-100 dark:border-gray-800']">
           <div ref="tabStrip" role="group" data-testid="chat-model-selector-tabs" tw-class="relative flex min-w-0 items-center gap-2 overflow-x-auto">
             <span v-if="tabIndicator" :style="tabIndicator" aria-hidden="true" data-testid="chat-model-selector-tab-indicator" :class="{ 'chat-model-selector-tab-indicator-moving': animateTabIndicator }" tw-class="pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-blue-500/80 dark:bg-blue-400/80" />
             <button v-for="tab in tabs" :key="tab.id" type="button" :aria-pressed="currentTab === tab.id" tw-class="shrink-0 whitespace-nowrap px-2 pb-2.5 pt-2 text-xs font-medium text-gray-500 transition-colors hover:text-gray-800 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 aria-pressed:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 dark:aria-pressed:text-gray-100 motion-reduce:transition-none" @click="selectTab({ id: tab.id })">{{ tab.label }}</button>
@@ -813,7 +813,7 @@ defineExpose({
             </div>
           </div>
         </div>
-        <div v-if="$slots.settings" v-show="panelView === 'models'" data-testid="model-selector-settings" :tw-class="['shrink-0 border-t border-gray-100 px-3', surface === 'sidebar' || surface === 'composer' ? 'py-2' : 'py-3', surface === 'sidebar' ? 'shrink-0 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/30' : 'dark:border-gray-700']" @keydown.stop="handleSettingsKeydown({ event: $event })">
+        <div v-if="$slots.settings" data-testid="model-selector-settings" :tw-class="['shrink-0 border-t border-gray-100 px-3', surface === 'sidebar' || surface === 'composer' ? 'py-2' : 'py-3', surface === 'sidebar' ? 'shrink-0 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/30' : 'dark:border-gray-700']" @keydown.stop="handleSettingsKeydown({ event: $event })">
           <slot name="settings"></slot>
         </div>
       </dialog>

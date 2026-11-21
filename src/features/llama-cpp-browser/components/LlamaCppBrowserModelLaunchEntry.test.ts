@@ -29,6 +29,7 @@ vi.mock('@/composables/useSettings', () => ({
 }));
 vi.mock('@/features/file-protocol-standalone/composables/usePortableAppDownload', () => ({ usePortableAppDownload: () => ({}) }));
 vi.mock('./LlamaCppBrowserLocalFileRecovery.vue', () => ({
+  __esModule: true,
   default: { name: 'LlamaCppBrowserLocalFileRecovery', props: ['disabled', 'acceptLocalInput'], template: '<section data-testid="model-entry-local-recovery" />' },
 }));
 vi.mock('@/components/csp/CspMessageHint.vue', () => ({
@@ -172,7 +173,7 @@ describe('immediate model link presentation', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="model-entry-local-recovery"]').exists()).toBe(false);
     await wrapper.getComponent(HuggingFaceDownloadFailureHint).get('[data-testid="hf-download-failure-trigger"]').trigger('click');
-    expect(wrapper.find('[data-testid="model-entry-local-recovery"]').exists()).toBe(true);
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="model-entry-local-recovery"]').exists()).toBe(true));
     expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('acceptLocalInput')).toBeUndefined();
     expect(wrapper.getComponent({ name: 'LlamaCppBrowserLocalFileRecovery' }).props('disabled')).toBe(false);
     await wrapper.get('[data-testid="start-preview-model"]').trigger('click');

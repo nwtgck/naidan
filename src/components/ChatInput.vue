@@ -1763,6 +1763,7 @@ defineExpose({
                   :default-source="inheritedReasoningSource"
                   :disabled="pendingReasoningChats.has(chatId)"
                   surface="plain"
+                  layout="inline"
                   notice="inline-help"
                   @update:effort="updateReasoningEffort({ effort: $event })"
                 />

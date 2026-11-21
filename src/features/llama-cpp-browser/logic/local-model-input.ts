@@ -2,7 +2,6 @@ import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/
 import { directoryForModelFile } from '@/features/llama-cpp-browser/runtime/model-directory-input';
 import { LlamaCppBrowserError, type LocalModel, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import { modelGroups } from '@/features/llama-cpp-browser/hugging-face/model-variants';
-import { resolveModelFiles } from '@/features/llama-cpp-browser/runtime/model-file-selection';
 
 export function localModelDirectoriesFromFiles({ files, selection }: { files: File[], selection: 'files' | 'directory' }): ModelDirectoryInput[] {
   if (!files.length) {
@@ -38,7 +37,7 @@ export function captureDroppedLocalModels({ transfer, signal }: { transfer: Data
 export async function filterModelFilesForAddition({ directories, signal }: {
   directories: ModelDirectoryInput[], signal: AbortSignal,
 }): Promise<{ directories: ModelDirectoryInput[], skipped: string[] }> {
-  const { validGguf } = await import('@/features/llama-cpp-browser/runtime/model-directory');
+  const { validGguf, resolveModelFiles } = await import('@/features/llama-cpp-browser/runtime/model-directory');
   const accepted: ModelDirectoryInput[] = [];
   const skipped: string[] = [];
   for (const directory of directories) {
