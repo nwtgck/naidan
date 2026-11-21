@@ -8,7 +8,7 @@ import type { BrowserProvidedLmEndpoint, HttpEndpoint } from '@/01-models/types'
 import type { PromptApiRuntimeState } from '@/features/prompt-api/runtime';
 import type { CspHintMessage, CspHintTarget } from '@/logic/csp-message-hints/types';
 import BrowserConnectionSelection from './BrowserConnectionSelection.vue';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import HttpHeadersEditor from './HttpHeadersEditor.vue';
 
 installSecretEqualityTester();
@@ -109,8 +109,8 @@ describe('browser model connection selection', () => {
     expect(wrapper.get('header').text()).toContain('AI outside your web browser or to browser-provided models');
     expect(wrapper.get<HTMLInputElement>('#model-connection-url').element.value).toBe('');
     expect(wrapper.findComponent({ name: 'Logo' }).exists()).toBe(false);
-    expect(wrapper.getComponent(ChatModelSelector).props('models')).toEqual([]);
-    expect(wrapper.getComponent(ChatModelSelector).props('popupPresentation')).toBe('inline');
+    expect(wrapper.getComponent(ModelSelector).props('models')).toEqual([]);
+    expect(wrapper.getComponent(ModelSelector).props('popupPresentation')).toBe('inline');
     expect(wrapper.get('[data-testid="connection-submit"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="connection-submit"]').text()).toBe('Use this connection');
     await wrapper.get('#model-connection-url').setValue('https://example.invalid/v1');

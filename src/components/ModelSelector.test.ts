@@ -2,14 +2,14 @@ import { beforeEach, afterEach, expect, expectTypeOf, it, vi } from 'vitest';
 import { DOMWrapper, mount, type ComponentMountingOptions } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import type { ModelSelectorItem } from './model-selector-item';
 
 const mocks = vi.hoisted(() => ({ useSettings: vi.fn() }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: mocks.useSettings }));
 const externalFetch = vi.fn<typeof fetch>();
-type Props = InstanceType<typeof ChatModelSelector>['$props'];
+type Props = InstanceType<typeof ModelSelector>['$props'];
 
 const models: readonly ModelSelectorItem[] = [
   { id: 'catalog/qwen', label: 'Qwen speech', description: 'Japanese recognition', availability: 'download_required' },
@@ -29,10 +29,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function fixture({ props, slots }: { props: Partial<Props>, slots: ComponentMountingOptions<typeof ChatModelSelector>['slots'] | undefined }) {
+function fixture({ props, slots }: { props: Partial<Props>, slots: ComponentMountingOptions<typeof ModelSelector>['slots'] | undefined }) {
   const host = document.createElement('div');
   document.body.append(host);
-  const wrapper = mount(ChatModelSelector, { props: { modelValue: undefined, models, ...props }, slots, attachTo: host });
+  const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models, ...props }, slots, attachTo: host });
   return {
     wrapper,
     get({ testId }: { testId: string }) {
@@ -259,8 +259,8 @@ it('opens directly on Models without moving the indicator and animates only a ta
     },
     slots: undefined,
   });
-  const indicator = () => value.get({ testId: 'chat-model-selector-tab-indicator' });
-  const moving = 'chat-model-selector-tab-indicator-moving';
+  const indicator = () => value.get({ testId: 'model-selector-tab-indicator' });
+  const moving = 'model-selector-tab-indicator-moving';
   await value.open();
   expect(value.panelButton({ label: 'Models' }).attributes('aria-pressed')).toBe('true');
   expect(indicator().classes()).not.toContain(moving);
@@ -281,7 +281,7 @@ it('opens the requested candidate tab without moving the underline on entry', as
   await value.open();
   expect(value.panelButton({ label: 'Chat candidates' }).attributes('aria-pressed')).toBe('true');
   expect(value.get({ testId: 'chat-candidates-panel' }).isVisible()).toBe(true);
-  expect(value.get({ testId: 'chat-model-selector-tab-indicator' }).classes()).not.toContain('chat-model-selector-tab-indicator-moving');
+  expect(value.get({ testId: 'model-selector-tab-indicator' }).classes()).not.toContain('model-selector-tab-indicator-moving');
   expect(externalFetch).not.toHaveBeenCalled();
 });
 
@@ -348,9 +348,9 @@ it.each(['hf.co', 'host/Models'])('shows the model name and complete variant for
 
 it('keeps the first-use hint visible until the download starts and omits progress from the closed selector', async () => {
   using value = fixture({ props: { modelValue: 'catalog/qwen' }, slots: undefined });
-  expect(value.wrapper.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(true);
+  expect(value.wrapper.find('[data-testid="model-selector-download-hint"]').exists()).toBe(true);
   await value.wrapper.setProps({ hideFirstUseDownloadHint: true });
-  expect(value.wrapper.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(false);
+  expect(value.wrapper.find('[data-testid="model-selector-download-hint"]').exists()).toBe(false);
   expect(value.wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('Qwen speech');
 });
 
@@ -494,7 +494,7 @@ it('keeps the popup through drag and resize and dismisses it on outside pointer 
   window.dispatchEvent(new Event('resize'));
   await nextTick();
   expect(value.get({ testId: 'model-selector-dropdown' }).exists()).toBe(true);
-  const sources = value.get({ testId: 'chat-model-selector-open-sources' });
+  const sources = value.get({ testId: 'model-selector-open-sources' });
   const enter = keydown({ target: sources.element, key: 'Enter', isComposing: false });
   expect(enter.defaultPrevented).toBe(false);
   await sources.trigger('click');

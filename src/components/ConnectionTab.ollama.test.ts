@@ -8,7 +8,7 @@ import { reactive } from 'vue';
 import { EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 import SettingsSelect from './SettingsSelect.vue';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import HttpHeadersEditor from './HttpHeadersEditor.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { toProviderProfileId, toNaidanRpcRegistrationId } from '@/01-models/ids';
@@ -110,7 +110,7 @@ function connectionModelPicker({ wrapper, testId }: {
   wrapper: Pick<VueWrapper, 'findAllComponents'>,
   testId: 'setting-model-select' | 'setting-title-model-select',
 }) {
-  const picker = wrapper.findAllComponents(ChatModelSelector).find(candidate => candidate.attributes('data-testid') === testId);
+  const picker = wrapper.findAllComponents(ModelSelector).find(candidate => candidate.attributes('data-testid') === testId);
   if (picker === undefined) {
     throw new Error(`Could not find ${testId}`);
   }

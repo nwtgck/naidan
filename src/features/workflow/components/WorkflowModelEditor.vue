@@ -7,7 +7,7 @@ import { cloneEndpoint, areEndpointsEqual } from '@/01-models/endpoint';
 import { useSettings } from '@/composables/useSettings';
 import { naturalSort } from '@/utils/string';
 import HttpHeadersEditor from '@/components/HttpHeadersEditor.vue';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import LmParametersEditor from '@/components/LmParametersEditor.vue';
@@ -165,7 +165,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <SettingsFormSelect :model-value="value.endpoint.type" :options="endpointOptions" :disabled="disabled" :label="lazyStrings.workflow__endpoint()" @update:model-value="endpointType({ type: $event })" />
     <input v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :value="value.endpoint.url" :disabled="disabled" :aria-label="lazyStrings.workflow__endpoint()" @change="changeConnection({ target: { ...value, endpoint: { ...value.endpoint, url: workflowInputText({ event: $event }) } } })" type="url" spellcheck="false" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/70 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 transition-colors disabled:opacity-45" />
     <fieldset v-if="value.endpoint.type === 'openai' || value.endpoint.type === 'ollama'" :disabled="disabled"><HttpHeadersEditor :model-value="value.endpoint.httpHeaders ?? []" test-id-prefix="workflow-headers" @update:model-value="changeConnection({ target: { ...value, endpoint: { ...value.endpoint, httpHeaders: $event } } })" /></fieldset>
-    <ChatModelSelector
+    <ModelSelector
       :key="selectorRevision"
       data-testid="workflow-model-selector"
       surface="settings"

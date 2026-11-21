@@ -80,7 +80,7 @@ vi.mock('lucide-vue-next', () => ({
 
 // Mock child components
 const mockOpenModelDropdown = vi.hoisted(() => vi.fn());
-vi.mock('./ChatModelSelector.vue', () => ({ default: { name: 'ChatModelSelector', methods: { openDropdown: mockOpenModelDropdown }, template: '<div><slot name="trigger-detail" /><slot name="settings" /></div>' } }));
+vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', methods: { openDropdown: mockOpenModelDropdown }, template: '<div><slot name="trigger-detail" /><slot name="settings" /></div>' } }));
 vi.mock('../features/tools/components/ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
 const mockOpenFileExplorer = vi.fn();
@@ -758,20 +758,20 @@ describe('ChatInput Integration', () => {
     };
     await flushPromises();
     const textarea = wrapper.get('[data-testid="chat-input"]').element;
-    const selector = wrapper.getComponent({ name: 'ChatModelSelector' }).element;
+    const selector = wrapper.getComponent({ name: 'ModelSelector' }).element;
     const send = wrapper.get('[data-testid="send-button"]');
     const card = wrapper.get('[data-testid="chat-input-card"]');
     const initialChildren = Array.from(card.element.children);
     const initialFetches = mockChatStore.fetchAvailableModels.mock.calls.length;
     await wrapper.setProps({ endpoint: { type: 'openai', url: 'https://configured.example/v1' } });
     expect(wrapper.findComponent({ name: 'CspLmEndpointHint' }).exists()).toBe(false);
-    await wrapper.getComponent({ name: 'ChatModelSelector' }).vm.$emit('update:open', true);
+    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
     await nextTick();
     expect(wrapper.findComponent({ name: 'CspLmEndpointHint' }).exists()).toBe(false);
     expect(Array.from(card.element.children)).toEqual(initialChildren);
     expect(card.element.lastElementChild?.contains(send.element)).toBe(true);
     expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea);
-    expect(wrapper.getComponent({ name: 'ChatModelSelector' }).element).toBe(selector);
+    expect(wrapper.getComponent({ name: 'ModelSelector' }).element).toBe(selector);
     expect(mockChatStore.fetchAvailableModels).toHaveBeenCalledTimes(initialFetches);
     await wrapper.get('[data-testid="chat-input"]').setValue('Send without a composer notice row');
     expect(send.element).toHaveProperty('disabled', false);
@@ -1548,7 +1548,7 @@ describe('ChatInput Integration', () => {
     await textarea.trigger('keydown', { key: 'Enter', ctrlKey: true, isComposing: true });
     await textarea.trigger('keydown', { key: 'Enter', metaKey: true, keyCode: 229 });
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
-    await wrapper.getComponent({ name: 'ChatModelSelector' }).vm.$emit('update:open', true);
+    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
     expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea.element);
     expect(textarea.element.value).toBe('Draft remains here');
   });

@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModalWhichMustBePreservedForFutureReferenceAndMustNeverBeUsedInProduction.vue';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/features/theme/composables/useTheme';
@@ -634,7 +634,7 @@ describe('OnboardingModal.vue', () => {
 
     const wrapper = mount(OnboardingModal);
     using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
-    const selector = wrapper.getComponent(ChatModelSelector);
+    const selector = wrapper.getComponent(ModelSelector);
     expect(selector.props('models').map(({ id }) => id)).toEqual(['model-1', 'model-2', 'model-10']);
   });
 

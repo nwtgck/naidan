@@ -22,7 +22,7 @@ import { useAudioModels } from './composables/useAudioModels';
 import { captureAudioSettings, useAudioHistory } from './composables/useAudioHistory';
 import AudioHistoryResult from './components/AudioHistoryResult.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import { audioModelCatalog, defaultAudioModel } from './model-catalog';
 import { acquireRepositoryModel, repositorySearchDownloadKey, matchesRepositoryDownload } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
@@ -579,7 +579,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <fieldset :disabled="blocked" tw-class="flex min-w-0 flex-wrap items-start gap-2.5 disabled:opacity-60">
               <div tw-class="min-w-0 flex-[3_1_20rem] space-y-1">
                 <label :for="`${id}-model`" tw-class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__audio_model() }}</label>
-                <ChatModelSelector
+                <ModelSelector
                   :input-id="`${id}-model`"
                   surface="settings"
                   trigger-size="compact"
@@ -632,7 +632,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     </label>
                     <p v-if="scanState === 'idle' && detectedCount === 0 && models.length > 0 && modelScope === 'detected'" data-testid="audio-no-detected-models" tw-class="px-1 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_audio_models_detected() }}</p>
                   </template>
-                </ChatModelSelector>
+                </ModelSelector>
                 <p v-if="inventoryFailed" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
                 <p v-if="!pendingModel && selectedDetection?.status === 'unverified'" data-testid="audio-model-unverified" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__not_detected_as_audio() }}</p>
               </div>

@@ -22,7 +22,7 @@ import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import LanguageSelector from './LanguageSelector.vue';
 // IMPORTANT: Logo is part of the core onboarding UI.
 import Logo from './Logo.vue';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import type { ModelSelectorItem } from './model-selector-item';
 
 // Load onboarding subviews only when their current template branch needs them.
@@ -775,7 +775,7 @@ defineExpose({
                 <LlamaCppBrowserManager v-else presentation="embedded" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ modelId: $event })" />
                 <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
-                  <ChatModelSelector
+                  <ModelSelector
                     popup-presentation="inline"
                     :model-value="selectedModel || undefined"
                     :models="modelOptions"
@@ -954,7 +954,7 @@ defineExpose({
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     {{ lazyStrings.OnboardingModal__default_model() }}
                   </label>
-                  <ChatModelSelector
+                  <ModelSelector
                     popup-presentation="inline"
                     :model-value="selectedModel || undefined"
                     :models="modelOptions"

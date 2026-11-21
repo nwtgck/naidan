@@ -12,7 +12,7 @@ import { workflowInputDraftsKey } from '@/features/workflow/composables/input-dr
 import { workflowValueScopeKey } from '@/features/workflow/composables/value-context';
 import { emptyWorkflowTypeScope } from '@/features/workflow/logic/value-types';
 import { newWorkflowValueInput } from '@/features/workflow/logic/value-inputs';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
 import ToggleSwitch from '@/components/ToggleSwitch.vue';
@@ -151,7 +151,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
       <WorkflowValueEditor v-if="modelValueMode || step.modelId.type !== 'literal'" :value="step.modelId" :steps="steps" :disabled="disabled" expected="text" @change="emit('change', { ...step, modelId: $event })" />
       <template v-else>
-        <ChatModelSelector
+        <ModelSelector
           data-testid="workflow-audio-model-selector"
           surface="settings"
           :model-value="selectedModelId || undefined"

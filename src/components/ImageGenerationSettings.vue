@@ -2,7 +2,7 @@
 import { lazyStrings } from '@/strings';
 import { computed, ref, nextTick, useId } from 'vue';
 import { ImageIcon, Loader2Icon, CheckIcon, ArrowLeftRightIcon, Dice5Icon } from 'lucide-vue-next';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import type { ModelSelectorItem } from './model-selector-item';
 
 defineOptions({
@@ -146,7 +146,7 @@ defineExpose({
     <!-- Model Selector -->
     <div v-if="availableImageModels.length > 0" tw-class="px-3 py-2 border-b dark:border-gray-700">
       <label :for="imageModelInputId" tw-class="mb-2 block text-[9px] font-bold uppercase tracking-wider text-gray-400">{{ lazyStrings.ImageGenerationSettings__image_model() }}</label>
-      <ChatModelSelector
+      <ModelSelector
         :input-id="imageModelInputId"
         surface="settings"
         popup-presentation="inline"

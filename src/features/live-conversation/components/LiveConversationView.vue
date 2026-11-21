@@ -15,7 +15,7 @@ import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launc
 import type { RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
 import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
 import LlamaCppBrowserManager from '@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import SettingsDisclosure from '@/components/SettingsDisclosure.vue';
@@ -1956,7 +1956,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div tw-class="space-y-5">
             <div tw-class="space-y-2">
               <label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.liveConversation__model() }}</label>
-              <ChatModelSelector
+              <ModelSelector
                 surface="settings"
                 :popup-target="settingsPopupTarget"
                 :input-id="`${id}-model`"
@@ -2000,7 +2000,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     @close="close()"
                   />
                 </template>
-              </ChatModelSelector>
+              </ModelSelector>
             </div>
             <p v-if="active" tw-class="break-all text-[11px] text-gray-500 dark:text-gray-400" data-testid="live-loaded-model">{{ lazyStrings.liveConversation__loaded_model({ name: residentModelId }) }}</p>
             <p v-if="active && modelId !== residentModelId" tw-class="text-xs leading-5 text-amber-700 dark:text-amber-300" data-testid="live-next-model">{{ lazyStrings.liveConversation__load_selected_model_to_switch() }}</p>
@@ -2053,7 +2053,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <template #model>
             <div tw-class="space-y-3 rounded-xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800 dark:bg-gray-900/40">
               <label :for="`${id}-diagnostic-model`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.liveConversation__model() }}</label>
-              <ChatModelSelector
+              <ModelSelector
                 :key="investigationTask"
                 surface="settings"
                 :input-id="`${id}-diagnostic-model`"

@@ -5,7 +5,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useLiveConversation } from '@/features/live-conversation/composables/useLiveConversation';
 import { createLiveControllerFixture } from '@/features/live-conversation/logic/controller.test-support';
 import LiveConversationView from './LiveConversationView.vue';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import { useLiveModelPreference } from '@/features/live-conversation/composables/useLiveModelPreference';
 import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
@@ -185,7 +185,7 @@ async function fixture() {
 
 async function openCatalog({ page }: { page: DOMWrapper<HTMLElement> }): Promise<void> {
   await page.get('[data-testid="live-model"] [data-testid="model-selector-trigger"]').trigger('click');
-  await page.get('[data-testid="chat-model-selector-tabs"] button').trigger('click');
+  await page.get('[data-testid="model-selector-tabs"] button').trigger('click');
   await flushPromises();
 }
 
@@ -1991,7 +1991,7 @@ describe('independent live conversation workspace', () => {
     expect(scroller.contains(footer)).toBe(false);
     expect(header.parentElement).toBe(scroller.parentElement);
     expect(footer.parentElement).toBe(scroller.parentElement);
-    const modelSelector = f.wrapper.getComponent(ChatModelSelector).element;
+    const modelSelector = f.wrapper.getComponent(ModelSelector).element;
     await f.wrapper.get('[data-testid="live-start"]').trigger('click');
     await flushPromises();
     await f.wrapper.get('[data-testid="live-text"]').setValue('unfinished draft');
@@ -1999,7 +1999,7 @@ describe('independent live conversation workspace', () => {
     await f.wrapper.get('[data-testid="live-open-settings"]').trigger('click');
     await flushPromises();
     expect(f.page.find('[role="dialog"]').exists()).toBe(true);
-    expect(f.wrapper.getComponent(ChatModelSelector).element).toBe(modelSelector);
+    expect(f.wrapper.getComponent(ModelSelector).element).toBe(modelSelector);
     expect(f.wrapper.get('[data-testid="live-conversation-page"]').attributes('inert')).toBeDefined();
     const bounds = vi.spyOn(modelSelector, 'getBoundingClientRect').mockReturnValue(new DOMRect(20, window.innerHeight - 84, 320, 40));
     using _restoreBounds = { [Symbol.dispose]: () => bounds.mockRestore() };
@@ -2010,7 +2010,7 @@ describe('independent live conversation workspace', () => {
     expect(settings.get('[data-testid="live-settings-body"]').element.contains(picker.element)).toBe(false);
     expect(picker.element.style.bottom).toBe('92px');
     expect(picker.element.style.maxHeight).toBe(`${window.innerHeight - 108}px`);
-    expect(picker.get('[data-testid="chat-model-selector-tabs"]').findAll('button').map(tab => tab.text())).toEqual(['Model catalog', 'On this device', 'Hugging Face', 'Add files']);
+    expect(picker.get('[data-testid="model-selector-tabs"]').findAll('button').map(tab => tab.text())).toEqual(['Model catalog', 'On this device', 'Hugging Face', 'Add files']);
     expect(picker.find('[data-testid="mock-catalog"]').exists()).toBe(true);
     await picker.trigger('keydown', { key: 'Escape' });
     expect(settings.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
@@ -2020,7 +2020,7 @@ describe('independent live conversation workspace', () => {
     expect(scroller.scrollTop).toBe(120);
     expect(f.wrapper.get<HTMLTextAreaElement>('[data-testid="live-text"]').element.value).toBe('unfinished draft');
     expect(f.runLiveSession).toHaveBeenCalledOnce();
-    expect(f.wrapper.getComponent(ChatModelSelector).element).toBe(modelSelector);
+    expect(f.wrapper.getComponent(ModelSelector).element).toBe(modelSelector);
   });
 
   it('shows the resident model until the selected model is explicitly loaded', async () => {
@@ -2195,8 +2195,8 @@ describe('independent live conversation workspace', () => {
     vi.mocked(acquireRepositoryModel).mockReturnValue(downloaded.promise);
     await using f = await fixture();
     expect(f.wrapper.get('[data-testid="live-offline-introduction"]').text()).toBe('Your audio and messages are processed offline in your browser.');
-    expect(f.wrapper.getComponent(ChatModelSelector).props('modelValue')).toBe(modelId);
-    expect(f.wrapper.getComponent(ChatModelSelector).props('selectionAvailability')).toBe('download_required');
+    expect(f.wrapper.getComponent(ModelSelector).props('modelValue')).toBe(modelId);
+    expect(f.wrapper.getComponent(ModelSelector).props('selectionAvailability')).toBe('download_required');
     expect(acquireRepositoryModel).not.toHaveBeenCalled();
     expect(f.runLiveSession).not.toHaveBeenCalled();
     await f.page.get('[data-testid="live-start"]').trigger('click');
@@ -2210,7 +2210,7 @@ describe('independent live conversation workspace', () => {
     await flushPromises();
     expect(f.runLiveSession).toHaveBeenCalledOnce();
     expect(f.wrapper.get('[data-testid="live-header-model"]').attributes('title')).toBe(modelId);
-    expect(f.wrapper.getComponent(ChatModelSelector).props('selectionAvailability')).toBeUndefined();
+    expect(f.wrapper.getComponent(ModelSelector).props('selectionAvailability')).toBeUndefined();
     expect(vi.mocked(useLiveModelPreference).mock.results[0]?.value.remember).toHaveBeenCalledExactlyOnceWith({ modelId });
   });
 
@@ -2219,7 +2219,7 @@ describe('independent live conversation workspace', () => {
     const downloaded = Promise.withResolvers<LocalModel>();
     vi.mocked(acquireRepositoryModel).mockReturnValue(downloaded.promise);
     await using f = await fixture();
-    const selector = f.wrapper.getComponent(ChatModelSelector);
+    const selector = f.wrapper.getComponent(ModelSelector);
     const modelId = selector.props('modelValue')!;
     await f.page.get('[data-testid="live-start"]').trigger('click');
     const { signal } = vi.mocked(acquireRepositoryModel).mock.calls[0]![0];

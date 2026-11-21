@@ -208,7 +208,7 @@ describe('ChatSettingsPanel.vue', () => {
       props: ['show'],
     },
     CheckIcon: { name: 'Check', template: '<span class="check-stub" />' },
-    ChatModelSelector: { name: 'ChatModelSelector', ...modelSelectorStub },
+    ModelSelector: { name: 'ModelSelector', ...modelSelectorStub },
     LmParametersEditor: {
       name: 'LmParametersEditor',
       template: '<div data-testid="lm-parameters-editor-mock"></div>',
@@ -591,7 +591,7 @@ describe('ChatSettingsPanel.vue', () => {
     const wrapper = mount(ChatSettingsPanel, {
       attachTo: document.body,
       props: { show: true },
-      global: { stubs: { ...globalStubs, ChatModelSelector: false } },
+      global: { stubs: { ...globalStubs, ModelSelector: false } },
     });
     await wrapper.get('[data-testid="chat-setting-title-disclosure"]').trigger('click');
 
@@ -744,7 +744,7 @@ describe('ChatSettingsPanel.vue', () => {
     const wrapper = mount(ChatSettingsPanel, {
       attachTo: document.body,
       props: { show: true },
-      global: { stubs: { ...globalStubs, ChatModelSelector: false } },
+      global: { stubs: { ...globalStubs, ModelSelector: false } },
     });
     await flushPromises();
     expect(mockFetchAvailableModels).toHaveBeenCalledExactlyOnceWith({ endpoint: titleEndpoint });
@@ -850,7 +850,7 @@ describe('ChatSettingsPanel.vue', () => {
       const wrapper = mount(ChatSettingsPanel, {
         attachTo: document.body,
         props: { show: true },
-        global: { stubs: { ...globalStubs, ChatModelSelector: false } },
+        global: { stubs: { ...globalStubs, ModelSelector: false } },
       });
       await nextTick();
       const trigger = wrapper.get('[data-testid="chat-setting-model-select"] [data-testid="model-selector-trigger"]');
@@ -1797,7 +1797,7 @@ describe('ChatSettingsPanel.vue', () => {
         global: { stubs: globalStubs },
       });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
 
       // Force an error via the chat model picker refresh.
       await selector.vm.$emit('refresh');
@@ -1854,7 +1854,7 @@ describe('ChatSettingsPanel.vue', () => {
       }));
       const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
       selector.vm.$emit('refresh');
       await nextTick();
       expect(selector.props('loading')).toBe(true);
@@ -1873,7 +1873,7 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
       mockFetchAvailableModels.mockClear();
 
-      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
 
       await selector.vm.$emit('refresh');
       expect(mockFetchAvailableModels).toHaveBeenCalledTimes(1);
@@ -1887,7 +1887,7 @@ describe('ChatSettingsPanel.vue', () => {
         global: { stubs: globalStubs },
       });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
 
       await selector.vm.$emit('refresh');
       await flushPromises();
@@ -1904,7 +1904,7 @@ describe('ChatSettingsPanel.vue', () => {
         global: { stubs: globalStubs },
       });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
       selector.vm.$emit('refresh');
       await flushPromises();
       expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10'].map(id => expect.objectContaining({ id })));
@@ -2055,7 +2055,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockFetchAvailableModels.mockImplementationOnce(() => new Promise<string[]>(resolve => {
       completeModels = resolve;
     }));
-    const model = wrapper.getComponent({ name: 'ChatModelSelector' });
+    const model = wrapper.getComponent({ name: 'ModelSelector' });
     model.vm.$emit('refresh');
     await nextTick();
     expect(model.props('loading')).toBe(true);
@@ -2074,12 +2074,12 @@ describe('ChatSettingsPanel.vue', () => {
     mockCurrentChat.value.modelId = 'hf.co/owner/repo/model-Q4';
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
     await flushPromises();
-    const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
     const candidates = selector.props('models');
     expect(mockCurrentChat.value.modelId).toBe('hf.co/owner/repo/model-Q4');
     mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-2', modelId: undefined };
     await flushPromises();
-    expect(wrapper.getComponent({ name: 'ChatModelSelector' }).props('models')).toEqual(candidates);
+    expect(wrapper.getComponent({ name: 'ModelSelector' }).props('models')).toEqual(candidates);
   });
 
   it('keeps a model refresh alive when saving another field echoes an equivalent endpoint clone', async () => {
@@ -2089,7 +2089,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockFetchAvailableModels.mockImplementationOnce(() => new Promise<string[]>(resolve => {
       completeModels = resolve;
     }));
-    const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
     selector.vm.$emit('refresh');
     await nextTick();
     const editor = wrapper.getComponent({ name: 'LmParametersEditor' });
@@ -2126,7 +2126,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockAvailableModelsRef.value = ['unrelated/model'];
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
     await flushPromises();
-    const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
     expect(selector.props('models')).toEqual([]);
     expect(mockFetchAvailableModels).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="chat-setting-url-input"]').setValue('https://another-provider.example/v1');

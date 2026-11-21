@@ -11,7 +11,7 @@ import type { Endpoint } from '@/01-models/types';
 import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { loadLmProvider } from '@/features/lm/providerFactory';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import ReasoningSettings from '@/components/ReasoningSettings.vue';
 import LmParametersEditor from '@/components/LmParametersEditor.vue';
@@ -252,7 +252,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </template>
     <div tw-class="space-y-1">
       <label tw-class="block space-y-1"><span>{{ lazyStrings.imageGeneration__translation_model() }}</span><input :value="draft.modelId ?? ''" @input="changeModel({ event: $event })" :placeholder="effective.modelId || lazyStrings.imageGeneration__translation_inherit()" data-testid="translation-model-input" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" /></label>
-      <ChatModelSelector
+      <ModelSelector
         :key="ownerKey"
         v-model="draft.modelId"
         surface="settings"

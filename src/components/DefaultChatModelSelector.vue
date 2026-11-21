@@ -4,7 +4,7 @@ import type { Endpoint } from '@/01-models/types';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { lazyStrings } from '@/strings';
 import { naturalSort } from '@/utils/string';
-import ChatModelSelector from './ChatModelSelector.vue';
+import ModelSelector from './ModelSelector.vue';
 import { browserChatModelPanels } from './chat-model-selector-panels';
 import type { ModelSelectorItem } from './model-selector-item';
 import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
@@ -54,7 +54,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <ChatModelSelector
+  <ModelSelector
     :surface="surface"
     :frame="frame"
     :input-id="inputId"
@@ -100,5 +100,5 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         @close="close()"
       />
     </template>
-  </ChatModelSelector>
+  </ModelSelector>
 </template>

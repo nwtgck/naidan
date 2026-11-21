@@ -12,7 +12,7 @@ import { parseConcatenatedJson } from '@/utils/json-stream-parser';
 import { matchRecipeModels } from '@/features/recipes/logic/recipe-matcher';
 import { ChatGroupRecipeSchema } from '@/features/recipes/logic/recipe';
 import type { ChatGroupRecipe } from '@/features/recipes/logic/recipe';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { ModelSelectorItem } from '@/components/model-selector-item';
 import { naturalSort } from '@/utils/string';
 import { lazyStrings } from '@/strings';
@@ -214,7 +214,7 @@ defineExpose({
 
               <div tw-class="space-y-1.5">
                 <label :for="`recipe-model-${idToRaw({ id: item.id })}`" tw-class="block text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.RecipeImportTab__model_selection() }}</label>
-                <ChatModelSelector
+                <ModelSelector
                   v-model="item.matchedModelId"
                   :input-id="`recipe-model-${idToRaw({ id: item.id })}`"
                   surface="settings"

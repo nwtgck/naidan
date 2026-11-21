@@ -15,7 +15,7 @@ import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import { useSettings } from '@/composables/useSettings';
 import { DOMWrapper, mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { setLocale } from '@/strings';
@@ -168,10 +168,10 @@ describe('first-use audio model download', () => {
     wrapper = mount(AudioGenerationView);
     const view = wrapper;
     await loadInventory({ view, entries: [], ready: true });
-    const picker = view.getComponent(ChatModelSelector);
+    const picker = view.getComponent(ModelSelector);
     expect(picker.props('modelValue')).toBe(defaultModelId);
     expect(picker.get('[data-testid="model-selector-trigger"]').classes()).toContain('min-h-11');
-    const hint = picker.get('[data-testid="chat-model-selector-download-hint"]');
+    const hint = picker.get('[data-testid="model-selector-download-hint"]');
     expect(hint.get('[data-testid="model-selector-first-use-destination"]').text()).toBe('OPFS');
     expect(picker.get('[data-testid="model-selector-trigger"]').attributes('aria-describedby')).toBe(hint.attributes('id'));
     expect(download.inspect).not.toHaveBeenCalled();
@@ -207,7 +207,7 @@ describe('first-use audio model download', () => {
     });
     expect(service.generateAudio).toHaveBeenCalledOnce();
     expect(service.generateAudio.mock.calls[0]?.[0].input.modelId).toBe(defaultModelId);
-    expect(picker.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(false);
+    expect(picker.find('[data-testid="model-selector-download-hint"]').exists()).toBe(false);
     expect(view.find('[data-testid="audio-history"]').exists()).toBe(true);
   });
 
@@ -233,7 +233,7 @@ describe('first-use audio model download', () => {
     download.enqueue.mockReturnValueOnce({ id: joined.id, done: Promise.resolve({ ...joined, status: 'complete', selection }) });
     download.installed.mockResolvedValue({ modelId: defaultModelId, size: 762, importedAt: 1 });
     await nextTick();
-    expect(view.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(false);
+    expect(view.find('[data-testid="model-selector-download-hint"]').exists()).toBe(false);
     await submit({ view });
     expect(download.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key }));
     expect(download.inspect).not.toHaveBeenCalled();
@@ -264,7 +264,7 @@ describe('first-use audio model download', () => {
     }));
     download.installed.mockResolvedValue({ modelId: defaultModelId, size: 762, importedAt: 1 });
     await nextTick();
-    expect(view.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(true);
+    expect(view.find('[data-testid="model-selector-download-hint"]').exists()).toBe(true);
     await submit({ view });
     expect(download.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key: expect.not.stringMatching(searchKey) }));
     expect(service.generateAudio).toHaveBeenCalledOnce();
@@ -307,7 +307,7 @@ describe('first-use audio model download', () => {
     const popup = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
     await popup.get('[data-testid="chat-model-suggestion-choose"][aria-label="Qwen3-TTS 1.7B Base"]').trigger('click');
     await flushPromises();
-    expect(view.getComponent(ChatModelSelector).props('modelValue')).toBe('hf.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF:Q4_K_M');
+    expect(view.getComponent(ModelSelector).props('modelValue')).toBe('hf.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF:Q4_K_M');
     expect(download.inspect).not.toHaveBeenCalled();
     expect(download.enqueue).not.toHaveBeenCalled();
   });
@@ -346,7 +346,7 @@ describe('independent audio generation screen', () => {
     expect(view.get<HTMLDetailsElement>('[data-testid="audio-runtime-settings"]').element.open).toBe(false);
     expect(service.generateAudio).not.toHaveBeenCalled();
     expect(service.setOptions).not.toHaveBeenCalled();
-    expect(view.getComponent(ChatModelSelector).props('modelValue')).toBe('user/voice');
+    expect(view.getComponent(ModelSelector).props('modelValue')).toBe('user/voice');
     await submit({ view });
     expect(service.generateAudio.mock.calls[0]?.[0].input.modelId).toBe('user/voice');
     expect(download.inspect).not.toHaveBeenCalled();
@@ -539,7 +539,7 @@ describe('independent audio generation screen', () => {
     await loadInventory({ view: wrapper, entries: [{ modelId, size: 100, importedAt: 1 }], ready: true });
     await flushPromises();
     expect(detection.inspect).toHaveBeenCalledWith({ modelId, signal: expect.any(AbortSignal) });
-    const selector = wrapper.getComponent(ChatModelSelector);
+    const selector = wrapper.getComponent(ModelSelector);
     expect(selector.props('modelValue')).toBe(modelId);
     expect(selector.props('models')).toEqual([{ id: modelId, label: modelId, description: undefined, availability: 'local' }]);
     const trigger = selector.get('[data-testid="model-selector-trigger"]');
@@ -585,7 +585,7 @@ describe('independent audio generation screen', () => {
   it('clears a selection whose model was removed', async () => {
     const view = await ready();
     await loadInventory({ view, entries: [], ready: true });
-    expect(view.getComponent(ChatModelSelector).props('modelValue')).toBe(defaultModelId);
+    expect(view.getComponent(ModelSelector).props('modelValue')).toBe(defaultModelId);
     expect(service.generateAudio).not.toHaveBeenCalled();
     expect(download.enqueue).not.toHaveBeenCalled();
   });
@@ -725,7 +725,7 @@ describe('audio candidates and in-memory history in the view', () => {
       ? { status: 'unverified', reason: 'architecture' } : { status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
     wrapper = mount(AudioGenerationView);
     await loadInventory({ view: wrapper, entries: [{ modelId: 'user/chat', size: 10, importedAt: 1 }, { modelId: 'user/voice', size: 100, importedAt: 1 }], ready: true });
-    const select = wrapper.getComponent(ChatModelSelector);
+    const select = wrapper.getComponent(ModelSelector);
     expect(select.props('modelValue')).toBe('user/voice');
     expect(select.props('models').map(model => model.id)).toEqual(['user/voice']);
     await select.get('[data-testid="model-selector-trigger"]').trigger('click');
@@ -747,11 +747,11 @@ describe('audio candidates and in-memory history in the view', () => {
     detection.inspect.mockRejectedValue(new Error('storage temporarily unavailable'));
     wrapper = mount(AudioGenerationView);
     await loadInventory({ view: wrapper, entries: [{ modelId: 'user/model', size: 100, importedAt: 1 }], ready: true });
-    const select = wrapper.getComponent(ChatModelSelector);
+    const select = wrapper.getComponent(ModelSelector);
     expect(select.props('modelValue')).toBe(defaultModelId);
     await select.get('[data-testid="model-selector-trigger"]').trigger('click');
     const popup = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
-    await popup.get('[data-testid="chat-model-selector-tabs"]').findAll('button')[1]!.trigger('click');
+    await popup.get('[data-testid="model-selector-tabs"]').findAll('button')[1]!.trigger('click');
     await popup.get('[data-testid="audio-all-models"]').setValue(true);
     await popup.get('[data-testid="model-selector-option"][title="user/model"]').trigger('click');
     await nextTick();
@@ -972,12 +972,12 @@ describe('catalog placement and continuing previews', () => {
   it('offers the audio catalog, saved models, Hugging Face and file imports in one picker', async () => {
     wrapper = mount(AudioGenerationView);
     await flushPromises();
-    const picker = wrapper.getComponent(ChatModelSelector);
+    const picker = wrapper.getComponent(ModelSelector);
     expect(wrapper.findComponent(LlamaCppBrowserRepositoryPicker).exists()).toBe(false);
     await picker.get('[data-testid="model-selector-trigger"]').trigger('click');
     await flushPromises();
     const popup = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
-    const tabs = popup.get('[data-testid="chat-model-selector-tabs"]').findAll('button');
+    const tabs = popup.get('[data-testid="model-selector-tabs"]').findAll('button');
     expect(tabs.map(tab => tab.attributes('aria-pressed'))).toEqual(['true', 'false', 'false', 'false']);
     const catalog = picker.getComponent(LlamaCppBrowserRepositoryPicker);
     expect(catalog.props('suggestions')).toEqual(audioModelCatalog);

@@ -11,7 +11,7 @@ import { workflowValueScopeKey } from '@/features/workflow/composables/value-con
 import WorkflowAudioEditor from './WorkflowAudioEditor.vue';
 import WorkflowValueEditor from './WorkflowValueEditor.vue';
 import WorkflowDisclosure from './WorkflowDisclosure.vue';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { WorkflowStep } from '@/01-models/workflow';
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), inspect: vi.fn() }));
@@ -69,7 +69,7 @@ describe('Workflow audio editor', () => {
     await flushPromises();
     expect(mocks.list).toHaveBeenCalledOnce();
     expect(mocks.inspect).toHaveBeenCalledTimes(2);
-    const selector = view.wrapper.getComponent(ChatModelSelector);
+    const selector = view.wrapper.getComponent(ModelSelector);
     expect(selector.props('models').map(({ id, availability }) => [id, availability])).toEqual([['voice.gguf', 'local']]);
     expect(selector.props('modelValue')).toBe('keep-this.gguf');
     expect(view.review).not.toHaveBeenCalled();
@@ -113,7 +113,7 @@ describe('Workflow audio editor', () => {
     gate.resolve([{ modelId: 'late', size: 2 }]);
     await flushPromises();
     expect(mocks.inspect).not.toHaveBeenCalled();
-    expect(view.wrapper.getComponent(ChatModelSelector).props('models')).toEqual([]);
+    expect(view.wrapper.getComponent(ModelSelector).props('models')).toEqual([]);
     expect(view.review).not.toHaveBeenCalled();
   });
 

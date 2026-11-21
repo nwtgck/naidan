@@ -14,7 +14,7 @@ import WorkflowConnectionDetails from './WorkflowConnectionDetails.vue';
 import LmParametersEditor from '@/components/LmParametersEditor.vue';
 import { workflowModelReviewKey } from '@/features/workflow/composables/model-review';
 import { describeWorkflowConnection } from '@/features/workflow/logic/model-permissions';
-import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import ModelSelector from '@/components/ModelSelector.vue';
 import type { WorkflowValue } from '@/01-models/workflow';
 import { createWorkflowInputDrafts, workflowInputDraftsKey } from '@/features/workflow/composables/input-drafts';
 import { emptyWorkflowTypeScope } from '@/features/workflow/logic/value-types';
@@ -168,11 +168,11 @@ describe('Existing model selector integration', () => {
     await mounted.wrapper.get('[data-testid="workflow-model-selector"] [data-testid="model-selector-trigger"]').trigger('click');
     await flushPromises();
     expect(listModels).toHaveBeenCalledOnce();
-    const selector = mounted.wrapper.getComponent(ChatModelSelector);
+    const selector = mounted.wrapper.getComponent(ModelSelector);
     expect(selector.props('models').map(({ id, availability }) => [id, availability])).toEqual([['model-2', 'local'], ['model-10', 'local']]);
     // Saving a model choice recreates the endpoint object in the workflow definition.
     await mounted.wrapper.setProps({ value: { endpoint: { type: 'llama_cpp_browser' }, modelId: 'model-2', lmParameters: undefined } });
-    expect(mounted.wrapper.getComponent(ChatModelSelector).element).toBe(selector.element);
+    expect(mounted.wrapper.getComponent(ModelSelector).element).toBe(selector.element);
     expect(new DOMWrapper(document.body).find('[data-testid="model-selector-dropdown"]').exists()).toBe(true);
     await mounted.wrapper.get('[data-testid="workflow-model-id"]').setValue('manual-model');
     expect(mounted.wrapper.emitted('change')?.at(-1)?.[0]).toMatchObject({ modelId: 'manual-model' });
@@ -197,7 +197,7 @@ describe('Existing model selector integration', () => {
     expect(page.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
     old.resolve(['stale']);
     await flushPromises();
-    expect(mounted.wrapper.getComponent(ChatModelSelector).props('models')).toEqual([]);
+    expect(mounted.wrapper.getComponent(ModelSelector).props('models')).toEqual([]);
     expect(mounted.wrapper.emitted('change')).toBeUndefined();
   });
 });
@@ -228,7 +228,7 @@ describe('Workflow connection review presentation', () => {
     mounted.wrapper.getComponent(LmParametersEditor).vm.$emit('update:modelValue', undefined);
     expect(review).toHaveBeenCalledOnce();
     await mounted.wrapper.setProps({ disabled: true });
-    mounted.wrapper.getComponent(ChatModelSelector).vm.$emit('update:modelValue', 'late');
+    mounted.wrapper.getComponent(ModelSelector).vm.$emit('update:modelValue', 'late');
     expect(review).toHaveBeenCalledOnce();
   });
 

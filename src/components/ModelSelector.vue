@@ -14,7 +14,7 @@ import { groupStoredModelVariants } from '@/features/llama-cpp-browser/hugging-f
 import { splitModelName } from '@/utils/model-name';
 import { modelSearchFilter, type ModelSelectorItem } from './model-selector-item';
 
-type ChatModelSelectorPanel = { id: string, label: string | undefined, placement?: 'before-models' };
+type ModelSelectorPanel = { id: string, label: string | undefined, placement?: 'before-models' };
 
 const disclosureOpen = inject<Readonly<Ref<boolean>> | undefined>('settings-disclosure-open', undefined);
 const disclosureFocusReturn = inject<(() => HTMLElement | undefined) | undefined>('settings-disclosure-focus-return', undefined);
@@ -25,7 +25,7 @@ const props = defineProps<{
   allowClear?: boolean,
   models: readonly ModelSelectorItem[],
   modelsLabel?: string,
-  panels?: readonly ChatModelSelectorPanel[],
+  panels?: readonly ModelSelectorPanel[],
   initialPanel?: string,
   selectionAvailability?: ModelSelectorItem['availability'],
   hideFirstUseDownloadHint?: boolean,
@@ -630,7 +630,7 @@ defineExpose({
             {{ modelNameParts.suffix }}
           </span>
         </div>
-        <span v-if="showFirstUseHint" :id="firstUseHintId" data-testid="chat-model-selector-download-hint" :title="lazyStrings.ModelSelector__download_before_first_use()" tw-class="flex shrink-0 items-center gap-1.5 text-[10px] font-normal text-gray-500 dark:text-gray-400">
+        <span v-if="showFirstUseHint" :id="firstUseHintId" data-testid="model-selector-download-hint" :title="lazyStrings.ModelSelector__download_before_first_use()" tw-class="flex shrink-0 items-center gap-1.5 text-[10px] font-normal text-gray-500 dark:text-gray-400">
           <DownloadIcon aria-hidden="true" tw-class="h-3 w-3 shrink-0" />
           <span tw-class="whitespace-nowrap">{{ lazyStrings.ModelSelector__downloads_automatically() }}</span>
           <span v-if="firstUseDownloadDestination" :title="firstUseDownloadDestination" data-testid="model-selector-first-use-destination" tw-class="max-w-16 truncate rounded bg-gray-100 px-1 text-gray-600 dark:bg-gray-700/70 dark:text-gray-300">{{ firstUseDownloadDestination }}</span>
@@ -668,17 +668,17 @@ defineExpose({
           popupPresentation === 'inline' ? 'static mt-1.5 w-full' : '',
         ]"
         :class="[
-          'chat-model-selector-dialog',
-          panels?.length && 'chat-model-selector-tabbed',
-          expanded && 'chat-model-selector-expanded',
+          'model-selector-dialog',
+          panels?.length && 'model-selector-tabbed',
+          expanded && 'model-selector-expanded',
           !expanded && (popupPresentation === 'inline' || dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'),
         ]"
         @keydown="handleDropdownKeydown({ event: $event })"
         @focusin="handleSidebarFocus({ event: $event })"
       >
         <div v-if="panelView !== 'sources'" tw-class="flex min-h-11 shrink-0 items-end justify-between gap-2 border-b border-gray-200 px-3 pt-1.5 dark:border-gray-700">
-          <div ref="tabStrip" role="group" data-testid="chat-model-selector-tabs" tw-class="relative flex min-w-0 items-center gap-2 overflow-x-auto">
-            <span v-if="tabIndicator" :style="tabIndicator" aria-hidden="true" data-testid="chat-model-selector-tab-indicator" :class="{ 'chat-model-selector-tab-indicator-moving': animateTabIndicator }" tw-class="pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-blue-500/80 dark:bg-blue-400/80" />
+          <div ref="tabStrip" role="group" data-testid="model-selector-tabs" tw-class="relative flex min-w-0 items-center gap-2 overflow-x-auto">
+            <span v-if="tabIndicator" :style="tabIndicator" aria-hidden="true" data-testid="model-selector-tab-indicator" :class="{ 'model-selector-tab-indicator-moving': animateTabIndicator }" tw-class="pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-blue-500/80 dark:bg-blue-400/80" />
             <button v-for="tab in tabs" :key="tab.id" type="button" :aria-pressed="currentTab === tab.id" tw-class="shrink-0 whitespace-nowrap px-2 pb-2.5 pt-2 text-xs font-medium text-gray-500 transition-colors hover:text-gray-800 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 aria-pressed:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 dark:aria-pressed:text-gray-100 motion-reduce:transition-none" @click="selectTab({ id: tab.id })">{{ tab.label }}</button>
           </div>
           <div tw-class="flex shrink-0 items-center gap-1 self-center">
@@ -696,7 +696,7 @@ defineExpose({
           <div v-for="panel in panels" :key="panel.id" v-show="panelView === 'panel' && activePanelId === panel.id" :inert="panelView !== 'panel' || activePanelId !== panel.id || undefined" :aria-hidden="panelView !== 'panel' || activePanelId !== panel.id" tw-class="px-3 pb-3">
             <slot v-if="visitedPanels.has(panel.id)" name="panel" :panel="panel.id" :query="searchQuery" :active="panelView === 'panel' && activePanelId === panel.id" :close="closeSources" :popup-target="dropdownRef ?? undefined" />
           </div>
-          <div v-if="panelView === 'sources'" data-testid="chat-model-selector-sources" tw-class="p-3">
+          <div v-if="panelView === 'sources'" data-testid="model-selector-sources" tw-class="p-3">
             <slot name="sources" :close="closeSources" />
           </div>
           <div v-show="panelView === 'models'" :inert="panelView !== 'models' || undefined" :aria-hidden="panelView !== 'models'" :tw-class="[panels?.length && 'px-3 pb-3']">
@@ -810,7 +810,7 @@ defineExpose({
             </div>
             <div v-if="$slots['selection-details']" tw-class="border-t border-gray-100 px-3 py-2 dark:border-gray-700"><slot name="selection-details" /></div>
             <div v-if="$slots.sources && !$slots['header-action']" tw-class="border-t border-gray-100 p-2 dark:border-gray-700">
-              <button type="button" data-testid="chat-model-selector-open-sources" @click="openSources" tw-class="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-medium text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-300 dark:hover:bg-gray-700"><FolderPlusIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.ModelSelector__add_model_files() }}</button>
+              <button type="button" data-testid="model-selector-open-sources" @click="openSources" tw-class="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-medium text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-300 dark:hover:bg-gray-700"><FolderPlusIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.ModelSelector__add_model_files() }}</button>
             </div>
           </div>
         </div>
@@ -823,31 +823,31 @@ defineExpose({
 </template>
 
 <style scoped>
-.chat-model-selector-dialog {
+.model-selector-dialog {
   container: model-picker / inline-size;
 }
-.chat-model-selector-dialog.chat-model-selector-tabbed {
+.model-selector-dialog.model-selector-tabbed {
   height: 30rem;
 }
-.chat-model-selector-dialog:not([open]) {
+.model-selector-dialog:not([open]) {
   display: none;
 }
-.chat-model-selector-tab-indicator-moving {
+.model-selector-tab-indicator-moving {
   transition: transform 180ms ease, width 180ms ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  .chat-model-selector-tab-indicator-moving {
+  .model-selector-tab-indicator-moving {
     transition: none;
   }
 }
-.chat-model-selector-dialog.chat-model-selector-expanded {
+.model-selector-dialog.model-selector-expanded {
   position: fixed;
   inset: 0;
   margin: auto;
   width: min(64rem, calc(100vw - 2rem));
   height: min(42rem, calc(100dvh - 2rem));
 }
-.chat-model-selector-dialog::backdrop {
+.model-selector-dialog::backdrop {
   background: rgb(15 23 42 / 42%);
 }
 
