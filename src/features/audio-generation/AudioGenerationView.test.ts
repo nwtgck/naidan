@@ -11,6 +11,7 @@ import type { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/mod
 import { repositoryDefaultDownloadKey } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
 import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
 import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
+import { localRepositories } from '@/features/llama-cpp-browser/runtime/local-repository-store';
 import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref, shallowRef } from 'vue';
@@ -290,6 +291,7 @@ describe('first-use audio model download', () => {
       usage: 'audio-generation',
       selection: { modelId: target.modelId, source: { kind: 'resolved', target }, destination, authorizeDestination },
       models: [],
+      capturedRoot: {} as FileSystemDirectoryHandle,
       signal: new AbortController().signal,
       onDownload: vi.fn(),
     });
@@ -994,13 +996,38 @@ describe('catalog placement and continuing previews', () => {
     const imported = { modelId: '~user/voice', size: 100, importedAt: 1 };
     expect(picker.props('modelValue')).toBe(defaultModelId);
     inventory.list.mockResolvedValue([imported]);
+    files.vm.$emit('update:added', [imported]);
     files.vm.$emit('inventory-changed');
     await flushPromises();
     expect(picker.props('models').some(option => option.id === imported.modelId)).toBe(true);
-    files.vm.$emit('choose', imported);
+    await files.get('button[aria-label="~user/voice"]').trigger('click');
     await flushPromises();
     expect(picker.props('modelValue')).toBe(imported.modelId);
     expect(service.generateAudio).not.toHaveBeenCalled();
+
+    await picker.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const reopened = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
+    await reopened.get('[data-testid="model-selector-tabs"]').findAll('button')[3]!.trigger('click');
+    await flushPromises();
+    const reopenedFiles = picker.getComponent(ModelSelectorFileImport);
+    expect(reopenedFiles.find('button[aria-label="~user/voice"]').exists()).toBe(true);
+
+    const saved = { ...imported, modelId: 'user/voice' };
+    const savedId = vi.spyOn(localRepositories, 'savedModelId').mockImplementation(({ modelId }) => modelId === imported.modelId ? saved.modelId : modelId);
+    using restoreSavedId = { [Symbol.dispose]: () => savedId.mockRestore() };
+    void restoreSavedId;
+    inventory.list.mockResolvedValue([saved]);
+    inventory.subscribe.mock.calls[0]![0].listener();
+    await flushPromises();
+    expect(reopenedFiles.find('button[aria-label="~user/voice"]').exists()).toBe(false);
+    expect(reopenedFiles.find('button[aria-label="user/voice"]').exists()).toBe(true);
+
+    // File Explorer refreshes the inventory after a model's files are removed.
+    inventory.list.mockResolvedValue([]);
+    inventory.subscribe.mock.calls[0]![0].listener();
+    await flushPromises();
+    expect(reopenedFiles.find('button[aria-label="user/voice"]').exists()).toBe(false);
   });
 
   it('adds repeated previews with their actual step counts and original settings without ending the request', async () => {

@@ -162,6 +162,7 @@ defineExpose({
       </button>
 
       <button
+        v-if="!ctx.isDeletionOnly({ path: ctx.currentDirectoryPath })"
         :title="readOnlyActionTitle({ unlockedTitle: lazyStrings.fileExplorer__upload_files(), lockedTitle: lazyStrings.fileExplorer__upload_files_unlock_to_enable() })"
         data-testid="upload-button"
         :tw-class="['p-1.5 rounded-lg transition-colors', ctx.readOnly
@@ -182,6 +183,7 @@ defineExpose({
       />
 
       <button
+        v-if="!ctx.isDeletionOnly({ path: ctx.currentDirectoryPath })"
         :title="readOnlyActionTitle({ unlockedTitle: lazyStrings.fileExplorer__new_file(), lockedTitle: lazyStrings.fileExplorer__new_file_unlock_to_enable() })"
         data-testid="new-file-button"
         :tw-class="['p-1.5 rounded-lg transition-colors', ctx.readOnly
@@ -194,6 +196,7 @@ defineExpose({
       </button>
 
       <button
+        v-if="!ctx.isDeletionOnly({ path: ctx.currentDirectoryPath })"
         :title="readOnlyActionTitle({ unlockedTitle: lazyStrings.fileExplorer__new_folder(), lockedTitle: lazyStrings.fileExplorer__new_folder_unlock_to_enable() })"
         data-testid="new-folder-button"
         :tw-class="['p-1.5 rounded-lg transition-colors', ctx.readOnly

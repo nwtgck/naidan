@@ -36,6 +36,7 @@ function createModels(): ReturnType<typeof useAudioTranscriptionModels> {
   return {
     models: computed(() => []),
     pickerModels: computed(() => []),
+    storedModelIds: computed(() => []),
     selectedId: computed(() => undefined),
     selectedModelId: computed(() => undefined),
     select: vi.fn(),
@@ -53,6 +54,7 @@ function createModels(): ReturnType<typeof useAudioTranscriptionModels> {
       linkedFolders: view,
       destination: computed(() => ({ kind: 'opfs' as const })),
       unavailable: computed(() => false),
+      captureRoot: () => undefined,
       authorize: vi.fn(async () => ({ destination: { kind: 'opfs' as const }, expectedRoot: undefined })),
       revision: ref(0),
       failure: computed(() => false),

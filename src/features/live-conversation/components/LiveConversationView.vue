@@ -1079,6 +1079,7 @@ async function downloadDefaultModel({ selection }: { selection: RepositoryModelS
       selection,
       usage: 'live-conversation',
       models: models.value,
+      capturedRoot: downloadDestination.captureRoot({ destination: selection.destination }),
       signal: current.signal,
       onDownload: ({ id: jobId }) => {
         activeDownloadId.value = jobId;
@@ -1979,6 +1980,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                   <ModelSelectorFileImport
                     v-if="modelPanel === 'files'"
                     v-model:added="addedModels"
+                    :available-model-ids="models.map(model => model.modelId)"
                     :selected-model-id="modelId || undefined"
                     :disabled="!panelActive || modelPickerDisabled"
                     tw-class="pt-3"

@@ -6,6 +6,7 @@ import { toHostModelDirectoryId } from '@/01-models/ids';
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { listHostStoredModels, resolveHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import { prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
+import { acquireRepositoryModel } from '@/features/llama-cpp-browser/model-launch/acquire-repository-model';
 import { listHuggingFaceModels, resolveRepositoryModel } from './storage';
 import { ggufBytes } from './test-opfs';
 
@@ -143,6 +144,90 @@ describe.each(['opfs', 'host'] as const)('%s directory tree to public IDs and se
       expect((await resolve({ modelId: model.modelId })).files.map(file => file.relativePath)).toEqual(model.files);
     }
   });
+});
+
+it('reuses bundled model files after the linked folder becomes readable', async () => {
+  const repository = 'owner/Audio-GGUF';
+  const main = 'Audio-Q4_K_M.gguf';
+  const companion = 'mmproj-Q8_0.gguf';
+  await writeTree({ folder: host, tree: { owner: { 'Audio-GGUF': { [main]: ggufBytes(), [companion]: ggufBytes() } } } });
+  const directories = [{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }];
+  vi.spyOn(storageService, 'loadHostModelDirectories').mockResolvedValue(directories);
+  const permission = vi.spyOn(host, 'queryPermission').mockResolvedValue('prompt');
+  const models = await listHostStoredModels({ directories, signal: undefined });
+  expect(models).toEqual([]);
+  const destination = { kind: 'host' as const, directoryId: 'root' };
+  const capturedRoot = host as unknown as FileSystemDirectoryHandle;
+  const onDownload = vi.fn();
+  const fetch = vi.fn().mockRejectedValue(new TypeError('Offline'));
+  vi.stubGlobal('fetch', fetch);
+  await expect(acquireRepositoryModel({
+    selection: {
+      modelId: `hf.co/${repository}:Q4_K_M`,
+      source: { kind: 'bundled', repository, variant: 'Q4_K_M', companionPath: companion },
+      destination,
+      authorizeDestination: async () => {
+        permission.mockResolvedValue('granted');
+        return { destination, expectedRoot: capturedRoot };
+      },
+    },
+    usage: 'audio-generation',
+    models,
+    capturedRoot,
+    signal: new AbortController().signal,
+    onDownload,
+  })).resolves.toMatchObject({ modelId: `host/Models/${repository}:Q4_K_M`, source: { primaryRelativePath: main } });
+  expect(onDownload).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it.each([
+  { attempt: 'first read', relinkBeforeRead: true },
+  { attempt: 'retry', relinkBeforeRead: false },
+])('checks the original folder before the $attempt of a bundled model', async ({ relinkBeforeRead }) => {
+  const repository = 'owner/Audio-GGUF';
+  const tree = { owner: { 'Audio-GGUF': { 'Audio-Q4_K_M.gguf': ggufBytes() } } };
+  const replacement = new MemoryDirectory('Replacement');
+  await writeTree({ folder: host, tree });
+  await writeTree({ folder: replacement, tree });
+  const directories = [{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }];
+  vi.spyOn(storageService, 'loadHostModelDirectories').mockResolvedValue(directories);
+  const models = await listHostStoredModels({ directories, signal: undefined });
+  expect(models).toHaveLength(1);
+  const expiredRead = Promise.withResolvers<void>();
+  vi.spyOn(host, 'queryPermission').mockImplementation(async () => {
+    expiredRead.resolve();
+    return 'prompt';
+  });
+  const destination = { kind: 'host' as const, directoryId: 'root' };
+  const capturedRoot = host as unknown as FileSystemDirectoryHandle;
+  const grant = Promise.withResolvers<{ destination: typeof destination, expectedRoot: FileSystemDirectoryHandle }>();
+  const onDownload = vi.fn();
+  const pending = acquireRepositoryModel({
+    selection: {
+      modelId: `hf.co/${repository}:Q4_K_M`,
+      source: { kind: 'bundled', repository, variant: 'Q4_K_M', companionPath: undefined },
+      destination,
+      authorizeDestination: () => {
+        if (relinkBeforeRead) {
+          vi.mocked(hostModelHandles.get).mockResolvedValue(replacement as unknown as HostModelDirectoryHandle);
+        }
+        return grant.promise;
+      },
+    },
+    usage: 'audio-generation',
+    models,
+    capturedRoot,
+    signal: new AbortController().signal,
+    onDownload,
+  });
+  if (!relinkBeforeRead) {
+    await expiredRead.promise;
+    vi.mocked(hostModelHandles.get).mockResolvedValue(replacement as unknown as HostModelDirectoryHandle);
+  }
+  grant.resolve({ destination, expectedRoot: capturedRoot });
+  await expect(pending).rejects.toThrow('llama.cpp browser: storage-error');
+  expect(onDownload).not.toHaveBeenCalled();
 });
 
 describe('captured host removal plans', () => {

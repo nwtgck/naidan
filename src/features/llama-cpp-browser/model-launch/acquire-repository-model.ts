@@ -6,9 +6,10 @@ import { findLocalSuggestedModel } from '@/features/llama-cpp-browser/hugging-fa
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
 import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
-import { installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { installedHostRepositoryVariant, installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
 import type { DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 import { repositoryModelDownloadIdentity, resolveBundledRepositoryTarget, type RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
+import { isHostDestination, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
 
 export function repositorySearchDownloadKey({ selection, usage }: { selection: RepositoryModelSelection, usage: RepositoryDownloadUsage }): string | undefined {
@@ -47,10 +48,11 @@ export function matchesRepositoryDownload({ selection, files }: { selection: Rep
 }
 
 /** Invoke from the user's action so linked-folder permission can still be requested. */
-export async function acquireRepositoryModel({ selection, usage, models, signal, onDownload }: {
+export async function acquireRepositoryModel({ selection, usage, models, capturedRoot, signal, onDownload }: {
   selection: RepositoryModelSelection,
   usage: RepositoryDownloadUsage,
   models: readonly LocalModel[],
+  capturedRoot: FileSystemDirectoryHandle | undefined,
   signal: AbortSignal,
   onDownload({ id }: { id: number }): void,
 }): Promise<LocalModel> {
@@ -61,7 +63,7 @@ export async function acquireRepositoryModel({ selection, usage, models, signal,
   const { key, selection: resolved } = repositoryModelDownloadIdentity({ source });
   const previous = findModelDownloadJob({ jobs: queue.jobs.value, key, selection: resolved, destination: requestedDestination });
   const prepared = resolved ?? previous?.selection;
-  const host = requestedDestination.kind === 'host';
+  const host = isHostDestination(requestedDestination);
   // The cached handle must request permission during the initiating gesture.
   // Keep denial pending until we know the model really needs to be written.
   const authorization = authorizeDestination?.({ destination: requestedDestination }).then(
@@ -69,12 +71,33 @@ export async function acquireRepositoryModel({ selection, usage, models, signal,
     (error: unknown) => ({ authorized: undefined, error }),
   );
 
-  async function findInstalled({ expectedRoot }: { expectedRoot: FileSystemDirectoryHandle | undefined }): Promise<LocalModel | undefined> {
-    if (prepared !== undefined) {
-      const model = await awaitInspection({ task: installedSelection({ selection: prepared, destination: requestedDestination, expectedRoot }), signal });
-      if (model !== undefined) {
-        return model;
-      }
+  function findPrepared({ destination, expectedRoot }: { destination: ModelDestination, expectedRoot: FileSystemDirectoryHandle | undefined }): Promise<LocalModel | undefined> {
+    return prepared === undefined ? Promise.resolve(undefined)
+      : awaitInspection({ task: installedSelection({ selection: prepared, destination, expectedRoot }), signal });
+  }
+
+  function recheckHostVariant({ destination, expectedRoot }: { destination: Extract<ModelDestination, { kind: 'host' }>, expectedRoot: FileSystemDirectoryHandle | undefined }): Promise<LocalModel | undefined> {
+    switch (source.kind) {
+    case 'bundled': return awaitInspection({
+      task: installedHostRepositoryVariant({
+        repository: source.repository,
+        variant: source.variant,
+        requireProjector: source.companionPath !== undefined,
+        destination,
+        expectedRoot,
+        signal,
+      }),
+      signal,
+    });
+    case 'resolved': return Promise.resolve(undefined);
+    default: throw new Error(String(source satisfies never));
+    }
+  }
+
+  async function findInstalled(): Promise<LocalModel | undefined> {
+    const preparedModel = await findPrepared({ destination: requestedDestination, expectedRoot: capturedRoot });
+    if (preparedModel !== undefined) {
+      return preparedModel;
     }
     switch (source.kind) {
     case 'bundled': {
@@ -84,6 +107,9 @@ export async function acquireRepositoryModel({ selection, usage, models, signal,
         destination: requestedDestination,
       });
       if (model !== undefined) {
+        if (isHostDestination(requestedDestination)) {
+          return recheckHostVariant({ destination: requestedDestination, expectedRoot: capturedRoot });
+        }
         const stored = await awaitInspection({ task: llamaCppBrowserModelFiles.inspectModelFiles({ modelId: model.modelId, signal }), signal }).catch(() => undefined);
         signal.throwIfAborted();
         if (stored !== undefined && (source.companionPath === undefined || stored.directory.projectorFile !== undefined)) {
@@ -98,7 +124,9 @@ export async function acquireRepositoryModel({ selection, usage, models, signal,
   }
 
   // An expired read grant should let the permission request finish, then retry.
-  const local = await findInstalled({ expectedRoot: undefined }).catch((error: unknown) => {
+  // For readable host folders, the local hit must still match the handle
+  // captured during the gesture, even if write permission is denied.
+  const local = host && capturedRoot === undefined ? undefined : await findInstalled().catch((error: unknown) => {
     signal.throwIfAborted();
     if (!host) {
       throw error;
@@ -112,18 +140,25 @@ export async function acquireRepositoryModel({ selection, usage, models, signal,
     throw new LlamaCppBrowserError({ code: 'storage-error' });
   }
   let destination = requestedDestination;
-  let expectedRoot: FileSystemDirectoryHandle | undefined;
+  let expectedRoot = capturedRoot;
   if (authorization !== undefined) {
     const { authorized, error } = await awaitInspection({ task: authorization, signal });
     if (authorized === undefined) {
       throw error;
     }
-    ({ destination, expectedRoot } = authorized);
+    destination = authorized.destination;
+    expectedRoot ??= authorized.expectedRoot;
   }
-  if (host) {
-    const model = await findInstalled({ expectedRoot });
+  if (isHostDestination(destination)) {
+    const model = await findPrepared({ destination, expectedRoot });
     if (model !== undefined) {
       return model;
+    }
+    // The inventory may have omitted this folder before authorization.
+    // Recheck its files before making a Hugging Face request.
+    const installed = await recheckHostVariant({ destination, expectedRoot });
+    if (installed !== undefined) {
+      return installed;
     }
   }
 

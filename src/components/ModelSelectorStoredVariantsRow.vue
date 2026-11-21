@@ -15,6 +15,7 @@ const props = defineProps<{
   highlighted?: boolean,
   index?: number,
   configuration?: { open: boolean, id: string },
+  refreshAfterFileExplorer?: () => void,
 }>();
 const emit = defineEmits<{ choose: [id: string], changeVariant: [id: string], toggleConfiguration: [{ id: string, event: MouseEvent }], openFileExplorer: [] }>();
 const ownDetailsOpen = ref(false);
@@ -73,7 +74,7 @@ defineExpose({
       </button>
     </div>
     <div v-if="detailsOpen" :id="detailsId" tw-class="min-w-0 px-2 pt-1 pb-2">
-      <ModelSelectorStoredModelFiles :model-id="current.modelId" @open-file-explorer="emit('openFileExplorer')" />
+      <ModelSelectorStoredModelFiles :model-id="current.modelId" :refresh-after-file-explorer="refreshAfterFileExplorer" @open-file-explorer="emit('openFileExplorer')" />
       <div tw-class="flex min-w-0 items-start gap-2">
         <code tw-class="min-w-0 flex-1 break-all py-1.5 text-[11px] text-gray-500 dark:text-gray-400">{{ current.modelId }}</code>
         <button type="button" :aria-label="lazyStrings.ModelSelectorStoredVariantsRow__copy_model_id()" :title="lazyStrings.ModelSelectorStoredVariantsRow__copy_model_id()" data-testid="model-selector-copy-model-id" tw-class="grid size-7 shrink-0 place-items-center rounded-md text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-gray-700" @click="copyModelId">

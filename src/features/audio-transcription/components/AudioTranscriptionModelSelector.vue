@@ -586,7 +586,7 @@ defineExpose({
             <AudioTranscriptionModelSources :models="models" :disabled="false" :popup-target="panel" :active="open && tab === 'huggingface'" v-model:query="huggingFaceQuery" @selected="close" />
           </div>
           <div v-if="fileVisited" v-show="tab === 'files'" :inert="tab !== 'files' || undefined" tw-class="p-3">
-            <ModelSelectorFileImport v-model:added="addedModels" :selected-model-id="models.selectedModelId.value" :disabled="models.busy.value" :import-files="models.importModels" @choose="chooseAddedModel({ modelId: $event.modelId })" />
+            <ModelSelectorFileImport v-model:added="addedModels" :available-model-ids="models.storedModelIds.value" :selected-model-id="models.selectedModelId.value" :disabled="models.busy.value" :import-files="models.importModels" @choose="chooseAddedModel({ modelId: $event.modelId })" />
           </div>
         </div>
 

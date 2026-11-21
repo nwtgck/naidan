@@ -5,7 +5,7 @@ import { ensureStrings, lazyStrings } from '@/strings';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
 
-const props = defineProps<{ modelId: string }>();
+const props = defineProps<{ modelId: string, refreshAfterFileExplorer?: () => void }>();
 const emit = defineEmits<{ openFileExplorer: [] }>();
 const { openFileExplorer } = useFileExplorerModal();
 const resolved = shallowRef<ResolvedModel>();
@@ -49,9 +49,16 @@ async function open({ view }: { view: 'folder' | 'models' }): Promise<void> {
     const { createModelFileExplorerOptions, refreshModelFiles } = await import('@/features/llama-cpp-browser/model-file-explorer');
     const options = await createModelFileExplorerOptions({ model, view, title: await ensureStrings.ModelSelectorStoredModelFiles__model_folders(), signal });
     signal.throwIfAborted();
+    const refreshOwner = props.refreshAfterFileExplorer;
     // Release the selector's native dialog before opening the Explorer overlay.
     emit('openFileExplorer');
-    openFileExplorer({ options, onClose: refreshModelFiles });
+    openFileExplorer({
+      options,
+      onClose: () => {
+        refreshModelFiles();
+        refreshOwner?.();
+      },
+    });
   } catch {
     if (!signal.aborted) {
       openFailed.value = true;

@@ -1,7 +1,8 @@
 import { beforeEach, afterEach, expect, expectTypeOf, it, vi } from 'vitest';
-import { DOMWrapper, mount, type ComponentMountingOptions } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount, type ComponentMountingOptions } from '@vue/test-utils';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import type { ModelSelectorItem } from './model-selector-item';
@@ -352,6 +353,47 @@ it('keeps the first-use hint visible until the download starts and omits progres
   await value.wrapper.setProps({ hideFirstUseDownloadHint: true });
   expect(value.wrapper.find('[data-testid="model-selector-download-hint"]').exists()).toBe(false);
   expect(value.wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('Qwen speech');
+});
+
+it('refreshes the picker’s model inventory when its File Explorer closes', async () => {
+  const modelId = '~user/model';
+  const relativePath = 'model.gguf';
+  const primary = { storageKind: 'temp' as const, relativePath, file: new File([], relativePath), registrationRevision: 1 };
+  const { llamaCppBrowserModelFiles } = await import('@/features/llama-cpp-browser/model-files');
+  const explorer = await import('@/features/llama-cpp-browser/model-file-explorer');
+  const inspect = vi.spyOn(llamaCppBrowserModelFiles, 'inspectModelFiles').mockResolvedValue({
+    modelId,
+    directory: { primaryFile: primary, files: [primary], projectorFile: undefined },
+    location: { kind: 'temp', rootPath: modelId },
+  });
+  const createOptions = vi.spyOn(explorer, 'createModelFileExplorerOptions').mockResolvedValue({ kind: 'opfs-root' });
+  const { isFileExplorerOpen, closeFileExplorer } = useFileExplorerModal();
+  using cleanup = {
+    [Symbol.dispose]() {
+      closeFileExplorer();
+      inspect.mockRestore();
+      createOptions.mockRestore();
+    },
+  };
+  void cleanup;
+  const refreshAfterFileExplorer = vi.fn();
+  using value = fixture({
+    props: {
+      modelValue: modelId,
+      models: [{ id: modelId, label: modelId, description: undefined, availability: 'local' }],
+      refreshAfterFileExplorer,
+    },
+    slots: undefined,
+  });
+  await value.open();
+  await value.get({ testId: 'model-selector-stored-variant-details' }).trigger('click');
+  await flushPromises();
+  await value.get({ testId: 'model-selector-open-model-folders' }).trigger('click');
+  await flushPromises();
+  expect(isFileExplorerOpen.value).toBe(true);
+  expect(refreshAfterFileExplorer).not.toHaveBeenCalled();
+  closeFileExplorer();
+  expect(refreshAfterFileExplorer).toHaveBeenCalledOnce();
 });
 
 it('changes quantization without closing the picker and copies the full selected model ID', async () => {

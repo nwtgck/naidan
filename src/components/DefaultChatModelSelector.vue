@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onScopeDispose, ref, watch } from 'vue';
 import type { Endpoint } from '@/01-models/types';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import { lazyStrings } from '@/strings';
@@ -39,6 +39,10 @@ const sortedModels = computed<ModelSelectorItem[]>(() => {
 });
 
 const addedModels = ref<readonly LocalModel[]>([]);
+let disposed = false;
+onScopeDispose(() => {
+  disposed = true;
+});
 watch(usesSavedModels, () => {
   addedModels.value = [];
 });
@@ -47,6 +51,13 @@ async function chooseLocalModel({ model, close }: { model: LocalModel, close: ((
   if (usesSavedModels.value && !props.disabled) {
     await props.selectModel({ modelId: model.modelId });
     close?.();
+  }
+}
+
+function refreshAfterFileExplorer(): void {
+  if (!disposed && usesSavedModels.value) {
+    // An independent title endpoint may own a separate list of local models.
+    void props.refreshModels().catch(() => {});
   }
 }
 
@@ -71,6 +82,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     :placeholder="placeholder"
     :allow-clear="allowClear"
     :clear-label="clearLabel"
+    :refresh-after-file-explorer="refreshAfterFileExplorer"
     @update:model-value="modelId => selectModel({ modelId })"
     @refresh="refreshModels"
   >
@@ -82,6 +94,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div v-if="panel === 'files'" tw-class="py-3">
         <ModelSelectorFileImport
           v-model:added="addedModels"
+          :available-model-ids="modelIds"
           :selected-model-id="modelValue || undefined"
           :disabled="!active"
           @choose="model => chooseLocalModel({ model, close })"

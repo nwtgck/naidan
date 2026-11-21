@@ -444,6 +444,7 @@ async function generate(): Promise<void> {
         selection: pending,
         usage: 'audio-generation',
         models: models.value,
+        capturedRoot: downloadDestination.captureRoot({ destination: pending.destination }),
         signal: active.signal,
         onDownload: ({ id }) => {
           activeDownloadId.value = id;
@@ -604,6 +605,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     <ModelSelectorFileImport
                       v-if="panel === 'files'"
                       v-model:added="addedModels"
+                      :available-model-ids="models.map(model => model.modelId)"
                       :selected-model-id="modelId || undefined"
                       :disabled="!active || blocked"
                       tw-class="pt-3"

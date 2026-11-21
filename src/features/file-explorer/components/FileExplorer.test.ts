@@ -3,12 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
-import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
+import type { FileExplorerRemoteMount, FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import type { ExplorerDirectory, ExplorerChild } from '@/features/file-explorer/logic/explorer-directory';
 import { LIST_ROW_HEIGHT } from '@/features/file-explorer/logic/constants';
 import { createFileExplorerWorkerClient } from '@/features/file-explorer/worker/client';
 import { FileExplorerNotDirectoryError } from '@/features/file-explorer/logic/errors';
+import { createRemoteDirectoryAccess } from '@/utils/remote-directory-handle';
 
 // ---- Mock ExplorerDirectory ----
 
@@ -965,6 +966,42 @@ describe('FileExplorer.vue', () => {
 
     expect(mockShowConfirm).toHaveBeenCalled();
     expect(wrapper.text()).not.toContain('delete-me.txt');
+  });
+
+  it('offers deletion without creation or renaming in a temporary model folder', async () => {
+    root.addDir('~user').addDir('model').addFile('model.gguf');
+    const temporaryMount: FileExplorerRemoteMount = {
+      path: '/~user/model',
+      root: { kind: 'directory', name: 'model', id: 'directory:' },
+      readOnly: false,
+      deletionOnly: true,
+      access: createRemoteDirectoryAccess({ dispatch: vi.fn() }),
+    };
+    const { access: _access, ...descriptor } = temporaryMount;
+    const wrapper = tracked(mountExplorer(root, {
+      root: { kind: 'wesh-mounts', rootName: 'Models', mounts: [], remoteMounts: [descriptor] },
+      remoteMounts: [temporaryMount],
+      initialPath: ['~user', 'model'],
+      initialLocked: true,
+    }));
+    await flushPromises();
+    await wrapper.get('[data-testid="lock-toggle"]').trigger('click');
+    for (const button of ['upload-button', 'new-file-button', 'new-folder-button']) {
+      expect(wrapper.find(`[data-testid="${button}"]`).exists()).toBe(false);
+    }
+    const entry = wrapper.get('[data-testid="entry-item-model.gguf"]');
+    await entry.trigger('click');
+    await wrapper.get('[data-testid="file-explorer"]').trigger('keydown', { key: 'F2' });
+    expect(wrapper.find('[data-testid="rename-input"]').exists()).toBe(false);
+    await entry.trigger('contextmenu', { clientX: 50, clientY: 50 });
+    const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-testid="context-menu"] button'));
+    expect(buttons.map(button => button.textContent?.trim())).not.toContain('Rename');
+    expect(buttons.map(button => button.textContent?.trim())).not.toContain('Cut');
+    const deleteButton = buttons.find(button => button.textContent?.trim() === 'Delete');
+    expect(deleteButton?.disabled).toBe(false);
+    deleteButton!.click();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="entry-item-model.gguf"]').exists()).toBe(false);
   });
 
   // ---- Clipboard ----

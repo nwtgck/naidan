@@ -98,7 +98,7 @@ export function temporaryModelExplorerMount({ root: captured, path }: { root: Te
       }
     },
   });
-  return { path, root: rootEntry, access, readOnly: false };
+  return { path, root: rootEntry, access, readOnly: false, deletionOnly: true };
 }
 
 export const TEST_ONLY = {

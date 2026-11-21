@@ -17,6 +17,7 @@ const fileExplorerRemoteMountSchema = z.object({
   path: fileExplorerPathSchema,
   root: remoteDirectoryEntrySchema,
   readOnly: z.boolean(),
+  deletionOnly: z.boolean().optional(),
 });
 export type FileExplorerRemoteMount = z.infer<typeof fileExplorerRemoteMountSchema> & { access: RemoteDirectoryAccess };
 const fileExplorerArchiveSourceDescriptorSchema = z.discriminatedUnion('kind', [

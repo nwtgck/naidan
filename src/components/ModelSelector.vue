@@ -42,6 +42,7 @@ const props = defineProps<{
   popupTarget?: HTMLElement,
   chevronVisibility?: 'visible' | 'hidden',
   refreshVisibility?: 'visible' | 'hidden',
+  refreshAfterFileExplorer?: () => void,
   inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   modelSelection?: 'available' | 'unavailable',
 }>();
@@ -789,6 +790,7 @@ defineExpose({
                   :popup-target="dropdownRef ?? undefined"
                   :index="optionIndices.get(activeStoredVariantId({ variants: row.variants }))" :highlighted="highlightedIndex === optionIndices.get(activeStoredVariantId({ variants: row.variants }))"
                   @choose="selectModel({ model: $event })" @change-variant="selectModel({ model: $event, keepOpen: true })"
+                  :refresh-after-file-explorer="refreshAfterFileExplorer"
                   @open-file-explorer="closeDropdown({ restoreFocus: true })"
                   @mouseenter="highlightedIndex = optionIndices.get(activeStoredVariantId({ variants: row.variants })) ?? -1"
                 >

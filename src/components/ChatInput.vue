@@ -1737,7 +1737,7 @@ defineExpose({
             >
               <template #panel="{ panel, active, close, popupTarget }">
                 <div v-if="panel === 'files'" data-testid="model-selector-sources" tw-class="py-3">
-                  <slot name="model-files" :close="close" :refresh-inventory="refreshLocalModelInventory" />
+                  <slot name="model-files" :close="close" :refresh-inventory="refreshLocalModelInventory" :available-model-ids="chatModels.availableModels.value" />
                 </div>
                 <RepositoryModelPicker
                   v-else

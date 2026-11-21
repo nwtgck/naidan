@@ -62,6 +62,13 @@ export async function useFileExplorer({
     filterQuery: filterQuery as { value: string },
   });
 
+  function isDeletionOnly({ path }: { path: string }): boolean {
+    // Temporary model mounts allow deleting registered files. Creation and
+    // replacement still go through the model selector's import path.
+    return remoteMounts?.some(mount => mount.deletionOnly === true
+      && (path === mount.path || path.startsWith(`${mount.path}/`))) ?? false;
+  }
+
   const sel = useFileExplorerSelection();
 
   const selectedEntries = computed(() =>
@@ -98,7 +105,7 @@ export async function useFileExplorer({
   const dnd = useFileExplorerDragDrop({
     moveEntries: ops.moveEntries,
     currentDirectoryPath: nav.currentDirectoryPath,
-    isReadOnly: () => isLocked.value || nav.currentDirectoryReadOnly.value,
+    isMoveBlocked: ({ path }) => isLocked.value || nav.currentDirectoryReadOnly.value || isDeletionOnly({ path }),
   });
 
   function setViewMode({ mode }: { mode: ViewMode }): void {
@@ -362,7 +369,7 @@ export async function useFileExplorer({
 
   async function clipboardPaste(): Promise<void> {
     const clipboardState = clipboard.clipboardState.value;
-    if (!clipboardState.operation || clipboardState.entries.length === 0) {
+    if (!clipboardState.operation || clipboardState.entries.length === 0 || isDeletionOnly({ path: nav.currentDirectoryPath.value })) {
       return;
     }
 
@@ -404,6 +411,7 @@ export async function useFileExplorer({
       }
       return undefined;
     },
+    isDeletionOnly,
     get pathSegments() {
       return nav.pathSegments.value;
     },

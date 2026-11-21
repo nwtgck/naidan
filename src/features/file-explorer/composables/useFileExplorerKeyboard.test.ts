@@ -100,6 +100,7 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     currentDirectoryPath: '/',
     readOnly: false,
     readOnlyReason: undefined,
+    isDeletionOnly: () => false,
     pathSegments: [],
     navigateToDirectory: vi.fn().mockResolvedValue(undefined),
     navigateUp: vi.fn().mockResolvedValue(undefined),

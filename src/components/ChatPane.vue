@@ -2252,8 +2252,8 @@ watch(
       @sent="clearTargetMessageQuery"
       @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
     >
-      <template #model-files="{ close, refreshInventory }">
-        <ModelSelectorFileImport v-model:added="addedChatModels" :selected-model-id="deferredRepositoryModel?.selection.modelId ?? resolvedSettings?.modelId" :disabled="isChatStreaming" @choose="model => { chooseStoredSelectorModel({ model }); close(); }" @inventory-changed="refreshInventory()" />
+      <template #model-files="{ close, refreshInventory, availableModelIds }">
+        <ModelSelectorFileImport v-model:added="addedChatModels" :available-model-ids="availableModelIds" :selected-model-id="deferredRepositoryModel?.selection.modelId ?? resolvedSettings?.modelId" :disabled="isChatStreaming" @choose="model => { chooseStoredSelectorModel({ model }); close(); }" @inventory-changed="refreshInventory()" />
       </template>
       <template #above-input>
         <ChatApprovalPanel
