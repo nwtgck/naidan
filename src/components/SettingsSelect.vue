@@ -29,6 +29,7 @@ const props = defineProps<{
   presentation?: 'default' | 'toolbar' | 'inline',
   size?: 'default' | 'compact',
   menuWidthRem?: number,
+  popupTarget?: HTMLElement,
   search?: { label: string | undefined, noResults: string | undefined },
 }>();
 const emit = defineEmits<{
@@ -256,7 +257,7 @@ defineExpose({
     </span>
     <ChevronDownIcon :tw-class="['shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-gray-600 dark:group-hover:text-gray-200', presentation === 'inline' ? 'h-2.5 w-2.5' : size === 'compact' ? 'h-3 w-3' : 'h-4 w-4', open && 'rotate-180']" />
   </button>
-  <Teleport to="body">
+  <Teleport :to="popupTarget ?? 'body'">
     <Transition name="settings-select-menu">
       <div
         v-show="open"

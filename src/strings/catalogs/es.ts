@@ -75,15 +75,17 @@ import { AssistantProcessSequence__thinking_steps } from '@/strings/messages/Ass
 import { AssistantProcessSequence__tool_executions } from '@/strings/messages/AssistantProcessSequence__tool_executions/es';
 import { AssistantProcessSequence__used_tools } from '@/strings/messages/AssistantProcessSequence__used_tools/es';
 import { AssistantWaitingIndicator__waiting_for_response } from '@/strings/messages/AssistantWaitingIndicator__waiting_for_response/es';
-import { AudioTranscriptionModelDetails__check_on_hugging_face } from '@/strings/messages/AudioTranscriptionModelDetails__check_on_hugging_face/es';
-import { AudioTranscriptionModelDetails__could_not_check } from '@/strings/messages/AudioTranscriptionModelDetails__could_not_check/es';
-import { AudioTranscriptionModelDetails__details } from '@/strings/messages/AudioTranscriptionModelDetails__details/es';
-import { AudioTranscriptionModelDetails__download_files } from '@/strings/messages/AudioTranscriptionModelDetails__download_files/es';
-import { AudioTranscriptionModelDetails__download_targets_not_checked } from '@/strings/messages/AudioTranscriptionModelDetails__download_targets_not_checked/es';
-import { AudioTranscriptionModelDetails__local_file } from '@/strings/messages/AudioTranscriptionModelDetails__local_file/es';
-import { AudioTranscriptionModelDetails__quantization } from '@/strings/messages/AudioTranscriptionModelDetails__quantization/es';
-import { AudioTranscriptionModelDetails__repository } from '@/strings/messages/AudioTranscriptionModelDetails__repository/es';
-import { AudioTranscriptionModelDetails__revision } from '@/strings/messages/AudioTranscriptionModelDetails__revision/es';
+import { AudioTranscriptionModelSelector__compatibility_unconfirmed } from '@/strings/messages/AudioTranscriptionModelSelector__compatibility_unconfirmed/es';
+import { AudioTranscriptionModelSelector__could_not_get_quantizations } from '@/strings/messages/AudioTranscriptionModelSelector__could_not_get_quantizations/es';
+import { AudioTranscriptionModelSelector__for_transcription } from '@/strings/messages/AudioTranscriptionModelSelector__for_transcription/es';
+import { AudioTranscriptionModelSelector__model_groups } from '@/strings/messages/AudioTranscriptionModelSelector__model_groups/es';
+import { AudioTranscriptionModelSelector__models_to_download } from '@/strings/messages/AudioTranscriptionModelSelector__models_to_download/es';
+import { AudioTranscriptionModelSelector__more_matching_models } from '@/strings/messages/AudioTranscriptionModelSelector__more_matching_models/es';
+import { AudioTranscriptionModelSelector__no_gguf_choices } from '@/strings/messages/AudioTranscriptionModelSelector__no_gguf_choices/es';
+import { AudioTranscriptionModelSelector__no_saved_models } from '@/strings/messages/AudioTranscriptionModelSelector__no_saved_models/es';
+import { AudioTranscriptionModelSelector__other_saved_models } from '@/strings/messages/AudioTranscriptionModelSelector__other_saved_models/es';
+import { AudioTranscriptionModelSelector__supports_transcription } from '@/strings/messages/AudioTranscriptionModelSelector__supports_transcription/es';
+import { AudioTranscriptionModelSources__checking_repository } from '@/strings/messages/AudioTranscriptionModelSources__checking_repository/es';
 import { AudioTranscriptionModelSources__choose_a_file } from '@/strings/messages/AudioTranscriptionModelSources__choose_a_file/es';
 import { AudioTranscriptionModelSources__could_not_check_repository } from '@/strings/messages/AudioTranscriptionModelSources__could_not_check_repository/es';
 import { AudioTranscriptionModelSources__could_not_prepare_model } from '@/strings/messages/AudioTranscriptionModelSources__could_not_prepare_model/es';
@@ -368,6 +370,8 @@ import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSetti
 import { ChatGroupSettingsPanel__working } from '@/strings/messages/ChatGroupSettingsPanel__working/es';
 import { ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings } from '@/strings/messages/ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings/es';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/es';
+import { ChatInput__chat_model_suggestions } from '@/strings/messages/ChatInput__chat_model_suggestions/es';
+import { ChatInput__could_not_open_model } from '@/strings/messages/ChatInput__could_not_open_model/es';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/es';
 import { ChatInput__failed_to_copy } from '@/strings/messages/ChatInput__failed_to_copy/es';
 import { ChatInput__failed_to_link_folder } from '@/strings/messages/ChatInput__failed_to_link_folder/es';
@@ -1488,8 +1492,11 @@ import { LlamaCppBrowserLocalFileRecovery__could_not_open_local_model_files } fr
 import { LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder/es';
 import { LlamaCppBrowserLocalFileRecovery__use_local_model_files } from '@/strings/messages/LlamaCppBrowserLocalFileRecovery__use_local_model_files/es';
 import { LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser } from '@/strings/messages/LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser/es';
+import { LlamaCppBrowserLocalFiles__no_gguf_files } from '@/strings/messages/LlamaCppBrowserLocalFiles__no_gguf_files/es';
+import { LlamaCppBrowserLocalFiles__save_in_browser } from '@/strings/messages/LlamaCppBrowserLocalFiles__save_in_browser/es';
 import { LlamaCppBrowserLocalFiles__start_now_and_save_in_background } from '@/strings/messages/LlamaCppBrowserLocalFiles__start_now_and_save_in_background/es';
 import { LlamaCppBrowserLocalFiles__start_without_copying_and_save_later } from '@/strings/messages/LlamaCppBrowserLocalFiles__start_without_copying_and_save_later/es';
+import { LlamaCppBrowserLocalFiles__use_until_page_closes } from '@/strings/messages/LlamaCppBrowserLocalFiles__use_until_page_closes/es';
 import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } from '@/strings/messages/LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it/es';
 import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/es';
 import { LlamaCppBrowserModelAction__model_actions } from '@/strings/messages/LlamaCppBrowserModelAction__model_actions/es';
@@ -1546,7 +1553,11 @@ import { LlamaCppBrowserRepositoryLayout__open_each_child_folder_as_a_repository
 import { LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders/es';
 import { LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository } from '@/strings/messages/LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository/es';
 import { LlamaCppBrowserRepositoryPicker__back_to_search } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__back_to_search/es';
+import { LlamaCppBrowserRepositoryPicker__back_to_suggestions } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__back_to_suggestions/es';
+import { LlamaCppBrowserRepositoryPicker__companion_files } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__companion_files/es';
 import { LlamaCppBrowserRepositoryPicker__could_not_check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__could_not_check_repository/es';
+import { LlamaCppBrowserRepositoryPicker__fetching_configuration } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__fetching_configuration/es';
+import { LlamaCppBrowserRepositoryPicker__multimodal } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__multimodal/es';
 import { LlamaCppBrowserRepositoryPicker__saved } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__saved/es';
 import { LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser/es';
 import { LlamaCppBrowserRepositoryPreview__not_estimated } from '@/strings/messages/LlamaCppBrowserRepositoryPreview__not_estimated/es';
@@ -1569,6 +1580,8 @@ import { LlamaCppBrowserSavedModelPicker__find_on_hugging_face } from '@/strings
 import { LlamaCppBrowserSavedModelPicker__no_saved_models_yet } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__no_saved_models_yet/es';
 import { LlamaCppBrowserSavedModelPicker__refresh } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__refresh/es';
 import { LlamaCppBrowserSavedModelPicker__use_files } from '@/strings/messages/LlamaCppBrowserSavedModelPicker__use_files/es';
+import { LlamaCppBrowserSuggestedModelRows__filter } from '@/strings/messages/LlamaCppBrowserSuggestedModelRows__filter/es';
+import { LlamaCppBrowserSuggestedModelRows__placeholder } from '@/strings/messages/LlamaCppBrowserSuggestedModelRows__placeholder/es';
 import { LlamaCppMemoryPanel__active_history } from '@/strings/messages/LlamaCppMemoryPanel__active_history/es';
 import { LlamaCppMemoryPanel__change_since_latest_load_started } from '@/strings/messages/LlamaCppMemoryPanel__change_since_latest_load_started/es';
 import { LlamaCppMemoryPanel__ended_history } from '@/strings/messages/LlamaCppMemoryPanel__ended_history/es';
@@ -1717,15 +1730,69 @@ import { ModelDownloads__waiting } from '@/strings/messages/ModelDownloads__wait
 import { ModelExecutionBadge__execution_not_observed } from '@/strings/messages/ModelExecutionBadge__execution_not_observed/es';
 import { ModelExecutionBadge__native_architecture } from '@/strings/messages/ModelExecutionBadge__native_architecture/es';
 import { ModelExecutionBadge__registered_model_graph } from '@/strings/messages/ModelExecutionBadge__registered_model_graph/es';
+import { ModelSelectorConfigurationSummary__change } from '@/strings/messages/ModelSelectorConfigurationSummary__change/es';
+import { ModelSelectorConfigurationSummary__change_configuration } from '@/strings/messages/ModelSelectorConfigurationSummary__change_configuration/es';
+import { ModelSelectorConfigurationSummary__choose } from '@/strings/messages/ModelSelectorConfigurationSummary__choose/es';
+import { ModelSelectorConfigurationSummary__multimodal_excluded } from '@/strings/messages/ModelSelectorConfigurationSummary__multimodal_excluded/es';
+import { ModelSelectorConfigurationSummary__multimodal_included } from '@/strings/messages/ModelSelectorConfigurationSummary__multimodal_included/es';
+import { ModelSelectorConfigurationSummary__selected } from '@/strings/messages/ModelSelectorConfigurationSummary__selected/es';
+import { ModelSelectorConfigurationSummary__standard } from '@/strings/messages/ModelSelectorConfigurationSummary__standard/es';
+import { ModelSelectorConfiguration__collapse } from '@/strings/messages/ModelSelectorConfiguration__collapse/es';
+import { ModelSelectorDownloadAction__complete } from '@/strings/messages/ModelSelectorDownloadAction__complete/es';
+import { ModelSelectorDownloadAction__download } from '@/strings/messages/ModelSelectorDownloadAction__download/es';
+import { ModelSelectorDownloadAction__download_model } from '@/strings/messages/ModelSelectorDownloadAction__download_model/es';
+import { ModelSelectorDownloadAction__downloaded } from '@/strings/messages/ModelSelectorDownloadAction__downloaded/es';
+import { ModelSelectorDownloadAction__downloading } from '@/strings/messages/ModelSelectorDownloadAction__downloading/es';
+import { ModelSelectorDownloadAction__failed } from '@/strings/messages/ModelSelectorDownloadAction__failed/es';
+import { ModelSelectorDownloadAction__paused } from '@/strings/messages/ModelSelectorDownloadAction__paused/es';
+import { ModelSelectorDownloadAction__preparing } from '@/strings/messages/ModelSelectorDownloadAction__preparing/es';
+import { ModelSelectorDownloadAction__progress_for_model } from '@/strings/messages/ModelSelectorDownloadAction__progress_for_model/es';
+import { ModelSelectorDownloadAction__queued } from '@/strings/messages/ModelSelectorDownloadAction__queued/es';
+import { ModelSelectorDownloadAction__resume } from '@/strings/messages/ModelSelectorDownloadAction__resume/es';
+import { ModelSelectorDownloadAction__retry } from '@/strings/messages/ModelSelectorDownloadAction__retry/es';
+import { ModelSelectorDownloadAction__stop } from '@/strings/messages/ModelSelectorDownloadAction__stop/es';
+import { ModelSelectorDownloadAction__stop_for_model } from '@/strings/messages/ModelSelectorDownloadAction__stop_for_model/es';
+import { ModelSelectorDownloadAction__stopping } from '@/strings/messages/ModelSelectorDownloadAction__stopping/es';
+import { ModelSelectorDownloadAction__verifying } from '@/strings/messages/ModelSelectorDownloadAction__verifying/es';
+import { ModelSelectorFileImport__add_model_options } from '@/strings/messages/ModelSelectorFileImport__add_model_options/es';
+import { ModelSelectorFileImport__added_models } from '@/strings/messages/ModelSelectorFileImport__added_models/es';
+import { ModelSelectorFileImport__cancel_import } from '@/strings/messages/ModelSelectorFileImport__cancel_import/es';
+import { ModelSelectorFileImport__checking_files } from '@/strings/messages/ModelSelectorFileImport__checking_files/es';
+import { ModelSelectorFileImport__choose_files } from '@/strings/messages/ModelSelectorFileImport__choose_files/es';
+import { ModelSelectorFileImport__empty_folder } from '@/strings/messages/ModelSelectorFileImport__empty_folder/es';
+import { ModelSelectorFileImport__folder_check_failed } from '@/strings/messages/ModelSelectorFileImport__folder_check_failed/es';
+import { ModelSelectorFileImport__folder_link_failed } from '@/strings/messages/ModelSelectorFileImport__folder_link_failed/es';
+import { ModelSelectorFileImport__import_failed } from '@/strings/messages/ModelSelectorFileImport__import_failed/es';
+import { ModelSelectorFileImport__no_models } from '@/strings/messages/ModelSelectorFileImport__no_models/es';
+import { ModelSelectorFileImport__skipped_files } from '@/strings/messages/ModelSelectorFileImport__skipped_files/es';
+import { ModelSelectorFileOptions__files_for_model } from '@/strings/messages/ModelSelectorFileOptions__files_for_model/es';
+import { ModelSelectorHuggingFaceSearch__auto_search } from '@/strings/messages/ModelSelectorHuggingFaceSearch__auto_search/es';
+import { ModelSelectorHuggingFaceSearch__auto_search_help } from '@/strings/messages/ModelSelectorHuggingFaceSearch__auto_search_help/es';
+import { ModelSelectorHuggingFaceSearch__check_parameter_range } from '@/strings/messages/ModelSelectorHuggingFaceSearch__check_parameter_range/es';
+import { ModelSelectorHuggingFaceSearch__checking_configuration } from '@/strings/messages/ModelSelectorHuggingFaceSearch__checking_configuration/es';
+import { ModelSelectorHuggingFaceSearch__could_not_save_search_settings } from '@/strings/messages/ModelSelectorHuggingFaceSearch__could_not_save_search_settings/es';
 import { ModelSelectorHuggingFaceSearch__could_not_search_hugging_face } from '@/strings/messages/ModelSelectorHuggingFaceSearch__could_not_search_hugging_face/es';
 import { ModelSelectorHuggingFaceSearch__enter_a_valid_repository_url } from '@/strings/messages/ModelSelectorHuggingFaceSearch__enter_a_valid_repository_url/es';
 import { ModelSelectorHuggingFaceSearch__model_name_or_repository_url } from '@/strings/messages/ModelSelectorHuggingFaceSearch__model_name_or_repository_url/es';
 import { ModelSelectorHuggingFaceSearch__more } from '@/strings/messages/ModelSelectorHuggingFaceSearch__more/es';
 import { ModelSelectorHuggingFaceSearch__no_models_found } from '@/strings/messages/ModelSelectorHuggingFaceSearch__no_models_found/es';
+import { ModelSelectorHuggingFaceSearch__open } from '@/strings/messages/ModelSelectorHuggingFaceSearch__open/es';
+import { ModelSelectorHuggingFaceSearch__open_repository } from '@/strings/messages/ModelSelectorHuggingFaceSearch__open_repository/es';
+import { ModelSelectorHuggingFaceSearch__repository_placeholder } from '@/strings/messages/ModelSelectorHuggingFaceSearch__repository_placeholder/es';
+import { ModelSelectorHuggingFaceSearch__results } from '@/strings/messages/ModelSelectorHuggingFaceSearch__results/es';
 import { ModelSelectorHuggingFaceSearch__results_for } from '@/strings/messages/ModelSelectorHuggingFaceSearch__results_for/es';
+import { ModelSelectorHuggingFaceSearch__search } from '@/strings/messages/ModelSelectorHuggingFaceSearch__search/es';
 import { ModelSelectorHuggingFaceSearch__search_hugging_face } from '@/strings/messages/ModelSelectorHuggingFaceSearch__search_hugging_face/es';
+import { ModelSelectorHuggingFaceSearch__search_options } from '@/strings/messages/ModelSelectorHuggingFaceSearch__search_options/es';
 import { ModelSelectorHuggingFaceSearch__search_sends_your_query_to_hugging_face } from '@/strings/messages/ModelSelectorHuggingFaceSearch__search_sends_your_query_to_hugging_face/es';
 import { ModelSelectorHuggingFaceSearch__searching } from '@/strings/messages/ModelSelectorHuggingFaceSearch__searching/es';
+import { ModelSelectorHuggingFaceSearch__show_trending } from '@/strings/messages/ModelSelectorHuggingFaceSearch__show_trending/es';
+import { ModelSelectorHuggingFaceSearch__speech_recognition } from '@/strings/messages/ModelSelectorHuggingFaceSearch__speech_recognition/es';
+import { ModelSelectorHuggingFaceSearch__trending } from '@/strings/messages/ModelSelectorHuggingFaceSearch__trending/es';
+import { ModelSelectorRepositoryRow__configuration_for_model } from '@/strings/messages/ModelSelectorRepositoryRow__configuration_for_model/es';
+import { ModelSelectorRepositorySource__source } from '@/strings/messages/ModelSelectorRepositorySource__source/es';
+import { ModelSelectorStoredVariantsRow__variant_count } from '@/strings/messages/ModelSelectorStoredVariantsRow__variant_count/es';
+import { ModelSelector__add_files } from '@/strings/messages/ModelSelector__add_files/es';
 import { ModelSelector__add_model_files } from '@/strings/messages/ModelSelector__add_model_files/es';
 import { ModelSelector__back_to_models } from '@/strings/messages/ModelSelector__back_to_models/es';
 import { ModelSelector__clear_filter } from '@/strings/messages/ModelSelector__clear_filter/es';
@@ -1733,15 +1800,20 @@ import { ModelSelector__close } from '@/strings/messages/ModelSelector__close/es
 import { ModelSelector__download_before_first_use } from '@/strings/messages/ModelSelector__download_before_first_use/es';
 import { ModelSelector__download_from_hugging_face } from '@/strings/messages/ModelSelector__download_from_hugging_face/es';
 import { ModelSelector__downloads_automatically } from '@/strings/messages/ModelSelector__downloads_automatically/es';
+import { ModelSelector__expand } from '@/strings/messages/ModelSelector__expand/es';
+import { ModelSelector__fetch_configuration } from '@/strings/messages/ModelSelector__fetch_configuration/es';
 import { ModelSelector__filter_models } from '@/strings/messages/ModelSelector__filter_models/es';
 import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inherit/es';
 import { ModelSelector__loading_models } from '@/strings/messages/ModelSelector__loading_models/es';
 import { ModelSelector__models } from '@/strings/messages/ModelSelector__models/es';
+import { ModelSelector__models_on_this_device } from '@/strings/messages/ModelSelector__models_on_this_device/es';
 import { ModelSelector__no_models_available } from '@/strings/messages/ModelSelector__no_models_available/es';
 import { ModelSelector__no_models_found } from '@/strings/messages/ModelSelector__no_models_found/es';
 import { ModelSelector__on_this_device } from '@/strings/messages/ModelSelector__on_this_device/es';
 import { ModelSelector__refresh_model_list } from '@/strings/messages/ModelSelector__refresh_model_list/es';
 import { ModelSelector__select_a_model } from '@/strings/messages/ModelSelector__select_a_model/es';
+import { ModelSelector__show_configuration } from '@/strings/messages/ModelSelector__show_configuration/es';
+import { ModelSelector__shrink } from '@/strings/messages/ModelSelector__shrink/es';
 import { ModelSupportInvestigationModal__add_models_placeholder } from '@/strings/messages/ModelSupportInvestigationModal__add_models_placeholder/es';
 import { ModelSupportInvestigationModal__allow } from '@/strings/messages/ModelSupportInvestigationModal__allow/es';
 import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/es';
@@ -4377,15 +4449,17 @@ export const catalog = {
   AssistantProcessSequence__tool_executions,
   AssistantProcessSequence__used_tools,
   AssistantWaitingIndicator__waiting_for_response,
-  AudioTranscriptionModelDetails__check_on_hugging_face,
-  AudioTranscriptionModelDetails__could_not_check,
-  AudioTranscriptionModelDetails__details,
-  AudioTranscriptionModelDetails__download_files,
-  AudioTranscriptionModelDetails__download_targets_not_checked,
-  AudioTranscriptionModelDetails__local_file,
-  AudioTranscriptionModelDetails__quantization,
-  AudioTranscriptionModelDetails__repository,
-  AudioTranscriptionModelDetails__revision,
+  AudioTranscriptionModelSelector__compatibility_unconfirmed,
+  AudioTranscriptionModelSelector__could_not_get_quantizations,
+  AudioTranscriptionModelSelector__for_transcription,
+  AudioTranscriptionModelSelector__model_groups,
+  AudioTranscriptionModelSelector__models_to_download,
+  AudioTranscriptionModelSelector__more_matching_models,
+  AudioTranscriptionModelSelector__no_gguf_choices,
+  AudioTranscriptionModelSelector__no_saved_models,
+  AudioTranscriptionModelSelector__other_saved_models,
+  AudioTranscriptionModelSelector__supports_transcription,
+  AudioTranscriptionModelSources__checking_repository,
   AudioTranscriptionModelSources__choose_a_file,
   AudioTranscriptionModelSources__could_not_check_repository,
   AudioTranscriptionModelSources__could_not_prepare_model,
@@ -4670,6 +4744,8 @@ export const catalog = {
   ChatGroupSettingsPanel__working,
   ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings,
   ChatInput__cancel,
+  ChatInput__chat_model_suggestions,
+  ChatInput__could_not_open_model,
   ChatInput__edit_image,
   ChatInput__failed_to_copy,
   ChatInput__failed_to_link_folder,
@@ -5790,8 +5866,11 @@ export const catalog = {
   LlamaCppBrowserLocalFileRecovery__use_downloaded_gguf_files_or_link_a_model_folder,
   LlamaCppBrowserLocalFileRecovery__use_local_model_files,
   LlamaCppBrowserLocalFiles__copy_model_files_into_the_browser,
+  LlamaCppBrowserLocalFiles__no_gguf_files,
+  LlamaCppBrowserLocalFiles__save_in_browser,
   LlamaCppBrowserLocalFiles__start_now_and_save_in_background,
   LlamaCppBrowserLocalFiles__start_without_copying_and_save_later,
+  LlamaCppBrowserLocalFiles__use_until_page_closes,
   LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it,
   LlamaCppBrowserModelAction__create_chat_group,
   LlamaCppBrowserModelAction__model_actions,
@@ -5848,7 +5927,11 @@ export const catalog = {
   LlamaCppBrowserRepositoryLayout__open_repositories_inside_owner_folders,
   LlamaCppBrowserRepositoryLayout__open_this_folder_as_one_repository,
   LlamaCppBrowserRepositoryPicker__back_to_search,
+  LlamaCppBrowserRepositoryPicker__back_to_suggestions,
+  LlamaCppBrowserRepositoryPicker__companion_files,
   LlamaCppBrowserRepositoryPicker__could_not_check_repository,
+  LlamaCppBrowserRepositoryPicker__fetching_configuration,
+  LlamaCppBrowserRepositoryPicker__multimodal,
   LlamaCppBrowserRepositoryPicker__saved,
   LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser,
   LlamaCppBrowserRepositoryPreview__not_estimated,
@@ -5871,6 +5954,8 @@ export const catalog = {
   LlamaCppBrowserSavedModelPicker__no_saved_models_yet,
   LlamaCppBrowserSavedModelPicker__refresh,
   LlamaCppBrowserSavedModelPicker__use_files,
+  LlamaCppBrowserSuggestedModelRows__filter,
+  LlamaCppBrowserSuggestedModelRows__placeholder,
   LlamaCppMemoryPanel__active_history,
   LlamaCppMemoryPanel__change_since_latest_load_started,
   LlamaCppMemoryPanel__ended_history,
@@ -6019,15 +6104,69 @@ export const catalog = {
   ModelExecutionBadge__execution_not_observed,
   ModelExecutionBadge__native_architecture,
   ModelExecutionBadge__registered_model_graph,
+  ModelSelectorConfigurationSummary__change,
+  ModelSelectorConfigurationSummary__change_configuration,
+  ModelSelectorConfigurationSummary__choose,
+  ModelSelectorConfigurationSummary__multimodal_excluded,
+  ModelSelectorConfigurationSummary__multimodal_included,
+  ModelSelectorConfigurationSummary__selected,
+  ModelSelectorConfigurationSummary__standard,
+  ModelSelectorConfiguration__collapse,
+  ModelSelectorDownloadAction__complete,
+  ModelSelectorDownloadAction__download,
+  ModelSelectorDownloadAction__download_model,
+  ModelSelectorDownloadAction__downloaded,
+  ModelSelectorDownloadAction__downloading,
+  ModelSelectorDownloadAction__failed,
+  ModelSelectorDownloadAction__paused,
+  ModelSelectorDownloadAction__preparing,
+  ModelSelectorDownloadAction__progress_for_model,
+  ModelSelectorDownloadAction__queued,
+  ModelSelectorDownloadAction__resume,
+  ModelSelectorDownloadAction__retry,
+  ModelSelectorDownloadAction__stop,
+  ModelSelectorDownloadAction__stop_for_model,
+  ModelSelectorDownloadAction__stopping,
+  ModelSelectorDownloadAction__verifying,
+  ModelSelectorFileImport__add_model_options,
+  ModelSelectorFileImport__added_models,
+  ModelSelectorFileImport__cancel_import,
+  ModelSelectorFileImport__checking_files,
+  ModelSelectorFileImport__choose_files,
+  ModelSelectorFileImport__empty_folder,
+  ModelSelectorFileImport__folder_check_failed,
+  ModelSelectorFileImport__folder_link_failed,
+  ModelSelectorFileImport__import_failed,
+  ModelSelectorFileImport__no_models,
+  ModelSelectorFileImport__skipped_files,
+  ModelSelectorFileOptions__files_for_model,
+  ModelSelectorHuggingFaceSearch__auto_search,
+  ModelSelectorHuggingFaceSearch__auto_search_help,
+  ModelSelectorHuggingFaceSearch__check_parameter_range,
+  ModelSelectorHuggingFaceSearch__checking_configuration,
+  ModelSelectorHuggingFaceSearch__could_not_save_search_settings,
   ModelSelectorHuggingFaceSearch__could_not_search_hugging_face,
   ModelSelectorHuggingFaceSearch__enter_a_valid_repository_url,
   ModelSelectorHuggingFaceSearch__model_name_or_repository_url,
   ModelSelectorHuggingFaceSearch__more,
   ModelSelectorHuggingFaceSearch__no_models_found,
+  ModelSelectorHuggingFaceSearch__open,
+  ModelSelectorHuggingFaceSearch__open_repository,
+  ModelSelectorHuggingFaceSearch__repository_placeholder,
+  ModelSelectorHuggingFaceSearch__results,
   ModelSelectorHuggingFaceSearch__results_for,
+  ModelSelectorHuggingFaceSearch__search,
   ModelSelectorHuggingFaceSearch__search_hugging_face,
+  ModelSelectorHuggingFaceSearch__search_options,
   ModelSelectorHuggingFaceSearch__search_sends_your_query_to_hugging_face,
   ModelSelectorHuggingFaceSearch__searching,
+  ModelSelectorHuggingFaceSearch__show_trending,
+  ModelSelectorHuggingFaceSearch__speech_recognition,
+  ModelSelectorHuggingFaceSearch__trending,
+  ModelSelectorRepositoryRow__configuration_for_model,
+  ModelSelectorRepositorySource__source,
+  ModelSelectorStoredVariantsRow__variant_count,
+  ModelSelector__add_files,
   ModelSelector__add_model_files,
   ModelSelector__back_to_models,
   ModelSelector__clear_filter,
@@ -6035,15 +6174,20 @@ export const catalog = {
   ModelSelector__download_before_first_use,
   ModelSelector__download_from_hugging_face,
   ModelSelector__downloads_automatically,
+  ModelSelector__expand,
+  ModelSelector__fetch_configuration,
   ModelSelector__filter_models,
   ModelSelector__inherit,
   ModelSelector__loading_models,
   ModelSelector__models,
+  ModelSelector__models_on_this_device,
   ModelSelector__no_models_available,
   ModelSelector__no_models_found,
   ModelSelector__on_this_device,
   ModelSelector__refresh_model_list,
   ModelSelector__select_a_model,
+  ModelSelector__show_configuration,
+  ModelSelector__shrink,
   ModelSupportInvestigationModal__add_models_placeholder,
   ModelSupportInvestigationModal__allow,
   ModelSupportInvestigationModal__blocked,

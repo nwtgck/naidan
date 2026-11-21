@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { CheckIcon, ChevronDownIcon, CopyIcon, FileAudioIcon, FileUpIcon, InfoIcon, DownloadIcon, Loader2Icon, MicIcon, PauseIcon, PictureInPicture2Icon, PlayIcon, SlidersHorizontalIcon, SquareIcon, XIcon } from 'lucide-vue-next';
+import { CheckIcon, ChevronDownIcon, CopyIcon, FileAudioIcon, FileUpIcon, InfoIcon, Loader2Icon, MicIcon, PauseIcon, PictureInPicture2Icon, PlayIcon, SlidersHorizontalIcon, SquareIcon, XIcon } from 'lucide-vue-next';
 import { useAudioTranscriptionPreferences } from '@/features/audio-transcription/composables/useAudioTranscriptionPreferences';
 import logoUrl from '@/assets/logo.svg?inline';
 import { ensureStrings, lazyStrings } from '@/strings';
-import ModelSelectorV2 from '@/components/ModelSelectorV2.vue';
-import AudioTranscriptionModelSources from '@/features/audio-transcription/components/AudioTranscriptionModelSources.vue';
-import AudioTranscriptionModelDetails from '@/features/audio-transcription/components/AudioTranscriptionModelDetails.vue';
-import LlamaCppBrowserDownloadDestination from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadDestination.vue';
+import AudioTranscriptionModelSelector from '@/features/audio-transcription/components/AudioTranscriptionModelSelector.vue';
 import { useAudioTranscriptionModels } from '@/features/audio-transcription/composables/useAudioTranscriptionModels';
 import { useAudioTranscriptionWorkflow } from '@/features/audio-transcription/composables/useAudioTranscriptionWorkflow';
 import { useAudioTranscriptionFloatingWindow } from '@/features/audio-transcription/composables/useAudioTranscriptionFloatingWindow';
@@ -53,9 +50,7 @@ const languageTitle = computed(() => {
   }
 });
 const modelSelection = useAudioTranscriptionModels({ preference: preferences });
-const modelFilter = ref('');
-const modelPanels = [{ id: 'huggingface', label: 'Hugging Face' }] as const;
-const { models: selectableModels, selectedId: selectedModelId, refreshing: refreshingModels } = modelSelection;
+const { models: selectableModels, selectedId: selectedModelId } = modelSelection;
 const recognitionLanguage = computed(() => {
   switch (language.value) {
   case 'auto': return undefined;
@@ -75,7 +70,7 @@ const workflow = useAudioTranscriptionWorkflow({ source: computed(() => props.so
 const { phase, pending, preloading, runtimeState, provisionalText, failureDetails, clipboardError, visibleText, autoCopyCurrent, state: recognitionState } = workflow;
 const hasTranscript = computed(() => visibleText.value !== '');
 const floatingWindowLabel = computed(() => floatingWindow.supported ? lazyStrings.AudioTranscriptionWorkspace__open_floating_window() : lazyStrings.AudioTranscriptionWorkspace__floating_window_unavailable());
-const floatingModelLabel = computed(() => selectableModels.value.find(model => model.id === selectedModelId.value)?.label);
+const floatingModelLabel = computed(() => modelSelection.pickerModels.value.find(model => model.id === selectedModelId.value)?.label);
 const transcriptCopyStatus = computed(() => {
   const count = visibleText.value.length;
   if (count === 0) {
@@ -195,18 +190,6 @@ function updateMicrophoneSegmentLength({ event }: { event: Event }): void {
   void preferences.updateMicrophoneSegmentMaxSeconds({ seconds });
 }
 
-function backgroundDownloadActive({ id }: { id: string }): boolean {
-  const status = modelSelection.downloadStates.value.get(id)?.status;
-  switch (status) {
-  case 'queued': case 'resolving': case 'downloading': case 'pausing': return true;
-  case 'paused': case 'complete': case 'failed': case 'cancelled': case undefined: return false;
-  default: {
-    const exhaustive: never = status;
-    return exhaustive;
-  }
-  }
-}
-
 function toggleAutoCopy(): void {
   switch (autoCopy.value) {
   case 'enabled': void updateAutoCopy({ value: 'disabled' });
@@ -314,17 +297,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <button type="button" :aria-pressed="source === 'microphone'" @click="changeSource({ source: 'microphone' })" :tw-class="['flex min-h-9 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', source === 'microphone' ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200']"><MicIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.AudioTranscriptionWorkspace__microphone() }}</button>
           <button type="button" :aria-pressed="source === 'file'" @click="changeSource({ source: 'file' })" :tw-class="['flex min-h-9 items-center gap-2 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', source === 'file' ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200']"><FileAudioIcon aria-hidden="true" tw-class="h-4 w-4" />{{ lazyStrings.AudioTranscriptionWorkspace__file() }}</button>
         </div>
-        <div tw-class="flex max-w-full flex-wrap items-start gap-2">
-          <div tw-class="w-64 max-w-full">
-            <ModelSelectorV2 v-model:query="modelFilter" :panels="modelPanels" :model-value="selectedModelId" :models="selectableModels" :loading="refreshingModels" surface="composer" data-testid="audio-transcription-model-selector" @update:model-value="modelSelection.select({ id: $event })" @refresh="modelSelection.refresh()">
-              <template #toolbar><div tw-class="grid grid-cols-1"><LlamaCppBrowserDownloadDestination :view="modelSelection.downloadDestination.view" :disabled="false" layout="field" /></div></template>
-              <template #panel="{ active, close }"><AudioTranscriptionModelSources :models="modelSelection" :disabled="false" mode="huggingface" :active="active" v-model:query="modelFilter" @selected="close" /></template>
-              <template #sources="{ close }"><AudioTranscriptionModelSources :models="modelSelection" :disabled="false" mode="files" :active="true" v-model:query="modelFilter" @selected="close" /></template>
-              <template #model-action="{ id, model }"><button v-if="model?.availability === 'download_required'" type="button" :disabled="backgroundDownloadActive({ id })" :aria-label="lazyStrings.ModelSelector__download_from_hugging_face()" :title="lazyStrings.ModelSelector__download_from_hugging_face()" @click="modelSelection.backgroundDownload({ id })" tw-class="grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-wait dark:hover:bg-gray-700 dark:hover:text-blue-400"><Loader2Icon v-if="backgroundDownloadActive({ id })" aria-hidden="true" tw-class="h-3.5 w-3.5 animate-spin" /><DownloadIcon v-else aria-hidden="true" tw-class="h-3.5 w-3.5" /></button></template>
-              <template #selection-details><AudioTranscriptionModelDetails :models="modelSelection" /></template>
-            </ModelSelectorV2>
+        <div tw-class="flex min-w-0 max-w-full items-start gap-2">
+          <div tw-class="w-80 min-w-0">
+            <AudioTranscriptionModelSelector :models="modelSelection" />
           </div>
-          <details tw-class="relative">
+          <details tw-class="relative shrink-0">
             <summary tw-class="flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg px-2 text-xs text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-gray-800 [&::-webkit-details-marker]:hidden"><SlidersHorizontalIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ languageTitle }}<ChevronDownIcon aria-hidden="true" tw-class="h-3 w-3" /></summary>
             <div tw-class="absolute right-0 top-full z-10 mt-2 w-72 max-w-[calc(100vw-3rem)] space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-xl shadow-gray-900/5 dark:border-gray-700 dark:bg-gray-900">
 

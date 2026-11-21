@@ -8,7 +8,7 @@ import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
-import { formatDownloadBytes, quantizationChoices, selectedQuantizationChoice } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { compareModelVariantsBySize, formatDownloadBytes, quantizationChoices, selectedQuantizationChoice } from '@/features/llama-cpp-browser/hugging-face/presentation';
 
 const props = defineProps<{ repository: string, variant: string | undefined, disabled: boolean, inspection: 'model-url' | 'on-request' }>();
 const emit = defineEmits<{ select: [path: string], inspected: [catalog: RepositoryCatalog | undefined] }>();
@@ -22,6 +22,8 @@ let controller: AbortController | undefined;
 const popup = useAnchoredPopup({ anchor: trigger, preferredWidth: { unit: 'rem', value: 21 }, maxWidthPx: 400 });
 const choices = computed(() => catalog.value === undefined ? [] : quantizationChoices({ repository: catalog.value.repository, models: catalog.value.models })
   .filter(choice => artifactRole({ path: choice.primaryRelativePath }) === 'model'));
+const displayChoices = computed(() => choices.value.map(choice => ({ choice, path: choice.primaryRelativePath, bytes: choice.models.reduce((total, model) => total + model.size, 0) }))
+  .sort((left, right) => compareModelVariantsBySize({ left, right })));
 const selectedPath = computed(() => props.variant === undefined ? choices.value[0]?.primaryRelativePath
   : selectedQuantizationChoice({ choices: choices.value, variant: props.variant })?.primaryRelativePath);
 const selectedLabel = computed(() => choices.value.find(choice => choice.primaryRelativePath === selectedPath.value)?.label ?? props.variant);
@@ -208,7 +210,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <button type="button" :disabled="disabled" data-testid="quantization-fetch-options" tw-class="min-h-9 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-blue-600 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:border-gray-700 dark:text-blue-400 dark:hover:bg-gray-800" @click="inspect({ freshness: 'refresh' })">{{ lazyStrings.LlamaCppBrowserQuantizationPicker__fetch_options() }}</button>
           </div>
           <div v-else-if="choices.length" role="listbox" :aria-label="lazyStrings.LlamaCppBrowserModelLaunch__quantization()" tw-class="p-1.5">
-            <button v-for="choice in choices" :key="choice.primaryRelativePath" type="button" role="option" :aria-selected="selectedPath === choice.primaryRelativePath" :data-testid="'quantization-option-' + choice.primaryRelativePath" :tw-class="['flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', selectedPath === choice.primaryRelativePath ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']" @click="select({ path: choice.primaryRelativePath })"><span tw-class="min-w-0 flex-1 break-words font-medium">{{ choice.label }}</span><span tw-class="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-gray-400">{{ formatDownloadBytes({ bytes: choice.models.reduce((total, model) => total + model.size, 0) }) }}</span><CheckIcon v-if="selectedPath === choice.primaryRelativePath" aria-hidden="true" tw-class="h-3 w-3 shrink-0" /></button>
+            <button v-for="{ choice, bytes } in displayChoices" :key="choice.primaryRelativePath" type="button" role="option" :aria-selected="selectedPath === choice.primaryRelativePath" :data-testid="'quantization-option-' + choice.primaryRelativePath" :tw-class="['flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', selectedPath === choice.primaryRelativePath ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']" @click="select({ path: choice.primaryRelativePath })"><span tw-class="min-w-0 flex-1 break-words font-medium">{{ choice.label }}</span><span tw-class="shrink-0 text-[11px] tabular-nums text-gray-500 dark:text-gray-400">{{ formatDownloadBytes({ bytes }) }}</span><CheckIcon v-if="selectedPath === choice.primaryRelativePath" aria-hidden="true" tw-class="h-3 w-3 shrink-0" /></button>
           </div>
           <p v-else tw-class="p-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found() }}</p>
         </div>

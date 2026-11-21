@@ -5,7 +5,7 @@ import { createLegacyUploadedFileId } from './legacy-uploaded-file-id';
 import { generateId } from '@/01-models/id';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
-import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
+import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type SidebarItem, type MessageNode, type ChatMeta, type ChatContent, type StorageSnapshot, type BinaryObject, type Volume, type VolumeType } from '@/01-models/types';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -1079,7 +1079,7 @@ export class OPFSStorageProvider extends IStorageProvider {
           providerProfiles: [],
           mounts: [],
           storageType: 'opfs',
-          endpoint: { type: 'openai', url: '' },
+          endpoint: { ...DEFAULT_SETTINGS_ENDPOINT },
         } satisfies Settings,
         hierarchy: h,
         chatMetas,

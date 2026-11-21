@@ -3,7 +3,7 @@ import { useLlamaCppBrowserSettingsTypography } from '@/features/llama-cpp-brows
 import { computed, useId } from 'vue';
 import SettingsSelect from '@/components/SettingsSelect.vue';
 import { lazyStrings } from '@/strings';
-import { projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { compareModelVariantsBySize, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import type { RepositoryFile } from '@/features/llama-cpp-browser/hugging-face/types';
 
 // Selection presentation only. Owners retain metadata, defaults and actions.
@@ -12,11 +12,16 @@ const quantization = defineModel<string>('quantization', { required: true });
 const multimodal = defineModel<'on' | 'off'>('multimodal', { required: true });
 const projector = defineModel<string>('projector', { required: true });
 const id = useId();
+const displayChoices = computed(() => props.choices.map(choice => ({ choice, bytes: choice.size, path: choice.primaryRelativePath }))
+  .sort((left, right) => compareModelVariantsBySize({ left, right })));
 const quantizationOptions = computed(() => [
   ...(!props.choices.some(choice => choice.primaryRelativePath === quantization.value) ? [{ value: '', label: lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_model_files(), disabled: true }] : []),
-  ...props.choices.map(choice => ({ value: choice.primaryRelativePath, label: choice.displayLabel, detail: size({ bytes: choice.size }) })),
+  ...displayChoices.value.map(({ choice }) => ({ value: choice.primaryRelativePath, label: choice.displayLabel, detail: size({ bytes: choice.size }) })),
 ]);
-const projectorOptions = computed(() => projectorChoices({ files: props.projectors }));
+const projectorOptions = computed(() => projectorChoices({ files: props.projectors })
+  .map(option => ({ option, bytes: option.file.size, path: option.file.path }))
+  .sort((left, right) => compareModelVariantsBySize({ left, right }))
+  .map(({ option }) => option));
 const companionOptions = computed(() => [
   ...(!projectorOptions.value.some(option => option.file.path === projector.value) ? [{ value: '', label: lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_companion_file(), disabled: true }] : []),
   ...projectorOptions.value.map(option => ({ value: option.file.path, label: option.label, detail: size({ bytes: option.file.size }) })),

@@ -117,5 +117,45 @@ export function formatHuggingFaceModelId({ repository, mainFilePath }: { reposit
   return `hf.co/${repository}:${modelVariantName({ repository, path: mainFilePath })}`;
 }
 
+export type RepositoryModelConfiguration = { projectorPath: string | undefined };
+
+function validProjectorPath({ path }: { path: string }): boolean {
+  return /\.gguf$/i.test(path) && path.split('/').every(name => isModelSourceSegment({ name }));
+}
+
+/** The empty path segment separates exact configurations from readable,
+ * legacy selectors. Legacy references still allow automatic file selection. */
+export function configuredRepositoryModelId({ modelId, configuration }: { modelId: string, configuration: RepositoryModelConfiguration }): string {
+  const { projectorPath } = configuration;
+  if (!/^(?:hf\.co|host)\//.test(modelId) || modelId.includes('//') || !modelId.includes(':')
+    || (projectorPath !== undefined && !validProjectorPath({ path: projectorPath }))) {
+    throw new Error('Invalid repository model configuration');
+  }
+  return modelId + (projectorPath === undefined ? '//text' : '//projector/' + encodeURIComponent(projectorPath));
+}
+
+export function splitRepositoryModelId({ modelId }: { modelId: string }): { baseId: string, configuration: RepositoryModelConfiguration | undefined } {
+  const separator = modelId.indexOf('//');
+  if (separator < 0 || !/^(?:hf\.co|host)\//.test(modelId)) {
+    return { baseId: modelId, configuration: undefined };
+  }
+  const baseId = modelId.slice(0, separator);
+  const suffix = modelId.slice(separator + 2);
+  const projectorPath = suffix.startsWith('projector/') ? decodeURIComponent(suffix.slice('projector/'.length)) : undefined;
+  const configuration = { projectorPath };
+  if (configuredRepositoryModelId({ modelId: baseId, configuration }) !== modelId) {
+    throw new Error('Invalid repository model configuration');
+  }
+  return { baseId, configuration };
+}
+
+export function trySplitRepositoryModelId({ modelId }: { modelId: string }): ReturnType<typeof splitRepositoryModelId> | undefined {
+  try {
+    return splitRepositoryModelId({ modelId });
+  } catch {
+    return undefined;
+  }
+}
+
 export const TEST_ONLY = {
 };

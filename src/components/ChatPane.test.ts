@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock }
 import { mount, flushPromises, VueWrapper, type GlobalMountOptions } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
-import ModelSelector from './ModelSelector.vue';
+import ChatModelSelector from './ChatModelSelector.vue';
 import ChatModelRecovery from './ChatModelRecovery.vue';
 import ChatLocalModelInput from '@/features/llama-cpp-browser/components/ChatLocalModelInput.vue';
 import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
@@ -861,6 +861,7 @@ vi.mock('../00-storage/service', () => ({
       const revision = mockModelStorage.revision;
       return () => revision === mockModelStorage.revision;
     },
+    captureSettingsStorage: () => () => true,
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     subscribeToChanges: vi.fn(),
@@ -1134,7 +1135,7 @@ Question`,
     const input = wrapper.getComponent(ChatInput);
     const inputElement = input.element;
     const textarea = input.get('[data-testid="chat-input"]').element;
-    const selector = input.getComponent(ModelSelector).element;
+    const selector = input.getComponent(ChatModelSelector).element;
     const card = input.get('[data-testid="chat-input-card"]');
     const aboveInput = input.get('[data-testid="chat-input-above-slot"]');
     const availableSpace = input.props('availableSpace');
@@ -1153,7 +1154,7 @@ Question`,
     await hint.get('[data-testid="pane-csp-trigger"]').trigger('click');
     expect(aboveInput.element.contains(hint.get('[data-testid="pane-csp-details"]').element)).toBe(true);
     expect(input.get('[data-testid="chat-input"]').element).toBe(textarea);
-    expect(input.getComponent(ModelSelector).element).toBe(selector);
+    expect(input.getComponent(ChatModelSelector).element).toBe(selector);
     expect(input.props('availableSpace')).toEqual(availableSpace);
     const firstHistoryMessage = createTextNode({ id: toMessageId({ raw: 'pane-csp-history' }), role: 'user', text: 'Existing message', createdAt: 1 });
     chat.root = { items: [firstHistoryMessage] };
@@ -2269,14 +2270,17 @@ describe.each([
 
       await sendButton.trigger('click');
       await flushPromises();
-      expect(mockOpenModelSelection).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ target: expect.objectContaining({ kind: 'chat', chatId: toChatId({ raw: '1' }) }) }));
+      const modelTrigger = wrapper.get('[data-testid="model-selector-trigger"]');
+      expect(modelTrigger.attributes('aria-expanded')).toBe('true');
+      expect(mockOpenModelSelection).not.toHaveBeenCalled();
       expect(mockSetIsOnboardingDismissed).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
       expect(textarea.element.value).toBe('hello');
 
-      // Closing settings without completing setup must permit reopening.
+      await modelTrigger.trigger('click');
+      expect(modelTrigger.attributes('aria-expanded')).toBe('false');
       await sendButton.trigger('click');
-      expect(mockOpenModelSelection).toHaveBeenCalledTimes(2);
+      expect(modelTrigger.attributes('aria-expanded')).toBe('true');
       expect(mockSendMessage).not.toHaveBeenCalled();
 
       mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'model-1' };
@@ -4296,8 +4300,8 @@ describe('ChatPane Model Selection', () => {
       global: { plugins: [router] },
     });
 
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
-    expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+    const selector = wrapper.getComponent(ChatModelSelector);
+    expect(selector.props('models').map(model => model.id)).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
   it('displays the inherited global model separately from its source', async () => {
@@ -4305,12 +4309,25 @@ describe('ChatPane Model Selection', () => {
       global: { plugins: [router] },
     });
 
-    const selector = wrapper.getComponent(ModelSelector);
+    const selector = wrapper.getComponent(ChatModelSelector);
     expect(selector.props('modelValue')).toBeUndefined();
     expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-default-model', source: { label: 'Global' } });
     const trigger = selector.get('[data-testid="model-selector-trigger"]');
     expect(trigger.text()).toContain('global-default-model');
     expect(trigger.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Global');
+  });
+
+  it('invites model selection in the composer and offers None in the list when no model is inherited', async () => {
+    mockSettings.value = { ...mockSettings.value, defaultModelId: undefined };
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, modelId: undefined };
+    mockInheritedSettings.value = { ...mockInheritedSettings.value, modelId: undefined };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+
+    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toBe('Select a model');
+    expect(trigger.attributes('aria-label')).toBe('Select a model');
+    await trigger.trigger('click');
+    expect(document.body.querySelector('[data-testid="model-selector-clear"]')?.textContent?.trim()).toBe('None');
   });
 
   it('should trigger updateChatModel when a model is selected in ModelSelector', async () => {
@@ -4419,7 +4436,7 @@ describe('ChatPane Model Selection', () => {
       await nextTick();
 
       // 2. Open model selection and change its chat-owned reasoning override.
-      const modelSelector = wrapper.getComponent(ChatInput).getComponent({ name: 'ModelSelector' });
+      const modelSelector = wrapper.getComponent(ChatInput).getComponent(ChatModelSelector);
       await modelSelector.get('[data-testid="model-selector-trigger"]').trigger('click');
       await flushPromises();
       const inputReasoning = modelSelector.getComponent({ name: 'ReasoningSettings' });
@@ -4523,6 +4540,93 @@ describe('chat-local model entry wiring', () => {
     expect(input.props('isSubmissionEnabled')).toBe(true);
     expect(wrapper.getComponent(ChatInput).element).toBe(input.element);
     expect(textarea.element.value).toBe('Keep the current provider until a model is prepared');
+  });
+
+  it('keeps the welcome layout and candidate tab when an undownloaded model is selected', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const welcome = wrapper.getComponent(WelcomeScreen);
+    const notice = welcome.get('[data-testid="welcome-storage-introduction"]').element;
+    const modelId = 'hf.co/owner/example-gguf:Q4_K_M';
+    expect(welcome.classes()).toContain('chat-local-model-welcome');
+    expect(wrapper.find('[data-testid="chat-open-local-model"]').exists()).toBe(true);
+
+    input.vm.$emit('choose-deferred-repository-model', {
+      modelId,
+      source: { kind: 'bundled', repository: 'owner/example-gguf', variant: 'Q4_K_M', companionPath: undefined },
+      destination: { kind: 'opfs' },
+      authorizeDestination: undefined,
+    });
+    await flushPromises();
+
+    expect(welcome.classes()).toContain('chat-local-model-welcome');
+    expect(welcome.get('[data-testid="welcome-storage-introduction"]').element).toBe(notice);
+    expect(wrapper.find('[data-testid="chat-open-local-model"]').exists()).toBe(false);
+    const selector = input.getComponent(ChatModelSelector);
+    expect(selector.props('initialPanel')).toBe('chat-candidates');
+    expect(selector.props('modelValue')).toBe(modelId);
+    expect(selector.props('models').some(model => model.id === modelId)).toBe(false);
+
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'ollama', url: 'http://localhost:11434' } };
+    await nextTick();
+    expect(input.props('deferredRepositoryModel')).toBeUndefined();
+    expect(input.props('prepareModelForSubmission')).toBeUndefined();
+  });
+
+  it('includes files added for this session in the local inventory, while API connections use their own list', async () => {
+    const saved = ['~user/uncommitted', 'hf.co/owner/example-gguf:Q4_K_M', 'host/Folders/owner/other-gguf:Q8_0', 'user/local-model'];
+    mockAvailableModels.value = [...saved, 'temp/one-off'];
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const selector = wrapper.getComponent(ChatModelSelector);
+    expect(selector.props('modelsLabel')).toBe('On this device');
+    expect(selector.props('panels')?.map(panel => panel.id)).toEqual(['chat-candidates', 'huggingface', 'files']);
+    expect(new Set(selector.props('models').map(model => model.id))).toEqual(new Set(saved));
+
+    mockAvailableModels.value = ['provider/model'];
+    for (const endpoint of [{ type: 'openai', url: 'https://configured.example/v1' }, { type: 'ollama', url: 'http://localhost:11434' }, { type: 'transformers_js' }]) {
+      mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint };
+      await nextTick();
+      expect(selector.props('modelsLabel')).toBeUndefined();
+      expect(selector.props('panels')).toBeUndefined();
+      expect(selector.props('initialPanel')).toBeUndefined();
+      expect(selector.props('models')).toMatchObject([{ id: 'provider/model', availability: 'remote' }]);
+    }
+  });
+
+  it('opens local file and folder choices inside the selector', async () => {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.getComponent(ChatModelSelector).get('[data-testid="model-selector-trigger"]').trigger('click');
+    const tabs = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-testid="chat-model-selector-tabs"] button'));
+    const addFiles = tabs.at(-1);
+    expect(addFiles?.textContent).toBe('Add files');
+    addFiles?.click();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    const sources = document.body.querySelector('[data-testid="chat-model-selector-sources"]');
+    expect(sources?.querySelector('[data-testid="local-model-save-in-browser"]')).not.toBeNull();
+    expect(sources?.querySelector('[data-testid="llama-cpp-browser-choose-files"]')).not.toBeNull();
+    expect(sources?.querySelector('[data-testid="llama-cpp-browser-choose-directory"]')).not.toBeNull();
+    expect(sources).not.toBeNull();
+    const input = wrapper.getComponent(ChatInput);
+    using attachmentDrop = vi.spyOn(attachmentDropApi({ input }), 'processDropItems').mockResolvedValue(undefined);
+    const transfer = fileTransfer({ file: new File(['data'], 'model.gguf') });
+    await wrapper.trigger('dragover', { dataTransfer: transfer });
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
+    await wrapper.trigger('drop', { dataTransfer: transfer });
+    expect(attachmentDrop).not.toHaveBeenCalled();
+    tabs.find(tab => tab.textContent === 'On this device')?.click();
+    await nextTick();
+    expect(sources?.parentElement?.getAttribute('aria-hidden')).toBe('true');
+    addFiles?.click();
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="chat-model-selector-sources"]')).toBe(sources);
+    expect(mockOpenModelSelection).not.toHaveBeenCalled();
   });
 
   it.each([600, 240])('keeps the model picker outside history scrolling through composer transitions in a %ipx viewport', async height => {
@@ -4860,7 +4964,7 @@ describe('model-link composer visibility wiring', () => {
     const instance = input.element;
     const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Draft survives model setup');
-    const selector = input.getComponent({ name: 'ModelSelector' });
+    const selector = input.getComponent(ChatModelSelector);
     await selector.get('[data-testid="model-selector-trigger"]').trigger('click');
     expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
     launchComposerOverride.value = 'hidden';
@@ -4945,7 +5049,8 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(textarea.element.value).toBe('Keep this unsent message');
     expect(wrapper.text()).toContain('Existing conversation 6');
     await wrapper.get('[data-testid="send-button"]').trigger('click');
-    expect(mockOpenModelSelection).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ kind: 'chat' }) }));
+    expect(wrapper.get('[data-testid="model-selector-trigger"]').attributes('aria-expanded')).toBe('true');
+    expect(mockOpenModelSelection).not.toHaveBeenCalled();
     expect(mockSendMessage).not.toHaveBeenCalled();
     mockModelSelection.value = 'open';
     await flushPromises();
@@ -5066,13 +5171,15 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(wrapper.text()).toContain('Existing conversation 6');
   });
 
-  it('returns to model selection in the shared modal when preparation started there', async () => {
+  it('returns to the composer model selector when preparation started there', async () => {
     setExistingRecoveryConversation();
     recoveryAvailability.value = 'missing';
     wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
     await flushPromises();
-    await wrapper.getComponent(ChatInput).vm.$emit('request-model-selection');
-    expect(mockOpenModelSelection).toHaveBeenCalledOnce();
+    const modelTrigger = wrapper.get('[data-testid="model-selector-trigger"]');
+    await modelTrigger.trigger('click');
+    expect(modelTrigger.attributes('aria-expanded')).toBe('true');
+    await modelTrigger.trigger('click');
     const model = { modelId: 'user/chosen', size: 128, importedAt: 1 };
     chatLocalOperationOverride.value = { id: 1, phase: 'reading', candidates: [model], model, downloadJobId: undefined, error: undefined };
     mockChatLocalCancel.mockImplementationOnce(async () => {
@@ -5082,8 +5189,8 @@ describe('ordinary Chat missing browser model notice', () => {
     await flushPromises();
     await wrapper.get('[data-testid="chat-model-prepare-choose"]').trigger('click');
     await flushPromises();
-    expect(mockOpenModelSelection).toHaveBeenCalledTimes(2);
-    expect(mockOpenModelSelection).toHaveBeenLastCalledWith(expect.objectContaining({ target: expect.objectContaining({ kind: 'chat', chatId: toChatId({ raw: '1' }) }) }));
+    expect(modelTrigger.attributes('aria-expanded')).toBe('true');
+    expect(mockOpenModelSelection).not.toHaveBeenCalled();
     expect(wrapper.get('[data-testid="model-recovery-select"]').attributes('aria-expanded')).toBe('false');
   });
 
@@ -5150,7 +5257,8 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
     expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('select-model');
     await wrapper.get('[data-testid="send-button"]').trigger('click');
-    expect(mockOpenModelSelection).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ kind: 'chat' }) }));
+    expect(wrapper.get('[data-testid="model-selector-trigger"]').attributes('aria-expanded')).toBe('true');
+    expect(mockOpenModelSelection).not.toHaveBeenCalled();
     expect(wrapper.get('textarea').isVisible()).toBe(true);
     expect(wrapper.get('textarea').element).toBe(original);
     expect(textarea.element.value).toBe('keep writing while the model is prepared');

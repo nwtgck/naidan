@@ -273,6 +273,9 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(dtozod.ob
   metaCsp: missingAsUndefined(dtozod.string()),
   chatBrowserModelPickerTab: missingAsUndefined(dtozod.enum(['files', 'linked-folders', 'hugging-face', 'saved'])),
   modelDiscoveryTab: missingAsUndefined(dtozod.enum(['candidates', 'hugging_face', 'local_files'])),
+  huggingFaceModelSearch: missingAsUndefined(resolveMissingAsUndefined(dtozod.object({
+    autoSearch: missingAsUndefined(dtozod.enum(['enabled', 'disabled'])),
+  }))),
   markdownRendering: missingAsUndefined(dtozod.union([
     dtozod.literal('block_markdown'),
     dtozod.literal('monolithic_html'),

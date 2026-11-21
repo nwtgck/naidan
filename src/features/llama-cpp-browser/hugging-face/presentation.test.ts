@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preferredProjector, quantizationChoices, quantizationName } from './presentation';
+import { compareModelVariantsBySize, preferredProjector, quantizationChoices, quantizationName } from './presentation';
 import { variantLabel } from './model-variants';
 
 function model({ path }: { path: string }) {
@@ -7,6 +7,13 @@ function model({ path }: { path: string }) {
 }
 
 describe('Hugging Face candidate presentation', () => {
+  it('orders visible variants by download size and compares equal-size filenames numerically', () => {
+    const variants = [{ path: 'model-10.gguf', bytes: 128 }, { path: 'model-1.gguf', bytes: 256 }, { path: 'model-2.gguf', bytes: 128 }];
+    expect(variants.sort((left, right) => compareModelVariantsBySize({ left, right })).map(variant => variant.path)).toEqual([
+      'model-2.gguf', 'model-10.gguf', 'model-1.gguf',
+    ]);
+  });
+
   it('labels Ornith quantizations when the repository has an extra architecture descriptor', () => {
     const repository = 'ornith-ai/Ornith-1.5-35B-A3B-GGUF';
     const paths = ['BF16', 'Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0'].map(quantization => `Ornith-1.5-35B-${quantization}.gguf`);

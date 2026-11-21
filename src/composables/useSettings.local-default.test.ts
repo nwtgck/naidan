@@ -377,10 +377,10 @@ describe('temporary model global promotion', () => {
 describe('model binding admission settings synchronization', () => {
   it('accepts the untouched initial global binding before a settings record has ever been saved', async () => {
     const api = useSettings();
-    const initial: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, systemPrompt: 'Keep this live setting' };
+    const initial: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'llama_cpp_browser' }, systemPrompt: 'Keep this live setting' };
     api.TEST_ONLY.__testOnlySetSettings({ newSettings: initial });
     mocks.stored = undefined;
-    await api.init({ storageTypeOverride: 'local', dataZipBase64: undefined, modelRefresh: 'background' });
+    await api.init({ storageTypeOverride: 'local', dataZipBase64: undefined, modelRefresh: 'deferred' });
     await flushPromises();
     mocks.scheduleIdleTask.mockClear();
 

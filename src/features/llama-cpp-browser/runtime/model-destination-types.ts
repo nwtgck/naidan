@@ -1,5 +1,7 @@
 import { z } from 'zod';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
+import { splitRepositoryModelId } from '../../../01-models/llama-cpp-browser-model-id';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
 import { modelSourceRepositorySchema, isModelSourceSegment } from '../../../01-models/llama-cpp-browser-model-launch';
 
 export const modelDestinationSchema = z.discriminatedUnion('kind', [
@@ -24,7 +26,8 @@ export function destinationKey({ destination }: { destination: ModelDestination 
  * are not directory IDs and must not inherit their length constraint.
  */
 export function parsePublicHostModelReference({ modelId }: { modelId: string }): { alias: string, repository: string, selector: string | undefined } {
-  const match = /^host\/([^/]+)\/(.+)$/.exec(modelId);
+  const { baseId } = splitRepositoryModelId({ modelId });
+  const match = /^host\/([^/]+)\/(.+)$/.exec(baseId);
   if (!match) {
     throw new Error('Invalid public linked model reference');
   }

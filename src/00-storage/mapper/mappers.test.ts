@@ -797,6 +797,7 @@ describe('Settings Mapping', () => {
         metaCsp: undefined,
         chatBrowserModelPickerTab: undefined,
         modelDiscoveryTab: undefined,
+        huggingFaceModelSearch: undefined,
         markdownRendering: 'monolithic_html',
         toolConfigPersistence: undefined,
         toolConfigs,
@@ -883,6 +884,15 @@ describe('model discovery tab preference mapping', () => {
     const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain }), experimental: { ...settingsToDto({ domain }).experimental, modelDiscoveryTab: 'future-tab' } });
     const experimental = settingsToDomain({ dto }).experimental;
     expect(experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: 'saved', modelDiscoveryTab: undefined, unreadable: { modelDiscoveryTab: 'future-tab' } });
+  });
+});
+
+describe('Hugging Face search preferences', () => {
+  it.each(['enabled', 'disabled', undefined] as const)('preserves the explicit auto-search choice: %s', autoSearch => {
+    const domain: Settings = { endpoint: { type: 'openai', url: '' }, storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { huggingFaceModelSearch: autoSearch === undefined ? undefined : { autoSearch } } };
+    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    expect(dto.experimental?.huggingFaceModelSearch?.autoSearch).toBe(autoSearch);
+    expect(settingsToDomain({ dto }).experimental?.huggingFaceModelSearch?.autoSearch).toBe(autoSearch);
   });
 });
 

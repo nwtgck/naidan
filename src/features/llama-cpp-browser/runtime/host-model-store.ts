@@ -1,3 +1,4 @@
+import { splitRepositoryModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { type HostModelDirectoryId, idToRaw } from '@/01-models/ids';
 import { listHuggingFaceModels, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
@@ -48,8 +49,9 @@ export async function listHostStoredModels({ directories, signal }: {
 export async function resolveHostModel({ modelId, directories, signal }: { modelId: string, directories: readonly { id: HostModelDirectoryId, name: string }[], signal: AbortSignal | undefined }): Promise<ResolvedModel> {
   const { directoryId, repository } = resolveHostModelLocation({ modelId, directories });
   const destination = { kind: 'host' as const, directoryId };
-  const models = await repositoryDirectories({ repository, destination, signal });
-  const matching = models.filter(directory => formatHostModelId({ directoryId, repository, primaryRelativePath: directory.primaryFile.relativePath, directories }) === modelId);
+  const { baseId, configuration } = splitRepositoryModelId({ modelId });
+  const models = await repositoryDirectories({ repository, destination, signal, configuration });
+  const matching = models.filter(directory => formatHostModelId({ directoryId, repository, primaryRelativePath: directory.primaryFile.relativePath, directories }) === baseId);
   if (matching.length !== 1) {
     throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
   }

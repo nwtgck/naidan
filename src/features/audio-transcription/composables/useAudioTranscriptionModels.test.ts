@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   openStored: vi.fn(),
   inspectRepository: vi.fn(),
   enqueue: vi.fn(),
+  cancel: vi.fn(),
   installed: vi.fn(),
   importDirectories: vi.fn(),
   unsubscribe: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock('@/features/llama-cpp-browser/composables/model-inventory', () => ({ lis
 vi.mock('@/features/speech-cpp-browser/recognition/models', () => ({ inspectStoredSpeechRecognitionModel: mocks.inspectStored, openStoredSpeechRecognitionModel: mocks.openStored }));
 vi.mock('@/features/speech-cpp-browser/recognition/model-file', () => ({ inspectSpeechRecognitionCandidate: mocks.inspectFile }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: mocks.inspectRepository }) }));
-vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(), getDownloadQueue: () => ({ jobs, enqueue: mocks.enqueue }) }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(), getDownloadQueue: () => ({ jobs, enqueue: mocks.enqueue, cancel: mocks.cancel }) }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/storage')>(), installedSelection: mocks.installed }));
 vi.mock('@/features/llama-cpp-browser/logic/local-model-input', () => ({ importLocalModelDirectories: mocks.importDirectories }));
 vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { subscribeModelList: mocks.subscribe } }));
@@ -102,7 +103,7 @@ describe('Transcription model selection', () => {
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
-  it('uses the installed equivalent of a suggestion and excludes other model formats', async () => {
+  it('uses the installed equivalent of a suggestion and keeps other formats selectable in the full inventory', async () => {
     mocks.inventory.mockResolvedValue([local, { ...local, modelId: 'user/chat' }]);
     mocks.inspectStored.mockImplementation(async ({ modelId }: { modelId: string }) => modelId === local.modelId ? recognized : { kind: 'other' });
     using mounted = mountModels({ remembered: undefined });
@@ -115,6 +116,10 @@ describe('Transcription model selection', () => {
     expect(mounted.models.models.value.some(model => model.label === 'user/chat')).toBe(false);
     await expect(mounted.models.openSelected({ signal: new AbortController().signal })).resolves.toEqual({ modelId: local.modelId, file });
     expect(mocks.openStored).toHaveBeenCalledWith(expect.objectContaining({ modelId: local.modelId }));
+    const other = mounted.models.pickerModels.value.find(model => model.label === 'user/chat');
+    expect(other).toMatchObject({ availability: 'local', compatibility: 'unmatched' });
+    mounted.models.select({ id: other?.id });
+    expect(mounted.models.selectedModelId.value).toBe('user/chat');
     expect(mocks.enqueue).not.toHaveBeenCalled();
     expect(mocks.inspectRepository).not.toHaveBeenCalled();
   });
@@ -286,30 +291,54 @@ describe('Transcription model selection', () => {
     expect(mounted.models.busy.value).toBe(false);
   });
 
-  it('imports and selects a local recognition model without network access', async () => {
-    mocks.importDirectories.mockResolvedValue([local]);
+  it('imports every complete recognition model in a folder and keeps the current choice before explicit selection', async () => {
+    const first = { ...local, modelId: '~user/recognition/asr-Q8_0' };
+    const second = { ...local, modelId: '~user/recognition/asr-Q4_K' };
+    const anotherFile = new File(['GGUF'], 'recognition-Q4_K.gguf');
+    const companion = new File(['GGUF'], 'mmproj.gguf');
+    const corrupt = new File(['GGUF'], 'broken.gguf');
+    mocks.importDirectories.mockResolvedValue([first, second]);
+    mocks.inspectFile.mockImplementation(async ({ name }) => {
+      if (name === corrupt.name) {
+        throw new Error('Metadata was truncated');
+      }
+      return name === companion.name ? { kind: 'other' } : recognized;
+    });
     using mounted = mountModels({ remembered: undefined });
     await mounted.models.refresh();
-    await mounted.models.importModels({ directories: Promise.resolve([{ rootName: 'recognition', files: [{ relativePath: file.name, file }] }]), controller: new AbortController(), save: 'later', repositoryLayout: 'confirmed' });
-    expect(mocks.importDirectories).toHaveBeenCalledWith(expect.objectContaining({ save: 'later' }));
-    expect(mounted.models.models.value.find(model => model.id === mounted.models.selectedId.value)?.availability).toBe('local');
+    const original = mounted.models.selectedId.value;
+    const files = [file, anotherFile, companion, corrupt].map(file => ({ relativePath: file.name, file }));
+    await expect(mounted.models.importModels({ request: { directories: Promise.resolve([{ rootName: 'recognition', files }]), controller: new AbortController(), save: 'later', repositoryLayout: 'confirmed' } })).resolves.toEqual({ models: [first, second], skipped: ['recognition/mmproj.gguf', 'recognition/broken.gguf'] });
+    expect(mocks.importDirectories).toHaveBeenCalledWith(expect.objectContaining({ save: 'later', directories: [{ rootName: 'recognition', files: files.slice(0, 2) }] }));
+    expect(mounted.models.selectedId.value).toBe(original);
+    expect(mounted.models.pickerModels.value.filter(model => model.availability === 'local').map(model => model.modelId)).toEqual([first.modelId, second.modelId]);
+    expect(mounted.rememberModel).not.toHaveBeenCalled();
+    expect(mocks.openStored).not.toHaveBeenCalled();
+    mounted.models.select({ id: `stored:${second.modelId}` });
+    expect(mounted.models.selectedModelId.value).toBe(second.modelId);
     expect(mocks.inspectRepository).not.toHaveBeenCalled();
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
-  it('rejects a model with companions before importing it', async () => {
+  it('does not register folders containing only files unsupported by recognition', async () => {
+    mocks.inspectFile.mockResolvedValue({ kind: 'other' });
     using mounted = mountModels({ remembered: undefined });
-    await mounted.models.importModels({ directories: Promise.resolve([{ rootName: 'recognition', files: [{ relativePath: file.name, file }, { relativePath: 'companion.gguf', file }] }]), controller: new AbortController(), save: 'browser', repositoryLayout: 'confirmed' });
+    await mounted.models.importModels({ request: { directories: Promise.resolve([{ rootName: 'recognition', files: [{ relativePath: 'companion.gguf', file }] }]), controller: new AbortController(), save: 'browser', repositoryLayout: 'confirmed' } });
     expect(mocks.importDirectories).not.toHaveBeenCalled();
     expect(mounted.models.failure.value).toBe('import');
   });
 
-  it('shows only the known repository before an explicit metadata request', async () => {
+  it('shows bundled variants and can select or restore them without contacting Hugging Face', async () => {
     using mounted = mountModels({ remembered: undefined });
     expect(mounted.models.canInspectQuantizations.value).toBe(true);
-    expect(mounted.models.quantizations.value).toEqual([]);
+    expect(mounted.models.quantizations.value.map(variant => variant.label)).toEqual(['Q8_0', 'Q6_K', 'Q5_K', 'Q4_K']);
     expect(mounted.models.selectedQuantizationLabel.value).toBe('Q8_0');
     expect(mounted.models.selectedDetails.value).toEqual({ kind: 'huggingface', repository: defaultRepository, repositoryUrl: `https://huggingface.co/${defaultRepository}`, revision: undefined, files: undefined });
+    mounted.models.selectQuantization({ id: 'suggestion:q4_k' });
+    expect(mounted.models.selectedModelId.value).toBe(`hf.co/${defaultRepository}:Q4_K`);
+    expect(mounted.models.selectedQuantizationId.value).toBe('suggestion:q4_k');
+    using restored = mountModels({ remembered: `hf.co/${defaultRepository}:Q4_K` });
+    expect(restored.models.selectedQuantizationId.value).toBe('suggestion:q4_k');
     expect(mocks.inspectRepository).not.toHaveBeenCalled();
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
@@ -319,11 +348,26 @@ describe('Transcription model selection', () => {
     using mounted = mountModels({ remembered: undefined });
     const initialId = mounted.models.selectedId.value;
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
-    expect(mocks.inspectRepository).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ input: defaultRepository }));
+    expect(mocks.inspectRepository).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ input: defaultRepository, freshness: 'refresh' }));
     expect(mounted.models.quantizations.value).toEqual([{ id: q4.path, label: 'Q4_K_M', filePath: q4.path, bytes: q4.size }, { id: q8.path, label: 'Q8_0', filePath: q8.path, bytes: q8.size }]);
     expect(mounted.models.selectedQuantizationId.value).toBe(q8.path);
     expect(mounted.models.selectedId.value).toBe(initialId);
     expect(mounted.models.selectedDetails.value).toEqual({ kind: 'huggingface', repository: defaultRepository, repositoryUrl: `https://huggingface.co/${defaultRepository}`, revision: repositoryCatalog.revision, files: [{ name: q8.path, bytes: q8.size, url: `https://huggingface.co/${defaultRepository}/resolve/${repositoryCatalog.revision}/${q8.path}` }] });
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('inspects another model without selecting it until the user confirms a variant', async () => {
+    using mounted = mountModels({ remembered: undefined });
+    const initialId = mounted.models.selectedId.value;
+    const other = mounted.models.models.value[1]!;
+    mocks.inspectRepository.mockResolvedValue({ ...repositoryCatalog, repository: 'sakasegawa/Qwen3-ASR-1.7B-GGUF' });
+    await mounted.models.inspectQuantizations({ id: other.id, signal: new AbortController().signal, pinCurrent: false });
+    expect(mounted.models.quantizationsForModel({ id: other.id }).map(variant => variant.id)).toContain(q4.path);
+    expect(mounted.models.selectedId.value).toBe(initialId);
+    expect(mounted.models.selectedQuantizationId.value).toBe('suggestion:q8_0');
+    mounted.models.selectQuantization({ id: q4.path, entryId: other.id });
+    expect(mounted.models.selectedId.value).toBe(other.id);
+    expect(mounted.models.selectedQuantizationId.value).toBe(q4.path);
     expect(mocks.enqueue).not.toHaveBeenCalled();
   });
 
@@ -379,7 +423,7 @@ describe('Transcription model selection', () => {
     mounted.models.select({ id: mounted.models.models.value[1]?.id });
     await pending;
     gate.resolve(repositoryCatalog);
-    expect(mounted.models.quantizations.value).toEqual([]);
+    expect(mounted.models.quantizations.value.map(variant => variant.label)).toEqual(['Q8_0', 'Q6_K', 'Q5_K', 'Q4_K']);
     expect(mounted.models.quantizationsFailure.value).toBeUndefined();
     expect(mounted.models.selectedDetails.value).toMatchObject({ repository: 'sakasegawa/Qwen3-ASR-1.7B-GGUF', files: undefined });
   });
@@ -388,7 +432,7 @@ describe('Transcription model selection', () => {
     mocks.inspectRepository.mockResolvedValue({ ...repositoryCatalog, repository: 'other/model' });
     using mounted = mountModels({ remembered: undefined });
     await mounted.models.inspectSelectedQuantizations({ signal: new AbortController().signal });
-    expect(mounted.models.quantizations.value).toEqual([]);
+    expect(mounted.models.quantizations.value.map(variant => variant.label)).toEqual(['Q8_0', 'Q6_K', 'Q5_K', 'Q4_K']);
     expect(mounted.models.quantizationsFailure.value).toBe('metadata');
     expect(mounted.models.selectedDetails.value).toMatchObject({ repository: defaultRepository, files: undefined });
   });
@@ -480,6 +524,41 @@ describe('Transcription model selection', () => {
     expect(mounted.models.downloadStates.value.get(id)).toMatchObject({ status: 'failed' });
     expect(destination.value).toEqual({ kind: 'host', directoryId: 'denied-folder' });
     expect(mounted.models.selectedId.value).toBe(id);
+  });
+
+  it('does not queue a download stopped while folder permission was pending', async () => {
+    const authorization = Promise.withResolvers<{ destination: ModelDestination, expectedRoot: undefined }>();
+    mocks.authorize.mockReturnValue(authorization.promise);
+    using mounted = mountModels({ remembered: undefined });
+    const id = mounted.models.models.value[0]!.id;
+    const pending = mounted.models.backgroundDownload({ id });
+    await vi.waitFor(() => expect(mocks.authorize).toHaveBeenCalledOnce());
+    mounted.models.stopBackgroundDownload({ id });
+    authorization.resolve({ destination: { kind: 'opfs' }, expectedRoot: undefined });
+    await pending;
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(mounted.models.downloadStates.value.has(id)).toBe(false);
+  });
+
+  it('stops only the download shown for the current destination', async () => {
+    using mounted = mountModels({ remembered: undefined });
+    const id = mounted.models.models.value[0]!.id;
+    const request = mounted.models.requestForId({ id })!;
+    const other = { kind: 'host' as const, directoryId: 'another-folder' };
+    const job: DownloadJob = {
+      id: 41,
+      key: downloadJobKey({ key: request.key, destination: request.destination }),
+      repository: request.repository,
+      source: 'suggestion',
+      destination: request.destination,
+      status: 'downloading',
+      selection: undefined,
+      progress: undefined,
+      error: undefined,
+    };
+    jobs.value = [job, { ...job, id: 42, key: downloadJobKey({ key: request.key, destination: other }), destination: other }];
+    mounted.models.stopBackgroundDownload({ id });
+    expect(mocks.cancel).toHaveBeenCalledExactlyOnceWith({ id: 41 });
   });
 
   it('keeps Run bound to the destination authorized for its click', async () => {

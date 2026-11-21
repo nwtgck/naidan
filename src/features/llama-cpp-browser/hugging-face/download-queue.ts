@@ -28,6 +28,16 @@ export function jobIsBusy({ job }: { job: DownloadJob | undefined }): boolean {
   }
 }
 
+export function findModelDownloadJob({ jobs, key, destination, selection }: {
+  jobs: readonly DownloadJob[], key: string, destination: ModelDestination, selection: DownloadSelection | undefined,
+}): DownloadJob | undefined {
+  const keyForDestination = downloadJobKey({ key, destination });
+  const preparedKey = selection === undefined ? undefined : selectionKey({ selection });
+  const destinationId = destinationKey({ destination });
+  return jobs.findLast(job => job.key === keyForDestination || preparedKey !== undefined && job.selection !== undefined
+    && destinationKey({ destination: job.destination }) === destinationId && selectionKey({ selection: job.selection }) === preparedKey);
+}
+
 function jobIsComplete({ job }: { job: DownloadJob | undefined }): boolean {
   const status = job?.status;
   switch (status) {

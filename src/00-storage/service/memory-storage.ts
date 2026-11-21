@@ -1,6 +1,6 @@
 import { ExperimentalModelGraphRegistrySchemaDto, type ExperimentalModelGraphRegistryDto } from '@/00-storage/00-dto/experimental-model-graph.dto';
 import { iterateAttachmentParts } from './message-attachments';
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/01-models/types';
+import { DEFAULT_SETTINGS_ENDPOINT, type Chat, type Settings, type ChatGroup, type MessageNode, type ChatMeta, type ChatContent, type SidebarItem, type StorageSnapshot, type BinaryObject } from '@/01-models/types';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import {
   type ChatMetaDto,
@@ -409,7 +409,7 @@ export class MemoryStorageProvider extends IStorageProvider {
           providerProfiles: [],
           mounts: [],
           storageType: 'memory',
-          endpoint: { type: 'openai', url: '' },
+          endpoint: { ...DEFAULT_SETTINGS_ENDPOINT },
         } satisfies Settings,
         hierarchy,
         chatMetas,

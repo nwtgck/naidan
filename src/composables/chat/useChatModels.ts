@@ -1,5 +1,6 @@
 import { computed, ref, watch, getCurrentScope, onScopeDispose, type ComputedRef, type Ref } from 'vue';
 import { useChatViewScope } from './ui/chat-view-scope';
+import { areEndpointsEqual } from '@/01-models/endpoint';
 import type { Endpoint } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
 import {
@@ -33,7 +34,10 @@ export type ChatModelsAdapter = {
   TEST_ONLY: Record<never, never>,
 };
 
-export function useChatModels({ scope: providedScope }: { scope?: Readonly<Ref<ChatId>> } = {}): ChatModelsAdapter {
+export function useChatModels({ scope: providedScope, endpoint }: {
+  scope?: Readonly<Ref<ChatId>>,
+  endpoint?: Readonly<Ref<Endpoint | undefined>>,
+} = {}): ChatModelsAdapter {
   const scope = providedScope ?? useChatViewScope();
   const modelsForView = scope ? ref<string[]>([]) : availableModels;
   const requests = ref(0);
@@ -41,11 +45,19 @@ export function useChatModels({ scope: providedScope }: { scope?: Readonly<Ref<C
   let sequence = 0, disposed = false;
   // An embedded ChatPane must not borrow the globally selected chat's model
   // list. Each view also rejects late responses after switching its identity.
+  function invalidate(): void {
+    sequence++;
+    modelsForView.value = [];
+  }
   if (scope) {
-    watch(scope, () => {
-      sequence++;
-      modelsForView.value = [];
-    }, { flush: 'sync' });
+    watch(scope, invalidate, { flush: 'sync' });
+    if (endpoint) {
+      watch(endpoint, (current, previous) => {
+        if (current !== previous && (current === undefined || previous === undefined || !areEndpointsEqual({ left: current, right: previous }))) {
+          invalidate();
+        }
+      }, { flush: 'sync' });
+    }
   }
   if (getCurrentScope()) {
     onScopeDispose(() => {

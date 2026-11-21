@@ -45,6 +45,7 @@ function inputState() {
     downloadJob: computed(() => downloadJob.value),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
+    prepareRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     maySend: computed(() => operation.value === undefined),
     accept,

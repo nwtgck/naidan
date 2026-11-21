@@ -2307,6 +2307,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch,
       markdownRendering,
       toolConfigPersistence,
       toolConfigs,
@@ -2356,6 +2357,11 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       metaCspForDevelopmentNotForSecurity: metaCsp,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch: huggingFaceModelSearch === undefined ? undefined : (() => {
+        const { autoSearch, ...unhandledSearch } = huggingFaceModelSearch;
+        unhandledSearch satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<Settings['experimental']>['huggingFaceModelSearch']>>()({ autoSearch });
+      })(),
       markdownRendering,
       toolConfigPersistence: toolConfigPersistence ?? 'enabled',
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
@@ -2467,6 +2473,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch,
       markdownRendering,
       toolConfigPersistence,
       toolConfigs,
@@ -2516,6 +2523,11 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       metaCsp: metaCspForDevelopmentNotForSecurity,
       chatBrowserModelPickerTab,
       modelDiscoveryTab,
+      huggingFaceModelSearch: huggingFaceModelSearch === undefined ? undefined : (() => {
+        const { autoSearch, ...unhandledSearch } = huggingFaceModelSearch;
+        unhandledSearch satisfies Record<PropertyKey, never>;
+        return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['huggingFaceModelSearch']>>()({ autoSearch });
+      })(),
       markdownRendering,
       toolConfigPersistence: (() => {
         switch (toolConfigPersistence) {

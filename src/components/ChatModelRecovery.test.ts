@@ -43,6 +43,7 @@ function render({ notice }: { notice: ChatModelRecoveryNotice | undefined }) {
     downloadJob: computed(() => undefined),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
+    prepareRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     maySend: computed(() => operation.value === undefined),
     accept: vi.fn(async () => {}),

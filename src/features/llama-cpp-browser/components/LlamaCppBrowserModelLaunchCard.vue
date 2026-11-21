@@ -7,6 +7,7 @@ import type { ModelLaunchChatUi } from '@/features/llama-cpp-browser/composables
 import { browserModelRepositoryPresentation } from '@/components/browser-model-presentation';
 import { modelLaunchPreparationStage } from '@/features/llama-cpp-browser/model-launch/presentation';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/download-plan';
+import { compareModelVariantsBySize } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import BrowserModelPreparation from '@/components/BrowserModelPreparation.vue';
 import LlamaCppBrowserDownloadSources from './LlamaCppBrowserDownloadSources.vue';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
@@ -19,7 +20,9 @@ const target = computed(() => props.state.selectedTarget.value ?? props.state.la
 const repository = computed(() => target.value?.selection.repository ?? props.state.presentation.value?.repository ?? '');
 const model = computed(() => browserModelRepositoryPresentation({ repository: repository.value, bytes: target.value?.selection.files.reduce((sum, file) => sum + file.size, 0) }));
 const quantizations = computed(() => props.state.choices.value.length > 0
-  ? props.state.choices.value.map(choice => ({ value: choice.primaryRelativePath, label: choice.label, detail: formatDownloadBytes({ bytes: choice.models.flatMap(model => model.files).reduce((sum, file) => sum + file.size, 0) }) }))
+  ? props.state.choices.value.map(choice => ({ label: choice.label, path: choice.primaryRelativePath, bytes: choice.models.flatMap(model => model.files).reduce((sum, file) => sum + file.size, 0) }))
+    .sort((left, right) => compareModelVariantsBySize({ left, right }))
+    .map(({ path, label, bytes }) => ({ value: path, label, detail: formatDownloadBytes({ bytes }) }))
   : target.value === undefined ? [] : [{ value: target.value.mainFilePath, label: props.state.label.value, detail: model.value.bytes === undefined ? undefined : formatDownloadBytes({ bytes: model.value.bytes }) }]);
 const displayedJob = computed(() => {
   const job = props.state.job.value;

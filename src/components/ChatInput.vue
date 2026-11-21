@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { useAutoTitleActivity } from '@/composables/chat/ui/useAutoTitleActivity';
-import { ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
+import { ref, watch, nextTick, computed, toRaw, onUnmounted, defineAsyncComponent, shallowRef } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import {
   isAppInteractionEnabled,
   useAppPresentation,
 } from '@/composables/useAppPresentation';
+import { areEndpointsEqual } from '@/01-models/endpoint';
 import { generateId } from '@/01-models/id';
 import { naturalSort } from '@/utils/string';
-import ModelSelector from './ModelSelector.vue';
+import { promiseAllKeyed } from '@/utils/promise';
+import ChatModelSelector from './ChatModelSelector.vue';
+import type { ModelSelectorItem } from './model-selector-item';
+import { localRepositoryReferenceStorage } from '@/01-models/llama-cpp-browser-model-id';
+import { hasTemporaryModelPathPrefix } from '@/01-models/temporary-model-files';
+import type { ChatRepositoryModelSelection, useChatLocalModel } from '@/composables/chat/chat-scoped/useChatLocalModel';
 import ReasoningSettings from './ReasoningSettings.vue';
 import ChatToolsMenu from '@/features/tools/components/ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
@@ -39,6 +45,7 @@ import { queueChatVolumeMount } from '@/logic/chat-volume-mount-queue';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
+const RepositoryModelPicker = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue'));
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/advanced-text-editor-v3/components/AdvancedTextEditorV3.vue') });
 
 import {
@@ -64,12 +71,24 @@ function finishHomeIntroduction(): void {
   documentMetadata?.finishHomeIntroduction();
 }
 
+type ChatLocalModelSelection = ReturnType<typeof useChatLocalModel>;
+
+const browserModelPanels = computed(() => [
+  { id: 'chat-candidates', label: lazyStrings.ChatInput__chat_model_suggestions(), placement: 'before-models' },
+  { id: 'huggingface', label: 'Hugging Face' },
+] as const);
+const browserModelPanelsWithFiles = computed(() => [...browserModelPanels.value, { id: 'files', label: lazyStrings.ModelSelector__add_files() }] as const);
+
 const props = defineProps<{
   chatId: ChatId,
   chat: Chat,
   chatGroup: ChatGroup | null,
   resolvedLmParameters: LmParameters | undefined,
   endpoint: Endpoint | undefined,
+  browserModelSelection?: 'available' | 'unavailable',
+  deferredRepositoryModel?: ChatRepositoryModelSelection,
+  prepareModelForSubmission?: () => Promise<boolean>,
+  modelSelectionBusy?: boolean,
   inheritedModelId: string | undefined,
   inheritedModelSource: SettingsSource | undefined,
   inheritedReasoningEffort?: Reasoning['effort'],
@@ -89,7 +108,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'auto-sent'): void,
-  (e: 'request-model-selection'): void,
+  (e: 'choose-deferred-repository-model', selection: ChatRepositoryModelSelection): void,
+  (e: 'clear-deferred-repository-model'): void,
+  (e: 'use-local-model', request: Parameters<ChatLocalModelSelection['useModel']>[0]): void,
   (e: 'sent'): void,
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void,
   (e: 'update:isAnimatingHeight', value: boolean): void,
@@ -114,7 +135,13 @@ const chatDraft = useChatDraft();
 const chatMedia = useChatImageGeneration({
   chatId,
 });
-const chatModels = useChatModels();
+// A new computed endpoint can describe the same connection. Use its old
+// identity in that case so changing unrelated settings does not fetch again.
+const modelInventoryEndpoint = computed<typeof props.endpoint>(previous => {
+  const endpoint = props.endpoint;
+  return previous && endpoint && areEndpointsEqual({ left: previous, right: endpoint }) ? previous : endpoint;
+});
+const chatModels = useChatModels({ endpoint: modelInventoryEndpoint });
 const chatMounts = useChatMounts();
 const chatMetadata = useChatMetadata();
 const chat = computed(() => props.chat);
@@ -131,7 +158,7 @@ const isAnimatingHeight = computed({
 
 const inheritedModelPresentation = computed(() => ({
   id: props.inheritedModelId,
-  source: settingsSourcePresentation({ source: props.inheritedModelSource }),
+  source: props.inheritedModelId ? settingsSourcePresentation({ source: props.inheritedModelSource }) : undefined,
 }));
 
 const isImageMode = computed({
@@ -186,8 +213,75 @@ function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
   chatMedia.updateSeed({ seed });
 }
 
-function updateModel({ modelId }: { modelId: string | undefined }) {
+const deferredModelId = computed(() => props.deferredRepositoryModel?.modelId);
+const repositoryDownloadSupport = shallowRef<{
+  queue: typeof import('@/features/llama-cpp-browser/hugging-face/download-queue'),
+  source: typeof import('@/features/llama-cpp-browser/model-launch/bundled-repository-target'),
+}>();
+watch(deferredModelId, async id => {
+  if (id !== undefined && repositoryDownloadSupport.value === undefined) {
+    repositoryDownloadSupport.value = await promiseAllKeyed({
+      queue: import('@/features/llama-cpp-browser/hugging-face/download-queue'),
+      source: import('@/features/llama-cpp-browser/model-launch/bundled-repository-target'),
+    });
+  }
+}, { immediate: true });
+const hideFirstUseDownloadHint = computed(() => {
+  const pending = props.deferredRepositoryModel;
+  const support = repositoryDownloadSupport.value;
+  if (pending === undefined || support === undefined) {
+    return false;
+  }
+  const { findModelDownloadJob, getDownloadQueue, jobIsBusy } = support.queue;
+  const { source, destination, defaultDownloadKey } = pending;
+  const request = support.source.repositoryModelDownloadIdentity({ source });
+  const jobs = getDownloadQueue().jobs.value;
+  const job = findModelDownloadJob({ jobs, destination, ...request });
+  const defaultJob = defaultDownloadKey === undefined ? undefined : findModelDownloadJob({ jobs, key: defaultDownloadKey, destination, selection: undefined });
+  return jobIsBusy({ job }) || job?.status === 'complete' || jobIsBusy({ job: defaultJob });
+});
+const deferredRepositoryPanel = ref<'chat-candidates' | 'huggingface'>();
+const usesSavedModels = computed(() => props.endpoint?.type === 'llama_cpp_browser');
+const hasLocalModelPanels = computed(() => usesSavedModels.value && props.browserModelSelection === 'available');
+const initialModelPanel = computed(() => {
+  if (!hasLocalModelPanels.value) {
+    return undefined;
+  }
+  if (deferredModelId.value !== undefined) {
+    return deferredRepositoryPanel.value ?? 'chat-candidates';
+  }
+  return props.chat.modelId || props.inheritedModelId ? undefined : 'chat-candidates';
+});
+
+function chooseDeferredRepositoryModel({ selection, panel }: { selection: ChatRepositoryModelSelection, panel: string }): void {
+  deferredRepositoryPanel.value = panel === 'huggingface' ? 'huggingface' : 'chat-candidates';
+  emit('choose-deferred-repository-model', selection);
+}
+
+async function updateModel({ modelId }: { modelId: string | undefined }): Promise<void> {
+  if (deferredModelId.value !== undefined) {
+    if (modelId === deferredModelId.value) {
+      return;
+    }
+    emit('clear-deferred-repository-model');
+  }
   titleActivity.noteActivity();
+  if (usesSavedModels.value && modelId && localRepositoryReferenceStorage({ modelId }) === 'pending') {
+    const selectedChat = props.chatId;
+    try {
+      const { llamaCppBrowserModelFiles } = await import('@/features/llama-cpp-browser/model-files');
+      const model = await llamaCppBrowserModelFiles.getModelEntry({ modelId, signal: undefined });
+      if (!disposed && props.chatId === selectedChat && usesSavedModels.value) {
+        emit('use-local-model', { model });
+      }
+    } catch {
+      if (!disposed && props.chatId === selectedChat) {
+        addToast({ message: await ensureStrings.ChatInput__could_not_open_model() });
+        await refreshLocalModelInventory();
+      }
+    }
+    return;
+  }
   void chatMetadata.updateModel({ chatId: props.chatId, modelId });
 }
 
@@ -268,11 +362,40 @@ async function fetchModels() {
   });
 }
 
+async function refreshLocalModelInventory(): Promise<void> {
+  if (!disposed && usesSavedModels.value) {
+    await fetchModels();
+  }
+}
+
+// Changing to local storage can repopulate the picker without contacting a
+// server. Other connections keep their existing discovery triggers.
+watch(modelInventoryEndpoint, endpoint => {
+  switch (endpoint?.type) {
+  case 'llama_cpp_browser': void fetchModels();
+    break;
+  case 'openai': case 'ollama': case 'naidan_rpc': case 'transformers_js':
+  case 'browser_provided_lm': case 'unsupported_experimental_endpoint': case undefined: break;
+  default: throw new Error(String(endpoint satisfies never));
+  }
+});
+
 function toggleImageMode() {
   isImageMode.value = !isImageMode.value;
 }
 
-const sortedAvailableModels = computed(() => naturalSort({ values: chatMedia.availableModels.value || [] }));
+const sortedAvailableModels = computed<ModelSelectorItem[]>(() => {
+  const ids = chatModels.availableModels.value;
+  const visible = usesSavedModels.value
+    ? ids.filter(modelId => !hasTemporaryModelPathPrefix({ path: modelId }))
+    : ids;
+  return naturalSort({ values: visible }).map(id => ({
+    id,
+    label: id,
+    description: undefined,
+    availability: usesSavedModels.value ? 'local' : 'remote',
+  }));
+});
 const chatMountList = chatMounts.getMounts({
   chatId,
 });
@@ -282,6 +405,15 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const rootElement = ref<HTMLElement | null>(null);
 const aboveInputElement = ref<HTMLElement>();
 const openPopup = ref<'model' | 'attach' | 'tools'>();
+const modelSelector = ref<InstanceType<typeof ChatModelSelector>>();
+
+function isModelFileImportOpen(): boolean {
+  return modelSelector.value?.isPanelOpen({ id: 'files' }) === true;
+}
+
+function openModelSelector(): void {
+  modelSelector.value?.openDropdown();
+}
 
 function updatePopupState({ popup, open }: { popup: 'model' | 'attach' | 'tools', open: boolean }) {
   if (open) {
@@ -294,6 +426,7 @@ function updatePopupState({ popup, open }: { popup: 'model' | 'attach' | 'tools'
 
 watch(chatId, () => {
   openPopup.value = undefined;
+  deferredRepositoryPanel.value = undefined;
 });
 const hasFileSystemAccess = checkFileSystemAccessSupport();
 
@@ -1083,7 +1216,7 @@ async function handleSend() {
   case 'blocked':
     return;
   case 'select-model':
-    emit('request-model-selection');
+    openModelSelector();
     return;
   case 'send':
     break;
@@ -1096,6 +1229,10 @@ async function handleSend() {
   const text = input.value;
   const currentAttachments = [...attachments.value];
   const sendingChatId = chat.value?.id;
+  const prepareModel = props.prepareModelForSubmission;
+  if (prepareModel !== undefined && (!await prepareModel() || chat.value?.id !== sendingChatId || disposed)) {
+    return;
+  }
 
   if (isMaximized.value && textareaRef.value) {
     const startHeight = textareaRef.value.getBoundingClientRect().height;
@@ -1125,12 +1262,17 @@ async function handleSend() {
   });
 
   if (success) {
-    if (chat.value?.id === sendingChatId) {
-      input.value = '';
-      attachments.value = [];
-    }
-    if (sendingChatId !== undefined) {
-      chatDraft.clearDraft({ chatId: sendingChatId });
+    const sameChat = chat.value?.id === sendingChatId;
+    const draftStillMatches = input.value === text && attachments.value.length === currentAttachments.length
+      && attachments.value.every((attachment, index) => attachment === currentAttachments[index]);
+    if (prepareModel === undefined || sameChat && draftStillMatches) {
+      if (sameChat) {
+        input.value = '';
+        attachments.value = [];
+      }
+      if (sendingChatId !== undefined) {
+        chatDraft.clearDraft({ chatId: sendingChatId });
+      }
     }
     emit('sent');
 
@@ -1237,7 +1379,7 @@ watch(
     input.value = props.autoSendPrompt;
     // Route-driven prompts must not re-open onboarding after the user closes it.
     // They are consumed without sending when setup or other prerequisites are missing.
-    if (isImageMode.value ? props.isSubmissionEnabled !== false : textSubmissionAction.value === 'send') {
+    if (isImageMode.value ? props.isSubmissionEnabled !== false : textSubmissionAction.value === 'send' && props.prepareModelForSubmission === undefined) {
       await handleSend();
     }
     emit('auto-sent');
@@ -1363,6 +1505,8 @@ defineExpose({
   isMaximized,
   processFiles,
   processDropItems,
+  isModelFileImportOpen,
+  openModelSelector,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       adjustTextareaHeight,
@@ -1571,16 +1715,21 @@ defineExpose({
             </button>
           </div>
           <div tw-class="w-max min-w-0 max-w-xs">
-            <ModelSelector
+            <ChatModelSelector
+              ref="modelSelector"
               :key="idToRaw({ id: chatId })"
               surface="composer"
               chevron-visibility="hidden"
-              :disabled="visibility === 'submerged' || presentation === 'hidden'"
-              :model-value="chat.modelId"
+              :disabled="visibility === 'submerged' || presentation === 'hidden' || modelSelectionBusy"
+              :model-value="deferredModelId ?? chat.modelId"
               @update:model-value="modelId => updateModel({ modelId: modelId ?? undefined })"
               :models="sortedAvailableModels"
+              :models-label="usesSavedModels ? lazyStrings.ModelSelector__models_on_this_device() : undefined"
+              :initial-panel="initialModelPanel"
+              :selection-availability="deferredModelId === undefined ? undefined : 'download_required'"
+              :hide-first-use-download-hint="hideFirstUseDownloadHint"
+              :panels="hasLocalModelPanels ? $slots['model-files'] ? browserModelPanelsWithFiles : browserModelPanels : undefined"
               :inherited-model="inheritedModelPresentation"
-              :placeholder="lazyStrings.formatSettingsSourceLabel__none()"
               :clear-label="lazyStrings.formatSettingsSourceLabel__none()"
               :loading="fetchingModels"
               allow-clear
@@ -1588,6 +1737,22 @@ defineExpose({
               @update:open="updatePopupState({ popup: 'model', open: $event })"
               data-testid="model-override-select"
             >
+              <template #panel="{ panel, active, close, popupTarget }">
+                <div v-if="panel === 'files'" data-testid="chat-model-selector-sources" tw-class="py-3">
+                  <slot name="model-files" :close="close" :refresh-inventory="refreshLocalModelInventory" />
+                </div>
+                <RepositoryModelPicker
+                  v-else
+                  :layout="panel === 'chat-candidates' ? 'candidate-results' : 'inline-results'" :disabled="!active" :selection-blocked="isChatStreaming" :popup-target="popupTarget"
+                  defer-until-first-use
+                  :refresh-inventory="refreshLocalModelInventory"
+                  :selected-for-first-use="deferredRepositoryModel"
+                  :current-model-id="chat.modelId ?? inheritedModelId"
+                  @select-for-first-use="(selection, presentation) => { chooseDeferredRepositoryModel({ selection, panel }); if (presentation !== 'keep-open') close(); }"
+                  @select-model="(model, presentation) => { emit('use-local-model', { model }); if (presentation !== 'keep-open') close(); }"
+                  @close="close()"
+                />
+              </template>
               <template v-if="resolvedReasoningLabel !== undefined" #trigger-detail>
                 <span :title="lazyStrings.ReasoningSettings__think()" tw-class="whitespace-nowrap text-[10px] font-medium leading-4 text-gray-500 dark:text-gray-400"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }}{{ ' ' }}</span><span data-testid="chat-input-reasoning-summary">{{ resolvedReasoningLabel }}</span></span>
               </template>
@@ -1602,7 +1767,7 @@ defineExpose({
                   @update:effort="updateReasoningEffort({ effort: $event })"
                 />
               </template>
-            </ModelSelector>
+            </ChatModelSelector>
           </div>
           <button
             @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"

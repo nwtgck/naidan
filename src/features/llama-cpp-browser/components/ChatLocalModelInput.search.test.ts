@@ -50,6 +50,7 @@ function renderPicker({ layout }: { layout: 'welcome' | 'embedded' }) {
     downloadJob: computed(() => undefined),
     useModel: vi.fn(async () => {}),
     useRepositoryModel: vi.fn(async () => {}),
+    prepareRepositoryModel: vi.fn(async () => {}),
     pauseDownload: vi.fn(),
     maySend: computed(() => true),
     accept: vi.fn(async () => {}),

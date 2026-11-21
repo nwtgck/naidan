@@ -27,9 +27,10 @@ let destinationRevision = 0;
 
 
 /** GGUF download entry points share one persisted choice; image generation remains independent. */
-export function useModelDownloadDestination({ blocked, changed }: {
+export function useModelDownloadDestination({ blocked, changed, folderLinked }: {
   blocked: () => boolean,
   changed: () => void,
+  folderLinked?: ({ id }: { id: string }) => Promise<void>,
 }) {
   const { settings, captureExperimentalStorage, updateExperimentalForStorage } = useSettings();
   const registrationFailure = ref(false);
@@ -43,6 +44,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
       if (adding?.revision === destinationRevision && adding.isCurrent()) {
         await persistDestination({ id, kind: 'host' });
       }
+      await folderLinked?.({ id });
     },
     changed: async () => {
       registrationFailure.value = false;
@@ -255,6 +257,8 @@ export function useModelDownloadDestination({ blocked, changed }: {
   });
   return {
     view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination, add, addDroppedDirectory },
+    // Import can register a folder without selecting it as the download target.
+    linkedFolders: host.view,
     destination,
     unavailable,
     authorize,

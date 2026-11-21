@@ -12,8 +12,7 @@ import AudioTranscriptionWorkspace from './AudioTranscriptionWorkspace.vue';
 type Workflow = ReturnType<typeof useAudioTranscriptionWorkflow>;
 type Phase = Workflow['phase']['value'];
 type Preferences = ReturnType<typeof useAudioTranscriptionPreferences>;
-// The selector's own tests exercise its slots and model-management dependencies.
-type WorkspaceModels = Pick<ReturnType<typeof useAudioTranscriptionModels>, 'models' | 'selectedId' | 'selectedModelId' | 'selectedQuantizationId' | 'openSelected' | 'refreshing' | 'progress'>;
+type WorkspaceModels = Pick<ReturnType<typeof useAudioTranscriptionModels>, 'models' | 'pickerModels' | 'selectedId' | 'selectedModelId' | 'selectedQuantizationId' | 'openSelected' | 'refreshing' | 'progress'>;
 
 const mocks = vi.hoisted(() => ({
   models: vi.fn<() => WorkspaceModels>(),
@@ -23,10 +22,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/features/audio-transcription/composables/useAudioTranscriptionModels', () => ({ useAudioTranscriptionModels: mocks.models }));
 vi.mock('@/features/audio-transcription/composables/useAudioTranscriptionWorkflow', () => ({ useAudioTranscriptionWorkflow: mocks.workflow }));
 vi.mock('@/features/audio-transcription/composables/useAudioTranscriptionPreferences', () => ({ useAudioTranscriptionPreferences: mocks.preferences }));
-vi.mock('@/components/ModelSelectorV2.vue', () => ({ default: { name: 'ModelSelectorV2', inheritAttrs: false, render: () => null } }));
-vi.mock('@/features/audio-transcription/components/AudioTranscriptionModelSources.vue', () => ({ default: { name: 'AudioTranscriptionModelSources', inheritAttrs: false, render: () => null } }));
-vi.mock('@/features/audio-transcription/components/AudioTranscriptionModelDetails.vue', () => ({ default: { name: 'AudioTranscriptionModelDetails', inheritAttrs: false, render: () => null } }));
-vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadDestination.vue', () => ({ default: { name: 'LlamaCppBrowserDownloadDestination', inheritAttrs: false, render: () => null } }));
+vi.mock('@/features/audio-transcription/components/AudioTranscriptionModelSelector.vue', () => ({ default: { name: 'AudioTranscriptionModelSelector', inheritAttrs: false, render: () => null } }));
 vi.mock('@/features/live-conversation/components/LiveModelLoadProgress.vue', () => ({ default: { name: 'LiveModelLoadProgress', inheritAttrs: false, render: () => null } }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue', () => ({ default: { name: 'LlamaCppBrowserDownloadProgress', inheritAttrs: false, render: () => null } }));
 
@@ -90,6 +86,7 @@ function fixture({ source, phase: initialPhase }: { source: 'microphone' | 'file
   };
   mocks.models.mockReturnValue({
     models: computed(() => []),
+    pickerModels: computed(() => []),
     selectedId: computed(() => undefined),
     selectedModelId: computed(() => undefined),
     selectedQuantizationId: computed(() => undefined),

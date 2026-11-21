@@ -6,7 +6,7 @@ import { lazyStrings } from '@/strings';
 import type { HostModelDirectoriesView } from '@/composables/useHostModelDirectories';
 import LlamaCppBrowserModelActionButton from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelActionButton.vue';
 
-const props = defineProps<{ view: HostModelDirectoriesView, disabled: boolean, reconnectDisabled?: boolean, layoutFile?: { repository: string, path: string } }>();
+const props = defineProps<{ view: HostModelDirectoriesView, disabled: boolean, reconnectDisabled?: boolean, layoutFile?: { repository: string, path: string }, width?: 'full' }>();
 const { supported, entries, busy, destination } = props.view;
 const unavailableReason = computed(() => lazyStrings.SHARED__model_folders_linked_folders_unavailable());
 const layout = computed(() => {
@@ -84,7 +84,7 @@ async function dropDirectory({ event }: { event: DragEvent }): Promise<void> {
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
-  <div data-testid="linked-linked-folders-panel" @dragover.prevent.stop="dragOver({ event: $event })" @drop.prevent.stop="dropDirectory({ event: $event })" tw-class="mt-2 w-full max-w-xl space-y-4 rounded-xl border border-gray-200 bg-white p-4 text-left dark:border-gray-700 dark:bg-gray-900">
+  <div data-testid="linked-linked-folders-panel" @dragover.prevent.stop="dragOver({ event: $event })" @drop.prevent.stop="dropDirectory({ event: $event })" :tw-class="['mt-2 w-full space-y-4 rounded-xl border border-gray-200 bg-[var(--model-selector-panel-background,var(--color-white))] p-4 text-left dark:border-gray-700 dark:bg-[var(--model-selector-panel-background,var(--color-gray-900))]', width !== 'full' && 'max-w-xl']">
     <p v-if="dropError" role="alert" data-testid="linked-link-drop-error" tw-class="text-xs text-red-600 dark:text-red-400">{{ dropError === 'folder-only' ? lazyStrings.SHARED__model_folders_choose_one_parent_folder_not_a_file() : lazyStrings.SHARED__model_folders_use_the_folder_button_to_link_this_folder() }}</p>
     <p v-if="!supported" data-testid="linked-host-folders-unavailable" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ unavailableReason }}</p>
     <p v-else data-testid="linked-host-folders-description" tw-class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ lazyStrings.SHARED__model_folders_use_models_directly_from_your_device() }}</p>

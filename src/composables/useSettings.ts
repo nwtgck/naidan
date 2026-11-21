@@ -15,6 +15,7 @@ import {
   type Endpoint,
   type EndpointType,
   DEFAULT_SETTINGS,
+  DEFAULT_SETTINGS_ENDPOINT,
   EMPTY_LM_PARAMETERS,
   type Reasoning,
   type StorageType,
@@ -41,7 +42,7 @@ import { areEndpointsEqual, cloneEndpoint, isConfiguredEndpoint, isHttpEndpoint,
 const _settings = ref<Settings>({
   ...DEFAULT_SETTINGS,
   storageType: 'local',
-  endpoint: { type: 'openai', url: '' },
+  endpoint: { ...DEFAULT_SETTINGS_ENDPOINT },
 } as Settings);
 
 watch(() => _settings.value.experimental?.naidanRpc ?? 'disabled', status => {
@@ -499,7 +500,7 @@ export function useSettings(): UseSettingsApi {
           });
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
-          _settings.value.endpoint = { type: 'openai', url: '' };
+          _settings.value.endpoint = { ...DEFAULT_SETTINGS_ENDPOINT };
           await setStringLocale({ locale: resolveBrowserLocale() });
         }
         flushAutomaticModelRefresh();
@@ -790,7 +791,7 @@ export function useSettings(): UseSettingsApi {
     if (fresh === null) {
       // First use does not persist settings until something is changed. A
       // chat-scoped model can already be usable with this untouched global pair.
-      return areEndpointsEqual({ left: _settings.value.endpoint, right: { type: 'openai', url: '' } })
+      return areEndpointsEqual({ left: _settings.value.endpoint, right: DEFAULT_SETTINGS_ENDPOINT })
         && !_settings.value.defaultModelId ? 'synchronized' : 'changed';
     }
     const endpointChanged = !areEndpointsEqual({ left: fresh.endpoint, right: _settings.value.endpoint });
@@ -1142,7 +1143,7 @@ export function useSettings(): UseSettingsApi {
     _settings.value = {
       ...DEFAULT_SETTINGS,
       storageType: 'local',
-      endpoint: { type: 'openai', url: '' },
+      endpoint: { ...DEFAULT_SETTINGS_ENDPOINT },
     } as Settings;
     availableModels.value = [];
     isFetchingModels.value = false;
