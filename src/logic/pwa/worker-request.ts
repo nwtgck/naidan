@@ -1,6 +1,6 @@
 
 import { BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from './protocol';
-import { PREPARE_OFFLINE_ASSETS, prepareOfflineAssetsReplySchema, type PrepareOfflineAssetsRequest } from './asset-cache-protocol';
+import { PREPARE_OFFLINE_ASSETS, READ_CACHED_LOCALES, cachedLocalesReplySchema, prepareOfflineAssetsReplySchema, type PrepareOfflineAssetsRequest } from './asset-cache-protocol';
 
 /** A bounded, one-shot exchange. Every terminal path closes both ports. */
 function requestWorker<T>({ worker, signal, message, parse, failure, timeoutMs }: {
@@ -115,6 +115,21 @@ export function requestOfflineAssetPreparation({ worker, buildId, target, signal
     timeoutMs: 125_000,
     failure: 'The service worker did not reply about offline assets.',
     parse: ({ data }) => prepareOfflineAssetsReplySchema.parse(data),
+  });
+}
+
+export function requestCachedLocales({ worker, buildId, signal }: {
+  worker: ServiceWorker;
+  buildId: string;
+  signal: AbortSignal;
+}) {
+  return requestWorker({
+    worker,
+    signal,
+    message: { type: READ_CACHED_LOCALES, buildId },
+    timeoutMs: 1000,
+    failure: 'The service worker did not report its cached languages.',
+    parse: ({ data }) => cachedLocalesReplySchema.parse(data),
   });
 }
 

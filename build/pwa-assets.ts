@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { parseSync, type Plugin, type Rollup } from 'vite';
+import { parseSync, type Plugin, type ResolveModulePreloadDependenciesFn, type Rollup } from 'vite';
 import type { ManifestTransform } from 'workbox-build';
 import { isDeepStrictEqual } from 'node:util';
-import type { UiLocale } from '../src/01-models/ui-locale.ts';
+import { NodeTypes, parse, type ElementNode, type RootNode } from '@vue/compiler-dom';
 import type { LlamaCppProfile } from '../src/features/llama-cpp-browser/types.ts';
 import { chatProfileSchema } from '../src/features/llama-cpp-browser/chat-profiles.ts';
 import { HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST } from '../src/features/transformers-js/runtime/runtime-asset-manifest.ts';
@@ -12,9 +12,7 @@ import type { DeferredAssetGroup, DeferredAssetMetadata } from '../src/logic/pwa
 import {
   matchesPermanentCacheExclusion, permanentCacheExclusions, pwaCachePolicy, type PWACacheRule, type PWARuntimeEngine,
 } from '../src/logic/pwa/cache-policy.ts';
-import { createBoundaryStringProjectPaths } from './boundary-strings/message-catalog.ts';
-import { parseLocaleMessageModuleId } from './boundary-strings/module-id.ts';
-import { parseResolvedBoundaryModuleId, parseResolvedPackModuleId } from './boundary-strings/virtual-modules.ts';
+import type { BoundaryLocaleAssets } from './boundary-strings/locale-assets.ts';
 
 function isOutputChunk(item: Rollup.OutputAsset | Rollup.OutputChunk): item is Rollup.OutputChunk {
   switch (item.type) {
@@ -52,14 +50,65 @@ function findInjectedManifest({ node }: { node: unknown }): { start: number; end
   return undefined;
 }
 
-export function createPWAAssets({ maximumAssetSize, getRuntimeArtifacts }: {
+function* htmlElements({ node }: { node: RootNode | ElementNode }): Iterable<ElementNode> {
+  for (const child of node.children) {
+    if (child.type === NodeTypes.ELEMENT) {
+      yield child;
+      if (child.tag.toLowerCase() !== 'template') {
+        yield* htmlElements({ node: child });
+      }
+    }
+  }
+}
+
+function htmlAttribute({ element, name }: { element: ElementNode; name: string }): string | undefined {
+  for (const prop of element.props) {
+    if (prop.type === NodeTypes.ATTRIBUTE && prop.name.toLowerCase() === name) {
+      return prop.value?.content;
+    }
+  }
+  return undefined;
+}
+
+function assertNoEagerLocaleAssets({ node, localeAssets, documentUrl, scope }: {
+  node: RootNode;
+  localeAssets: BoundaryLocaleAssets;
+  documentUrl: URL;
+  scope: URL;
+}): void {
+  const elements = [...htmlElements({ node })];
+  const base = elements.find(element => element.tag.toLowerCase() === 'base' && htmlAttribute({ element, name: 'href' }) !== undefined);
+  const resolution = base === undefined ? documentUrl : new URL(htmlAttribute({ element: base, name: 'href' }) ?? '', documentUrl);
+  for (const element of elements) {
+    const tag = element.tag.toLowerCase();
+    const rel = htmlAttribute({ element, name: 'rel' })?.toLowerCase().split(/\s+/) ?? [];
+    const href = tag === 'script' ? htmlAttribute({ element, name: 'src' })
+      : tag === 'link' && (rel.includes('modulepreload') || (rel.includes('preload')
+        && htmlAttribute({ element, name: 'as' })?.toLowerCase() === 'script'))
+        ? htmlAttribute({ element, name: 'href' }) : undefined;
+    if (href !== undefined) {
+      const url = new URL(href, resolution);
+      if (url.origin === scope.origin && url.pathname.startsWith(scope.pathname)
+        && localeAssets.has(decodeURIComponent(url.pathname.slice(scope.pathname.length)))) {
+        throw new Error(`HTML eagerly loads a Boundary Strings locale asset: ${documentUrl.pathname} -> ${href}`);
+      }
+    }
+  }
+}
+
+export function createPWAAssets({ maximumAssetSize, getRuntimeArtifacts, getLocaleAssets }: {
   maximumAssetSize: number;
   getRuntimeArtifacts: () => PWARuntimeArtifacts;
+  getLocaleAssets: () => BoundaryLocaleAssets | undefined;
 }) {
   let outDir = '';
-  let messagesDirectoryPath = '';
+  let scopes = [new URL('https://naidan.invalid/')];
   let finalManifest: Map<string, ManifestAsset> | undefined;
-  const localesByFile = new Map<string, UiLocale>();
+  const preloads: {
+    target: string;
+    host: Parameters<ResolveModulePreloadDependenciesFn>[2];
+    dependencies: readonly string[];
+  }[] = [];
   const builtInRuntimeFiles = new Map<string, RuntimeAsset>();
   const llamaScripts = new Map<string, RuntimeAsset | undefined>();
   for (const profile of chatProfileSchema.options) {
@@ -80,6 +129,10 @@ export function createPWAAssets({ maximumAssetSize, getRuntimeArtifacts }: {
   }
 
   const transform: ManifestTransform = async manifest => {
+    const localesByFile = getLocaleAssets();
+    if (localesByFile === undefined) {
+      throw new Error('Missing Boundary Strings locale assets for the Hosted PWA build');
+    }
     const runtimeFiles = new Map(builtInRuntimeFiles);
     const ambiguousRuntimeFiles = new Set<string>();
     const runtimeArtifacts = getRuntimeArtifacts();
@@ -146,99 +199,30 @@ export function createPWAAssets({ maximumAssetSize, getRuntimeArtifacts }: {
   const plugin: Plugin = {
     name: 'naidan-pwa-assets',
     apply: 'build',
+    config(config) {
+      const preload = config.build?.modulePreload;
+      if (preload === false) {
+        return;
+      }
+      const options = typeof preload === 'object' ? preload : {};
+      const resolveDependencies: ResolveModulePreloadDependenciesFn = (filename, deps, context) => {
+        const dependencies = options.resolveDependencies?.(filename, deps, context) ?? deps;
+        if (dependencies.length > 0) {
+          preloads.push({ target: filename, host: context, dependencies: [...dependencies] });
+        }
+        return dependencies;
+      };
+      return { build: { modulePreload: { ...options, resolveDependencies } } };
+    },
     configResolved(config) {
       outDir = path.resolve(config.root, config.build.outDir);
-      messagesDirectoryPath = createBoundaryStringProjectPaths({ root: config.root }).messagesDirectoryPath;
+      scopes = config.base.startsWith('/') ? [new URL(config.base, 'https://naidan.invalid')]
+        : [new URL('https://naidan.invalid/'), new URL('https://naidan.invalid/app/')];
     },
     buildStart() {
       finalManifest = undefined;
       llamaScripts.clear();
-    },
-    generateBundle: {
-      order: 'post',
-      handler(_options, bundle) {
-        localesByFile.clear();
-        const chunks = Object.values(bundle).filter(isOutputChunk);
-        const candidates = new Map<string, UiLocale>();
-        const packChunks = new Set<string>();
-        const directlyImportedPacks = new Set<string>();
-        // Rolldown can split messages shared by several packs into their own chunks.
-        for (const item of chunks) {
-          const owners = new Set(item.moduleIds.map(id => {
-            const pack = parseResolvedPackModuleId({ id });
-            if (pack !== undefined) {
-              packChunks.add(item.fileName);
-              const importers = this.getModuleInfo(id)?.dynamicImporters;
-              if (!importers?.length || importers.some(importer => {
-                const boundary = parseResolvedBoundaryModuleId({ id: importer });
-                return boundary?.boundaryId !== pack.boundaryId || boundary.version !== pack.version;
-              })) {
-                directlyImportedPacks.add(item.fileName);
-              }
-              return pack.locale;
-            }
-            if (id.includes('?')) {
-              return undefined;
-            }
-            return parseLocaleMessageModuleId({ moduleId: id, messagesDirectoryPath })?.locale;
-          }));
-          const locale = owners.values().next().value;
-          if (owners.size === 1 && locale !== undefined) {
-            candidates.set(item.fileName, locale);
-          }
-        }
-
-        const entryDependencies = chunks.filter(item => item.isEntry).map(item => item.fileName);
-        const startup = new Set<string>();
-        const required = new Set<string>();
-        while (entryDependencies.length > 0) {
-          const file = entryDependencies.pop();
-          if (file === undefined || startup.has(file)) {
-            continue;
-          }
-          startup.add(file);
-          const item = bundle[file];
-          if (item && isOutputChunk(item)) {
-            entryDependencies.push(...item.imports);
-            // Settings, initialization and recovery can read a bootstrap locale before settings load.
-            for (const imported of item.dynamicImports) {
-              required.add(imported);
-            }
-          }
-        }
-        for (const item of chunks) {
-          const locale = candidates.get(item.fileName);
-          if (locale === undefined || startup.has(item.fileName) || directlyImportedPacks.has(item.fileName)) {
-            required.add(item.fileName);
-          }
-          for (const imported of item.imports) {
-            if (candidates.get(imported) !== locale) {
-              required.add(imported);
-            }
-          }
-          for (const imported of item.dynamicImports) {
-            // The generated locale loaders target packs. Direct imports of
-            // message modules have no such selection contract.
-            if (candidates.has(imported) && !packChunks.has(imported)) {
-              required.add(imported);
-            }
-          }
-        }
-        // Unconditional chunks also need their entire static dependency graph.
-        for (const file of required) {
-          const item = bundle[file];
-          if (item && isOutputChunk(item)) {
-            for (const imported of item.imports) {
-              required.add(imported);
-            }
-          }
-        }
-        for (const [file, locale] of candidates) {
-          if (!required.has(file)) {
-            localesByFile.set(file, locale);
-          }
-        }
-      },
+      preloads.length = 0;
     },
     closeBundle: {
       order: 'post',
@@ -257,8 +241,20 @@ export function createPWAAssets({ maximumAssetSize, getRuntimeArtifacts }: {
           throw new Error('Missing final Hosted PWA manifest');
         }
         const entries: ManifestAsset[] = JSON.parse(source.slice(range.start, range.end));
+        const localeAssets = getLocaleAssets();
+        if (localeAssets === undefined) {
+          throw new Error('Missing Boundary Strings locale assets for the Hosted PWA audit');
+        }
+        const checkedLocales = new Set<string>();
         const seen = new Set<string>();
         for (const entry of entries) {
+          const locale = localeAssets.get(entry.url);
+          if (locale !== undefined) {
+            if (entry.deferred?.group.kind !== 'locale' || entry.deferred.group.locale !== locale) {
+              throw new Error(`Incorrect Boundary Strings locale ownership in Worker: ${entry.url} (${locale})`);
+            }
+            checkedLocales.add(entry.url);
+          }
           const asset = expected.get(entry.url);
           if (asset === undefined || asset.revision !== entry.revision || asset.integrity !== entry.integrity
             || !isDeepStrictEqual(asset.deferred, entry.deferred)) {
@@ -266,7 +262,39 @@ export function createPWAAssets({ maximumAssetSize, getRuntimeArtifacts }: {
           }
           seen.add(entry.url);
         }
-        const missing = [...new Set([...expected.keys(), ...await listApplicationAssets()])].filter(file => !seen.has(file));
+        for (const file of localeAssets.keys()) {
+          if (!checkedLocales.has(file)) {
+            throw new Error(`Missing Boundary Strings locale asset in Worker: ${file}`);
+          }
+        }
+        const applicationFiles = await listApplicationAssets();
+        if (localeAssets.size > 0) {
+          for (const { target, host, dependencies } of preloads) {
+            const owner = (() => {
+              switch (host.hostType) {
+              case 'html': return undefined;
+              case 'js': return localeAssets.get(target);
+              default: {
+                const exhaustive: never = host.hostType;
+                throw new Error(String(exhaustive));
+              }
+              }
+            })();
+            for (const dependency of dependencies) {
+              const locale = localeAssets.get(dependency);
+              if (locale !== undefined && locale !== owner) {
+                throw new Error(`Vite preloads a Boundary Strings locale asset outside its language: ${host.hostId} -> ${target} -> ${dependency}`);
+              }
+            }
+          }
+          for (const file of applicationFiles.filter(file => file.endsWith('.html'))) {
+            const node = parse(await readFile(path.join(outDir, file), 'utf8'));
+            for (const scope of scopes) {
+              assertNoEagerLocaleAssets({ node, localeAssets, documentUrl: new URL(file, scope), scope });
+            }
+          }
+        }
+        const missing = [...new Set([...expected.keys(), ...applicationFiles])].filter(file => !seen.has(file));
         if (missing.length > 0) {
           throw new Error(`Hosted PWA manifest is missing assets: ${missing.join(', ')}`);
         }

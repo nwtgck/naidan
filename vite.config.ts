@@ -26,6 +26,7 @@ import {
 import { readSystemJsLicenseDependency } from './build/file-protocol-standalone/systemjs.ts';
 import { createLicenseModulePlugins } from './build/license-module.ts';
 import { createBoundaryStringsPlugin } from './build/boundary-strings/index.ts';
+import { createLocaleAssetReport } from './build/boundary-strings/locale-assets.ts';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core.ts';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin.ts';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html.ts';
@@ -134,7 +135,9 @@ export default defineConfig(({ mode, command }) => {
   const llamaCppBuild = createLlamaCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const imageBuild = createStableDiffusionCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
   const speechBuild = createSpeechCppBrowserBuild({ rootDir: import.meta.dirname, mode: llamaCppBuildMode });
+  const localeAssets = createLocaleAssetReport();
   const pwaBuild = createPWABuild({
+    getLocaleAssets: localeAssets.read,
     getRuntimeArtifacts: () => ({
       'stable-diffusion-cpp-browser': imageBuild.getRuntimeArtifacts(),
       'speech-cpp-browser': speechBuild.getRuntimeArtifacts(),
@@ -243,7 +246,9 @@ export default defineConfig(({ mode, command }) => {
       createModelPagesPlugin(),
       createModelPageDevPlugin(),
       createInitialThemeHtmlPlugin(),
-      createBoundaryStringsPlugin(),
+      createBoundaryStringsPlugin({
+        onLocaleAssets: isStandalone ? undefined : localeAssets.publish,
+      }),
       VueRouter({
         /* options */
       }),

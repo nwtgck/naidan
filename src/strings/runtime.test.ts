@@ -51,6 +51,29 @@ afterEach(() => {
 });
 
 describe('Boundary Strings runtime', () => {
+  it('waits for the saved language before starting any hosted startup loaders', async () => {
+    vi.useFakeTimers();
+    await setLocale({ locale: 'zh-Hans' });
+    TEST_ONLY.holdInitialLocale();
+    const english = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }));
+    const other = vi.fn(resolvedModule({ module: { ChatInput__cancel: () => 'Other' } }));
+    registerStringBoundary({
+      boundaryId: 'hosted-startup',
+      keys: ['ChatInput__cancel'],
+      loaders: { en: english, 'zh-Hans': other, ja: other, es: other, 'pt-BR': other, ko: other, de: other },
+    });
+    expect(lazyStrings.ChatInput__cancel()).toBeUndefined();
+    await expect(ensureStrings.ChatInput__cancel()).rejects.toThrow('before the application locale was initialized');
+    await vi.runAllTimersAsync();
+    expect(english).not.toHaveBeenCalled();
+    expect(other).not.toHaveBeenCalled();
+
+    await setLocale({ locale: 'en' });
+    expect(lazyStrings.ChatInput__cancel()).toBe('Cancel');
+    expect(english).toHaveBeenCalledOnce();
+    expect(other).not.toHaveBeenCalled();
+  });
+
   it('falls back to English when the runtime does not expose a browser language', () => {
     vi.stubGlobal('navigator', {});
     expect(TEST_ONLY.resolveBrowserLocale()).toBe('en');

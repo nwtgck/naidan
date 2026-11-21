@@ -2,7 +2,7 @@
 import { PrecacheController, PrecacheRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { NavigationRoute, Router } from 'workbox-routing';
 import { ACTIVATE_BUILD_MESSAGE, BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from '../src/logic/pwa/protocol';
-import { ASSET_SELECTION_CHANGED, PREPARE_OFFLINE_ASSETS, prepareOfflineAssetsRequestSchema, type DeferredAssetMetadata, type PrepareOfflineAssetsReply } from '../src/logic/pwa/asset-cache-protocol';
+import { ASSET_SELECTION_CHANGED, PREPARE_OFFLINE_ASSETS, READ_CACHED_LOCALES, prepareOfflineAssetsRequestSchema, type DeferredAssetMetadata, type PrepareOfflineAssetsReply } from '../src/logic/pwa/asset-cache-protocol';
 import { matchesPermanentCacheExclusion, permanentCacheExclusions } from '../src/logic/pwa/cache-policy';
 import { installStreamDownloadWorker } from '../src/utils/download/service-worker';
 
@@ -146,6 +146,21 @@ self.addEventListener('message', event => {
   }
   if (!fromPage) {
     reply.close();
+    return;
+  }
+  if (data.type === READ_CACHED_LOCALES) {
+    event.waitUntil((async () => {
+      try {
+        const controlled = 'buildId' in data && data.buildId === __PWA_BUILD_ID__
+          && self.registration.active?.state === 'activated' && !await networkOnly
+          && (await self.clients.matchAll({ type: 'window' })).some(client => client.id === source.id);
+        const locales = controlled ? await offlineAssets.cachedLocales() : [];
+        // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- The one-shot client verifies the array and both endpoints close the port.
+        reply.postMessage(locales);
+      } finally {
+        reply.close();
+      }
+    })());
     return;
   }
   if (data.type === PREPARE_OFFLINE_ASSETS) {

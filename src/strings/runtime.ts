@@ -136,7 +136,10 @@ function resolveEffectiveLocale({ locale }: {
 
 const initialLocale = resolveEffectiveLocale({ locale: resolveBrowserLocale() });
 const currentLocaleState = shallowRef<UiLocale>(initialLocale);
-applyDocumentLocale({ locale: initialLocale });
+const initialLocaleReady = shallowRef<boolean>(!__BUILD_MODE_IS_HOSTED__ || !import.meta.env.PROD || __BUILD_MODE_IS_TEST__);
+if (initialLocaleReady.value) {
+  applyDocumentLocale({ locale: initialLocale });
+}
 export const currentLocale = readonly(currentLocaleState);
 const localePreparations = new Map<UiLocale, number>();
 const preparingLocaleState = shallowRef<readonly UiLocale[]>([]);
@@ -356,6 +359,11 @@ function scheduleBoundaryWarmup({ boundaryId }: {
   if (scheduledBoundaryWarmups.has(boundaryId)) {
     return;
   }
+  if (!initialLocaleReady.value) {
+    // Keep the boundary pending for prepareLocale, without a provisional fetch.
+    scheduledBoundaryWarmups.set(boundaryId, () => {});
+    return;
+  }
 
   const registration = boundaryRegistrations.get(boundaryId);
   if (registration === undefined) {
@@ -452,6 +460,9 @@ function getLazyStringAccessor({ key }: {
   // This Proxy adapter must preserve both zero-argument and one-object message signatures.
   // eslint-disable-next-line local-rules-named-args/require-named-args
   const accessor = (...args: readonly unknown[]): string | undefined => {
+    if (!initialLocaleReady.value) {
+      return undefined;
+    }
     const locale = currentLocaleState.value;
     const message = getLoadedMessage({ key, locale });
     if (message === undefined) {
@@ -609,6 +620,9 @@ function getEnsureStringAccessor({ key }: {
   // This Proxy adapter must preserve both zero-argument and one-object message signatures.
   // eslint-disable-next-line local-rules-named-args/require-named-args
   const accessor = async (...args: readonly unknown[]): Promise<string> => {
+    if (!initialLocaleReady.value) {
+      throw new Error('Boundary Strings requested before the application locale was initialized.');
+    }
     const locale = currentLocaleState.value;
     while (true) {
       await ensureKeyLoaded({ key, locale });
@@ -687,10 +701,11 @@ export async function setLocale({ locale }: {
       // but before this continuation runs. Recheck readiness before committing.
     } while (hasUnpreparedLocaleBoundaries({ locale: effectiveLocale }));
 
-    if (currentLocaleState.value !== effectiveLocale) {
+    if (!initialLocaleReady.value || currentLocaleState.value !== effectiveLocale) {
       currentLocaleState.value = effectiveLocale;
       applyDocumentLocale({ locale: effectiveLocale });
     }
+    initialLocaleReady.value = true;
   } finally {
     release();
   }
@@ -713,6 +728,9 @@ export const TEST_ONLY = {
   },
   loadedBoundaryModules,
   loadingBoundaries,
+  holdInitialLocale(): void {
+    initialLocaleReady.value = false;
+  },
   registries,
   resolveBrowserLocale,
   resolveEffectiveLocale,
@@ -738,6 +756,7 @@ export const TEST_ONLY = {
     localeSwitchRequest = 0;
     boundaryUpdateState = 'idle';
     deferredRegistryKeys.clear();
+    initialLocaleReady.value = true;
     currentLocaleState.value = 'en';
     applyDocumentLocale({ locale: 'en' });
   },

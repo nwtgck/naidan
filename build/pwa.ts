@@ -2,15 +2,17 @@ import { randomUUID } from 'node:crypto';
 import type { VitePWAOptions } from 'vite-plugin-pwa';
 import { permanentCacheExclusions } from '../src/logic/pwa/cache-policy.ts';
 import { createPWAAssets, type PWARuntimeArtifacts } from './pwa-assets.ts';
+import type { BoundaryLocaleAssets } from './boundary-strings/locale-assets.ts';
 
 /** One identity for the executing page and its offline worker, including redeploys. */
-export function createPWABuild({ buildId = randomUUID(), getRuntimeArtifacts = () => ({}) }: {
+export function createPWABuild({ buildId = randomUUID(), getRuntimeArtifacts = () => ({}), getLocaleAssets = () => new Map() }: {
   buildId?: string;
   getRuntimeArtifacts?: () => PWARuntimeArtifacts;
+  getLocaleAssets?: () => BoundaryLocaleAssets | undefined;
 } = {}) {
   const define = { __PWA_BUILD_ID__: JSON.stringify(buildId) };
   const maximumAssetSize = 100 * 1024 * 1024;
-  const assets = createPWAAssets({ maximumAssetSize, getRuntimeArtifacts });
+  const assets = createPWAAssets({ maximumAssetSize, getRuntimeArtifacts, getLocaleAssets });
   const options: Partial<VitePWAOptions> = {
     strategies: 'injectManifest',
     srcDir: 'pwa',

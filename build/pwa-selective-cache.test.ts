@@ -6,6 +6,8 @@ import path from 'node:path';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { ASSET_SELECTION_CHANGED, READ_ASSET_SELECTION, type AssetSelection } from '../src/logic/pwa/asset-cache-protocol';
 import { HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST } from '../src/features/transformers-js/runtime/runtime-asset-manifest';
+import { parseResolvedPackModuleId } from './boundary-strings/virtual-modules';
+import type { UiLocale } from '../src/01-models/ui-locale';
 import { buildPWAFixture } from './test-support/pwa-fixture.test-support';
 import { createWorkerHarness, MemoryCacheStorage, TestClients } from './test-support/pwa-worker-platform.test-support';
 
@@ -29,12 +31,12 @@ const en = `${packId}en/0000000000000001/0000000000000001`;
 const ja = `${packId}ja/0000000000000001/0000000000000001`;
 const ko = `${packId}ko/0000000000000001/0000000000000001`;
 const secondKo = `${packId}ko/0000000000000003/0000000000000001`;
-const directPack = `${packId}pt-BR/0000000000000001/0000000000000001`;
+const directPack = 'virtual:direct-feature';
 const primaryBoundary = 'virtual:naidan-boundary-strings/boundary/0000000000000001/0000000000000001';
 const secondBoundary = 'virtual:naidan-boundary-strings/boundary/0000000000000003/0000000000000001';
-const bootstrap = `${packId}es/0000000000000002/0000000000000001`;
+const bootstrap = 'virtual:startup-feature';
 const koreanMessage = 'src/strings/messages/Test__localized_message/ko.ts';
-const crossLocaleMessage = 'src/strings/messages/Test__shared_message/ko.ts';
+const crossLocaleMessage = 'src/shared-message.ts';
 const hidden = '.well-known/future-asset';
 const cpuModule = 'virtual:llama-test-cpu';
 const gpuModule = 'virtual:llama-test-gpu';
@@ -73,7 +75,7 @@ beforeAll(async () => {
       import { loaders as secondary } from ${JSON.stringify(secondBoundary)};
       export const loaders = [...primary, ...secondary, () => import(${JSON.stringify(directPack)})];
     `],
-    [primaryBoundary, `export const loaders = [${[en, ja, ko, directPack].map(id => `() => import(${JSON.stringify(id)})`).join(', ')}];`],
+    [primaryBoundary, `export const loaders = [${[en, ja, ko].map(id => `() => import(${JSON.stringify(id)})`).join(', ')}];`],
     [secondBoundary, `export const loaders = [() => import(${JSON.stringify(secondKo)})];`],
     [en, `import { shared } from "/${crossLocaleMessage}"; export default { name: "english-pack-marker", shared };`],
     [ja, 'export default "japanese-pack-marker";'],
@@ -87,6 +89,7 @@ beforeAll(async () => {
     const runtime = event.data === 'cpu' ? await import(${JSON.stringify(cpuModule)}) : await import(${JSON.stringify(gpuModule)});
     self.postMessage(runtime.default);
   };`);
+  const localeAssets = new Map<string, UiLocale>();
   fixture = await buildPWAFixture({
     root,
     buildId: 'selective-fixture',
@@ -96,6 +99,7 @@ beforeAll(async () => {
       ...Object.values(runtimeArtifacts).flat().flatMap(({ modulePath, wasmPath }) => [[modulePath, modulePath], [wasmPath, wasmPath]] as const),
     ]),
     getRuntimeArtifacts: () => runtimeArtifacts,
+    getLocaleAssets: () => localeAssets,
     entrySource: `console.info(__PWA_BUILD_ID__); if (typeof document !== 'undefined') {
       import('virtual:audit-route').then(({ loaders }) => globalThis.loaders = loaders);
       import(${JSON.stringify(bootstrap)}).then(module => console.log(module.default));
@@ -126,6 +130,20 @@ beforeAll(async () => {
       },
       load(id) {
         return id.startsWith('\0') ? modules.get(id.slice(1)) : undefined;
+      },
+      generateBundle(_options, bundle) {
+        for (const chunk of Object.values(bundle)) {
+          if (chunk.type !== 'chunk') {
+            continue;
+          }
+          for (const id of chunk.moduleIds) {
+            const locale = parseResolvedPackModuleId({ id })?.locale
+              ?? (id.replaceAll('\\', '/').endsWith(`/${koreanMessage}`) ? 'ko' : undefined);
+            if (locale !== undefined) {
+              localeAssets.set(chunk.fileName, locale);
+            }
+          }
+        }
       },
     }],
   });

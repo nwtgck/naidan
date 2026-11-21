@@ -3,6 +3,7 @@ import {
   type AssetSelection, type DeferredAssetMetadata, type PrepareOfflineAssetsReply, type PrepareOfflineAssetsRequest,
 } from '../src/logic/pwa/asset-cache-protocol';
 import { pwaCachePolicy, type PWARuntimeEngine } from '../src/logic/pwa/cache-policy';
+import type { UiLocale } from '../src/01-models/ui-locale';
 import { isDocsUrl } from './docs-routing';
 
 type OfflineAsset = DeferredAssetMetadata & { url: string; key: string };
@@ -67,6 +68,7 @@ export function createOfflineAssets({ entries, clients, scope }: {
   const cacheName = `naidan-pwa-verified-assets-v1:${scope.href}`;
   const assets = new Map<string, OfflineAsset>();
   const runtimeProfiles = new Map<PWARuntimeEngine, Set<string>>();
+  const localeKeys = new Map<UiLocale, string[]>();
   for (const entry of entries) {
     if (!entry.deferred) {
       continue;
@@ -83,7 +85,12 @@ export function createOfflineAssets({ entries, clients, scope }: {
       runtimeProfiles.set(group.engine, profiles);
       break;
     }
-    case 'locale':
+    case 'locale': {
+      const keys = localeKeys.get(group.locale) ?? [];
+      keys.push(key.href);
+      localeKeys.set(group.locale, keys);
+      break;
+    }
     case 'manual':
       break;
     default: {
@@ -219,6 +226,14 @@ export function createOfflineAssets({ entries, clients, scope }: {
           await cache.delete(request);
         }
       }
+    },
+    async cachedLocales(): Promise<UiLocale[]> {
+      if (!(await caches.keys()).includes(cacheName)) {
+        return [];
+      }
+      const cache = await caches.open(cacheName);
+      const stored = new Set((await cache.keys()).map(request => request.url));
+      return [...localeKeys].filter(([, keys]) => keys.every(key => stored.has(key))).map(([locale]) => locale);
     },
     handleFetch({ url, request, event }: { url: URL; request: Request; event: FetchEvent }): Promise<Response> | undefined {
       const asset = assets.get(`${url.origin}${url.pathname}`);

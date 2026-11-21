@@ -6,10 +6,12 @@ import { chatProfileSchema } from '../../features/llama-cpp-browser/chat-profile
 import { pwaRuntimeEngines, type PWARuntimeEngine } from './cache-policy';
 
 export const READ_ASSET_SELECTION = 'NAIDAN_PWA_READ_ASSET_SELECTION_V1';
+export const READ_CACHED_LOCALES = 'NAIDAN_PWA_READ_CACHED_LOCALES_V1';
 export const ASSET_SELECTION_CHANGED = 'NAIDAN_PWA_ASSET_SELECTION_CHANGED_V1';
 export const PREPARE_OFFLINE_ASSETS = 'NAIDAN_PWA_PREPARE_OFFLINE_ASSETS_V1';
 
 const localeSchema = z.enum(UI_LOCALES);
+export const cachedLocalesReplySchema = z.array(localeSchema).max(UI_LOCALES.length);
 const transformersVariantSchema = z.enum(['standard', 'asyncify']);
 const runtimeSelectionSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('pending') }),
