@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import ModelSelector from './ModelSelector.vue';
+import ChatModelSelector from './ChatModelSelector.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
@@ -130,8 +130,10 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
     expect(urlInput.element).toHaveProperty('value', 'http://global-url');
 
-    const modelSelector = wrapper.findComponent(ModelSelector);
+    const modelSelector = wrapper.getComponent(ChatModelSelector);
     expect(modelSelector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
+    expect(modelSelector.get('[data-testid="model-selector-trigger"]').text()).toContain('global-model');
+    expect(modelSelector.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Global');
 
     const typeSelect = wrapper.find('select');
     expect(typeSelect.find('option').text()).toBe('Global: OpenAI Compatible');
@@ -147,8 +149,10 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
     expect(urlInput.element).toHaveProperty('value', 'http://group-url');
 
-    const modelSelector = wrapper.findComponent(ModelSelector);
+    const modelSelector = wrapper.getComponent(ChatModelSelector);
     expect(modelSelector.props('inheritedModel')).toMatchObject({ id: 'group-model', source: { label: 'Chat group' } });
+    expect(modelSelector.get('[data-testid="model-selector-trigger"]').text()).toContain('group-model');
+    expect(modelSelector.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Chat group');
 
     const typeSelect = wrapper.find('select');
     expect(typeSelect.find('option').text()).toBe('Chat group: Ollama');

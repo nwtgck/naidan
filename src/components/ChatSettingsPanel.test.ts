@@ -186,6 +186,10 @@ describe('ChatSettingsPanel.vue', () => {
     },
   });
 
+  const modelSelectorStub = {
+    template: '<div><span v-if="loading" class="loading-mock">Loading</span></div>',
+    props: ['modelValue', 'loading', 'placeholder', 'models', 'allowClear', 'clearLabel', 'disabled', 'inheritedModel'],
+  };
   const globalStubs = {
     RouterLink: RouterLinkStub,
     SettingsSelect: SettingsSelectStub,
@@ -204,11 +208,8 @@ describe('ChatSettingsPanel.vue', () => {
       props: ['show'],
     },
     CheckIcon: { name: 'Check', template: '<span class="check-stub" />' },
-    ModelSelector: {
-      name: 'ModelSelector',
-      template: '<div data-testid="model-selector-mock" :model-value="modelValue">{{ modelValue }}<button v-if="!loading" data-testid="refresh-mock" @click="$emit(\'refresh\')">Refresh</button><span v-if="loading" class="loading-mock">Loading</span></div>',
-      props: ['modelValue', 'loading', 'placeholder', 'models', 'allowClear', 'clearLabel', 'disabled', 'inheritedModel'],
-    },
+    ModelSelector: { name: 'ModelSelector', ...modelSelectorStub },
+    ChatModelSelector: { name: 'ChatModelSelector', ...modelSelectorStub },
     LmParametersEditor: {
       name: 'LmParametersEditor',
       template: '<div data-testid="lm-parameters-editor-mock"></div>',
@@ -832,15 +833,22 @@ describe('ChatSettingsPanel.vue', () => {
       });
     });
 
-    it('triggers updateChatSettings when model override changes', async () => {
+    it('saves a model override and restores the inherited model when cleared', async () => {
       const wrapper = mount(ChatSettingsPanel, {
+        attachTo: document.body,
         props: { show: true },
-        global: { stubs: globalStubs },
+        global: { stubs: { ...globalStubs, ChatModelSelector: false } },
       });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
-
-      await selector.vm.$emit('update:modelValue', 'model-1');
+      const trigger = wrapper.get('[data-testid="chat-setting-model-select"] [data-testid="model-selector-trigger"]');
+      expect(trigger.text()).toContain('global-model');
+      expect(trigger.text()).toContain('Global');
+      const popup = new DOMWrapper(document.body);
+      await trigger.trigger('click');
+      mockFetchAvailableModels.mockResolvedValueOnce(['model-1']);
+      await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+      await flushPromises();
+      await popup.get('[data-testid="model-selector-option"][title="model-1"]').trigger('click');
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
@@ -849,6 +857,20 @@ describe('ChatSettingsPanel.vue', () => {
           modelId: 'model-1',
         }),
       });
+      expect(trigger.text()).toBe('model-1');
+
+      await trigger.trigger('click');
+      await popup.get('[data-testid="model-selector-clear"]').trigger('click');
+      await flushPromises();
+      expect(mockUpdateChatSettings).toHaveBeenLastCalledWith({ id: 'chat-1', updates: { modelId: undefined } });
+      expect(trigger.text()).toContain('global-model');
+      expect(trigger.text()).toContain('Global');
+
+      await trigger.trigger('click');
+      expect(popup.find('[data-testid="model-selector-dropdown"]').exists()).toBe(true);
+      mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-2' };
+      await flushPromises();
+      expect(popup.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
     });
 
     it('triggers updateChatSettings and clears browser-provided model IDs when a preset is applied', async () => {
@@ -1762,9 +1784,9 @@ describe('ChatSettingsPanel.vue', () => {
         global: { stubs: globalStubs },
       });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
 
-      // Force an error via ModelSelector refresh
+      // Force an error via the chat model picker refresh.
       await selector.vm.$emit('refresh');
       await flushPromises();
       expect(wrapper.text()).toContain('Fail');
@@ -1819,7 +1841,7 @@ describe('ChatSettingsPanel.vue', () => {
       }));
       const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
       selector.vm.$emit('refresh');
       await nextTick();
       expect(selector.props('loading')).toBe(true);
@@ -1829,7 +1851,7 @@ describe('ChatSettingsPanel.vue', () => {
       expect(selector.props('loading')).toBe(false);
     });
 
-    it('triggers manual refresh when ModelSelector emits refresh', async () => {
+    it('triggers manual refresh when the chat model picker emits refresh', async () => {
       mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
@@ -1838,7 +1860,7 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
       mockFetchAvailableModels.mockClear();
 
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
 
       await selector.vm.$emit('refresh');
       expect(mockFetchAvailableModels).toHaveBeenCalledTimes(1);
@@ -1852,7 +1874,7 @@ describe('ChatSettingsPanel.vue', () => {
         global: { stubs: globalStubs },
       });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
 
       await selector.vm.$emit('refresh');
       await flushPromises();
@@ -1860,7 +1882,7 @@ describe('ChatSettingsPanel.vue', () => {
       expect(wrapper.text()).toContain(errorMessage);
     });
 
-    it('passes a naturally sorted list of models to ModelSelector', async () => {
+    it('passes a naturally sorted list of models to the chat model picker', async () => {
       mockFetchingModelsRef.value = false;
       mockFetchAvailableModels.mockResolvedValueOnce(['model-10', 'model-2', 'model-1']);
 
@@ -1869,10 +1891,10 @@ describe('ChatSettingsPanel.vue', () => {
         global: { stubs: globalStubs },
       });
       await nextTick();
-      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
       selector.vm.$emit('refresh');
       await flushPromises();
-      expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+      expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10'].map(id => expect.objectContaining({ id })));
     });
 
     it('clears modelId override if it is not available in newly fetched models', async () => {
@@ -2020,7 +2042,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockFetchAvailableModels.mockImplementationOnce(() => new Promise<string[]>(resolve => {
       completeModels = resolve;
     }));
-    const model = wrapper.getComponent({ name: 'ModelSelector' });
+    const model = wrapper.getComponent({ name: 'ChatModelSelector' });
     model.vm.$emit('refresh');
     await nextTick();
     expect(model.props('loading')).toBe(true);
@@ -2031,7 +2053,7 @@ describe('ChatSettingsPanel.vue', () => {
     expect(mockFetchAvailableModels).toHaveBeenCalledTimes(callCount);
     completeModels?.(['stale-model']);
     await flushPromises();
-    expect(model.props('models')).not.toContain('stale-model');
+    expect(model.props('models')).toEqual([]);
   });
 
   it('keeps candidates when another owner uses the same endpoint and preserves unlisted host references', async () => {
@@ -2039,12 +2061,12 @@ describe('ChatSettingsPanel.vue', () => {
     mockCurrentChat.value.modelId = 'hf.co/owner/repo/model-Q4';
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
     await flushPromises();
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
     const candidates = selector.props('models');
     expect(mockCurrentChat.value.modelId).toBe('hf.co/owner/repo/model-Q4');
     mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-2', modelId: undefined };
     await flushPromises();
-    expect(selector.props('models')).toEqual(candidates);
+    expect(wrapper.getComponent({ name: 'ChatModelSelector' }).props('models')).toEqual(candidates);
   });
 
   it('keeps a model refresh alive when saving another field echoes an equivalent endpoint clone', async () => {
@@ -2054,7 +2076,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockFetchAvailableModels.mockImplementationOnce(() => new Promise<string[]>(resolve => {
       completeModels = resolve;
     }));
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
     selector.vm.$emit('refresh');
     await nextTick();
     const editor = wrapper.getComponent({ name: 'LmParametersEditor' });
@@ -2063,7 +2085,7 @@ describe('ChatSettingsPanel.vue', () => {
     expect(selector.props('loading')).toBe(true);
     completeModels?.(['newly-fetched-model']);
     await flushPromises();
-    expect(selector.props('models')).toEqual(['newly-fetched-model']);
+    expect(selector.props('models')).toEqual([expect.objectContaining({ id: 'newly-fetched-model' })]);
     expect(selector.props('loading')).toBe(false);
   });
 
@@ -2091,7 +2113,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockAvailableModelsRef.value = ['unrelated/model'];
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
     await flushPromises();
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    const selector = wrapper.getComponent({ name: 'ChatModelSelector' });
     expect(selector.props('models')).toEqual([]);
     expect(mockFetchAvailableModels).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="chat-setting-url-input"]').setValue('https://another-provider.example/v1');
