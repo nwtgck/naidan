@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { setImmediate } from 'node:timers/promises';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { getGlobalOrigin, setGlobalOrigin } from 'undici';
 import { buildPWAFixture } from './test-support/pwa-fixture.test-support';
 import { createWorkerHarness, MemoryCacheStorage, TestClients } from './test-support/pwa-worker-platform.test-support';
 import { ACTIVATE_BUILD_MESSAGE, BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from '../src/logic/pwa/protocol';
@@ -249,6 +250,34 @@ describe('real generated Workbox worker', () => {
     f.offline();
     const restarted = createWorkerHarness({ script: a.script, scope, cacheStorage: native.storage, clients: f.clients, fetch: f.network });
     expect(await (await restarted.request({ url: `${scope}${archive}` })).text()).toBe('version-a:naidan-standalone.zip');
+    expect(await (await restarted.request({ url: `${scope}${archive}?utm_source=release&fbclid=link` })).text()).toBe('version-a:naidan-standalone.zip');
+  });
+
+  it('forwards archive navigations that require the network without substituting the app shell', async () => {
+    const originalOrigin = getGlobalOrigin();
+    using _origin = {
+      [Symbol.dispose]() {
+        setGlobalOrigin(originalOrigin);
+      },
+    };
+    setGlobalOrigin(new URL('sw.js', scope));
+    const f = setup(), archive = new URL('naidan-standalone.zip', scope);
+    const network: typeof fetch = async (input, init) => {
+      if (input instanceof Request && input.headers.has('range')) {
+        return new Response('zip', { status: 206, headers: { 'Content-Range': 'bytes 0-2/12' } });
+      }
+      return f.network(input, init);
+    };
+    const worker = createWorkerHarness({ script: a.script, scope, cacheStorage: f.storage, clients: f.clients, fetch: network });
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+
+    const partial = await worker.request({ url: archive.href, navigation: true, headers: { range: 'bytes=0-2' } });
+    expect(partial.status).toBe(206);
+    expect(await partial.text()).toBe('zip');
+    archive.searchParams.set('download', '1');
+    const normal = await worker.request({ url: archive.href, navigation: true });
+    expect(await normal.text()).toBe('version-a:naidan-standalone.zip');
   });
 
   it('serves B before full installation, survives worker restart, and returns to offline only with B', async () => {

@@ -180,10 +180,16 @@ export function createOfflineAssets({ entries, clients, scope }: {
         }
       }
     },
-    handleFetch({ request, event }: { request: Request; event: FetchEvent }): Promise<Response> | undefined {
-      const asset = assets.get(request.url);
-      if (!asset || request.headers.has('range') || (request.integrity && request.integrity !== asset.integrity)) {
+    handleFetch({ url, request, event }: { url: URL; request: Request; event: FetchEvent }): Promise<Response> | undefined {
+      const asset = assets.get(`${url.origin}${url.pathname}`);
+      if (!asset) {
         return undefined;
+      }
+      // Workbox ignores these tracking parameters. Other request variations
+      // still belong to the asset's network route, including on navigation.
+      const customQuery = Array.from(url.searchParams.keys()).some(key => !key.startsWith('utm_') && key !== 'fbclid');
+      if (customQuery || request.headers.has('range') || (request.integrity && request.integrity !== asset.integrity)) {
+        return fetch(request);
       }
       const response = (async () => {
         const cache = await caches.open(cacheName).catch(() => undefined);
@@ -194,7 +200,7 @@ export function createOfflineAssets({ entries, clients, scope }: {
         if (asset.group.kind === 'standalone-package' || request.mode === 'no-cors') {
           return fetch(request);
         }
-        const verified = await fetchVerified({ asset, request, signal: undefined });
+        const verified = await fetchVerified({ asset, request, signal: request.signal });
         if (cache) {
           event.waitUntil(cache.put(asset.key, verified.clone()).catch(error => {
             console.warn('[PWA] Could not save an offline asset.', asset.url, error);

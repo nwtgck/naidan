@@ -90,7 +90,7 @@ self.addEventListener('fetch', event => {
     if (await networkOnly) {
       return fetch(event.request, { cache: 'no-store' });
     }
-    return offlineAssets.handleFetch({ request: event.request, event })
+    return offlineAssets.handleFetch({ url, request: event.request, event })
       ?? router.handleRequest({ request: event.request, event }) ?? fetch(event.request);
   })();
   event.respondWith(response);
