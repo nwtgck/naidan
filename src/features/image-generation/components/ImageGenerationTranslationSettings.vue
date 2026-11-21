@@ -11,7 +11,8 @@ import type { Endpoint } from '@/01-models/types';
 import type { ImageGenerationTranslationOverride } from '@/01-models/image-generation';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { loadLmProvider } from '@/features/lm/providerFactory';
-import ModelSelector from '@/components/ModelSelector.vue';
+import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import type { ModelSelectorItem } from '@/components/model-selector-item';
 import ReasoningSettings from '@/components/ReasoningSettings.vue';
 import LmParametersEditor from '@/components/LmParametersEditor.vue';
 import { EMPTY_LM_PARAMETERS, type Reasoning } from '@/01-models/types';
@@ -39,9 +40,9 @@ const isSessionScope = computed(() => {
   }
   }
 });
-const owner = computed(() => [props.scope, props.workspace.store.value?.storeId, isSessionScope.value ? props.workspace.selectedSessionId.value : undefined] as const);
+const ownerKey = computed(() => JSON.stringify([props.scope, props.workspace.store.value?.storeId, isSessionScope.value ? props.workspace.selectedSessionId.value : undefined]));
 const stored = computed(() => isSessionScope.value ? props.workspace.currentSession.value?.translation : props.workspace.catalog.value?.preferences.translation);
-watch(() => ({ owner: JSON.stringify(owner.value), stored: cloneImagePromptTranslationOverride({ value: stored.value }) }), (current, previous) => {
+watch(() => ({ owner: ownerKey.value, stored: cloneImagePromptTranslationOverride({ value: stored.value }) }), (current, previous) => {
   if (previous !== undefined && current.owner === previous.owner && areImagePromptTranslationOverridesEqual({ left: current.stored, right: previous.stored })) {
     return;
   }
@@ -59,6 +60,18 @@ const effective = computed(() => resolveImagePromptTranslation({
   workspace: !isSessionScope.value ? draft.value : props.workspace.catalog.value?.preferences.translation,
   global: { endpoint: settings.value.endpoint, modelId: settings.value.defaultModelId, lmParameters: settings.value.lmParameters },
 }));
+const modelAvailability = computed(() => {
+  const type = effective.value.endpoint.type;
+  switch (type) {
+  case 'llama_cpp_browser': return 'local';
+  case 'openai': case 'ollama': case 'naidan_rpc': case 'transformers_js': case 'browser_provided_lm': case 'unsupported_experimental_endpoint': return 'remote';
+  default: {
+    const exhaustive: never = type;
+    throw new Error(`Unhandled translation endpoint type: ${exhaustive}`);
+  }
+  }
+});
+const modelOptions = computed<ModelSelectorItem[]>(() => models.value.map(id => ({ id, label: id, description: undefined, availability: modelAvailability.value })));
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: effective.value.endpoint }));
 const endpointTypes = ['inherit', 'llama_cpp_browser', 'openai', 'ollama', 'naidan_rpc', 'transformers_js', 'browser_provided_lm'] as const;
 const endpointOptions = computed(() => endpointTypes.filter(value => value !== 'naidan_rpc' || rpcEnabled.value));
@@ -182,8 +195,8 @@ async function save(): Promise<void> {
   failure.value = '';
   requestFailureEndpoint.value = undefined;
   saved.value = false;
-  const ownerKey = JSON.stringify(owner.value), submitted = cloneImagePromptTranslationOverride({ value: draft.value });
-  const stillCurrent = () => !disposed && JSON.stringify(owner.value) === ownerKey && areImagePromptTranslationOverridesEqual({ left: draft.value, right: submitted });
+  const submittedOwner = ownerKey.value, submitted = cloneImagePromptTranslationOverride({ value: draft.value });
+  const stillCurrent = () => !disposed && ownerKey.value === submittedOwner && areImagePromptTranslationOverridesEqual({ left: draft.value, right: submitted });
   const value = cloneImagePromptTranslationOverride({ value: draft.value });
   const translation = value?.endpoint === undefined && value?.modelId === undefined && !hasLmParameterOverrides({ lmParameters: value?.lmParameters }) ? undefined : value;
   try {
@@ -239,7 +252,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </template>
     <div tw-class="space-y-1">
       <label tw-class="block space-y-1"><span>{{ lazyStrings.imageGeneration__translation_model() }}</span><input :value="draft.modelId ?? ''" @input="changeModel({ event: $event })" :placeholder="effective.modelId || lazyStrings.imageGeneration__translation_inherit()" data-testid="translation-model-input" tw-class="w-full min-w-0 rounded-xl border border-gray-200/80 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" /></label>
-      <ModelSelector v-model="draft.modelId" :models="models" :loading="loading" :disabled="saving || workspace.busy.value" allow-clear :clear-label="lazyStrings.imageGeneration__translation_inherit()" @refresh="fetchModels" />
+      <ChatModelSelector
+        :key="ownerKey"
+        v-model="draft.modelId"
+        surface="settings"
+        popup-presentation="inline"
+        :models="modelOptions"
+        :loading="loading"
+        :disabled="saving || workspace.busy.value"
+        :placeholder="lazyStrings.imageGeneration__translation_inherit()"
+        allow-clear
+        :clear-label="lazyStrings.imageGeneration__translation_inherit()"
+        data-testid="translation-model-select"
+        @refresh="fetchModels"
+      />
     </div>
     <ReasoningSettings :selected-effort="draft.lmParameters?.reasoning.effort" :default-label="lazyStrings.imageGeneration__translation_inherit()" surface="card" @update:effort="changeReasoning({ effort: $event })" />
     <LmParametersEditor v-model="draft.lmParameters" :inheritance-label="lazyStrings.imageGeneration__translation_inherit()" />

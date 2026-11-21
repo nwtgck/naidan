@@ -211,6 +211,38 @@ describe('Audio transcription model sources', () => {
     expect(mocks.inspect).not.toHaveBeenCalled();
   });
 
+  it('opens the pasted quantization ahead of the standard ASR variant', async () => {
+    const requested = { path: 'asr-Q4_K_M.gguf', size: 512 };
+    const standard = { path: 'asr-Q8_0.gguf', size: 1024 };
+    const revision = 'a'.repeat(40);
+    mocks.inspect.mockResolvedValue({
+      repository: 'test/asr',
+      revision,
+      models: [requested, standard].map(file => ({ label: file.path, size: file.size, files: [file] })),
+      projectors: [],
+    });
+    const models = createModels();
+    using mounted = mountSources({ models });
+    mounted.wrapper.getComponent(ModelSelectorHuggingFaceSearch).vm.$emit('select', 'test/asr', 'url', 'Q4_K_M');
+    await flushPromises();
+    await mounted.wrapper.get('[data-testid="model-selector-choose-configuration"]').trigger('click');
+    expect(models.addRepositoryModel).toHaveBeenCalledExactlyOnceWith({ selection: { repository: 'test/asr', revision, files: [requested] } });
+  });
+
+  it('offers the available ASR variants when the pasted quantization cannot be resolved', async () => {
+    const file = { path: 'asr-Q8_0.gguf', size: 1024 };
+    const revision = 'a'.repeat(40);
+    mocks.inspect.mockResolvedValue({ repository: 'test/asr', revision, models: [{ label: 'Q8_0', size: file.size, files: [file] }], projectors: [] });
+    const models = createModels();
+    using mounted = mountSources({ models });
+    mounted.wrapper.getComponent(ModelSelectorHuggingFaceSearch).vm.$emit('select', 'test/asr', 'url', 'Q4_K_M');
+    await flushPromises();
+    expect(mounted.wrapper.text()).toContain('The requested variant could not be selected uniquely.');
+    expect(models.addRepositoryModel).not.toHaveBeenCalled();
+    await mounted.wrapper.get('[data-testid="audio-transcription-model-variant"]').trigger('click');
+    expect(models.addRepositoryModel).toHaveBeenCalledExactlyOnceWith({ selection: { repository: 'test/asr', revision, files: [file] } });
+  });
+
   it('shows Q8_0 by default and applies a different variant without a second confirmation', async () => {
     mocks.inspect.mockResolvedValue({
       repository: 'test/asr',

@@ -7,9 +7,10 @@ import ModelSelectorRepositoryRow from '@/components/ModelSelectorRepositoryRow.
 import type { RepositoryModelDownloadRequest } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
 import ModelSelectorVariantDownload from '@/components/ModelSelectorVariantDownload.vue';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
-import { modelSuggestions, type ModelSuggestion } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+import type { ModelSuggestion } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 
 const props = defineProps<{
+  suggestions: readonly ModelSuggestion[],
   disabled: boolean,
   expandedRepository?: { repository: string },
   immediateSelection?: boolean,
@@ -23,7 +24,7 @@ const root = ref<HTMLElement>();
 const query = ref('');
 const candidates = computed(() => {
   const words = query.value.trim().toLowerCase().split(/\s+/);
-  return modelSuggestions
+  return props.suggestions
     .filter(model => words.every(word => (model.name + ' ' + model.developer).toLowerCase().includes(word)))
     .map(candidate => ({ ...candidate, ...props.describeCandidate({ candidate }) }));
 });

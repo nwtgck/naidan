@@ -1,4 +1,6 @@
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
+import type { DownloadDestination } from '@/01-models/download';
+import type { AuthorizeModelLaunchDestination } from './entry-state';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import { confirmModelLaunchConfiguration, initialRepositorySelection } from '@/features/llama-cpp-browser/model-launch/target';
@@ -28,6 +30,14 @@ export async function resolveBundledRepositoryTarget({ repository, variant, comp
 export type RepositoryModelSource =
   | { kind: 'bundled', repository: string, variant: string, companionPath: string | undefined }
   | { kind: 'resolved', target: ModelLaunchTarget };
+
+export type RepositoryModelSelection = {
+  modelId: string,
+  source: RepositoryModelSource,
+  defaultDownloadKey?: string,
+  destination: DownloadDestination,
+  authorizeDestination: AuthorizeModelLaunchDestination | undefined,
+};
 
 export function repositoryModelDownloadIdentity({ source }: { source: RepositoryModelSource }) {
   switch (source.kind) {

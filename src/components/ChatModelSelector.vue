@@ -29,6 +29,7 @@ const props = defineProps<{
   initialPanel?: string,
   selectionAvailability?: ModelSelectorItem['availability'],
   hideFirstUseDownloadHint?: boolean,
+  firstUseDownloadDestination?: string,
   query?: string,
   disabled?: boolean,
   clearLabel?: string,
@@ -36,8 +37,10 @@ const props = defineProps<{
   invalid?: boolean,
   surface?: 'default' | 'composer' | 'sidebar' | 'settings',
   frame?: 'standalone' | 'embedded',
+  triggerSize?: 'compact',
   popupPresentation?: 'floating' | 'inline',
   chevronVisibility?: 'visible' | 'hidden',
+  refreshVisibility?: 'visible' | 'hidden',
   inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   modelSelection?: 'available' | 'unavailable',
 }>();
@@ -52,6 +55,7 @@ const emit = defineEmits<{
 const slots = useSlots();
 provideModelSelectorHuggingFaceSearchState();
 const triggerDetailId = useId();
+const firstUseHintId = useId();
 const modelSelectionUnavailable = computed(() => props.disabled || props.modelSelection === 'unavailable');
 // Providers own the inventory and external requests. Typing in this component
 // only filters these supplied values; it never authorizes a network request.
@@ -59,6 +63,7 @@ const modelIndex = computed(() => new Map(props.models.map(model => [model.id, m
 const availableModels = computed(() => props.models.map(model => model.id));
 const isFetchingModels = computed(() => !!props.loading);
 const selectedModel = computed(() => props.modelValue === undefined ? undefined : modelIndex.value.get(props.modelValue));
+const showFirstUseHint = computed(() => !props.hideFirstUseDownloadHint && (props.selectionAvailability ?? selectedModel.value?.availability) === 'download_required');
 
 function modelLabel({ model }: { model: string }): string {
   return modelIndex.value.get(model)?.label ?? model;
@@ -462,6 +467,10 @@ function handleDropdownKeydown({ event }: { event: KeyboardEvent }): void {
   case 'inline':
     // Inline menus live under the trigger's root key handler. Handle each key
     // once, and let a popup Escape close the menu before its containing dialog.
+    // The containing dialog still owns focus traversal with Tab.
+    if (event.key === 'Tab') {
+      return;
+    }
     event.stopPropagation();
     break;
   case 'floating':
@@ -579,7 +588,7 @@ defineExpose({
       :aria-label="surface === 'settings' || inheritedModel ? [displayModelName, modelValue ? undefined : inheritedModel?.source?.description].filter(Boolean).join(' · ') : undefined"
       :aria-expanded="isOpen"
       aria-haspopup="dialog"
-      :aria-describedby="$slots['trigger-detail'] ? triggerDetailId : undefined"
+      :aria-describedby="[$slots['trigger-detail'] ? triggerDetailId : undefined, showFirstUseHint ? firstUseHintId : undefined].filter(Boolean).join(' ') || undefined"
       :aria-busy="isFetchingModels || undefined"
       :aria-controls="isOpen ? popupId : undefined"
       @click="toggleDropdown"
@@ -588,12 +597,13 @@ defineExpose({
       :tw-class="[
         'w-full flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-200 outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
         surface === 'settings'
-          ? frame === 'embedded' ? 'min-h-[58px] rounded-none border-0 bg-transparent px-3.5 py-2.5 font-medium shadow-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30 dark:hover:bg-gray-800' : 'min-h-[60px] rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 font-medium hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800'
+          ? frame === 'embedded' ? 'min-h-[58px] rounded-none border-0 bg-transparent px-3.5 py-2.5 font-medium shadow-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30 dark:hover:bg-gray-800' : 'rounded-xl border border-gray-200 bg-white font-medium hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800'
           : surface === 'composer'
             ? 'h-9 px-2 rounded-xl font-medium bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700/50 focus-visible:ring-2 focus-visible:ring-gray-400/50'
             : surface === 'sidebar'
               ? 'flex-col items-stretch gap-1 rounded-xl border border-transparent bg-transparent px-3 py-2.5 font-semibold hover:bg-gray-100/70 dark:hover:bg-gray-800/60 focus-visible:ring-2 focus-visible:ring-blue-500/25'
               : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 font-bold focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm',
+        surface === 'settings' && frame !== 'embedded' && (triggerSize === 'compact' ? 'min-h-11 px-3 py-1' : 'min-h-[60px] px-3.5 py-2.5'),
         isOpen ? surface === 'settings' ? 'ring-2 ring-inset ring-blue-500/25' : surface === 'composer' ? 'bg-gray-100 dark:bg-gray-700/50' : surface === 'sidebar' ? 'bg-gray-100/80 dark:bg-gray-800/70' : 'ring-4 ring-blue-500/10 border-blue-500/50' : ''
       ]"
       data-testid="model-selector-trigger"
@@ -619,7 +629,11 @@ defineExpose({
             {{ modelNameParts.suffix }}
           </span>
         </div>
-        <span v-if="!hideFirstUseDownloadHint && (selectionAvailability ?? selectedModel?.availability) === 'download_required'" data-testid="chat-model-selector-download-hint" :aria-label="lazyStrings.ModelSelector__downloads_automatically()" :title="lazyStrings.ModelSelector__download_before_first_use()" tw-class="flex shrink-0 items-center gap-1 text-[10px] font-normal text-gray-400 dark:text-gray-500"><DownloadIcon aria-hidden="true" tw-class="h-3 w-3" /><span tw-class="whitespace-nowrap">{{ lazyStrings.ModelSelector__downloads_automatically() }}</span></span>
+        <span v-if="showFirstUseHint" :id="firstUseHintId" data-testid="chat-model-selector-download-hint" :title="lazyStrings.ModelSelector__download_before_first_use()" tw-class="flex shrink-0 items-center gap-1.5 text-[10px] font-normal text-gray-500 dark:text-gray-400">
+          <DownloadIcon aria-hidden="true" tw-class="h-3 w-3 shrink-0" />
+          <span tw-class="whitespace-nowrap">{{ lazyStrings.ModelSelector__downloads_automatically() }}</span>
+          <span v-if="firstUseDownloadDestination" :title="firstUseDownloadDestination" data-testid="model-selector-first-use-destination" tw-class="max-w-16 truncate rounded bg-gray-100 px-1 text-gray-600 dark:bg-gray-700/70 dark:text-gray-300">{{ firstUseDownloadDestination }}</span>
+        </span>
         <div v-if="isFetchingModels || chevronVisibility !== 'hidden'" :tw-class="['flex items-center justify-end shrink-0', surface === 'sidebar' ? 'w-9 gap-1' : 'gap-1.5 ml-1']">
           <Loader2Icon v-if="isFetchingModels" tw-class="w-3 h-3 animate-spin text-gray-400" />
           <span v-if="surface === 'sidebar' && chevronVisibility !== 'hidden'" tw-class="flex h-5 w-5 shrink-0 items-center justify-center">
@@ -650,7 +664,7 @@ defineExpose({
         data-testid="model-selector-dropdown"
         class="animate-in fade-in" :tw-class="[
           'm-0 flex flex-col p-0 bg-[var(--model-selector-panel-background)] [--model-selector-panel-background:var(--color-white)] dark:[--model-selector-panel-background:var(--color-gray-800)] [--settings-select-menu-background:var(--model-selector-panel-background)] text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden duration-200 motion-reduce:animate-none',
-          popupPresentation === 'inline' ? 'mt-1.5 w-full' : '',
+          popupPresentation === 'inline' ? 'static mt-1.5 w-full' : '',
         ]"
         :class="[
           'chat-model-selector-dialog',
@@ -713,7 +727,8 @@ defineExpose({
                   <XIcon tw-class="w-3 h-3" />
                 </button>
               </div>
-              <button type="button"
+              <button v-if="refreshVisibility !== 'hidden'"
+                      type="button"
                       data-testid="model-selector-refresh"
                       @click="handleRefresh({ event: $event })"
                       :tw-class="[
@@ -727,6 +742,7 @@ defineExpose({
               </button>
             </div>
 
+            <slot name="model-filters" />
             <!-- List -->
             <!-- Keep some list space; on very short viewports the whole panel can scroll too. -->
             <div ref="listContainerRef" data-testid="model-selector-list" class="custom-scrollbar" :tw-class="[panels?.length ? 'divide-y divide-gray-100 dark:divide-gray-800' : 'max-h-60 overflow-y-auto overscroll-contain py-1']">

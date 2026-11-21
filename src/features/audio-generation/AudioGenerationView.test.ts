@@ -1,19 +1,27 @@
 vi.mock('@/components/SettingsSelect.vue', async () => ({
   default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
 }));
-import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
-import { downloadDestinationControl } from '@/features/llama-cpp-browser/components/model-configuration.test-support';
+import LlamaCppBrowserRepositoryPicker from '@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue';
+import ModelSelectorFileImport from '@/components/ModelSelectorFileImport.vue';
+import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
+import type { DownloadJob, getDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import type { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
+import type { installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
+import type { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
+import { repositoryDefaultDownloadKey } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
+import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
+import { acquireAudioModel } from './model-acquisition';
 import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, nextTick, ref } from 'vue';
+import { defineComponent, nextTick, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import ModelSelector from '@/components/ModelSelector.vue';
+import ChatModelSelector from '@/components/ChatModelSelector.vue';
 import { useSettings } from '@/composables/useSettings';
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { setLocale } from '@/strings';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
-import type { EngineState } from '@/features/llama-cpp-browser/types';
+import type { EngineState, LocalModel } from '@/features/llama-cpp-browser/types';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { audioResult } from './test-utils/wav.test-support';
 import AudioGenerationView from './AudioGenerationView.vue';
@@ -48,20 +56,67 @@ const service = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
 }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
-vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue', () => ({
+const inventory = vi.hoisted(() => ({
+  list: vi.fn<typeof listModelInventory>(),
+  subscribe: vi.fn<({ listener }: { listener: () => void }) => () => void>(),
+  openSettings: vi.fn<typeof import('@/composables/useAppEntry').requestAppSettings>(),
+}));
+vi.mock('@/features/llama-cpp-browser/composables/model-inventory', () => ({ listModelInventory: inventory.list }));
+vi.mock('@/features/llama-cpp-browser/model-files', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/llama-cpp-browser/model-files')>();
+  return { ...actual, llamaCppBrowserModelFiles: { ...actual.llamaCppBrowserModelFiles, subscribeModelList: inventory.subscribe, inspectModelFiles: download.files } };
+});
+vi.mock('@/composables/useAppEntry', async importOriginal => ({
+  ...await importOriginal<typeof import('@/composables/useAppEntry')>(),
+  requestAppSettings: inventory.openSettings,
+}));
+vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserRuntimeSettings.vue', () => ({
   default: defineComponent({
-    name: 'LlamaCppBrowserManager',
-    props: ['suggestions'],
-    emits: ['modelsChanged', 'modelSelected', 'runtimeReady'],
+    name: 'LlamaCppBrowserRuntimeSettings',
+    props: ['disabled', 'releaseDisabled'],
+    emits: ['runtimeReady'],
     template: '<div />',
   }),
 }));
+const download = vi.hoisted(() => ({
+  enqueue: vi.fn<ReturnType<typeof getDownloadQueue>['enqueue']>(),
+  inspect: vi.fn<ReturnType<typeof getMetadataSession>['inspect']>(),
+  installed: vi.fn<typeof installedSelection>(),
+  files: vi.fn<typeof llamaCppBrowserModelFiles.inspectModelFiles>(),
+}));
+const downloadJobs = shallowRef<DownloadJob[]>([]);
+const downloadRevision = ref(0);
+vi.mock('@/features/llama-cpp-browser/hugging-face/download-queue', async importOriginal => ({
+  ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(),
+  getDownloadQueue: () => ({ jobs: downloadJobs, changed: downloadRevision, enqueue: download.enqueue }),
+}));
+vi.mock('@/features/llama-cpp-browser/hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: download.inspect }) }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/storage')>(),
+  installedSelection: download.installed,
+}));
+const defaultRepository = 'mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF';
+const defaultModelId = `hf.co/${defaultRepository}:Q4_K_M`;
+const defaultMain = { path: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', size: 361 };
+const defaultCompanion = { path: 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf', size: 401 };
+const defaultCatalog = {
+  repository: defaultRepository,
+  revision: 'a'.repeat(40),
+  models: [{ label: 'Q4_K_M', size: defaultMain.size, files: [defaultMain] }],
+  projectors: [defaultCompanion],
+};
 const urls = { create: vi.fn(), revoke: vi.fn() };
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
   vi.resetAllMocks();
   useSettings().TEST_ONLY.__testOnlyReset();
+  inventory.list.mockResolvedValue([]);
+  downloadJobs.value = [];
+  downloadRevision.value = 0;
+  download.inspect.mockResolvedValue(defaultCatalog);
+  download.installed.mockResolvedValue(undefined);
+  inventory.subscribe.mockReturnValue(() => {});
   service.getState.mockReturnValue({ status: 'idle' });
   service.getOptions.mockReturnValue({ profile: 'cpu-wasm32' });
   service.restartRuntime.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
@@ -84,13 +139,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+async function loadInventory({ view, entries, ready }: { view: VueWrapper, entries: LocalModel[], ready: boolean }): Promise<void> {
+  inventory.list.mockResolvedValue(entries);
+  inventory.subscribe.mock.lastCall?.[0].listener();
+  view.getComponent({ name: 'LlamaCppBrowserRuntimeSettings' }).vm.$emit('runtimeReady', ready);
+  await flushPromises();
+}
+
 async function ready(): Promise<VueWrapper> {
   wrapper = mount(AudioGenerationView);
-  const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
-  manager.vm.$emit('modelsChanged', [{ modelId: 'user/voice', size: 100, importedAt: 1 }]);
-  manager.vm.$emit('runtimeReady', true);
-  manager.vm.$emit('modelSelected', 'user/voice');
-  await nextTick();
+  await loadInventory({ view: wrapper, entries: [{ modelId: 'user/voice', size: 100, importedAt: 1 }], ready: true });
   await wrapper.get('[data-testid="audio-text"]').setValue('Hello');
   return wrapper;
 }
@@ -104,13 +162,193 @@ function notify({ state }: { state: EngineState }): void {
   service.subscribe.mock.calls[0]?.[0].listener({ state });
 }
 
+describe('first-use audio model download', () => {
+  it('shows a compact first-use hint beside the destination and starts only after a valid Generate', async () => {
+    wrapper = mount(AudioGenerationView);
+    const view = wrapper;
+    await loadInventory({ view, entries: [], ready: true });
+    const picker = view.getComponent(ChatModelSelector);
+    expect(picker.props('modelValue')).toBe(defaultModelId);
+    expect(picker.get('[data-testid="model-selector-trigger"]').classes()).toContain('min-h-11');
+    const hint = picker.get('[data-testid="chat-model-selector-download-hint"]');
+    expect(hint.get('[data-testid="model-selector-first-use-destination"]').text()).toBe('OPFS');
+    expect(picker.get('[data-testid="model-selector-trigger"]').attributes('aria-describedby')).toBe(hint.attributes('id'));
+    expect(download.inspect).not.toHaveBeenCalled();
+    expect(download.enqueue).not.toHaveBeenCalled();
+
+    await submit({ view });
+    expect(view.find('[data-testid="audio-error"]').exists()).toBe(true);
+    expect(download.enqueue).not.toHaveBeenCalled();
+    const transfer = Promise.withResolvers<void>();
+    using _release = { [Symbol.dispose]: () => transfer.resolve() };
+    download.installed.mockResolvedValue({ modelId: defaultModelId, size: 762, importedAt: 1 });
+    download.enqueue.mockImplementationOnce(({ key, repository, source, destination, prepare }) => ({
+      id: 5,
+      done: prepare({ signal: new AbortController().signal }).then(async selection => {
+        const identity = { id: 5, key, repository, source, destination: destination ?? { kind: 'opfs' as const }, selection, error: undefined };
+        downloadJobs.value = [{ ...identity, status: 'downloading', progress: { phase: 'transferring', completed: 381, processed: 381, total: 762 } }];
+        await transfer.promise;
+        return { ...identity, status: 'complete', progress: undefined };
+      }),
+    }));
+    await view.get('[data-testid="audio-text"]').setValue('Hello, this is Naidan.');
+    await submit({ view });
+    expect(download.inspect).toHaveBeenCalledOnce();
+    expect(download.enqueue).toHaveBeenCalledWith(expect.objectContaining({ repository: defaultRepository, destination: { kind: 'opfs' } }));
+    expect(service.generateAudio).not.toHaveBeenCalled();
+    expect(view.get('[data-testid="audio-model-download-progress"]').text()).toContain('50%');
+    transfer.resolve();
+    await flushPromises();
+    expect(download.installed).toHaveBeenCalledWith({
+      destination: { kind: 'opfs' },
+      expectedRoot: undefined,
+      selection: { repository: defaultRepository, revision: defaultCatalog.revision, files: [defaultMain, defaultCompanion] },
+    });
+    expect(service.generateAudio).toHaveBeenCalledOnce();
+    expect(service.generateAudio.mock.calls[0]?.[0].input.modelId).toBe(defaultModelId);
+    expect(picker.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(false);
+    expect(view.find('[data-testid="audio-history"]').exists()).toBe(true);
+  });
+
+  it('joins the same default model already downloading from a search row', async () => {
+    wrapper = mount(AudioGenerationView);
+    const view = wrapper;
+    await loadInventory({ view, entries: [], ready: true });
+    await view.get('[data-testid="audio-text"]').setValue('Hello');
+    const key = repositoryDefaultDownloadKey({ repository: defaultRepository, usage: 'audio-generation' });
+    const selection = { repository: defaultRepository, revision: defaultCatalog.revision, files: [defaultMain, defaultCompanion] };
+    const joined: DownloadJob = {
+      id: 8,
+      key,
+      repository: defaultRepository,
+      source: 'repository',
+      destination: { kind: 'opfs' },
+      status: 'downloading',
+      selection,
+      progress: undefined,
+      error: undefined,
+    };
+    downloadJobs.value = [joined];
+    download.enqueue.mockReturnValueOnce({ id: joined.id, done: Promise.resolve({ ...joined, status: 'complete', selection }) });
+    download.installed.mockResolvedValue({ modelId: defaultModelId, size: 762, importedAt: 1 });
+    await nextTick();
+    expect(view.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(false);
+    await submit({ view });
+    expect(download.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key }));
+    expect(download.inspect).not.toHaveBeenCalled();
+    expect(service.generateAudio).toHaveBeenCalledOnce();
+  });
+
+  it('retains the hint and downloads the selected quantization if a search job is fetching another one', async () => {
+    wrapper = mount(AudioGenerationView);
+    const view = wrapper;
+    await loadInventory({ view, entries: [], ready: true });
+    await view.get('[data-testid="audio-text"]').setValue('Hello');
+    const searchKey = repositoryDefaultDownloadKey({ repository: defaultRepository, usage: 'audio-generation' });
+    const selection = { repository: defaultRepository, revision: defaultCatalog.revision, files: [defaultMain, defaultCompanion] };
+    downloadJobs.value = [{
+      id: 8,
+      key: searchKey,
+      repository: defaultRepository,
+      source: 'repository',
+      destination: { kind: 'opfs' },
+      status: 'downloading',
+      selection: { ...selection, files: [{ path: 'Qwen3-TTS-12Hz-0.6B-Base.Q8_0.gguf', size: 646 }, defaultCompanion] },
+      progress: undefined,
+      error: undefined,
+    }];
+    download.enqueue.mockImplementationOnce(({ key, repository, source, destination }) => ({
+      id: 9,
+      done: Promise.resolve({ id: 9, key, repository, source, destination: destination ?? { kind: 'opfs' }, status: 'complete', selection, progress: undefined, error: undefined }),
+    }));
+    download.installed.mockResolvedValue({ modelId: defaultModelId, size: 762, importedAt: 1 });
+    await nextTick();
+    expect(view.find('[data-testid="chat-model-selector-download-hint"]').exists()).toBe(true);
+    await submit({ view });
+    expect(download.enqueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key: expect.not.stringMatching(searchKey) }));
+    expect(service.generateAudio).toHaveBeenCalledOnce();
+  });
+
+  it.each(['already-readable', 'read-grant-expired'] as const)('reuses a linked model when access is %s', async access => {
+    const files = { repository: defaultRepository, revision: defaultCatalog.revision, files: [defaultMain, defaultCompanion] };
+    const target = targetForSelection({ selection: files });
+    const destination = { kind: 'host' as const, directoryId: 'models' };
+    const model = { modelId: `host/models/${defaultRepository}:Q4_K_M`, size: 762, importedAt: 1 };
+    const authorizeDestination = vi.fn(async () => ({ destination, expectedRoot: undefined }));
+    switch (access) {
+    case 'already-readable':
+      authorizeDestination.mockRejectedValueOnce(new Error('Write permission denied'));
+      break;
+    case 'read-grant-expired':
+      download.installed.mockRejectedValueOnce(new Error('Read permission expired'));
+      break;
+    default: throw new Error(String(access satisfies never));
+    }
+    download.installed.mockResolvedValue(model);
+    const pending = acquireAudioModel({
+      selection: { modelId: target.modelId, source: { kind: 'resolved', target }, destination, authorizeDestination },
+      models: [],
+      signal: new AbortController().signal,
+      onDownload: vi.fn(),
+    });
+    expect(authorizeDestination).toHaveBeenCalledOnce();
+    await expect(pending).resolves.toEqual(model);
+    expect(download.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('lets the user pick another catalog model without fetching it', async () => {
+    wrapper = mount(AudioGenerationView);
+    const view = wrapper;
+    await loadInventory({ view, entries: [], ready: true });
+    await view.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const popup = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
+    await popup.get('[data-testid="chat-model-suggestion-choose"][aria-label="Qwen3-TTS 1.7B Base"]').trigger('click');
+    await flushPromises();
+    expect(view.getComponent(ChatModelSelector).props('modelValue')).toBe('hf.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF:Q4_K_M');
+    expect(download.inspect).not.toHaveBeenCalled();
+    expect(download.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('cancels the generation wait even if the shared download finishes afterwards', async () => {
+    wrapper = mount(AudioGenerationView);
+    const view = wrapper;
+    await loadInventory({ view, entries: [], ready: true });
+    await view.get('[data-testid="audio-text"]').setValue('Hello');
+    const transfer = Promise.withResolvers<DownloadJob>();
+    download.enqueue.mockReturnValueOnce({ id: 7, done: transfer.promise });
+    await submit({ view });
+    await view.get('[data-testid="audio-stop"]').trigger('click');
+    await flushPromises();
+    expect(view.find('[data-testid="audio-stopped"]').exists()).toBe(true);
+    transfer.resolve({
+      id: 7,
+      key: 'download',
+      repository: defaultRepository,
+      source: 'repository',
+      destination: { kind: 'opfs' },
+      status: 'complete',
+      selection: { repository: defaultRepository, revision: defaultCatalog.revision, files: [defaultMain, defaultCompanion] },
+      progress: undefined,
+      error: undefined,
+    });
+    await flushPromises();
+    expect(service.generateAudio).not.toHaveBeenCalled();
+  });
+});
+
 describe('independent audio generation screen', () => {
-  it('does not generate on mount and hides chat suggestions without changing chat options', async () => {
+  it('loads local models on mount while runtime settings are collapsed, without changing chat options', async () => {
     const view = await ready();
-    expect(view.findComponent({ name: 'LlamaCppBrowserManager' }).props('suggestions')).toBe('none');
+    expect(inventory.list).toHaveBeenCalled();
+    expect(view.get<HTMLDetailsElement>('[data-testid="audio-runtime-settings"]').element.open).toBe(false);
     expect(service.generateAudio).not.toHaveBeenCalled();
     expect(service.setOptions).not.toHaveBeenCalled();
-    expect(view.findComponent(ModelSelector).props('modelValue')).toBe('user/voice');
+    expect(view.getComponent(ChatModelSelector).props('modelValue')).toBe('user/voice');
+    await submit({ view });
+    expect(service.generateAudio.mock.calls[0]?.[0].input.modelId).toBe('user/voice');
+    expect(download.inspect).not.toHaveBeenCalled();
+    expect(download.enqueue).not.toHaveBeenCalled();
   });
 
   it('starts with the interface language and displays localized/native names', async () => {
@@ -158,10 +396,15 @@ describe('independent audio generation screen', () => {
     expect(select.element.value).toBe('auto');
   });
 
-  it('renders separate feature-scoped scrolling containers', async () => {
+  it('keeps runtime options next to the generation controls and opens existing model management', async () => {
     const view = await ready();
     expect(view.get('[data-testid="audio-generation-scroll"]').find('[data-testid="audio-generation-page"]').exists()).toBe(true);
-    expect(view.get('[data-testid="audio-model-manager"]').find('[data-testid="audio-model-manager-scroll"]').exists()).toBe(true);
+    const settings = view.get('[data-testid="audio-runtime-settings"]');
+    expect(view.get('form').element.contains(settings.element)).toBe(true);
+    expect(view.get('form').element.nextElementSibling?.id).toBe('audio-generation-results');
+    const manage = settings.get('[data-testid="audio-open-model-management"]');
+    await manage.trigger('click');
+    expect(inventory.openSettings).toHaveBeenCalledWith({ tab: 'llama_cpp_browser', opener: manage.element });
   });
 
   it('reveals hash sections without replacing the input or cancelling an active generation', async () => {
@@ -180,11 +423,7 @@ describe('independent audio generation screen', () => {
     const view = mounted.view;
     expect(document.activeElement).toBe(view.get('#audio-generation-results').element);
     expect(view.find('[data-testid="audio-history"]').exists()).toBe(false);
-    const manager = view.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('modelsChanged', [{ modelId: 'user/voice', size: 100, importedAt: 1 }]);
-    manager.vm.$emit('runtimeReady', true);
-    manager.vm.$emit('modelSelected', 'user/voice');
-    await nextTick();
+    await loadInventory({ view, entries: [{ modelId: 'user/voice', size: 100, importedAt: 1 }], ready: true });
     const input = view.get('[data-testid="audio-text"]');
     await input.setValue('Keep this input');
     using gate = {
@@ -196,7 +435,7 @@ describe('independent audio generation screen', () => {
     service.generateAudio.mockReturnValue(gate.promise);
     await submit({ view });
     const signal = service.generateAudio.mock.calls[0]![0].cancellationSignal;
-    const details = view.get<HTMLDetailsElement>('[data-testid="audio-model-manager"]');
+    const details = view.get<HTMLDetailsElement>('[data-testid="audio-runtime-settings"]');
     details.element.open = false;
     await router.push('/audio-generation#audio-generation-models');
     await flushPromises();
@@ -266,18 +505,24 @@ describe('independent audio generation screen', () => {
     expect(view.find('[data-testid="audio-truncated"]').exists()).toBe(false);
   });
 
-  it.each(['user/voice', 'hf.co/owner/Voice-GGUF:Q8_0', 'host/MyModels1/owner/Voice-GGUF:Q8_0', 'temp/Voice-GGUF'])('selects, generates and displays the same readable modelId: %s', async modelId => {
+  it.each([
+    { modelId: 'user/voice', source: 'user', name: 'voice' },
+    { modelId: 'hf.co/owner/Voice-GGUF:Q8_0', source: 'hf.co/owner', name: 'Voice-GGUF:Q8_0' },
+    { modelId: 'host/MyModels1/owner/Voice-GGUF:Q8_0', source: 'host/MyModels1/owner', name: 'Voice-GGUF:Q8_0' },
+    { modelId: 'temp/Voice-GGUF', source: 'temp', name: 'Voice-GGUF' },
+  ])('selects, generates and displays the same readable modelId: $modelId', async ({ modelId, source, name }) => {
     wrapper = mount(AudioGenerationView);
-    const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('modelsChanged', [{ modelId, size: 100, importedAt: 1 }]);
-    manager.vm.$emit('runtimeReady', true);
-    manager.vm.$emit('modelSelected', modelId);
+    await loadInventory({ view: wrapper, entries: [{ modelId, size: 100, importedAt: 1 }], ready: true });
     await flushPromises();
     expect(detection.inspect).toHaveBeenCalledWith({ modelId, signal: expect.any(AbortSignal) });
-    const selector = wrapper.findComponent(ModelSelector);
+    const selector = wrapper.getComponent(ChatModelSelector);
     expect(selector.props('modelValue')).toBe(modelId);
-    expect(selector.props('models')).toEqual([modelId]);
-    expect(selector.props('modelLabels')).toBeUndefined();
+    expect(selector.props('models')).toEqual([{ id: modelId, label: modelId, description: undefined, availability: 'local' }]);
+    const trigger = selector.get('[data-testid="model-selector-trigger"]');
+    expect(trigger.attributes('title')).toBe(modelId);
+    const metadata = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+    expect(metadata.element.previousElementSibling?.textContent).toBe(name);
+    expect(metadata.text()).toBe(source);
     await wrapper.get('[data-testid="audio-text"]').setValue('Hello');
     await submit({ view: wrapper });
     expect(service.generateAudio.mock.calls[0]![0].input.modelId).toBe(modelId);
@@ -301,12 +546,12 @@ describe('independent audio generation screen', () => {
 
   it('waits for runtime availability and avoids starting alongside another active operation', async () => {
     const view = await ready();
-    const manager = view.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('runtimeReady', false);
+    const runtime = view.getComponent({ name: 'LlamaCppBrowserRuntimeSettings' });
+    runtime.vm.$emit('runtimeReady', false);
     await nextTick();
     await submit({ view });
     expect(service.generateAudio).not.toHaveBeenCalled();
-    manager.vm.$emit('runtimeReady', true);
+    runtime.vm.$emit('runtimeReady', true);
     notify({ state: { status: 'working', progress: { phase: 'generating', completed: 1, total: 10 } } });
     await nextTick();
     await submit({ view });
@@ -315,10 +560,10 @@ describe('independent audio generation screen', () => {
 
   it('clears a selection whose model was removed', async () => {
     const view = await ready();
-    view.findComponent({ name: 'LlamaCppBrowserManager' }).vm.$emit('modelsChanged', []);
-    await nextTick();
-    await submit({ view });
+    await loadInventory({ view, entries: [], ready: true });
+    expect(view.getComponent(ChatModelSelector).props('modelValue')).toBe(defaultModelId);
     expect(service.generateAudio).not.toHaveBeenCalled();
+    expect(download.enqueue).not.toHaveBeenCalled();
   });
 
   it('accepts a reference and lets the user clear it without retaining it elsewhere', async () => {
@@ -411,17 +656,19 @@ describe('audio candidates and in-memory history in the view', () => {
     detection.inspect.mockImplementation(async ({ modelId }) => modelId === 'user/chat'
       ? { status: 'unverified', reason: 'architecture' } : { status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
     wrapper = mount(AudioGenerationView);
-    const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('modelsChanged', [{ modelId: 'user/chat', size: 10, importedAt: 1 }, { modelId: 'user/voice', size: 100, importedAt: 1 }]);
-    manager.vm.$emit('runtimeReady', true);
-    await flushPromises();
-    const select = wrapper.findComponent(ModelSelector);
+    await loadInventory({ view: wrapper, entries: [{ modelId: 'user/chat', size: 10, importedAt: 1 }, { modelId: 'user/voice', size: 100, importedAt: 1 }], ready: true });
+    const select = wrapper.getComponent(ChatModelSelector);
     expect(select.props('modelValue')).toBe('user/voice');
-    expect(select.props('models')).toEqual(['user/voice']);
-    await wrapper.get('[data-testid="audio-all-models"]').setValue(true);
-    expect(select.props('models')).toEqual(['user/chat', 'user/voice']);
-    select.vm.$emit('update:modelValue', 'user/chat');
-    await nextTick();
+    expect(select.props('models').map(model => model.id)).toEqual(['user/voice']);
+    await select.get('[data-testid="model-selector-trigger"]').trigger('click');
+    const popup = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
+    await popup.get('[data-testid="audio-all-models"]').setValue(true);
+    expect(select.props('models').map(model => model.id)).toEqual(['user/chat', 'user/voice']);
+    inventory.list.mockClear();
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    expect(inventory.list).toHaveBeenCalledOnce();
+    await popup.get('[data-testid="model-selector-option"][title="user/chat"]').trigger('click');
     await wrapper.get('[data-testid="audio-text"]').setValue('Unknown candidate');
     await submit({ view: wrapper });
     expect(service.generateAudio.mock.calls[0]![0].input.modelId).toBe('user/chat');
@@ -431,14 +678,16 @@ describe('audio candidates and in-memory history in the view', () => {
   it('keeps the escape hatch accessible when no metadata can be read', async () => {
     detection.inspect.mockRejectedValue(new Error('storage temporarily unavailable'));
     wrapper = mount(AudioGenerationView);
-    const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('modelsChanged', [{ modelId: 'user/model', size: 100, importedAt: 1 }]);
-    await flushPromises();
-    expect(wrapper.findComponent(ModelSelector).props('modelValue')).toBeUndefined();
-    await wrapper.get('[data-testid="audio-show-all"]').trigger('click');
-    wrapper.findComponent(ModelSelector).vm.$emit('update:modelValue', 'user/model');
+    await loadInventory({ view: wrapper, entries: [{ modelId: 'user/model', size: 100, importedAt: 1 }], ready: true });
+    const select = wrapper.getComponent(ChatModelSelector);
+    expect(select.props('modelValue')).toBe(defaultModelId);
+    await select.get('[data-testid="model-selector-trigger"]').trigger('click');
+    const popup = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
+    await popup.get('[data-testid="chat-model-selector-tabs"]').findAll('button')[1]!.trigger('click');
+    await popup.get('[data-testid="audio-all-models"]').setValue(true);
+    await popup.get('[data-testid="model-selector-option"][title="user/model"]').trigger('click');
     await nextTick();
-    expect(wrapper.findComponent(ModelSelector).props('modelValue')).toBe('user/model');
+    expect(select.props('modelValue')).toBe('user/model');
   });
 
   it('retains old audio during a pending generation, a failed attempt and invalid input', async () => {
@@ -531,8 +780,8 @@ describe('non-destructive runtime recovery in the audio workspace', () => {
     await submit({ view });
     service.generateAudio.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
     await submit({ view });
-    const manager = view.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('runtimeReady', false);
+    const runtime = view.getComponent({ name: 'LlamaCppBrowserRuntimeSettings' });
+    runtime.vm.$emit('runtimeReady', false);
     notify({ state: { status: 'error', code: 'worker-failed' } });
     await nextTick();
     expect(view.get('[data-testid="audio-generate"]').attributes('disabled')).toBeDefined();
@@ -542,7 +791,7 @@ describe('non-destructive runtime recovery in the audio workspace', () => {
     expect(view.get('[data-testid="audio-restart-runtime"]').attributes('disabled')).toBeDefined();
     expect(view.findAll('[data-testid="audio-result"]')).toHaveLength(1);
     pending.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
-    manager.vm.$emit('runtimeReady', true);
+    runtime.vm.$emit('runtimeReady', true);
     notify({ state: { status: 'idle' } });
     await flushPromises();
     expect(view.get('[data-testid="audio-generate"]').attributes('disabled')).toBeUndefined();
@@ -652,17 +901,38 @@ it('can cancel pending browser reference decoding before entering the inference 
 });
 
 describe('catalog placement and continuing previews', () => {
-  it('places the original catalog outside the model/runtime details and configures audio-only entries', async () => {
-    const view = await ready();
-    const catalog = view.findComponent(LlamaCppBrowserModelSuggestions);
-    expect(catalog.exists()).toBe(true);
+  it('offers the audio catalog, saved models, Hugging Face and file imports in one picker', async () => {
+    wrapper = mount(AudioGenerationView);
+    await flushPromises();
+    const picker = wrapper.getComponent(ChatModelSelector);
+    expect(wrapper.findComponent(LlamaCppBrowserRepositoryPicker).exists()).toBe(false);
+    await picker.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const popup = new DOMWrapper(document.body).get('[data-testid="model-selector-dropdown"]');
+    const tabs = popup.get('[data-testid="chat-model-selector-tabs"]').findAll('button');
+    expect(tabs.map(tab => tab.attributes('aria-pressed'))).toEqual(['true', 'false', 'false', 'false']);
+    const catalog = picker.getComponent(LlamaCppBrowserRepositoryPicker);
     expect(catalog.props('suggestions')).toEqual(audioModelCatalog);
-    expect(catalog.props('selectionAction')).toBe('select');
-    expect(downloadDestinationControl({ view: catalog }).props('modelValue')).toBe('opfs');
-    expect(catalog.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
-    expect(catalog.element.closest('[data-testid="audio-model-manager"]')).toBeNull();
-    expect(view.get('[data-testid="audio-model-manager"]').findComponent(LlamaCppBrowserModelSuggestions).exists()).toBe(false);
-    expect(view.find('[data-testid="llama-repository-catalog"]').exists()).toBe(false);
+    expect(catalog.props('layout')).toBe('candidate-results');
+    expect(popup.text()).toContain('Qwen3-TTS 0.6B Base');
+    expect(popup.text()).toContain('Qwen3-TTS 1.7B Base');
+    expect(popup.text()).not.toContain('Gemma');
+    await tabs[2]!.trigger('click');
+    await flushPromises();
+    expect(picker.findAllComponents(LlamaCppBrowserRepositoryPicker).some(source => source.props('layout') === 'inline-results' && !source.props('disabled'))).toBe(true);
+    await tabs[3]!.trigger('click');
+    await flushPromises();
+    const files = picker.getComponent(ModelSelectorFileImport);
+    const imported = { modelId: '~user/voice', size: 100, importedAt: 1 };
+    expect(picker.props('modelValue')).toBe(defaultModelId);
+    inventory.list.mockResolvedValue([imported]);
+    files.vm.$emit('inventory-changed');
+    await flushPromises();
+    expect(picker.props('models').some(option => option.id === imported.modelId)).toBe(true);
+    files.vm.$emit('choose', imported);
+    await flushPromises();
+    expect(picker.props('modelValue')).toBe(imported.modelId);
+    expect(service.generateAudio).not.toHaveBeenCalled();
   });
 
   it('adds repeated previews with their actual step counts and original settings without ending the request', async () => {

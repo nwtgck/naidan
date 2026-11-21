@@ -60,7 +60,6 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     Layers: true,
     MessageSquareQuote: true,
     LmParametersEditor: true,
-    ModelSelector: true,
     'router-link': true,
   };
 

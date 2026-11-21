@@ -47,7 +47,7 @@ export function resolveSuggestionPlan({ quantization, catalog, multimodal }: { q
 }
 
 /** Find a public selection to inspect locally; its file role still needs verification. */
-export function findLocalSuggestedModel({ quantization, models, destination }: { quantization: SuggestedQuantization, models: readonly LocalModel[], destination?: ModelDestination }): LocalModel | undefined {
+export function findLocalSuggestedModel({ quantization, models, destination }: { quantization: Pick<SuggestedQuantization, 'hfRepository' | 'preferredQuantization'>, models: readonly LocalModel[], destination?: ModelDestination }): LocalModel | undefined {
   const target = destination ?? { kind: 'opfs' };
   const matches = models.filter(model => {
     try {

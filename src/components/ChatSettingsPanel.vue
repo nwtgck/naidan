@@ -53,7 +53,6 @@ import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vu
 import { endpointTypeLabel, endpointTypeDescription, endpointUrlPlaceholder } from './endpoint-type-label';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
-import ModelSelector from './ModelSelector.vue';
 import DefaultChatModelSelector from './DefaultChatModelSelector.vue';
 import SettingsSelect from './SettingsSelect.vue';
 import EndpointPresetButtons from './EndpointPresetButtons.vue';
@@ -1042,6 +1041,9 @@ function setLocalTitleModelId({
 }: {
   modelId: string | undefined,
 }): void {
+  if (editingChatId.value !== currentChatId.value) {
+    return;
+  }
   const titleGeneration = localTitleGeneration.value;
   if (titleGeneration === 'inherit') {
     if (modelId === undefined || modelId === '') {
@@ -1963,7 +1965,25 @@ function handleModalKeydown({ event }: { event: KeyboardEvent }) {
               <div v-if="localTitleGenerationMode !== 'disabled'" tw-class="space-y-4">
                 <div tw-class="grid min-w-0 grid-cols-1 items-start gap-4 sm:grid-cols-2">
                   <div tw-class="min-w-0 space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__title_endpoint_type() }}</span><SettingsSelect :model-value="localTitleEndpointSelectValue" :options="titleEndpointChoices" :label="lazyStrings.ChatSettingsPanel__title_endpoint_type()" @update:model-value="value => changeTitleType({ value })" data-testid="chat-setting-title-endpoint-type-select" /></div>
-                  <div tw-class="min-w-0 space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__title_model_override() }}</span><ModelSelector surface="settings" :placeholder="localTitleEndpointUsesInheritance && titleInheritedEndpoint === undefined ? lazyStrings.ChatSettingsPanel__disabled() : undefined" :clear-label="localTitleEndpointUsesInheritance && titleInheritedEndpoint === undefined ? lazyStrings.ChatSettingsPanel__disabled() : undefined" :model-value="localTitleEndpointUsesInheritance ? undefined : localTitleModelId" :inherited-model="titleModelPresentation" :models="titleModelOptions" :loading="titleModelLoading" :allow-clear="localTitleEndpointUsesInheritance || localTitleEndpointUsesSameScope" :disabled="effectiveTitleEndpoint.type === 'browser_provided_lm'" @update:model-value="value => setLocalTitleModelId({ modelId: value })" @refresh="fetchTitleEndpointModels" data-testid="chat-setting-title-model-select" /></div>
+                  <div tw-class="min-w-0 space-y-2">
+                    <span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__title_model_override() }}</span>
+                    <DefaultChatModelSelector
+                      :key="currentChatId === undefined ? undefined : idToRaw({ id: currentChatId })"
+                      surface="settings"
+                      :placeholder="localTitleEndpointUsesInheritance && titleInheritedEndpoint === undefined ? lazyStrings.ChatSettingsPanel__disabled() : undefined"
+                      :clear-label="localTitleEndpointUsesInheritance && titleInheritedEndpoint === undefined ? lazyStrings.ChatSettingsPanel__disabled() : undefined"
+                      :model-value="localTitleEndpointUsesInheritance ? undefined : localTitleModelId"
+                      :inherited-model="titleModelPresentation"
+                      :model-ids="titleModelOptions"
+                      :endpoint-type="effectiveTitleEndpoint.type"
+                      :loading="titleModelLoading"
+                      :allow-clear="localTitleEndpointUsesInheritance || localTitleEndpointUsesSameScope"
+                      :disabled="effectiveTitleEndpoint.type === 'browser_provided_lm'"
+                      :select-model="setLocalTitleModelId"
+                      :refresh-models="fetchTitleEndpointModels"
+                      data-testid="chat-setting-title-model-select"
+                    />
+                  </div>
                 </div>
                 <ReasoningSettings :selected-effort="reasoningEffortFromTitleReasoningValue({ value: localTitleReasoningSelectValue })" :selected-value="localTitleReasoningSelectValue" :leading-options="titleReasoningLeadingOptions" :heading="lazyStrings.ChatSettingsPanel__title_reasoning()" surface="plain" notice="inline-help" @update:value="value => setLocalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })" data-testid="chat-setting-title-reasoning-select" />
                 <RpcRegistrationSelect surface="settings" v-if="localTitleEndpoint !== 'inherit' && localTitleEndpoint !== 'same_scope' && localTitleEndpoint.type === 'naidan_rpc'" :model-value="localTitleEndpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: true })" />

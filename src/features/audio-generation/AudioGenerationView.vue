@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import SettingsSelectScope from '@/components/SettingsSelectScope.vue';
 import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
+import { computed, defineAsyncComponent, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { routeLocationKey } from 'vue-router';
 import { AudioLinesIcon, ChevronRightIcon, FolderOpenIcon, Loader2Icon, RefreshCcwIcon, SlidersHorizontalIcon } from 'lucide-vue-next';
 import { currentLocale, lazyStrings } from '@/strings';
 import { audioLanguageOptions, defaultAudioLanguage } from './languages';
 import { audioFieldLabel, audioFieldValidationMessage, audioValidationFields } from './validation';
-import LlamaCppBrowserManager from '@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue';
+import LlamaCppBrowserRuntimeSettings from '@/features/llama-cpp-browser/components/LlamaCppBrowserRuntimeSettings.vue';
+import { listModelInventory } from '@/features/llama-cpp-browser/composables/model-inventory';
+import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
+import { findModelDownloadJob, getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { requestAppSettings } from '@/composables/useAppEntry';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
-import { errorCode, type EngineState, type ErrorCode } from '@/features/llama-cpp-browser/types';
+import { errorCode, type EngineState, type ErrorCode, type LocalModel } from '@/features/llama-cpp-browser/types';
 import { audioGenerationInputSchema, audioGenerationResultSchema, audioGenerationPreviewSchema, defaultAudioParameters } from './types';
 import { createAudioPreviewRequests } from './preview-requests';
 import { validateAudioWav } from './wav';
@@ -18,24 +22,49 @@ import { useAudioModels } from './composables/useAudioModels';
 import { captureAudioSettings, useAudioHistory } from './composables/useAudioHistory';
 import AudioHistoryResult from './components/AudioHistoryResult.vue';
 import SettingsFormSelect from '@/components/SettingsFormSelect.vue';
-import ModelSelector from '@/components/ModelSelector.vue';
-import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
-import { audioModelCatalog } from './model-catalog';
+import ChatModelSelector from '@/components/ChatModelSelector.vue';
+import type { ModelSelectorItem } from '@/components/model-selector-item';
+import { audioModelCatalog, defaultAudioModel } from './model-catalog';
+import { acquireAudioModel, audioSearchDownloadKey, matchesAudioDownload } from './model-acquisition';
+import { preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { repositoryModelDownloadIdentity, type RepositoryModelSelection } from '@/features/llama-cpp-browser/model-launch/bundled-repository-target';
+import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
+import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
 import AudioReferenceInput from './components/AudioReferenceInput.vue';
 import { revealAudioGenerationSection } from './navigation';
+
+const ModelSelectorFileImport = defineAsyncComponent(() => import('@/components/ModelSelectorFileImport.vue'));
+const RepositoryModelPicker = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserRepositoryPicker.vue'));
 
 const id = useId();
 const route = inject(routeLocationKey, undefined);
 const page = ref<HTMLElement>();
-const manager = ref<InstanceType<typeof LlamaCppBrowserManager>>();
+const addedModels = shallowRef<readonly LocalModel[]>([]);
+const downloadQueue = getDownloadQueue();
+const modelPanels = computed(() => [
+  { id: 'audio-candidates', label: lazyStrings.audioGeneration__models_for_audio_generation(), placement: 'before-models' },
+  { id: 'huggingface', label: 'Hugging Face' },
+  { id: 'files', label: lazyStrings.ModelSelector__add_files() },
+] as const);
+const inventoryRefreshing = ref(false);
+const inventoryKnown = ref(false);
+const inventoryFailed = ref(false);
+let inventoryRequest: Promise<void> | undefined;
+let inventoryController: AbortController | undefined;
+let inventoryRefreshRequested = false;
+let unsubscribeModels: (() => void) | undefined;
 const recovery = shallowRef<AbortController>();
 const { models, modelId, scope: modelScope, scanState, visibleModels, detectedCount, detections,
-  updateModels, selectModel, selectionChanged, scopeChanged, showAllModels } = useAudioModels({ inspect: inspectStoredAudioModel });
+  updateModels, selectModel, scopeChanged } = useAudioModels({ inspect: inspectStoredAudioModel });
 const { entries: history, totalBytes, append: appendHistory, remove: removeHistory, clear: clearHistory } = useAudioHistory();
 const text = ref('');
 const referenceInput = ref<InstanceType<typeof AudioReferenceInput>>();
 const referenceBusy = ref(false);
 const preparingReference = ref(false);
+const acquiringModel = ref(false);
+const activeDownloadId = ref<number>();
+const downloadFailed = ref(false);
+const chosenRepositoryModel = shallowRef<RepositoryModelSelection>();
 const parameters = ref<ReturnType<typeof defaultAudioParameters>>({ ...defaultAudioParameters(), language: defaultAudioLanguage({ locale: currentLocale.value }) });
 const form = ref<HTMLFormElement>();
 const debug = ref(false);
@@ -56,16 +85,68 @@ const previews = shallowRef<ReturnType<typeof createAudioPreviewRequests>>();
 const previewPending = ref(false);
 const finishing = ref(false);
 const stopping = ref(false);
-const canFinish = computed(() => busy.value && !preparingReference.value && !stopping.value && !finishing.value && state.value.status === 'working' && state.value.progress.phase === 'generating' && state.value.progress.completed > 0);
+const canFinish = computed(() => busy.value && !acquiringModel.value && !preparingReference.value && !stopping.value && !finishing.value && state.value.status === 'working' && state.value.progress.phase === 'generating' && state.value.progress.completed > 0);
 const stopped = ref(false);
 const invalidFields = ref<string[]>([]);
 const invalid = computed(() => invalidFields.value.length > 0);
 const failure = ref<ErrorCode>();
 const busy = computed(() => controller.value !== undefined);
 const blocked = computed(() => recovery.value !== undefined || busy.value || state.value.status === 'working');
-const canGenerate = computed(() => !blocked.value && !referenceBusy.value && runtimeReady.value && models.value.some(entry => entry.modelId === modelId.value));
+const runtimeControlsDisabled = computed(() => blocked.value || downloadQueue.jobs.value.some(job => jobIsBusy({ job })));
+const downloadDestination = useModelDownloadDestination({ blocked: () => blocked.value, changed: () => {} });
+const pendingModel = computed<RepositoryModelSelection | undefined>(() => {
+  const { destination, authorize } = downloadDestination;
+  const chosen = chosenRepositoryModel.value;
+  if (chosen !== undefined) {
+    return { ...chosen, destination: destination.value, authorizeDestination: authorize };
+  }
+  if (modelId.value) {
+    return undefined;
+  }
+  const hint = defaultAudioModel.quantizationHints[0];
+  const companion = preferredProjector({ files: hint.companionFiles ?? [] });
+  if (companion === undefined) {
+    return undefined;
+  }
+  const { hfRepository: repository, preferredQuantization: variant } = hint;
+  return {
+    modelId: `hf.co/${repository}:${variant}`,
+    source: { kind: 'bundled', repository, variant, companionPath: companion.path },
+    destination: destination.value,
+    authorizeDestination: authorize,
+  };
+});
+const selectedModelId = computed(() => pendingModel.value?.modelId ?? (modelId.value || undefined));
+const downloadProgress = computed(() => downloadQueue.jobs.value.find(job => job.id === activeDownloadId.value)?.progress);
+const selectionDownloadIsActive = computed(() => {
+  const pending = pendingModel.value;
+  if (pending === undefined) {
+    return false;
+  }
+  const { key, selection } = repositoryModelDownloadIdentity({ source: pending.source });
+  const jobs = downloadQueue.jobs.value;
+  const queued = findModelDownloadJob({ jobs, key, selection, destination: pending.destination });
+  const defaultKey = audioSearchDownloadKey({ selection: pending });
+  const defaultJob = defaultKey === undefined ? undefined
+    : findModelDownloadJob({ jobs, key: defaultKey, selection: undefined, destination: pending.destination });
+  return acquiringModel.value || jobIsBusy({ job: queued })
+    || jobIsBusy({ job: defaultJob }) && matchesAudioDownload({ selection: pending, files: defaultJob?.selection });
+});
+const canGenerate = computed(() => {
+  if (blocked.value || referenceBusy.value || !runtimeReady.value) {
+    return false;
+  }
+  if (pendingModel.value !== undefined) {
+    // Give local detection the first choice. A failed inventory must not turn
+    // a possibly installed model into an unexpected Hugging Face request.
+    return inventoryKnown.value && !inventoryFailed.value && !inventoryRefreshing.value
+      && scanState.value === 'idle' && !downloadDestination.unavailable.value && !downloadDestination.view.busy.value;
+  }
+  return models.value.some(entry => entry.modelId === modelId.value);
+});
 let disposed = false;
 let generation = 0;
+let modelChoiceRevision = 0;
 let unsubscribe: (() => void) | undefined;
 
 function revealSection(): void {
@@ -76,19 +157,96 @@ function revealSection(): void {
 
 watch(() => route?.hash, revealSection, { flush: 'post' });
 
-const selectableModelIds = computed(() => visibleModels.value.map(entry => entry.modelId));
+const modelOptions = computed<ModelSelectorItem[]>(() => visibleModels.value.map(({ modelId }) => ({
+  id: modelId,
+  label: modelId,
+  description: undefined,
+  availability: 'local',
+})));
 const selectedDetection = computed(() => detections.value.get(modelId.value));
 
-function chooseModel({ value }: { value: string | undefined }): void {
-  if (blocked.value || value === undefined || !selectableModelIds.value.includes(value)) {
+function refreshInventory(): Promise<void> {
+  if (disposed) {
+    return Promise.resolve();
+  }
+  inventoryRefreshRequested = true;
+  if (inventoryRequest !== undefined) {
+    return inventoryRequest;
+  }
+  const controller = new AbortController();
+  inventoryController = controller;
+  inventoryRefreshing.value = true;
+  inventoryRequest = Promise.resolve().then(async () => {
+    while (inventoryRefreshRequested && !controller.signal.aborted) {
+      inventoryRefreshRequested = false;
+      try {
+        const entries = await listModelInventory({ signal: controller.signal });
+        if (!controller.signal.aborted && !inventoryRefreshRequested) {
+          updateModels({ entries });
+          inventoryKnown.value = true;
+          inventoryFailed.value = false;
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          inventoryFailed.value = true;
+        }
+      }
+    }
+  }).finally(() => {
+    inventoryRequest = undefined;
+    inventoryController = undefined;
+    inventoryRefreshing.value = false;
+  });
+  return inventoryRequest;
+}
+
+watch(downloadQueue.changed, refreshInventory);
+
+function chooseModel({ modelId: chosenId }: { modelId: string | undefined }): void {
+  if (chosenId !== undefined && !blocked.value) {
+    modelChoiceRevision++;
+    selectModel({ modelId: chosenId });
+    if (modelId.value === chosenId) {
+      chosenRepositoryModel.value = undefined;
+      downloadFailed.value = false;
+      failure.value = undefined;
+    }
+  }
+}
+
+function chooseRepositoryModel({ selection, close }: { selection: RepositoryModelSelection, close: (() => void) | undefined }): void {
+  if (!blocked.value) {
+    modelChoiceRevision++;
+    chosenRepositoryModel.value = selection;
+    downloadFailed.value = false;
+    failure.value = undefined;
+    close?.();
+  }
+}
+
+async function chooseFromSource({ model, close }: { model: LocalModel, close: (() => void) | undefined }): Promise<void> {
+  if (blocked.value) {
     return;
   }
-  modelId.value = value;
-  selectionChanged();
+  const revision = ++modelChoiceRevision;
+  if (!models.value.some(entry => entry.modelId === model.modelId)) {
+    await refreshInventory();
+  }
+  if (disposed || blocked.value || modelChoiceRevision !== revision) {
+    return;
+  }
+  chooseModel({ modelId: model.modelId });
+  if (modelId.value === model.modelId) {
+    close?.();
+  }
+}
+
+function openModelManagement({ event }: { event: MouseEvent }): void {
+  requestAppSettings({ tab: 'llama_cpp_browser', opener: event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined });
 }
 
 async function restartRuntime(): Promise<void> {
-  if (blocked.value || disposed) {
+  if (runtimeControlsDisabled.value || disposed) {
     return;
   }
   const controller = new AbortController();
@@ -117,6 +275,9 @@ const progressLabel = computed(() => {
   }
   if (stopping.value) {
     return lazyStrings.audioGeneration__stopping();
+  }
+  if (acquiringModel.value) {
+    return lazyStrings.audioGeneration__preparing_model();
   }
   if (finishing.value && !(state.value.status === 'working' && state.value.progress.phase === 'decoding-audio')) {
     return lazyStrings.audioGeneration__finishing_current_step();
@@ -148,6 +309,9 @@ const progressLabel = computed(() => {
 const errorMessage = computed(() => {
   if (invalid.value) {
     return lazyStrings.audioGeneration__check_parameters();
+  }
+  if (downloadFailed.value) {
+    return lazyStrings.LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume();
   }
   const code = failure.value;
   switch (code) {
@@ -185,7 +349,7 @@ function revealInvalidField({ field }: { field: string }): void {
     }
     parent = parent.parentElement;
   }
-  // ModelSelector owns a button rather than a native select.
+  // The model picker puts the field marker on the wrapper around its trigger.
   const focusTarget = element.matches('input,select,textarea,button') ? element : element.querySelector<HTMLElement>('button');
   focusTarget?.focus({ preventScroll: true });
   element.scrollIntoView?.({ block: 'nearest' });
@@ -195,10 +359,12 @@ async function generate(): Promise<void> {
   if (!canGenerate.value) {
     return;
   }
+  const pending = pendingModel.value;
   failure.value = undefined;
+  downloadFailed.value = false;
   invalidFields.value = [];
   stopped.value = false;
-  const accepted = audioGenerationInputSchema.safeParse({ ...parameters.value, modelId: modelId.value, text: text.value, reference: undefined, debug: debug.value ? 'on' : 'off', options: llamaCppBrowserService.getOptions() });
+  const accepted = audioGenerationInputSchema.safeParse({ ...parameters.value, modelId: selectedModelId.value, text: text.value, reference: undefined, debug: debug.value ? 'on' : 'off', options: llamaCppBrowserService.getOptions() });
   if (!accepted.success) {
     invalidFields.value = audioValidationFields({ issues: accepted.error.issues });
     await nextTick();
@@ -216,14 +382,33 @@ async function generate(): Promise<void> {
   const captures = createAudioPreviewRequests();
   previews.value = captures;
   previewPending.value = false;
-  const settings = captureAudioSettings({ input: accepted.data });
   try {
+    let selectedId = input.modelId;
+    if (pending !== undefined) {
+      acquiringModel.value = true;
+      const model = await acquireAudioModel({
+        selection: pending,
+        models: models.value,
+        signal: active.signal,
+        onDownload: ({ id }) => {
+          activeDownloadId.value = id;
+        },
+      });
+      active.signal.throwIfAborted();
+      selectedId = model.modelId;
+      updateModels({ entries: [...models.value.filter(entry => entry.modelId !== model.modelId), model] });
+      selectModel({ modelId: model.modelId });
+      chosenRepositoryModel.value = undefined;
+      acquiringModel.value = false;
+      activeDownloadId.value = undefined;
+    }
+    const settings = captureAudioSettings({ input: { ...accepted.data, modelId: selectedId } });
     preparingReference.value = true;
     const reference = await referenceInput.value?.prepare({ signal: active.signal });
     active.signal.throwIfAborted();
     preparingReference.value = false;
     const result = audioGenerationResultSchema.parse(await llamaCppBrowserService.generateAudio({
-      input: { ...input, reference },
+      input: { ...input, modelId: selectedId, reference },
       cancellationSignal: active.signal,
       completionSignal: completion.signal,
       preview: {
@@ -255,6 +440,7 @@ async function generate(): Promise<void> {
     if (active.signal.aborted || code === 'aborted') {
       stopped.value = true;
     } else {
+      downloadFailed.value = acquiringModel.value;
       failure.value = preparingReference.value ? 'audio-reference-invalid' : code;
     }
   } finally {
@@ -263,6 +449,8 @@ async function generate(): Promise<void> {
         stopped.value = true;
       }
       preparingReference.value = false;
+      acquiringModel.value = false;
+      activeDownloadId.value = undefined;
       controller.value = undefined;
       completionController.value = undefined;
       previews.value = undefined;
@@ -300,6 +488,8 @@ function stop(): void {
 
 onMounted(() => {
   revealSection();
+  unsubscribeModels = llamaCppBrowserModelFiles.subscribeModelList({ listener: refreshInventory });
+  void refreshInventory();
   unsubscribe = llamaCppBrowserService.subscribe({
     listener: ({ state: next }) => {
       state.value = next;
@@ -311,6 +501,8 @@ onUnmounted(() => {
   generation++;
   recovery.value?.abort();
   controller.value?.abort();
+  inventoryController?.abort();
+  unsubscribeModels?.();
   unsubscribe?.();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -323,15 +515,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <h1 tw-class="flex items-center gap-3 text-xl font-semibold tracking-tight"><span tw-class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50/80 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><AudioLinesIcon aria-hidden="true" tw-class="h-5 w-5" /></span>{{ lazyStrings.audioGeneration__audio_generation() }}</h1>
         <p tw-class="max-w-2xl text-xs leading-6 text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__introduction() }}</p>
       </header>
-      <LlamaCppBrowserModelSuggestions :suggestions="audioModelCatalog" :models="models" :disabled="blocked" :default-model="undefined" :default-action-disabled="blocked" selection-action="select" memory-filter="hide" @select="selectModel({ modelId: $event.modelId })" />
-      <details id="audio-generation-models" :open="models.length === 0" tw-class="group/audio-manager overflow-hidden rounded-xl border border-gray-200/70 bg-white/60 dark:border-gray-800/80 dark:bg-gray-900/20" data-testid="audio-model-manager">
-        <summary tw-class="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/40 dark:text-gray-200 dark:hover:bg-gray-800/40 [&::-webkit-details-marker]:hidden"><FolderOpenIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" /><span tw-class="min-w-0 flex-1">{{ lazyStrings.audioGeneration__manage_models_and_runtime() }}</span><ChevronRightIcon aria-hidden="true" tw-class="h-6 w-6 shrink-0 rounded-lg bg-gray-100/70 p-1.5 text-gray-400 transition-transform duration-200 group-open/audio-manager:rotate-90 group-open/audio-manager:bg-blue-50 group-open/audio-manager:text-blue-500 motion-reduce:transition-none dark:bg-gray-800 dark:group-open/audio-manager:bg-blue-500/10" /></summary>
-        <div tw-class="max-h-[65dvh] min-h-0 space-y-4 overflow-y-auto overscroll-y-contain border-t border-gray-100 p-4 dark:border-gray-800" data-testid="audio-model-manager-scroll">
-          <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_setup_help() }}</p>
-          <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_support_help() }}</p>
-          <LlamaCppBrowserManager ref="manager" presentation="embedded" suggestions="none" @models-changed="updateModels({ entries: $event })" @model-selected="selectModel({ modelId: $event })" @runtime-ready="runtimeReady = $event" />
-        </div>
-      </details>
       <form id="audio-generation-input" ref="form" tabindex="-1" novalidate @submit.prevent="generate" tw-class="space-y-5">
         <div v-if="invalid || failure" role="alert" data-testid="audio-error" tw-class="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/10 p-4 text-sm text-red-700 dark:text-red-400">
           <p>{{ errorMessage }}</p>
@@ -343,16 +526,62 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <fieldset :disabled="blocked" tw-class="min-w-0 space-y-5 rounded-2xl border border-gray-200/70 bg-white/70 p-4 disabled:opacity-60 sm:p-5 dark:border-gray-800/80 dark:bg-gray-900/40">
           <div tw-class="space-y-2">
             <label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__audio_model() }}</label>
-            <ModelSelector :input-id="`${id}-model`" :model-value="modelId || undefined" :models="selectableModelIds" :loading="scanState === 'scanning'" :disabled="blocked" :invalid="invalidFields.includes('modelId')" :placeholder="lazyStrings.audioGeneration__choose_model()" data-testid="audio-model" data-audio-field="modelId" @update:model-value="chooseModel({ value: $event })" @refresh="manager?.refresh()" />
-            <p v-if="scanState === 'scanning'" role="status" data-testid="audio-model-scanning" tw-class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-3 w-3 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__checking_local_model_metadata() }}</p>
-            <p v-else-if="detectedCount === 0" data-testid="audio-no-detected-models" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_audio_models_detected() }} <button type="button" @click="showAllModels" data-testid="audio-show-all" tw-class="underline text-blue-600 dark:text-blue-400">{{ lazyStrings.audioGeneration__show_all_models() }}</button></p>
-            <p v-if="selectedDetection?.status === 'unverified'" data-testid="audio-model-unverified" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__not_detected_as_audio() }}</p>
-            <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_detection_help() }}</p>
-            <details tw-class="group/audio-selection rounded-lg bg-gray-50/80 px-3 py-2.5 dark:bg-gray-800/35" data-testid="audio-model-selection-details">
-              <summary tw-class="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-gray-500 outline-none focus-visible:text-blue-600 dark:text-gray-400 [&::-webkit-details-marker]:hidden"><span tw-class="flex-1">{{ lazyStrings.audioGeneration__advanced_model_selection() }}</span><ChevronRightIcon aria-hidden="true" tw-class="h-3 w-3 text-gray-400 transition-transform duration-200 group-open/audio-selection:rotate-90 motion-reduce:transition-none" /></summary>
-              <label tw-class="mt-3 flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-1 text-xs leading-5 text-gray-600 dark:text-gray-300"><SettingsChoiceControl presentation="checkbox"><input v-model="modelScope" true-value="all" false-value="detected" type="checkbox" @change="scopeChanged" data-testid="audio-all-models" /></SettingsChoiceControl>{{ lazyStrings.audioGeneration__show_all_llama_cpp_browser_models() }}</label>
-              <p tw-class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__all_models_help() }}</p>
-            </details>
+            <ChatModelSelector
+              :input-id="`${id}-model`"
+              surface="settings"
+              trigger-size="compact"
+              :model-value="selectedModelId"
+              :selection-availability="pendingModel ? 'download_required' : undefined"
+              :hide-first-use-download-hint="selectionDownloadIsActive"
+              :first-use-download-destination="pendingModel ? downloadDestination.label({ destination: pendingModel.destination }) : undefined"
+              :models="modelOptions"
+              :models-label="lazyStrings.ModelSelector__models_on_this_device()"
+              :panels="modelPanels"
+              :initial-panel="pendingModel || !modelId ? 'audio-candidates' : undefined"
+              :loading="inventoryRefreshing || scanState === 'scanning'"
+              :disabled="blocked"
+              :invalid="invalidFields.includes('modelId')"
+              :placeholder="lazyStrings.audioGeneration__choose_model()"
+              data-testid="audio-model"
+              data-audio-field="modelId"
+              @update:model-value="chooseModel({ modelId: $event })"
+              @refresh="refreshInventory"
+            >
+              <template #panel="{ panel, active, close, popupTarget }">
+                <ModelSelectorFileImport
+                  v-if="panel === 'files'"
+                  v-model:added="addedModels"
+                  :selected-model-id="modelId || undefined"
+                  :disabled="!active || blocked"
+                  tw-class="pt-3"
+                  @choose="model => chooseFromSource({ model, close })"
+                  @inventory-changed="refreshInventory"
+                />
+                <RepositoryModelPicker
+                  v-else
+                  :layout="panel === 'audio-candidates' ? 'candidate-results' : 'inline-results'"
+                  :suggestions="audioModelCatalog"
+                  repository-usage="audio-generation"
+                  :disabled="!active || blocked"
+                  :popup-target="popupTarget"
+                  selection-policy="first-use-download"
+                  :selected-for-first-use="pendingModel"
+                  :current-model-id="pendingModel ? undefined : selectedModelId"
+                  :refresh-inventory="refreshInventory"
+                  @select-model="(model, presentation) => chooseFromSource({ model, close: presentation === 'keep-open' ? undefined : close })"
+                  @select-for-first-use="(selection, presentation) => chooseRepositoryModel({ selection, close: presentation === 'keep-open' ? undefined : close })"
+                  @close="close()"
+                />
+              </template>
+              <template #model-filters>
+                <label tw-class="flex min-h-8 cursor-pointer items-center gap-2 px-1 text-xs text-gray-600 dark:text-gray-300">
+                  <SettingsChoiceControl presentation="checkbox"><input v-model="modelScope" true-value="all" false-value="detected" type="checkbox" @change="scopeChanged" data-testid="audio-all-models" /></SettingsChoiceControl>{{ lazyStrings.audioGeneration__show_all_llama_cpp_browser_models() }}
+                </label>
+                <p v-if="scanState === 'idle' && detectedCount === 0 && models.length > 0 && modelScope === 'detected'" data-testid="audio-no-detected-models" tw-class="px-1 text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_audio_models_detected() }}</p>
+              </template>
+            </ChatModelSelector>
+            <p v-if="inventoryFailed" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
+            <p v-if="!pendingModel && selectedDetection?.status === 'unverified'" data-testid="audio-model-unverified" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__not_detected_as_audio() }}</p>
           </div>
           <div tw-class="rounded-xl border border-gray-200/80 bg-gray-50/40 px-3.5 pb-2 pt-3 transition-colors hover:border-gray-300 focus-within:border-blue-400/70 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-500/10 dark:border-gray-700/70 dark:bg-gray-800/20 dark:hover:border-gray-600 dark:focus-within:bg-gray-900">
             <label :for="`${id}-text`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__input_text() }}</label>
@@ -393,16 +622,28 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             </SettingsSelectScope>
           </details>
         </fieldset>
+        <details id="audio-generation-models" tw-class="group/audio-runtime overflow-hidden rounded-xl border border-gray-200/70 bg-white/60 dark:border-gray-800/80 dark:bg-gray-900/20" data-testid="audio-runtime-settings">
+          <summary tw-class="flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 dark:text-gray-300 dark:hover:bg-gray-800/80 [&::-webkit-details-marker]:hidden"><SlidersHorizontalIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" /><span tw-class="flex-1">{{ lazyStrings.audioGeneration__runtime_settings() }}</span><ChevronRightIcon aria-hidden="true" tw-class="h-4 w-4 text-gray-400 transition-transform duration-200 group-open/audio-runtime:rotate-90 motion-reduce:transition-none" /></summary>
+          <div tw-class="space-y-3 border-t border-gray-100 px-4 py-3 dark:border-gray-800">
+            <LlamaCppBrowserRuntimeSettings hide-chat-settings :disabled="runtimeControlsDisabled" :release-disabled="runtimeControlsDisabled" @runtime-ready="runtimeReady = $event" />
+            <div tw-class="flex flex-wrap items-center gap-2">
+              <button type="button" :disabled="runtimeControlsDisabled" @click="restartRuntime" data-testid="audio-restart-runtime" tw-class="inline-flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"><RefreshCcwIcon :tw-class="['h-4 w-4', { 'animate-spin motion-reduce:animate-none': recovery !== undefined }]" />{{ recovery ? lazyStrings.audioGeneration__reinitializing_runtime() : lazyStrings.audioGeneration__reinitialize_runtime() }}</button>
+              <button type="button" tw-class="inline-flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="audio-open-model-management" @click="openModelManagement({ event: $event })"><FolderOpenIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.ConnectionTab__model_management() }}</button>
+            </div>
+            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reinitialize_runtime_help() }}</p>
+          </div>
+        </details>
         <div tw-class="flex flex-wrap items-center gap-3">
           <button type="submit" :disabled="!canGenerate" data-testid="audio-generate" tw-class="inline-flex min-h-11 items-center justify-center gap-2.5 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 disabled:cursor-not-allowed disabled:opacity-45 border-blue-300/80 bg-blue-50/60 text-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-500/40 dark:bg-gray-800/90 dark:text-gray-100 dark:hover:border-blue-400/60 dark:hover:bg-gray-800"><AudioLinesIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />{{ lazyStrings.audioGeneration__generate_audio() }}</button>
           <button v-if="busy" type="button" :disabled="!canFinish || previewPending" @click="capturePreview" data-testid="audio-preview" tw-class="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700/70 dark:bg-gray-800/40 dark:text-gray-200 dark:hover:bg-gray-800"><Loader2Icon v-if="previewPending" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__capture_preview() }}</button>
           <button v-if="busy" type="button" :disabled="!canFinish" @click="finishAudio" data-testid="audio-finish" tw-class="min-h-10 rounded-lg border border-gray-200 bg-white/70 px-3.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-45 dark:border-gray-700/70 dark:bg-gray-800/40 dark:text-gray-200 dark:hover:bg-gray-800">{{ lazyStrings.audioGeneration__finish_and_keep_audio() }}</button>
           <button v-if="busy" type="button" :disabled="stopping" @click="stop" data-testid="audio-stop" tw-class="min-h-10 rounded-lg border border-gray-200 px-3.5 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 disabled:opacity-45 dark:border-gray-700/70 dark:text-gray-400 dark:hover:bg-gray-800">{{ lazyStrings.audioGeneration__cancel_and_discard() }}</button>
-          <button type="button" :disabled="blocked" @click="restartRuntime" data-testid="audio-restart-runtime" tw-class="inline-flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:cursor-not-allowed disabled:opacity-45 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"><RefreshCcwIcon :tw-class="['h-4 w-4', { 'animate-spin motion-reduce:animate-none': recovery !== undefined }]" />{{ recovery ? lazyStrings.audioGeneration__reinitializing_runtime() : lazyStrings.audioGeneration__reinitialize_runtime() }}</button>
           <p v-if="!runtimeReady" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__runtime_unavailable() }}</p>
         </div>
-        <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reinitialize_runtime_help() }}</p>
-        <p v-if="busy" role="status" data-testid="audio-progress" tw-class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ progressLabel }}</p>
+        <div v-if="acquiringModel && downloadProgress && !stopping" data-testid="audio-model-download-progress" tw-class="max-w-sm">
+          <LlamaCppBrowserDownloadProgress :progress="downloadProgress" appearance="welcome" activity="active" compact />
+        </div>
+        <p v-else-if="busy" role="status" data-testid="audio-progress" tw-class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ progressLabel }}</p>
         <p v-if="busy" data-testid="audio-preview-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__preview_help() }}</p>
         <p v-if="previewPending && !finishing && !stopping" role="status" data-testid="audio-preview-pending" tw-class="text-xs text-blue-600 dark:text-blue-400">{{ lazyStrings.audioGeneration__preview_pending() }}</p>
         <p v-if="busy" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__finish_audio_help() }}</p>

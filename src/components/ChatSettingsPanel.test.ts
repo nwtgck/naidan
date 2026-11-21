@@ -208,7 +208,6 @@ describe('ChatSettingsPanel.vue', () => {
       props: ['show'],
     },
     CheckIcon: { name: 'Check', template: '<span class="check-stub" />' },
-    ModelSelector: { name: 'ModelSelector', ...modelSelectorStub },
     ChatModelSelector: { name: 'ChatModelSelector', ...modelSelectorStub },
     LmParametersEditor: {
       name: 'LmParametersEditor',
@@ -590,18 +589,24 @@ describe('ChatSettingsPanel.vue', () => {
     mockSettings.value.defaultModelId = 'global-model';
 
     const wrapper = mount(ChatSettingsPanel, {
+      attachTo: document.body,
       props: { show: true },
-      global: { stubs: globalStubs },
+      global: { stubs: { ...globalStubs, ChatModelSelector: false } },
     });
-    await nextTick();
+    await wrapper.get('[data-testid="chat-setting-title-disclosure"]').trigger('click');
 
-    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
-    expect(titleModelSelector).toBeDefined();
-    expect(titleModelSelector!.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
-    expect(titleModelSelector!.props('allowClear')).toBe(true);
-    expect(titleModelSelector!.props('disabled')).toBe(false);
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="chat-setting-title-model-select"] [data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toContain('global-model');
+    expect(trigger.text()).toContain('Global');
+    expect(trigger.element.disabled).toBe(false);
 
-    await titleModelSelector!.vm.$emit('update:modelValue', 'chat-title-model');
+    const popup = new DOMWrapper(document.body);
+    await trigger.trigger('click');
+    expect(popup.get('[data-testid="model-selector-clear"]').text()).toContain('global-model');
+    mockFetchAvailableModels.mockResolvedValueOnce(['chat-title-model']);
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    await popup.get('[data-testid="model-selector-option"][title="chat-title-model"]').trigger('click');
     await flushPromises();
 
     expect(mockCurrentChat.value.titleGeneration).toMatchObject({
@@ -726,23 +731,31 @@ describe('ChatSettingsPanel.vue', () => {
     });
   });
 
-  it('loads inherited title model options without requiring a manual model refresh', async () => {
+  it('loads and sorts models from the inherited title endpoint without a manual refresh', async () => {
     mockCurrentChat.value.titleGeneration = undefined;
-    mockSettings.value.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
-    mockSettings.value.defaultModelId = 'global-model';
-    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
+    const titleEndpoint = { type: 'ollama', url: 'http://localhost:11434' } as const;
+    mockSettings.value.titleGeneration = {
+      endpoint: titleEndpoint,
+      model: { id: 'title-model-2' },
+      lmParameters: EMPTY_LM_PARAMETERS,
+    };
+    mockFetchAvailableModels.mockResolvedValueOnce(['title-model-10', 'title-model-2', 'title-model-1']);
 
     const wrapper = mount(ChatSettingsPanel, {
+      attachTo: document.body,
       props: { show: true },
-      global: { stubs: globalStubs },
+      global: { stubs: { ...globalStubs, ChatModelSelector: false } },
     });
     await flushPromises();
-    await nextTick();
+    expect(mockFetchAvailableModels).toHaveBeenCalledExactlyOnceWith({ endpoint: titleEndpoint });
 
-    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
-    expect(titleModelSelector).toBeDefined();
-    expect(titleModelSelector!.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
-    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
+    await wrapper.get('[data-testid="chat-setting-title-disclosure"]').trigger('click');
+    const trigger = wrapper.get('[data-testid="chat-setting-title-model-select"] [data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toContain('title-model-2');
+    expect(trigger.text()).toContain('Global');
+    await trigger.trigger('click');
+    const popup = new DOMWrapper(document.body);
+    expect(popup.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'))).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
   });
 
   it('applies animation classes for entrance effects', () => {

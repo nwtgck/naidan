@@ -11,6 +11,7 @@ import type { useAudioTranscriptionModels } from '@/features/audio-transcription
 import { lazyStrings } from '@/strings';
 import { awaitInspection } from '@/logic/model-file-inspection/abort';
 import ModelSelectorVariantDownload from '@/components/ModelSelectorVariantDownload.vue';
+import { selectedQuantizationChoice } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import { hasActiveRepositoryDefaultDownload, repositoryRowDownload, type RepositoryModelDownloadRequest } from '@/features/llama-cpp-browser/hugging-face/repository-row-download';
 import ModelSelectorConfigurationSummary from '@/components/ModelSelectorConfigurationSummary.vue';
@@ -76,7 +77,7 @@ function resetRepository(): void {
   failed.value = false;
 }
 
-async function inspectRepository({ repository, source, action }: { repository: string, source: 'url' | 'result', action: 'details' | 'choose' }): Promise<void> {
+async function inspectRepository({ repository, source, action, requestedVariant }: { repository: string, source: 'url' | 'result', action: 'details' | 'choose', requestedVariant: string | undefined }): Promise<void> {
   if (blocked.value || action === 'choose' && choosingRepository.value === repository) {
     return;
   }
@@ -111,7 +112,10 @@ async function inspectRepository({ repository, source, action }: { repository: s
     controller.signal.throwIfAborted();
     catalog.value = result;
     const alreadySelected = selectedVariant.value;
-    draftVariant.value = variants.value.some(variant => variant.id === alreadySelected) ? alreadySelected : standardVariant.value;
+    draftVariant.value = requestedVariant === undefined
+      ? variants.value.some(variant => variant.id === alreadySelected) ? alreadySelected : standardVariant.value
+      : selectedQuantizationChoice({ choices: choices.value, variant: requestedVariant })?.primaryRelativePath;
+    editingConfiguration.value = draftVariant.value === undefined && variants.value.length > 0;
     if (chooseImmediately) {
       useConfiguration({ id: draftVariant.value, presentation: 'close' });
     }
@@ -232,7 +236,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div data-testid="audio-transcription-model-sources" tw-class="space-y-4 text-left">
     <div @keydown.esc="handleEscape({ event: $event })">
-      <ModelSelectorHuggingFaceSearch ref="search" :query="query" :active="props.active" :disabled="disabled || models.busy.value" :expanded-repository="openedRepository" immediate-selection :selected-repository="selectedRepository" :choosing-repository="choosingRepository" @update:query="emit('update:query', $event)" @select="(repository, source) => inspectRepository({ repository, source, action: 'details' })" @choose="repository => inspectRepository({ repository, source: 'result', action: 'choose' })" @search="resetRepository">
+      <ModelSelectorHuggingFaceSearch ref="search" :query="query" :active="props.active" :disabled="disabled || models.busy.value" :expanded-repository="openedRepository" immediate-selection :selected-repository="selectedRepository" :choosing-repository="choosingRepository" @update:query="emit('update:query', $event)" @select="(repository, source, requestedVariant) => inspectRepository({ repository, source, action: 'details', requestedVariant })" @choose="repository => inspectRepository({ repository, source: 'result', action: 'choose', requestedVariant: undefined })" @search="resetRepository">
         <template #result-actions="{ repository }">
           <ModelSelectorVariantDownload :destination-label="models.downloadDestination.label" :request="searchResultDownload({ repository })" :label="repository" :refresh-inventory="models.refresh" :disabled="blocked || models.downloadDestination.unavailable.value || models.downloadDestination.view.busy.value" />
         </template>
@@ -247,11 +251,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <p v-if="metadataRequest" role="status" tw-class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><Loader2Icon aria-hidden="true" tw-class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />{{ lazyStrings.AudioTranscriptionModelSources__checking_repository() }}</p>
             <p v-else-if="failed" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.AudioTranscriptionModelSources__could_not_check_repository() }}</p>
             <template v-else-if="catalog">
-              <div v-if="currentVariant" tw-class="space-y-2">
+              <div v-if="variants.length" tw-class="space-y-2">
+                <p v-if="currentVariant === undefined" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection() }}</p>
                 <ModelSelectorFileOptions v-if="editingConfiguration" test-id="audio-transcription-model-variant" :model-name="catalog.repository" :choices="variants" :selected="draftVariant" :disabled="blocked" @select="useConfiguration({ id: $event, presentation: 'keep-open' })">
                   <template #action="{ choice }"><ModelSelectorVariantDownload :request="variantDownload({ id: choice.id })" :label="choice.label" :refresh-inventory="models.refresh" :disabled="blocked || models.downloadDestination.unavailable.value || models.downloadDestination.view.busy.value" /></template>
                 </ModelSelectorFileOptions>
-                <LlamaCppBrowserDownloadDestination :view="models.downloadDestination.view" :disabled="blocked" :layout-file="{ repository: catalog.repository, path: currentVariant.filePath }" :popup-target="popupTarget" layout="compact" />
+                <LlamaCppBrowserDownloadDestination :view="models.downloadDestination.view" :disabled="blocked" :layout-file="currentVariant ? { repository: catalog.repository, path: currentVariant.filePath } : undefined" :popup-target="popupTarget" layout="compact" />
               </div>
               <p v-else role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.AudioTranscriptionModelSources__no_single_file_models() }}</p>
             </template>

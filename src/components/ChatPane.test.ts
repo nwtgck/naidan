@@ -1,7 +1,7 @@
 import { openChatLocalModelInput } from '@/composables/chat/chat-scoped/chat-local-model-input.test-support';
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
-import { mount, flushPromises, VueWrapper, type GlobalMountOptions } from '@vue/test-utils';
+import { mount, flushPromises, DOMWrapper, VueWrapper, type GlobalMountOptions } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import ChatModelSelector from './ChatModelSelector.vue';
@@ -42,6 +42,7 @@ import { getMessageText } from '@/01-models/message-text';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 import { refreshPromptApiAvailability, TEST_ONLY as promptApiRuntimeTestOnly } from '@/features/prompt-api/runtime';
 import { useApproval } from '@/features/tools/composables/useApproval';
 import { useChoices } from '@/features/tools/composables/useChoices';
@@ -158,6 +159,7 @@ const mockAvailableModels = ref<string[]>([]);
 const mockFetchingModels = ref(false);
 const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
+const mockFetchModelsForEndpoint = vi.fn<({ endpoint }: { endpoint: Endpoint }) => Promise<string[]>>();
 const mockGenerateChatTitle = vi.fn();
 const mockAbortTitleGeneration = vi.fn();
 const mockCompactCurrentBranch = vi.fn().mockResolvedValue(true);
@@ -681,7 +683,7 @@ vi.mock('../composables/chat/useChatModels', () => ({
         customEndpoint: undefined,
       }),
     fetchForGlobalEndpoint: vi.fn(),
-    fetchForEndpoint: vi.fn(),
+    fetchForEndpoint: mockFetchModelsForEndpoint,
   }),
 }));
 
@@ -898,6 +900,7 @@ function resetMocks() {
   clearAllDrafts();
   vi.useRealTimers();
   vi.clearAllMocks();
+  mockFetchModelsForEndpoint.mockReset().mockResolvedValue([]);
   mockChatLocalAccept.mockResolvedValue(undefined);
   mockChatModelAccept.mockResolvedValue(undefined);
   mockModelSelection.value = undefined;
@@ -1641,22 +1644,63 @@ Question`,
   it('should generate a title from the title dialog using the selected global title model', async () => {
     mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'm1' }), role: 'user', text: 'test', createdAt: 0 })];
     mockGenerateChatTitle.mockResolvedValue('Generated Title');
+    const modelId = 'provider/title-model';
+    mockAvailableModels.value = ['model-1', modelId];
     wrapper = mountChatPane( {
+      attachTo: document.body,
       global: { plugins: [router] },
     });
 
     await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
     await flushPromises();
     await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
-    await flushPromises();
-    await wrapper.findComponent({ name: 'ModelSelector' }).vm.$emit('update:modelValue', 'model-2');
+    const trigger = wrapper.get('[data-testid="chat-title-model-select"] [data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    const popup = new DOMWrapper(document.body);
+    await popup.get(`[data-testid="model-selector-option"][title="${modelId}"]`).trigger('click');
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+    expect(trigger.attributes('title')).toBe(modelId);
+    const metadata = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+    expect(metadata.text()).toBe('provider');
+    expect(metadata.element.previousElementSibling?.textContent).toBe('title-model');
+    expect(mockSaveSettings).not.toHaveBeenCalled();
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
-      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } },
+      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: modelId }, lmParameters: EMPTY_LM_PARAMETERS } },
       modelRefresh: 'await',
     });
-    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
+    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: modelId });
+  });
+
+  it('can return to the chat model when the title endpoint supplies its own model', async () => {
+    mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'm1' }), role: 'user', text: 'test', createdAt: 0 })];
+    const endpoint = { type: 'browser_provided_lm' } as const;
+    const modelId = BROWSER_PROVIDED_LM_MODEL_ID;
+    mockResolvedSettings.value.titleGeneration = { endpoint, modelId, lmParameters: EMPTY_LM_PARAMETERS };
+    mockSettings.value.titleGeneration = { endpoint, model: { id: modelId }, lmParameters: EMPTY_LM_PARAMETERS };
+    mockFetchModelsForEndpoint.mockResolvedValue([modelId]);
+    wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
+
+    await wrapper.get('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="title-options-toggle"]').trigger('click');
+    const trigger = wrapper.get('[data-testid="chat-title-model-select"] [data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    const popup = new DOMWrapper(document.body);
+    mockFetchModelsForEndpoint.mockClear();
+    await popup.get('[data-testid="model-selector-refresh"]').trigger('click');
+    await flushPromises();
+    expect(mockFetchModelsForEndpoint).toHaveBeenCalledExactlyOnceWith({ endpoint });
+    expect(popup.findAll('[data-testid="model-selector-option"]').map(option => option.attributes('title'))).toEqual([modelId]);
+
+    await popup.get('[data-testid="model-selector-clear"]').trigger('click');
+    expect(trigger.text()).toBe('Use chat model');
+    await wrapper.get('[data-testid="generate-chat-title-button"]').trigger('click');
+    expect(mockSaveSettings).toHaveBeenCalledWith({
+      patch: { titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS } },
+      modelRefresh: 'await',
+    });
   });
 
   it('should keep title model and generated title history hidden until options are opened', async () => {

@@ -15,15 +15,18 @@ const ModelSelectorFileImport = defineAsyncComponent(() => import('./ModelSelect
 const props = defineProps<{
   modelValue: string | undefined,
   modelIds: readonly string[],
-  endpointType: Endpoint['type'],
+  endpointType: Endpoint['type'] | undefined,
   surface: 'sidebar' | 'settings',
   frame?: 'embedded',
+  inputId?: string,
+  popupPresentation?: 'floating' | 'inline',
   placeholder: string | undefined,
   clearLabel?: string,
   allowClear?: boolean,
   inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   loading: boolean,
   disabled?: boolean,
+  modelSelection?: 'available' | 'unavailable',
   refreshModels: () => Promise<void>,
   selectModel: ({ modelId }: { modelId: string | undefined }) => void | Promise<void>,
 }>();
@@ -54,6 +57,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <ChatModelSelector
     :surface="surface"
     :frame="frame"
+    :input-id="inputId"
+    :popup-presentation="popupPresentation"
     :model-value="modelValue || undefined"
     :inherited-model="inheritedModel"
     :models="sortedModels"
@@ -62,7 +67,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     :initial-panel="usesSavedModels && !modelValue && inheritedModel === undefined ? 'chat-candidates' : undefined"
     :loading="loading"
     :disabled="disabled"
-    :model-selection="endpointType === 'browser_provided_lm' ? 'unavailable' : 'available'"
+    :model-selection="modelSelection ?? (endpointType === 'browser_provided_lm' ? 'unavailable' : 'available')"
     :placeholder="placeholder"
     :allow-clear="allowClear"
     :clear-label="clearLabel"

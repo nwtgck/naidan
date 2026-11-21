@@ -45,7 +45,6 @@ import { publishImageGenerationBinaries } from '@/00-storage/service/image-gener
 import { idToRaw, toChatId, toImageGenerationId, toImageGenerationSessionId, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toBinaryObjectId } from '@/01-models/ids';
 import ImageGenerationTranslationButton from '@/features/image-generation/components/ImageGenerationTranslationButton.vue';
 import ImageGenerationTranslationSettings from '@/features/image-generation/components/ImageGenerationTranslationSettings.vue';
-import ModelSelector from '@/components/ModelSelector.vue';
 import { useSettings } from '@/composables/useSettings';
 import type { ImageGenerationSessionId } from '@/01-models/ids';
 const translationMocks = vi.hoisted(() => ({ translate: vi.fn(), provider: vi.fn() }));
@@ -1559,7 +1558,10 @@ describe('read-only translation controls', () => {
     const { settings, availableModels } = useSettings();
     const endpoint = settings.value.endpoint, modelId = settings.value.defaultModelId;
     const globalModels = [...availableModels.value];
-    const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' } });
+    const surface = mount(ImageGenerationTranslationSettings, {
+      props: { workspace: fixture.view, scope: 'workspace' },
+      attachTo: document.body,
+    });
     using _cleanupResource = {
       [Symbol.dispose]() {
         surface.unmount();
@@ -1574,16 +1576,39 @@ describe('read-only translation controls', () => {
     await flushPromises();
     expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'ollama', url: 'http://workspace.test', httpHeaders: undefined }, modelId: 'workspace-model' });
     await surface.setProps({ scope: 'session' });
-    await surface.get('[data-testid="translation-model-input"]').setValue('session-model');
+    const modelInput = surface.get<HTMLInputElement>('[data-testid="translation-model-input"]');
+    await modelInput.setValue('provider/session-model');
     await surface.get('[data-testid="translation-settings-save"]').trigger('click');
     await flushPromises();
-    expect(fixture.view.currentSession.value?.translation).toEqual({ endpoint: undefined, modelId: 'session-model' });
+    expect(fixture.view.currentSession.value?.translation).toEqual({ endpoint: undefined, modelId: 'provider/session-model' });
     await fixture.view.reload();
-    expect(fixture.view.currentSession.value?.translation?.modelId).toBe('session-model');
-    translationMocks.provider.mockResolvedValue({ listModels: vi.fn(async () => ['private-model']) });
-    surface.getComponent(ModelSelector).vm.$emit('refresh');
+    expect(fixture.view.currentSession.value?.translation?.modelId).toBe('provider/session-model');
+
+    const picker = surface.get('[data-testid="translation-model-select"]');
+    const trigger = picker.get('[data-testid="model-selector-trigger"]');
+    const metadata = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+    expect(metadata.element.previousElementSibling?.textContent).toBe('session-model');
+    expect(metadata.text()).toBe('provider');
+    translationMocks.provider.mockResolvedValue({ listModels: vi.fn(async () => ['provider/private-model']) });
+    await trigger.trigger('click');
+    const list = picker.get('[data-testid="model-selector-dropdown"]');
+    await list.get('[data-testid="model-selector-refresh"]').trigger('click');
     await flushPromises();
-    expect(surface.getComponent(ModelSelector).props('models')).toEqual(['private-model']);
+    expect(translationMocks.provider).toHaveBeenLastCalledWith(expect.objectContaining({ endpoint: { type: 'ollama', url: 'http://workspace.test', httpHeaders: undefined } }));
+    await list.get('[data-testid="model-selector-option"][title="provider/private-model"]').trigger('click');
+    expect(modelInput.element.value).toBe('provider/private-model');
+    await surface.get('[data-testid="translation-settings-save"]').trigger('click');
+    await flushPromises();
+    expect(fixture.view.currentSession.value?.translation?.modelId).toBe('provider/private-model');
+
+    await trigger.trigger('click');
+    await picker.get('[data-testid="model-selector-clear"]').trigger('click');
+    expect(modelInput.element.value).toBe('');
+    expect(modelInput.attributes('placeholder')).toBe('workspace-model');
+    await surface.get('[data-testid="translation-settings-save"]').trigger('click');
+    await flushPromises();
+    expect(fixture.view.currentSession.value?.translation).toBeUndefined();
+    expect(fixture.view.catalog.value?.preferences.translation?.modelId).toBe('workspace-model');
     expect(availableModels.value).toEqual(globalModels);
     expect(settings.value.endpoint).toEqual(endpoint);
     expect(settings.value.defaultModelId).toBe(modelId);

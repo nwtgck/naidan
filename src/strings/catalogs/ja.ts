@@ -2602,12 +2602,14 @@ import { audioGeneration__model_default } from '@/strings/messages/audioGenerati
 import { audioGeneration__model_detection_help } from '@/strings/messages/audioGeneration__model_detection_help/ja';
 import { audioGeneration__model_setup_help } from '@/strings/messages/audioGeneration__model_setup_help/ja';
 import { audioGeneration__model_support_help } from '@/strings/messages/audioGeneration__model_support_help/ja';
+import { audioGeneration__models_for_audio_generation } from '@/strings/messages/audioGeneration__models_for_audio_generation/ja';
 import { audioGeneration__native_diagnostics } from '@/strings/messages/audioGeneration__native_diagnostics/ja';
 import { audioGeneration__no_audio_models_detected } from '@/strings/messages/audioGeneration__no_audio_models_detected/ja';
 import { audioGeneration__no_reference_selected } from '@/strings/messages/audioGeneration__no_reference_selected/ja';
 import { audioGeneration__not_detected_as_audio } from '@/strings/messages/audioGeneration__not_detected_as_audio/ja';
 import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/ja';
 import { audioGeneration__output_lifetime } from '@/strings/messages/audioGeneration__output_lifetime/ja';
+import { audioGeneration__preparing_model } from '@/strings/messages/audioGeneration__preparing_model/ja';
 import { audioGeneration__preparing_recording } from '@/strings/messages/audioGeneration__preparing_recording/ja';
 import { audioGeneration__preparing_references } from '@/strings/messages/audioGeneration__preparing_references/ja';
 import { audioGeneration__preview_help } from '@/strings/messages/audioGeneration__preview_help/ja';
@@ -2638,6 +2640,7 @@ import { audioGeneration__reinitializing_runtime } from '@/strings/messages/audi
 import { audioGeneration__requested_profile } from '@/strings/messages/audioGeneration__requested_profile/ja';
 import { audioGeneration__requesting_microphone } from '@/strings/messages/audioGeneration__requesting_microphone/ja';
 import { audioGeneration__runtime_audio } from '@/strings/messages/audioGeneration__runtime_audio/ja';
+import { audioGeneration__runtime_settings } from '@/strings/messages/audioGeneration__runtime_settings/ja';
 import { audioGeneration__runtime_unavailable } from '@/strings/messages/audioGeneration__runtime_unavailable/ja';
 import { audioGeneration__sampling_help } from '@/strings/messages/audioGeneration__sampling_help/ja';
 import { audioGeneration__save_wav } from '@/strings/messages/audioGeneration__save_wav/ja';
@@ -6993,12 +6996,14 @@ export const catalog = {
   audioGeneration__model_detection_help,
   audioGeneration__model_setup_help,
   audioGeneration__model_support_help,
+  audioGeneration__models_for_audio_generation,
   audioGeneration__native_diagnostics,
   audioGeneration__no_audio_models_detected,
   audioGeneration__no_reference_selected,
   audioGeneration__not_detected_as_audio,
   audioGeneration__number_range,
   audioGeneration__output_lifetime,
+  audioGeneration__preparing_model,
   audioGeneration__preparing_recording,
   audioGeneration__preparing_references,
   audioGeneration__preview_help,
@@ -7029,6 +7034,7 @@ export const catalog = {
   audioGeneration__requested_profile,
   audioGeneration__requesting_microphone,
   audioGeneration__runtime_audio,
+  audioGeneration__runtime_settings,
   audioGeneration__runtime_unavailable,
   audioGeneration__sampling_help,
   audioGeneration__save_wav,
