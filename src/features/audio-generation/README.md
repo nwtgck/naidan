@@ -9,7 +9,9 @@ remains user-controlled; there is no automatic streaming player or autoplay.
 ## Layout and form behavior
 
 Only this view owns an absolute, vertically scrollable viewport inside the
-existing relative main layout slot. Results follow the form.
+existing relative main layout slot. The input card keeps the text field, model,
+language, and generation controls together. Reference audio and settings open
+below the card and close when a valid request starts. Results follow the form.
 The sidebar uses the common app controls. Previously linked section hashes
 still focus and scroll to the appropriate part of this page. `novalidate` is intentional: browser validation cannot focus an
 invalid input inside closed details. Zod validation instead renders a visible

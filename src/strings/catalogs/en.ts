@@ -2646,6 +2646,7 @@ import { audioGeneration__sampling_help } from '@/strings/messages/audioGenerati
 import { audioGeneration__save_wav } from '@/strings/messages/audioGeneration__save_wav/en';
 import { audioGeneration__seed } from '@/strings/messages/audioGeneration__seed/en';
 import { audioGeneration__selected_references } from '@/strings/messages/audioGeneration__selected_references/en';
+import { audioGeneration__settings } from '@/strings/messages/audioGeneration__settings/en';
 import { audioGeneration__show_all_llama_cpp_browser_models } from '@/strings/messages/audioGeneration__show_all_llama_cpp_browser_models/en';
 import { audioGeneration__show_all_models } from '@/strings/messages/audioGeneration__show_all_models/en';
 import { audioGeneration__step_limit_help } from '@/strings/messages/audioGeneration__step_limit_help/en';
@@ -7043,6 +7044,7 @@ export const catalog = {
   audioGeneration__save_wav,
   audioGeneration__seed,
   audioGeneration__selected_references,
+  audioGeneration__settings,
   audioGeneration__show_all_llama_cpp_browser_models,
   audioGeneration__show_all_models,
   audioGeneration__step_limit_help,

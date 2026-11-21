@@ -25,6 +25,7 @@ import type { EngineState, LocalModel } from '@/features/llama-cpp-browser/types
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { audioResult } from './test-utils/wav.test-support';
 import AudioGenerationView from './AudioGenerationView.vue';
+import AudioReferenceInput from './components/AudioReferenceInput.vue';
 import * as referencePreparation from './reference-audio';
 import type { inspectStoredAudioModel } from './model-detection';
 vi.mock('@/composables/useSettings', async importOriginal => {
@@ -396,12 +397,31 @@ describe('independent audio generation screen', () => {
     expect(select.element.value).toBe('auto');
   });
 
-  it('keeps runtime options next to the generation controls and opens existing model management', async () => {
+  it('keeps the input and Generate together while opening settings under the card', async () => {
     const view = await ready();
     expect(view.get('[data-testid="audio-generation-scroll"]').find('[data-testid="audio-generation-page"]').exists()).toBe(true);
-    const settings = view.get('[data-testid="audio-runtime-settings"]');
-    expect(view.get('form').element.contains(settings.element)).toBe(true);
+    const composer = view.get('[data-testid="audio-composer"]');
+    const settingsPanel = view.get('[data-testid="audio-settings-panel"]');
+    const referencePanel = view.get('[data-testid="audio-reference-panel"]');
+    const text = composer.get('[data-testid="audio-text"]').element;
+    const generate = composer.get('[data-testid="audio-generate"]').element;
+    const controls = composer.findAll('[data-testid="audio-model"], [data-testid="audio-language"], [data-testid="audio-text"], [data-testid="audio-generate"]');
+    expect(controls.map(control => control.attributes('data-testid'))).toEqual(['audio-model', 'audio-language', 'audio-text', 'audio-generate']);
+    expect(settingsPanel.attributes('hidden')).toBeDefined();
+    expect(referencePanel.attributes('hidden')).toBeDefined();
     expect(view.get('form').element.nextElementSibling?.id).toBe('audio-generation-results');
+
+    await composer.get('[data-testid="audio-toggle-reference"]').trigger('click');
+    expect(referencePanel.attributes('hidden')).toBeUndefined();
+    expect(composer.get('[data-testid="audio-generate"]').element).toBe(generate);
+    await composer.get('[data-testid="audio-toggle-settings"]').trigger('click');
+    expect(referencePanel.attributes('hidden')).toBeDefined();
+    expect(settingsPanel.attributes('hidden')).toBeUndefined();
+    expect(composer.get('[data-testid="audio-text"]').element).toBe(text);
+    expect(composer.get('[data-testid="audio-generate"]').element).toBe(generate);
+
+    const settings = settingsPanel.get<HTMLDetailsElement>('[data-testid="audio-runtime-settings"]');
+    settings.element.open = true;
     const manage = settings.get('[data-testid="audio-open-model-management"]');
     await manage.trigger('click');
     expect(inventory.openSettings).toHaveBeenCalledWith({ tab: 'llama_cpp_browser', opener: manage.element });
@@ -440,6 +460,7 @@ describe('independent audio generation screen', () => {
     await router.push('/audio-generation#audio-generation-models');
     await flushPromises();
     expect(details.element.open).toBe(true);
+    expect(view.get('[data-testid="audio-settings-panel"]').attributes('hidden')).toBeUndefined();
     expect(document.activeElement).toBe(details.get('summary').element);
     expect(view.get('[data-testid="audio-text"]').element).toBe(input.element);
     expect(view.get<HTMLTextAreaElement>('[data-testid="audio-text"]').element.value).toBe('Keep this input');
@@ -460,8 +481,10 @@ describe('independent audio generation screen', () => {
     const context = view.get<HTMLInputElement>('[data-testid="audio-context"]');
     const details = context.element.closest('details')!;
     expect(details.open).toBe(false);
+    expect(view.get('[data-testid="audio-settings-panel"]').attributes('hidden')).toBeDefined();
     await context.setValue('1');
     await submit({ view });
+    expect(view.get('[data-testid="audio-settings-panel"]').attributes('hidden')).toBeUndefined();
     expect(details.open).toBe(true);
     expect(context.attributes('aria-invalid')).toBe('true');
     expect(view.get('[data-testid="audio-error"]').text()).toContain('1024');
@@ -566,17 +589,61 @@ describe('independent audio generation screen', () => {
     expect(download.enqueue).not.toHaveBeenCalled();
   });
 
-  it('accepts a reference and lets the user clear it without retaining it elsewhere', async () => {
+  it('keeps the selected reference when the panel closes and lets the user clear it', async () => {
     const view = await ready();
+    await view.get('[data-testid="audio-toggle-reference"]').trigger('click');
     const input = view.get<HTMLInputElement>('[data-testid="audio-reference"]');
     const file = new File(['reference'], 'speaker.wav');
     Object.defineProperty(input.element, 'files', { configurable: true, value: [file] });
     await input.trigger('change');
+    expect(view.get('[data-testid="audio-composer-reference-count"]').text()).toBe('1');
     await submit({ view });
     expect(service.generateAudio.mock.calls[0]?.[0].input.reference).toBe(file);
+    expect(view.get('[data-testid="audio-reference-panel"]').attributes('hidden')).toBeDefined();
+    expect(view.get('[data-testid="audio-history"]').isVisible()).toBe(true);
+    await view.get('[data-testid="audio-toggle-reference"]').trigger('click');
     await view.get('[data-testid="audio-clear-reference"]').trigger('click');
+    expect(view.find('[data-testid="audio-composer-reference-count"]').exists()).toBe(false);
     await submit({ view });
     expect(service.generateAudio.mock.calls[1]?.[0].input.reference).toBeUndefined();
+  });
+
+  it('reveals the reference controls when the selected model requires a reference', async () => {
+    detection.inspect.mockResolvedValue({ status: 'detected', pipeline: 'pocket-tts', reference: 'required' });
+    const view = await ready();
+    expect(view.find('[data-testid="audio-reference-needed"]').exists()).toBe(true);
+    expect(view.get('[data-testid="audio-reference-panel"]').attributes('hidden')).toBeDefined();
+    await submit({ view });
+    expect(view.get('[data-testid="audio-reference-panel"]').attributes('hidden')).toBeUndefined();
+    expect(view.get('[data-testid="audio-error"]').text()).toContain('audio-reference-required');
+    expect(service.generateAudio).not.toHaveBeenCalled();
+  });
+
+  it('keeps recording controls reachable and reopens the reference panel after a recording error', async () => {
+    const view = await ready();
+    await view.get('[data-testid="audio-toggle-reference"]').trigger('click');
+    const reference = view.getComponent(AudioReferenceInput);
+    reference.vm.$emit('busy', true);
+    await view.get('[data-testid="audio-toggle-settings"]').trigger('click');
+    expect(view.get('[data-testid="audio-reference-panel"]').attributes('hidden')).toBeUndefined();
+    expect(view.get('[data-testid="audio-settings-panel"]').attributes('hidden')).toBeUndefined();
+
+    reference.vm.$emit('recording-failed');
+    reference.vm.$emit('busy', false);
+    await nextTick();
+    expect(view.get('[data-testid="audio-reference-panel"]').attributes('hidden')).toBeUndefined();
+    expect(view.get('[data-testid="audio-settings-panel"]').attributes('hidden')).toBeDefined();
+  });
+
+  it('returns focus to reference selection after generation fails on the reference', async () => {
+    service.generateAudio.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'audio-reference-invalid' }));
+    const view = await ready();
+    const focus = vi.spyOn(HTMLButtonElement.prototype, 'focus');
+    await submit({ view });
+    const browse = view.get<HTMLButtonElement>('[data-testid="audio-reference-browse"]');
+    expect(browse.element.disabled).toBe(false);
+    expect(focus.mock.contexts).toContain(browse.element);
+    expect(view.get('[data-testid="audio-reference-panel"]').attributes('hidden')).toBeUndefined();
   });
 
   it('rejects stale success after Stop and aborts only its own request', async () => {

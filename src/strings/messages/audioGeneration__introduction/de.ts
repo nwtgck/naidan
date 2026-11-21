@@ -1,1 +1,1 @@
-export const audioGeneration__introduction = (): string => "Ein unabhängiger Bereich zur Spracherzeugung im Browser. Wenn App, Laufzeit und Modell lokal vorliegen, funktioniert die Erzeugung offline. Text und Referenzstimme werden nicht an einen Inferenzserver gesendet. Eine Verbindung wird nur zum Herunterladen fehlender Dateien oder von Updates benötigt.";
+export const audioGeneration__introduction = (): string => "Die Sprache wird offline in deinem Browser erzeugt. Text und Referenzaudio bleiben auf deinem Gerät.";

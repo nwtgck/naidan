@@ -156,7 +156,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </SidebarHeader>
     <PWAUpdateNotification />
 
-    <div v-if="target !== 'audio_transcription'" :tw-class="['shrink-0 space-y-2 py-2', isSidebarOpen ? 'px-4' : 'px-1']" data-testid="sidebar-primary">
+    <div v-if="target !== 'audio_transcription' && target !== 'audio_generation'" :tw-class="['shrink-0 space-y-2 py-2', isSidebarOpen ? 'px-4' : 'px-1']" data-testid="sidebar-primary">
       <template v-if="featuresActive">
         <ChatSidebarActions v-if="target === 'chat'" :expanded="isSidebarOpen" :content-ready="contentReady" @create-chat-group="chatGroupCreation = 'open'" />
         <ImageSidebarActions v-else-if="target === 'image_generation' && generationNavigation" :navigation="generationNavigation" :expanded="isSidebarOpen" />

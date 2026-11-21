@@ -323,13 +323,15 @@ it.each([
   expect(wrapper.find('[data-testid="sidebar-footer"]').exists()).toBe(true);
 });
 
-it('keeps common navigation available without page-section links on audio generation', async () => {
+it('keeps common navigation available without a feature heading or page-section links on audio generation', async () => {
   const { wrapper, router } = await mountSidebar({ path: '/audio-generation?settings=developer', activation: 'inactive' });
   const launcher = wrapper.get('[data-testid="open-launcher"]').element;
   expect(wrapper.attributes('data-sidebar-target')).toBe('audio_generation');
+  expect(wrapper.find('[data-testid="sidebar-primary"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="sidebar-preparing"]').exists()).toBe(false);
 
   await wrapper.setProps({ postStartupFeatures: 'active' });
+  expect(wrapper.find('[data-testid="sidebar-primary"]').exists()).toBe(false);
   await wrapper.get('[data-testid="sidebar-toggle"]').trigger('click');
   expect(wrapper.find('[data-testid="chat-sidebar"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="sidebar-preparing"]').exists()).toBe(false);

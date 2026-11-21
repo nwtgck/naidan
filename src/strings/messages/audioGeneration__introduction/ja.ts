@@ -1,1 +1,1 @@
-export const audioGeneration__introduction = (): string => "チャットとは独立した、ブラウザ内の音声生成機能です。アプリ・実行環境・モデルが端末に揃っていれば、オフラインで生成できます。テキストや参照音声を推論サーバーへ送信しません。通信が必要なのは、未取得のファイルや更新をダウンロードするときだけです。";
+export const audioGeneration__introduction = (): string => "音声はブラウザ内でオフライン生成され、テキストや参照音声はサーバーに送信されません。";
