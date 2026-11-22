@@ -164,10 +164,14 @@ jobs:
           node-image: node:22-bookworm
 
       - name: Run typecheck
+        id: typecheck
         # Use the same project-reference and PWA checks as local builds.
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: >-
+            --max-old-space-size=6144 --report-on-fatalerror
+            --report-exclude-env --report-exclude-network --report-directory=/typecheck-reports
         run: |
+          mkdir -p "$RUNNER_TEMP/typecheck-reports"
           docker run --rm \
             --network none \
             --cap-drop=ALL \
@@ -176,10 +180,24 @@ jobs:
             -v "$PWD:/work" \
             -v "$PWD/naidan-server:/work/naidan-server:ro" \
             -v "$PWD/package.json:/work/package.json:ro" \
+            -v "$RUNNER_TEMP/typecheck-reports:/typecheck-reports" \
             -w /work \
             -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
             node:22-bookworm \
             npm run typecheck
+
+      - name: Summarize Node fatal errors from typecheck
+        if: failure() && steps.typecheck.outcome == 'failure'
+        run: |
+          for report in "$RUNNER_TEMP"/typecheck-reports/report.*.json; do
+            [ -f "$report" ] || continue
+            jq -c '{
+              command: .header.commandLine, node: .header.nodejsVersion,
+              heap_used_bytes: .javascriptHeap.usedMemory,
+              heap_limit_bytes: .javascriptHeap.memoryLimit,
+              max_rss_bytes: .resourceUsage.maxRss
+            }' "$report"
+          done
 
   build:
     runs-on: ubuntu-latest
