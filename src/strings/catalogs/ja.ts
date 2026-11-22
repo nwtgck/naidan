@@ -2852,6 +2852,7 @@ import { fileExplorer__binary_file } from '@/strings/messages/fileExplorer__bina
 import { fileExplorer__blocked_count } from '@/strings/messages/fileExplorer__blocked_count/ja';
 import { fileExplorer__byte_count } from '@/strings/messages/fileExplorer__byte_count/ja';
 import { fileExplorer__cannot_be_placed } from '@/strings/messages/fileExplorer__cannot_be_placed/ja';
+import { fileExplorer__chat_file_system } from '@/strings/messages/fileExplorer__chat_file_system/ja';
 import { fileExplorer__close } from '@/strings/messages/fileExplorer__close/ja';
 import { fileExplorer__close_preview } from '@/strings/messages/fileExplorer__close_preview/ja';
 import { fileExplorer__column_view } from '@/strings/messages/fileExplorer__column_view/ja';
@@ -2899,7 +2900,6 @@ import { fileExplorer__file_is_too_large_to_preview } from '@/strings/messages/f
 import { fileExplorer__file_saved } from '@/strings/messages/fileExplorer__file_saved/ja';
 import { fileExplorer__file_tree } from '@/strings/messages/fileExplorer__file_tree/ja';
 import { fileExplorer__file_view } from '@/strings/messages/fileExplorer__file_view/ja';
-import { fileExplorer__files } from '@/strings/messages/fileExplorer__files/ja';
 import { fileExplorer__filter_by_name } from '@/strings/messages/fileExplorer__filter_by_name/ja';
 import { fileExplorer__folder } from '@/strings/messages/fileExplorer__folder/ja';
 import { fileExplorer__folder_is_no_longer_available } from '@/strings/messages/fileExplorer__folder_is_no_longer_available/ja';
@@ -7348,6 +7348,7 @@ export const catalog = {
   fileExplorer__blocked_count,
   fileExplorer__byte_count,
   fileExplorer__cannot_be_placed,
+  fileExplorer__chat_file_system,
   fileExplorer__close,
   fileExplorer__close_preview,
   fileExplorer__column_view,
@@ -7395,7 +7396,6 @@ export const catalog = {
   fileExplorer__file_saved,
   fileExplorer__file_tree,
   fileExplorer__file_view,
-  fileExplorer__files,
   fileExplorer__filter_by_name,
   fileExplorer__folder,
   fileExplorer__folder_is_no_longer_available,

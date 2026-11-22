@@ -7,6 +7,7 @@ import type {
   FileExplorerEntry,
   FileExplorerContext,
   SortConfig,
+  PreviewVisibility,
   ViewMode,
   SortField,
   SelectionAction,
@@ -26,6 +27,7 @@ import { useFileExplorerDirectoryDownload } from './useFileExplorerDirectoryDown
 import { useFileExplorerUpload } from './useFileExplorerUpload';
 import { useToast } from '@/composables/useToast';
 import { usePrompt } from '@/composables/usePrompt';
+import { useFileExplorerPreferences } from './useFileExplorerPreferences';
 
 export const FILE_EXPLORER_INJECTION_KEY: InjectionKey<FileExplorerContext> =
   Symbol('FileExplorerContext');
@@ -40,20 +42,41 @@ function buildInitialPath({ initialPath }: { initialPath: string[] | undefined }
 export async function useFileExplorer({
   root,
   remoteMounts,
+  initialViewMode,
+  initialPreviewVisibility,
   initialPath,
   initialLocked,
 }: {
   root: FileExplorerRootDescriptor,
   remoteMounts?: readonly FileExplorerRemoteMount[],
+  initialViewMode: ViewMode,
+  initialPreviewVisibility: PreviewVisibility,
   initialPath: string[] | undefined,
   initialLocked: boolean,
 }) {
+  const { preferences, captureStorage, savePreferences } = useFileExplorerPreferences();
   const client = await createFileExplorerWorkerClient({ root, ...(remoteMounts === undefined ? {} : { remoteMounts }) });
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 
-  const viewMode = ref<ViewMode>('list');
-  const sortConfig = ref<SortConfig>({ field: 'name', direction: 'ascending' });
+  const initialPreferences = preferences.value;
+  const savedViewMode = initialPreferences?.viewMode;
+  const viewMode = ref<ViewMode>((() => {
+    switch (savedViewMode) {
+    case 'tree': case undefined:
+      return initialViewMode;
+    case 'column': case 'list': case 'icon':
+      return savedViewMode;
+    default: {
+      const exhaustive: never = savedViewMode;
+      throw new Error(`Unhandled view mode: ${String(exhaustive)}`);
+    }
+    }
+  })());
+  const sortConfig = ref<SortConfig>({
+    field: initialPreferences?.sortField ?? 'name',
+    direction: initialPreferences?.sortDirection ?? 'ascending',
+  });
   const filterQuery = ref('');
   const isLocked = ref(initialLocked);
   const newFileDirectoryPath = ref<string>();
@@ -107,6 +130,7 @@ export async function useFileExplorer({
   });
 
   const preview = useFileExplorerPreview({ client });
+  preview.previewState.value = { ...preview.previewState.value, visibility: initialPreferences?.previewVisibility ?? initialPreviewVisibility };
   let latestEntryOpenId = 0;
   const directoryDownload = useFileExplorerDirectoryDownload({ client });
   const upload = useFileExplorerUpload({
@@ -145,9 +169,11 @@ export async function useFileExplorer({
           }
         })(),
       };
-      return;
+    } else {
+      sortConfig.value = { field, direction: 'ascending' };
     }
-    sortConfig.value = { field, direction: 'ascending' };
+    const sort = sortConfig.value;
+    void savePreferences({ patch: { sortField: sort.field, sortDirection: sort.direction }, isCurrent: captureStorage() });
   }
 
   function setFilterQuery({ query }: { query: string }): void {
@@ -633,7 +659,10 @@ export async function useFileExplorer({
     loadPreview: preview.loadPreview,
     loadPreviewForced: preview.loadPreviewForced,
     clearPreview: preview.clearPreview,
-    togglePreviewVisibility: preview.togglePreviewVisibility,
+    togglePreviewVisibility() {
+      preview.togglePreviewVisibility();
+      void savePreferences({ patch: { previewVisibility: preview.previewState.value.visibility }, isCurrent: captureStorage() });
+    },
     toggleJsonFormat: preview.toggleJsonFormat,
 
     get contextMenuState() {
@@ -683,7 +712,9 @@ export async function useFileExplorer({
   return {
     context,
     client,
-    _viewMode: viewMode,
+    initialPreferences,
+    captureStorage,
+    savePreferences,
     _preview: preview,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {

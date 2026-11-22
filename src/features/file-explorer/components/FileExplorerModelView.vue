@@ -5,9 +5,12 @@ import { lazyStrings } from '@/strings';
 import type { ModelMetadataEntry, ModelMetadataValue, ModelWeightDetails } from '@/logic/model-file-inspection/metadata';
 import { GGUF_EDITABLE_METADATA_KEYS } from '@/logic/model-file-inspection/gguf-metadata-keys';
 import type { FileExplorerModelAccess, ModelWeightOverview } from '@/features/file-explorer/worker/types';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { useFileExplorerLineNumbers, useFileExplorerTextWrap } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import { formatSize } from '@/features/file-explorer/logic/utils';
 import FileExplorerModelTensors from './FileExplorerModelTensors.vue';
+
+const fileExplorerTextWrap = useFileExplorerTextWrap();
+const fileExplorerLineNumbers = useFileExplorerLineNumbers();
 
 const EditorV4 = defineAsyncComponent(() => import('@/features/editor-v4/components/EditorV4.vue'));
 
@@ -502,6 +505,7 @@ defineExpose({
               <EditorV4
                 :key="selected.key"
                 v-model:word-wrap="fileExplorerTextWrap"
+                v-model:line-numbers="fileExplorerLineNumbers"
                 :initial-text="selectedDraft.text"
                 :read-only="locked"
                 @change="updateDraft"

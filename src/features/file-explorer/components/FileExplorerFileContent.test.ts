@@ -5,7 +5,7 @@ import { nextTick } from 'vue';
 import type { usePrompt } from '@/composables/usePrompt';
 import BlockMarkdownRenderer from '@/components/block-markdown/BlockMarkdownRenderer.vue';
 import EditorV4 from '@/features/editor-v4/components/EditorV4.vue';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { TEST_ONLY as editorPreferences } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
@@ -48,7 +48,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  fileExplorerTextWrap.value = false;
+  editorPreferences.temporaryWordWrap.value = false;
   vi.unstubAllGlobals();
 });
 
@@ -116,7 +116,7 @@ One long line in a text file
   expect(textarea.attributes('wrap')).toBe('soft');
   expect(textarea.element.value).toBe(content);
   await wrapper.get('[data-testid="editor-v4-wrap-toggle"]').trigger('click');
-  expect(fileExplorerTextWrap.value).toBe(false);
+  expect(editorPreferences.temporaryWordWrap.value).toBe(false);
   expect(textarea.attributes('wrap')).toBe('off');
   expect(wrapper.vm.hasChanges()).toBe(false);
   await wrapper.get('[data-testid="file-view-show-preview"]').trigger('click');

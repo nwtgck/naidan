@@ -25,7 +25,7 @@ const textarea = computed(() => nativeTextarea.value ?? undefined);
 const mirror = computed(() => mirrorElement.value ?? undefined);
 const documentVersion = shallowRef(documentState.version);
 const selection = shallowRef(documentState.selection);
-const lineNumbers = ref<'shown' | 'hidden'>('shown');
+const lineNumbers = defineModel<'shown' | 'hidden'>('lineNumbers', { default: 'shown' });
 const wordWrap = defineModel<boolean>('wordWrap', { default: false });
 const statistics = ref<'shown' | 'hidden'>('hidden');
 const keyMap = ref<'standard' | 'emacs'>('standard');
@@ -669,9 +669,9 @@ defineExpose({
           <button type="button" :aria-pressed="statistics === 'shown'" tw-class="block w-full rounded px-2 py-1 text-left hover:bg-gray-100 aria-pressed:bg-blue-100 dark:hover:bg-gray-800 dark:aria-pressed:bg-blue-950" @click="statistics = statistics === 'shown' ? 'hidden' : 'shown'">{{ lazyStrings.EditorV4__document_statistics() }}</button>
         </div>
       </details>
-      <span tw-class="tabular-nums">{{ lazyStrings.EditorV4__line_and_column(caretLocation) }}</span>
+      <span tw-class="tabular-nums">{{ lazyStrings.EditorV4__line_and_column({ line: caretLocation.line, column: caretLocation.column }) }}</span>
       <span v-if="selectionSize > 0" tw-class="tabular-nums">{{ lazyStrings.EditorV4__selected_characters({ count: selectionSize }) }}</span>
-      <span v-if="statistics === 'shown'" tw-class="tabular-nums">{{ lazyStrings.EditorV4__document_counts(documentStatistics) }}</span>
+      <span v-if="statistics === 'shown'" tw-class="tabular-nums">{{ lazyStrings.EditorV4__document_counts({ lines: documentStatistics.lines, characters: documentStatistics.characters, words: documentStatistics.words }) }}</span>
     </footer>
   </section>
 </template>

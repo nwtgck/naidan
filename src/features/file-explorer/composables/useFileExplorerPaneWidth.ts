@@ -1,6 +1,6 @@
 import { computed, shallowRef, watch } from 'vue';
 import type { Ref } from 'vue';
-import { useSettings } from '@/composables/useSettings';
+import { useFileExplorerPreferences } from './useFileExplorerPreferences';
 
 type WidthPreference = 'previewWidthPx' | 'treeWidthPx';
 type WidthChange = { pixels: number, isCurrent: () => boolean };
@@ -16,10 +16,10 @@ export function useFileExplorerPaneWidth({ panel, preference }: {
   panel: Readonly<Ref<HTMLElement | null>>,
   preference: WidthPreference,
 }) {
-  const { settings, initialized, captureExperimentalStorage, updateExperimentalForStorage } = useSettings();
+  const { preferences, initialized, captureStorage, savePreferences } = useFileExplorerPreferences();
   const { initial, min, max, fraction, direction } = paneWidths[preference];
   const preferredWidth = computed(() => {
-    const stored = settings.value.experimental?.fileExplorer?.[preference];
+    const stored = preferences.value?.[preference];
     const change = pending[preference].value;
     if (change?.isCurrent()) {
       return change.pixels;
@@ -56,10 +56,6 @@ export function useFileExplorerPaneWidth({ panel, preference }: {
     return Math.max(minimum.value, Math.min(maximum.value, Math.round(pixels)));
   }
 
-  function captureStorage(): () => boolean {
-    return initialized.value ? captureExperimentalStorage() : () => !initialized.value;
-  }
-
   function saveWidth({ pixels, isCurrent, delayMs }: { pixels: number, isCurrent: () => boolean, delayMs: number }): void {
     if (!isCurrent()) {
       return;
@@ -78,15 +74,7 @@ export function useFileExplorerPaneWidth({ panel, preference }: {
           return;
         }
         try {
-          await updateExperimentalForStorage({
-            isCurrent,
-            updater: ({ experimental }) => ({
-              ...experimental,
-              fileExplorer: { ...experimental?.fileExplorer, [preference]: Math.max(min, pixels) },
-            }),
-          });
-        } catch {
-          // Settings storage reports write failures through the global error handler.
+          await savePreferences({ patch: { [preference]: Math.max(min, pixels) }, isCurrent });
         } finally {
           if (pending[preference].value === change) {
             pending[preference].value = undefined;

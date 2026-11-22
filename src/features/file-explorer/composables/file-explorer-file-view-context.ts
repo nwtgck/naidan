@@ -7,9 +7,9 @@ export const FILE_EXPLORER_FILE_VIEW_KEY: InjectionKey<{
   activeFile: Readonly<Ref<FileExplorerEntry | undefined>>,
   canUnlockFiles: Readonly<Ref<boolean>>,
   access: FileExplorerFileAccess | undefined,
-  activate: () => void,
+  activate: () => Promise<void>,
   revealFolder: ({ path }: { path: string }) => Promise<void>,
-  showBrowser: ({ mode, restoreFocus }: { mode: ViewMode, restoreFocus: boolean }) => Promise<void>,
+  showBrowser: ({ mode, restoreFocus, rememberMode }: { mode: ViewMode, restoreFocus: boolean, rememberMode: boolean }) => Promise<void>,
   open: ({ entry, startEditing, forceText }: { entry: FileExplorerEntry, startEditing?: boolean, forceText?: boolean }) => Promise<void>,
 }> = Symbol('FileExplorerFileView');
 

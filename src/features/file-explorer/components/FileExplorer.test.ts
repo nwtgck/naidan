@@ -1,4 +1,4 @@
-import { defineComponent, h, Suspense } from 'vue';
+import { defineComponent, h, shallowRef, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -13,6 +13,8 @@ import { createFileExplorerWorkerClient } from '@/features/file-explorer/worker/
 import { FileExplorerNotDirectoryError } from '@/features/file-explorer/logic/errors';
 import { getMimeCategory } from '@/features/file-explorer/logic/utils';
 import { createRemoteDirectoryAccess } from '@/utils/remote-directory-handle';
+import { DEFAULT_SETTINGS, DEFAULT_SETTINGS_ENDPOINT, type Settings } from '@/01-models/types';
+import type { useSettings } from '@/composables/useSettings';
 
 // ---- Mock ExplorerDirectory ----
 
@@ -357,6 +359,14 @@ const mockShowConfirm = vi.fn().mockResolvedValue(true);
 const mockShowPrompt = vi.fn().mockResolvedValue(undefined);
 const mockAddToast = vi.fn();
 const mockUploadFiles = vi.fn();
+const { mockPreferenceStorage } = vi.hoisted(() => ({
+  mockPreferenceStorage: vi.fn<() => Pick<ReturnType<typeof useSettings>, 'settings' | 'initialized' | 'captureExperimentalStorage' | 'updateExperimentalForStorage'> | undefined>(),
+}));
+
+vi.mock('@/composables/useSettings', async importOriginal => {
+  const original = await importOriginal<typeof import('@/composables/useSettings')>();
+  return { ...original, useSettings: () => ({ ...original.useSettings(), ...mockPreferenceStorage() }) };
+});
 
 vi.mock('@/features/file-explorer/worker/client', () => ({
   createFileExplorerWorkerClient: vi.fn(async () => createMockWorkerClient()),
@@ -456,6 +466,7 @@ describe('FileExplorer.vue', () => {
 
   beforeEach(() => {
     root = makeRoot();
+    mockPreferenceStorage.mockReset();
     mockShowConfirm.mockResolvedValue(true);
     mockShowPrompt.mockResolvedValue(undefined);
     mockAddToast.mockReset();
@@ -475,6 +486,113 @@ describe('FileExplorer.vue', () => {
     const wrapper = tracked(mountExplorer(root));
     await flushPromises();
     expect(wrapper.find('[data-testid="file-explorer"]').exists()).toBe(true);
+  });
+
+  it('saves and restores display and editor preferences through the explorer controls', async () => {
+    const settings = shallowRef<Settings>({
+      ...DEFAULT_SETTINGS,
+      endpoint: DEFAULT_SETTINGS_ENDPOINT,
+      storageType: 'memory',
+      experimental: {
+        fileExplorer: {
+          viewMode: 'column',
+          previewVisibility: 'hidden',
+          treeVisibility: 'hidden',
+          fileInformationVisibility: 'visible',
+          sortField: 'size',
+          sortDirection: 'descending',
+          wordWrap: 'wrap',
+          editorLineNumbers: 'hidden',
+          previewWidthPx: 300,
+        },
+      },
+    });
+    mockPreferenceStorage.mockReturnValue({
+      settings,
+      initialized: shallowRef(true),
+      captureExperimentalStorage: () => () => true,
+      async updateExperimentalForStorage({ isCurrent, updater }) {
+        if (!isCurrent()) {
+          return 'changed';
+        }
+        settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
+        return 'saved';
+      },
+    });
+    root.addFile('a.txt', 1, 'a');
+    root.addFile('b.txt', 4, 'note');
+    const client = await createMockWorkerClient();
+    const bytes = new TextEncoder().encode('note');
+    const blob = new Blob([bytes]);
+    Object.defineProperty(blob, 'arrayBuffer', { value: async () => bytes.buffer });
+    client.fileAccess = {
+      read: vi.fn().mockResolvedValue({ kind: 'file', name: 'b.txt', blob, size: blob.size, partial: false, revision: 'first' }),
+      openSnapshot: vi.fn(),
+      inspectModel: vi.fn(),
+      inspectModelOverview: vi.fn(),
+      readModelMetadataValue: vi.fn(),
+      prepareGgufMetadataRewrite: vi.fn(),
+      save: vi.fn(),
+    };
+    vi.mocked(createFileExplorerWorkerClient).mockResolvedValueOnce(client);
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="view-column"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('[data-testid="preview-panel"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="view-list"]').trigger('click');
+    const rowNames = () => wrapper.findAll('[data-testid^="entry-item-"]').map(row => row.attributes('data-testid'));
+    expect(rowNames()).toEqual(['entry-item-b.txt', 'entry-item-a.txt']);
+    await wrapper.get('[data-testid="sort-field-size"]').trigger('click');
+    expect(rowNames()).toEqual(['entry-item-a.txt', 'entry-item-b.txt']);
+    await wrapper.get('button[title="Show preview"]').trigger('click');
+    expect(wrapper.find('[data-testid="preview-panel"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="file-view-open-toolbar"]').trigger('click');
+    const file = '[data-path="/b.txt"]';
+    await vi.waitFor(() => expect(wrapper.find(file).exists()).toBe(true));
+    await wrapper.get(file).trigger('click');
+    const tree = '[data-testid="file-explorer-toggle-file-tree"]';
+    const information = '[data-testid="file-explorer-toggle-file-information"]';
+    expect(wrapper.get(tree).attributes('aria-expanded')).toBe('false');
+    expect(wrapper.get(information).attributes('aria-expanded')).toBe('true');
+    await wrapper.get(tree).trigger('click');
+    await wrapper.get(information).trigger('click');
+
+    const edit = '[data-testid="file-view-edit-source"]';
+    const lineNumbers = 'button[aria-label="Line numbers"]';
+    const wrap = '[data-testid="editor-v4-wrap-toggle"]';
+    await vi.waitFor(() => expect(wrapper.find(edit).exists()).toBe(true));
+    await wrapper.get(edit).trigger('click');
+    await vi.waitFor(() => expect(wrapper.find(wrap).exists()).toBe(true));
+    expect(wrapper.get(wrap).attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get(lineNumbers).attributes('aria-pressed')).toBe('false');
+    await wrapper.get(wrap).trigger('click');
+    await wrapper.get(lineNumbers).trigger('click');
+    await flushPromises();
+    expect(settings.value.experimental?.fileExplorer).toEqual({
+      viewMode: 'tree',
+      previewVisibility: 'visible',
+      treeVisibility: 'visible',
+      fileInformationVisibility: 'hidden',
+      sortField: 'size',
+      sortDirection: 'ascending',
+      wordWrap: 'no_wrap',
+      editorLineNumbers: 'shown',
+      previewWidthPx: 300,
+    });
+
+    vi.mocked(createFileExplorerWorkerClient).mockResolvedValueOnce(client);
+    const reopened = tracked(mountExplorer(root));
+    await vi.waitFor(() => expect(reopened.find(file).exists()).toBe(true));
+    expect(reopened.get('[data-testid="file-view-open-toolbar"]').attributes('aria-pressed')).toBe('true');
+    await reopened.get(file).trigger('click');
+    expect(reopened.get(tree).attributes('aria-expanded')).toBe('true');
+    expect(reopened.get(information).attributes('aria-expanded')).toBe('false');
+    await vi.waitFor(() => expect(reopened.find(edit).exists()).toBe(true));
+    await reopened.get(edit).trigger('click');
+    await vi.waitFor(() => expect(reopened.find(wrap).exists()).toBe(true));
+    expect(reopened.get(wrap).attributes('aria-pressed')).toBe('false');
+    expect(reopened.get(lineNumbers).attributes('aria-pressed')).toBe('true');
   });
 
   it('disposes a worker that finishes preparing after the explorer was closed', async () => {

@@ -46,7 +46,7 @@ watch([breadcrumbScroller, () => activeFile.value?.path ?? ctx.currentDirectoryP
 
 function selectBrowserView({ mode }: { mode: ViewMode }): void {
   if (fileView) {
-    void fileView.showBrowser({ mode, restoreFocus: false });
+    void fileView.showBrowser({ mode, restoreFocus: false, rememberMode: true });
   } else {
     ctx.setViewMode({ mode });
   }
@@ -141,7 +141,7 @@ defineExpose({
           :aria-label="lazyStrings.fileExplorer__go_back()"
           data-testid="file-explorer-file-view-back"
           tw-class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shrink-0"
-          @click="fileView?.showBrowser({ mode: ctx.viewMode, restoreFocus: true })"
+          @click="fileView?.showBrowser({ mode: ctx.viewMode, restoreFocus: true, rememberMode: false })"
         >
           <ChevronLeftIcon aria-hidden="true" tw-class="w-3.5 h-3.5 text-gray-500" />
         </button>
@@ -210,6 +210,7 @@ defineExpose({
           :aria-label="lazyStrings.fileExplorer__file_tree()"
           :aria-expanded="fileTreeVisible"
           :aria-controls="fileTreeId"
+          :disabled="activeFile === undefined"
           data-testid="file-explorer-toggle-file-tree"
           :tw-class="['p-1.5 rounded-lg transition-colors', fileTreeVisible
             ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20'

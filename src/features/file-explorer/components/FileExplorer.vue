@@ -40,6 +40,7 @@ const startEditingFile = shallowRef(false);
 const forceTextFile = shallowRef(false);
 const isFileView = shallowRef(false);
 const showFileTree = shallowRef(true);
+const revealTreeTemporarily = shallowRef(false);
 const showFileInformation = shallowRef(false);
 const focusEditor = shallowRef(false);
 const fileTreeId = useId();
@@ -77,9 +78,11 @@ defineExpose({
   }) || {}),
 });
 
-const { context, client, _viewMode, _preview } = await useFileExplorer({
+const { context, client, initialPreferences, captureStorage, savePreferences, _preview } = await useFileExplorer({
   root: props.root,
   remoteMounts: props.remoteMounts,
+  initialViewMode: props.initialViewMode,
+  initialPreviewVisibility: props.initialPreviewVisibility,
   initialPath: props.initialPath,
   initialLocked: props.initialLocked,
 });
@@ -94,9 +97,9 @@ if (unmounted) {
   disposeResources();
 }
 
-// Apply initial values
-_viewMode.value = props.initialViewMode;
-_preview.previewState.value = { ..._preview.previewState.value, visibility: props.initialPreviewVisibility };
+isFileView.value = initialPreferences?.viewMode === 'tree';
+showFileTree.value = initialPreferences?.treeVisibility !== 'hidden';
+showFileInformation.value = initialPreferences?.fileInformationVisibility === 'visible';
 
 // Provide context for child components
 provide(FILE_EXPLORER_INJECTION_KEY, context);
@@ -170,6 +173,7 @@ const canFocusEditor = computed(() => {
   return kind === 'text' || kind === 'markdown' || kind === 'delimited' || kind === 'patch' || kind === 'model';
 });
 const editorFocused = computed(() => canFocusEditor.value && focusEditor.value);
+const fileTreeVisible = computed(() => !editorFocused.value && (activeFile.value === undefined || showFileTree.value || revealTreeTemporarily.value));
 
 const canWriteToRoot = computed(() => {
   switch (props.root.kind) {
@@ -291,6 +295,7 @@ async function openFileView({ entry, startEditing, forceText }: { entry: FileExp
   }
   enterFileView();
   viewInstance.value += 1;
+  revealTreeTemporarily.value = false;
   startEditingFile.value = startEditing === true;
   forceTextFile.value = forceText === true;
   activeFile.value = entry;
@@ -317,21 +322,23 @@ function enterFileView(): void {
   }
 }
 
-function activateFileView(): void {
-  if (isFileView.value) {
-    return;
+async function activateFileView(): Promise<void> {
+  const isCurrent = captureStorage();
+  if (!isFileView.value) {
+    const entry = selectedFile.value;
+    if (entry === undefined) {
+      enterFileView();
+    } else {
+      await openFileView({ entry });
+    }
   }
-  const entry = selectedFile.value;
-  if (entry === undefined) {
-    showFileTree.value = true;
-    enterFileView();
-  } else {
-    void openFileView({ entry });
+  if (isFileView.value && !unmounted) {
+    void savePreferences({ patch: { viewMode: 'tree' }, isCurrent });
   }
 }
 
 async function revealFileFolder({ path }: { path: string }): Promise<void> {
-  showFileTree.value = true;
+  revealTreeTemporarily.value = true;
   focusEditor.value = false;
   pendingFolderReveal.value = path;
   await nextTick();
@@ -395,7 +402,7 @@ function showTreeContextMenu({ event, entry, open, directoryPath, directoryReadO
           if (affectsActiveFile({ paths })) {
             activeFile.value = undefined;
             focusEditor.value = false;
-            showFileTree.value = true;
+            revealTreeTemporarily.value = false;
           }
         },
       },
@@ -418,19 +425,34 @@ async function toggleEditorFocus(): Promise<void> {
   }
 }
 
-async function returnToBrowser({ mode, restoreFocus }: { mode: ViewMode, restoreFocus: boolean }): Promise<void> {
-  if (!isFileView.value) {
-    context.setViewMode({ mode });
-    return;
-  }
-  if (!await allowClose()) {
+function toggleFileTree(): void {
+  showFileTree.value = !fileTreeVisible.value;
+  revealTreeTemporarily.value = false;
+  void savePreferences({ patch: { treeVisibility: showFileTree.value ? 'visible' : 'hidden' }, isCurrent: captureStorage() });
+}
+
+function toggleFileInformation(): void {
+  showFileInformation.value = !showFileInformation.value;
+  void savePreferences({ patch: { fileInformationVisibility: showFileInformation.value ? 'visible' : 'hidden' }, isCurrent: captureStorage() });
+}
+
+async function returnToBrowser({ mode, restoreFocus, rememberMode }: { mode: ViewMode, restoreFocus: boolean, rememberMode: boolean }): Promise<void> {
+  const isCurrent = captureStorage();
+  if (isFileView.value && !await allowClose()) {
     return;
   }
   context.setViewMode({ mode });
+  if (rememberMode && !unmounted) {
+    void savePreferences({ patch: { viewMode: mode }, isCurrent });
+  }
+  if (!isFileView.value) {
+    return;
+  }
   context.hideContextMenu();
   isFileView.value = false;
   pendingFolderReveal.value = undefined;
   activeFile.value = undefined;
+  revealTreeTemporarily.value = false;
   focusEditor.value = false;
   lastContentFocus = undefined;
   await nextTick();
@@ -489,14 +511,14 @@ function handleBrowserKeyDown({ event }: { event: KeyboardEvent }): void {
     <!-- Toolbar -->
     <FileExplorerToolbar
       :inert="showLeaveDialog || context.newFileDirectoryPath !== undefined"
-      :file-tree-visible="showFileTree && !editorFocused"
+      :file-tree-visible="fileTreeVisible"
       :file-tree-id="fileTreeId"
       :file-information-visible="showFileInformation && !editorFocused"
       :file-information-id="fileInformationId"
       :editor-focused="editorFocused"
       :can-focus-editor="canFocusEditor"
-      @toggle-tree="showFileTree = !showFileTree"
-      @toggle-information="showFileInformation = !showFileInformation"
+      @toggle-tree="toggleFileTree"
+      @toggle-information="toggleFileInformation"
       @toggle-editor-focus="toggleEditorFocus"
     />
 
@@ -550,7 +572,7 @@ function handleBrowserKeyDown({ event }: { event: KeyboardEvent }): void {
       :entry="activeFile"
       :directory-path="context.currentDirectoryPath"
       :read-directory="client.readDirectory"
-      :tree-visible="showFileTree && !editorFocused"
+      :tree-visible="fileTreeVisible"
       :tree-id="fileTreeId"
       :information-visible="showFileInformation && !editorFocused"
       :information-id="fileInformationId"

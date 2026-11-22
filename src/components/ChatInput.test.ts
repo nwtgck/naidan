@@ -1057,9 +1057,9 @@ describe('ChatInput Integration', () => {
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({
       options: expect.objectContaining({
         kind: 'wesh-mounts',
-        rootName: 'Files',
+        rootName: 'Chat file system',
         initialPath: ['home', 'user', 'work'],
-        title: 'Files',
+        title: 'Chat file system',
       }),
     });
   });
@@ -1118,8 +1118,8 @@ describe('ChatInput Integration', () => {
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({
       options: expect.objectContaining({
         kind: 'wesh-mounts',
-        rootName: 'Files',
-        title: 'Files',
+        rootName: 'Chat file system',
+        title: 'Chat file system',
       }),
     });
   });

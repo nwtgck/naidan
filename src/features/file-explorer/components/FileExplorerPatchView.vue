@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { useFileExplorerTextWrap } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import { buildPatchView } from '@/features/file-explorer/logic/patch-view';
 import { lazyStrings } from '@/strings';
+
+const fileExplorerTextWrap = useFileExplorerTextWrap();
 
 const props = defineProps<{ text: string }>();
 const patch = computed(() => buildPatchView({ text: props.text }));

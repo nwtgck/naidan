@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BlockMarkdownRenderer from '@/components/block-markdown/BlockMarkdownRenderer.vue';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { TEST_ONLY as editorPreferences } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import type { FileExplorerContext } from '@/features/file-explorer/logic/types';
 import { sanitizeHighlightHtml, type AllowedHtml } from '@/logic/security/allowedHtml';
@@ -68,7 +68,7 @@ describe('FileExplorerPreviewPanel text wrapping', () => {
   });
 
   afterEach(() => {
-    fileExplorerTextWrap.value = false;
+    editorPreferences.temporaryWordWrap.value = false;
   });
 
   it('retains wrapping from plain text into a newly mounted highlighted preview', async () => {

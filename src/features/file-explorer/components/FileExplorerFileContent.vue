@@ -4,7 +4,7 @@ import { DownloadIcon, EyeIcon, FileCodeIcon, FileTextIcon, Loader2Icon, LockIco
 import { ensureStrings, lazyStrings } from '@/strings';
 import { usePrompt } from '@/composables/usePrompt';
 import { useToast } from '@/composables/useToast';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { useFileExplorerLineNumbers, useFileExplorerTextWrap } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import { MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
 import { BINARY_PREVIEW_BYTES, decodeFileViewText, formatFileViewText, getDelimitedFormat, getFileViewImageExtensions, getFileViewKind, getFileViewMediaType, getFileViewParentPath, getFileViewSaveTarget, withFileViewExtension } from '@/features/file-explorer/logic/file-view';
 import type { FileViewKind } from '@/features/file-explorer/logic/file-view';
@@ -13,6 +13,9 @@ import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logi
 import type { FileExplorerFileAccess, FileExplorerReadFileForViewResponse, FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
 
 import FileExplorerTextWrapButton from './FileExplorerTextWrapButton.vue';
+
+const fileExplorerTextWrap = useFileExplorerTextWrap();
+const fileExplorerLineNumbers = useFileExplorerLineNumbers();
 
 type Source = Extract<FileExplorerReadFileForViewResponse, { kind: 'file' }>;
 type FileText = ReturnType<typeof decodeFileViewText>;
@@ -792,6 +795,7 @@ defineExpose({
           v-if="editorMounted"
           ref="editor"
           v-model:word-wrap="fileExplorerTextWrap"
+          v-model:line-numbers="fileExplorerLineNumbers"
           :initial-text="fileText.editorText"
           :read-only="!canEditText"
           tw-class="min-w-0 flex-1"

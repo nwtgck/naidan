@@ -2,9 +2,11 @@
 import { computed, shallowRef } from 'vue';
 import { FileCodeIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { useFileExplorerTextWrap } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import type { FileExplorerBinaryPreview } from '@/features/file-explorer/logic/types';
 import FileExplorerTextWrapButton from './FileExplorerTextWrapButton.vue';
+
+const fileExplorerTextWrap = useFileExplorerTextWrap();
 
 const props = defineProps<{ preview: FileExplorerBinaryPreview }>();
 const showText = shallowRef(false);

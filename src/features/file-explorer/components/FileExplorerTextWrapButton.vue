@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { WrapTextIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { useFileExplorerTextWrap } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
+
+const fileExplorerTextWrap = useFileExplorerTextWrap();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

@@ -8,11 +8,13 @@ import FileExplorerTextWrapButton from './FileExplorerTextWrapButton.vue';
 import FileExplorerPaneResizeHandle from './FileExplorerPaneResizeHandle.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import { FILE_EXPLORER_FILE_VIEW_KEY } from '@/features/file-explorer/composables/file-explorer-file-view-context';
-import { fileExplorerTextWrap } from '@/features/file-explorer/composables/file-explorer-text-wrap';
+import { useFileExplorerTextWrap } from '@/features/file-explorer/composables/useFileExplorerEditorPreferences';
 import { useFileExplorerPaneWidth } from '@/features/file-explorer/composables/useFileExplorerPaneWidth';
 import { formatSize, formatDate } from '@/features/file-explorer/logic/utils';
 import { getDelimitedFormat, getFileViewKind, getFileViewMediaType } from '@/features/file-explorer/logic/file-view';
 import { TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
+
+const fileExplorerTextWrap = useFileExplorerTextWrap();
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
 const fileView = inject(FILE_EXPLORER_FILE_VIEW_KEY, undefined);
